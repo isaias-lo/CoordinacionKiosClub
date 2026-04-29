@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { TMPL_B64 } from '../../../data/template';
 import type { DispatchItem } from '../../../types';
 import { TIENDAS } from '../data/tiendas';
@@ -39,8 +38,9 @@ export function buildRows(
   return rows;
 }
 
-export function exportToTemplate(rows: ExportRow[], filename: string) {
+export async function exportToTemplate(rows: ExportRow[], filename: string) {
   if (!rows.length) return;
+  const XLSX = await import('xlsx');
   const b64 = localStorage.getItem('templateB64') || TMPL_B64;
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);

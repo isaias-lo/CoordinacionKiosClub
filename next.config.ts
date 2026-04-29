@@ -1,12 +1,24 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  webpack: (config) => {
-    // pdfjs-dist requiere que canvas esté aliased a false en entornos sin canvas nativo
+  serverExternalPackages: ['xlsx', 'pdfjs-dist'],
+  webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       canvas: false,
     };
+
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        stream: false,
+        crypto: false,
+        buffer: false,
+      };
+    }
+
     return config;
   },
 };

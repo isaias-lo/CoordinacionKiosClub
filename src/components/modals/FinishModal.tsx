@@ -29,11 +29,11 @@ export function FinishModal({ open, onClose }: Props) {
     return { name, pallets: p, bultos: b, pesoTotal: pesoT.toLocaleString('es-CL'), monto };
   });
 
-  const finish = () => {
+  const finish = async () => {
     onClose();
     const rows = buildRows(dispatchData);
     const date = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
-    exportToTemplate(rows, `despacho_${date}.xlsx`);
+    await exportToTemplate(rows, `despacho_${date}.xlsx`);
 
     const entry: HistoryEntry = {
       date: dispatchDate,

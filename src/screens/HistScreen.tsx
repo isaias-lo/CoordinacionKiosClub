@@ -14,9 +14,9 @@ export function HistScreen() {
     catch { return []; }
   })();
 
-  const redownload = (entry: HistoryEntry) => {
+  const redownload = async (entry: HistoryEntry) => {
     if (!entry.rows?.length) { showToast('No hay datos para re-exportar', '#D97706'); return; }
-    exportToTemplate(entry.rows as never[], `despacho_${entry.date.replace(/\s+/g, '_')}.xlsx`);
+    await exportToTemplate(entry.rows as never[], `despacho_${entry.date.replace(/\s+/g, '_')}.xlsx`);
     showToast('Excel descargado ✓', '#16A34A');
   };
 
