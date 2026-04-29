@@ -1,0 +1,44 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useApp } from '../context/AppContext';
+
+const LOGO_SRC = '/logo.png';
+
+interface AppHeaderProps {
+  onFinish: () => void;
+}
+
+export function AppHeader({ onFinish }: AppHeaderProps) {
+  const { state } = useApp();
+  const router = useRouter();
+
+  const confirmBackHome = () => {
+    const totalItems = Object.values(state.dispatch).reduce((acc, items) => acc + items.length, 0);
+    if (totalItems > 0) {
+      if (!confirm('¿Volver al inicio? Los datos no guardados se perderán.')) return;
+    }
+    router.push('/');
+  };
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
+         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
+      <img src={LOGO_SRC} className="h-7 brightness-0 invert" alt="KiosClub"
+           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      <div className="font-barlow-condensed text-[13px] text-white/60 tracking-wide flex-1 text-center">
+        {state.dispatchDate}
+      </div>
+      <button
+        onClick={confirmBackHome}
+        className="px-3 py-1.5 bg-white/12 text-white/85 border border-white/20 rounded-full font-barlow text-xs cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
+        ← Inicio
+      </button>
+      <button
+        onClick={onFinish}
+        className="px-3.5 py-1.5 bg-red text-white border-none rounded-full font-barlow-condensed text-[13px] font-bold tracking-wide cursor-pointer whitespace-nowrap transition-all active:bg-red-dark">
+        ✓ Terminar
+      </button>
+    </div>
+  );
+}
