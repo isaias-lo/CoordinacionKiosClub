@@ -90,3 +90,4 @@ src/
 - **`DispatchItem`** — un paquete (pallet o bulto) con orden, tipo de contenido, guía, peso, dimensiones y valor
 - **`Tienda`** — tienda destino con código, región, comuna, RUT y datos de contacto
 - **`HistoryEntry`** — snapshot de un día de despacho guardado en historial
+
