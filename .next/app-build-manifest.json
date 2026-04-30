@@ -1,49 +1,20 @@
 {
   "pages": {
-    "/_not-found/page": [
-      "static/chunks/webpack-0e630eaf0298b035.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-4f212684648fcab9.js",
-      "static/chunks/main-app-6bccb36d5208cf87.js",
-      "static/chunks/app/_not-found/page-eb7c257c5ef31826.js"
-    ],
     "/layout": [
-      "static/chunks/webpack-0e630eaf0298b035.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-4f212684648fcab9.js",
-      "static/chunks/main-app-6bccb36d5208cf87.js",
-      "static/css/cef01b1ad5dc5081.css",
-      "static/chunks/app/layout-bb2c07e578b8351a.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
     ],
     "/page": [
-      "static/chunks/webpack-0e630eaf0298b035.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-4f212684648fcab9.js",
-      "static/chunks/main-app-6bccb36d5208cf87.js",
-      "static/chunks/app/page-ccc99b21281864e9.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/page.js"
     ],
     "/regiones/page": [
-      "static/chunks/webpack-0e630eaf0298b035.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-4f212684648fcab9.js",
-      "static/chunks/main-app-6bccb36d5208cf87.js",
-      "static/chunks/54-9498267618d9662e.js",
-      "static/chunks/app/regiones/page-2732c5585b916f70.js"
-    ],
-    "/historial/page": [
-      "static/chunks/webpack-0e630eaf0298b035.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-4f212684648fcab9.js",
-      "static/chunks/main-app-6bccb36d5208cf87.js",
-      "static/chunks/54-9498267618d9662e.js",
-      "static/chunks/app/historial/page-1454bd14f2a75a85.js"
-    ],
-    "/santiago/page": [
-      "static/chunks/webpack-0e630eaf0298b035.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-4f212684648fcab9.js",
-      "static/chunks/main-app-6bccb36d5208cf87.js",
-      "static/chunks/app/santiago/page-3b820914b2468eae.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/regiones/page.js"
     ]
   }
 }

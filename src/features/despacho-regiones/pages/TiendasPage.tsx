@@ -1,8 +1,11 @@
+'use client';
+
 import { useRef, useEffect, useState } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../types';
+import { ResumenPage } from './ResumenPage';
 
 /* ── Per-day calendar overrides ── */
 const todayDateKey   = `calendarExtra_${new Date().toISOString().split('T')[0]}`;
@@ -150,8 +153,8 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
   const [search, setSearch] = useState('');
-  const [extraCods,         setExtraCods]         = useState<string[]>(loadExtraCods);
-  const [removedCods,       setRemovedCods]        = useState<string[]>(loadRemovedCods);
+  const [extraCods,         setExtraCods]         = useState<string[]>([]);
+  const [removedCods,       setRemovedCods]        = useState<string[]>([]);
   const [confirmAddName,    setConfirmAddName]     = useState<string | null>(null);
   const [confirmRemoveName, setConfirmRemoveName]  = useState<string | null>(null);
   const [addDropActive,     setAddDropActive]      = useState(false);
@@ -168,7 +171,7 @@ export function TiendasPage() {
   const [valor, setValor] = useState('');
   const [pdfLoading,      setPdfLoading]      = useState(false);
   const [multiPdfLoading, setMultiPdfLoading] = useState(false);
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingIdx,      setEditingIdx]      = useState<number | null>(null);
 
   const fileRef       = useRef<HTMLInputElement>(null);
   const multiFileRef  = useRef<HTMLInputElement>(null);
@@ -177,7 +180,15 @@ export function TiendasPage() {
 
   const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg } = state;
 
-  const baseTodayCods = getTodayCods();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setExtraCods(loadExtraCods());
+    setRemovedCods(loadRemovedCods());
+    setMounted(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const baseTodayCods = mounted ? getTodayCods() : [];
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
 
@@ -192,11 +203,6 @@ export function TiendasPage() {
 
   const nextGuiaAuto = pdfInfo ? (pdfInfo.guias[items.length]?.num || '') : '';
   const valorAuto    = pdfInfo ? Math.round(pdfInfo.totalSum / (items.length + 1)) : 0;
-
-  const allItems    = Object.values(dispatchData).flat();
-  const statPallets = allItems.filter(i => i.pkg === 'pallet').length;
-  const statBultos  = allItems.filter(i => i.pkg === 'box').length;
-  const statTiendas = Object.keys(dispatchData).filter(k => (dispatchData[k] || []).length > 0).length;
 
   const resetForm = (pkg: TipoPaquete = currentPkg) => {
     setPeso(''); setAlto('');
@@ -286,14 +292,17 @@ export function TiendasPage() {
     setPdfLoading(true);
     try {
       const data = await processPdf(file);
-      if (!data.guias.length) { showToast('No se encontraron guías en el PDF', '#D97706'); return; }
+      /* Si el PDF no tiene guías internas, usa el nombre del archivo como referencia */
+      if (!data.guias.length) {
+        data.guias = [{ num: file.name.replace(/\.pdf$/i, ''), total: 0 }];
+      }
       dispatch({ type: 'SET_PDF', tienda: selectedTienda, data });
       if (items.length > 0) {
-        const perItem = Math.round(data.totalSum / items.length);
-        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: items.map((it, i) => ({ ...it, guia: data.guias[i]?.num || '', valor: perItem })) });
+        const perItem = data.totalSum > 0 ? Math.round(data.totalSum / items.length) : 0;
+        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: items.map((it, i) => ({ ...it, guia: data.guias[i]?.num || '', valor: perItem || it.valor })) });
       }
-      showToast(`✓ ${data.guias.length} guía${data.guias.length > 1 ? 's' : ''} · $${data.totalSum.toLocaleString('es-CL')}`, '#16A34A');
-    } catch { showToast('Error al leer el PDF', '#D32F2F'); }
+      showToast(`✓ ${data.guias.length} guía${data.guias.length > 1 ? 's' : ''}${data.totalSum > 0 ? ' · $' + data.totalSum.toLocaleString('es-CL') : ''}`, '#16A34A');
+    } catch (e) { console.error('[PDF] Error al leer el PDF:', e); showToast('Error al leer el PDF', '#D32F2F'); }
     finally { setPdfLoading(false); }
   };
 
@@ -306,35 +315,36 @@ export function TiendasPage() {
   const handleMultiplePdfs = async (files: FileList) => {
     if (!files.length) return;
     setMultiPdfLoading(true);
-    const letterCodeToName: Record<string, string> = {};
-    Object.values(TIENDAS)
-      .filter(t => allTodayCods.includes(t.cod))
-      .forEach(t => { const m = t.cod.match(/([A-Z]{2,3})/); if (m) letterCodeToName[m[1]] = t.name; });
-    /* Excepción SP2: sus guías salen con código "SPS" en el nombre del archivo */
-    const sp2 = Object.values(TIENDAS).find(t => t.cod === '38SP2');
-    if (sp2 && allTodayCods.includes('38SP2')) letterCodeToName['PSP'] = sp2.name;
+    /* Mapa código completo → nombre de tienda (todas las tiendas, no solo las de hoy) */
+    const codToName: Record<string, string> = {};
+    Object.values(TIENDAS).forEach(t => { codToName[t.cod] = t.name; });
     let assigned = 0, skipped = 0;
     for (const file of Array.from(files)) {
-      const match = file.name.replace(/\.pdf$/i, '').match(/\d{2}([A-Z]{2,3})/);
-      if (!match) { skipped++; continue; }
-      const storeName = letterCodeToName[match[1]];
-      if (!storeName) { skipped++; continue; }
+      /* Lee el código completo al inicio del nombre: ej. "53VAL" de "53VAL-14-04-2026_163720_ORIGINAL.pdf" */
+      const cleanName = file.name.replace(/\.pdf$/i, '');
+      const match = cleanName.match(/^(\d{2}[A-Z]{2,3}\d?)/);
+      if (!match) { console.warn('[PDF Multi] Sin código reconocible:', file.name); skipped++; continue; }
+      const storeName = codToName[match[1]];
+      if (!storeName) { console.warn('[PDF Multi] Código no encontrado:', match[1], 'en', file.name); skipped++; continue; }
       try {
         const data = await processPdf(file);
-        if (!data.guias.length) { skipped++; continue; }
+        /* Si el PDF no tiene guías internas, usa el nombre del archivo (código completo) como referencia */
+        if (!data.guias.length) {
+          data.guias = [{ num: cleanName, total: 0 }];
+        }
         dispatch({ type: 'SET_PDF', tienda: storeName, data });
         const ex = dispatchData[storeName] || [];
         if (ex.length > 0) {
-          const perItem = Math.round(data.totalSum / ex.length);
-          dispatch({ type: 'UPDATE_ITEMS', tienda: storeName, items: ex.map((it, i) => ({ ...it, guia: data.guias[i]?.num || '', valor: perItem })) });
+          const perItem = data.totalSum > 0 ? Math.round(data.totalSum / ex.length) : 0;
+          dispatch({ type: 'UPDATE_ITEMS', tienda: storeName, items: ex.map((it, i) => ({ ...it, guia: data.guias[i]?.num || '', valor: perItem || it.valor })) });
         }
         assigned++;
-      } catch { skipped++; }
+      } catch (e) { console.error('[PDF] Error procesando', file.name, e); skipped++; }
     }
     if (multiFileRef.current) multiFileRef.current.value = '';
     setMultiPdfLoading(false);
     if (assigned > 0) showToast(`✓ ${assigned} PDF${assigned > 1 ? 's' : ''} asignado${assigned > 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitido${skipped > 1 ? 's' : ''}` : ''}`, '#16A34A');
-    else showToast('No se pudo asignar ningún PDF. Verifica el nombre.', '#D97706');
+    else showToast('No se pudo asignar ningún PDF. Verifica que el nombre inicie con el código (ej: 53VAL-...).', '#D97706');
   };
 
   /* Multi-form row helpers */
@@ -442,6 +452,10 @@ export function TiendasPage() {
     const a = parseFloat(alto) || 0, aw = parseFloat(ancho) || 0, l = parseFloat(largo) || 0;
     const errores = validarDimensiones(currentPkg, p, a, aw, l);
     if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
+    if (!hasPdf && editingIdx === null) {
+      if (!guia.trim()) { showToast('Ingresa el N° de guía', '#D97706'); return; }
+      if (!valor.trim() || parseFloat(valor) <= 0) { showToast('Ingresa el monto total', '#D97706'); return; }
+    }
     if (editingIdx !== null) {
       const updated = items.map((it, i) => i !== editingIdx ? it : { ...it, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: hasPdf ? it.guia : guia.trim(), valor: hasPdf ? it.valor : (parseFloat(valor) || 0) });
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(updated) });
@@ -704,8 +718,19 @@ export function TiendasPage() {
           <div className="grid grid-cols-2 gap-1.5">
             <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder="500" inputMode="decimal" className={inputCls} /></Field>
             <Field label="Alto cm"><input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal" className={inputCls} /></Field>
-            <Field label="Ancho cm"><input type="number" value={ancho} onChange={e => setAncho(e.target.value)} placeholder={currentPkg === 'pallet' ? '100' : ''} inputMode="decimal" className={inputCls} /></Field>
-            <Field label="Largo cm"><input type="number" value={largo} onChange={e => setLargo(e.target.value)} placeholder={currentPkg === 'pallet' ? '120' : ''} inputMode="decimal" className={inputCls} /></Field>
+            {currentPkg === 'pallet' ? (
+              <div className="col-span-2 flex flex-col gap-1">
+                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Ancho × Largo</label>
+                <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-info text-center">
+                  100 × 120 cm — fijo
+                </div>
+              </div>
+            ) : (
+              <>
+                <Field label="Ancho cm"><input type="number" value={ancho} onChange={e => setAncho(e.target.value)} placeholder="" inputMode="decimal" className={inputCls} /></Field>
+                <Field label="Largo cm"><input type="number" value={largo} onChange={e => setLargo(e.target.value)} placeholder="" inputMode="decimal" className={inputCls} /></Field>
+              </>
+            )}
           </div>
           {!hasPdf ? (
             <><SLabel>Guía y valor</SLabel>
@@ -775,8 +800,8 @@ export function TiendasPage() {
   return (
     <div className="flex-1 flex overflow-hidden">
 
-      {/* LEFT PANEL */}
-      <div className="w-[42%] flex flex-col border-r-2 border-border overflow-hidden">
+      {/* LEFT PANEL — lista de tiendas */}
+      <div className="w-[28%] min-w-[160px] flex flex-col border-r-2 border-border overflow-hidden">
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
@@ -800,7 +825,7 @@ export function TiendasPage() {
           </div>
         )}
 
-        {/* Toolbar: Multi-PDF + Presets button */}
+        {/* Toolbar: Multi-PDF */}
         <div className="px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 flex gap-1.5">
           <input ref={multiFileRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => e.target.files && handleMultiplePdfs(e.target.files)} />
           <button
@@ -890,8 +915,8 @@ export function TiendasPage() {
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden relative">
+      {/* CENTER PANEL — formulario */}
+      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden relative border-r-2 border-border">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
             ? renderForm()
@@ -902,20 +927,6 @@ export function TiendasPage() {
               </div>
             )
           }
-        </div>
-
-        {/* Stats bar */}
-        <div className="bg-navy-dark border-t-4 border-red flex-shrink-0 flex">
-          {[
-            { v: statPallets, l: 'Pallets', color: '#93C5FD' },
-            { v: statBultos,  l: 'Bultos',  color: '#FCD34D' },
-            { v: statTiendas, l: 'Tiendas', color: '#86EFAC' },
-          ].map(({ v, l, color }, i) => (
-            <div key={l} className={`flex-1 py-3 px-1 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
-              <div className="font-barlow-condensed text-[30px] font-bold leading-none" style={{ color }}>{v}</div>
-              <div className="text-[11px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-            </div>
-          ))}
         </div>
 
         {/* Calendar modals */}
@@ -929,6 +940,11 @@ export function TiendasPage() {
             onConfirm={() => { removeFromToday(confirmRemoveName); setConfirmRemoveName(null); }}
             onCancel={() => setConfirmRemoveName(null)} />
         )}
+      </div>
+
+      {/* RIGHT PANEL — resumen */}
+      <div className="w-[28%] min-w-[200px] flex flex-col overflow-hidden">
+        <ResumenPage panel />
       </div>
 
     </div>

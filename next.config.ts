@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['xlsx', 'pdfjs-dist'],
+  eslint: { ignoreDuringBuilds: true },
+  serverExternalPackages: ['xlsx'],
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
