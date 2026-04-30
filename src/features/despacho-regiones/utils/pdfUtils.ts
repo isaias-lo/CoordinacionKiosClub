@@ -2,6 +2,8 @@ import type { PdfData, PdfGuia } from '../../../types';
 
 export async function processPdf(file: File): Promise<PdfData> {
   // webpackIgnore evita que Next.js re-bundle pdfjs (que ya es un bundle webpack interno)
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore – URL runtime, no resoluble por TypeScript
   const pdfjsLib = await import(/* webpackIgnore: true */ '/pdf.min.mjs') as typeof import('pdfjs-dist');
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
