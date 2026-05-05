@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { FinishModal } from '../components/modals/FinishModal';
-import { TiendasPage } from '../features/despacho-regiones/pages/TiendasPage';
+import { TiendasPage } from '../features/despacho/regiones/pages/TiendasPage';
 
 export function AppScreen() {
   const [finishOpen, setFinishOpen] = useState(false);

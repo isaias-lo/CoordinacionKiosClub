@@ -1,0 +1,7 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/despacho/layout,_N_T_/despacho/santiago/layout,_N_T_/despacho/santiago/rutas/layout,_N_T_/despacho/santiago/rutas/page,_N_T_/despacho/santiago/rutas"
+  }
+}

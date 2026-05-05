@@ -1,4 +1,10 @@
 {
-  "/regiones/page": "app/regiones/page.js",
-  "/page": "app/page.js"
+  "/api/odoo/route": "app/api/odoo/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/page": "app/page.js",
+  "/historial/page": "app/historial/page.js",
+  "/auditoria/page": "app/auditoria/page.js",
+  "/despacho/santiago/rutas/page": "app/despacho/santiago/rutas/page.js",
+  "/despacho/santiago/page": "app/despacho/santiago/page.js",
+  "/despacho/regiones/page": "app/despacho/regiones/page.js"
 }

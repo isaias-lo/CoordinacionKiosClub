@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useApp } from '../context/AppContext';
-import { exportToTemplate } from '../features/despacho-regiones/utils/exportUtils';
+import { exportToTemplate } from '../features/despacho/regiones/utils/exportUtils';
 import type { HistoryEntry } from '../types';
 
 export function HistScreen() {

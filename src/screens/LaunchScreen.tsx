@@ -24,7 +24,7 @@ export function LaunchScreen() {
     dispatch({ type: 'CLEAR_ALL' });
     dispatch({ type: 'SET_TIENDA', payload: null });
     dispatch({ type: 'SET_TAB', payload: 0 });
-    router.push('/regiones');
+    router.push('/despacho/regiones');
   };
 
   const sheetsConnected = !!state.sheetsUrl;
@@ -44,7 +44,7 @@ export function LaunchScreen() {
         ¿A dónde vas hoy?
       </div>
 
-      <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-8">
+      <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-3">
         <button onClick={goToRegiones}
           className="relative overflow-hidden rounded-2xl px-4 py-5 text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
           style={{ background: '#D32F2F', boxShadow: '0 8px 24px rgba(211,47,47,0.4)' }}>
@@ -54,12 +54,25 @@ export function LaunchScreen() {
         </button>
 
         <button
-          onClick={() => router.push('/santiago')}
+          onClick={() => router.push('/despacho/santiago')}
           className="relative overflow-hidden rounded-2xl px-4 py-5 text-center cursor-pointer transition-all active:scale-95 border-2 border-info/40"
           style={{ background: 'rgba(37,99,235,0.18)', boxShadow: '0 8px 24px rgba(37,99,235,0.25)' }}>
           <div className="text-3xl mb-2">🏙️</div>
           <div className="font-barlow-condensed text-lg font-bold text-white tracking-wide">Bodega Santiago</div>
           <div className="text-xs text-white/60 mt-1">Despacho local RM</div>
+        </button>
+      </div>
+
+      <div className="w-full max-w-sm mb-8">
+        <button
+          onClick={() => router.push('/auditoria')}
+          className="relative overflow-hidden rounded-2xl px-4 py-4 w-full flex items-center gap-4 cursor-pointer transition-all active:scale-95 border-2 border-[rgba(124,58,237,0.50)]"
+          style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 8px 24px rgba(124,58,237,0.20)' }}>
+          <div className="text-3xl">🔍</div>
+          <div className="text-left">
+            <div className="font-barlow-condensed text-lg font-bold text-white tracking-wide">Auditoría</div>
+            <div className="text-xs text-white/60">Control de calidad pallets</div>
+          </div>
         </button>
       </div>
 

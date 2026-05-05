@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { SantiagoProvider } from '../features/despacho-santiago/context/SantiagoContext';
-import { SantiagoPage } from '../features/despacho-santiago/pages/SantiagoPage';
+import { SantiagoProvider } from '../features/despacho/santiago/context/SantiagoContext';
+import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 
 function SantiagoContent() {
   const router = useRouter();

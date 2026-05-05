@@ -1,0 +1,10 @@
+{
+  "/api/odoo/route": "/api/odoo",
+  "/_not-found/page": "/_not-found",
+  "/page": "/",
+  "/historial/page": "/historial",
+  "/auditoria/page": "/auditoria",
+  "/despacho/santiago/rutas/page": "/despacho/santiago/rutas",
+  "/despacho/santiago/page": "/despacho/santiago",
+  "/despacho/regiones/page": "/despacho/regiones"
+}

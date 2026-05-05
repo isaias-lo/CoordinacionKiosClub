@@ -18,3 +18,13 @@
   ::-webkit-scrollbar { width: 3px; }
   ::-webkit-scrollbar-thumb { background: #C8CDD8; border-radius: 2px; }
 }
+
+/* ── Enrutador: print styles ── */
+@media print {
+  .no-print { display: none !important; }
+  .print-flex { display: flex !important; }
+  body { overflow: visible !important; height: auto !important; }
+  @page { size: A4; margin: 15mm; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+}
+@keyframes spin { to { transform: rotate(360deg); } }

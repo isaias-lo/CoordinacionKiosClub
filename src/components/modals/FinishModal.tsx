@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../../context/AppContext';
-import { buildRows, exportToTemplate } from '../../features/despacho-regiones/utils/exportUtils';
-import { sheetsRegionesWrite } from '../../features/despacho-regiones/utils/sheetsRegiones';
+import { buildRows, exportToTemplate } from '../../features/despacho/regiones/utils/exportUtils';
+import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/sheetsRegiones';
 import type { HistoryEntry } from '../../types';
 
 interface Props { open: boolean; onClose: () => void; }
@@ -12,6 +13,7 @@ export function FinishModal({ open, onClose }: Props) {
   const { state, dispatch, showToast } = useApp();
   const { dispatch: dispatchData, dispatchDate } = state;
   const router = useRouter();
+  const [regimen, setRegimen] = useState<'Carga' | 'Falabella'>('Carga');
 
   if (!open) return null;
 
@@ -46,7 +48,7 @@ export function FinishModal({ open, onClose }: Props) {
     hist.push(entry);
     localStorage.setItem('dispatchHistory', JSON.stringify(hist));
 
-    sheetsRegionesWrite(dispatchData);
+    sheetsRegionesWrite(dispatchData, regimen);
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
     dispatch({ type: 'CLEAR_ALL' });
@@ -68,7 +70,25 @@ export function FinishModal({ open, onClose }: Props) {
           </div>
         ))}
 
-        <div className="flex gap-2.5 mt-5">
+        <div className="mt-5 mb-3">
+          <p className="text-xs text-text-2 mb-2 font-semibold uppercase tracking-wide">Transporte</p>
+          <div className="flex gap-2">
+            {(['Carga', 'Falabella'] as const).map(r => (
+              <button
+                key={r}
+                onClick={() => setRegimen(r)}
+                className={`flex-1 py-2.5 rounded-card border font-barlow-condensed text-base font-bold cursor-pointer transition-colors
+                  ${regimen === r
+                    ? 'bg-navy text-white border-navy'
+                    : 'bg-bg-2 text-text-2 border-border'}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2.5 mt-3">
           <button onClick={onClose}
             className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer">
             Cancelar

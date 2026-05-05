@@ -1,20 +1,77 @@
 {
   "pages": {
+    "/_not-found/page": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/_not-found/page-eb7c257c5ef31826.js"
+    ],
+    "/api/odoo/route": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/api/odoo/route-38424640748b8b56.js"
+    ],
     "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/css/c109b820fba09b28.css",
+      "static/chunks/app/layout-bb2c07e578b8351a.js"
     ],
     "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/page-b15042a7b22e5bd4.js"
     ],
-    "/regiones/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/regiones/page.js"
+    "/historial/page": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/666-0dfc13607152ee5b.js",
+      "static/chunks/app/historial/page-20c8d9a36368f4d0.js"
+    ],
+    "/auditoria/page": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/auditoria/page-69544efcd5dc6ac7.js"
+    ],
+    "/despacho/layout": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/despacho/layout-38424640748b8b56.js"
+    ],
+    "/despacho/santiago/rutas/page": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/despacho/santiago/rutas/page-a21790b6ef9b6a6d.js"
+    ],
+    "/despacho/santiago/page": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/app/despacho/santiago/page-3611b05c37cd8123.js"
+    ],
+    "/despacho/regiones/page": [
+      "static/chunks/webpack-f36f30bcb8dacb6b.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-4f212684648fcab9.js",
+      "static/chunks/main-app-6bccb36d5208cf87.js",
+      "static/chunks/666-0dfc13607152ee5b.js",
+      "static/chunks/app/despacho/regiones/page-f19cacf570542a35.js"
     ]
   }
 }
