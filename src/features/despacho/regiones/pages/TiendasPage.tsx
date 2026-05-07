@@ -164,19 +164,14 @@ export function TiendasPage() {
 
   /* Calendar from Google Sheets */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
-  const [calendarLoading, setCalendarLoading] = useState(true);
-
   useEffect(() => {
     getTiendasDelDia('fal')
       .then(cods => {
         if (cods && cods.length > 0) {
           setSheetsTodayCods(cods);
         }
-        setCalendarLoading(false);
       })
-      .catch(() => {
-        setCalendarLoading(false);
-      });
+      .catch(() => {});
   }, []);
 
   const [peso,  setPeso]  = useState('');

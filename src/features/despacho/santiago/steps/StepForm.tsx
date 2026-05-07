@@ -221,20 +221,14 @@ export function StepForm() {
 
   /* Calendar from Sheets */
   const [sheetsTodayGrouped, setSheetsTodayGrouped] = useState<{ rm: string[]; costa: string[] }>(getCalendarioSantiagoInicialHoy);
-  const [calendarLoading, setCalendarLoading] = useState(true);
-  const [calendarError, setCalendarError] = useState(false);
   const [selectedGrps, setSelectedGrps] = useState<Set<'rm' | 'costa'>>(new Set(['rm']));
 
   useEffect(() => {
     getTiendasSantiagoHoyGrouped()
       .then(grouped => {
         setSheetsTodayGrouped(grouped);
-        setCalendarLoading(false);
       })
-      .catch(() => {
-        setCalendarError(true);
-        setCalendarLoading(false);
-      });
+      .catch(() => {});
   }, []);
 
   /* Despacho ↔ Santiago bidirectional sync */

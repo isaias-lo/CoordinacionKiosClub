@@ -8,13 +8,13 @@ import ConfigPanel    from './components/ConfigPanel';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
 
-import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL, SID, SHEETS_WEB_APP_URL } from './data/tiendas';
+import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL, SHEETS_WEB_APP_URL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, fetchJSONP, parseTSheet, parseFSheet, parseCalendario, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn } from './utils/sheets';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
