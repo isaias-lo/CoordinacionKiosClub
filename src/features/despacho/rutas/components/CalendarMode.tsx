@@ -1,4 +1,5 @@
 'use client';
+import { formatCod } from '../utils/helpers';
 
 interface CalData { on: boolean; p: number; b: number; g?: string; }
 
@@ -12,9 +13,9 @@ interface Props {
 
 export default function CalendarMode({ calT, grps, onToggleGroup, onToggleChip, onUpdateChip }: Props) {
   const grupos: [string, string][] = [
-    ['rm',    '🏙️ RM'],
-    ['costa', '🌊 Costa'],
-    ['fal',   '🏢 Falabella'],
+    ['rm',    'RM'],
+    ['costa', 'Costa'],
+    ['fal',   'Regiones'],
   ];
 
   return (
@@ -24,7 +25,7 @@ export default function CalendarMode({ calT, grps, onToggleGroup, onToggleChip, 
           <button
             key={id}
             onClick={() => onToggleGroup(id)}
-            className={`h-[38px] px-4 rounded-full text-[14px] font-bold border-[2px] transition-all shadow-md hover:shadow-lg
+            className={`h-[38px] px-5 rounded-full text-[13px] font-bold uppercase tracking-widest border-[2px] transition-all shadow-md hover:shadow-lg
               ${grps.has(id)
                 ? 'bg-kred border-kred text-white shadow-red-200'
                 : 'bg-white border-black/[0.12] text-kmuted hover:border-kred/[0.3]'}`}
@@ -66,7 +67,7 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
         className={`font-mono text-[14px] font-bold mb-1 ${data.on ? 'text-kred' : 'text-kmuted'}`}
         onClick={() => onToggle(cod)}
       >
-        {cod}
+        {formatCod(cod)}
       </span>
       <div className="flex gap-2" onClick={e => e.stopPropagation()}>
         <input

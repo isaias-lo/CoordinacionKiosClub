@@ -406,7 +406,7 @@ export function AuditoriaScreen() {
           ← Inicio
         </button>
         <div className="flex-1">
-          <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-wide">Auditoría</div>
+          <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
           <div className="text-[11px] text-white/45 uppercase tracking-widest">Control de calidad pallet</div>
         </div>
         <button

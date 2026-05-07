@@ -21,6 +21,10 @@ export function norm(raw: string): string {
   return ALIAS[raw.trim().toUpperCase()] || ALIAS[s] || s;
 }
 
+export function formatCod(cod: string): string {
+  return cod.replace(/^(\d+)([A-Za-zÑñ])/, '$1 $2');
+}
+
 export function fechaTxt(fechaStr: string): string {
   if (!fechaStr) return '';
   return new Date(fechaStr + 'T12:00:00').toLocaleDateString('es-CL', {

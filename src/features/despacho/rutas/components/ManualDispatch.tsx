@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { nn } from '../utils/routing';
-import { dkm } from '../utils/helpers';
+import { dkm, formatCod } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -21,6 +21,7 @@ interface Props {
   conductores?: string[];
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
+  onEliminarParada?: (id: string) => void;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -43,6 +44,7 @@ export default function ManualDispatch({
   conductores = [],
   onConductorChange,
   onAgregarConductor,
+  onEliminarParada,
 }: Props) {
   const [conductorEditando, setConductorEditando] = useState<string | null>(null);
   const [nuevoConductor,    setNuevoConductor]    = useState('');
@@ -296,7 +298,7 @@ export default function ManualDispatch({
                     isDragging={dragging?.c === p.id}                    onDragStart={e => handleDragStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
                     onDragEnd={handleDragEnd}
                     onTouchStart={e => handleTouchStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
-                    onRemove={null}
+                    onRemove={onEliminarParada ? () => onEliminarParada(p.id) : null}
                   />
                 ))}
               </>
@@ -527,7 +529,7 @@ function StoreTagComp({ store, tiendas, isDragging, onDragStart, onDragEnd, onTo
         : 'bg-kred/[0.07] border-kred/25 text-kred active:bg-kred/[0.15]'}`}
       title={info ? `${info.n} · ${store.p}p ${store.b}b` : `${store.c} · ${store.p}p ${store.b}b`}
     >
-      <span className="font-mono font-bold text-[12px]">{store.c}</span>
+      <span className="font-mono font-bold text-[12px]">{formatCod(store.c)}</span>
       <span className="text-[10px] text-kred/60">{store.p}p</span>
       {store.b > 0 && <span className="text-[10px] text-kred/50">{store.b}b</span>}
       {onRemove && (

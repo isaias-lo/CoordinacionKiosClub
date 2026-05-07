@@ -1,5 +1,5 @@
 'use client';
-import { dkm } from '../utils/helpers';
+import { dkm, formatCod } from '../utils/helpers';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 
@@ -88,16 +88,20 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
         const dist = g ? dkm(prev, g).toFixed(1) : '?';
         const inf  = tiendas[t.c];
         const leg  = legData ? legData[i] : null;
-        const isParada = inf?._parada;
+
+        // Detect extra stop by _parada flag OR by _P prefix (belt-and-suspenders)
+        const isParada = !!(inf?._parada || t.c.startsWith('_P'));
 
         if (isParada) {
-          const isEntrega = inf._tipo === 'entrega';
+          const isEntrega = inf?._tipo === 'entrega';
+          // Extract label: _P1 → P1
+          const stopLabel = t.c.replace(/^_/, '');
           return (
             <div key={t.c} className={`si px-4 py-[11px] border-b border-black/[0.09] last:border-b-0 flex items-start gap-[11px]
               ${isEntrega ? 'bg-blue-50/40' : 'bg-orange-50/40'}`}>
-              <div className={`min-w-[24px] h-[24px] rounded-full font-bold text-[11px] flex items-center justify-center flex-shrink-0 mt-0.5
-                ${isEntrega ? 'bg-blue-100 text-blue-600 border border-blue-200' : 'bg-orange-100 text-orange-600 border border-orange-200'}`}>
-                {isEntrega ? '↓' : '↑'}
+              <div className={`min-w-[26px] h-[26px] rounded-full font-mono text-[11px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5
+                ${isEntrega ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-orange-100 text-orange-700 border border-orange-200'}`}>
+                {stopLabel}
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-[7px] flex-wrap">
@@ -111,8 +115,8 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
                     </div>
                   )}
                 </div>
-                <div className="text-[13px] font-semibold text-ktext mt-0.5 leading-snug">{inf.n}</div>
-                {inf._desc && <div className="text-[11px] text-kmuted mt-px">{inf._desc}</div>}
+                {inf?.n && <div className="text-[13px] font-semibold text-ktext mt-1 leading-snug">{inf.n}</div>}
+                {inf?._desc && <div className="text-[11px] text-kmuted mt-px">{inf._desc}</div>}
                 <div className={`sdst text-[11px] mt-1 ${leg ? 'text-[#34C759]' : 'text-kmuted'}`}>
                   {leg ? `📍 ${leg.dist} · ⏳ ${leg.dur} desde punto anterior` : `📍 ~${dist}km del punto anterior`}
                 </div>
@@ -128,7 +132,7 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-[7px] flex-wrap">
-                <span className="scod font-mono text-[14px] font-extrabold text-kred">{t.c}</span>
+                <span className="scod font-mono text-[14px] font-extrabold text-kred">{formatCod(t.c)}</span>
                 <span className="szon text-[10px] font-semibold text-knavy bg-knavy/[0.08] border border-knavy/[0.12] rounded px-1.5 py-px">
                   {inf ? inf.z : ''}
                 </span>
@@ -136,7 +140,8 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
                   {t.p}P{t.b ? <span className="text-korange"> +{t.b}B</span> : null}
                 </div>
               </div>
-              <div className="text-[12px] text-ktext2 mt-0.5">{inf ? inf.n : ''}</div>
+              <div className="text-[13px] font-semibold text-ktext mt-0.5">{inf ? inf.n : formatCod(t.c)}</div>
+              {inf?.d && <div className="text-[11px] text-kmuted mt-px">{inf.d}</div>}
               <div className={`sdst text-[11px] mt-px ${leg ? 'text-[#34C759]' : 'text-kmuted'}`}>
                 {leg
                   ? `📍 ${leg.dist} · ⏳ ${leg.dur} desde punto anterior`

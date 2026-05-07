@@ -38,10 +38,11 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
           {onBack && (
             <button
               onClick={onBack}
-              className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center bg-kbg border border-black/[0.1] hover:bg-kred/[0.07] hover:border-kred/[0.2] transition-all text-kmuted hover:text-kred text-[18px]"
+              className="h-[34px] px-3 rounded-[8px] flex items-center gap-1.5 bg-kbg border border-black/[0.1] hover:bg-kred/[0.07] hover:border-kred/[0.2] transition-all text-kmuted hover:text-kred"
               aria-label="Volver"
             >
-              ←
+              <span className="text-[18px] leading-none">←</span>
+              <span className="text-[12px] font-semibold uppercase tracking-wide">Volver</span>
             </button>
           )}
           <div className="flex flex-col gap-0.5 leading-none">

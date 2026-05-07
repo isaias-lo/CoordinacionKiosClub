@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../data/tiendasSantiago';
+import { formatCod } from '../../rutas/utils/helpers';
+import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 
@@ -54,15 +56,21 @@ interface ResumenEditState {
 ═══════════════════════════════════════ */
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount,
+  despachoP, despachoB,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   itemCount: number; palletCount: number;
+  despachoP?: number; despachoB?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }) {
-  const boxCount = itemCount - palletCount;
+  const boxCount     = itemCount - palletCount;
+  const hasItems     = itemCount > 0;
+  const expP         = despachoP ?? 0;
+  const expB         = despachoB ?? 0;
+  const showExpected = !hasItems && (expP > 0 || expB > 0);
   return (
     <div
       onClick={onSelect}
@@ -83,19 +91,24 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[14px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : 'text-navy'}`}>
-        {t.cod}
+      <div className={`font-barlow-condensed text-[17px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : 'text-navy'}`}>
+        {formatCod(t.cod)}
       </div>
-      <div className="text-[9px] text-text-3 w-full text-center leading-tight truncate px-0.5 mt-0.5">
-        {t.tienda.split(' ')[0]}
+      <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5">
+        {t.tienda}
       </div>
-      <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[14px]">
-        {palletCount > 0 && (
-          <span className="text-[9px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1 py-0.5 rounded-full leading-none">{palletCount}P</span>
-        )}
-        {boxCount > 0 && (
-          <span className="text-[9px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1 py-0.5 rounded-full leading-none">{boxCount}B</span>
-        )}
+      <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
+        {hasItems ? (
+          <>
+            {palletCount > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
+            {boxCount    > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
+          </>
+        ) : showExpected ? (
+          <>
+            {expP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/20">{expP}P</span>}
+            {expB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/20">{expB}B</span>}
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -152,7 +165,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, onBack }: {
       </button>
       <div className="flex-1 min-w-0">
         <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
-        <div className="font-mono text-[10px] text-white/50">{tienda.cod} · {tienda.ventanaHoraria}</div>
+        <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
       </div>
       <div className="flex gap-3 flex-shrink-0">
         <div className="text-center">
@@ -206,19 +219,86 @@ export function StepForm() {
   const [resumenExpanded, setResumenExpanded] = useState<string | null>(null);
   const [resumenEditing,  setResumenEditing]  = useState<ResumenEditState | null>(null);
 
+  /* Calendar from Sheets */
+  const [sheetsTodayGrouped, setSheetsTodayGrouped] = useState<{ rm: string[]; costa: string[] }>(getCalendarioSantiagoInicialHoy);
+  const [calendarLoading, setCalendarLoading] = useState(true);
+  const [calendarError, setCalendarError] = useState(false);
+  const [selectedGrps, setSelectedGrps] = useState<Set<'rm' | 'costa'>>(new Set(['rm']));
+
+  useEffect(() => {
+    getTiendasSantiagoHoyGrouped()
+      .then(grouped => {
+        setSheetsTodayGrouped(grouped);
+        setCalendarLoading(false);
+      })
+      .catch(() => {
+        setCalendarError(true);
+        setCalendarLoading(false);
+      });
+  }, []);
+
+  /* Despacho ↔ Santiago bidirectional sync */
+  const [despachoCounts, setDespachoCounts] = useState<Record<string, { p: number; b: number }>>({});
+
+  // Write santiagoCounts whenever items change → Despacho reads this
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const counts: Record<string, { p: number; b: number }> = {};
+    Object.entries(items).forEach(([cod, list]) => {
+      const p = list.filter(i => i.tipo === 'Pallet').length;
+      const b = list.filter(i => i.tipo === 'Bulto').length;
+      if (p > 0 || b > 0) counts[cod] = { p, b };
+    });
+    const d = new Date();
+    const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    localStorage.setItem('santiagoCounts', JSON.stringify({ date: todayKey, counts }));
+  }, [items]);
+
+  // Read despachoCounts → sync from Despacho
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const todayDate = new Date();
+    const todayKey  = `${todayDate.getFullYear()}-${String(todayDate.getMonth()+1).padStart(2,'0')}-${String(todayDate.getDate()).padStart(2,'0')}`;
+    const sync = () => {
+      try {
+        const raw = localStorage.getItem('despachoCounts');
+        if (!raw) { setDespachoCounts({}); return; }
+        const payload: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(raw);
+        // New format: { date, counts } — discard if from a different day
+        if (payload.counts !== undefined) {
+          setDespachoCounts(payload.date === todayKey ? payload.counts : {});
+        } else {
+          // Legacy format: plain counts object (no date stamp)
+          setDespachoCounts(payload as Record<string, { p: number; b: number }>);
+        }
+      } catch (_) {}
+    };
+    sync();
+    window.addEventListener('storage', sync);
+    const interval = setInterval(sync, 2000);
+    return () => { window.removeEventListener('storage', sync); clearInterval(interval); };
+  }, []);
+
   const prevContenidoRef = useRef<ContenidoSantiago>('Hogar');
   const formScrollRef    = useRef<HTMLDivElement>(null);
 
   /* ── Derived ── */
-  const baseTodayCods = getTiendasSantiagoHoy().map(t => t.cod);
-  const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
+  const localTodayCods  = getTiendasSantiagoHoy().map(t => t.cod);
+  const sheetsAllCods   = [...sheetsTodayGrouped.rm, ...sheetsTodayGrouped.costa];
+  const baseTodayCods   = sheetsAllCods.length > 0 ? sheetsAllCods : localTodayCods;
+  const allTodayCods    = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
-  const todayTiendas  = TIENDAS_SANTIAGO.filter(t => allTodayCods.includes(t.cod));
-  const filtered      = TIENDAS_SANTIAGO.filter(t => {
+  // Orden determinado por allTodayCods (CAL_INICIAL / Despacho) — no por TIENDAS_SANTIAGO
+  const tiendaByCod     = Object.fromEntries(TIENDAS_SANTIAGO.map(t => [t.cod, t]));
+  const todayTiendas    = allTodayCods.map(c => tiendaByCod[c]).filter((t): t is TiendaSantiago => !!t);
+  const filtered        = TIENDAS_SANTIAGO.filter(t => {
+    const inGrp = t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm');
+    if (!inGrp) return false;
     const q = search.toLowerCase();
     return !q || t.tienda.toLowerCase().includes(q) || t.cod.toLowerCase().includes(q) || t.comuna.toLowerCase().includes(q);
   });
-  const todayList  = filtered.filter(t =>  allTodayCods.includes(t.cod));
+  const filteredCodSet  = new Set(filtered.map(t => t.cod));
+  const todayList  = allTodayCods.map(c => tiendaByCod[c]).filter((t): t is TiendaSantiago => !!t && filteredCodSet.has(t.cod));
   const othersList = filtered.filter(t => !allTodayCods.includes(t.cod));
 
   const allItems           = Object.values(items).flat();
@@ -262,7 +342,8 @@ export function StepForm() {
       b: it.filter(i => i.tipo === 'Bulto').length,
     })).filter(t => t.p > 0 || t.b > 0);
     localStorage.setItem('rutasInput', JSON.stringify(rutasInput));
-    router.push('/despacho/santiago/rutas');
+    sessionStorage.setItem('despacho_from', '/despacho/santiago');
+    router.push('/despacho');
   };
 
   const goToResumen = () => {
@@ -288,6 +369,14 @@ export function StepForm() {
 
   const selectTienda = (t: TiendaSantiago) => {
     dispatch({ type: 'SELECT_TIENDA', payload: t });
+    // Auto-populate form rows from despachoCounts when no items registered yet
+    const existing = items[t.cod] || [];
+    if (!presets[t.cod] && existing.length === 0) {
+      const dc = despachoCounts[t.cod];
+      if (dc && (dc.p > 0 || dc.b > 0)) {
+        setPresets(prev => ({ ...prev, [t.cod]: { pallets: dc.p, bultos: dc.b } }));
+      }
+    }
     setView('form');
   };
 
@@ -506,10 +595,12 @@ export function StepForm() {
           <div className="grid grid-cols-3 gap-1 p-1.5">
             {todayList.map(t => {
               const tI = items[t.cod] || [];
+              const dc = despachoCounts[t.cod];
               return (
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  despachoP={dc?.p} despachoB={dc?.b}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -526,10 +617,12 @@ export function StepForm() {
           <div className="grid grid-cols-3 gap-1 p-1.5">
             {othersList.map(t => {
               const tI = items[t.cod] || [];
+              const dc = despachoCounts[t.cod];
               return (
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  despachoP={dc?.p} despachoB={dc?.b}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
@@ -560,22 +653,21 @@ export function StepForm() {
           </div>
         ))}
       </div>
-      {activeTiendasCount > 0 && (
-        <div className="px-3 pb-3 pt-1 flex gap-2">
+      <div className="px-3 pb-3 pt-1 flex gap-2">
+        {activeTiendasCount > 0 && (
           <button onClick={goToResumen}
             className="flex-1 py-3 bg-red text-white rounded-btn font-barlow-condensed text-[17px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
             style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
             Ver resumen ({activeTiendasCount}) →
           </button>
-          <button onClick={enrutar}
-            className="w-full lg:w-auto lg:flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-navy text-white rounded-btn font-barlow-condensed text-[15px] font-bold cursor-pointer active:opacity-80"
-            style={{ boxShadow: '0 4px 14px rgba(26,37,80,0.30)' }}
-            title="Ir a Rutas">
-            <span>🗺️</span>
-            <span className="hidden lg:inline">Enrutar tiendas</span>
-          </button>
-        </div>
-      )}
+        )}
+        <button onClick={enrutar}
+          className="w-full lg:w-auto lg:flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-kred text-white rounded-btn font-barlow-condensed text-[18px] font-bold uppercase tracking-wide cursor-pointer active:opacity-80"
+          style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}
+          title="Ir a Despacho">
+          <span>Despacho</span>
+        </button>
+      </div>
     </div>
   );
 
@@ -669,7 +761,7 @@ export function StepForm() {
                   <div
                     onClick={() => { rCancelEdit(); setResumenExpanded(isOpen ? null : cod); }}
                     className={`flex items-center gap-2.5 px-3 py-3 cursor-pointer transition-all active:bg-bg ${isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'}`}>
-                    <div className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded min-w-[42px] text-center flex-shrink-0">{cod}</div>
+                    <div className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded min-w-[42px] text-center flex-shrink-0">{formatCod(cod)}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[15px] font-bold text-navy truncate leading-tight">{t?.tienda || cod}</div>
                       <div className="text-[11px] text-text-3 truncate">{t?.comuna} · {t?.ventanaHoraria}</div>
@@ -1139,10 +1231,31 @@ export function StepForm() {
           <span className="font-barlow-condensed text-[12px] font-bold text-info">· {regimen}</span>
         </div>
 
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0">
+        <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar tienda…"
             className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-red placeholder:text-text-3 transition-all" />
+          <div className="flex gap-2 mt-2">
+            {([
+              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-red border-red' },
+              { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
+            ]).map(({ id, label, active_bg }) => {
+              const active = selectedGrps.has(id);
+              return (
+                <button key={id}
+                  onClick={() => setSelectedGrps(prev => {
+                    const next = new Set(prev);
+                    if (next.has(id)) { if (next.size > 1) next.delete(id); }
+                    else next.add(id);
+                    return next;
+                  })}
+                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded-full border-2 tracking-widest uppercase transition-all cursor-pointer select-none
+                    ${active ? `${active_bg} text-white shadow-md` : 'bg-white text-text-3 border-border'}`}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {renderStoreGrid()}

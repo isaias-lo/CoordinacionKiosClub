@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useApp } from '../../../../context/AppContext';
 import { buildRows, exportToTemplate } from '../utils/exportUtils';
 import { TIENDAS } from '../data/tiendas';
+import { formatCod } from '../../rutas/utils/helpers';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 
 const TAG: Record<string, string> = {
@@ -199,7 +200,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
               } ${sel.size > 0 ? 'border-l-4 border-l-success' : ''}`}>
 
               <div className="font-mono text-[10px] text-text-3 bg-bg-2 border border-border-2 px-1 py-0.5 rounded min-w-[40px] text-center flex-shrink-0">
-                {t?.cod}
+                {t?.cod ? formatCod(t.cod) : ''}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-bold text-navy truncate leading-tight">{name}</div>
@@ -365,7 +366,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
                     onClick={() => exportTiendaSel(name)}
                     disabled={sel.size === 0}
                     className="w-full py-2 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer transition-all disabled:opacity-30">
-                    ↓ {sel.size > 0 ? `${sel.size} item${sel.size > 1 ? 's' : ''}` : 'seleccionados'} · {t?.cod}
+                    ↓ {sel.size > 0 ? `${sel.size} item${sel.size > 1 ? 's' : ''}` : 'seleccionados'} · {t?.cod ? formatCod(t.cod) : ''}
                   </button>
                 </div>
               </div>

@@ -16,6 +16,7 @@ interface Props {
   cd: number[];
   flota: Vehiculo[];
   onLimpiar: () => void;
+  onVolver: () => void;
   onGenerarPDF: () => void;
   onGuardarHistorial: () => void;
   onChoferChange: (ri: number, nombre: string) => void;
@@ -27,7 +28,7 @@ interface Props {
 
 export default function ResultsSection({
   results, supervisor, fecha, tiendas, gps, cd, flota,
-  onLimpiar, onGenerarPDF, onGuardarHistorial,
+  onLimpiar, onVolver, onGenerarPDF, onGuardarHistorial,
   onChoferChange, historialStatus, historialMsg,
   onKmTotalReal, onCdUpdate,
 }: Props) {
@@ -122,8 +123,11 @@ export default function ResultsSection({
       />
 
       <div className="flex gap-[9px] mt-4 no-print">
+        <button onClick={onVolver} className="h-[42px] px-4 rounded-kios2 bg-kbg text-kmuted text-[13px] font-semibold border-[1.5px] border-black/[0.09] whitespace-nowrap flex items-center gap-1.5">
+          ← Volver
+        </button>
         <button onClick={onLimpiar} className="flex-1 h-[42px] rounded-kios2 bg-kbg text-kmuted text-[14px] font-semibold border-[1.5px] border-black/[0.09]">
-          ← Nueva consulta
+          Nueva consulta
         </button>
         <button onClick={onGenerarPDF} className="btn-pdf flex-1 h-[50px] px-6 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(27,42,107,0.3)]">
           📄 Exportar PDF

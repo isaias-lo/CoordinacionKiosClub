@@ -4,6 +4,12 @@ import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Ruta } from './routing';
 
+export async function fetchAuthenticatedSheet(sheet: string): Promise<{ values: string[][] }> {
+  const res = await fetch(`/api/sheets?sheet=${encodeURIComponent(sheet)}`);
+  if (!res.ok) throw new Error('API error');
+  return res.json();
+}
+
 export function fetchJSONP(sid: string, sheet: string): Promise<unknown> {
   return new Promise((res, rej) => {
     const cb = '_s' + Date.now() + '_' + Math.random().toString(36).slice(2);
@@ -32,7 +38,7 @@ export function parseTSheet(t: any, tiendas: Record<string, TiendaInfo>, gps: Re
   t.rows.forEach((r: any) => {
     if (!r.c || !r.c[0] || !r.c[0].v) return;
     const c = norm(String(r.c[0].v));
-    if (!c || c.length < 2 || c.length > 4) return;
+    if (!c || !/^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(c)) return;
     if (!tiendas[c]) tiendas[c] = { n: '', z: '', v: '' };
     if (r.c[1]?.v) tiendas[c].n = String(r.c[1].v);
     if (r.c[5]?.v) tiendas[c].z = String(r.c[5].v).trim();
@@ -82,6 +88,129 @@ export function parseCalendario(t: any): Record<string, {rm:string[];costa:strin
       cal[dia][grp as 'rm'|'costa'|'fal'].push(cod);
     }
   });
+  return cal;
+}
+
+// ── Authenticated API Parsers ───────────────────────────────────────
+export function parseTSheetAuth(values: string[][], tiendas: Record<string, TiendaInfo>, gps: Record<string, number[]>) {
+  if (!values || values.length < 3) return;
+  
+  // Skip header rows, find data starting from row 2 (index 2)
+  for (let i = 2; i < values.length; i++) {
+    const row = values[i];
+    if (!row || row.length < 3) continue;
+    
+    const cod = norm(row[0]);
+    if (!cod || !/^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(cod)) continue;
+    
+    if (!tiendas[cod]) tiendas[cod] = { n: '', z: '', v: '' };
+    if (row[1]) tiendas[cod].n = row[1];
+    if (row[4]) tiendas[cod].z = row[4].trim();
+    if (row[5]) tiendas[cod].z = row[5].trim();
+    if (row[7]) tiendas[cod].v = row[7];
+    const actVal = row[17] ? row[17].toUpperCase().trim() : 'SI';
+    tiendas[cod].activo = actVal !== 'NO';
+    
+    const lat = row[10] ? parseFloat(row[10].replace(',', '.')) : null;
+    const lon = row[11] ? parseFloat(row[11].replace(',', '.')) : null;
+    if (lat && lon && !isNaN(lat) && !isNaN(lon) && lat > -60 && lat < -17 && lon > -76 && lon < -66) {
+      gps[cod] = [lat, lon];
+    }
+  }
+}
+
+export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
+  if (!values || values.length < 3) return;
+  
+  for (let i = 2; i < values.length; i++) {
+    const row = values[i];
+    if (!row || row.length < 3) continue;
+    
+    const patUpper = row[0]?.trim().toUpperCase() || '';
+    if (!patUpper) continue;
+    
+    const existente = flota.find(v => v.p.toUpperCase() === patUpper);
+    if (existente) {
+      if (row[1]) existente.c = parseInt(row[1]) || existente.c;
+      if (row[2]) existente.b = parseInt(row[2]) || existente.b;
+      if (row[3]) existente.t = row[3];
+      if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
+      if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
+      if (row[8]) existente.ch = row[8];
+    }
+  }
+}
+
+export function parseCalendarioAuth(values: string[][]): Record<string, {rm:string[];costa:string[];fal:string[]}> | null {
+  if (!values || values.length === 0) return null;
+  
+  const cal: Record<string, {rm:string[];costa:string[];fal:string[]}> = {};
+  const DIAS = ['LU','MA','MI','JU','VI','SA'];
+  DIAS.forEach(d => { cal[d] = {rm:[],costa:[],fal:[]}; });
+  
+  // Buscar fila con "GRUPO" en columna 0
+  let headerRow = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] && values[i][0] === 'GRUPO') {
+      headerRow = i;
+      break;
+    }
+  }
+  
+  if (headerRow < 0) return null;
+  
+  // Códigos numéricos de Costa y Falcón/Región
+  const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
+  const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
+
+  // Columnas: 0=GRUPO, 1=TIPO, 2=LUNES, 3=MARTES, 4=MIÉRCOLES, 5=JUEVES, 6=VIERNES, 7=SÁBADO
+  const diaCols: Record<number, string> = { 2: 'LU', 3: 'MA', 4: 'MI', 5: 'JU', 6: 'VI', 7: 'SA' };
+
+  // Procesar cada fila de tiendas
+  for (let i = headerRow + 1; i < values.length; i++) {
+    const row = values[i];
+    if (!row) continue;
+
+    const col0 = row[0] ? String(row[0]).trim() : '';
+    const col1 = row[1] ? String(row[1]).trim().toUpperCase() : '';
+
+    // Ignorar filas especiales
+    if (col0.includes('📦') || col0.includes('FLOTA') || (col0 === '' && (col1.includes('ARMADO') || col1.includes('TOTAL') || col1.includes('DESTINO')))) {
+      continue;
+    }
+
+    // Para cada día, leer las tiendas
+    for (let j = 2; j <= 7; j++) {
+      const diaKey = diaCols[j];
+      if (!diaKey) continue;
+
+      const tiendasStr = row[j];
+      if (!tiendasStr) continue;
+
+      // norm() normaliza acentos y mapea códigos cortos→numéricos vía ALIAS
+      const partes = String(tiendasStr).split(/[\s,;]+/)
+        .map(t => norm(t.trim()))
+        .filter(t => t && /^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(t));
+
+      partes.forEach(t => {
+        if (COSTA_CODES.has(t)) {
+          cal[diaKey].costa.push(t);
+        } else if (FAL_CODES.has(t)) {
+          cal[diaKey].fal.push(t);
+        } else {
+          cal[diaKey].rm.push(t);
+        }
+      });
+    }
+  }
+  
+  // Limpiar duplicados
+  DIAS.forEach(dia => {
+    (['rm','costa','fal'] as const).forEach(grp => {
+      cal[dia][grp] = [...new Set(cal[dia][grp])];
+    });
+  });
+  
   return cal;
 }
 

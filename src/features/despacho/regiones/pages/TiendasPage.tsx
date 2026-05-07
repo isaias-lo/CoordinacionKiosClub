@@ -4,6 +4,8 @@ import { useRef, useEffect, useState } from 'react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
+import { formatCod } from '../../rutas/utils/helpers';
+import { getTiendasDelDia } from '../../utils/useCalendario';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
 
@@ -76,13 +78,12 @@ interface GridCardProps {
 function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount;
-  const cod = t.cod.match(/([A-Z]{2,4})/)?.[1] || t.cod;
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[58px] relative
+      className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[64px] relative
         ${isActive
           ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red'
           : hasPdf
@@ -91,27 +92,25 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, prese
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      <div className={`font-barlow-condensed text-[14px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
-        {cod}
+      <div className={`font-barlow-condensed text-[13px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
+        {formatCod(t.cod)}
       </div>
-      <div className="text-[9px] text-text-3 w-full text-center leading-tight truncate px-0.5 mt-0.5">
-        {t.name.split(' ')[0]}
+      <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5 uppercase">
+        {t.name}
       </div>
-      <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[14px]">
+      <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {palletCount > 0 && (
-          <span className="text-[9px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1 py-0.5 rounded-full leading-none">{palletCount}P</span>
+          <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>
         )}
         {boxCount > 0 && (
-          <span className="text-[9px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1 py-0.5 rounded-full leading-none">{boxCount}B</span>
+          <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>
         )}
         {preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
-          <span className="text-[9px] text-text-3/50 leading-none">
+          <span className="text-[11px] text-text-3/50 leading-none">
             {[preset.pallets > 0 ? `${preset.pallets}P` : '', preset.bultos > 0 ? `${preset.bultos}B` : ''].filter(Boolean).join(' ')}
           </span>
         )}
       </div>
-    
-      
     </div>
   );
 }
@@ -163,6 +162,23 @@ export function TiendasPage() {
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number }>>({});
   const [formRows,          setFormRows]           = useState<FormRow[]>([]);
 
+  /* Calendar from Google Sheets */
+  const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(true);
+
+  useEffect(() => {
+    getTiendasDelDia('fal')
+      .then(cods => {
+        if (cods && cods.length > 0) {
+          setSheetsTodayCods(cods);
+        }
+        setCalendarLoading(false);
+      })
+      .catch(() => {
+        setCalendarLoading(false);
+      });
+  }, []);
+
   const [peso,  setPeso]  = useState('');
   const [alto,  setAlto]  = useState('');
   const [ancho, setAncho] = useState('100');
@@ -180,6 +196,22 @@ export function TiendasPage() {
 
   const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg } = state;
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const d = new Date();
+    const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const counts: Record<string, { p: number; b: number }> = {};
+    Object.entries(dispatchData).forEach(([name, items]) => {
+      if (!items.length) return;
+      const tienda = TIENDAS[name];
+      if (!tienda) return;
+      const p = items.filter(i => i.pkg === 'pallet').length;
+      const b = items.filter(i => i.pkg === 'box').length;
+      if (p > 0 || b > 0) counts[tienda.cod] = { p, b };
+    });
+    localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
+  }, [dispatchData]);
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setExtraCods(loadExtraCods());
@@ -188,7 +220,7 @@ export function TiendasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const baseTodayCods = mounted ? getTodayCods() : [];
+  const baseTodayCods = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
 
@@ -495,7 +527,7 @@ export function TiendasPage() {
       <div className="bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
-          <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod} · {tienda?.calle} {tienda?.numero}</div>
+          <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
         </div>
         <div className="flex gap-2.5 ml-2 flex-shrink-0">
           <div className="text-center">
@@ -818,7 +850,7 @@ export function TiendasPage() {
               {todayNames.map(name => (
                 <span key={name} onClick={() => select(name)}
                   className={`px-2.5 py-1 rounded-full text-[14px] font-bold font-barlow-condensed cursor-pointer border transition-all ${selectedTienda === name ? 'bg-red text-white border-red' : 'bg-[rgba(211,47,47,0.12)] text-red border-[rgba(211,47,47,0.30)]'}`}>
-                  {TIENDAS[name]?.cod}
+                  {TIENDAS[name]?.cod ? formatCod(TIENDAS[name].cod) : ''}
                 </span>
               ))}
             </div>
@@ -834,10 +866,10 @@ export function TiendasPage() {
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setMultiDragOver(true); } }}
             onDragLeave={e => { e.stopPropagation(); setMultiDragOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setMultiDragOver(false); if (!multiPdfLoading && e.dataTransfer.files.length) handleMultiplePdfs(e.dataTransfer.files); }}
-            className={`flex-1 py-2.5 border-2 rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 ${multiDragOver ? 'border-red bg-[rgba(211,47,47,0.18)] text-red scale-[1.02]' : 'border-red bg-[rgba(211,47,47,0.06)] text-red active:bg-[rgba(211,47,47,0.12)]'}`}>
+            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${multiDragOver ? 'border-red bg-[rgba(211,47,47,0.18)] text-red scale-[1.02]' : 'border-red bg-[rgba(211,47,47,0.06)] text-red active:bg-[rgba(211,47,47,0.12)]'}`}>
             {multiPdfLoading
-              ? <><div className="w-3 h-3 border-2 border-red/30 border-t-red rounded-full animate-spin" />Procesando…</>
-              : multiDragOver ? '↓ Suelta PDFs' : 'Subir guías'}
+              ? <><div className="w-3 h-3 border-2 border-red/30 border-t-red rounded-full animate-spin" />PROCESANDO…</>
+              : multiDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
           </button>
         </div>
 

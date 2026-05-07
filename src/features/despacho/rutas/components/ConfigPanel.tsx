@@ -1,12 +1,13 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { formatCod } from '../utils/helpers';
 import type { TiendaInfo } from '../data/tiendas';
 
 const DIAS = ['LU','MA','MI','JU','VI','SA'];
 const GRUPOS: [string, string][] = [
   ['rm',    '📦 Flota'],
-  ['fal',   '🏢 Falabella'],
+  ['fal',   '🏢 Regiones'],
   ['costa', '🌊 Costa'],
 ];
 
@@ -153,7 +154,7 @@ export default function ConfigPanel({ isOpen, cal, tiendas, dnom, dcol, onClose,
                       className="px-3.5 py-2.5 cursor-pointer border-b border-black/[0.09] last:border-0 flex items-center justify-between hover:bg-gray-50 transition-colors"
                     >
                       <div>
-                        <span className="font-mono font-bold text-kred text-[13px]">{c}</span>
+                        <span className="font-mono font-bold text-kred text-[13px]">{formatCod(c)}</span>
                         <span className="text-[12px] text-ktext2 ml-2">{inf?.n || ''}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -190,7 +191,7 @@ export default function ConfigPanel({ isOpen, cal, tiendas, dnom, dcol, onClose,
                       onDragStart={e => onDragStart(e, dia, cod)}
                       className="h-7 px-2 rounded-[6px] bg-white border-[1.5px] border-black/[0.09] font-mono text-[11px] font-bold text-ktext cursor-grab flex items-center gap-[5px] shadow-sm select-none"
                     >
-                      {cod}
+                      {formatCod(cod)}
                       <span
                         onClick={() => cfgRm(dia, cod)}
                         className="text-kmuted text-[10px] cursor-pointer px-px font-normal hover:text-kred"
@@ -244,7 +245,7 @@ function DayPickerModal({ cod, tiendas, cfgTmp, cfgGrp, dnom, dcol, onClose, onC
     >
       <div className="bg-white rounded-[18px] p-[22px] w-[min(300px,88%)] shadow-[0_12px_40px_rgba(0,0,0,0.25)]">
         <div className="text-[13px] font-bold text-ktext mb-1">
-          Agregar <span className="text-kred">{cod}</span>
+          Agregar <span className="text-kred">{formatCod(cod)}</span>
           {inf ? ' — ' + inf.n : ''}
         </div>
         <div className="text-[12px] text-kmuted mb-3.5">

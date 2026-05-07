@@ -31,8 +31,13 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
       </div>
       <button
         onClick={confirmBackHome}
-        className="px-3 py-1.5 bg-white/12 text-white/85 border border-white/20 rounded-full font-barlow text-xs cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
-        ← Inicio
+        className="px-4 py-2 bg-white/12 text-white border border-white/20 rounded-full font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
+        INICIO
+      </button>
+      <button
+        onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+        className="px-4 py-2 bg-white/12 text-white border border-white/20 rounded-full font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
+        Despacho
       </button>
       <button
         onClick={onFinish}

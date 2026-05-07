@@ -1,5 +1,5 @@
 'use client';
-import { dkm } from '../utils/helpers';
+import { dkm, formatCod } from '../utils/helpers';
 import type { Ruta, StoreItem } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 
@@ -223,15 +223,30 @@ function RouteDetail({ rutas, tiendas, title }: { rutas: RutaConKm[]; tiendas: R
                 </div>
               </div>
               <div className="flex flex-wrap gap-[3px]">
-                {r.ts.map((t, j) => (
-                  <span
-                    key={t.c}
-                    className="font-mono text-[10px] bg-kbg border border-black/[0.08] text-kmuted px-1.5 py-0.5 rounded-[4px]"
-                    title={tiendas[t.c]?.n || t.c}
-                  >
-                    {j + 1}. {t.c}
-                  </span>
-                ))}
+                {r.ts.map((t, j) => {
+                  const inf = tiendas[t.c];
+                  const isParada = t.c.startsWith('_P');
+                  if (isParada) {
+                    const stopLabel = t.c.replace(/^_/, '');
+                    const isEntrega = inf?._tipo === 'entrega';
+                    return (
+                      <div key={t.c} className={`rounded-[4px] px-2 py-1 border text-[9px] max-w-[160px] ${isEntrega ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}`}>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className={`font-mono font-bold text-[10px] ${isEntrega ? 'text-blue-700' : 'text-orange-700'}`}>{stopLabel}</span>
+                          <span className={`text-[8px] font-bold px-1 rounded ${isEntrega ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{isEntrega ? 'ENT' : 'RET'}</span>
+                        </div>
+                        {inf?.n && <div className="text-kmuted leading-tight truncate">{inf.n}</div>}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={t.c} className="bg-kbg border border-black/[0.08] rounded-[4px] px-2 py-1 max-w-[160px]">
+                      <div className="font-mono font-bold text-[10px] text-kred">{j + 1}. {formatCod(t.c)}</div>
+                      {inf?.n && <div className="text-[9px] text-ktext font-medium truncate">{inf.n}</div>}
+                      {inf?.d && <div className="text-[9px] text-kmuted truncate">{inf.d}</div>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

@@ -20,11 +20,11 @@ export const TIENDAS: Record<string, Tienda> = {
 };
 
 export const CALENDARIO: Record<number, string[]> = {
-  1: ['39PSB','46TRE','42ANP','41ANA','47PTV','75PUC','28TEM','50PTM','53VAL'],
+  1: ['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP'],
   2: ['27MCH','36CHL','24SPP','38SP2','76PAN','51SER'],
-  3: ['42ANP','41ANA','47PTV','46TRE','39PSB','50PTM','31TLC','53VAL'],
-  4: ['36CHL','24SPP','38SP2','27MCH','75PUC','28TEM','51SER'],
-  5: ['46TRE','47PTV','50PTM','76PAN','39PSB','31TLC','53VAL'],
+  3: ['31TLC','46TRE','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP'],
+  4: ['36CHL','24SPP','38SP2','28TEM','75PUC','51SER'],
+  5: ['31TLC','46TRE','76PAN','47PTV','50PTM','39PSB'],
 };
 
 export const LIMITES = {

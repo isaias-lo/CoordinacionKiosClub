@@ -50,13 +50,15 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
   if (!el) return;
   el.style.height = '420px';
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const G = gm() as any;
   const cdLL = { lat: cd[0], lng: cd[1] };
   const COLORS = COLS;
 
   if (!mapRef.current) {
-    mapRef.current = new gm().Map(el, {
+    mapRef.current = new G.Map(el, {
       center: cdLL, zoom: 11,
-      mapTypeId: gm().MapTypeId.ROADMAP,
+      mapTypeId: G.MapTypeId.ROADMAP,
       styles: [
         {featureType:'poi',stylers:[{visibility:'off'}]},
         {featureType:'poi.business',stylers:[{visibility:'off'}]},
@@ -70,18 +72,18 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
   overlaysRef.current = [];
 
   const gmap    = mapRef.current as {fitBounds:(b:unknown,p:unknown)=>void};
-  const bounds  = new gm().LatLngBounds();
-  const infoWin = new gm().InfoWindow();
-  const dirSvc  = new gm().DirectionsService();
+  const bounds  = new G.LatLngBounds();
+  const infoWin = new G.InfoWindow();
+  const dirSvc  = new G.DirectionsService();
 
   const cdSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">'
     + '<circle cx="18" cy="18" r="14" fill="#D42B2B" stroke="white" stroke-width="2.5"/>'
     + '<circle cx="18" cy="18" r="5" fill="white" opacity="0.9"/></svg>';
 
   function crearMarcadorCD(pos: {lat:number;lng:number}) {
-    const cdM = new gm().Marker({
+    const cdM = new G.Marker({
       position: pos, map: gmap, zIndex: 9999,
-      icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(cdSvg), scaledSize: new gm().Size(36,36), anchor: new gm().Point(18,18) },
+      icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(cdSvg), scaledSize: new G.Size(36,36), anchor: new G.Point(18,18) },
       title: 'CD KiosClub — Juan Elías 1701, Recoleta',
     });
     cdM.addListener('click', () => {
@@ -95,7 +97,7 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
   if (cdGeocodedRef.current) {
     crearMarcadorCD(cdGeocodedRef.current);
   } else {
-    const geocoder = new gm().Geocoder();
+    const geocoder = new G.Geocoder();
     geocoder.geocode({ address: 'Juan Elías 1701, Recoleta, Santiago, Chile' }, (results: unknown[], status: string) => {
       if (status === 'OK' && results[0]) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,19 +143,23 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
       const inf  = tiendas[t.c];
       const leg  = legs ? legs[i] : null;
       const svg  = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40"><path d="M16 0C7.2 0 0 7.2 0 16c0 6 3.3 11.3 8.2 14.1L16 40l7.8-9.9C28.7 27.3 32 22 32 16 32 7.2 24.8 0 16 0z" fill="${col}" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/><text x="16" y="20" text-anchor="middle" dominant-baseline="middle" font-family="monospace" font-size="13" font-weight="bold" fill="white">${i+1}</text></svg>`;
-      const mk = new gm().Marker({
+      const mk = new G.Marker({
         position: pos, map: gmap, zIndex: ri*100+i+10,
-        icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), scaledSize: new gm().Size(32,40), anchor: new gm().Point(16,40) },
+        icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), scaledSize: new G.Size(32,40), anchor: new G.Point(16,40) },
         title: `${t.c} - ${inf?inf.n:''}`,
       });
       mk.addListener('click', () => {
         const di  = leg ? leg.distance.text : '';
         const du  = leg ? leg.duration.text : '';
+        const displayCode = t.c.startsWith('_P') ? t.c.replace(/^_/, '') : t.c;
+        const isParadaStop = t.c.startsWith('_P');
         infoWin.setContent(
           `<div style="font-family:-apple-system,sans-serif;padding:6px 4px;min-width:180px">`
-          + `<div style="font-weight:700;font-size:14px;color:${col}">${t.c}</div>`
+          + `<div style="font-weight:700;font-size:14px;color:${col}">${displayCode}${isParadaStop ? (inf?._tipo === 'entrega' ? ' · Entrega' : ' · Retiro') : ''}</div>`
           + `<div style="font-size:13px;font-weight:600;color:#1c1c1e">${inf?inf.n:''}</div>`
-          + (inf?.v ? `<div style="font-size:11px;color:#888;margin-top:2px">Ventana: ${inf.v}</div>` : '')
+          + (inf?.d ? `<div style="font-size:11px;color:#888;margin-top:2px">${inf.d}</div>` : '')
+          + (inf?._desc ? `<div style="font-size:11px;color:#888;margin-top:2px">${inf._desc}</div>` : '')
+          + (!isParadaStop && inf?.v ? `<div style="font-size:11px;color:#888;margin-top:2px">Ventana: ${inf.v}</div>` : '')
           + `<div style="font-size:12px;color:#444;margin-top:4px">Carga: ${t.p}P${t.b?' + '+t.b+'B':''}</div>`
           + (di ? `<div style="background:#f5f5f7;border-radius:6px;padding:5px 8px;margin-top:6px"><div style="font-size:11px;color:#3a3a3c;font-weight:600">${di} · ${du}</div></div>` : '')
           + (esReal ? `<div style="font-size:10px;color:#34C759;margin-top:4px;font-weight:600">✓ Ruta real (Google Maps)</div>` : `<div style="font-size:10px;color:#ff9500;margin-top:4px">⚠ Distancia aprox.</div>`)
@@ -168,9 +174,9 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
   function dibujarFallback(r: Ruta, ri: number, col: string, tGPS: {c:string;p:number;b:number}[]) {
     const path = [cdLL];
     tGPS.forEach(t => { path.push({lat:gps[t.c][0],lng:gps[t.c][1]}); bounds.extend({lat:gps[t.c][0],lng:gps[t.c][1]}); });
-    const poly = new gm().Polyline({
+    const poly = new G.Polyline({
       path, map: gmap, strokeColor: col, strokeWeight: 3, strokeOpacity: 0.5,
-      icons: [{icon:{path:gm().SymbolPath.FORWARD_CLOSED_ARROW,scale:3,strokeColor:col,strokeWeight:2},offset:'60%',repeat:'80px'}],
+      icons: [{icon:{path:G.SymbolPath.FORWARD_CLOSED_ARROW,scale:3,strokeColor:col,strokeWeight:2},offset:'60%',repeat:'80px'}],
     });
     overlaysRef.current.push(poly);
     let kmFall = 0, prev = cd;
@@ -186,12 +192,12 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
 
     dirSvc.route({
       origin, destination: dest, waypoints: wpts,
-      travelMode: gm().TravelMode.DRIVING,
+      travelMode: G.TravelMode.DRIVING,
       optimizeWaypoints: false, region: 'cl',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }, (result: any, status: string) => {
-      if (status === gm().DirectionsStatus.OK) {
-        const renderer = new gm().DirectionsRenderer({
+      if (status === G.DirectionsStatus.OK) {
+        const renderer = new G.DirectionsRenderer({
           map: gmap, directions: result, suppressMarkers: true, suppressInfoWindows: true,
           polylineOptions: { strokeColor: col, strokeWeight: 5, strokeOpacity: 0.88 },
         });
@@ -203,7 +209,7 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
         legs.forEach((l: {steps:{start_location:unknown}[];end_location:unknown}) => { l.steps.forEach(s => bounds.extend(s.start_location)); bounds.extend(l.end_location); });
         dibujarMarcadores(r, ri, col, tGPS, legs, true);
         done++; actualizarSpinner(); if (done >= total) terminar();
-      } else if (status === gm().DirectionsStatus.OVER_QUERY_LIMIT && intento < 5) {
+      } else if (status === G.DirectionsStatus.OVER_QUERY_LIMIT && intento < 5) {
         setTimeout(() => llamarDirections(r, ri, col, tGPS, origin, dest, wpts, intento+1), 700 * intento);
       } else {
         dibujarFallback(r, ri, col, tGPS);
@@ -217,13 +223,14 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
     if (typeof onKmReady === 'function') onKmReady(kmPorRuta, legDataPorRuta);
   }
 
-  rutasConGPS.forEach((r, ri) => {
+  let staggerIdx = 0;
+  rutas.forEach((r, ri) => {
     const col  = COLORS[ri % COLORS.length];
     const tGPS = r.ts.filter(t => gps[t.c]);
-    if (!tGPS.length) { done++; actualizarSpinner(); if(done>=total)terminar(); return; }
+    if (!tGPS.length) return;
     const origin = cdLL;
     const dest   = { lat: gps[tGPS[tGPS.length-1].c][0], lng: gps[tGPS[tGPS.length-1].c][1] };
     const wpts   = tGPS.slice(0,-1).map(t => ({ location:{lat:gps[t.c][0],lng:gps[t.c][1]}, stopover:true }));
-    setTimeout(() => llamarDirections(r, ri, col, tGPS, origin, dest, wpts, 1), ri * 300);
+    setTimeout(() => llamarDirections(r, ri, col, tGPS, origin, dest, wpts, 1), staggerIdx++ * 300);
   });
 }

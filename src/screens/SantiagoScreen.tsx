@@ -18,13 +18,13 @@ function SantiagoContent() {
           alt="KiosClub"
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
-        <div className="font-barlow-condensed text-[13px] text-white/60 tracking-wide flex-1 text-center">
-          🏙️ Bodega Santiago
+        <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1 text-center">
+          Bodega Santiago
         </div>
         <button
           onClick={() => router.push('/')}
-          className="px-3 py-1.5 bg-white/12 text-white/85 border border-white/20 rounded-full font-barlow text-xs cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
-          ← Inicio
+          className="px-4 py-2 bg-white/12 text-white border border-white/20 rounded-full font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
+          INICIO
         </button>
       </div>
 

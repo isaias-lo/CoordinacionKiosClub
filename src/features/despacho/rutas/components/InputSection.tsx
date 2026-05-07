@@ -43,6 +43,7 @@ interface Props {
   onCalcular: () => void;
   onCalcularManual: () => void;
   onLimpiar: () => void;
+  onEliminarParada?: (id: string) => void;
 }
 
 export default function InputSection({
@@ -52,7 +53,7 @@ export default function InputSection({
   onModo, onToggleGroup, onToggleChip, onUpdateChip,
   onToggleFlota, onConductorChange, onAgregarConductor, onAgregarVehiculo,
   onSupervisor, onFecha, onManual, onAsignaciones,
-  onCalcular, onCalcularManual, onLimpiar,
+  onCalcular, onCalcularManual, onLimpiar, onEliminarParada,
 }: Props) {
   const dia = getDia(fecha);
 
@@ -174,6 +175,7 @@ export default function InputSection({
               conductores={conductores}
               onConductorChange={onConductorChange}
               onAgregarConductor={onAgregarConductor}
+              onEliminarParada={onEliminarParada}
             />
           </div>
         </div>

@@ -14,12 +14,37 @@ import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchJSONP, parseTSheet, parseFSheet, parseCalendario, guardarFlotaFn, guardarHistorialFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, fetchJSONP, parseTSheet, parseFSheet, parseCalendario, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn } from './utils/sheets';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type CalData   = { on: boolean; p: number; b: number; g?: string };
+
+function mergeCalT(
+  newCal: CalRecord,
+  fechaStr: string,
+  prevCalT: Record<string, CalData>,
+  activeGrps: Set<string>
+): Record<string, CalData> {
+  const dia = getDia(fechaStr);
+  const calDia = (newCal[dia] || newCal.LU || {}) as Record<string, string[]>;
+  const next: Record<string, CalData> = {};
+  ['rm', 'costa', 'fal'].forEach(grp => {
+    (calDia[grp] || []).forEach(c => {
+      if (c && c.length >= 2) {
+        const ex = prevCalT[c];
+        next[c] = ex ? { ...ex, g: grp } : { on: activeGrps.has(grp), p: 0, b: 0, g: grp };
+      }
+    });
+  });
+  Object.keys(prevCalT).forEach(c => {
+    if (!next[c] && (prevCalT[c].g === 'manual' || prevCalT[c].p > 0 || prevCalT[c].b > 0)) {
+      next[c] = prevCalT[c];
+    }
+  });
+  return next;
+}
 
 interface Results {
   ts: StoreItem[];
@@ -77,6 +102,9 @@ export default function RutasScreen() {
   const grpsRef = useRef(grps);
   useEffect(() => { grpsRef.current = grps; }, [grps]);
 
+  const sessionRestoredRef = useRef(false);
+  const restoringRef       = useRef(false);
+
   // ── Pre-load from Santiago dispatch ──────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -96,6 +124,148 @@ export default function RutasScreen() {
       }
     } catch (_) {}
   }, []);
+
+  // ── Sync in real-time with Santiago dispatch ───────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncFromSantiago = () => {
+      // One-shot: user clicked "Enrutar" in Santiago
+      try {
+        const raw = localStorage.getItem('rutasInput');
+        if (raw) {
+          const items: StoreItem[] = JSON.parse(raw);
+          if (items.length) {
+            const newCalT: Record<string, CalData> = {};
+            items.forEach(t => {
+              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, g: 'rm' };
+            });
+            setCalT(prev => {
+              const merged = { ...prev };
+              Object.keys(newCalT).forEach(key => {
+                if (!merged[key] || merged[key].p !== newCalT[key].p || merged[key].b !== newCalT[key].b) {
+                  merged[key] = newCalT[key];
+                }
+              });
+              return merged;
+            });
+            setGrps(new Set(['rm']));
+            localStorage.removeItem('rutasInput');
+          }
+        }
+      } catch (_) {}
+
+      // Live: continuous sync from Santiago bodega item registration
+      try {
+        const rawCounts = localStorage.getItem('santiagoCounts');
+        if (rawCounts) {
+          const sc: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(rawCounts);
+          const d = new Date();
+          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const counts = (sc.date && sc.date === todayKey)
+            ? (sc.counts ?? null)
+            : (!sc.date ? null : null); // reject legacy or wrong-date data
+          if (counts) {
+            setCalT(prev => {
+              const merged = { ...prev };
+              let changed = false;
+              Object.entries(counts).forEach(([cod, data]) => {
+                const c = norm(cod);
+                // Only sync stores already in today's calendar — never inject outside stores
+                if (merged[c]) {
+                  if (merged[c].p !== data.p || merged[c].b !== data.b) {
+                    merged[c] = { ...merged[c], p: data.p, b: data.b, on: data.p > 0 || data.b > 0 };
+                    changed = true;
+                  }
+                }
+              });
+              return changed ? merged : prev;
+            });
+          }
+        }
+      } catch (_) {}
+
+      // Live: continuous sync from Regiones bodega item registration
+      try {
+        const rawRegiones = localStorage.getItem('regionesCounts');
+        if (rawRegiones) {
+          const rc: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(rawRegiones);
+          const d = new Date();
+          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const counts = (rc.date && rc.date === todayKey) ? (rc.counts ?? null) : null;
+          if (counts) {
+            setCalT(prev => {
+              const merged = { ...prev };
+              let changed = false;
+              Object.entries(counts).forEach(([cod, data]) => {
+                const c = norm(cod);
+                if (merged[c]) {
+                  if (merged[c].p !== data.p || merged[c].b !== data.b) {
+                    merged[c] = { ...merged[c], p: data.p, b: data.b, on: data.p > 0 || data.b > 0 };
+                    changed = true;
+                  }
+                }
+              });
+              return changed ? merged : prev;
+            });
+          }
+        }
+      } catch (_) {}
+    };
+
+    syncFromSantiago();
+    window.addEventListener('storage', syncFromSantiago);
+    const interval = setInterval(syncFromSantiago, 2000);
+
+    return () => {
+      window.removeEventListener('storage', syncFromSantiago);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // ── One-time restore: merge saved despachoCounts into calT ────────
+  // Only restores if the saved payload was written for the same fecha;
+  // stale data from a previous day is silently discarded.
+  useEffect(() => {
+    if (sessionRestoredRef.current || Object.keys(calT).length === 0) return;
+    sessionRestoredRef.current = true;
+    try {
+      const saved = localStorage.getItem('despachoCounts');
+      if (!saved) return;
+      const payload: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(saved);
+      const savedDate = payload.date;
+      const session   = payload.counts ?? (payload as Record<string, { p: number; b: number }>);
+      // Reject if no date stamp (legacy) or if date doesn't match current session
+      if (!savedDate || savedDate !== fecha) return;
+      const entries = Object.entries(session).filter(([, d]) => d.p > 0 || d.b > 0);
+      if (!entries.length) return;
+      restoringRef.current = true;
+      setCalT(prev => {
+        const merged = { ...prev };
+        entries.forEach(([cod, data]) => {
+          const c = norm(cod);
+          // Only restore counts for stores already in today's calendar — never inject
+          // stores from a different day's session into the current day's view.
+          if (merged[c]) merged[c] = { ...merged[c], p: data.p, b: data.b, on: true };
+        });
+        return merged;
+      });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calT]);
+
+  // ── Write despachoCounts → Santiago bodega ────────────────────────
+  // Skipped during the restore cycle so we never overwrite the saved session
+  // with the transient all-zero calendar state that exists before restore applies.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !sessionRestoredRef.current) return;
+    if (restoringRef.current) { restoringRef.current = false; return; }
+    const counts: Record<string, { p: number; b: number }> = {};
+    Object.entries(calT).forEach(([cod, data]) => {
+      if (data.p > 0 || data.b > 0) counts[cod] = { p: data.p, b: data.b };
+    });
+    localStorage.setItem('despachoCounts', JSON.stringify({ date: fecha, counts }));
+  }, [calT, fecha]);
 
   // ── Load sheets data ──────────────────────────────────────────────
   useEffect(() => { handleActualizarDatos(); }, []);
@@ -358,7 +528,13 @@ export default function RutasScreen() {
     });
   }
   function handleUsarRuta(rutas: Ruta[], ts: StoreItem[]) {
-    setResults({ ts, rutas }); setComparisonData(null); kmTotalRealRef.current = null;
+    setResults({
+      ts, rutas,
+      extGps:     comparisonData?.extGps,
+      extTiendas: comparisonData?.extTiendas,
+    });
+    setComparisonData(null);
+    kmTotalRealRef.current = null;
   }
   function handleVolverEditar() { setComparisonData(null); }
 
@@ -370,26 +546,36 @@ export default function RutasScreen() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // ── Volver a edición (keeps paradas and calT) ──────────────────────
+  function handleVolverAEdicion() {
+    setResults(null); setComparisonData(null);
+    setHistorialMsg(''); setHistorialStatus('idle');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   // ── PDF ───────────────────────────────────────────────────────────
   function handleGenerarPDF() { setTimeout(() => window.print(), 100); }
 
-  // ── Update from Sheets ────────────────────────────────────────────
+  // ── Update from Sheets (Authenticated) ───────────────────────────
   async function handleActualizarDatos() {
     setUpdateStatus('loading');
     try {
       const [t1, t2, t3] = await Promise.all([
-        fetchJSONP(SID, 'TIENDAS'),
-        fetchJSONP(SID, 'FLOTA'),
-        fetchJSONP(SID, 'CALENDARIO'),
+        fetchAuthenticatedSheet('TIENDAS'),
+        fetchAuthenticatedSheet('FLOTA'),
+        fetchAuthenticatedSheet('CALENDARIO'),
       ]);
       const newTiendas = { ...tiendas };
       const newGps     = { ...gps };
       const newFlota   = flota.map(v => ({ ...v }));
-      if (t1) parseTSheet(t1, newTiendas, newGps);
-      if (t2) parseFSheet(t2, newFlota);
-      if (t3) {
-        const newCal = parseCalendario(t3);
-        if (newCal) setCal(newCal);
+      if (t1?.values) parseTSheetAuth(t1.values, newTiendas, newGps);
+      if (t2?.values) parseFSheetAuth(t2.values, newFlota);
+      if (t3?.values) {
+        const newCal = parseCalendarioAuth(t3.values);
+        if (newCal) {
+          setCal(newCal);
+          setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
+        }
       }
       setTiendas(newTiendas); setGps(newGps); setFlota(newFlota);
       setUpdateStatus('success');
@@ -437,7 +623,12 @@ export default function RutasScreen() {
   // ── Config ────────────────────────────────────────────────────────
   function handleOpenConfig()  { setConfigOpen(true);  document.body.style.overflow = 'hidden'; }
   function handleCloseConfig() { setConfigOpen(false); document.body.style.overflow = ''; }
-  function handleSaveConfig(newCal: CalRecord) { setCal(newCal); setConfigOpen(false); document.body.style.overflow = ''; }
+  function handleSaveConfig(newCal: CalRecord) {
+    setCal(newCal);
+    setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
+    setConfigOpen(false);
+    document.body.style.overflow = '';
+  }
 
   return (
     <div className="h-screen overflow-y-auto bg-kbg font-sans text-ktext" style={{ paddingBottom: '60px' }}>
@@ -448,7 +639,11 @@ export default function RutasScreen() {
         onOpenConfig={handleOpenConfig}
         flotaStatus={flotaStatus}
         onGuardarFlota={handleGuardarFlota}
-        onBack={() => router.push('/despacho/santiago')}
+        onBack={() => {
+          const from = sessionStorage.getItem('despacho_from');
+          sessionStorage.removeItem('despacho_from');
+          router.push(from || '/despacho/santiago');
+        }}
       />
 
       <main className="max-w-[700px] mx-auto px-3.5 py-5">
@@ -488,6 +683,7 @@ export default function RutasScreen() {
               onCalcular={handleCalcular}
               onCalcularManual={handleCalcularManual}
               onLimpiar={handleLimpiar}
+              onEliminarParada={handleEliminarParada}
             />
           )
         ) : (
@@ -500,6 +696,7 @@ export default function RutasScreen() {
             cd={cdRef.current}
             flota={flota}
             onLimpiar={handleLimpiar}
+            onVolver={handleVolverAEdicion}
             onGenerarPDF={handleGenerarPDF}
             onGuardarHistorial={handleGuardarHistorial}
             onChoferChange={handleChoferChange}
