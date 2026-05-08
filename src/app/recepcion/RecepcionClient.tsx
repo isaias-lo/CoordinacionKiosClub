@@ -153,7 +153,7 @@ export function RecepcionClient() {
         </div>
         {drv && (
           <a
-            href={`https://drive.google.com/uc?export=download&id=${drv}`}
+            href={drv}
             target="_blank"
             rel="noopener noreferrer"
             style={{
