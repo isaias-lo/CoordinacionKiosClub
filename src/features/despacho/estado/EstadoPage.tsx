@@ -555,11 +555,11 @@ export function EstadoPage() {
               </div>
 
               {/* Scale labels for preview only — 100mm≈378px, 150mm≈567px at 96dpi */}
-              <div className="flex flex-wrap gap-4">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', gap: 16 }}>
                 {(() => {
-                  const SCALE  = 0.60;
-                  const W = 378 * SCALE; // ≈227px
-                  const H = 567 * SCALE; // ≈340px
+                  const SCALE  = 0.63;
+                  const W = 378 * SCALE; // ≈238px
+                  const H = 567 * SCALE; // ≈357px
                   const qrUrl = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
                   return selectedStore.items.map((item, idx) => (
                     <div
