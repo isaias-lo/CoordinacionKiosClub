@@ -9,7 +9,7 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   "45EST":{n:"Estoril",z:"Corredor Oriente",v:"09:00-12:00",d:"Estoril 585 Local 3, Las Condes"},
   "16PQA":{n:"Parque Arauco",z:"Corredor Oriente",v:"08:30-09:30",d:"Av. Kennedy 5413 Local 537, Las Condes"},
   "20CTC":{n:"Costanera Center",z:"Corredor Providencia",v:"08:30-09:30",d:"Av. Andrés Bello 2425 Local 253, Providencia"},
-  "23PEN":{n:"Peñalolén",z:"Corredor Sur",v:"09:00-11:00",d:"Altos del Parque Sur 5800 Local 6, Peñalolén"},
+  "23PEÑ":{n:"Peñalolén",z:"Corredor Sur",v:"09:00-11:00",d:"Altos del Parque Sur 5800 Local 6, Peñalolén"},
   "34SMB":{n:"Simon Bolivar",z:"Corredor Providencia",v:"09:00-12:00",d:"Av. Simón Bolívar 4800, Ñuñoa"},
   "09LEO":{n:"Los Leones",z:"Corredor Providencia",v:"09:00-12:00",d:"Av. Los Leones 2572, Providencia"},
   "40LIL":{n:"Las Lilas",z:"Corredor Providencia",v:"09:00-12:00",d:"Eliodoro Yáñez 2831, Providencia"},
@@ -58,12 +58,12 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
 
 export const ALIAS: Record<string, string> = {
   // Variantes con tilde → código interno ASCII
-  "PEÑ":"23PEN","PEñ":"23PEN","PEG":"23PEN",
+  "PEÑ":"23PEÑ","PEñ":"23PEÑ","PEG":"23PEÑ",
   "VIÑ":"37VIN","VIñ":"37VIN",
   "RÑC":"08RNC","RñC":"08RNC",
   // Códigos cortos antiguos → nuevos códigos numéricos (retrocompatibilidad)
   "BNV":"32BNV","BN2":"35BN2","MAI":"17MAI","SCL":"02SCL","LAS":"12LAS",
-  "EST":"45EST","PQA":"16PQA","CTC":"20CTC","PEN":"23PEN","SMB":"34SMB",
+  "EST":"45EST","PQA":"16PQA","CTC":"20CTC","PEN":"23PEÑ","SMB":"34SMB",
   "LEO":"09LEO","LIL":"40LIL","MQH":"06MQH","LGN":"22LGN","CCR":"07CCR",
   "FLO":"18FLO","CFL":"29CFL","LP":"05LP","TPS":"01TPS","PIE":"14PIE",
   "TRQ":"10TRQ","PTA":"49PTA","PHU":"30PHU","NUC":"21NUC","PDG":"04PDG",
@@ -80,7 +80,7 @@ export const GPS_INICIAL: Record<string, [number, number]> = {
   "17MAI":[-33.481094,-70.751884],
   "02SCL":[-33.391885,-70.506455], "12LAS":[-33.371694,-70.513811], "45EST":[-33.385302,-70.531448],
   "16PQA":[-33.401315,-70.578471], "20CTC":[-33.415851,-70.607317],
-  "23PEN":[-33.497676,-70.555504], "34SMB":[-33.446862,-70.580861],
+  "23PEÑ":[-33.497676,-70.555504], "34SMB":[-33.446862,-70.580861],
   "09LEO":[-33.442166,-70.599243], "40LIL":[-33.428452,-70.595663],
   "06MQH":[-33.412495,-70.566325],
   "22LGN":[-33.277007,-70.627228], "07CCR":[-33.286836,-70.669258], CLI:[-33.195,-70.6667],

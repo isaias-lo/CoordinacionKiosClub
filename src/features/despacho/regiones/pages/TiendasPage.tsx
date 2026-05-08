@@ -825,10 +825,13 @@ export function TiendasPage() {
 
   /* ── RENDER ── */
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+      {/* Wrapper: on mobile = top row (tiendas+form), on desktop = transparent via contents */}
+      <div className="flex flex-row flex-1 min-h-0 overflow-hidden lg:contents">
 
       {/* LEFT PANEL — lista de tiendas */}
-      <div className="w-[28%] min-w-[160px] flex flex-col border-r-2 border-border overflow-hidden">
+      <div className="w-[36%] sm:w-[33%] lg:w-[28%] min-w-[130px] lg:min-w-[160px] flex flex-col border-r-2 border-border overflow-hidden flex-shrink-0">
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
@@ -943,7 +946,7 @@ export function TiendasPage() {
       </div>
 
       {/* CENTER PANEL — formulario */}
-      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden relative border-r-2 border-border">
+      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
             ? renderForm()
@@ -969,8 +972,10 @@ export function TiendasPage() {
         )}
       </div>
 
-      {/* RIGHT PANEL — resumen */}
-      <div className="w-[28%] min-w-[200px] flex flex-col overflow-hidden">
+      </div>{/* end top-row wrapper */}
+
+      {/* RIGHT PANEL — resumen (full width below on mobile/tablet, right column on desktop) */}
+      <div className="h-[200px] sm:h-[220px] lg:h-auto border-t-2 border-border lg:border-t-0 lg:w-[28%] lg:min-w-[200px] flex flex-col overflow-hidden flex-shrink-0">
         <ResumenPage panel />
       </div>
 

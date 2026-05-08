@@ -1218,7 +1218,7 @@ export function StepForm() {
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
       {/* ─── LEFT PANEL ─── */}
-      <div className={`${view === 'list' ? 'flex' : 'hidden'} lg:flex flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden flex-shrink-0`}>
+      <div className={`${view === 'list' ? 'flex' : 'hidden'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
 
         <div className="hidden lg:flex px-3 py-1.5 bg-white border-b border-border items-center gap-2 flex-shrink-0">
           <span className="font-barlow-condensed text-[10px] uppercase tracking-widest text-text-3">Paso 2 de 2</span>
