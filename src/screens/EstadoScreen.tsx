@@ -21,29 +21,33 @@ function EstadoContent() {
         className="flex-shrink-0 bg-navy"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
 
-        {/* Fila principal: logo + título */}
-        <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-          <img
-            src="/logo.png"
-            className="h-7 brightness-0 invert"
-            alt="KiosClub"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-          <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase">
-            Estado / Seguimiento
-          </div>
-        </div>
+        {/* Mobile: logo+título arriba, botones abajo. Desktop: todo en una fila */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between px-4 pt-3 pb-3 gap-2">
 
-        {/* Fila de navegación: botones hacia otros tabs */}
-        <div className="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
-          {NAV_TABS.map(({ label, path, color }) => (
-            <button
-              key={path}
-              onClick={() => router.push(path)}
-              className={`flex-shrink-0 px-3 py-1.5 ${color} text-white border rounded-full font-barlow-condensed text-[13px] font-bold tracking-widest uppercase cursor-pointer transition-all active:opacity-70`}>
-              {label}
-            </button>
-          ))}
+          {/* Logo + título */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <img
+              src="/logo.png"
+              className="h-7 brightness-0 invert"
+              alt="KiosClub"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+            <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase">
+              Estado / Seguimiento
+            </div>
+          </div>
+
+          {/* Botones de navegación */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar lg:justify-end">
+            {NAV_TABS.map(({ label, path, color }) => (
+              <button
+                key={path}
+                onClick={() => router.push(path)}
+                className={`flex-shrink-0 px-3 py-1.5 ${color} text-white border rounded-full font-barlow-condensed text-[13px] font-bold tracking-widest uppercase cursor-pointer transition-all active:opacity-70`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
