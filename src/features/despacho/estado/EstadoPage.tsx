@@ -95,16 +95,14 @@ function Label({ store, item, qrUrl }: { store: StoreLabel; item: LabelItem; qrU
           </div>
         </div>
 
-        <div style={{ flexShrink: 0, background: 'transparent', border: `2.5pt solid ${badgeBg}`, borderRadius: '8px', padding: '3mm 4mm', textAlign: 'center', minWidth: '22mm' }}>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '10pt', fontWeight: 900, letterSpacing: '0.5pt', textTransform: 'uppercase', marginBottom: '1mm',
-            color: '#fff', WebkitTextStroke: `0.8pt ${badgeBg}`, paintOrder: 'stroke fill' }}>
+        <div style={{ flexShrink: 0, textAlign: 'center', minWidth: '22mm' }}>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '9pt', fontWeight: 900, letterSpacing: '1pt', textTransform: 'uppercase', marginBottom: '0.5mm', color: badgeBg }}>
             {item.tipo}
           </div>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '36pt', fontWeight: 900, lineHeight: 1,
-            color: '#fff', WebkitTextStroke: `2pt ${badgeBg}`, paintOrder: 'stroke fill' }}>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '38pt', fontWeight: 900, lineHeight: 1, color: badgeBg }}>
             {item.itemNum}
           </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: badgeBg, marginTop: '0.5mm' }}>
+          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', marginTop: '0.5mm' }}>
             de {item.totalItems}
           </div>
         </div>
