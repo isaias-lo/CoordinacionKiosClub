@@ -34,6 +34,26 @@ export function RecepcionClient() {
   const [error,      setError]      = useState('');
   const [hasSig,     setHasSig]     = useState(false);
 
+  // El CSS global del app-shell bloquea el scroll — lo liberamos en esta página
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlHeight   = html.style.height;
+    const prevBodyHeight   = body.style.height;
+    html.style.overflow = 'auto';
+    body.style.overflow = 'auto';
+    html.style.height   = 'auto';
+    body.style.height   = 'auto';
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      html.style.height   = prevHtmlHeight;
+      body.style.height   = prevBodyHeight;
+    };
+  }, []);
+
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const lastRef    = useRef<{ x: number; y: number } | null>(null);
