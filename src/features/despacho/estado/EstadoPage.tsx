@@ -69,7 +69,7 @@ function buildQrText(store: StoreLabel, item: LabelItem): string {
   ].filter(Boolean).join('\n');
 }
 
-/* ── Label (also rendered in the hidden print area) ── */
+/* ── Label (100×150mm para Zebra) ── */
 function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
   const qr = buildQrText(store, item);
   const isPallet = item.tipo === 'Pallet';
@@ -79,7 +79,6 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
       className="label-card bg-white flex flex-col"
       style={{ width: '100mm', height: '150mm', padding: '6mm', boxSizing: 'border-box', pageBreakAfter: 'always', breakAfter: 'page' }}>
 
-      {/* Top row: info + QR */}
       <div className="flex items-start justify-between gap-3" style={{ marginBottom: '4mm' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'monospace', fontSize: '7pt', color: '#888', marginBottom: '1.5mm', letterSpacing: '0.5pt' }}>
@@ -103,10 +102,8 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
         </div>
       </div>
 
-      {/* Divider */}
       <div style={{ borderTop: '1px solid #e0e0e0', marginBottom: '4mm' }} />
 
-      {/* Type badge */}
       <div style={{
         background: isPallet ? '#1B2A6B' : '#D97706',
         borderRadius: '7px',
@@ -131,7 +128,6 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
         </div>
       </div>
 
-      {/* Footer info */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '2mm' }}>
         {item.guias.length > 0 && (
           <div>
@@ -160,7 +156,7 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
   );
 }
 
-/* ── Store card in sidebar ── */
+/* ── Store card ── */
 function StoreCard({ store, isSelected, onClick }: { store: StoreLabel; isSelected: boolean; onClick: () => void }) {
   const pallets  = store.items.filter(i => i.tipo === 'Pallet').length;
   const bultos   = store.items.filter(i => i.tipo === 'Bulto').length;
@@ -168,22 +164,34 @@ function StoreCard({ store, isSelected, onClick }: { store: StoreLabel; isSelect
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border transition-all border-l-2
+      className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px]
         ${isSelected ? 'bg-[rgba(27,42,107,0.06)] border-l-navy' : 'bg-white hover:bg-bg border-l-transparent'}`}>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-barlow-condensed text-[14px] font-extrabold text-navy">{formatCod(store.cod)}</span>
-          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="font-barlow-condensed text-[18px] font-extrabold text-navy leading-none">{formatCod(store.cod)}</span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide
             ${store.source === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
-            {store.source === 'santiago' ? 'Sant' : 'Reg'}
+            {store.source === 'santiago' ? 'Santiago' : 'Regiones'}
           </span>
-          {hasGuides && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(22,163,74,0.10)] text-success uppercase">PDF</span>}
+          {hasGuides && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[rgba(22,163,74,0.10)] text-success uppercase">
+              PDF ✓
+            </span>
+          )}
         </div>
-        <div className="text-[11px] text-text-2 font-semibold truncate leading-tight mt-0.5">{store.name}</div>
+        <div className="text-[13px] text-text-2 font-semibold truncate leading-tight">{store.name}</div>
       </div>
-      <div className="flex gap-1.5 flex-shrink-0">
-        {pallets > 0 && <span className="font-barlow-condensed text-[12px] font-bold text-info bg-[rgba(37,99,235,0.10)] px-1.5 py-0.5 rounded-full">{pallets}P</span>}
-        {bultos  > 0 && <span className="font-barlow-condensed text-[12px] font-bold text-warn bg-[rgba(217,119,6,0.10)] px-1.5 py-0.5 rounded-full">{bultos}B</span>}
+      <div className="flex gap-2 flex-shrink-0">
+        {pallets > 0 && (
+          <span className="font-barlow-condensed text-[14px] font-bold text-info bg-[rgba(37,99,235,0.10)] px-2.5 py-1 rounded-lg">
+            {pallets}P
+          </span>
+        )}
+        {bultos > 0 && (
+          <span className="font-barlow-condensed text-[14px] font-bold text-warn bg-[rgba(217,119,6,0.10)] px-2.5 py-1 rounded-lg">
+            {bultos}B
+          </span>
+        )}
       </div>
     </div>
   );
@@ -205,14 +213,12 @@ export function EstadoPage() {
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   };
 
-  /* ── Build unified store list ── */
   const rebuild = useCallback((guideMap: Record<string, GuideEntry>, regData: Record<string, DispatchItem[]>) => {
     const result: StoreLabel[] = [];
 
-    /* Santiago — from localStorage (persisted by SantiagoContext) */
     const santItems = loadSantiagoItems();
     Object.entries(santItems).forEach(([cod, items]) => {
       if (!items.length) return;
@@ -240,7 +246,6 @@ export function EstadoPage() {
       });
     });
 
-    /* Regiones — from AppContext (persisted to localStorage on every change) */
     Object.entries(regData).forEach(([name, items]) => {
       if (!items.length) return;
       const t = TIENDAS[name];
@@ -275,7 +280,6 @@ export function EstadoPage() {
     });
   }, []);
 
-  /* Re-build when Regiones data or guides change */
   useEffect(() => {
     const g = loadGuides();
     setGuides(g);
@@ -283,7 +287,6 @@ export function EstadoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch]);
 
-  /* ── PDF upload & auto-assign ── */
   const handleFiles = async (files: FileList) => {
     if (!files.length) return;
     setUploadLoading(true);
@@ -320,14 +323,13 @@ export function EstadoPage() {
     if (assigned > 0)
       showToast(`✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`);
     else
-      showToast('No se pudo asignar. Nombre del archivo debe iniciar con el código (ej: 11ILC-...).', false);
+      showToast('No se pudo asignar. El nombre debe empezar con el código (ej: 11ILC-guia.pdf)', false);
   };
 
   const selectedStore = stores.find(s => s.cod === selected);
   const totalP = stores.reduce((n, s) => n + s.items.filter(i => i.tipo === 'Pallet').length, 0);
   const totalB = stores.reduce((n, s) => n + s.items.filter(i => i.tipo === 'Bulto').length, 0);
 
-  /* ── RENDER ── */
   return (
     <>
       <style>{`
@@ -340,7 +342,7 @@ export function EstadoPage() {
         #estado-print-area { display: none; }
       `}</style>
 
-      {/* Hidden print area — all labels */}
+      {/* Hidden print area */}
       <div id="estado-print-area">
         {stores.flatMap(store =>
           store.items.map((item, idx) => (
@@ -351,34 +353,54 @@ export function EstadoPage() {
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-        {/* ── LEFT: Store list ── */}
-        <div className="w-full lg:w-[250px] flex-shrink-0 flex flex-col border-r border-border overflow-hidden">
+        {/* ══════════════════════════════
+            LEFT — Lista de tiendas
+        ══════════════════════════════ */}
+        <div className="w-full lg:w-[340px] flex-shrink-0 flex flex-col border-r border-border overflow-hidden">
 
-          <div className="px-3 py-3 bg-navy flex-shrink-0 space-y-2.5">
+          {/* Header con stats y botón imprimir */}
+          <div className="px-5 py-4 bg-navy flex-shrink-0 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="font-barlow-condensed text-[11px] uppercase tracking-widest text-white/50">
-                {stores.length} tienda{stores.length !== 1 ? 's' : ''}
-              </span>
-              <div className="flex gap-2.5">
-                {totalP > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-[#93C5FD]">{totalP}P</span>}
-                {totalB > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-[#FCD34D]">{totalB}B</span>}
+              <div>
+                <div className="font-barlow-condensed text-[22px] font-bold text-white leading-none">
+                  {stores.length} tienda{stores.length !== 1 ? 's' : ''}
+                </div>
+                <div className="flex items-center gap-3 mt-1.5">
+                  {totalP > 0 && (
+                    <span className="font-barlow-condensed text-[15px] font-bold text-[#93C5FD]">
+                      {totalP} pallet{totalP !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {totalB > 0 && (
+                    <span className="font-barlow-condensed text-[15px] font-bold text-[#FCD34D]">
+                      {totalB} bulto{totalB !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {totalP === 0 && totalB === 0 && (
+                    <span className="text-[13px] text-white/35">Sin despacho registrado</span>
+                  )}
+                </div>
               </div>
             </div>
+
             <button
               onClick={() => window.print()}
               disabled={stores.length === 0}
-              className="w-full py-2.5 bg-red text-white border-none rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer disabled:opacity-30 transition-all active:opacity-80 flex items-center justify-center gap-2"
-              style={{ boxShadow: stores.length > 0 ? '0 3px 10px rgba(211,47,47,0.40)' : 'none' }}>
-              🖨 Imprimir todas
+              className="w-full py-3.5 bg-red text-white border-none rounded-btn font-barlow-condensed text-[16px] font-bold cursor-pointer disabled:opacity-30 transition-all active:opacity-80 flex items-center justify-center gap-2.5 tracking-wide"
+              style={{ boxShadow: stores.length > 0 ? '0 4px 14px rgba(211,47,47,0.45)' : 'none' }}>
+              🖨 Imprimir todas las etiquetas
             </button>
           </div>
 
+          {/* Lista */}
           <div className="flex-1 overflow-y-auto">
             {stores.length === 0 ? (
-              <div className="py-16 text-center px-4">
-                <div className="text-3xl mb-3 opacity-15">📦</div>
-                <p className="text-[13px] text-text-3 font-semibold">Sin datos de despacho</p>
-                <p className="text-[11px] text-text-3 opacity-50 mt-1 leading-snug">Registra pallets/bultos en Bodega Santiago o Regiones</p>
+              <div className="py-20 text-center px-6">
+                <div className="text-5xl mb-4 opacity-10">📦</div>
+                <p className="text-[15px] text-text-2 font-bold mb-1">Sin datos de despacho</p>
+                <p className="text-[13px] text-text-3 leading-snug">
+                  Registra pallets o bultos en Bodega Santiago o Bodega Regiones
+                </p>
               </div>
             ) : (
               stores.map(s => (
@@ -388,45 +410,68 @@ export function EstadoPage() {
           </div>
         </div>
 
-        {/* ── RIGHT: Upload + preview ── */}
+        {/* ══════════════════════════════
+            RIGHT — Subida + previsualización
+        ══════════════════════════════ */}
         <div className="flex-1 flex flex-col overflow-hidden">
 
-          {/* Upload strip */}
+          {/* Zona de carga de PDFs */}
           <div
-            className={`flex-shrink-0 border-b border-border px-4 py-3 transition-colors ${dragOver ? 'bg-[rgba(211,47,47,0.04)]' : 'bg-bg'}`}
+            className={`flex-shrink-0 border-b border-border transition-colors ${dragOver ? 'bg-[rgba(211,47,47,0.04)]' : 'bg-bg'}`}
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }}
             onDragLeave={() => setDragOver(false)}
             onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); }}>
+
             <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="font-barlow-condensed text-[13px] font-bold uppercase tracking-wide text-text">
-                  Subir guías de despacho
-                </div>
-                <div className="text-[11px] text-text-3 mt-0.5 leading-snug">
-                  {dragOver
-                    ? 'Suelta los PDFs aquí…'
-                    : 'Nombre del archivo debe empezar con el código de tienda · ej: 11ILC-guia.pdf'}
-                </div>
-              </div>
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploadLoading}
-                className={`flex-shrink-0 px-4 py-2 border-2 rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer transition-all disabled:opacity-50 flex items-center gap-1.5
-                  ${dragOver ? 'border-red bg-[rgba(211,47,47,0.08)] text-red' : 'border-border bg-white text-text-2 hover:border-red hover:text-red'}`}>
-                {uploadLoading
-                  ? <><div className="w-3 h-3 border-2 border-border border-t-red rounded-full animate-spin" />Procesando…</>
-                  : dragOver ? '↓ Suelta' : '+ Subir PDFs'}
-              </button>
+
+            {/* Área principal de drag & drop */}
+            <div
+              onClick={() => !uploadLoading && fileRef.current?.click()}
+              className={`mx-5 mt-5 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 py-8 cursor-pointer transition-all
+                ${dragOver
+                  ? 'border-red bg-[rgba(211,47,47,0.06)]'
+                  : 'border-border hover:border-red/50 hover:bg-[rgba(211,47,47,0.02)]'}`}>
+              {uploadLoading ? (
+                <>
+                  <div className="w-8 h-8 border-3 border-border border-t-red rounded-full animate-spin" style={{ borderWidth: 3 }} />
+                  <p className="font-barlow-condensed text-[16px] font-bold text-text-2">Procesando guías…</p>
+                </>
+              ) : dragOver ? (
+                <>
+                  <div className="text-4xl">📂</div>
+                  <p className="font-barlow-condensed text-[18px] font-bold text-red">Suelta los PDFs aquí</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-4xl opacity-30">📄</div>
+                  <div className="text-center">
+                    <p className="font-barlow-condensed text-[17px] font-bold text-text">
+                      Subir guías de despacho
+                    </p>
+                    <p className="text-[13px] text-text-3 mt-1">
+                      Arrastra PDFs aquí o haz clic · El nombre debe empezar con el código de tienda
+                    </p>
+                    <p className="text-[12px] text-text-3/60 mt-0.5 font-mono">
+                      ej: 11ILC-guia.pdf · 23PEÑ-despacho.pdf
+                    </p>
+                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
+                    className="mt-1 px-6 py-2.5 border-2 border-border bg-white rounded-btn font-barlow-condensed text-[15px] font-bold text-text-2 hover:border-red hover:text-red transition-all cursor-pointer">
+                    + Seleccionar PDFs
+                  </button>
+                </>
+              )}
             </div>
 
+            {/* Guías cargadas */}
             {Object.keys(guides).length > 0 && (
-              <div className="flex gap-1.5 mt-2.5 flex-wrap">
+              <div className="px-5 py-3 flex gap-2 flex-wrap">
                 {Object.entries(guides).map(([cod, g]) => (
-                  <span key={cod} className="flex items-center gap-1.5 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.20)] rounded-full px-2.5 py-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
-                    <span className="font-barlow-condensed text-[11px] font-bold text-success">{formatCod(cod)}</span>
-                    <span className="text-[10px] text-text-3">{g.guias.length} guía{g.guias.length !== 1 ? 's' : ''}</span>
+                  <span key={cod} className="flex items-center gap-2 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.25)] rounded-full px-3 py-1.5">
+                    <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
+                    <span className="font-barlow-condensed text-[13px] font-bold text-success">{formatCod(cod)}</span>
+                    <span className="text-[12px] text-text-3">{g.guias.length} guía{g.guias.length !== 1 ? 's' : ''}</span>
                     <button
                       onClick={() => {
                         const next = { ...guides };
@@ -435,42 +480,53 @@ export function EstadoPage() {
                         setGuides(next);
                         rebuild(next, appState.dispatch);
                       }}
-                      className="text-text-3 hover:text-red cursor-pointer text-[12px] leading-none ml-0.5 border-none bg-transparent">×</button>
+                      className="text-text-3 hover:text-red cursor-pointer text-[15px] leading-none ml-0.5 border-none bg-transparent font-bold">
+                      ×
+                    </button>
                   </span>
                 ))}
               </div>
             )}
+
+            {Object.keys(guides).length === 0 && <div className="pb-5" />}
           </div>
 
-          {/* Label preview */}
-          <div className="flex-1 overflow-y-auto bg-[#ECEEF3] p-5">
+          {/* Previsualización de etiquetas */}
+          <div className="flex-1 overflow-y-auto bg-[#ECEEF3] p-6">
             {!selectedStore ? (
               <div className="h-full flex items-center justify-center">
-                <p className="text-[14px] text-text-3 opacity-40">
-                  {stores.length === 0 ? 'Sin datos — registra despacho primero' : 'Selecciona una tienda'}
-                </p>
+                <div className="text-center">
+                  <div className="text-5xl mb-4 opacity-10">🏷️</div>
+                  <p className="text-[16px] text-text-3 font-semibold opacity-60">
+                    {stores.length === 0 ? 'Sin datos — registra despacho primero' : 'Selecciona una tienda para ver las etiquetas'}
+                  </p>
+                </div>
               </div>
             ) : (
               <div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-start justify-between gap-4 mb-6">
                   <div>
-                    <div className="font-barlow-condensed text-[20px] font-bold text-navy">
-                      {formatCod(selectedStore.cod)} <span className="text-text-2 font-semibold">— {selectedStore.name}</span>
+                    <div className="font-barlow-condensed text-[26px] font-bold text-navy leading-tight">
+                      {formatCod(selectedStore.cod)}
+                      <span className="text-text-2 font-semibold ml-2">— {selectedStore.name}</span>
                     </div>
-                    <p className="text-[11px] text-text-3 mt-0.5">
-                      {selectedStore.items.length} etiqueta{selectedStore.items.length !== 1 ? 's' : ''}{selectedStore.address ? ` · ${selectedStore.address}` : ''}
+                    <p className="text-[13px] text-text-3 mt-1">
+                      {selectedStore.items.length} etiqueta{selectedStore.items.length !== 1 ? 's'  : ''}
+                      {selectedStore.address ? ` · ${selectedStore.address}` : ''}
+                      {selectedStore.ventana  ? ` · Ventana: ${selectedStore.ventana}` : ''}
                     </p>
                   </div>
                   <button
                     onClick={() => window.print()}
-                    className="px-3 py-2 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer active:opacity-80 flex items-center gap-1.5">
+                    className="flex-shrink-0 px-5 py-3 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[15px] font-bold cursor-pointer active:opacity-80 flex items-center gap-2 whitespace-nowrap"
+                    style={{ boxShadow: '0 3px 10px rgba(27,42,107,0.30)' }}>
                     🖨 Imprimir
                   </button>
                 </div>
 
-                <div className="flex flex-wrap gap-5">
+                <div className="flex flex-wrap gap-6">
                   {selectedStore.items.map((item, idx) => (
-                    <div key={idx} className="shadow-xl rounded-lg overflow-hidden" style={{ border: '1px solid #d0d4df' }}>
+                    <div key={idx} className="shadow-xl rounded-xl overflow-hidden" style={{ border: '1px solid #d0d4df' }}>
                       <Label store={selectedStore} item={item} />
                     </div>
                   ))}
@@ -481,9 +537,10 @@ export function EstadoPage() {
         </div>
       </div>
 
+      {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl text-white text-[13px] font-semibold shadow-2xl z-50 whitespace-nowrap ${toast.ok ? 'bg-[#16A34A]' : 'bg-[#D97706]'}`}>
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-xl text-white text-[15px] font-semibold shadow-2xl z-50 whitespace-nowrap ${toast.ok ? 'bg-[#16A34A]' : 'bg-[#D97706]'}`}>
           {toast.msg}
         </div>
       )}
