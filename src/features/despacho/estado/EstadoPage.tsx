@@ -34,6 +34,7 @@ interface GuideEntry {
   fileName: string;
   guias: string[];
   totalSum: number;
+  driveFileId?: string;
 }
 
 const TODAY_KEY = new Date().toISOString().split('T')[0];
@@ -58,20 +59,18 @@ function saveGuides(g: Record<string, GuideEntry>) {
   localStorage.setItem(GUIDES_KEY, JSON.stringify(g));
 }
 
-function buildQrText(store: StoreLabel, item: LabelItem): string {
-  return [
-    `KiosClub — ${formatCod(store.cod)}`,
-    store.name,
-    `${item.tipo.toUpperCase()} ${item.itemNum}/${item.totalItems}`,
-    item.guias.length ? `Guías: ${item.guias.join(', ')}` : '',
-    item.totalValue > 0 ? `Total: $${item.totalValue.toLocaleString('es-CL')}` : '',
-    store.ventana ? `Ventana: ${store.ventana}` : '',
-  ].filter(Boolean).join('\n');
+function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
+  const pallets  = store.items.filter(i => i.tipo === 'Pallet').length;
+  const bultos   = store.items.filter(i => i.tipo === 'Bulto').length;
+  const allGuias = [...new Set(store.items.flatMap(i => i.guias))];
+  const p = new URLSearchParams({ cod: store.cod, p: String(pallets), b: String(bultos) });
+  if (allGuias.length > 0) p.set('g', allGuias.join(','));
+  if (driveFileId) p.set('drv', driveFileId);
+  return `https://toolskios.vercel.app/recepcion?${p.toString()}`;
 }
 
 /* ── Label (100×150mm para Zebra) ── */
-function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
-  const qr = buildQrText(store, item);
+function Label({ store, item, qrUrl }: { store: StoreLabel; item: LabelItem; qrUrl: string }) {
   const isPallet = item.tipo === 'Pallet';
   const badgeBg = isPallet ? '#1B2A6B' : '#D97706';
 
@@ -124,7 +123,7 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
 
       {/* ── QR centrado ── */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '2mm' }}>
-        <QRCodeSVG value={qr || ' '} size={168} level="M" />
+        <QRCodeSVG value={qrUrl} size={168} level="M" />
         <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '1mm' }}>
           Escanear para ver guías de despacho
         </div>
@@ -313,7 +312,16 @@ export function EstadoPage() {
       try {
         const data = await processPdf(file);
         if (!data.guias.length) data.guias = [{ num: clean, total: 0 }];
-        newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum };
+
+        let driveFileId: string | undefined;
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          const driveRes = await fetch('/api/drive-upload', { method: 'POST', body: fd });
+          if (driveRes.ok) driveFileId = (await driveRes.json()).fileId;
+        } catch { /* Drive upload failure is non-blocking */ }
+
+        newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum, driveFileId };
         assigned++;
       } catch { skipped++; }
     }
@@ -347,11 +355,12 @@ export function EstadoPage() {
 
       {/* Hidden print area */}
       <div id="estado-print-area">
-        {stores.flatMap(store =>
-          store.items.map((item, idx) => (
-            <Label key={`${store.cod}-${idx}`} store={store} item={item} />
-          ))
-        )}
+        {stores.flatMap(store => {
+          const qrUrl = buildQrUrl(store, guides[store.cod]?.driveFileId);
+          return store.items.map((item, idx) => (
+            <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} />
+          ));
+        })}
       </div>
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
@@ -528,11 +537,14 @@ export function EstadoPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-6">
-                  {selectedStore.items.map((item, idx) => (
-                    <div key={idx} className="shadow-xl rounded-xl overflow-hidden" style={{ border: '1px solid #d0d4df' }}>
-                      <Label store={selectedStore} item={item} />
-                    </div>
-                  ))}
+                  {(() => {
+                    const qrUrl = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
+                    return selectedStore.items.map((item, idx) => (
+                      <div key={idx} className="shadow-xl rounded-xl overflow-hidden" style={{ border: '1px solid #d0d4df' }}>
+                        <Label store={selectedStore} item={item} qrUrl={qrUrl} />
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             )}
