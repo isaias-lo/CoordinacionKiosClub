@@ -73,13 +73,17 @@ function buildQrText(store: StoreLabel, item: LabelItem): string {
 function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
   const qr = buildQrText(store, item);
   const isPallet = item.tipo === 'Pallet';
+  const badgeBg = isPallet ? '#1B2A6B' : '#D97706';
 
   return (
     <div
       className="label-card bg-white flex flex-col"
       style={{ width: '100mm', height: '150mm', padding: '6mm', boxSizing: 'border-box', pageBreakAfter: 'always', breakAfter: 'page' }}>
 
-      <div className="flex items-start justify-between gap-3" style={{ marginBottom: '4mm' }}>
+      {/* ── Fila superior: info tienda (izq) + badge número (der) ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '3mm', marginBottom: '4mm' }}>
+
+        {/* Info tienda */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'monospace', fontSize: '7pt', color: '#888', marginBottom: '1.5mm', letterSpacing: '0.5pt' }}>
             {store.source === 'santiago' ? 'BODEGA SANTIAGO' : 'BODEGA REGIONES'}
@@ -94,55 +98,54 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
             {store.address}
           </div>
         </div>
-        <div style={{ flexShrink: 0 }}>
-          <QRCodeSVG value={qr || ' '} size={82} level="M" />
-          <div style={{ textAlign: 'center', fontFamily: 'Arial, sans-serif', fontSize: '5.5pt', color: '#aaa', marginTop: '1mm' }}>
-            Escanear guías
+
+        {/* Badge número de pallet/bulto */}
+        <div style={{
+          flexShrink: 0,
+          background: badgeBg,
+          borderRadius: '8px',
+          padding: '3mm 4mm',
+          textAlign: 'center',
+          minWidth: '22mm',
+        }}>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '7pt', fontWeight: 900, color: 'rgba(255,255,255,0.70)', letterSpacing: '0.5pt', textTransform: 'uppercase', marginBottom: '1mm' }}>
+            {item.tipo}
+          </div>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '28pt', fontWeight: 900, color: '#fff', lineHeight: 1 }}>
+            {item.itemNum}
+          </div>
+          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: 'rgba(255,255,255,0.60)', marginTop: '0.5mm' }}>
+            de {item.totalItems}
           </div>
         </div>
       </div>
 
       <div style={{ borderTop: '1px solid #e0e0e0', marginBottom: '4mm' }} />
 
-      <div style={{
-        background: isPallet ? '#1B2A6B' : '#D97706',
-        borderRadius: '7px',
-        padding: '3.5mm 5mm',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '4mm',
-      }}>
-        <div>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '17pt', fontWeight: 900, color: '#fff', letterSpacing: '0.5pt' }}>
-            {item.tipo.toUpperCase()}
-          </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: 'rgba(255,255,255,0.70)', marginTop: '0.5mm' }}>
-            Ítem {item.itemNum} de {item.totalItems}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '30pt', fontWeight: 900, color: '#fff', lineHeight: 1 }}>
-            {item.itemNum}<span style={{ fontSize: '13pt', opacity: 0.65 }}>/{item.totalItems}</span>
-          </div>
+      {/* ── QR centrado ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '2mm' }}>
+        <QRCodeSVG value={qr || ' '} size={100} level="M" />
+        <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6pt', color: '#bbb', letterSpacing: '0.3pt' }}>
+          Escanear para ver guías de despacho
         </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '2mm' }}>
+      <div style={{ borderTop: '1px solid #e0e0e0', marginTop: '3mm', paddingTop: '3mm' }}>
+        {/* Footer: guías + peso + ventana */}
         {item.guias.length > 0 && (
-          <div>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt', marginBottom: '0.8mm' }}>
-              N° Guía
-            </div>
-            <div style={{ fontFamily: 'monospace', fontSize: '8.5pt', color: '#333', wordBreak: 'break-all' }}>
+          <div style={{ marginBottom: '2mm' }}>
+            <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>
+              Guía:{' '}
+            </span>
+            <span style={{ fontFamily: 'monospace', fontSize: '8pt', color: '#333' }}>
               {item.guias.join(' · ')}
-            </div>
+            </span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Peso</div>
-            <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '10pt', color: '#333' }}>{item.peso} kg</div>
+            <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '9.5pt', color: '#333' }}>{item.peso} kg</div>
           </div>
           {store.ventana && (
             <div style={{ textAlign: 'right' }}>
