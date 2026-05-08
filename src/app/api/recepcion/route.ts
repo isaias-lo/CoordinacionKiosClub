@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { verifyOtpToken } from '../../../lib/otpToken';
+import { put } from '@vercel/blob';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -27,18 +27,18 @@ interface RecepcionBody {
   bultosRecibidos: number;
   receptor: string;
   rut: string;
-  email: string;
-  otpToken: string;
-  otpCode: string;
+  signatureDataUrl: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as RecepcionBody;
 
-    if (!verifyOtpToken(body.otpToken, body.email, body.otpCode)) {
-      return NextResponse.json({ error: 'Código inválido o expirado' }, { status: 401 });
-    }
+    // Upload signature to Vercel Blob
+    const base64Data = body.signatureDataUrl.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const filename = `firma_${body.cod}_${Date.now()}.png`;
+    const blob = await put(filename, buffer, { access: 'public', contentType: 'image/png' });
 
     const auth   = await getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
           body.bultosRecibidos,
           body.receptor,
           body.rut,
-          body.email,
+          blob.url,
         ]],
       },
     });
