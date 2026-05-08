@@ -345,12 +345,14 @@ export function EstadoPage() {
     <>
       <style>{`
         @media print {
-          body > * { display: none !important; }
-          #estado-print-area { display: block !important; }
+          body * { visibility: hidden; }
+          #estado-print-area, #estado-print-area * { visibility: visible; }
+          #estado-print-area { position: fixed; inset: 0; }
           @page { size: 100mm 150mm; margin: 0; }
           .label-card { page-break-after: always; break-after: page; }
         }
         #estado-print-area { display: none; }
+        @media print { #estado-print-area { display: block; } }
       `}</style>
 
       {/* Hidden print area */}
