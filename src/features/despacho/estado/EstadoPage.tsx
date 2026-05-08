@@ -403,7 +403,7 @@ export function EstadoPage() {
         {/* ══════════════════════════════
             LEFT — Subida + Lista + Imprimir
         ══════════════════════════════ */}
-        <div className="w-full lg:w-[340px] flex-shrink-0 flex flex-col border-r border-border overflow-hidden">
+        <div className="w-full lg:w-[440px] flex-shrink-0 flex flex-col border-r border-border overflow-hidden">
 
           {/* Stats header */}
           <div className="px-5 py-4 bg-navy flex-shrink-0">
