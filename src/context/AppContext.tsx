@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, ReactNode } from 'react';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 
 const today = new Date();
@@ -128,8 +128,26 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const REGIONES_KEY = `regionesState_${new Date().toISOString().split('T')[0]}`;
+
+function loadInitialState(): AppState {
+  if (typeof window === 'undefined') return initialState;
+  try {
+    const raw = localStorage.getItem(REGIONES_KEY);
+    if (!raw) return initialState;
+    const saved = JSON.parse(raw);
+    return { ...initialState, dispatch: saved.dispatch || {}, pdfData: saved.pdfData || {} };
+  } catch { return initialState; }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(REGIONES_KEY, JSON.stringify({ dispatch: state.dispatch, pdfData: state.pdfData }));
+    } catch {}
+  }, [state.dispatch, state.pdfData]);
 
   const showToast = useCallback((msg: string, color?: string) => {
     dispatch({ type: 'SHOW_TOAST', msg, color });
