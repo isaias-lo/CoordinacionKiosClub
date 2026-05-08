@@ -75,6 +75,14 @@ export function LaunchScreen() {
           <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
           <div className="text-xs text-white/60 mt-1">Control de calidad pallets</div>
         </button>
+
+        <button
+          onClick={() => router.push('/despacho/estado')}
+          className="col-span-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.50)]"
+          style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 8px 24px rgba(245,158,11,0.18)' }}>
+          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Estado / Seguimiento</div>
+          <div className="text-xs text-white/60 mt-1">Etiquetas Zebra · Guías · QR</div>
+        </button>
       </div>
 
       <div className="flex gap-5">
