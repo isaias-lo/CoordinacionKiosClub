@@ -226,7 +226,9 @@ export function EstadoPage() {
       if (!items.length) return;
       const t = getTiendaSantiagoByCod(cod);
       if (!t) return;
-      const allItems = [...items.filter(i => i.tipo === 'Pallet'), ...items.filter(i => i.tipo === 'Bulto')];
+      const pallets  = items.filter(i => i.tipo === 'Pallet');
+      const bultos   = items.filter(i => i.tipo === 'Bulto');
+      const allItems = [...pallets, ...bultos];
       const guide    = guideMap[cod];
       const guideNums = guide?.guias || [];
       const perItem  = allItems.length > 0 && (guide?.totalSum || 0) > 0 ? Math.round(guide!.totalSum / allItems.length) : 0;
@@ -236,15 +238,20 @@ export function EstadoPage() {
         name: t.tienda,
         address: t.direccion,
         ventana: t.ventanaHoraria,
-        items: allItems.map((it, idx) => ({
-          orden: it.orden,
-          tipo: it.tipo,
-          itemNum: idx + 1,
-          totalItems: allItems.length,
-          peso: it.peso,
-          guias: guideNums.length > 0 ? (idx < guideNums.length ? [guideNums[idx]] : guideNums) : [],
-          totalValue: perItem,
-        })),
+        items: allItems.map((it, idx) => {
+          const isPallet  = it.tipo === 'Pallet';
+          const typeItems = isPallet ? pallets : bultos;
+          const typeIdx   = typeItems.indexOf(it);
+          return {
+            orden: it.orden,
+            tipo: it.tipo,
+            itemNum:    typeIdx + 1,
+            totalItems: typeItems.length,
+            peso: it.peso,
+            guias: guideNums.length > 0 ? (idx < guideNums.length ? [guideNums[idx]] : guideNums) : [],
+            totalValue: perItem,
+          };
+        }),
       });
     });
 
@@ -252,7 +259,9 @@ export function EstadoPage() {
       if (!items.length) return;
       const t = TIENDAS[name];
       if (!t) return;
-      const allItems = [...items.filter(i => i.pkg === 'pallet'), ...items.filter(i => i.pkg === 'box')];
+      const pallets  = items.filter(i => i.pkg === 'pallet');
+      const bultos   = items.filter(i => i.pkg === 'box');
+      const allItems = [...pallets, ...bultos];
       const guide    = guideMap[t.cod];
       const guideNums = guide?.guias || [];
       const perItem  = allItems.length > 0 && (guide?.totalSum || 0) > 0 ? Math.round(guide!.totalSum / allItems.length) : 0;
@@ -262,15 +271,20 @@ export function EstadoPage() {
         name: t.name,
         address: `${t.calle || ''} ${t.numero || ''}`.trim(),
         ventana: '',
-        items: allItems.map((it, idx) => ({
-          orden: it.orden,
-          tipo: it.pkg === 'pallet' ? 'Pallet' : 'Bulto',
-          itemNum: idx + 1,
-          totalItems: allItems.length,
-          peso: it.peso,
-          guias: it.guia ? [it.guia] : (guideNums.length > 0 ? (idx < guideNums.length ? [guideNums[idx]] : guideNums) : []),
-          totalValue: it.valor || perItem,
-        })),
+        items: allItems.map((it, idx) => {
+          const isPallet  = it.pkg === 'pallet';
+          const typeItems = isPallet ? pallets : bultos;
+          const typeIdx   = typeItems.indexOf(it);
+          return {
+            orden: it.orden,
+            tipo: isPallet ? 'Pallet' : 'Bulto',
+            itemNum:    typeIdx + 1,
+            totalItems: typeItems.length,
+            peso: it.peso,
+            guias: it.guia ? [it.guia] : (guideNums.length > 0 ? (idx < guideNums.length ? [guideNums[idx]] : guideNums) : []),
+            totalValue: it.valor || perItem,
+          };
+        }),
       });
     });
 
