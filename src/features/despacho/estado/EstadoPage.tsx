@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { TIENDAS } from '../regiones/data/tiendas';
@@ -360,6 +361,9 @@ export function EstadoPage() {
     }));
   };
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const allChecked  = stores.length > 0 && printCods.size === stores.length;
   const noneChecked = printCods.size === 0;
 
@@ -374,27 +378,27 @@ export function EstadoPage() {
     <>
       <style>{`
         @media print {
-          body * { visibility: hidden; }
-          #estado-print-area, #estado-print-area * { visibility: visible; }
-          #estado-print-area { position: fixed; inset: 0; }
+          body > *:not(#estado-print-area) { display: none !important; }
+          #estado-print-area { display: block !important; }
           @page { size: 100mm 150mm; margin: 0; }
-          .label-card { page-break-after: always; break-after: page; }
+          .label-card { page-break-after: always; break-after: page; width: 100mm; height: 150mm; }
         }
-        #estado-print-area { display: none; }
-        @media print { #estado-print-area { display: block; } }
       `}</style>
 
-      {/* Hidden print area — only selected stores */}
-      <div id="estado-print-area">
-        {stores
-          .filter(store => printCods.has(store.cod))
-          .flatMap(store => {
-            const qrUrl = buildQrUrl(store, guides[store.cod]?.driveFileId);
-            return store.items.map((item, idx) => (
-              <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} />
-            ));
-          })}
-      </div>
+      {/* Print area rendered as portal directly into body — escapes all overflow:hidden containers */}
+      {mounted && createPortal(
+        <div id="estado-print-area" style={{ display: 'none' }}>
+          {stores
+            .filter(store => printCods.has(store.cod))
+            .flatMap(store => {
+              const qrUrl = buildQrUrl(store, guides[store.cod]?.driveFileId);
+              return store.items.map((item, idx) => (
+                <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} />
+              ));
+            })}
+        </div>,
+        document.body
+      )}
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
