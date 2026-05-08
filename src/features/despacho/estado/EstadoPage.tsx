@@ -554,12 +554,21 @@ export function EstadoPage() {
                 </button>
               </div>
 
-              <div className="flex flex-wrap gap-6">
+              {/* Scale labels for preview only — 100mm≈378px, 150mm≈567px at 96dpi */}
+              <div className="flex flex-wrap gap-4">
                 {(() => {
+                  const SCALE  = 0.60;
+                  const W = 378 * SCALE; // ≈227px
+                  const H = 567 * SCALE; // ≈340px
                   const qrUrl = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
                   return selectedStore.items.map((item, idx) => (
-                    <div key={idx} className="shadow-xl rounded-xl overflow-hidden" style={{ border: '1px solid #d0d4df' }}>
-                      <Label store={selectedStore} item={item} qrUrl={qrUrl} />
+                    <div
+                      key={idx}
+                      className="shadow-xl rounded-xl overflow-hidden flex-shrink-0"
+                      style={{ border: '1px solid #d0d4df', width: W, height: H, position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: 0, left: 0, transform: `scale(${SCALE})`, transformOrigin: 'top left' }}>
+                        <Label store={selectedStore} item={item} qrUrl={qrUrl} />
+                      </div>
                     </div>
                   ));
                 })()}
