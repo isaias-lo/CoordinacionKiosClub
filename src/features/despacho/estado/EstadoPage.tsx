@@ -124,8 +124,8 @@ function Label({ store, item }: { store: StoreLabel; item: LabelItem }) {
 
       {/* ── QR centrado ── */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '2mm' }}>
-        <QRCodeSVG value={qr || ' '} size={145} level="M" />
-        <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6pt', color: '#bbb', letterSpacing: '0.3pt' }}>
+        <QRCodeSVG value={qr || ' '} size={168} level="M" />
+        <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '1mm' }}>
           Escanear para ver guías de despacho
         </div>
       </div>
