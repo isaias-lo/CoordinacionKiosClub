@@ -1,6 +1,8 @@
 export type TipoAuditoria = 'comida' | 'hogar' | 'aseo' | 'completo' | 'comida-aseo' | 'aseo-hogar';
 export type CorreccionAuditoria = 'correcto' | 'cruce' | 'faltante' | 'sobrante';
 export type ResultadoAuditoria = 'bueno' | 'malo';
+export type SubTipo = 'comida' | 'hogar' | 'aseo';
+export type TipoError = 'faltante' | 'sobrante';
 
 export interface TiendaRef {
   cod: string;
@@ -23,6 +25,27 @@ export interface OperacionOdoo {
   partner: string;
   state: string;
   fecha: string;
+  responsable?: string;
+}
+
+export interface ProductoOdoo {
+  id: number;
+  codigo: string;
+  nombre: string;
+  cantidadEsperada?: number;
+}
+
+export interface OperacionEntry {
+  subTipo: SubTipo;
+  codigo: string;
+}
+
+export interface ProductoError {
+  codigo: string;
+  nombre: string;
+  unidades: number;
+  tipo: TipoError;
+  cantidadEsperada?: number;
 }
 
 export interface AuditEntry {
@@ -30,13 +53,18 @@ export interface AuditEntry {
   fecha: string;
   hora: string;
   auditor: string;
+  picker: string;
   tiendaCod: string;
   tiendaNombre: string;
   tiendaArea: 'regiones' | 'santiago';
   tipo: TipoAuditoria;
-  operacionOdoo: string;
+  operaciones: OperacionEntry[];
   pallets: number;
-  errores: number;
+  tieneErrores: boolean;
+  tiposError: TipoError[];
+  productos: ProductoError[];
   correccion: CorreccionAuditoria;
   resultado: ResultadoAuditoria;
+  observaciones: string;
+  reauditoriaDeId?: string;
 }
