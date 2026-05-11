@@ -1,4 +1,3 @@
-import { TMPL_B64 } from '../../../../data/template';
 import type { DispatchItem } from '../../../../types';
 import { TIENDAS } from '../data/tiendas';
 
@@ -67,6 +66,12 @@ function doExport(XLSX: typeof import('xlsx'), b64: string, rows: ExportRow[], f
   XLSX.writeFile(wb, filename);
 }
 
+async function fetchBundledTemplate(): Promise<string> {
+  const res = await fetch('/template.b64');
+  if (!res.ok) throw new Error('No se pudo cargar la plantilla');
+  return res.text();
+}
+
 export async function exportToTemplate(rows: ExportRow[], filename: string): Promise<void> {
   if (!rows.length) return;
   const XLSX = await import('xlsx');
@@ -83,6 +88,7 @@ export async function exportToTemplate(rows: ExportRow[], filename: string): Pro
     }
   }
 
-  // Attempt 2: bundled template (always valid)
-  doExport(XLSX, TMPL_B64, rows, filename);
+  // Attempt 2: static asset (never bundled by webpack)
+  const b64 = await fetchBundledTemplate();
+  doExport(XLSX, b64, rows, filename);
 }

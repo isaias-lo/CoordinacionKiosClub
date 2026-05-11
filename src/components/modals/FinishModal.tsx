@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../components/AuthProvider';
+import { supabase } from '../../lib/supabase';
 import { buildRows, exportToTemplate } from '../../features/despacho/regiones/utils/exportUtils';
 import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/sheetsRegiones';
 import type { HistoryEntry } from '../../types';
@@ -12,6 +14,7 @@ interface Props { open: boolean; onClose: () => void; }
 export function FinishModal({ open, onClose }: Props) {
   const { state, dispatch, showToast } = useApp();
   const { dispatch: dispatchData, dispatchDate } = state;
+  const { user } = useAuth();
   const router = useRouter();
   const [regimen, setRegimen] = useState<'Carga' | 'Falabella'>('Carga');
 
@@ -44,9 +47,18 @@ export function FinishModal({ open, onClose }: Props) {
       tiendas: tiendaStats,
       rows,
     };
+    // Save to Supabase (without rows — too large)
+    if (user) {
+      supabase.from('dispatch_history').insert({
+        user_id: user.id, date: entry.date,
+        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos,
+        tiendas: entry.tiendas,
+      }).then(({ error }) => { if (error) console.error('Dispatch save:', error.message); });
+    }
+    // Keep in localStorage (rows needed for re-export)
     const hist: HistoryEntry[] = JSON.parse(localStorage.getItem('dispatchHistory') || '[]');
     hist.push(entry);
-    localStorage.setItem('dispatchHistory', JSON.stringify(hist));
+    localStorage.setItem('dispatchHistory', JSON.stringify(hist.slice(-100)));
 
     sheetsRegionesWrite(dispatchData, regimen);
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');

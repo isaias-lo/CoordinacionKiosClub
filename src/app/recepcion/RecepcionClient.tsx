@@ -30,11 +30,11 @@ function inputNum(extra?: React.CSSProperties): React.CSSProperties {
 
 export function RecepcionClient() {
   const params = useSearchParams();
-  const cod = params.get('cod') || '';
-  const p   = parseInt(params.get('p') || '0', 10);
-  const b   = parseInt(params.get('b') || '0', 10);
-  const g   = params.get('g') || '';
-  const drv = params.get('drv') || '';
+  const cod = params?.get('cod') ?? '';
+  const p   = parseInt(params?.get('p') ?? '0', 10);
+  const b   = parseInt(params?.get('b') ?? '0', 10);
+  const g   = params?.get('g') ?? '';
+  const drv = params?.get('drv') ?? '';
 
   const store = TIENDAS_INICIAL[cod];
   const guias = g ? g.split(',').filter(Boolean) : [];
