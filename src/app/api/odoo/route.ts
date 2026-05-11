@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
       action: string;
       config: { url: string; db: string; username: string; apiKey: string };
       query?: string;
+      pickings?: string[];
     };
-    const { action, config, query = '' } = body;
+    const { action, config, query = '', pickings = [] } = body;
     let { url } = config;
     const { db, username, apiKey } = config;
 
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
         service: 'object',
         method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
-          fields: ['name', 'partner_id', 'state', 'scheduled_date'],
+          fields: ['name', 'partner_id', 'state', 'scheduled_date', 'user_id'],
           limit: 15,
           order: 'name desc',
         }],
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
         partner_id: [number, string] | false;
         state: string;
         scheduled_date: string | false;
+        user_id: [number, string] | false;
       }>;
 
       const STATE_LABELS: Record<string, string> = {
@@ -126,7 +128,116 @@ export async function POST(req: NextRequest) {
           fecha: op.scheduled_date
             ? new Date(op.scheduled_date).toLocaleDateString('es-CL')
             : '',
+          responsable: Array.isArray(op.user_id) ? op.user_id[1] : undefined,
         })),
+      });
+    }
+
+    /* ── search_product ── */
+    if (action === 'search_product') {
+      const codigo = (query || '').replace(/[\[\]]/g, '').trim().toUpperCase();
+      if (!codigo) return NextResponse.json({ error: 'Ingresa un código de producto' }, { status: 400 });
+
+      const products = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'product.product', 'search_read',
+          [[['default_code', '=', codigo]]],
+          { fields: ['id', 'default_code', 'name'], limit: 1 },
+        ],
+      })) as Array<{ id: number; default_code: string | false; name: string }>;
+
+      if (!products.length) return NextResponse.json({ productos: [] });
+
+      const productId = products[0].id;
+      let cantidadEsperada: number | undefined;
+
+      const validPickings = (pickings as string[]).filter(p => p.trim());
+      if (validPickings.length > 0) {
+        try {
+          const moves = (await odooRpc(url, {
+            service: 'object',
+            method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.move', 'search_read',
+              [[['picking_id.name', 'in', validPickings], ['product_id', '=', productId], ['state', '!=', 'cancel']]],
+              { fields: ['product_uom_qty'], limit: 20 },
+            ],
+          })) as Array<{ product_uom_qty: number }>;
+          if (moves.length > 0) {
+            cantidadEsperada = moves.reduce((sum, m) => sum + (m.product_uom_qty || 0), 0);
+          }
+        } catch { /* no critico — cantidad queda undefined */ }
+      }
+
+      return NextResponse.json({
+        productos: [{
+          id: products[0].id,
+          codigo: typeof products[0].default_code === 'string' ? products[0].default_code : codigo,
+          nombre: products[0].name,
+          cantidadEsperada,
+        }],
+      });
+    }
+
+    /* ── get_picker_stats ── */
+    if (action === 'get_picker_stats') {
+      const pickerName = query;
+      if (!pickerName) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 });
+
+      const users = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'res.users', 'search_read',
+          [[['name', '=', pickerName]]],
+          { fields: ['id', 'name'], limit: 1 },
+        ],
+      })) as Array<{ id: number; name: string }>;
+
+      if (!users.length) return NextResponse.json({ stats: null, message: 'Usuario no encontrado en Odoo' });
+      const pickerUserId = users[0].id;
+
+      const since = new Date(); since.setDate(since.getDate() - 90);
+      const sinceStr = since.toISOString().slice(0, 10) + ' 00:00:00';
+
+      const [pickingGroups, doneThisWeek, discrepancias] = await Promise.all([
+        odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'read_group',
+            [[['user_id', '=', pickerUserId], ['create_date', '>=', sinceStr]]],
+            ['state'], ['state'],
+          ],
+        }) as Promise<Array<{ state: string; state_count: number }>>,
+
+        odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'search_count',
+            [[['user_id', '=', pickerUserId], ['state', '=', 'done'],
+              ['date_done', '>=', new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10) + ' 00:00:00']]],
+          ],
+        }) as Promise<number>,
+
+        odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.move.line', 'search_count',
+            [[['picking_id.user_id', '=', pickerUserId], ['state', '=', 'done'],
+              ['qty_done', '!=', ['product_uom_qty']]]],
+          ],
+        }).catch(() => 0) as Promise<number>,
+      ]);
+
+      const stateMap: Record<string, number> = {};
+      for (const g of pickingGroups as Array<{ state: string; state_count: number }>) stateMap[g.state] = g.state_count;
+
+      return NextResponse.json({
+        stats: {
+          userId: pickerUserId,
+          userName: users[0].name,
+          totalDone: stateMap['done'] ?? 0,
+          totalAssigned: stateMap['assigned'] ?? 0,
+          totalConfirmed: stateMap['confirmed'] ?? 0,
+          totalWaiting: stateMap['waiting'] ?? 0,
+          doneThisWeek: typeof doneThisWeek === 'number' ? doneThisWeek : 0,
+          discrepancias: typeof discrepancias === 'number' ? discrepancias : 0,
+        },
       });
     }
 
