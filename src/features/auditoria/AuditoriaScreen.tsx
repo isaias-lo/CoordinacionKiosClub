@@ -18,6 +18,7 @@ function entryToRow(entry: AuditEntry, userId: string) {
     correccion: entry.correccion, resultado: entry.resultado,
     observaciones: entry.observaciones, reauditoria_de_id: entry.reauditoriaDeId ?? null,
     productos: entry.productos,
+    foto_url: entry.fotoUrl ?? null,
   };
 }
 function rowToEntry(r: Record<string, unknown>): AuditEntry {
@@ -33,6 +34,7 @@ function rowToEntry(r: Record<string, unknown>): AuditEntry {
     observaciones: r.observaciones as string,
     reauditoriaDeId: r.reauditoria_de_id as string | undefined,
     productos: (r.productos as ProductoError[]) ?? [],
+    fotoUrl: (r.foto_url as string) || undefined,
   };
 }
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
@@ -831,6 +833,12 @@ function HistoryContent({ history, today, onReaudit, onExportPDF }: {
                 </div>
               )}
               {e.observaciones && <div className="mt-1.5 px-2.5 py-1.5 bg-bg rounded-btn text-[11px] text-text-2 italic border-l-2 border-navy/20 mb-2">{e.observaciones}</div>}
+              {e.fotoUrl && (
+                <a href={e.fotoUrl} target="_blank" rel="noopener noreferrer" className="block mt-2 mb-2 rounded-card overflow-hidden border border-border">
+                  <img src={e.fotoUrl} alt="foto del error" className="w-full object-cover" style={{ maxHeight: 160 }} />
+                  <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1">📷 Foto adjunta · toca para abrir</div>
+                </a>
+              )}
               {e.resultado === 'malo' && <button onClick={() => onReaudit(e)} className="w-full py-2 border border-dashed border-info/40 rounded-btn text-info text-[12px] font-bold cursor-pointer bg-transparent transition-all">↩ Re-auditar</button>}
             </div>
           ))}
@@ -922,6 +930,10 @@ export function AuditoriaScreen() {
   const [view,           setView]           = useState<'form' | 'history' | 'ranking' | 'dashboard'>('form');
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [fotoFile,       setFotoFile]       = useState<File | null>(null);
+  const [fotoPreview,    setFotoPreview]    = useState('');
+  const [submitting,     setSubmitting]     = useState(false);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const cfg = getOdooConfig(); if (cfg) setOdooConfig(cfg);
@@ -975,19 +987,34 @@ export function AuditoriaScreen() {
 
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!auditor.trim()) { showToast('Ingresa el nombre del auditor', '#D97706'); return; }
     if (!tienda) { showToast('Selecciona una tienda', '#D97706'); return; }
     if (operaciones.some(op => !op.codigo.trim())) { showToast('Completa todas las operaciones', '#D97706'); return; }
     if (!pallets || parseInt(pallets) <= 0) { showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
     if (tieneErrores === null) { showToast('Indica si hubo errores', '#D97706'); return; }
     if (tieneErrores && tiposError.length === 0) { showToast('Selecciona el tipo de error', '#D97706'); return; }
+    setSubmitting(true);
     const now = new Date();
+    const entryId = `AUD-${Date.now()}`;
+    let fotoUrl: string | undefined;
+    if (fotoFile && user) {
+      const ext = fotoFile.name.split('.').pop() || 'jpg';
+      const path = `${user.id}/${entryId}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('audit-photos')
+        .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
+      if (!upErr) {
+        const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+        fotoUrl = publicUrl;
+      }
+    }
     const entry: AuditEntry = {
-      id: `AUD-${Date.now()}`, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
+      id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
       auditor: auditor.trim(), picker: picker.trim(), tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: parseInt(pallets), tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
+      fotoUrl,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
@@ -999,6 +1026,10 @@ export function AuditoriaScreen() {
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
     setTienda(null); setTiendaQuery(''); setPicker(''); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    setFotoFile(null); setFotoPreview('');
+    if (fotoInputRef.current) fotoInputRef.current.value = '';
+    setSubmitting(false);
   };
 
   const iniciarReauditoria = (entry: AuditEntry) => {
@@ -1164,10 +1195,34 @@ export function AuditoriaScreen() {
             <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
               className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
-            <button onClick={handleSubmit} disabled={!canSubmit}
+            <SLabel>Foto del error <span className="text-[9px] font-normal ml-1 normal-case">opcional · desde cámara o galería</span></SLabel>
+            {fotoPreview ? (
+              <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                <img src={fotoPreview} alt="preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                <button
+                  onClick={() => { URL.revokeObjectURL(fotoPreview); setFotoFile(null); setFotoPreview(''); if (fotoInputRef.current) fotoInputRef.current.value = ''; }}
+                  className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-8 h-8 text-[18px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                  style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center gap-2 py-5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                <span className="text-[36px]">📷</span>
+                <span className="text-[13px] text-text-3 font-barlow text-center">Adjuntar foto del error</span>
+                <input
+                  ref={fotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }}
+                />
+              </label>
+            )}
+
+            <button onClick={handleSubmit} disabled={!canSubmit || submitting}
               className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
-              style={{ background: canSubmit ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
-              ✓ Registrar auditoría
+              style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
+              {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
             </button>
           </div>
         </div>

@@ -121,6 +121,13 @@ export function LaunchScreen() {
             👥 Usuarios
           </button>
         )}
+        {isAdmin && (
+          <button onClick={() => router.push('/auditoria-admin')}
+            className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border transition-all"
+            style={{ borderColor: 'rgba(124,58,237,0.5)', color: '#7C3AED', background: 'rgba(124,58,237,0.1)' }}>
+            🔍 Revisión Auditoría
+          </button>
+        )}
       </div>
 
       {/* User badge + logout */}
