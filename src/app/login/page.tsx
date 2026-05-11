@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 const ROLE_HOME: Record<string, string> = {
-  auditor:     '/auditoria',
-  despachador: '/',
-  admin:       '/',
+  auditor:          '/auditoria',
+  'admin-auditoria':'/auditoria',
+  despachador:      '/',
+  admin:            '/',
 };
 
 const ERROR_MAP: Record<string, string> = {

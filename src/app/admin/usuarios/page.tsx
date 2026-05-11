@@ -15,9 +15,10 @@ interface AppUser {
 }
 
 const ROLE_OPTS = [
-  { value: 'auditor',     label: 'Auditor',       color: '#9333EA' },
-  { value: 'despachador', label: 'Despachador',   color: '#2563EB' },
-  { value: 'admin',       label: 'Administrador', color: '#D97706' },
+  { value: 'auditor',          label: 'Auditor',         color: '#9333EA' },
+  { value: 'admin-auditoria',  label: 'Admin Auditoría', color: '#0891B2' },
+  { value: 'despachador',      label: 'Despachador',     color: '#2563EB' },
+  { value: 'admin',            label: 'Administrador',   color: '#D97706' },
 ];
 
 function roleColor(role: string) {

@@ -7,7 +7,7 @@ import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
 
 const ROLE_LABEL: Record<string, string> = {
-  auditor: 'Auditor', despachador: 'Despachador', admin: 'Admin',
+  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin',
 };
 
 export function LaunchScreen() {

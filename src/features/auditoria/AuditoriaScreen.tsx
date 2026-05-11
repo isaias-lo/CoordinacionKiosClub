@@ -39,7 +39,7 @@ function rowToEntry(r: Record<string, unknown>): AuditEntry {
 }
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
 import { PICKERS_LIST, PICKER_NAMES, getPickerDisplay, matchOdooResponsable } from './data/pickerNames';
-import { buscarOperaciones, buscarProducto, getOdooConfig, saveOdooConfig, getPickerOdooStats } from './utils/odooApi';
+import { buscarOperaciones, buscarProducto, getOdooConfig, getPickerOdooStats } from './utils/odooApi';
 import type { PickerOdooStats } from './utils/odooApi';
 import { sheetsAuditoriaWrite } from './utils/sheetsAuditoria';
 import type {
@@ -268,46 +268,6 @@ function LineChart({ trends, selectedPickers }: { trends: Map<string, WeekTrend[
         );
       })}
     </svg>
-  );
-}
-
-/* ── Odoo Config Modal ── */
-function OdooConfigModal({ initial, onSave, onClose }: { initial: OdooConfig; onSave: (c: OdooConfig) => void; onClose: () => void }) {
-  const [cfg, setCfg] = useState<OdooConfig>(initial);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [dbList, setDbList] = useState<string[]>([]);
-  const [dbListLoading, setDbListLoading] = useState(false);
-  const set = (k: keyof OdooConfig, v: string) => { setCfg(p => ({ ...p, [k]: v })); setTestResult(null); if (k === 'url') setDbList([]); };
-  const detectarDbs = async () => {
-    if (!cfg.url) { setTestResult({ ok: false, msg: 'Ingresa la URL primero.' }); return; }
-    setDbListLoading(true); setDbList([]);
-    try { const res = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list_databases', config: cfg }) }); const data = (await res.json()) as { databases?: string[]; error?: string }; if (res.ok && data.databases?.length) setDbList(data.databases); else setTestResult({ ok: false, msg: data.error || 'Error' }); } catch { setTestResult({ ok: false, msg: 'Error de red' }); } finally { setDbListLoading(false); }
-  };
-  const probarConexion = async () => {
-    if (!cfg.url || !cfg.db || !cfg.username || !cfg.apiKey) { setTestResult({ ok: false, msg: 'Completa todos los campos.' }); return; }
-    setTesting(true); setTestResult(null);
-    try { const res = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test_connection', config: cfg }) }); const data = (await res.json()) as { ok?: boolean; message?: string; error?: string }; setTestResult(res.ok && data.ok ? { ok: true, msg: `✓ Conexión exitosa. ${data.message ?? ''}` } : { ok: false, msg: data.error || 'Error' }); } catch { setTestResult({ ok: false, msg: 'Error de red' }); } finally { setTesting(false); }
-  };
-  return (
-    <div className="fixed inset-0 z-[600] bg-navy/60 backdrop-blur-sm flex items-end">
-      <div className="bg-white rounded-t-[20px] w-full px-4 pb-10 pt-5 max-h-[90vh] overflow-y-auto" style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.22)' }}>
-        <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
-        <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1">Configurar Odoo</h3>
-        <p className="text-[13px] text-text-3 mb-4">Credenciales para operaciones, productos y pickers</p>
-        {([['url', 'URL del servidor', 'kiosclub.odoo.com', 'text'], ['username', 'Usuario / Email', 'admin@empresa.com', 'text'], ['apiKey', 'Contraseña / API Key', '', 'password']] as const).map(([k, label, placeholder, type]) => (
-          <div key={k} className="mb-3"><label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide block mb-1">{label}</label><input type={type} value={cfg[k]} onChange={e => set(k, e.target.value)} placeholder={placeholder} className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" /></div>
-        ))}
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1"><label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide">Base de datos</label><button onClick={detectarDbs} disabled={dbListLoading || !cfg.url} className="text-[11px] font-bold text-navy border-none bg-transparent cursor-pointer disabled:opacity-40 flex items-center gap-1 px-0">{dbListLoading ? <><div className="w-2.5 h-2.5 border border-navy/30 border-t-navy rounded-full animate-spin" />Detectando…</> : '🔍 Detectar'}</button></div>
-          <input type="text" value={cfg.db} onChange={e => set('db', e.target.value)} placeholder="nombre_base_de_datos" className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" />
-          {dbList.length > 0 && <div className="mt-1.5 border border-border rounded-btn overflow-hidden">{dbList.map(d => <button key={d} onClick={() => { set('db', d); setDbList([]); }} className={`w-full text-left px-3 py-2 font-mono text-[14px] border-b border-border/40 last:border-b-0 cursor-pointer ${cfg.db === d ? 'bg-[rgba(26,37,80,0.08)] text-navy font-bold' : 'bg-white text-text hover:bg-bg'}`}>{d}</button>)}</div>}
-        </div>
-        {testResult && <div className={`mt-1 mb-3 px-3 py-2.5 rounded-btn text-[13px] border ${testResult.ok ? 'bg-[rgba(22,163,74,0.08)] border-success text-success' : 'bg-[rgba(211,47,47,0.07)] border-red text-red'}`}>{testResult.msg}</div>}
-        <button onClick={probarConexion} disabled={testing} className="w-full py-3 mb-3 border-2 border-dashed border-navy/30 rounded-btn text-navy/70 font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 bg-transparent">{testing ? <><div className="w-3 h-3 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />Probando…</> : '⚡ Probar conexión'}</button>
-        <div className="flex gap-2.5"><button onClick={onClose} className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card font-barlow-condensed text-lg font-bold border-none cursor-pointer">Cancelar</button><button onClick={() => { onSave(cfg); onClose(); }} className="flex-1 py-3.5 bg-navy text-white rounded-card font-barlow-condensed text-lg font-bold border-none cursor-pointer" style={{ boxShadow: '0 4px 16px rgba(26,37,80,0.28)' }}>Guardar</button></div>
-      </div>
-    </div>
   );
 }
 
@@ -848,43 +808,58 @@ function HistoryContent({ history, today, onReaudit, onExportPDF }: {
 }
 
 /* ── Desktop Stats Panel ── */
-function StatsPanel({ history, today, onReaudit, odooConfig }: {
+function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false }: {
   history: AuditEntry[]; today: string;
   onReaudit: (e: AuditEntry) => void; odooConfig: OdooConfig;
+  onlyHistory?: boolean;
 }) {
-  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history'>(onlyHistory ? 'history' : 'dashboard');
   return (
     <div className="flex flex-col h-full bg-bg">
-      <div className="flex border-b border-border bg-white flex-shrink-0">
-        {([['dashboard', '📊 Dashboard'], ['ranking', '🏆 Ranking'], ['history', '📋 Historial']] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {!onlyHistory && (
+        <div className="flex border-b border-border bg-white flex-shrink-0">
+          {([['dashboard', '📊 Dashboard'], ['ranking', '🏆 Ranking'], ['history', '📋 Historial']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {onlyHistory && (
+        <div className="px-4 py-2.5 bg-white border-b border-border flex-shrink-0">
+          <span className="font-barlow-condensed text-[15px] font-bold text-navy">📋 Tu historial</span>
+        </div>
+      )}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>}
-        {tab === 'ranking' && <RankingContent history={history} odooConfig={odooConfig} />}
-        {tab === 'history' && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} />}
+        {!onlyHistory && tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>}
+        {!onlyHistory && tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} />}
+        {(onlyHistory || tab === 'history')  && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} />}
       </div>
     </div>
   );
 }
 
 /* ── Mobile Menu ── */
-function MobileMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: (v: 'dashboard' | 'history' | 'ranking') => void }) {
+function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
+  onClose: () => void;
+  onNavigate: (v: 'dashboard' | 'history' | 'ranking') => void;
+  onlyHistory?: boolean;
+}) {
+  const items = onlyHistory
+    ? [{ icon: '📋', label: 'Historial', sub: 'Tus auditorías por fecha', v: 'history' as const }]
+    : [
+        { icon: '📊', label: 'Dashboard del día', sub: 'KPIs y métricas de hoy', v: 'dashboard' as const },
+        { icon: '🏆', label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades', v: 'ranking' as const },
+        { icon: '📋', label: 'Historial', sub: 'Auditorías por fecha + exportar PDF', v: 'history' as const },
+      ];
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[24px] overflow-hidden" style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.22)' }}>
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mt-4 mb-1" />
         <div className="p-4 pb-8 space-y-2">
-          {([
-            { icon: '📊', label: 'Dashboard del día', sub: 'KPIs y métricas de hoy', v: 'dashboard' as const },
-            { icon: '🏆', label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades', v: 'ranking' as const },
-            { icon: '📋', label: 'Historial', sub: 'Auditorías por fecha + exportar PDF', v: 'history' as const },
-          ]).map(({ icon, label, sub, v }) => (
+          {items.map(({ icon, label, sub, v }) => (
             <button key={v} onClick={() => onNavigate(v)}
               className="w-full flex items-center gap-4 px-4 py-3.5 bg-bg hover:bg-bg-2 rounded-card cursor-pointer border border-border text-left transition-colors">
               <span className="text-[28px]">{icon}</span>
@@ -905,8 +880,11 @@ function MobileMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: 
    MAIN SCREEN
 ════════════════════════════════════════ */
 export function AuditoriaScreen() {
-  const { signOut, user } = useAuth();
+  const { signOut, user, profile, loading: authLoading } = useAuth();
   const { showToast, state } = useApp();
+  const userRole        = profile?.role ?? 'auditor';
+  const isAdminAud      = userRole === 'admin-auditoria';
+  const isAuditorOnly   = userRole === 'auditor';
   const router = useRouter();
 
   const [auditor,           setAuditor]           = useState('');
@@ -925,9 +903,9 @@ export function AuditoriaScreen() {
   const [tiendaOpen,  setTiendaOpen]  = useState(false);
   const tiendaRef = useRef<HTMLDivElement>(null);
 
-  const [showOdooConf,   setShowOdooConf]   = useState(false);
-  const [odooConfig,     setOdooConfig]     = useState<OdooConfig>({ url: '', db: '', username: '', apiKey: '' });
-  const [view,           setView]           = useState<'form' | 'history' | 'ranking' | 'dashboard'>('form');
+  const odooConfig = useMemo(() => getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' }, []);
+  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision'>('form');
+  const [viewInit,       setViewInit]       = useState(false);
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [fotoFile,       setFotoFile]       = useState<File | null>(null);
@@ -935,8 +913,16 @@ export function AuditoriaScreen() {
   const [submitting,     setSubmitting]     = useState(false);
   const fotoInputRef = useRef<HTMLInputElement>(null);
 
+  // Set initial view once profile loads
   useEffect(() => {
-    const cfg = getOdooConfig(); if (cfg) setOdooConfig(cfg);
+    if (!authLoading && !viewInit) {
+      if (isAdminAud) setView('hub');
+      setViewInit(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAdminAud, viewInit]);
+
+  useEffect(() => {
     (async () => {
       const { data, error } = await supabase
         .from('audit_entries')
@@ -1043,27 +1029,89 @@ export function AuditoriaScreen() {
   const today = new Date().toLocaleDateString('es-CL');
   const todayEntries = useMemo(() => history.filter(e => e.fecha === today), [history, today]);
 
-  /* ════ RENDER ════ */
+  /* ── Hub view (admin-auditoria only) ── */
+  if (isAdminAud && view === 'hub') {
+    return (
+      <div className="fixed inset-0 flex flex-col overflow-hidden"
+        style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+        <div className="flex items-center gap-2 px-4 py-3.5 flex-shrink-0"
+          style={{ background: 'rgba(0,0,0,0.18)', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
+          <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/70 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+          <div className="flex-1">
+            <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
+            <div className="text-[11px] text-white/40 uppercase tracking-widest">Admin Auditoría</div>
+          </div>
+          <button onClick={async () => { await signOut(); router.push('/login'); }}
+            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
+        </div>
+        <div className="flex-1 flex flex-col justify-center px-6 gap-4" style={{ maxWidth: 520, width: '100%', margin: '0 auto' }}>
+          {[
+            { icon: '📝', title: 'Agregar Audición', desc: 'Registrar nueva auditoría de pallet', v: 'form' as const, border: 'rgba(34,197,94,0.45)', bg: 'rgba(34,197,94,0.14)', shadow: 'rgba(34,197,94,0.22)' },
+            { icon: '📊', title: 'Estadísticas', desc: 'Dashboard del día · Ranking de Pickers', v: 'stats' as const, border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.14)', shadow: 'rgba(37,99,235,0.22)' },
+            { icon: '📋', title: 'Revisión Auditoría', desc: 'Historial de todos los registros', v: 'revision' as const, border: 'rgba(124,58,237,0.45)', bg: 'rgba(124,58,237,0.14)', shadow: 'rgba(124,58,237,0.22)' },
+          ].map(({ icon, title, desc, v, border, bg, shadow }) => (
+            <button key={v} onClick={() => setView(v)}
+              className="w-full rounded-2xl px-6 py-6 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98] text-left border-2"
+              style={{ background: bg, borderColor: border, boxShadow: `0 8px 28px ${shadow}` }}>
+              <span className="text-[44px] leading-none flex-shrink-0">{icon}</span>
+              <div>
+                <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-wide uppercase leading-tight">{title}</div>
+                <div className="text-[13px] text-white/55 mt-0.5">{desc}</div>
+              </div>
+              <span className="ml-auto text-white/30 text-[22px]">›</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Stats view (admin-auditoria: Dashboard + Ranking) ── */
+  if (isAdminAud && view === 'stats') {
+    return (
+      <AdminAudStats history={history} today={today} odooConfig={odooConfig} onBack={() => setView('hub')} />
+    );
+  }
+
+  /* ── Revision view (admin-auditoria: History of all) ── */
+  if (isAdminAud && view === 'revision') {
+    return (
+      <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+          <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+          <div className="flex-1">
+            <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
+            <div className="text-[11px] text-white/40">Todos los registros</div>
+          </div>
+        </div>
+        <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} />
+      </div>
+    );
+  }
+
+  /* ════ FORM RENDER (all roles) ════ */
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
 
       {/* ── HEADER ── */}
       <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-        <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+        {isAdminAud
+          ? <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+          : <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+        }
         <div className="flex-1">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
           <div className="text-[11px] text-white/40 uppercase tracking-widest">Control de calidad pallet</div>
         </div>
-        {/* Mobile: hamburger + config + logout */}
+        {/* Mobile: hamburger + logout */}
         <div className="flex md:hidden items-center gap-1">
-          <button onClick={() => setShowOdooConf(true)} className="border-none bg-white/10 text-white/60 text-[15px] cursor-pointer px-2.5 py-1.5 rounded-full">⚙</button>
-          <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>
+          {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>}
           <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full">Salir</button>
         </div>
-        {/* Desktop: config + logout */}
+        {/* Desktop: logout */}
         <div className="hidden md:flex items-center gap-1">
-          <button onClick={() => setShowOdooConf(true)} className="border-none bg-white/10 text-white/60 text-[15px] cursor-pointer px-2.5 py-1.5 rounded-full">⚙</button>
           <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white/70 transition-colors">Salir</button>
         </div>
       </div>
@@ -1072,8 +1120,10 @@ export function AuditoriaScreen() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* LEFT: FORM */}
-        <div className="flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border">
-          <div className="px-4 pb-8">
+        <div className={isAdminAud
+          ? 'flex-1 overflow-y-auto'
+          : 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border'}>
+          <div className={`px-4 pb-8${isAdminAud ? ' max-w-2xl mx-auto' : ''}`}>
 
             {/* Re-audit banner */}
             {reauditoriaOrigen && (
@@ -1145,7 +1195,7 @@ export function AuditoriaScreen() {
             {operaciones.map((op, i) => (
               <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
                 onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
-                odooConfig={odooConfig} onNeedConfig={() => setShowOdooConf(true)} />
+                odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
             ))}
 
             <SLabel>Pallets auditados</SLabel>
@@ -1173,7 +1223,7 @@ export function AuditoriaScreen() {
                       <div className="mb-2">{productos.map((p, i) => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return <div key={i} className="flex items-center gap-2 bg-white border border-border rounded-btn px-3 py-2 mb-1.5" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.05)' }}><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${p.tipo === 'faltante' ? 'bg-[rgba(211,47,47,0.10)] text-red' : 'bg-[rgba(217,119,6,0.10)] text-warn'}`}>{p.tipo}</span><span className="font-mono text-[11px] text-text-3 flex-shrink-0">[{p.codigo}]</span><span className="text-[12px] text-text flex-1 truncate">{p.nombre}</span><span className={`font-bold text-[13px] flex-shrink-0 ${p.tipo === 'faltante' ? 'text-red' : 'text-warn'}`}>{r}</span><button onClick={() => setProductos(prev => prev.filter((_, j) => j !== i))} className="text-red/50 hover:text-red border-none bg-transparent cursor-pointer text-[18px] leading-none flex-shrink-0 px-1">×</button></div>; })}
                       </div>
                     )}
-                    <ProductSearch odooConfig={odooConfig} tiposError={tiposError} operacionCodes={operaciones.map(op => op.codigo)} onAdd={p => setProductos(prev => [...prev, p])} onNeedConfig={() => setShowOdooConf(true)} />
+                    <ProductSearch odooConfig={odooConfig} tiposError={tiposError} operacionCodes={operaciones.map(op => op.codigo)} onAdd={p => setProductos(prev => [...prev, p])} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
                   </div>
                 )}
               </>
@@ -1227,14 +1277,16 @@ export function AuditoriaScreen() {
           </div>
         </div>
 
-        {/* RIGHT: STATS PANEL (desktop only) */}
-        <div className="hidden md:flex md:flex-1 overflow-hidden">
-          <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} />
-        </div>
+        {/* RIGHT: STATS PANEL (desktop only, not for admin-auditoria) */}
+        {!isAdminAud && (
+          <div className="hidden md:flex md:flex-1 overflow-hidden">
+            <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} onlyHistory={isAuditorOnly} />
+          </div>
+        )}
       </div>
 
-      {/* ── MOBILE OVERLAYS ── */}
-      {view === 'dashboard' && (
+      {/* ── MOBILE OVERLAYS (not for admin-auditoria) ── */}
+      {!isAdminAud && view === 'dashboard' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
@@ -1243,7 +1295,7 @@ export function AuditoriaScreen() {
           <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>
         </div>
       )}
-      {view === 'ranking' && (
+      {!isAdminAud && view === 'ranking' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
@@ -1252,7 +1304,7 @@ export function AuditoriaScreen() {
           <RankingContent history={history} odooConfig={odooConfig} />
         </div>
       )}
-      {view === 'history' && (
+      {!isAdminAud && view === 'history' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
@@ -1263,14 +1315,41 @@ export function AuditoriaScreen() {
       )}
 
       {/* ── MOBILE MENU ── */}
-      {mobileMenuOpen && <MobileMenu onClose={() => setMobileMenuOpen(false)} onNavigate={v => { setView(v); setMobileMenuOpen(false); }} />}
-
-      {/* ── ODOO CONFIG ── */}
-      {showOdooConf && (
-        <OdooConfigModal initial={odooConfig}
-          onSave={cfg => { saveOdooConfig(cfg); setOdooConfig(cfg); showToast('✓ Config Odoo guardada', '#16A34A'); }}
-          onClose={() => setShowOdooConf(false)} />
+      {!isAdminAud && mobileMenuOpen && (
+        <MobileMenu
+          onlyHistory={isAuditorOnly}
+          onClose={() => setMobileMenuOpen(false)}
+          onNavigate={v => { setView(v); setMobileMenuOpen(false); }}
+        />
       )}
+    </div>
+  );
+}
+
+/* ════ Admin-Auditoria Stats Screen ════ */
+function AdminAudStats({ history, today, odooConfig, onBack }: {
+  history: AuditEntry[]; today: string; odooConfig: OdooConfig; onBack: () => void;
+}) {
+  const [tab, setTab] = useState<'dashboard' | 'ranking'>('dashboard');
+  return (
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Estadísticas</div>
+      </div>
+      <div className="flex border-b border-border bg-white flex-shrink-0">
+        {([['dashboard', '📊 Dashboard del día'], ['ranking', '🏆 Ranking de Pickers']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>}
+        {tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} />}
+      </div>
     </div>
   );
 }

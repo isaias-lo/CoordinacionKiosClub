@@ -27,17 +27,12 @@ export async function buscarProducto(
 }
 
 export function getOdooConfig(): OdooConfig | null {
-  try {
-    const raw = localStorage.getItem('odooConfig');
-    if (!raw) return null;
-    return JSON.parse(raw) as OdooConfig;
-  } catch {
-    return null;
-  }
-}
-
-export function saveOdooConfig(config: OdooConfig): void {
-  localStorage.setItem('odooConfig', JSON.stringify(config));
+  const url      = process.env.NEXT_PUBLIC_ODOO_URL      ?? '';
+  const db       = process.env.NEXT_PUBLIC_ODOO_DB       ?? '';
+  const username = process.env.NEXT_PUBLIC_ODOO_USERNAME ?? '';
+  const apiKey   = process.env.NEXT_PUBLIC_ODOO_API_KEY  ?? '';
+  if (!url || !db || !username || !apiKey) return null;
+  return { url, db, username, apiKey };
 }
 
 export interface PickerOdooStats {
