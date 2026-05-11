@@ -1,21 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { google } from 'googleapis';
-import { put } from '@vercel/blob';
-
-const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
-
-function getCredentials() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON not set');
-  return JSON.parse(raw);
-}
-
-async function getAuth() {
-  return new google.auth.GoogleAuth({
-    credentials: getCredentials(),
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-}
+import { supabaseServer } from '@/lib/supabaseServer';
 
 interface RecepcionBody {
   cod: string;
@@ -33,38 +17,38 @@ interface RecepcionBody {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as RecepcionBody;
+    const sb = supabaseServer();
 
-    // Upload signature to Vercel Blob
+    // Upload signature to Supabase Storage
     const base64Data = body.signatureDataUrl.replace(/^data:image\/png;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
     const filename = `firma_${body.cod}_${Date.now()}.png`;
-    const blob = await put(filename, buffer, { access: 'public', contentType: 'image/png' });
 
-    const auth   = await getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
+    const { error: uploadError } = await sb.storage
+      .from('signatures')
+      .upload(filename, buffer, { contentType: 'image/png', upsert: false });
 
-    const fechaHora = new Date().toLocaleString('es-CL', { timeZone: 'America/Santiago' });
+    if (uploadError) throw new Error(uploadError.message);
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Recepcion tienda!A:K',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[
-          fechaHora,
-          body.cod,
-          body.tienda,
-          body.direccion,
-          body.palletsSent,
-          body.bultosSent,
-          body.palletsRecibidos,
-          body.bultosRecibidos,
-          body.receptor,
-          body.rut,
-          blob.url,
-        ]],
-      },
+    const { data: { publicUrl } } = sb.storage
+      .from('signatures')
+      .getPublicUrl(filename);
+
+    // Insert record into recepcion table
+    const { error: insertError } = await sb.from('recepcion').insert({
+      cod: body.cod,
+      tienda: body.tienda,
+      direccion: body.direccion,
+      pallets_sent: body.palletsSent,
+      bultos_sent: body.bultosSent,
+      pallets_recibidos: body.palletsRecibidos,
+      bultos_recibidos: body.bultosRecibidos,
+      receptor: body.receptor,
+      rut: body.rut,
+      firma_url: publicUrl,
     });
+
+    if (insertError) throw new Error(insertError.message);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

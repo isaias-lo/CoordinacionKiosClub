@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
+import { supabaseServer } from '@/lib/supabaseServer';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,14 +9,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    const blob = await put(file.name, file, {
-      access: 'public',
-      contentType: 'application/pdf',
-    });
+    const sb = supabaseServer();
+    const filename = `${Date.now()}_${file.name}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-    return NextResponse.json({ fileId: blob.url });
+    const { error: uploadError } = await sb.storage
+      .from('guides')
+      .upload(filename, buffer, { contentType: 'application/pdf', upsert: false });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data: { publicUrl } } = sb.storage
+      .from('guides')
+      .getPublicUrl(filename);
+
+    // Record in guides table
+    await sb.from('guides').insert({ filename, url: publicUrl });
+
+    return NextResponse.json({ fileId: publicUrl });
   } catch (err) {
-    console.error('Blob upload error:', err);
+    console.error('Storage upload error:', err);
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 }

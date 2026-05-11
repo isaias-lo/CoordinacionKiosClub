@@ -3,6 +3,38 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../components/AuthProvider';
+import { supabase } from '../../lib/supabase';
+
+/* ── Supabase ↔ AuditEntry converters ── */
+function entryToRow(entry: AuditEntry, userId: string) {
+  return {
+    id: entry.id, user_id: userId,
+    fecha: entry.fecha, hora: entry.hora,
+    auditor: entry.auditor, picker: entry.picker ?? '',
+    tienda_cod: entry.tiendaCod, tienda_nombre: entry.tiendaNombre, tienda_area: entry.tiendaArea,
+    tipo: entry.tipo, operaciones: entry.operaciones, pallets: entry.pallets,
+    tiene_errores: entry.tieneErrores, tipos_error: entry.tiposError,
+    correccion: entry.correccion, resultado: entry.resultado,
+    observaciones: entry.observaciones, reauditoria_de_id: entry.reauditoriaDeId ?? null,
+    productos: entry.productos,
+  };
+}
+function rowToEntry(r: Record<string, unknown>): AuditEntry {
+  return {
+    id: r.id as string, fecha: r.fecha as string, hora: r.hora as string,
+    auditor: r.auditor as string, picker: r.picker as string,
+    tiendaCod: r.tienda_cod as string, tiendaNombre: r.tienda_nombre as string,
+    tiendaArea: r.tienda_area as AuditEntry['tiendaArea'],
+    tipo: r.tipo as TipoAuditoria, operaciones: (r.operaciones as OperacionEntry[]) ?? [],
+    pallets: r.pallets as number, tieneErrores: r.tiene_errores as boolean,
+    tiposError: (r.tipos_error as TipoError[]) ?? [],
+    correccion: r.correccion as CorreccionAuditoria, resultado: r.resultado as ResultadoAuditoria,
+    observaciones: r.observaciones as string,
+    reauditoriaDeId: r.reauditoria_de_id as string | undefined,
+    productos: (r.productos as ProductoError[]) ?? [],
+  };
+}
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
 import { PICKERS_LIST, PICKER_NAMES, getPickerDisplay, matchOdooResponsable } from './data/pickerNames';
 import { buscarOperaciones, buscarProducto, getOdooConfig, saveOdooConfig, getPickerOdooStats } from './utils/odooApi';
@@ -503,34 +535,68 @@ function PickerCard({ stats, rank, trend, odooConfig, compact = false }: {
 
 /* ════ SHARED VIEW CONTENT ════ */
 
+type DashPeriod = 'hoy' | 'semana' | 'mes' | 'total';
+const PERIOD_LABELS: Record<DashPeriod, string> = { hoy: 'Hoy', semana: '7 días', mes: '30 días', total: 'Total' };
+
 /* ── Dashboard Content ── */
-function DashboardContent({ todayEntries, today }: { todayEntries: AuditEntry[]; today: string }) {
-  const buenosH = todayEntries.filter(e => e.resultado === 'bueno').length;
-  const pct = todayEntries.length ? Math.round((buenosH / todayEntries.length) * 100) : 0;
-  const palletsH = todayEntries.reduce((s, e) => s + e.pallets, 0);
-  const erroresH = todayEntries.filter(e => e.tieneErrores).length;
+function DashboardContent({ history, today }: { history: AuditEntry[]; today: string }) {
+  const [period, setPeriod] = useState<DashPeriod>('hoy');
+
+  const entries = useMemo(() => {
+    if (period === 'hoy') return history.filter(e => e.fecha === today);
+    if (period === 'total') return history;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (period === 'semana' ? 7 : 30));
+    return history.filter(e => { const d = parseEsCL(e.fecha); return d !== null && d >= cutoff; });
+  }, [history, period, today]);
+
+  const buenosH = entries.filter(e => e.resultado === 'bueno').length;
+  const pct = entries.length ? Math.round((buenosH / entries.length) * 100) : 0;
+  const palletsH = entries.reduce((s, e) => s + e.pallets, 0);
+  const erroresH = entries.filter(e => e.tieneErrores).length;
 
   const pickerMap = new Map<string, { b: number; t: number }>();
-  todayEntries.forEach(e => { if (!e.picker) return; if (!pickerMap.has(e.picker)) pickerMap.set(e.picker, { b: 0, t: 0 }); const s = pickerMap.get(e.picker)!; s.t++; if (e.resultado === 'bueno') s.b++; });
+  entries.forEach(e => { if (!e.picker) return; if (!pickerMap.has(e.picker)) pickerMap.set(e.picker, { b: 0, t: 0 }); const s = pickerMap.get(e.picker)!; s.t++; if (e.resultado === 'bueno') s.b++; });
   const topPicker = Array.from(pickerMap.entries()).sort((a, b) => (b[1].b / (b[1].t || 1)) - (a[1].b / (a[1].t || 1)))[0];
 
   const tiendaErrMap = new Map<string, number>();
-  todayEntries.forEach(e => { if (e.resultado === 'malo') tiendaErrMap.set(e.tiendaNombre, (tiendaErrMap.get(e.tiendaNombre) ?? 0) + 1); });
+  entries.forEach(e => { if (e.resultado === 'malo') tiendaErrMap.set(e.tiendaNombre, (tiendaErrMap.get(e.tiendaNombre) ?? 0) + 1); });
   const topErrTiendas = Array.from(tiendaErrMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4);
 
   const corrBreak = { correcto: 0, faltante: 0, sobrante: 0, cruce: 0 } as Record<CorreccionAuditoria, number>;
-  todayEntries.forEach(e => corrBreak[e.correccion]++);
+  entries.forEach(e => corrBreak[e.correccion]++);
 
-  if (todayEntries.length === 0) return (
-    <div className="text-center py-16 text-text-3"><div className="text-[40px] mb-3">📊</div><div className="text-[16px] font-barlow-condensed">Sin auditorías registradas hoy.</div><div className="text-[13px] mt-1">{today}</div></div>
+  const periodSelector = (
+    <div className="flex gap-1 mb-3">
+      {(Object.keys(PERIOD_LABELS) as DashPeriod[]).map(p => (
+        <button key={p} onClick={() => setPeriod(p)}
+          className="flex-1 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-all border-none"
+          style={period === p
+            ? { background: '#1a2550', color: '#fff' }
+            : { background: 'rgba(26,37,80,0.07)', color: '#6B7280' }}>
+          {PERIOD_LABELS[p]}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (entries.length === 0) return (
+    <div className="p-4">
+      {periodSelector}
+      <div className="text-center py-12 text-text-3"><div className="text-[40px] mb-3">📊</div><div className="text-[16px] font-barlow-condensed">Sin auditorías en este período.</div></div>
+    </div>
   );
 
   return (
     <div className="p-4 space-y-3">
+      {periodSelector}
+      <div className="text-[11px] text-text-3 text-center -mt-1 mb-0.5">
+        {entries.length} auditorías · todos los auditores
+      </div>
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-2.5">
         {[
-          { label: 'Auditorías', value: todayEntries.length, color: '#1a2550', bg: 'rgba(26,37,80,0.06)' },
+          { label: 'Auditorías', value: entries.length, color: '#1a2550', bg: 'rgba(26,37,80,0.06)' },
           { label: '% Aprobación', value: `${pct}%`, color: pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F', bg: pct >= 80 ? 'rgba(22,163,74,0.08)' : pct >= 60 ? 'rgba(217,119,6,0.08)' : 'rgba(211,47,47,0.08)' },
           { label: 'Pallets totales', value: palletsH, color: '#2563EB', bg: 'rgba(37,99,235,0.06)' },
           { label: 'Con errores', value: erroresH, color: erroresH > 0 ? '#D32F2F' : '#16A34A', bg: erroresH > 0 ? 'rgba(211,47,47,0.07)' : 'rgba(22,163,74,0.07)' },
@@ -579,7 +645,7 @@ function DashboardContent({ todayEntries, today }: { todayEntries: AuditEntry[];
       {/* Top error stores */}
       {topErrTiendas.length > 0 && (
         <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-          <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Tiendas con más errores hoy</div>
+          <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Tiendas con más errores</div>
           {topErrTiendas.map(([nombre, n]) => (
             <div key={nombre} className="flex items-center gap-2.5 py-2 border-b border-border/40 last:border-0">
               <div className="w-2.5 h-2.5 bg-red rounded-full flex-shrink-0" />
@@ -593,7 +659,7 @@ function DashboardContent({ todayEntries, today }: { todayEntries: AuditEntry[];
       {/* Recent audits */}
       <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
         <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Últimas auditorías</div>
-        {todayEntries.slice(0, 6).map(e => (
+        {entries.slice(0, 6).map(e => (
           <div key={e.id} className="flex items-center gap-2.5 py-2 border-b border-border/40 last:border-0">
             <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${e.resultado === 'bueno' ? 'bg-success' : 'bg-red'}`} />
             <span className="text-[12px] text-text-2 flex-shrink-0 w-10">{e.hora}</span>
@@ -774,8 +840,8 @@ function HistoryContent({ history, today, onReaudit, onExportPDF }: {
 }
 
 /* ── Desktop Stats Panel ── */
-function StatsPanel({ history, todayEntries, today, onReaudit, odooConfig }: {
-  history: AuditEntry[]; todayEntries: AuditEntry[]; today: string;
+function StatsPanel({ history, today, onReaudit, odooConfig }: {
+  history: AuditEntry[]; today: string;
   onReaudit: (e: AuditEntry) => void; odooConfig: OdooConfig;
 }) {
   const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history'>('dashboard');
@@ -790,7 +856,7 @@ function StatsPanel({ history, todayEntries, today, onReaudit, odooConfig }: {
         ))}
       </div>
       <div className="flex-1 overflow-hidden flex flex-col">
-        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent todayEntries={todayEntries} today={today} /></div>}
+        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>}
         {tab === 'ranking' && <RankingContent history={history} odooConfig={odooConfig} />}
         {tab === 'history' && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} />}
       </div>
@@ -831,6 +897,7 @@ function MobileMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: 
    MAIN SCREEN
 ════════════════════════════════════════ */
 export function AuditoriaScreen() {
+  const { signOut, user } = useAuth();
   const { showToast, state } = useApp();
   const router = useRouter();
 
@@ -858,7 +925,22 @@ export function AuditoriaScreen() {
 
   useEffect(() => {
     const cfg = getOdooConfig(); if (cfg) setOdooConfig(cfg);
-    try { const h = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; setHistory(h.slice(-150).reverse()); } catch { /* empty */ }
+    (async () => {
+      const { data, error } = await supabase
+        .from('audit_entries')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (data && !error && data.length > 0) {
+        setHistory(data.map(r => rowToEntry(r as Record<string, unknown>)));
+      } else {
+        // Fallback: localStorage (migration / offline)
+        try {
+          const h = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[];
+          setHistory(h.slice(-200).reverse());
+        } catch { /* empty */ }
+      }
+    })();
   }, []);
   useEffect(() => { setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' }))); }, [tipo]);
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
@@ -907,7 +989,12 @@ export function AuditoriaScreen() {
       tipo, operaciones, pallets: parseInt(pallets), tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
     };
-    try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev)); setHistory([entry, ...history.slice(0, 149)]); } catch { /* empty */ }
+    setHistory([entry, ...history.slice(0, 199)]);
+    if (user) {
+      supabase.from('audit_entries').insert(entryToRow(entry, user.id))
+        .then(({ error }) => { if (error) console.error('Audit save:', error.message); });
+    }
+    try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
     sheetsAuditoriaWrite(entry, state.sheetsUrl);
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
     setTienda(null); setTiendaQuery(''); setPicker(''); setTipo('comida'); setPallets('');
@@ -937,14 +1024,16 @@ export function AuditoriaScreen() {
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
           <div className="text-[11px] text-white/40 uppercase tracking-widest">Control de calidad pallet</div>
         </div>
-        {/* Mobile: hamburger + config */}
+        {/* Mobile: hamburger + config + logout */}
         <div className="flex md:hidden items-center gap-1">
           <button onClick={() => setShowOdooConf(true)} className="border-none bg-white/10 text-white/60 text-[15px] cursor-pointer px-2.5 py-1.5 rounded-full">⚙</button>
           <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>
+          <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full">Salir</button>
         </div>
-        {/* Desktop: just config */}
+        {/* Desktop: config + logout */}
         <div className="hidden md:flex items-center gap-1">
           <button onClick={() => setShowOdooConf(true)} className="border-none bg-white/10 text-white/60 text-[15px] cursor-pointer px-2.5 py-1.5 rounded-full">⚙</button>
+          <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white/70 transition-colors">Salir</button>
         </div>
       </div>
 
@@ -1085,7 +1174,7 @@ export function AuditoriaScreen() {
 
         {/* RIGHT: STATS PANEL (desktop only) */}
         <div className="hidden md:flex md:flex-1 overflow-hidden">
-          <StatsPanel history={history} todayEntries={todayEntries} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} />
+          <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} />
         </div>
       </div>
 
@@ -1096,7 +1185,7 @@ export function AuditoriaScreen() {
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="flex-1"><div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Dashboard</div><div className="text-[11px] text-white/40">{today} · {todayEntries.length} auditorías</div></div>
           </div>
-          <div className="flex-1 overflow-y-auto"><DashboardContent todayEntries={todayEntries} today={today} /></div>
+          <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>
         </div>
       )}
       {view === 'ranking' && (
