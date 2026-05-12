@@ -1393,7 +1393,7 @@ export function AuditoriaScreen() {
                         <label className="flex items-center gap-3 px-4 py-2.5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
                           <span className="text-[22px]">📷</span>
                           <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
-                          <input type="file" accept="image/*" capture="environment" className="hidden"
+                          <input type="file" accept="image/*" className="hidden"
                             onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); } }} />
                         </label>
                       )}
@@ -1459,7 +1459,7 @@ export function AuditoriaScreen() {
               <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
                 <span className="text-[28px]">📷</span>
                 <span className="text-[13px] text-text-3 font-barlow">Adjuntar foto de productos con error</span>
-                <input type="file" accept="image/*" capture="environment" className="hidden"
+                <input type="file" accept="image/*" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }} />
               </label>
             )}
