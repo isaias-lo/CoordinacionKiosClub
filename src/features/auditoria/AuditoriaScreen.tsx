@@ -19,6 +19,7 @@ function entryToRow(entry: AuditEntry, userId: string) {
     observaciones: entry.observaciones, reauditoria_de_id: entry.reauditoriaDeId ?? null,
     productos: entry.productos,
     foto_url: entry.fotoUrl ?? null,
+    pallet_fotos: entry.palletFotos ?? [],
   };
 }
 function rowToEntry(r: Record<string, unknown>): AuditEntry {
@@ -35,6 +36,7 @@ function rowToEntry(r: Record<string, unknown>): AuditEntry {
     reauditoriaDeId: r.reauditoria_de_id as string | undefined,
     productos: (r.productos as ProductoError[]) ?? [],
     fotoUrl: (r.foto_url as string) || undefined,
+    palletFotos: (r.pallet_fotos as AuditEntry['palletFotos']) || undefined,
   };
 }
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
@@ -378,9 +380,9 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
   );
 }
 
-/* ── Picker Selector (searchable dropdown) ── */
-function PickerSelector({ picker, pickerNames, onChange }: {
-  picker: string; pickerNames: Record<string, string>; onChange: (p: string) => void;
+/* ── Auditor Selector (searchable dropdown from configured list) ── */
+function AuditorSelector({ auditor, auditorList, onChange }: {
+  auditor: string; auditorList: string[]; onChange: (a: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen]   = useState(false);
@@ -392,71 +394,32 @@ function PickerSelector({ picker, pickerNames, onChange }: {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const options = PICKERS_LIST.filter(p => {
-    if (!query) return true;
-    const name  = pickerNames[p] ?? '';
-    const idx   = PICKERS_LIST.indexOf(p) + 1;
-    return name.toLowerCase().includes(query.toLowerCase()) ||
-           `p.${idx}`.includes(query.toLowerCase()) ||
-           `picker ${idx}`.includes(query.toLowerCase());
-  });
-
-  const selectedIdx  = picker ? PICKERS_LIST.indexOf(picker) + 1 : 0;
-  const selectedName = picker ? (pickerNames[picker] || picker) : '';
+  const filtered = auditorList.filter(n => !query || n.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div ref={ref} className="relative mb-1">
-      <div
-        onClick={() => { setOpen(o => !o); setQuery(''); }}
+    <div ref={ref} className="relative">
+      <div onClick={() => setOpen(o => !o)}
         className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
         style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-        {picker ? (
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded flex-shrink-0">P.{selectedIdx}</span>
-            <span className="font-semibold text-text text-[15px] truncate">{selectedName}</span>
-          </div>
-        ) : (
-          <span className="text-text-3 font-barlow text-[15px]">Seleccionar picker…</span>
-        )}
+        {auditor
+          ? <span className="font-semibold text-text text-[15px]">{auditor}</span>
+          : <span className="text-text-3 font-barlow text-[15px]">{auditorList.length === 0 ? 'Sin auditores configurados…' : 'Seleccionar auditor…'}</span>}
         <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
       </div>
-
       {open && (
         <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
           <div className="p-2 border-b border-border">
-            <input
-              autoFocus
-              type="text"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Buscar por nombre…"
-              className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text text-[14px] outline-none focus:border-navy [-webkit-appearance:none]"
-            />
+            <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Buscar auditor…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
           </div>
-          {picker && (
-            <div
-              onClick={() => { onChange(''); setOpen(false); }}
-              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border/40 hover:bg-bg text-text-3 text-[13px]">
-              <span className="text-[15px]">✕</span> Ninguno
-            </div>
-          )}
-          <div className="max-h-60 overflow-y-auto">
-            {options.length === 0 && (
-              <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>
-            )}
-            {options.map(p => {
-              const idx  = PICKERS_LIST.indexOf(p) + 1;
-              const name = pickerNames[p] ?? '';
-              return (
-                <div key={p}
-                  onClick={() => { onChange(p); setOpen(false); setQuery(''); }}
-                  className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 transition-colors ${picker === p ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
-                  <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded flex-shrink-0 w-8 text-center">P.{idx}</span>
-                  <span className={`text-[14px] flex-1 ${name ? 'font-semibold text-text' : 'italic text-text-3'}`}>{name || 'Sin nombre configurado'}</span>
-                  {picker === p && <span className="text-navy font-bold text-[16px] flex-shrink-0">✓</span>}
-                </div>
-              );
-            })}
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{auditorList.length === 0 ? 'Configura auditores en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.map(name => (
+              <div key={name} onClick={() => { onChange(name); setOpen(false); setQuery(''); }}
+                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 font-barlow text-[14px] ${auditor === name ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
+                {name}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -994,11 +957,11 @@ export function AuditoriaScreen() {
   const [viewInit,       setViewInit]       = useState(false);
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [fotoFile,       setFotoFile]       = useState<File | null>(null);
-  const [fotoPreview,    setFotoPreview]    = useState('');
+  const [palletFiles,    setPalletFiles]    = useState<Record<string, File>>({});
+  const [palletPreviews, setPalletPreviews] = useState<Record<string, string>>({});
   const [submitting,     setSubmitting]     = useState(false);
-  const fotoInputRef = useRef<HTMLInputElement>(null);
   const [pickerNamesState, setPickerNamesState] = useState<Record<string, string>>({ ...PICKER_NAMES });
+  const [auditorList,      setAuditorList]      = useState<string[]>([]);
 
   // Set initial view once profile loads
   useEffect(() => {
@@ -1028,16 +991,25 @@ export function AuditoriaScreen() {
     })();
   }, []);
   useEffect(() => {
-    supabase.from('picker_config').select('nombres').eq('id', 1).single()
+    supabase.from('picker_config').select('nombres, auditores').eq('id', 1).single()
       .then(({ data }) => {
         if (data?.nombres && typeof data.nombres === 'object') {
           const loaded = data.nombres as Record<string, string>;
           updatePickerNames(loaded);
           setPickerNamesState({ ...PICKER_NAMES });
         }
+        if (Array.isArray(data?.auditores)) {
+          setAuditorList(data.auditores as string[]);
+        }
       });
   }, []);
-  useEffect(() => { setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' }))); }, [tipo]);
+  useEffect(() => {
+    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' })));
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({});
+    setPalletPreviews({});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipo]);
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (tiendaRef.current && !tiendaRef.current.contains(e.target as Node)) setTiendaOpen(false); };
@@ -1049,7 +1021,7 @@ export function AuditoriaScreen() {
     const f = tiposError.includes('faltante'), s = tiposError.includes('sobrante');
     if (f && s) return 'cruce'; if (f) return 'faltante'; if (s) return 'sobrante'; return 'correcto';
   }, [tieneErrores, tiposError]);
-  const resultado = useMemo<ResultadoAuditoria>(() => correccion === 'correcto' ? 'bueno' : 'malo', [correccion]);
+  const resultado = useMemo<ResultadoAuditoria>(() => tieneErrores === true ? 'malo' : 'bueno', [tieneErrores]);
 
   const tiendaFiltered = TODAS_LAS_TIENDAS.filter(t => {
     const q = tiendaQuery.toLowerCase();
@@ -1080,16 +1052,18 @@ export function AuditoriaScreen() {
     setSubmitting(true);
     const now = new Date();
     const entryId = `AUD-${Date.now()}`;
-    let fotoUrl: string | undefined;
-    if (fotoFile && user) {
-      const ext = fotoFile.name.split('.').pop() || 'jpg';
-      const path = `${user.id}/${entryId}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('audit-photos')
-        .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-      if (!upErr) {
-        const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-        fotoUrl = publicUrl;
+    const uploadedFotos: { subTipo: SubTipo; url: string }[] = [];
+    if (user && Object.keys(palletFiles).length > 0) {
+      for (const [st, file] of Object.entries(palletFiles)) {
+        const ext = file.name.split('.').pop() || 'jpg';
+        const path = `${user.id}/${entryId}_${st}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('audit-photos')
+          .upload(path, file, { contentType: file.type, upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+          uploadedFotos.push({ subTipo: st as SubTipo, url: publicUrl });
+        }
       }
     }
     const entry: AuditEntry = {
@@ -1097,7 +1071,7 @@ export function AuditoriaScreen() {
       auditor: auditor.trim(), picker: picker.trim(), tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: parseInt(pallets), tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
-      fotoUrl,
+      palletFotos: uploadedFotos.length > 0 ? uploadedFotos : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
@@ -1109,9 +1083,8 @@ export function AuditoriaScreen() {
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
     setTienda(null); setTiendaQuery(''); setPicker(''); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
-    setFotoFile(null); setFotoPreview('');
-    if (fotoInputRef.current) fotoInputRef.current.value = '';
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({}); setPalletPreviews({});
     setSubmitting(false);
   };
 
@@ -1194,7 +1167,7 @@ export function AuditoriaScreen() {
     return (
       <ConfigPanel
         onBack={() => setView('hub')}
-        onSaved={names => { setPickerNamesState({ ...names }); }}
+        onSaved={(names, auds) => { setPickerNamesState({ ...names }); setAuditorList(auds); }}
       />
     );
   }
@@ -1265,11 +1238,25 @@ export function AuditoriaScreen() {
             )}
 
             <SLabel>Auditor</SLabel>
-            <input type="text" value={auditor} onChange={e => setAuditor(e.target.value)} placeholder="Nombre del auditor"
-              className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[16px] outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+            <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={setAuditor} />
 
             <SLabel>Picker (armador del pallet)</SLabel>
-            <PickerSelector picker={picker} pickerNames={pickerNamesState} onChange={setPicker} />
+            {picker
+              ? (
+                <div className="flex items-center gap-2 bg-white border-[1.5px] border-info/40 rounded-btn px-3 py-2.5" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                  <span className="text-[11px] font-bold text-info bg-info/10 px-2 py-0.5 rounded-full flex-shrink-0">{picker.replace('Pickers ', 'P.')}</span>
+                  <span className="flex-1 text-text font-barlow text-[15px] font-semibold">{pickerNamesState[picker] || picker}</span>
+                  <span className="text-[10px] text-text-3 flex-shrink-0">Auto · Odoo</span>
+                  <button onClick={() => setPicker('')} className="border-none bg-transparent text-text-3 hover:text-red cursor-pointer text-[18px] leading-none px-1 flex-shrink-0">×</button>
+                </div>
+              )
+              : (
+                <div className="flex items-center gap-2 bg-bg border-[1.5px] border-dashed border-border rounded-btn px-3 py-2.5" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                  <span className="text-[18px]">🔄</span>
+                  <span className="text-text-3 font-barlow text-[13px]">Se detecta automáticamente al cargar operación Odoo</span>
+                </div>
+              )
+            }
 
             <SLabel>Tienda</SLabel>
             <div ref={tiendaRef} className="relative">
@@ -1358,29 +1345,34 @@ export function AuditoriaScreen() {
             <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
               className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
-            <SLabel>Foto del error <span className="text-[9px] font-normal ml-1 normal-case">opcional · desde cámara o galería</span></SLabel>
-            {fotoPreview ? (
-              <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                <img src={fotoPreview} alt="preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
-                <button
-                  onClick={() => { URL.revokeObjectURL(fotoPreview); setFotoFile(null); setFotoPreview(''); if (fotoInputRef.current) fotoInputRef.current.value = ''; }}
-                  className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-8 h-8 text-[18px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                  style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center gap-2 py-5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                <span className="text-[36px]">📷</span>
-                <span className="text-[13px] text-text-3 font-barlow text-center">Adjuntar foto del error</span>
-                <input
-                  ref={fotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }}
-                />
-              </label>
-            )}
+            <SLabel>Fotos de pallets <span className="text-[9px] font-normal ml-1 normal-case">una por tipo · desde cámara o galería</span></SLabel>
+            <div className="flex flex-col gap-2">
+              {TIPO_TO_SUBTIPOS[tipo].map(st => {
+                const preview = palletPreviews[st];
+                const label = `Pallet de ${SUBTIPO_LABEL[st]}`;
+                return (
+                  <div key={st}>
+                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1">{label}</div>
+                    {preview ? (
+                      <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                        <img src={preview} alt={label} className="w-full object-cover" style={{ maxHeight: 160 }} />
+                        <button
+                          onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const n = { ...p }; delete n[st]; return n; }); setPalletFiles(p => { const n = { ...p }; delete n[st]; return n; }); }}
+                          className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                        <span className="text-[28px]">📷</span>
+                        <span className="text-[13px] text-text-3 font-barlow">Adjuntar {label.toLowerCase()}</span>
+                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [st]: f })); setPalletPreviews(p => ({ ...p, [st]: URL.createObjectURL(f) })); } }} />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
             <button onClick={handleSubmit} disabled={!canSubmit || submitting}
               className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
@@ -1470,23 +1462,42 @@ function AdminAudStats({ history, today, odooConfig, onBack }: {
 /* ════ Config Panel ════ */
 function ConfigPanel({ onBack, onSaved }: {
   onBack: () => void;
-  onSaved: (names: Record<string, string>) => void;
+  onSaved: (names: Record<string, string>, auditores: string[]) => void;
 }) {
-  const [names,   setNames]   = useState<Record<string, string>>({ ...PICKER_NAMES });
-  const [saving,  setSaving]  = useState(false);
-  const [saved,   setSaved]   = useState(false);
-  const [error,   setError]   = useState('');
+  const [names,        setNames]        = useState<Record<string, string>>({ ...PICKER_NAMES });
+  const [auditores,    setAuditores]    = useState<string[]>([]);
+  const [newAuditor,   setNewAuditor]   = useState('');
+  const [saving,       setSaving]       = useState(false);
+  const [saved,        setSaved]        = useState(false);
+  const [error,        setError]        = useState('');
+
+  useEffect(() => {
+    supabase.from('picker_config').select('nombres, auditores').eq('id', 1).single()
+      .then(({ data }) => {
+        if (data?.nombres && typeof data.nombres === 'object') setNames({ ...PICKER_NAMES, ...(data.nombres as Record<string, string>) });
+        if (Array.isArray(data?.auditores)) setAuditores(data.auditores as string[]);
+      });
+  }, []);
+
+  const addAuditor = () => {
+    const name = newAuditor.trim();
+    if (!name || auditores.includes(name)) return;
+    setAuditores(prev => [...prev, name].sort());
+    setNewAuditor('');
+  };
+
+  const removeAuditor = (name: string) => setAuditores(prev => prev.filter(a => a !== name));
 
   const handleSave = async () => {
     setSaving(true); setError('');
     const { error: err } = await supabase
       .from('picker_config')
-      .upsert({ id: 1, nombres: names, updated_at: new Date().toISOString() });
+      .upsert({ id: 1, nombres: names, auditores, updated_at: new Date().toISOString() });
     if (err) {
       setError(err.message);
     } else {
       updatePickerNames(names);
-      onSaved(names);
+      onSaved(names, auditores);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     }
@@ -1539,6 +1550,49 @@ function ConfigPanel({ onBack, onSaved }: {
                     placeholder="Nombre del picker…"
                     className="flex-1 bg-white border border-border rounded-btn px-2.5 py-1.5 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
                   />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Auditor list section */}
+          <div className="bg-white border border-border rounded-card overflow-hidden"
+            style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <span className="text-[20px]">👤</span>
+              <div>
+                <div className="font-barlow-condensed text-[17px] font-bold text-navy">Auditores</div>
+                <div className="text-[11px] text-text-3">Lista de auditores disponibles para seleccionar en el formulario</div>
+              </div>
+            </div>
+            <div className="p-4 flex flex-col gap-2">
+              {/* Add new */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newAuditor}
+                  onChange={e => setNewAuditor(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAuditor(); } }}
+                  placeholder="Nombre del auditor…"
+                  className="flex-1 bg-white border border-border rounded-btn px-3 py-2 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
+                />
+                <button
+                  onClick={addAuditor}
+                  disabled={!newAuditor.trim()}
+                  className="px-4 py-2 rounded-btn font-barlow-condensed text-[14px] font-bold text-white cursor-pointer disabled:opacity-40 active:scale-95 transition-all"
+                  style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                  + Agregar
+                </button>
+              </div>
+              {/* List */}
+              {auditores.length === 0 && (
+                <div className="text-center text-text-3 text-[12px] py-3 italic">Sin auditores configurados aún</div>
+              )}
+              {auditores.map(name => (
+                <div key={name} className="flex items-center justify-between px-3 py-2.5 bg-bg rounded-btn border border-border">
+                  <span className="text-[14px] font-semibold text-text">{name}</span>
+                  <button onClick={() => removeAuditor(name)}
+                    className="border-none bg-transparent text-text-3 hover:text-red cursor-pointer text-[18px] leading-none px-1 transition-colors">×</button>
                 </div>
               ))}
             </div>
