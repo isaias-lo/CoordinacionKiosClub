@@ -427,6 +427,64 @@ function AuditorSelector({ auditor, auditorList, onChange }: {
   );
 }
 
+/* ── Picker Name Selector (searchable dropdown from configured picker names) ── */
+function PickerNameSelector({ picker, pickerNames, onChange }: {
+  picker: string; pickerNames: Record<string, string>; onChange: (p: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const options = Object.entries(pickerNames).filter(([, name]) => name.trim() !== '');
+  const filtered = options.filter(([key, name]) => !query || name.toLowerCase().includes(query.toLowerCase()) || key.toLowerCase().includes(query.toLowerCase()));
+  const selectedName = picker ? (pickerNames[picker]?.trim() || picker) : null;
+
+  return (
+    <div ref={ref} className="relative">
+      <div onClick={() => setOpen(o => !o)}
+        className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
+        style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+        {selectedName
+          ? <span className="font-semibold text-text text-[15px]">{selectedName}</span>
+          : <span className="text-text-3 font-barlow text-[15px]">{options.length === 0 ? 'Sin pickers configurados…' : 'Seleccionar picker…'}</span>}
+        <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+          {options.length > 3 && (
+            <div className="p-2 border-b border-border">
+              <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Buscar picker…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
+            </div>
+          )}
+          <div className="max-h-48 overflow-y-auto">
+            {picker && (
+              <div onClick={() => { onChange(''); setOpen(false); setQuery(''); }}
+                className="px-4 py-2 cursor-pointer border-b border-border/40 text-text-3 text-[12px] italic hover:bg-bg">
+                — Sin picker
+              </div>
+            )}
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{options.length === 0 ? 'Configura pickers en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.map(([key, name]) => (
+              <div key={key} onClick={() => { onChange(key); setOpen(false); setQuery(''); }}
+                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${picker === key ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
+                <div className="font-barlow text-[14px] font-semibold">{name}</div>
+                <div className="text-[11px] text-text-3">{key.replace('Pickers ', 'P.')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Picker Card (improved ranking card) ── */
 function PickerCard({ stats, rank, trend, odooConfig, compact = false }: {
   stats: PickerStats; rank: number; trend: WeekTrend[];
@@ -959,6 +1017,8 @@ export function AuditoriaScreen() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [palletFiles,    setPalletFiles]    = useState<Record<string, File>>({});
   const [palletPreviews, setPalletPreviews] = useState<Record<string, string>>({});
+  const [fotoFile,       setFotoFile]       = useState<File | null>(null);
+  const [fotoPreview,    setFotoPreview]    = useState('');
   const [submitting,     setSubmitting]     = useState(false);
   const [pickerNamesState, setPickerNamesState] = useState<Record<string, string>>({ ...PICKER_NAMES });
   const [auditorList,      setAuditorList]      = useState<string[]>([]);
@@ -1008,6 +1068,9 @@ export function AuditoriaScreen() {
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({});
     setPalletPreviews({});
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    setFotoFile(null);
+    setFotoPreview('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
@@ -1052,25 +1115,41 @@ export function AuditoriaScreen() {
     setSubmitting(true);
     const now = new Date();
     const entryId = `AUD-${Date.now()}`;
-    const uploadedFotos: { subTipo: SubTipo; url: string }[] = [];
-    if (user && Object.keys(palletFiles).length > 0) {
-      for (const [st, file] of Object.entries(palletFiles)) {
+    const uploadedFotos: { label: string; url: string }[] = [];
+    const palletCount = parseInt(pallets) || 0;
+    if (user) {
+      for (let n = 1; n <= palletCount; n++) {
+        const file = palletFiles[String(n)];
+        if (!file) continue;
         const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_${st}.${ext}`;
+        const path = `${user.id}/${entryId}_pallet${n}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from('audit-photos')
           .upload(path, file, { contentType: file.type, upsert: true });
         if (!upErr) {
           const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedFotos.push({ subTipo: st as SubTipo, url: publicUrl });
+          uploadedFotos.push({ label: `Pallet ${n}`, url: publicUrl });
         }
+      }
+    }
+    let uploadedFotoUrl: string | undefined;
+    if (user && fotoFile) {
+      const ext = fotoFile.name.split('.').pop() || 'jpg';
+      const path = `${user.id}/${entryId}_error.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('audit-photos')
+        .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
+      if (!upErr) {
+        const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+        uploadedFotoUrl = publicUrl;
       }
     }
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
       auditor: auditor.trim(), picker: picker.trim(), tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
-      tipo, operaciones, pallets: parseInt(pallets), tieneErrores: tieneErrores === true, tiposError, productos,
+      tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
+      fotoUrl: uploadedFotoUrl,
       palletFotos: uploadedFotos.length > 0 ? uploadedFotos : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
@@ -1085,6 +1164,8 @@ export function AuditoriaScreen() {
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({});
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    setFotoFile(null); setFotoPreview('');
     setSubmitting(false);
   };
 
@@ -1241,22 +1322,12 @@ export function AuditoriaScreen() {
             <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={setAuditor} />
 
             <SLabel>Picker (armador del pallet)</SLabel>
-            {picker
-              ? (
-                <div className="flex items-center gap-2 bg-white border-[1.5px] border-info/40 rounded-btn px-3 py-2.5" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-                  <span className="text-[11px] font-bold text-info bg-info/10 px-2 py-0.5 rounded-full flex-shrink-0">{picker.replace('Pickers ', 'P.')}</span>
-                  <span className="flex-1 text-text font-barlow text-[15px] font-semibold">{pickerNamesState[picker] || picker}</span>
-                  <span className="text-[10px] text-text-3 flex-shrink-0">Auto · Odoo</span>
-                  <button onClick={() => setPicker('')} className="border-none bg-transparent text-text-3 hover:text-red cursor-pointer text-[18px] leading-none px-1 flex-shrink-0">×</button>
-                </div>
-              )
-              : (
-                <div className="flex items-center gap-2 bg-bg border-[1.5px] border-dashed border-border rounded-btn px-3 py-2.5" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                  <span className="text-[18px]">🔄</span>
-                  <span className="text-text-3 font-barlow text-[13px]">Se detecta automáticamente al cargar operación Odoo</span>
-                </div>
-              )
-            }
+            <PickerNameSelector picker={picker} pickerNames={pickerNamesState} onChange={setPicker} />
+            {!picker && (
+              <div className="mt-1 text-[11px] text-text-3 flex items-center gap-1">
+                <span>🔄</span><span>Se auto-detecta al cargar operación Odoo</span>
+              </div>
+            )}
 
             <SLabel>Tienda</SLabel>
             <div ref={tiendaRef} className="relative">
@@ -1301,6 +1372,36 @@ export function AuditoriaScreen() {
             <SLabel>Pallets auditados</SLabel>
             <input type="number" inputMode="numeric" min="1" max="99" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0"
               className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+            {parseInt(pallets) > 0 && (
+              <div className="mt-2 flex flex-col gap-2">
+                <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional</span></div>
+                {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
+                  const key = String(n);
+                  const preview = palletPreviews[key];
+                  return (
+                    <div key={key}>
+                      {preview ? (
+                        <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                          <img src={preview} alt={`Pallet ${n}`} className="w-full object-cover" style={{ maxHeight: 140 }} />
+                          <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">Pallet {n}</div>
+                          <button
+                            onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
+                            className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center gap-3 px-4 py-2.5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                          <span className="text-[22px]">📷</span>
+                          <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
+                          <input type="file" accept="image/*" capture="environment" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); } }} />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <SLabel>¿Tuvo errores?</SLabel>
             <div className="grid grid-cols-2 gap-3">
@@ -1329,7 +1430,7 @@ export function AuditoriaScreen() {
               </>
             )}
 
-            {tieneErrores !== null && (
+            {tieneErrores !== null && !(tieneErrores && tiposError.length === 0) && (
               <>
                 <SLabel>Corrección <span className="text-[9px] font-normal ml-1 normal-case">automática</span></SLabel>
                 <div className={`py-3.5 px-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold text-center ${CORR_COLOR[correccion]}`}>{CORR_LABEL[correccion]}</div>
@@ -1345,34 +1446,23 @@ export function AuditoriaScreen() {
             <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
               className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
-            <SLabel>Fotos de pallets <span className="text-[9px] font-normal ml-1 normal-case">una por tipo · desde cámara o galería</span></SLabel>
-            <div className="flex flex-col gap-2">
-              {TIPO_TO_SUBTIPOS[tipo].map(st => {
-                const preview = palletPreviews[st];
-                const label = `Pallet de ${SUBTIPO_LABEL[st]}`;
-                return (
-                  <div key={st}>
-                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1">{label}</div>
-                    {preview ? (
-                      <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                        <img src={preview} alt={label} className="w-full object-cover" style={{ maxHeight: 160 }} />
-                        <button
-                          onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const n = { ...p }; delete n[st]; return n; }); setPalletFiles(p => { const n = { ...p }; delete n[st]; return n; }); }}
-                          className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
-                      </div>
-                    ) : (
-                      <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                        <span className="text-[28px]">📷</span>
-                        <span className="text-[13px] text-text-3 font-barlow">Adjuntar {label.toLowerCase()}</span>
-                        <input type="file" accept="image/*" capture="environment" className="hidden"
-                          onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [st]: f })); setPalletPreviews(p => ({ ...p, [st]: URL.createObjectURL(f) })); } }} />
-                      </label>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <SLabel>Foto de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados</span></SLabel>
+            {fotoPreview ? (
+              <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                <img src={fotoPreview} alt="foto de productos" className="w-full object-cover" style={{ maxHeight: 180 }} />
+                <button
+                  onClick={() => { URL.revokeObjectURL(fotoPreview); setFotoFile(null); setFotoPreview(''); }}
+                  className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                  style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                <span className="text-[28px]">📷</span>
+                <span className="text-[13px] text-text-3 font-barlow">Adjuntar foto de productos con error</span>
+                <input type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }} />
+              </label>
+            )}
 
             <button onClick={handleSubmit} disabled={!canSubmit || submitting}
               className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"

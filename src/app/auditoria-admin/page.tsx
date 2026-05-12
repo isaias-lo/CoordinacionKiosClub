@@ -26,8 +26,6 @@ function rowToEntry(r: Record<string, unknown>): AuditEntry {
   };
 }
 
-const SUBTIPO_LABEL: Record<string, string> = { comida: 'Comida', aseo: 'Aseo', hogar: 'Hogar' };
-
 const CORR_LABEL: Record<CorreccionAuditoria, string> = {
   correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante',
 };
@@ -92,13 +90,13 @@ function EntryCard({ entry, onPhotoClick }: { entry: AuditEntry; onPhotoClick: (
       {/* Pallet photos */}
       {entry.palletFotos && entry.palletFotos.length > 0 && (
         <div className="flex flex-col gap-1.5 mt-1">
-          {entry.palletFotos.map(pf => (
-            <button key={pf.subTipo} onClick={() => onPhotoClick(pf.url)}
+          {entry.palletFotos.map((pf, idx) => (
+            <button key={idx} onClick={() => onPhotoClick(pf.url)}
               className="block w-full rounded-card overflow-hidden border border-border cursor-pointer"
               style={{ padding: 0, background: 'none' }}>
-              <img src={pf.url} alt={`pallet ${pf.subTipo}`} className="w-full object-cover" style={{ maxHeight: 160 }} />
+              <img src={pf.url} alt={pf.label} className="w-full object-cover" style={{ maxHeight: 160 }} />
               <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1 text-left">
-                📷 Pallet de {SUBTIPO_LABEL[pf.subTipo] ?? pf.subTipo} · toca para ampliar
+                📷 {pf.label} · toca para ampliar
               </div>
             </button>
           ))}
@@ -289,20 +287,20 @@ export default function AuditoriaAdminPage() {
                 {withPhotos.flatMap(e => {
                   const cards = [];
                   if (e.palletFotos && e.palletFotos.length > 0) {
-                    for (const pf of e.palletFotos) {
+                    e.palletFotos.forEach((pf, idx) => {
                       cards.push(
-                        <button key={`${e.id}_${pf.subTipo}`} onClick={() => setLightbox(pf.url)}
+                        <button key={`${e.id}_pallet${idx}`} onClick={() => setLightbox(pf.url)}
                           className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
                           style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                          <img src={pf.url} alt={`pallet ${pf.subTipo}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                          <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
-                            <div className="text-white/80 text-[9px] font-bold uppercase tracking-wide">Pallet de {SUBTIPO_LABEL[pf.subTipo] ?? pf.subTipo}</div>
+                            <div className="text-white/80 text-[9px] font-bold uppercase tracking-wide">{pf.label}</div>
                             <div className="text-white text-[10px] font-bold truncate">{e.tiendaNombre}</div>
                             <div className="text-white/60 text-[9px]">{e.fecha} · {e.auditor}</div>
                           </div>
                         </button>
                       );
-                    }
+                    });
                   }
                   if (e.fotoUrl) {
                     cards.push(
