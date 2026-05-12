@@ -5,26 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../components/AuthProvider';
 import { getPickerDisplay } from '../../features/auditoria/data/pickerNames';
+import { rowToEntry } from '../../features/auditoria/utils/converters';
 import type { AuditEntry, CorreccionAuditoria } from '../../features/auditoria/types';
-import type { ProductoError, OperacionEntry, TipoError, TipoAuditoria } from '../../features/auditoria/types';
-
-function rowToEntry(r: Record<string, unknown>): AuditEntry {
-  return {
-    id: r.id as string, fecha: r.fecha as string, hora: r.hora as string,
-    auditor: r.auditor as string, picker: r.picker as string,
-    tiendaCod: r.tienda_cod as string, tiendaNombre: r.tienda_nombre as string,
-    tiendaArea: r.tienda_area as AuditEntry['tiendaArea'],
-    tipo: r.tipo as TipoAuditoria, operaciones: (r.operaciones as OperacionEntry[]) ?? [],
-    pallets: r.pallets as number, tieneErrores: r.tiene_errores as boolean,
-    tiposError: (r.tipos_error as TipoError[]) ?? [],
-    correccion: r.correccion as CorreccionAuditoria, resultado: r.resultado as AuditEntry['resultado'],
-    observaciones: r.observaciones as string,
-    reauditoriaDeId: r.reauditoria_de_id as string | undefined,
-    productos: (r.productos as ProductoError[]) ?? [],
-    fotoUrl: (r.foto_url as string) || undefined,
-    palletFotos: (r.pallet_fotos as AuditEntry['palletFotos']) || undefined,
-  };
-}
 
 const CORR_LABEL: Record<CorreccionAuditoria, string> = {
   correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante',
