@@ -38,7 +38,7 @@ function rowToEntry(r: Record<string, unknown>): AuditEntry {
   };
 }
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
-import { PICKERS_LIST, PICKER_NAMES, getPickerDisplay, matchOdooResponsable } from './data/pickerNames';
+import { PICKERS_LIST, PICKER_NAMES, getPickerDisplay, matchOdooResponsable, updatePickerNames } from './data/pickerNames';
 import { buscarOperaciones, buscarProducto, getOdooConfig, getPickerOdooStats } from './utils/odooApi';
 import type { PickerOdooStats } from './utils/odooApi';
 import { sheetsAuditoriaWrite } from './utils/sheetsAuditoria';
@@ -371,6 +371,92 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
               {ratioPreview && <div className={`text-center mt-1 font-barlow-condensed font-bold text-[15px] ${tipoProd === 'faltante' ? 'text-red' : 'text-warn'}`}>{ratioPreview.auditado}/{ratioPreview.esperado} <span className="text-[12px] opacity-70">({ratioPreview.delta > 0 ? '+' : ''}{ratioPreview.delta})</span></div>}
             </div>
             <button onClick={confirmar} disabled={!unidades || parseInt(unidades) <= 0} className="py-1.5 px-3 bg-success text-white border-none rounded-btn text-[12px] font-bold cursor-pointer disabled:opacity-40 flex-shrink-0">+ Add</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Picker Selector (searchable dropdown) ── */
+function PickerSelector({ picker, pickerNames, onChange }: {
+  picker: string; pickerNames: Record<string, string>; onChange: (p: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const options = PICKERS_LIST.filter(p => {
+    if (!query) return true;
+    const name  = pickerNames[p] ?? '';
+    const idx   = PICKERS_LIST.indexOf(p) + 1;
+    return name.toLowerCase().includes(query.toLowerCase()) ||
+           `p.${idx}`.includes(query.toLowerCase()) ||
+           `picker ${idx}`.includes(query.toLowerCase());
+  });
+
+  const selectedIdx  = picker ? PICKERS_LIST.indexOf(picker) + 1 : 0;
+  const selectedName = picker ? (pickerNames[picker] || picker) : '';
+
+  return (
+    <div ref={ref} className="relative mb-1">
+      <div
+        onClick={() => { setOpen(o => !o); setQuery(''); }}
+        className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
+        style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+        {picker ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded flex-shrink-0">P.{selectedIdx}</span>
+            <span className="font-semibold text-text text-[15px] truncate">{selectedName}</span>
+          </div>
+        ) : (
+          <span className="text-text-3 font-barlow text-[15px]">Seleccionar picker…</span>
+        )}
+        <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-border">
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Buscar por nombre…"
+              className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text text-[14px] outline-none focus:border-navy [-webkit-appearance:none]"
+            />
+          </div>
+          {picker && (
+            <div
+              onClick={() => { onChange(''); setOpen(false); }}
+              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border/40 hover:bg-bg text-text-3 text-[13px]">
+              <span className="text-[15px]">✕</span> Ninguno
+            </div>
+          )}
+          <div className="max-h-60 overflow-y-auto">
+            {options.length === 0 && (
+              <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>
+            )}
+            {options.map(p => {
+              const idx  = PICKERS_LIST.indexOf(p) + 1;
+              const name = pickerNames[p] ?? '';
+              return (
+                <div key={p}
+                  onClick={() => { onChange(p); setOpen(false); setQuery(''); }}
+                  className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 transition-colors ${picker === p ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
+                  <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded flex-shrink-0 w-8 text-center">P.{idx}</span>
+                  <span className={`text-[14px] flex-1 ${name ? 'font-semibold text-text' : 'italic text-text-3'}`}>{name || 'Sin nombre configurado'}</span>
+                  {picker === p && <span className="text-navy font-bold text-[16px] flex-shrink-0">✓</span>}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -904,7 +990,7 @@ export function AuditoriaScreen() {
   const tiendaRef = useRef<HTMLDivElement>(null);
 
   const odooConfig = useMemo(() => getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' }, []);
-  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision'>('form');
+  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision' | 'config'>('form');
   const [viewInit,       setViewInit]       = useState(false);
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -912,6 +998,7 @@ export function AuditoriaScreen() {
   const [fotoPreview,    setFotoPreview]    = useState('');
   const [submitting,     setSubmitting]     = useState(false);
   const fotoInputRef = useRef<HTMLInputElement>(null);
+  const [pickerNamesState, setPickerNamesState] = useState<Record<string, string>>({ ...PICKER_NAMES });
 
   // Set initial view once profile loads
   useEffect(() => {
@@ -940,6 +1027,16 @@ export function AuditoriaScreen() {
       }
     })();
   }, []);
+  useEffect(() => {
+    supabase.from('picker_config').select('nombres').eq('id', 1).single()
+      .then(({ data }) => {
+        if (data?.nombres && typeof data.nombres === 'object') {
+          const loaded = data.nombres as Record<string, string>;
+          updatePickerNames(loaded);
+          setPickerNamesState({ ...PICKER_NAMES });
+        }
+      });
+  }, []);
   useEffect(() => { setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' }))); }, [tipo]);
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
   useEffect(() => {
@@ -962,7 +1059,7 @@ export function AuditoriaScreen() {
   const updateOperacion = (i: number, codigo: string) => setOperaciones(ops => ops.map((op, j) => j === i ? { ...op, codigo } : op));
 
   const handleOpSelect = (codigo: string, responsable: string | undefined) => {
-    if (responsable && !picker) {
+    if (responsable) {
       const match = matchOdooResponsable(responsable);
       if (match) { setPicker(match); showToast(`Picker detectado: ${getPickerDisplay(match)}`, '#2563EB'); }
     }
@@ -1044,14 +1141,16 @@ export function AuditoriaScreen() {
           <button onClick={async () => { await signOut(); router.push('/login'); }}
             className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
         </div>
-        <div className="flex-1 flex flex-col justify-center px-6 gap-4" style={{ maxWidth: 520, width: '100%', margin: '0 auto' }}>
+        <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-3" style={{ maxWidth: 520, width: '100%', margin: '0 auto' }}>
           {[
-            { icon: '📝', title: 'Agregar Audición', desc: 'Registrar nueva auditoría de pallet', v: 'form' as const, border: 'rgba(34,197,94,0.45)', bg: 'rgba(34,197,94,0.14)', shadow: 'rgba(34,197,94,0.22)' },
-            { icon: '📊', title: 'Estadísticas', desc: 'Dashboard del día · Ranking de Pickers', v: 'stats' as const, border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.14)', shadow: 'rgba(37,99,235,0.22)' },
-            { icon: '📋', title: 'Revisión Auditoría', desc: 'Historial de todos los registros', v: 'revision' as const, border: 'rgba(124,58,237,0.45)', bg: 'rgba(124,58,237,0.14)', shadow: 'rgba(124,58,237,0.22)' },
-          ].map(({ icon, title, desc, v, border, bg, shadow }) => (
-            <button key={v} onClick={() => setView(v)}
-              className="w-full rounded-2xl px-6 py-6 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98] text-left border-2"
+            { icon: '📝', title: 'Agregar Audición', desc: 'Registrar nueva auditoría de pallet', fn: () => setView('form'), border: 'rgba(34,197,94,0.45)', bg: 'rgba(34,197,94,0.14)', shadow: 'rgba(34,197,94,0.22)' },
+            { icon: '📊', title: 'Estadísticas', desc: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'), border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.14)', shadow: 'rgba(37,99,235,0.22)' },
+            { icon: '🔍', title: 'Revisión Auditoría', desc: 'Lista · Fotos · Estadísticas', fn: () => router.push('/auditoria-admin'), border: 'rgba(124,58,237,0.45)', bg: 'rgba(124,58,237,0.14)', shadow: 'rgba(124,58,237,0.22)' },
+            { icon: '📋', title: 'Historial', desc: 'Tus auditorías por fecha', fn: () => setView('revision'), border: 'rgba(217,119,6,0.45)', bg: 'rgba(217,119,6,0.14)', shadow: 'rgba(217,119,6,0.22)' },
+            { icon: '⚙️', title: 'Configuración', desc: 'Nombres de pickers · Ajustes del sistema', fn: () => setView('config'), border: 'rgba(20,184,166,0.45)', bg: 'rgba(20,184,166,0.14)', shadow: 'rgba(20,184,166,0.22)' },
+          ].map(({ icon, title, desc, fn, border, bg, shadow }) => (
+            <button key={title} onClick={fn}
+              className="w-full rounded-2xl px-6 py-5 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98] text-left border-2"
               style={{ background: bg, borderColor: border, boxShadow: `0 8px 28px ${shadow}` }}>
               <span className="text-[44px] leading-none flex-shrink-0">{icon}</span>
               <div>
@@ -1090,6 +1189,16 @@ export function AuditoriaScreen() {
     );
   }
 
+  /* ── Config view (admin-auditoria: picker names + future settings) ── */
+  if (isAdminAud && view === 'config') {
+    return (
+      <ConfigPanel
+        onBack={() => setView('hub')}
+        onSaved={names => { setPickerNamesState({ ...names }); }}
+      />
+    );
+  }
+
   /* ════ FORM RENDER (all roles) ════ */
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
@@ -1122,8 +1231,29 @@ export function AuditoriaScreen() {
         {/* LEFT: FORM */}
         <div className={isAdminAud
           ? 'flex-1 overflow-y-auto'
-          : 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border'}>
-          <div className={`px-4 pb-8${isAdminAud ? ' max-w-2xl mx-auto' : ''}`}>
+          : isAuditorOnly
+            ? 'flex-1 flex flex-col overflow-hidden'
+            : 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border'}>
+          {/* Auditor tab bar */}
+          {isAuditorOnly && (
+            <div className="hidden md:flex border-b border-border bg-white flex-shrink-0">
+              {([{ v: 'form' as const, label: '📝 Formulario' }, { v: 'history' as const, label: '📋 Historial' }]).map(({ v: tv, label }) => (
+                <button key={tv} onClick={() => setView(tv)}
+                  className={`flex-1 py-3 font-barlow-condensed text-[14px] font-bold border-b-2 cursor-pointer transition-colors ${tv === 'history' ? (view === 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3') : (view !== 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3')}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Auditor: inline history view */}
+          {isAuditorOnly && view === 'history' && (
+            <div className="hidden md:flex flex-1 overflow-hidden flex-col">
+              <div className="max-w-[480px] mx-auto w-full flex-1 overflow-hidden flex flex-col">
+                <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} />
+              </div>
+            </div>
+          )}
+          {(!isAuditorOnly || view !== 'history') && <div className={`px-4 pb-8${isAdminAud ? ' max-w-2xl mx-auto' : isAuditorOnly ? ' md:max-w-[480px] md:mx-auto overflow-y-auto flex-1' : ''}`}>
 
             {/* Re-audit banner */}
             {reauditoriaOrigen && (
@@ -1139,24 +1269,7 @@ export function AuditoriaScreen() {
               className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[16px] outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
             <SLabel>Picker (armador del pallet)</SLabel>
-            <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-              {PICKERS_LIST.map((p, i) => {
-                const real = PICKER_NAMES[p];
-                const isSelected = picker === p;
-                return (
-                  <button key={p} onClick={() => setPicker(prev => prev === p ? '' : p)}
-                    className={`py-2 px-1 rounded-btn border font-barlow-condensed text-[12px] font-bold cursor-pointer transition-all flex flex-col items-center leading-tight ${isSelected ? 'bg-[rgba(26,37,80,0.10)] border-navy text-navy' : 'border-border bg-white text-text-3'}`}>
-                    <span className="text-[11px] font-bold">{`P.${i + 1}`}</span>
-                    {real && <span className="text-[9px] font-normal truncate w-full text-center">{real.split(' ')[0]}</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {picker && (
-              <div className="text-center text-[12px] text-navy font-semibold py-1 px-3 bg-[rgba(26,37,80,0.05)] rounded-btn border border-navy/10">
-                {getPickerDisplay(picker)}{PICKER_NAMES[picker] ? ` — ${picker}` : ''}
-              </div>
-            )}
+            <PickerSelector picker={picker} pickerNames={pickerNamesState} onChange={setPicker} />
 
             <SLabel>Tienda</SLabel>
             <div ref={tiendaRef} className="relative">
@@ -1274,13 +1387,13 @@ export function AuditoriaScreen() {
               style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
               {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
             </button>
-          </div>
+          </div>}
         </div>
 
-        {/* RIGHT: STATS PANEL (desktop only, not for admin-auditoria) */}
-        {!isAdminAud && (
+        {/* RIGHT: STATS PANEL (desktop only, not for admin-auditoria or auditor) */}
+        {!isAdminAud && !isAuditorOnly && (
           <div className="hidden md:flex md:flex-1 overflow-hidden">
-            <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} onlyHistory={isAuditorOnly} />
+            <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} />
           </div>
         )}
       </div>
@@ -1349,6 +1462,105 @@ function AdminAudStats({ history, today, odooConfig, onBack }: {
       <div className="flex-1 overflow-hidden flex flex-col">
         {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>}
         {tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} />}
+      </div>
+    </div>
+  );
+}
+
+/* ════ Config Panel ════ */
+function ConfigPanel({ onBack, onSaved }: {
+  onBack: () => void;
+  onSaved: (names: Record<string, string>) => void;
+}) {
+  const [names,   setNames]   = useState<Record<string, string>>({ ...PICKER_NAMES });
+  const [saving,  setSaving]  = useState(false);
+  const [saved,   setSaved]   = useState(false);
+  const [error,   setError]   = useState('');
+
+  const handleSave = async () => {
+    setSaving(true); setError('');
+    const { error: err } = await supabase
+      .from('picker_config')
+      .upsert({ id: 1, nombres: names, updated_at: new Date().toISOString() });
+    if (err) {
+      setError(err.message);
+    } else {
+      updatePickerNames(names);
+      onSaved(names);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        style={{ background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)', boxShadow: '0 2px 16px rgba(15,118,110,0.35)' }}>
+        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <div className="flex-1">
+          <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Configuración</div>
+          <div className="text-[11px] text-white/50">Admin Auditoría</div>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-4 py-2 rounded-xl font-barlow-condensed text-[15px] font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+          style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
+          {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="max-w-2xl mx-auto flex flex-col gap-5">
+
+          {/* Picker names section */}
+          <div className="bg-white border border-border rounded-card overflow-hidden"
+            style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <span className="text-[20px]">👷</span>
+              <div>
+                <div className="font-barlow-condensed text-[17px] font-bold text-navy">Nombres de Pickers</div>
+                <div className="text-[11px] text-text-3">Asigna el nombre real de cada posición de picker</div>
+              </div>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {PICKERS_LIST.map((p, i) => (
+                <div key={p} className="flex items-center gap-2.5">
+                  <span className="font-mono text-[12px] font-bold text-text-3 bg-bg-2 border border-border px-2 py-1.5 rounded-btn flex-shrink-0 w-10 text-center">
+                    P.{i + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={names[p] ?? ''}
+                    onChange={e => setNames(n => ({ ...n, [p]: e.target.value }))}
+                    placeholder="Nombre del picker…"
+                    className="flex-1 bg-white border border-border rounded-btn px-2.5 py-1.5 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Future settings placeholder */}
+          <div className="bg-white border border-dashed border-border rounded-card p-4"
+            style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[20px] opacity-40">🔧</span>
+              <div className="font-barlow-condensed text-[16px] font-bold text-text-3">Próximas configuraciones</div>
+            </div>
+            <div className="text-[12px] text-text-3 italic">
+              Aquí aparecerán futuros ajustes del sistema: rangos de calidad, notificaciones, integración Odoo, etc.
+            </div>
+          </div>
+
+          {error && (
+            <div className="text-sm text-red text-center px-3 py-2.5 rounded-card border border-red/20"
+              style={{ background: 'rgba(211,47,47,0.06)' }}>{error}</div>
+          )}
+        </div>
       </div>
     </div>
   );

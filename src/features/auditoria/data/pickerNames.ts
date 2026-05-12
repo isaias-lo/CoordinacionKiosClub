@@ -1,6 +1,6 @@
 /**
  * Mapeo de claves Odoo → nombre real de la persona.
- * Editar los valores de cada clave según el equipo.
+ * Se puede editar desde el panel de Configuración del rol admin-auditoria.
  * La clave debe coincidir exactamente con el nombre del usuario en Odoo.
  */
 export const PICKER_NAMES: Record<string, string> = {
@@ -31,6 +31,11 @@ export function getPickerDisplay(key: string): string {
 
 /** Lista de claves de pickers en orden. */
 export const PICKERS_LIST = Object.keys(PICKER_NAMES);
+
+/** Actualiza el mapa en memoria (llamado al cargar config de Supabase). */
+export function updatePickerNames(names: Record<string, string>): void {
+  Object.assign(PICKER_NAMES, names);
+}
 
 /**
  * Intenta hacer match entre un nombre de usuario de Odoo y una clave PICKER_NAMES.

@@ -212,11 +212,10 @@ export default function UsuariosPage() {
 
       {/* ── Create / Edit Modal ── */}
       {modal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center px-4"
-             style={{ background: 'rgba(0,0,0,0.6)' }}
-             onClick={e => { if (e.target === e.currentTarget) setModal(null); }}>
-          <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
-               style={{ background: '#1a2550', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={() => setModal(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
+               style={{ background: '#1a2550', border: '1px solid rgba(255,255,255,0.12)' }}>
 
             <div className="font-barlow-condensed text-xl font-bold text-white tracking-wider uppercase">
               {modal === 'create' ? 'Nuevo usuario' : 'Editar usuario'}
@@ -225,33 +224,41 @@ export default function UsuariosPage() {
             {modal === 'create' && (
               <Field label="Correo electrónico">
                 <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="usuario@empresa.cl" className={inputCls} />
+                  placeholder="usuario@empresa.cl" className={inputCls}
+                  style={{ WebkitTextFillColor: 'white', WebkitBoxShadow: '0 0 0 40px #1a2550 inset' }} />
               </Field>
             )}
 
             <Field label="Nombre completo">
               <input type="text" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-                placeholder="Juan Pérez" className={inputCls} />
+                placeholder="Juan Pérez" className={inputCls}
+                autoComplete="off"
+                style={{ WebkitTextFillColor: 'white', WebkitBoxShadow: '0 0 0 40px #1a2550 inset' }} />
             </Field>
 
             {modal === 'create' && (
               <Field label="Contraseña">
                 <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres" className={inputCls} />
+                  placeholder="Mínimo 6 caracteres" className={inputCls}
+                  autoComplete="new-password"
+                  style={{ WebkitTextFillColor: 'white', WebkitBoxShadow: '0 0 0 40px #1a2550 inset' }} />
               </Field>
             )}
 
             <Field label="Rol">
-              <div className="flex gap-2">
-                {ROLE_OPTS.map(r => (
-                  <button key={r.value} onClick={() => setForm(f => ({ ...f, role: r.value }))}
-                    className="flex-1 py-2 rounded-xl text-[13px] font-bold uppercase tracking-wider cursor-pointer transition-all"
-                    style={form.role === r.value
-                      ? { background: `${r.color}33`, color: r.color, border: `2px solid ${r.color}` }
-                      : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)', border: '2px solid rgba(255,255,255,0.1)' }}>
-                    {r.label}
-                  </button>
-                ))}
+              <div className="relative">
+                <select
+                  value={form.role}
+                  onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl text-[15px] font-semibold focus:outline-none border cursor-pointer appearance-none pr-8 transition-colors"
+                  style={{ background: 'rgba(255,255,255,0.09)', color: 'white', borderColor: 'rgba(255,255,255,0.2)', WebkitTextFillColor: 'white' }}>
+                  {ROLE_OPTS.map(r => (
+                    <option key={r.value} value={r.value} style={{ background: '#1a2550', color: 'white' }}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/50 text-[11px]">▼</span>
               </div>
             </Field>
 
@@ -305,12 +312,12 @@ export default function UsuariosPage() {
   );
 }
 
-const inputCls = 'w-full px-3 py-2.5 rounded-xl text-white text-sm placeholder:text-white/30 focus:outline-none bg-white/8 border border-white/10 focus:border-white/30';
+const inputCls = 'w-full px-3 py-2.5 rounded-xl text-[15px] text-white placeholder:text-white/35 focus:outline-none bg-white/8 border border-white/15 focus:border-white/35 transition-colors';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] text-white/45 uppercase tracking-wider">{label}</label>
+      <label className="text-[11px] text-white/65 uppercase tracking-wider">{label}</label>
       {children}
     </div>
   );
