@@ -3,16 +3,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-type TabKey = 'regiones' | 'rm';
+type TabKey = 'regiones' | 'rm' | 'recepcion';
 
 const SHEETS: Record<TabKey, string> = {
-  regiones: 'DESPACHO REGIONES',
-  rm:       'DESPACHO RM',
+  regiones:  'DESPACHO REGIONES',
+  rm:        'DESPACHO RM',
+  recepcion: 'RECEPCIÓN TIENDA',
 };
 
 const COLORS: Record<TabKey, { bg: string; border: string; text: string }> = {
-  regiones: { bg: 'rgba(211,47,47,0.15)',  border: 'rgba(211,47,47,0.4)',  text: '#EF4444' },
-  rm:       { bg: 'rgba(37,99,235,0.15)',  border: 'rgba(37,99,235,0.4)',  text: '#3B82F6' },
+  regiones:  { bg: 'rgba(211,47,47,0.15)',   border: 'rgba(211,47,47,0.4)',   text: '#EF4444' },
+  rm:        { bg: 'rgba(37,99,235,0.15)',   border: 'rgba(37,99,235,0.4)',   text: '#3B82F6' },
+  recepcion: { bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.4)',  text: '#10B981' },
 };
 
 export default function RegistrosPage() {
@@ -79,13 +81,13 @@ export default function RegistrosPage() {
 
       {/* Tabs */}
       <div className="flex-shrink-0 flex gap-2 px-4 pt-3 pb-1">
-        {(['regiones', 'rm'] as TabKey[]).map(t => (
+        {(['regiones', 'rm', 'recepcion'] as TabKey[]).map(t => (
           <button key={t} onClick={() => { setTab(t); setSearch(''); }}
             className="px-4 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold uppercase tracking-wider cursor-pointer transition-all"
             style={tab === t
               ? { background: COLORS[t].bg, border: `1px solid ${COLORS[t].border}`, color: COLORS[t].text }
               : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }}>
-            {t === 'regiones' ? 'Despacho Regiones' : 'Despacho RM'}
+            {t === 'regiones' ? 'Despacho Regiones' : t === 'rm' ? 'Despacho RM' : 'Recepción Tienda'}
           </button>
         ))}
       </div>

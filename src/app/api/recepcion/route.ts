@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 interface RecepcionBody {
@@ -12,6 +13,30 @@ interface RecepcionBody {
   receptor: string;
   rut: string;
   signatureDataUrl: string;
+}
+
+const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
+
+function getAuth() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
+  const clean = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  return new google.auth.GoogleAuth({
+    credentials: JSON.parse(clean),
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+}
+
+async function writeToSheet(row: (string | number)[]) {
+  const auth = getAuth();
+  const gs   = google.sheets({ version: 'v4', auth });
+  await gs.spreadsheets.values.append({
+    spreadsheetId:    SPREADSHEET_ID,
+    range:            'RECEPCIÓN TIENDA!A1',
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody:      { values: [row] },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -49,6 +74,29 @@ export async function POST(request: NextRequest) {
     });
 
     if (insertError) throw new Error(insertError.message);
+
+    // Write to RECEPCIÓN TIENDA sheet in Base de Datos
+    const now  = new Date();
+    const dd   = String(now.getDate()).padStart(2, '0');
+    const mm   = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(now.getFullYear());
+    const hh   = String(now.getHours()).padStart(2, '0');
+    const min  = String(now.getMinutes()).padStart(2, '0');
+
+    await writeToSheet([
+      `${dd}/${mm}/${yyyy}`,         // FECHA
+      `${hh}:${min}`,                // HORA
+      body.cod,                      // COD
+      body.tienda,                   // TIENDA
+      body.direccion,                // DIRECCIÓN
+      body.palletsSent,              // PALLETS ENVIADOS
+      body.bultosSent,               // BULTOS ENVIADOS
+      body.palletsRecibidos,         // PALLETS RECIBIDOS
+      body.bultosRecibidos,          // BULTOS RECIBIDOS
+      body.receptor,                 // RECEPTOR
+      body.rut,                      // RUT
+      publicUrl,                     // FIRMA URL
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
