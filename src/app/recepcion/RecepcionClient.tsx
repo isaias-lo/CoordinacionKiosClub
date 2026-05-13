@@ -6,11 +6,16 @@ import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 
 function formatRut(raw: string): string {
+  // Strip everything except digits and K, cap at 9 chars
   const clean = raw.replace(/[^0-9kK]/g, '').toUpperCase().slice(0, 9);
   if (clean.length < 2) return clean;
   const dv  = clean.slice(-1);
   const num = clean.slice(0, -1);
-  return `${num.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}-${dv}`;
+  // Add thousands dots only when there are enough digits to need them
+  const dotted = num.length > 3
+    ? num.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+    : num;
+  return `${dotted}-${dv}`;
 }
 
 const S: Record<string, React.CSSProperties> = {
@@ -66,20 +71,24 @@ export function RecepcionClient() {
     };
   }, []);
 
-  // Inicializa el canvas con DPR scaling
+  // Inicializa el canvas con DPR scaling — espera al layout real
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width  = rect.width  * dpr;
-    canvas.height = rect.height * dpr;
-    const ctx = canvas.getContext('2d')!;
-    ctx.scale(dpr, dpr);
-    ctx.strokeStyle = '#1B2A6B';
-    ctx.lineWidth   = 2.5;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
+    const initCanvas = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width) { requestAnimationFrame(initCanvas); return; }
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = rect.width  * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d')!;
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = '#1B2A6B';
+      ctx.lineWidth   = 2.5;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+    };
+    requestAnimationFrame(initCanvas);
   }, []);
 
   function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -237,7 +246,7 @@ export function RecepcionClient() {
             </div>
             <div>
               <label style={S.label}>RUT</label>
-              <input type="text" value={rut} onChange={e => setRut(formatRut(e.target.value))} placeholder="12.345.678-9" inputMode="numeric" style={{ ...S.input, fontFamily: 'monospace' }} />
+              <input type="text" value={rut} onChange={e => setRut(formatRut(e.target.value))} placeholder="12.345.678-9" inputMode="text" autoComplete="off" style={{ ...S.input, fontFamily: 'monospace' }} />
             </div>
           </div>
         </div>
