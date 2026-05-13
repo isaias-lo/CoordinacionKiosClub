@@ -45,7 +45,29 @@ const CORR_COLOR: Record<CorreccionAuditoria, string> = {
 const CORR_LABEL: Record<CorreccionAuditoria, string> = { correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante' };
 const CORR_COLORS: Record<CorreccionAuditoria, string> = { correcto: '#16A34A', faltante: '#D32F2F', sobrante: '#D97706', cruce: '#2563EB' };
 const LINE_COLORS = ['#1a2550', '#16A34A', '#D97706', '#2563EB', '#9333EA', '#D32F2F'];
-const DRAFT_KEY = 'audit_form_draft';
+const DRAFT_KEY        = 'audit_form_draft';
+const OFFLINE_QUEUE_KEY = 'audit_offline_queue';
+
+interface OfflineQueueItem { row: Record<string, unknown>; userId: string; entryId: string; }
+
+function loadOfflineQueue(): OfflineQueueItem[] {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]'); } catch { return []; }
+}
+function saveOfflineQueue(q: OfflineQueueItem[]) {
+  try { localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q)); } catch { /* full */ }
+}
+async function flushOfflineQueue(onFlushed: (count: number) => void) {
+  const q = loadOfflineQueue();
+  if (q.length === 0) return;
+  const remaining: OfflineQueueItem[] = [];
+  let flushed = 0;
+  for (const item of q) {
+    const { error } = await supabase.from('audit_entries').upsert(item.row as Record<string, unknown>);
+    if (error) { remaining.push(item); } else { flushed++; }
+  }
+  saveOfflineQueue(remaining);
+  if (flushed > 0) onFlushed(flushed);
+}
 
 /* ── Extended PickerStats ── */
 interface PickerStats {
@@ -141,9 +163,11 @@ function matchPickerNames(odooName: string, names: Record<string, string>): stri
   return null;
 }
 function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  const trimmed = name.trim();
+  if (!trimmed) return '?';
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2 && parts[0] && parts[1]) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return trimmed.slice(0, 2).toUpperCase() || '?';
 }
 function initialsColor(name: string): string {
   const palette = ['#1a2550', '#16A34A', '#D97706', '#2563EB', '#9333EA', '#D32F2F', '#0891B2', '#BE185D'];
@@ -350,24 +374,34 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
   const [unidades, setUnidades] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoError>(tiposError[0] ?? 'faltante');
   const [manualNombre, setManualNombre] = useState('');
+  const [selectedOp, setSelectedOp] = useState('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (!tiposError.includes(tipoProd)) setTipoProd(tiposError[0] ?? 'faltante'); }, [tiposError]);
+  const cleanCodigo = (raw: string) => {
+    const stripped = raw.replace(/[\[\]]/g, '').trim().toUpperCase();
+    return stripped;
+  };
   const buscar = async () => {
     if (!odooConfig.url) { onNeedConfig(); return; }
-    const cod = codigo.replace(/[\[\]]/g, '').trim().toUpperCase(); if (!cod) return;
+    const cod = cleanCodigo(codigo); if (!cod) return;
     setLoading(true); setError(''); setFound(null);
-    try { const prod = await buscarProducto(odooConfig, cod, operacionCodes.filter(Boolean)); if (prod) setFound(prod); else setError(`"${cod}" no encontrado`); }
+    try {
+      const ops = selectedOp ? [selectedOp] : operacionCodes.filter(Boolean);
+      const prod = await buscarProducto(odooConfig, cod, ops);
+      if (prod) setFound(prod);
+      else setError(`"${cod}" no encontrado`);
+    }
     catch (e) { setError(e instanceof Error ? e.message : 'Error'); } finally { setLoading(false); }
   };
   const confirmar = () => {
     if (!found || !unidades || parseInt(unidades) <= 0) return;
-    onAdd({ codigo: found.codigo, nombre: found.nombre, unidades: parseInt(unidades), tipo: tipoProd, cantidadEsperada: found.cantidadEsperada });
+    onAdd({ codigo: found.codigo, nombre: found.nombre, unidades: parseInt(unidades), tipo: tipoProd, cantidadEsperada: found.cantidadEsperada, operacionCod: selectedOp || undefined });
     setCodigo(''); setFound(null); setUnidades(''); setError('');
   };
   const confirmarManual = () => {
-    const cod = codigo.replace(/[\[\]]/g, '').trim().toUpperCase();
+    const cod = cleanCodigo(codigo);
     if (!cod || !unidades || parseInt(unidades) <= 0) return;
-    onAdd({ codigo: cod, nombre: manualNombre.trim() || cod, unidades: parseInt(unidades), tipo: tipoProd });
+    onAdd({ codigo: cod, nombre: manualNombre.trim() || cod, unidades: parseInt(unidades), tipo: tipoProd, operacionCod: selectedOp || undefined });
     setCodigo(''); setManualNombre(''); setUnidades('');
   };
   const ratioPreview = useMemo(() => {
@@ -386,9 +420,20 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
           </div>
         )}
       </div>
+      {operacionCodes.filter(Boolean).length > 1 && (
+        <div className="mb-2">
+          <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1">Operación de origen</div>
+          <div className="flex flex-wrap gap-1">
+            <button onClick={() => setSelectedOp('')} className={`px-2 py-1 rounded-btn text-[10px] font-bold border cursor-pointer ${!selectedOp ? 'bg-navy text-white border-navy' : 'bg-white text-text-3 border-border'}`}>Todas</button>
+            {operacionCodes.filter(Boolean).map(op => (
+              <button key={op} onClick={() => setSelectedOp(op === selectedOp ? '' : op)} className={`px-2 py-1 rounded-btn text-[10px] font-bold font-mono border cursor-pointer ${selectedOp === op ? 'bg-info text-white border-info' : 'bg-white text-text-2 border-border'}`}>{op}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {manualMode ? (
         <div className="flex flex-col gap-2">
-          <input type="text" value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código producto"
+          <input type="text" value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código (con o sin corchetes, o últimos 6 dígitos)"
             className="bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
           <input type="text" value={manualNombre} onChange={e => setManualNombre(e.target.value)} placeholder="Nombre (opcional)"
             className="bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-barlow text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
@@ -402,7 +447,7 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
       ) : (
         <>
           <div className="flex gap-2">
-            <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031]"
+            <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031] o VINF031"
               className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
             <button onClick={buscar} disabled={loading || !codigo.trim()} className="px-3 py-2 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12">
               {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
@@ -479,9 +524,41 @@ function AuditorSelector({ auditor, auditorList, onChange }: {
   );
 }
 
-/* ── Picker Name Selector (searchable dropdown from configured picker names) ── */
-function PickerNameSelector({ picker, pickerNames, onChange, odooDetected }: {
-  picker: string; pickerNames: Record<string, string>; onChange: (p: string) => void; odooDetected?: boolean;
+/* ── Picker Odoo Display (read-only — Odoo assigns the pistola automatically) ── */
+function PickerOdooDisplay({ picker, odooDetected, onClear }: {
+  picker: string; odooDetected?: boolean; onClear: () => void;
+}) {
+  if (!picker) {
+    return (
+      <div className="w-full bg-bg border border-dashed border-border rounded-btn px-3 py-3 flex items-center gap-2"
+        style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+        <span className="text-text-3 text-[18px] leading-none">🔄</span>
+        <span className="text-text-3 font-barlow text-[14px]">Asignado automáticamente al cargar la operación Odoo</span>
+      </div>
+    );
+  }
+  return (
+    <div className="w-full bg-white border border-border rounded-btn px-3 py-3 flex items-center gap-3"
+      style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+      <span className="font-mono text-[13px] font-bold text-navy bg-[rgba(26,37,80,0.07)] px-2.5 py-1 rounded">
+        {picker.replace('Pickers ', 'P.')}
+      </span>
+      {odooDetected && (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">
+          Odoo ✓
+        </span>
+      )}
+      <span className="flex-1 text-[13px] text-text-2">{picker}</span>
+      <button onClick={onClear}
+        className="border-none bg-transparent text-text-3 hover:text-red cursor-pointer text-[16px] leading-none px-1 transition-colors"
+        title="Limpiar">×</button>
+    </div>
+  );
+}
+
+/* ── Picker Nombre Selector (dropdown of real names for the actual armador de pallet) ── */
+function PickerNombreSelector({ pickerNombre, pickerNombresList, onChange }: {
+  pickerNombre: string; pickerNombresList: string[]; onChange: (n: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen]   = useState(false);
@@ -493,46 +570,39 @@ function PickerNameSelector({ picker, pickerNames, onChange, odooDetected }: {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const options = Object.entries(pickerNames).filter(([, name]) => name.trim() !== '');
-  const filtered = options.filter(([key, name]) => !query || name.toLowerCase().includes(query.toLowerCase()) || key.toLowerCase().includes(query.toLowerCase()));
-  const selectedName = picker ? (pickerNames[picker]?.trim() || picker) : null;
+  const uniqueNames = Array.from(new Set(pickerNombresList.map(n => n.trim()).filter(Boolean))).sort();
+  const filtered = uniqueNames.filter(n => !query || n.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div ref={ref} className="relative">
       <div onClick={() => setOpen(o => !o)}
         className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
         style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          {selectedName
-            ? <span className="font-semibold text-text text-[15px]">{selectedName}</span>
-            : <span className="text-text-3 font-barlow text-[15px]">{options.length === 0 ? 'Sin pickers configurados…' : 'Seleccionar picker…'}</span>}
-          {odooDetected && picker && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20 flex-shrink-0">Odoo ✓</span>
-          )}
-        </div>
+        {pickerNombre
+          ? <span className="font-semibold text-text text-[15px]">{pickerNombre}</span>
+          : <span className="text-text-3 font-barlow text-[15px]">{uniqueNames.length === 0 ? 'Sin pickers configurados…' : 'Seleccionar picker…'}</span>}
         <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
       </div>
       {open && (
         <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
-          {options.length > 3 && (
+          {uniqueNames.length > 4 && (
             <div className="p-2 border-b border-border">
               <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
                 placeholder="Buscar picker…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
             </div>
           )}
           <div className="max-h-48 overflow-y-auto">
-            {picker && (
+            {pickerNombre && (
               <div onClick={() => { onChange(''); setOpen(false); setQuery(''); }}
                 className="px-4 py-2 cursor-pointer border-b border-border/40 text-text-3 text-[12px] italic hover:bg-bg">
                 — Sin picker
               </div>
             )}
-            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{options.length === 0 ? 'Configura pickers en ⚙ Configuración' : 'Sin resultados'}</div>}
-            {filtered.map(([key, name]) => (
-              <div key={key} onClick={() => { onChange(key); setOpen(false); setQuery(''); }}
-                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${picker === key ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
-                <div className="font-barlow text-[14px] font-semibold">{name}</div>
-                <div className="text-[11px] text-text-3">{key.replace('Pickers ', 'P.')}</div>
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{uniqueNames.length === 0 ? 'Configura pickers en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.map(name => (
+              <div key={name} onClick={() => { onChange(name); setOpen(false); setQuery(''); }}
+                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 font-barlow text-[14px] ${pickerNombre === name ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
+                {name}
               </div>
             ))}
           </div>
@@ -1067,11 +1137,12 @@ export function AuditoriaScreen() {
   const { signOut, user, profile, loading: authLoading } = useAuth();
   const { showToast, state } = useApp();
   const userRole        = profile?.role ?? 'auditor';
-  const isAdminAud      = userRole === 'admin-auditoria';
+  const isAdminAud      = userRole === 'admin-auditoria' || userRole === 'admin';
   const isAuditorOnly   = userRole === 'auditor';
   const router = useRouter();
 
   const [auditor,           setAuditor]           = useState('');
+  const auditorFromProfile = useRef(false); // true when auditor was set by auto-fill (not manually typed)
   const [picker,            setPicker]            = useState('');
   const [tienda,            setTienda]            = useState<TiendaRef | null>(null);
   const [tipo,              setTipo]              = useState<TipoAuditoria>('comida');
@@ -1096,35 +1167,56 @@ export function AuditoriaScreen() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [palletFiles,    setPalletFiles]    = useState<Record<string, File>>({});
   const [palletPreviews, setPalletPreviews] = useState<Record<string, string>>({});
-  const [fotoFile,       setFotoFile]       = useState<File | null>(null);
-  const [fotoPreview,    setFotoPreview]    = useState('');
+  const [fotoFiles,      setFotoFiles]      = useState<File[]>([]);
+  const [fotoPreviews,   setFotoPreviews]   = useState<string[]>([]);
   const [submitting,     setSubmitting]     = useState(false);
-  const [pickerNamesState, setPickerNamesState] = useState<Record<string, string>>({ ...PICKER_NAMES });
-  const [auditorList,      setAuditorList]      = useState<string[]>([]);
+  const [pickerNombre,   setPickerNombre]   = useState('');
+  const [pickerNombresList, setPickerNombresList] = useState<string[]>([]);
+  const [auditorList,       setAuditorList]       = useState<string[]>([]);
   const [odooAutoDetected, setOdooAutoDetected] = useState(false);
   const [confirmSubmit,    setConfirmSubmit]    = useState(false);
   const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
+  const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const palletsInputRef = useRef<HTMLInputElement>(null);
   const [sections, setSections] = useState({ id: true, contenido: true, resultado: true, evidencia: true });
   const toggleSection = (k: keyof typeof sections) => setSections(s => ({ ...s, [k]: !s[k] }));
 
-  // Set initial view once profile loads
+  // Set initial view once profile loads + kick off history load with correct user context
   useEffect(() => {
     if (!authLoading && !viewInit) {
       if (isAdminAud) setView('hub');
       setViewInit(true);
+      loadHistory();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isAdminAud, viewInit]);
 
+  // Online/offline detection + flush queue on reconnect
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      flushOfflineQueue(count => showToast(`✓ ${count} auditoría${count > 1 ? 's' : ''} sincronizada${count > 1 ? 's' : ''}`, '#16A34A'));
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    // Flush on mount if online and queue has items
+    if (navigator.onLine) flushOfflineQueue(count => showToast(`✓ ${count} auditoría${count > 1 ? 's' : ''} sincronizada${count > 1 ? 's' : ''}`, '#16A34A'));
+    return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadHistory = async () => {
     setHistoryLoading(true); setHistoryError('');
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('audit_entries')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
+      // Non-admin users only see their own entries
+      if (!isAdminAud && user?.id) query = query.eq('user_id', user.id);
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
       if (data && data.length > 0) {
         setHistory(data.map(r => rowToEntry(r as Record<string, unknown>)));
@@ -1142,34 +1234,42 @@ export function AuditoriaScreen() {
       setHistoryLoading(false);
     }
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadHistory(); }, []);
+  // loadHistory is called in the viewInit effect (after auth resolves) to ensure user context is ready
   useEffect(() => {
-    supabase.from('picker_config').select('nombres, auditores').eq('id', 1).single()
+    supabase.from('picker_config').select('auditores, picker_nombres').eq('id', 1).single()
       .then(({ data }) => {
-        if (data?.nombres && typeof data.nombres === 'object') {
-          const loaded = data.nombres as Record<string, string>;
-          setPickerNamesState({ ...PICKER_NAMES, ...loaded });
+        if (Array.isArray(data?.picker_nombres) && (data.picker_nombres as string[]).length > 0) {
+          setPickerNombresList(data.picker_nombres as string[]);
         }
         if (Array.isArray(data?.auditores)) {
           setAuditorList(data.auditores as string[]);
         }
       });
   }, []);
+  // Auto-fill auditor from logged-in profile name; also re-sync when profile name changes
+  useEffect(() => {
+    if (authLoading || !profile?.full_name) return;
+    if (!auditor || auditorFromProfile.current) {
+      setAuditor(profile.full_name);
+      auditorFromProfile.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, profile?.full_name]);
+
   useEffect(() => {
     setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' })));
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({});
     setPalletPreviews({});
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
-    setFotoFile(null);
-    setFotoPreview('');
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]);
+    setFotoPreviews([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
   const handleTipoChange = (val: TipoAuditoria) => {
     if (val === tipo) return;
-    const hasPhotos = Object.keys(palletFiles).length > 0 || !!fotoFile;
+    const hasPhotos = Object.keys(palletFiles).length > 0 || fotoFiles.length > 0;
     if (hasPhotos) { setTipoPending(val); } else { setTipo(val); }
   };
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
@@ -1178,25 +1278,25 @@ export function AuditoriaScreen() {
     document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Autosave draft to sessionStorage
+  // Autosave draft to sessionStorage (picker excluded — Odoo assigns it fresh per operation)
   useEffect(() => {
-    if (!auditor && !picker && !tienda) return;
+    if (!auditor && !tienda) return;
     const handle = setTimeout(() => {
       try {
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ auditor, picker, tiendaCod: tienda?.cod, tipo, pallets, tieneErrores, tiposError }));
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ auditor, pickerNombre, tiendaCod: tienda?.cod, tipo, pallets, tieneErrores, tiposError }));
       } catch { /* empty */ }
     }, 1500);
     return () => clearTimeout(handle);
-  }, [auditor, picker, tienda, tipo, pallets, tieneErrores, tiposError]);
+  }, [auditor, pickerNombre, tienda, tipo, pallets, tieneErrores, tiposError]);
 
   // Restore draft on mount
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (!raw) return;
-      const draft = JSON.parse(raw) as { auditor?: string; picker?: string; tiendaCod?: string; tipo?: TipoAuditoria; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[] };
+      const draft = JSON.parse(raw) as { auditor?: string; pickerNombre?: string; tiendaCod?: string; tipo?: TipoAuditoria; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[] };
       if (draft.auditor) setAuditor(draft.auditor);
-      if (draft.picker) setPicker(draft.picker);
+      if (draft.pickerNombre) setPickerNombre(draft.pickerNombre);
       if (draft.tiendaCod) setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === draft.tiendaCod) ?? null);
       if (draft.tipo) setTipo(draft.tipo);
       if (draft.pallets) setPallets(draft.pallets);
@@ -1222,11 +1322,11 @@ export function AuditoriaScreen() {
 
   const handleOpSelect = (_codigo: string, responsable: string | undefined) => {
     if (responsable) {
-      const match = matchPickerNames(responsable, pickerNamesState);
+      const match = matchPickerNames(responsable, PICKER_NAMES);
       if (match) {
         setPicker(match);
         setOdooAutoDetected(true);
-        showToast(`Picker detectado: ${displayPicker(match, pickerNamesState)}`, '#2563EB');
+        showToast(`Picker detectado: ${displayPicker(match, PICKER_NAMES)}`, '#2563EB');
       }
     }
   };
@@ -1253,7 +1353,8 @@ export function AuditoriaScreen() {
     const entryId = `AUD-${Date.now()}`;
     const uploadedFotos: { label: string; url: string }[] = [];
     const palletCount = parseInt(pallets) || 0;
-    if (user) {
+    const canUploadPhotos = user && navigator.onLine;
+    if (canUploadPhotos) {
       for (let n = 1; n <= palletCount; n++) {
         const file = palletFiles[String(n)];
         if (!file) continue;
@@ -1270,43 +1371,63 @@ export function AuditoriaScreen() {
         }
       }
     }
-    let uploadedFotoUrl: string | undefined;
-    if (user && fotoFile) {
-      const ext = fotoFile.name.split('.').pop() || 'jpg';
-      const path = `${user.id}/${entryId}_error.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('audit-photos')
-        .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-      if (!upErr) {
-        const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-        uploadedFotoUrl = publicUrl;
-      } else {
-        showToast('⚠ Error al subir foto de productos', '#D97706');
+    const uploadedFotoUrls: string[] = [];
+    if (canUploadPhotos && fotoFiles.length > 0) {
+      for (let fi = 0; fi < fotoFiles.length; fi++) {
+        const fotoFile = fotoFiles[fi];
+        const ext = fotoFile.name.split('.').pop() || 'jpg';
+        const path = `${user.id}/${entryId}_foto${fi + 1}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('audit-photos')
+          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+          uploadedFotoUrls.push(publicUrl);
+        } else {
+          showToast(`⚠ Error al subir foto de productos ${fi + 1}`, '#D97706');
+        }
       }
     }
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-      auditor: auditor.trim(), picker: picker.trim(), tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
+      auditor: auditor.trim(), picker: picker.trim(), pickerNombre: pickerNombre.trim() || undefined,
+      tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
-      fotoUrl: uploadedFotoUrl,
+      fotoUrls: uploadedFotoUrls.length > 0 ? uploadedFotoUrls : undefined,
       palletFotos: uploadedFotos.length > 0 ? uploadedFotos : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
-      supabase.from('audit_entries').insert(entryToRow(entry, user.id))
-        .then(({ error }) => { if (error) console.error('Audit save:', error.message); });
+      const row = entryToRow(entry, user.id);
+      if (!navigator.onLine) {
+        const q = loadOfflineQueue();
+        q.push({ row, userId: user.id, entryId: entry.id });
+        saveOfflineQueue(q);
+        showToast('Sin conexión — auditoría guardada localmente', '#D97706');
+      } else {
+        supabase.from('audit_entries').insert(row)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Audit save:', error.message);
+              const q = loadOfflineQueue();
+              q.push({ row, userId: user.id, entryId: entry.id });
+              saveOfflineQueue(q);
+              showToast('⚠ Error al guardar — se sincronizará cuando haya conexión', '#D97706');
+            }
+          });
+      }
     }
     try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
     sheetsAuditoriaWrite(entry, state.sheetsUrl);
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
     try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* empty */ }
-    setTienda(null); setTiendaQuery(''); setPicker(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({});
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
-    setFotoFile(null); setFotoPreview('');
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]); setFotoPreviews([]);
     setSubmitting(false);
   };
 
@@ -1314,7 +1435,7 @@ export function AuditoriaScreen() {
     if (reauditoriaOrigen) { showToast('Termina o cancela la re-auditoría en curso primero', '#D97706'); return; }
     setReauditoriaOrigen(entry);
     setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === entry.tiendaCod) ?? null);
-    setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || ''); setOdooAutoDetected(false);
+    setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || ''); setPickerNombre(''); setOdooAutoDetected(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones('');
     setView('form');
   };
@@ -1332,8 +1453,12 @@ export function AuditoriaScreen() {
           <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/70 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
           <div className="flex-1">
             <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
-            <div className="text-[11px] text-white/40 uppercase tracking-widest">Admin Auditoría</div>
+            <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'} · {profile?.full_name ?? ''}</div>
           </div>
+          <button onClick={() => router.push('/perfil')}
+            className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white transition-colors">
+            👤 Perfil
+          </button>
           <button onClick={async () => { await signOut(); router.push('/login'); }}
             className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
         </div>
@@ -1366,7 +1491,7 @@ export function AuditoriaScreen() {
   /* ── Stats view (admin-auditoria: Dashboard + Ranking) ── */
   if (isAdminAud && view === 'stats') {
     return (
-      <AdminAudStats history={history} today={today} odooConfig={odooConfig} onBack={() => setView('hub')} pickerNames={pickerNamesState} />
+      <AdminAudStats history={history} today={today} odooConfig={odooConfig} onBack={() => setView('hub')} pickerNames={PICKER_NAMES} />
     );
   }
 
@@ -1379,10 +1504,14 @@ export function AuditoriaScreen() {
           <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
           <div className="flex-1">
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
-            <div className="text-[11px] text-white/40">Todos los registros</div>
+            <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
           </div>
+          <button onClick={() => router.push('/perfil')}
+            className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white transition-colors">👤 Perfil</button>
+          <button onClick={async () => { await signOut(); router.push('/login'); }}
+            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
         </div>
-        <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={pickerNamesState} />
+        <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
       </div>
     );
   }
@@ -1392,7 +1521,9 @@ export function AuditoriaScreen() {
     return (
       <ConfigPanel
         onBack={() => setView('hub')}
-        onSaved={(names, auds) => { setPickerNamesState({ ...names }); setAuditorList(auds); }}
+        onSaved={(list, auds) => { setPickerNombresList(list); setAuditorList(auds); }}
+        onSignOut={async () => { await signOut(); router.push('/login'); }}
+        userRole={userRole}
       />
     );
   }
@@ -1410,25 +1541,38 @@ export function AuditoriaScreen() {
         }
         <div className="flex-1">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
-          <div className="text-[11px] text-white/40 uppercase tracking-widest">Control de calidad pallet</div>
+          <div className="text-[11px] text-white/40 uppercase tracking-widest">
+            {userRole === 'admin' ? 'Admin' : userRole === 'admin-auditoria' ? 'Admin Auditoría' : 'Auditor'} · Control de calidad
+          </div>
         </div>
-        {/* Mobile: hamburger + logout */}
+        {/* Mobile: hamburger + perfil + logout */}
         <div className="flex md:hidden items-center gap-1">
           {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>}
-          <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full">Salir</button>
+          <button onClick={() => router.push('/perfil')} className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white transition-colors">👤</button>
+          <button onClick={async () => { await signOut(); router.push('/login'); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full">Salir</button>
         </div>
-        {/* Desktop: logout */}
+        {/* Desktop: perfil + logout */}
         <div className="hidden md:flex items-center gap-1">
-          <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white/70 transition-colors">Salir</button>
+          <button onClick={() => router.push('/perfil')} className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white transition-colors">👤 Perfil</button>
+          <button onClick={async () => { await signOut(); router.push('/login'); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white/70 transition-colors">Salir</button>
         </div>
       </div>
+
+      {/* Offline indicator */}
+      {!isOnline && (
+        <div className="flex-shrink-0 flex items-center gap-2 px-4 py-1.5"
+          style={{ background: 'rgba(217,119,6,0.12)', borderBottom: '1px solid rgba(217,119,6,0.25)' }}>
+          <span className="text-[13px]">📵</span>
+          <span className="text-[12px] font-semibold text-warn">Sin conexión — las auditorías se guardarán localmente y se sincronizarán al reconectar</span>
+        </div>
+      )}
 
       {/* ── TWO-COLUMN LAYOUT ── */}
       <div className="flex-1 flex overflow-hidden">
 
         {/* LEFT: FORM */}
         <div className={isAdminAud
-          ? 'flex-1 overflow-y-auto'
+          ? 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto'
           : isAuditorOnly
             ? 'flex-1 flex flex-col overflow-hidden'
             : 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border'}>
@@ -1447,7 +1591,7 @@ export function AuditoriaScreen() {
           {isAuditorOnly && view === 'history' && (
             <div className="hidden md:flex flex-1 overflow-hidden flex-col">
               <div className="max-w-[480px] mx-auto w-full flex-1 overflow-hidden flex flex-col">
-                <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={pickerNamesState} />
+                <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
               </div>
             </div>
           )}
@@ -1482,15 +1626,13 @@ export function AuditoriaScreen() {
             {/* ── SECCIÓN 1: IDENTIFICACIÓN ── */}
             <AccordionSection title="Identificación" open={sections.id} onToggle={() => toggleSection('id')}>
               <SLabel>Auditor</SLabel>
-              <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={setAuditor} />
+              <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
 
-              <SLabel>Picker (armador del pallet)</SLabel>
-              <PickerNameSelector picker={picker} pickerNames={pickerNamesState} odooDetected={odooAutoDetected} onChange={p => { setPicker(p); setOdooAutoDetected(false); }} />
-              {!picker && (
-                <div className="mt-1 text-[11px] text-text-3 flex items-center gap-1">
-                  <span>🔄</span><span>Se auto-detecta al cargar operación Odoo</span>
-                </div>
-              )}
+              <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna automáticamente</span></SLabel>
+              <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { setPicker(''); setOdooAutoDetected(false); }} />
+
+              <SLabel>Picker (armador de pallet)</SLabel>
+              <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={setPickerNombre} />
 
               <SLabel>Tienda</SLabel>
               <div ref={tiendaRef} className="relative">
@@ -1561,7 +1703,7 @@ export function AuditoriaScreen() {
                             <span className="text-[22px]">📷</span>
                             <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
                             <input type="file" accept="image/*" className="hidden"
-                              onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); } }} />
+                              onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
                           </label>
                         )}
                       </div>
@@ -1620,23 +1762,44 @@ export function AuditoriaScreen() {
               <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
                 className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
-              <SLabel>Foto de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados</span></SLabel>
-              {fotoPreview ? (
-                <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                  <img src={fotoPreview} alt="foto de productos" className="w-full object-cover" style={{ maxHeight: 180 }} />
-                  <button
-                    onClick={() => { URL.revokeObjectURL(fotoPreview); setFotoFile(null); setFotoPreview(''); }}
-                    className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                    style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+              <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados · múltiples permitidas</span></SLabel>
+              {fotoPreviews.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {fotoPreviews.map((preview, idx) => (
+                    <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                      <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ maxHeight: 120 }} />
+                      <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
+                      <button
+                        onClick={() => {
+                          URL.revokeObjectURL(preview);
+                          setFotoPreviews(p => p.filter((_, i) => i !== idx));
+                          setFotoFiles(f => f.filter((_, i) => i !== idx));
+                        }}
+                        className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                        style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                  <span className="text-[28px]">📷</span>
-                  <span className="text-[13px] text-text-3 font-barlow">Adjuntar foto de productos con error</span>
-                  <input type="file" accept="image/*" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }} />
-                </label>
               )}
+              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                <span className="text-[28px]">📷</span>
+                <div>
+                  <div className="text-[13px] text-text-2 font-barlow font-semibold">
+                    {fotoPreviews.length > 0 ? `+ Agregar otra foto (${fotoPreviews.length} adjunta${fotoPreviews.length !== 1 ? 's' : ''})` : 'Adjuntar foto de error'}
+                  </div>
+                  <div className="text-[11px] text-text-3">Toca para agregar una foto · repite para más</div>
+                </div>
+                {/* No "multiple" — iOS-safe: el usuario toca una vez por foto */}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setFotoFiles(prev => [...prev, f]);
+                    setFotoPreviews(prev => [...prev, URL.createObjectURL(f)]);
+                    // Reset para permitir seleccionar otra foto inmediatamente en iOS
+                    e.target.value = '';
+                  }} />
+              </label>
             </AccordionSection>
 
             <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
@@ -1650,7 +1813,13 @@ export function AuditoriaScreen() {
         {/* RIGHT: STATS PANEL (desktop only, not for admin-auditoria or auditor) */}
         {!isAdminAud && !isAuditorOnly && (
           <div className="hidden md:flex md:flex-1 overflow-hidden">
-            <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} pickerNames={pickerNamesState} onRefresh={loadHistory} />
+            <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} pickerNames={PICKER_NAMES} onRefresh={loadHistory} />
+          </div>
+        )}
+        {/* RIGHT: ADMIN DESKTOP PANEL (dashboard + ranking + historial) */}
+        {isAdminAud && (
+          <div className="hidden md:flex md:flex-1 overflow-hidden border-l border-border flex-col">
+            <AdminDesktopPanel history={history} today={today} odooConfig={odooConfig} pickerNames={PICKER_NAMES} onReaudit={e => { iniciarReauditoria(e); }} onRefresh={loadHistory} />
           </div>
         )}
       </div>
@@ -1662,7 +1831,7 @@ export function AuditoriaScreen() {
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="flex-1"><div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Dashboard</div><div className="text-[11px] text-white/40">{today} · {todayEntries.length} auditorías</div></div>
           </div>
-          <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNamesState} /></div>
+          <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={PICKER_NAMES} /></div>
         </div>
       )}
       {!isAdminAud && view === 'ranking' && (
@@ -1671,7 +1840,7 @@ export function AuditoriaScreen() {
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Ranking Pickers</div>
           </div>
-          <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNamesState} />
+          <RankingContent history={history} odooConfig={odooConfig} pickerNames={PICKER_NAMES} />
         </div>
       )}
       {!isAdminAud && view === 'history' && (
@@ -1680,7 +1849,7 @@ export function AuditoriaScreen() {
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Historial</div>
           </div>
-          <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={pickerNamesState} />
+          <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
         </div>
       )}
 
@@ -1716,13 +1885,23 @@ export function AuditoriaScreen() {
             <div className="font-barlow-condensed text-[20px] font-bold text-navy mb-3">Confirmar registro</div>
             <div className="space-y-2.5 mb-4">
               <div className="flex justify-between items-start py-1.5 border-b border-border">
+                <span className="text-text-3 text-[12px]">Auditor</span>
+                <span className="font-semibold text-text text-[13px] text-right ml-4">{auditor}</span>
+              </div>
+              <div className="flex justify-between items-start py-1.5 border-b border-border">
                 <span className="text-text-3 text-[12px]">Tienda</span>
                 <span className="font-semibold text-text text-[13px] text-right ml-4">{tienda.nombre}</span>
               </div>
-              {picker && (
+              {pickerNombre && (
                 <div className="flex justify-between items-center py-1.5 border-b border-border">
                   <span className="text-text-3 text-[12px]">Picker</span>
-                  <span className="font-semibold text-text text-[13px]">{displayPicker(picker, pickerNamesState)}</span>
+                  <span className="font-semibold text-text text-[13px]">{pickerNombre}</span>
+                </div>
+              )}
+              {picker && (
+                <div className="flex justify-between items-center py-1.5 border-b border-border">
+                  <span className="text-text-3 text-[12px]">Id. pistola</span>
+                  <span className="font-mono font-semibold text-text text-[13px]">{picker.replace('Pickers ', 'P.')}</span>
                 </div>
               )}
               <div className="flex justify-between items-center py-1.5 border-b border-border">
@@ -1748,6 +1927,36 @@ export function AuditoriaScreen() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ════ Admin Desktop Right Panel (dashboard + ranking + historial tabs) ════ */
+function AdminDesktopPanel({ history, today, odooConfig, pickerNames, onReaudit, onRefresh }: {
+  history: AuditEntry[]; today: string; odooConfig: OdooConfig;
+  pickerNames: Record<string, string>; onReaudit: (e: AuditEntry) => void; onRefresh: () => void;
+}) {
+  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'historial'>('dashboard');
+  const tabs = [
+    { key: 'dashboard' as const, label: '📊 Dashboard' },
+    { key: 'ranking' as const, label: '🏆 Ranking' },
+    { key: 'historial' as const, label: '📋 Historial' },
+  ];
+  return (
+    <div className="flex flex-col h-full w-full overflow-hidden bg-bg">
+      <div className="flex border-b border-border bg-white flex-shrink-0">
+        {tabs.map(({ key, label }) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex-1 py-2.5 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
+        {tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
+        {tab === 'historial' && <HistoryContent history={history} today={today} onReaudit={onReaudit} onRefresh={onRefresh} pickerNames={pickerNames} />}
+      </div>
     </div>
   );
 }
@@ -1781,11 +1990,14 @@ function AdminAudStats({ history, today, odooConfig, onBack, pickerNames }: {
 }
 
 /* ════ Config Panel ════ */
-function ConfigPanel({ onBack, onSaved }: {
+function ConfigPanel({ onBack, onSaved, onSignOut, userRole }: {
   onBack: () => void;
-  onSaved: (names: Record<string, string>, auditores: string[]) => void;
+  onSaved: (pickerNombresList: string[], auditores: string[]) => void;
+  onSignOut?: () => void;
+  userRole?: string;
 }) {
-  const [names,        setNames]        = useState<Record<string, string>>(Object.fromEntries(Object.keys(PICKER_NAMES).map(k => [k, ''])));
+  const [pickerList,   setPickerList]   = useState<string[]>([]);
+  const [newPicker,    setNewPicker]    = useState('');
   const [auditores,    setAuditores]    = useState<string[]>([]);
   const [newAuditor,   setNewAuditor]   = useState('');
   const [saving,       setSaving]       = useState(false);
@@ -1793,15 +2005,25 @@ function ConfigPanel({ onBack, onSaved }: {
   const [error,        setError]        = useState('');
 
   useEffect(() => {
-    supabase.from('picker_config').select('nombres, auditores').eq('id', 1).single()
+    supabase.from('picker_config').select('nombres, auditores, picker_nombres').eq('id', 1).single()
       .then(({ data }) => {
-        if (data?.nombres && typeof data.nombres === 'object') {
-            const defaults = Object.fromEntries(PICKERS_LIST.map(k => [k, '']));
-            setNames({ ...defaults, ...(data.nombres as Record<string, string>) });
-          }
+        if (Array.isArray(data?.picker_nombres) && (data.picker_nombres as string[]).length > 0) {
+          setPickerList(data.picker_nombres as string[]);
+        } else if (data?.nombres && typeof data.nombres === 'object' && !Array.isArray(data.nombres)) {
+          const vals = Object.values(data.nombres as Record<string, string>).filter(Boolean);
+          if (vals.length > 0) setPickerList(Array.from(new Set(vals)).sort());
+        }
         if (Array.isArray(data?.auditores)) setAuditores(data.auditores as string[]);
       });
   }, []);
+
+  const addPicker = () => {
+    const name = newPicker.trim();
+    if (!name || pickerList.includes(name)) return;
+    setPickerList(prev => [...prev, name].sort());
+    setNewPicker('');
+  };
+  const removePicker = (name: string) => setPickerList(prev => prev.filter(p => p !== name));
 
   const addAuditor = () => {
     const name = newAuditor.trim();
@@ -1816,11 +2038,11 @@ function ConfigPanel({ onBack, onSaved }: {
     setSaving(true); setError('');
     const { error: err } = await supabase
       .from('picker_config')
-      .upsert({ id: 1, nombres: names, auditores, updated_at: new Date().toISOString() });
+      .upsert({ id: 1, picker_nombres: pickerList, auditores, updated_at: new Date().toISOString() });
     if (err) {
       setError(err.message);
     } else {
-      onSaved(names, auditores);
+      onSaved(pickerList, auditores);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     }
@@ -1835,7 +2057,7 @@ function ConfigPanel({ onBack, onSaved }: {
         <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Configuración</div>
-          <div className="text-[11px] text-white/50">Admin Auditoría</div>
+          <div className="text-[11px] text-white/50 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
         </div>
         <button
           onClick={handleSave}
@@ -1844,6 +2066,10 @@ function ConfigPanel({ onBack, onSaved }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
+        {onSignOut && (
+          <button onClick={onSignOut}
+            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70 ml-1">Salir</button>
+        )}
       </div>
 
       {/* Body */}
@@ -1856,23 +2082,38 @@ function ConfigPanel({ onBack, onSaved }: {
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <span className="text-[20px]">👷</span>
               <div>
-                <div className="font-barlow-condensed text-[17px] font-bold text-navy">Nombres de Pickers</div>
-                <div className="text-[11px] text-text-3">Asigna el nombre real de cada posición de picker</div>
+                <div className="font-barlow-condensed text-[17px] font-bold text-navy">Pickers (armadores de pallet)</div>
+                <div className="text-[11px] text-text-3">Nombres disponibles para seleccionar en el formulario · Odoo asigna el número</div>
               </div>
             </div>
-            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              {PICKERS_LIST.map((p, i) => (
-                <div key={p} className="flex items-center gap-2.5">
-                  <span className="font-mono text-[12px] font-bold text-text-3 bg-bg-2 border border-border px-2 py-1.5 rounded-btn flex-shrink-0 w-10 text-center">
-                    P.{i + 1}
-                  </span>
-                  <input
-                    type="text"
-                    value={names[p] ?? ''}
-                    onChange={e => setNames(n => ({ ...n, [p]: e.target.value }))}
-                    placeholder="Nombre del picker…"
-                    className="flex-1 bg-white border border-border rounded-btn px-2.5 py-1.5 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
-                  />
+            <div className="p-4 flex flex-col gap-2">
+              {/* Add new */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPicker}
+                  onChange={e => setNewPicker(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPicker(); } }}
+                  placeholder="Nombre del picker…"
+                  className="flex-1 bg-white border border-border rounded-btn px-3 py-2 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
+                />
+                <button
+                  onClick={addPicker}
+                  disabled={!newPicker.trim()}
+                  className="px-4 py-2 rounded-btn font-barlow-condensed text-[14px] font-bold text-white cursor-pointer disabled:opacity-40 active:scale-95 transition-all"
+                  style={{ background: 'linear-gradient(135deg,#0f766e,#0d9488)' }}>
+                  + Agregar
+                </button>
+              </div>
+              {/* List */}
+              {pickerList.length === 0 && (
+                <div className="text-center text-text-3 text-[12px] py-3 italic">Sin pickers configurados aún</div>
+              )}
+              {pickerList.map(name => (
+                <div key={name} className="flex items-center justify-between px-3 py-2.5 bg-bg rounded-btn border border-border">
+                  <span className="text-[14px] font-semibold text-text">{name}</span>
+                  <button onClick={() => removePicker(name)}
+                    className="border-none bg-transparent text-text-3 hover:text-red cursor-pointer text-[18px] leading-none px-1 transition-colors">×</button>
                 </div>
               ))}
             </div>

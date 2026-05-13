@@ -10,10 +10,10 @@ const ROLE_HOME: Record<string, string> = {
 };
 
 const ROLE_ALLOWED: Record<string, string[]> = {
-  auditor:          ['/auditoria', '/historial'],
-  'admin-auditoria':['/auditoria', '/auditoria-admin'],
-  despachador:      ['/', '/despacho', '/recepcion', '/historial'],
-  supervisor:       ['/', '/despacho', '/recepcion', '/control-espejos', '/historial'],
+  auditor:          ['/auditoria', '/historial', '/perfil'],
+  'admin-auditoria':['/auditoria', '/auditoria-admin', '/perfil'],
+  despachador:      ['/', '/despacho', '/recepcion', '/historial', '/perfil'],
+  supervisor:       ['/', '/despacho', '/recepcion', '/control-espejos', '/historial', '/perfil'],
   admin:            ['*'],
 };
 

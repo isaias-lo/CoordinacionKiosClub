@@ -14,7 +14,7 @@ function ActualizarContrasenaContent() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const code = searchParams.get('code');
+    const code = searchParams?.get('code');
     if (code) {
       supabase.auth.exchangeCodeForSession(code).then(({ error: e }) => {
         if (e) setError(e.message);
