@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function ActualizarContrasenaPage() {
+function ActualizarContrasenaContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState('');
@@ -116,5 +116,13 @@ export default function ActualizarContrasenaPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function ActualizarContrasenaPage() {
+  return (
+    <Suspense>
+      <ActualizarContrasenaContent />
+    </Suspense>
   );
 }
