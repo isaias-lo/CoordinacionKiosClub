@@ -7,7 +7,7 @@ import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
 
 const ROLE_LABEL: Record<string, string> = {
-  auditor: 'Auditor', despachador: 'Despachador', admin: 'Admin',
+  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin',
 };
 
 export function LaunchScreen() {
@@ -119,6 +119,13 @@ export function LaunchScreen() {
             className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border transition-all"
             style={{ borderColor: 'rgba(217,119,6,0.5)', color: '#D97706', background: 'rgba(217,119,6,0.1)' }}>
             👥 Usuarios
+          </button>
+        )}
+        {isAdmin && (
+          <button onClick={() => router.push('/auditoria-admin')}
+            className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border transition-all"
+            style={{ borderColor: 'rgba(124,58,237,0.5)', color: '#7C3AED', background: 'rgba(124,58,237,0.1)' }}>
+            🔍 Revisión Auditoría
           </button>
         )}
       </div>

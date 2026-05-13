@@ -20,6 +20,11 @@ const nextConfig: NextConfig = {
       };
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      // Prevent "RangeError: Failed to allocate memory" in webpack pack cache
+      config.cache = { type: 'filesystem', maxMemoryGenerations: 0 } as typeof config.cache;
+    }
+
     return config;
   },
 };

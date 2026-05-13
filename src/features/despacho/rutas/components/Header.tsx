@@ -11,9 +11,10 @@ interface Props {
   flotaStatus: string;
   onGuardarFlota: () => void;
   onBack?: () => void;
+  onSignOut?: () => void;
 }
 
-export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack }: Props) {
+export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const total = Object.keys(tiendas).length;
 
@@ -115,6 +116,14 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
               >
                 {updIcon} {updLabel}
               </button>
+              {onSignOut && (
+                <button
+                  onClick={() => { setMenuOpen(false); onSignOut(); }}
+                  className="w-full h-[42px] px-3 rounded-[8px] bg-gray-100 border border-black/[0.1] text-gray-500 text-[13px] font-semibold flex items-center gap-2.5 transition-all hover:bg-red-50 hover:border-kred/[0.2] hover:text-kred"
+                >
+                  ↪ Cerrar sesión
+                </button>
+              )}
             </div>
           </div>
         </>,

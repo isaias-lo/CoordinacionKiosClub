@@ -6,7 +6,12 @@ const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2C
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON env var is not set');
-  return JSON.parse(raw);
+  // Fullwidth Unicode digits (U+FF10–FF19) can appear when the JSON is copied from
+  // PDFs or certain UIs. Replace them with ASCII equivalents before parsing.
+  const clean = raw.replace(/[０-９]/g, c =>
+    String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
+  );
+  return JSON.parse(clean);
 }
 
 async function getAuth() {

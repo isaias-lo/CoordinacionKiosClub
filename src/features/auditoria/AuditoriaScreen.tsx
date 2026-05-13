@@ -5,39 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
-
-/* ── Supabase ↔ AuditEntry converters ── */
-function entryToRow(entry: AuditEntry, userId: string) {
-  return {
-    id: entry.id, user_id: userId,
-    fecha: entry.fecha, hora: entry.hora,
-    auditor: entry.auditor, picker: entry.picker ?? '',
-    tienda_cod: entry.tiendaCod, tienda_nombre: entry.tiendaNombre, tienda_area: entry.tiendaArea,
-    tipo: entry.tipo, operaciones: entry.operaciones, pallets: entry.pallets,
-    tiene_errores: entry.tieneErrores, tipos_error: entry.tiposError,
-    correccion: entry.correccion, resultado: entry.resultado,
-    observaciones: entry.observaciones, reauditoria_de_id: entry.reauditoriaDeId ?? null,
-    productos: entry.productos,
-  };
-}
-function rowToEntry(r: Record<string, unknown>): AuditEntry {
-  return {
-    id: r.id as string, fecha: r.fecha as string, hora: r.hora as string,
-    auditor: r.auditor as string, picker: r.picker as string,
-    tiendaCod: r.tienda_cod as string, tiendaNombre: r.tienda_nombre as string,
-    tiendaArea: r.tienda_area as AuditEntry['tiendaArea'],
-    tipo: r.tipo as TipoAuditoria, operaciones: (r.operaciones as OperacionEntry[]) ?? [],
-    pallets: r.pallets as number, tieneErrores: r.tiene_errores as boolean,
-    tiposError: (r.tipos_error as TipoError[]) ?? [],
-    correccion: r.correccion as CorreccionAuditoria, resultado: r.resultado as ResultadoAuditoria,
-    observaciones: r.observaciones as string,
-    reauditoriaDeId: r.reauditoria_de_id as string | undefined,
-    productos: (r.productos as ProductoError[]) ?? [],
-  };
-}
+import { entryToRow, rowToEntry } from './utils/converters';
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
-import { PICKERS_LIST, PICKER_NAMES, getPickerDisplay, matchOdooResponsable } from './data/pickerNames';
-import { buscarOperaciones, buscarProducto, getOdooConfig, saveOdooConfig, getPickerOdooStats } from './utils/odooApi';
+import { PICKER_NAMES, PICKERS_LIST, getPickerDisplay } from './data/pickerNames';
+import { buscarOperaciones, buscarProducto, getOdooConfig, getPickerOdooStats } from './utils/odooApi';
 import type { PickerOdooStats } from './utils/odooApi';
 import { sheetsAuditoriaWrite } from './utils/sheetsAuditoria';
 import type {
@@ -74,6 +45,7 @@ const CORR_COLOR: Record<CorreccionAuditoria, string> = {
 const CORR_LABEL: Record<CorreccionAuditoria, string> = { correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante' };
 const CORR_COLORS: Record<CorreccionAuditoria, string> = { correcto: '#16A34A', faltante: '#D32F2F', sobrante: '#D97706', cruce: '#2563EB' };
 const LINE_COLORS = ['#1a2550', '#16A34A', '#D97706', '#2563EB', '#9333EA', '#D32F2F'];
+const DRAFT_KEY = 'audit_form_draft';
 
 /* ── Extended PickerStats ── */
 interface PickerStats {
@@ -156,6 +128,30 @@ function computeWeeklyTrend(entries: AuditEntry[], picker: string): WeekTrend[] 
 
 function effColor(v: number) { return v >= 90 ? '#16A34A' : v >= 70 ? '#D97706' : '#D32F2F'; }
 
+function displayPicker(key: string, names: Record<string, string>): string {
+  return names[key]?.trim() || key;
+}
+function matchPickerNames(odooName: string, names: Record<string, string>): string | null {
+  if (!odooName) return null;
+  const lower = odooName.toLowerCase().trim();
+  for (const [key, realName] of Object.entries(names)) {
+    if (key.toLowerCase() === lower) return key;
+    if (realName && realName.toLowerCase() === lower) return key;
+  }
+  return null;
+}
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+function initialsColor(name: string): string {
+  const palette = ['#1a2550', '#16A34A', '#D97706', '#2563EB', '#9333EA', '#D32F2F', '#0891B2', '#BE185D'];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % palette.length;
+  return palette[h];
+}
+
 /* ── PDF Export ── */
 function exportarPDF(entries: AuditEntry[], fechaLabel: string) {
   const totalBueno = entries.filter(e => e.resultado === 'bueno').length;
@@ -187,6 +183,31 @@ function SLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="font-barlow-condensed text-[12px] font-bold uppercase tracking-[0.14em] text-text-3 mb-2 mt-5 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">
       {children}
+    </div>
+  );
+}
+
+/* ── Accordion Section (mobile collapsible, always open on desktop) ── */
+function AccordionSection({ title, badge, open, onToggle, children }: {
+  title: string; badge?: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-1 md:mb-0">
+      <button
+        onClick={onToggle}
+        className="md:hidden w-full flex items-center gap-2 mt-4 mb-1 cursor-pointer border-none bg-transparent p-0"
+        type="button">
+        <div className="font-barlow-condensed text-[12px] font-bold uppercase tracking-[0.14em] text-text-3 flex items-center gap-2">
+          {title}
+          {badge && <span className="font-normal normal-case text-[10px] text-text-3">{badge}</span>}
+        </div>
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-text-3 text-[14px] font-bold ml-1">{open ? '▲' : '▼'}</span>
+      </button>
+      <div className="hidden md:block" />
+      <div className={`md:block ${open ? 'block' : 'hidden'}`}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -269,46 +290,6 @@ function LineChart({ trends, selectedPickers }: { trends: Map<string, WeekTrend[
   );
 }
 
-/* ── Odoo Config Modal ── */
-function OdooConfigModal({ initial, onSave, onClose }: { initial: OdooConfig; onSave: (c: OdooConfig) => void; onClose: () => void }) {
-  const [cfg, setCfg] = useState<OdooConfig>(initial);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [dbList, setDbList] = useState<string[]>([]);
-  const [dbListLoading, setDbListLoading] = useState(false);
-  const set = (k: keyof OdooConfig, v: string) => { setCfg(p => ({ ...p, [k]: v })); setTestResult(null); if (k === 'url') setDbList([]); };
-  const detectarDbs = async () => {
-    if (!cfg.url) { setTestResult({ ok: false, msg: 'Ingresa la URL primero.' }); return; }
-    setDbListLoading(true); setDbList([]);
-    try { const res = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list_databases', config: cfg }) }); const data = (await res.json()) as { databases?: string[]; error?: string }; if (res.ok && data.databases?.length) setDbList(data.databases); else setTestResult({ ok: false, msg: data.error || 'Error' }); } catch { setTestResult({ ok: false, msg: 'Error de red' }); } finally { setDbListLoading(false); }
-  };
-  const probarConexion = async () => {
-    if (!cfg.url || !cfg.db || !cfg.username || !cfg.apiKey) { setTestResult({ ok: false, msg: 'Completa todos los campos.' }); return; }
-    setTesting(true); setTestResult(null);
-    try { const res = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test_connection', config: cfg }) }); const data = (await res.json()) as { ok?: boolean; message?: string; error?: string }; setTestResult(res.ok && data.ok ? { ok: true, msg: `✓ Conexión exitosa. ${data.message ?? ''}` } : { ok: false, msg: data.error || 'Error' }); } catch { setTestResult({ ok: false, msg: 'Error de red' }); } finally { setTesting(false); }
-  };
-  return (
-    <div className="fixed inset-0 z-[600] bg-navy/60 backdrop-blur-sm flex items-end">
-      <div className="bg-white rounded-t-[20px] w-full px-4 pb-10 pt-5 max-h-[90vh] overflow-y-auto" style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.22)' }}>
-        <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
-        <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1">Configurar Odoo</h3>
-        <p className="text-[13px] text-text-3 mb-4">Credenciales para operaciones, productos y pickers</p>
-        {([['url', 'URL del servidor', 'kiosclub.odoo.com', 'text'], ['username', 'Usuario / Email', 'admin@empresa.com', 'text'], ['apiKey', 'Contraseña / API Key', '', 'password']] as const).map(([k, label, placeholder, type]) => (
-          <div key={k} className="mb-3"><label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide block mb-1">{label}</label><input type={type} value={cfg[k]} onChange={e => set(k, e.target.value)} placeholder={placeholder} className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" /></div>
-        ))}
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1"><label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide">Base de datos</label><button onClick={detectarDbs} disabled={dbListLoading || !cfg.url} className="text-[11px] font-bold text-navy border-none bg-transparent cursor-pointer disabled:opacity-40 flex items-center gap-1 px-0">{dbListLoading ? <><div className="w-2.5 h-2.5 border border-navy/30 border-t-navy rounded-full animate-spin" />Detectando…</> : '🔍 Detectar'}</button></div>
-          <input type="text" value={cfg.db} onChange={e => set('db', e.target.value)} placeholder="nombre_base_de_datos" className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" />
-          {dbList.length > 0 && <div className="mt-1.5 border border-border rounded-btn overflow-hidden">{dbList.map(d => <button key={d} onClick={() => { set('db', d); setDbList([]); }} className={`w-full text-left px-3 py-2 font-mono text-[14px] border-b border-border/40 last:border-b-0 cursor-pointer ${cfg.db === d ? 'bg-[rgba(26,37,80,0.08)] text-navy font-bold' : 'bg-white text-text hover:bg-bg'}`}>{d}</button>)}</div>}
-        </div>
-        {testResult && <div className={`mt-1 mb-3 px-3 py-2.5 rounded-btn text-[13px] border ${testResult.ok ? 'bg-[rgba(22,163,74,0.08)] border-success text-success' : 'bg-[rgba(211,47,47,0.07)] border-red text-red'}`}>{testResult.msg}</div>}
-        <button onClick={probarConexion} disabled={testing} className="w-full py-3 mb-3 border-2 border-dashed border-navy/30 rounded-btn text-navy/70 font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 bg-transparent">{testing ? <><div className="w-3 h-3 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />Probando…</> : '⚡ Probar conexión'}</button>
-        <div className="flex gap-2.5"><button onClick={onClose} className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card font-barlow-condensed text-lg font-bold border-none cursor-pointer">Cancelar</button><button onClick={() => { onSave(cfg); onClose(); }} className="flex-1 py-3.5 bg-navy text-white rounded-card font-barlow-condensed text-lg font-bold border-none cursor-pointer" style={{ boxShadow: '0 4px 16px rgba(26,37,80,0.28)' }}>Guardar</button></div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Operacion Input ── */
 interface OpSearch { loading: boolean; results: OperacionOdoo[]; open: boolean; error: string }
 function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNeedConfig }: {
@@ -360,13 +341,17 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
   odooConfig: OdooConfig; tiposError: TipoError[]; operacionCodes: string[];
   onAdd: (p: ProductoError) => void; onNeedConfig: () => void;
 }) {
+  const hasOdoo = !!odooConfig.url;
+  const [manualMode, setManualMode] = useState(!hasOdoo);
   const [codigo, setCodigo] = useState('');
   const [loading, setLoading] = useState(false);
   const [found, setFound] = useState<ProductoOdoo | null>(null);
   const [error, setError] = useState('');
   const [unidades, setUnidades] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoError>(tiposError[0] ?? 'faltante');
-  useEffect(() => { if (!tiposError.includes(tipoProd)) setTipoProd(tiposError[0] ?? 'faltante'); /* eslint-disable-next-line */ }, [tiposError]);
+  const [manualNombre, setManualNombre] = useState('');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!tiposError.includes(tipoProd)) setTipoProd(tiposError[0] ?? 'faltante'); }, [tiposError]);
   const buscar = async () => {
     if (!odooConfig.url) { onNeedConfig(); return; }
     const cod = codigo.replace(/[\[\]]/g, '').trim().toUpperCase(); if (!cod) return;
@@ -379,6 +364,12 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
     onAdd({ codigo: found.codigo, nombre: found.nombre, unidades: parseInt(unidades), tipo: tipoProd, cantidadEsperada: found.cantidadEsperada });
     setCodigo(''); setFound(null); setUnidades(''); setError('');
   };
+  const confirmarManual = () => {
+    const cod = codigo.replace(/[\[\]]/g, '').trim().toUpperCase();
+    if (!cod || !unidades || parseInt(unidades) <= 0) return;
+    onAdd({ codigo: cod, nombre: manualNombre.trim() || cod, unidades: parseInt(unidades), tipo: tipoProd });
+    setCodigo(''); setManualNombre(''); setUnidades('');
+  };
   const ratioPreview = useMemo(() => {
     if (!found?.cantidadEsperada || !unidades || isNaN(parseInt(unidades))) return null;
     const u = parseInt(unidades); if (u <= 0) return null;
@@ -386,29 +377,164 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
   }, [found, unidades, tipoProd]);
   return (
     <div className="border border-dashed border-navy/20 rounded-card p-3 bg-bg">
-      <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Agregar producto</div>
-      <div className="flex gap-2">
-        <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031]"
-          className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
-        <button onClick={buscar} disabled={loading || !codigo.trim()} className="px-3 py-2 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12">
-          {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
-        </button>
-      </div>
-      {error && <div className="mt-1.5 text-[11px] text-red">{error}</div>}
-      {found && (
-        <div className="mt-2">
-          <div className="bg-white border border-success/30 rounded-btn px-3 py-2 mb-2.5 flex items-center justify-between">
-            <div><div className="font-mono text-[10px] text-text-3">[{found.codigo}]</div><div className="text-[13px] font-semibold text-text">{found.nombre}</div></div>
-            {found.cantidadEsperada !== undefined && <div className="text-right ml-3 flex-shrink-0"><div className="text-[10px] text-text-3 uppercase">Esperado</div><div className="font-barlow-condensed text-[22px] font-bold text-navy leading-tight">{found.cantidadEsperada}</div></div>}
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide flex-1">Agregar producto</div>
+        {hasOdoo && (
+          <div className="flex gap-1">
+            <button onClick={() => { setManualMode(false); setError(''); setFound(null); }} className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${!manualMode ? 'bg-navy text-white border-navy' : 'bg-white text-text-3 border-border'}`}>Odoo</button>
+            <button onClick={() => { setManualMode(true); setFound(null); setError(''); }} className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${manualMode ? 'bg-navy text-white border-navy' : 'bg-white text-text-3 border-border'}`}>Manual</button>
           </div>
+        )}
+      </div>
+      {manualMode ? (
+        <div className="flex flex-col gap-2">
+          <input type="text" value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código producto"
+            className="bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
+          <input type="text" value={manualNombre} onChange={e => setManualNombre(e.target.value)} placeholder="Nombre (opcional)"
+            className="bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-barlow text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
           <div className="flex gap-2 items-center">
-            {tiposError.length > 1 && <div className="flex gap-1 flex-shrink-0">{tiposError.map(t => <button key={t} onClick={() => setTipoProd(t)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-btn border cursor-pointer ${tipoProd === t ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}>{t === 'faltante' ? '↓ Falt.' : '↑ Sobr.'}</button>)}</div>}
-            <div className="flex-1">
-              <input type="number" inputMode="numeric" min="1" value={unidades} onChange={e => setUnidades(e.target.value)} placeholder="Error qty"
-                className="w-full bg-white border-[1.5px] border-border rounded-btn px-2 py-1.5 text-center font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" />
-              {ratioPreview && <div className={`text-center mt-1 font-barlow-condensed font-bold text-[15px] ${tipoProd === 'faltante' ? 'text-red' : 'text-warn'}`}>{ratioPreview.auditado}/{ratioPreview.esperado} <span className="text-[12px] opacity-70">({ratioPreview.delta > 0 ? '+' : ''}{ratioPreview.delta})</span></div>}
+            {tiposError.length > 1 && <div className="flex gap-1 flex-shrink-0">{tiposError.map(t => <button key={t} onClick={() => setTipoProd(t)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-btn border cursor-pointer ${tipoProd === t ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}>{t === 'faltante' ? '↓' : '↑'}</button>)}</div>}
+            <input type="number" inputMode="numeric" min="1" value={unidades} onChange={e => setUnidades(e.target.value)} placeholder="Unidades"
+              className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-2 py-1.5 text-center font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" />
+            <button onClick={confirmarManual} disabled={!codigo.trim() || !unidades || parseInt(unidades) <= 0} className="py-1.5 px-3 bg-success text-white border-none rounded-btn text-[12px] font-bold cursor-pointer disabled:opacity-40 flex-shrink-0">+ Add</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2">
+            <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031]"
+              className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
+            <button onClick={buscar} disabled={loading || !codigo.trim()} className="px-3 py-2 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12">
+              {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
+            </button>
+          </div>
+          {error && <div className="mt-1.5 text-[11px] text-red">{error}</div>}
+          {found && (
+            <div className="mt-2">
+              <div className="bg-white border border-success/30 rounded-btn px-3 py-2 mb-2.5 flex items-center justify-between">
+                <div><div className="font-mono text-[10px] text-text-3">[{found.codigo}]</div><div className="text-[13px] font-semibold text-text">{found.nombre}</div></div>
+                {found.cantidadEsperada !== undefined && <div className="text-right ml-3 flex-shrink-0"><div className="text-[10px] text-text-3 uppercase">Esperado</div><div className="font-barlow-condensed text-[22px] font-bold text-navy leading-tight">{found.cantidadEsperada}</div></div>}
+              </div>
+              <div className="flex gap-2 items-center">
+                {tiposError.length > 1 && <div className="flex gap-1 flex-shrink-0">{tiposError.map(t => <button key={t} onClick={() => setTipoProd(t)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-btn border cursor-pointer ${tipoProd === t ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}>{t === 'faltante' ? '↓ Falt.' : '↑ Sobr.'}</button>)}</div>}
+                <div className="flex-1">
+                  <input type="number" inputMode="numeric" min="1" value={unidades} onChange={e => setUnidades(e.target.value)} placeholder="Error qty"
+                    className="w-full bg-white border-[1.5px] border-border rounded-btn px-2 py-1.5 text-center font-barlow text-[15px] outline-none focus:border-navy [-webkit-appearance:none]" />
+                  {ratioPreview && <div className={`text-center mt-1 font-barlow-condensed font-bold text-[15px] ${tipoProd === 'faltante' ? 'text-red' : 'text-warn'}`}>{ratioPreview.auditado}/{ratioPreview.esperado} <span className="text-[12px] opacity-70">({ratioPreview.delta > 0 ? '+' : ''}{ratioPreview.delta})</span></div>}
+                </div>
+                <button onClick={confirmar} disabled={!unidades || parseInt(unidades) <= 0} className="py-1.5 px-3 bg-success text-white border-none rounded-btn text-[12px] font-bold cursor-pointer disabled:opacity-40 flex-shrink-0">+ Add</button>
+              </div>
             </div>
-            <button onClick={confirmar} disabled={!unidades || parseInt(unidades) <= 0} className="py-1.5 px-3 bg-success text-white border-none rounded-btn text-[12px] font-bold cursor-pointer disabled:opacity-40 flex-shrink-0">+ Add</button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Auditor Selector (searchable dropdown from configured list) ── */
+function AuditorSelector({ auditor, auditorList, onChange }: {
+  auditor: string; auditorList: string[]; onChange: (a: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = auditorList.filter(n => !query || n.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div ref={ref} className="relative">
+      <div onClick={() => setOpen(o => !o)}
+        className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
+        style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+        {auditor
+          ? <span className="font-semibold text-text text-[15px]">{auditor}</span>
+          : <span className="text-text-3 font-barlow text-[15px]">{auditorList.length === 0 ? 'Sin auditores configurados…' : 'Seleccionar auditor…'}</span>}
+        <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-border">
+            <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Buscar auditor…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{auditorList.length === 0 ? 'Configura auditores en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.map(name => (
+              <div key={name} onClick={() => { onChange(name); setOpen(false); setQuery(''); }}
+                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 font-barlow text-[14px] ${auditor === name ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
+                {name}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Picker Name Selector (searchable dropdown from configured picker names) ── */
+function PickerNameSelector({ picker, pickerNames, onChange, odooDetected }: {
+  picker: string; pickerNames: Record<string, string>; onChange: (p: string) => void; odooDetected?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const options = Object.entries(pickerNames).filter(([, name]) => name.trim() !== '');
+  const filtered = options.filter(([key, name]) => !query || name.toLowerCase().includes(query.toLowerCase()) || key.toLowerCase().includes(query.toLowerCase()));
+  const selectedName = picker ? (pickerNames[picker]?.trim() || picker) : null;
+
+  return (
+    <div ref={ref} className="relative">
+      <div onClick={() => setOpen(o => !o)}
+        className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
+        style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {selectedName
+            ? <span className="font-semibold text-text text-[15px]">{selectedName}</span>
+            : <span className="text-text-3 font-barlow text-[15px]">{options.length === 0 ? 'Sin pickers configurados…' : 'Seleccionar picker…'}</span>}
+          {odooDetected && picker && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20 flex-shrink-0">Odoo ✓</span>
+          )}
+        </div>
+        <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+          {options.length > 3 && (
+            <div className="p-2 border-b border-border">
+              <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Buscar picker…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
+            </div>
+          )}
+          <div className="max-h-48 overflow-y-auto">
+            {picker && (
+              <div onClick={() => { onChange(''); setOpen(false); setQuery(''); }}
+                className="px-4 py-2 cursor-pointer border-b border-border/40 text-text-3 text-[12px] italic hover:bg-bg">
+                — Sin picker
+              </div>
+            )}
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{options.length === 0 ? 'Configura pickers en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.map(([key, name]) => (
+              <div key={key} onClick={() => { onChange(key); setOpen(false); setQuery(''); }}
+                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${picker === key ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
+                <div className="font-barlow text-[14px] font-semibold">{name}</div>
+                <div className="text-[11px] text-text-3">{key.replace('Pickers ', 'P.')}</div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -417,9 +543,9 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
 }
 
 /* ── Picker Card (improved ranking card) ── */
-function PickerCard({ stats, rank, trend, odooConfig, compact = false }: {
+function PickerCard({ stats, rank, trend, odooConfig, compact = false, pickerNames }: {
   stats: PickerStats; rank: number; trend: WeekTrend[];
-  odooConfig: OdooConfig; compact?: boolean;
+  odooConfig: OdooConfig; compact?: boolean; pickerNames: Record<string, string>;
 }) {
   const [odooStats, setOdooStats] = useState<PickerOdooStats | null>(null);
   const [loadingOdoo, setLoadingOdoo] = useState(false);
@@ -428,7 +554,7 @@ function PickerCard({ stats, rank, trend, odooConfig, compact = false }: {
   const ec = effColor(stats.eficiencia);
   const pc = effColor(stats.pct);
   const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
-  const realName = PICKER_NAMES[stats.picker];
+  const realName = pickerNames[stats.picker]?.trim() || '';
   const showDualBar = stats.eficiencia !== stats.pct;
 
   const fetchOdoo = async () => {
@@ -446,13 +572,19 @@ function PickerCard({ stats, rank, trend, odooConfig, compact = false }: {
       <div className="p-4">
         {/* Header row */}
         <div className="flex items-start gap-3 mb-4">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-[20px] flex-shrink-0" style={{ background: `${ec}18` }}>
-            {medal ?? <span className="font-bold text-[14px]" style={{ color: ec }}>{rank}</span>}
+          <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 relative overflow-hidden"
+            style={{ background: initialsColor(realName || stats.picker) }}>
+            <span className="font-barlow-condensed font-bold text-[16px] text-white leading-none">
+              {getInitials(realName || stats.picker)}
+            </span>
+            {medal && (
+              <span className="absolute -bottom-0.5 -right-0.5 text-[14px] leading-none">{medal}</span>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-barlow-condensed text-[18px] font-bold text-navy leading-tight">{realName || stats.picker}</div>
             {realName && <div className="text-[11px] text-text-3">{stats.picker}</div>}
-            <div className="text-[12px] text-text-3 mt-0.5">{stats.bueno} buenos · {stats.malo} malos · {stats.total} total</div>
+            <div className="text-[12px] text-text-3 mt-0.5">{stats.bueno} buenos · {stats.malo} malos · {stats.total} total · {stats.totalPallets} pal.</div>
           </div>
           {/* Big % */}
           <div className="text-right flex-shrink-0">
@@ -539,7 +671,7 @@ type DashPeriod = 'hoy' | 'semana' | 'mes' | 'total';
 const PERIOD_LABELS: Record<DashPeriod, string> = { hoy: 'Hoy', semana: '7 días', mes: '30 días', total: 'Total' };
 
 /* ── Dashboard Content ── */
-function DashboardContent({ history, today }: { history: AuditEntry[]; today: string }) {
+function DashboardContent({ history, today, pickerNames }: { history: AuditEntry[]; today: string; pickerNames: Record<string, string> }) {
   const [period, setPeriod] = useState<DashPeriod>('hoy');
 
   const entries = useMemo(() => {
@@ -615,8 +747,8 @@ function DashboardContent({ history, today }: { history: AuditEntry[]; today: st
           <div className="flex items-center gap-3">
             <div className="text-[32px]">🥇</div>
             <div className="flex-1">
-              <div className="font-barlow-condensed text-[20px] font-bold text-navy">{getPickerDisplay(topPicker[0])}</div>
-              {PICKER_NAMES[topPicker[0]] && <div className="text-[11px] text-text-3">{topPicker[0]}</div>}
+              <div className="font-barlow-condensed text-[20px] font-bold text-navy">{displayPicker(topPicker[0], pickerNames)}</div>
+              {pickerNames[topPicker[0]]?.trim() && <div className="text-[11px] text-text-3">{topPicker[0]}</div>}
               <div className="text-[12px] text-text-2 mt-0.5">{topPicker[1].b}/{topPicker[1].t} buenos hoy</div>
             </div>
             <div className="font-barlow-condensed text-[36px] font-extrabold text-success">{Math.round((topPicker[1].b / topPicker[1].t) * 100)}%</div>
@@ -664,7 +796,7 @@ function DashboardContent({ history, today }: { history: AuditEntry[]; today: st
             <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${e.resultado === 'bueno' ? 'bg-success' : 'bg-red'}`} />
             <span className="text-[12px] text-text-2 flex-shrink-0 w-10">{e.hora}</span>
             <span className="text-[13px] font-medium text-text flex-1 truncate">{e.tiendaNombre}</span>
-            {e.picker && <span className="text-[11px] text-text-3 flex-shrink-0">{getPickerDisplay(e.picker)}</span>}
+            {e.picker && <span className="text-[11px] text-text-3 flex-shrink-0">{displayPicker(e.picker, pickerNames)}</span>}
             <span className={`font-barlow-condensed text-[13px] font-bold flex-shrink-0 ${e.resultado === 'bueno' ? 'text-success' : 'text-red'}`}>{e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}</span>
           </div>
         ))}
@@ -674,7 +806,7 @@ function DashboardContent({ history, today }: { history: AuditEntry[]; today: st
 }
 
 /* ── Ranking Content ── */
-function RankingContent({ history, odooConfig }: { history: AuditEntry[]; odooConfig: OdooConfig }) {
+function RankingContent({ history, odooConfig, pickerNames }: { history: AuditEntry[]; odooConfig: OdooConfig; pickerNames: Record<string, string> }) {
   const [scope, setScope] = useState<'hoy' | 'total'>('total');
   const [rView, setRView] = useState<'barras' | 'semanal'>('barras');
   const [selectedPickers, setSelectedPickers] = useState<string[]>([]);
@@ -725,7 +857,7 @@ function RankingContent({ history, odooConfig }: { history: AuditEntry[]; odooCo
             ? <div className="text-center py-16 text-text-3"><div className="text-[40px] mb-3">📊</div><div className="font-barlow-condensed text-[16px]">Sin datos para {scope === 'hoy' ? 'hoy' : 'el histórico'}.</div></div>
             : <>
                 {rankingData.map((s, i) => (
-                  <PickerCard key={s.picker} stats={s} rank={i + 1} trend={computeWeeklyTrend(history, s.picker)} odooConfig={odooConfig} />
+                  <PickerCard key={s.picker} stats={s} rank={i + 1} trend={computeWeeklyTrend(history, s.picker)} odooConfig={odooConfig} pickerNames={pickerNames} />
                 ))}
                 {(() => {
                   const activos = new Set(rankingData.map(r => r.picker));
@@ -734,7 +866,7 @@ function RankingContent({ history, odooConfig }: { history: AuditEntry[]; odooCo
                   return (
                     <div className="mt-2">
                       <div className="text-[11px] text-text-3 uppercase tracking-wide mb-2">Sin auditorías en este período</div>
-                      <div className="flex flex-wrap gap-1.5">{sin.map(p => <span key={p} className="text-[11px] text-text-3 bg-bg-2 border border-border px-2.5 py-1 rounded-full">{getPickerDisplay(p)}</span>)}</div>
+                      <div className="flex flex-wrap gap-1.5">{sin.map(p => <span key={p} className="text-[11px] text-text-3 bg-bg-2 border border-border px-2.5 py-1 rounded-full">{displayPicker(p, pickerNames)}</span>)}</div>
                     </div>
                   );
                 })()}
@@ -752,7 +884,7 @@ function RankingContent({ history, odooConfig }: { history: AuditEntry[]; odooCo
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-bold border cursor-pointer transition-all ${isSel && selectedPickers.length > 0 ? 'text-white border-transparent' : 'bg-bg-2 border-border text-text-2'}`}
                       style={isSel && selectedPickers.length > 0 ? { background: color, borderColor: color } : {}}>
                       <div className="w-2 h-2 rounded-full" style={{ background: isSel && selectedPickers.length > 0 ? 'white' : color }} />
-                      {getPickerDisplay(r.picker).replace('Pickers ', 'P.')}
+                      {displayPicker(r.picker, pickerNames).replace('Pickers ', 'P.')}
                     </button>
                   );
                 })}
@@ -767,7 +899,7 @@ function RankingContent({ history, odooConfig }: { history: AuditEntry[]; odooCo
               {(selectedPickers.length > 0 ? selectedPickers : rankingData.slice(0, 6).map(r => r.picker)).map((p, ci) => (
                 <div key={p} className="flex items-center gap-1.5 text-[11px]">
                   <div className="w-3 h-1.5 rounded-full" style={{ background: LINE_COLORS[ci % LINE_COLORS.length] }} />
-                  <span className="text-text-2">{getPickerDisplay(p)}</span>
+                  <span className="text-text-2">{displayPicker(p, pickerNames)}</span>
                 </div>
               ))}
             </div>
@@ -779,20 +911,34 @@ function RankingContent({ history, odooConfig }: { history: AuditEntry[]; odooCo
 }
 
 /* ── History Content ── */
-function HistoryContent({ history, today, onReaudit, onExportPDF }: {
+function HistoryContent({ history, today, onReaudit, onExportPDF, onRefresh, pickerNames }: {
   history: AuditEntry[]; today: string;
   onReaudit: (e: AuditEntry) => void;
   onExportPDF?: (entries: AuditEntry[], fecha: string) => void;
+  onRefresh?: () => void;
+  pickerNames: Record<string, string>;
 }) {
   const [histFecha, setHistFecha] = useState(today);
+  const [refreshing, setRefreshing] = useState(false);
   const fechasDisponibles = useMemo(() => Array.from(new Set(history.map(e => e.fecha))).sort((a, b) => b.localeCompare(a)), [history]);
   const filtrado = history.filter(e => e.fecha === (histFecha || today));
+
+  const handleRefresh = async () => {
+    if (!onRefresh || refreshing) return;
+    setRefreshing(true);
+    await new Promise(r => setTimeout(r, 300));
+    onRefresh();
+    setRefreshing(false);
+  };
 
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-2.5 bg-white border-b border-border flex items-center gap-2 flex-shrink-0 overflow-x-auto">
         {fechasDisponibles.length === 0 ? <span className="text-[12px] text-text-3">Sin registros</span>
           : fechasDisponibles.map(f => <button key={f} onClick={() => setHistFecha(f)} className={`flex-shrink-0 px-3 py-1 rounded-full text-[12px] font-bold border cursor-pointer ${histFecha === f ? 'bg-navy text-white border-navy' : 'bg-white text-text-2 border-border'}`}>{f === today ? 'Hoy' : f}</button>)}
+        {onRefresh && (
+          <button onClick={handleRefresh} className={`flex-shrink-0 ml-auto border-none bg-transparent text-text-3 cursor-pointer text-[18px] transition-transform ${refreshing ? 'animate-spin' : 'hover:text-navy'}`} title="Actualizar">↻</button>
+        )}
       </div>
       {filtrado.length > 0 && (
         <div className="px-4 py-1.5 bg-white border-b border-border flex gap-3 flex-shrink-0 text-[12px] items-center">
@@ -806,14 +952,14 @@ function HistoryContent({ history, today, onReaudit, onExportPDF }: {
         {!filtrado.length
           ? <div className="text-center py-16 text-text-3 text-[15px]">Sin auditorías para esta fecha.</div>
           : filtrado.map(e => (
-            <div key={e.id} className="bg-white border border-border rounded-card p-3.5 mb-2.5" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.05)' }}>
+            <div key={e.id} className={`bg-white border border-border rounded-card p-3.5 mb-2.5 ${e.reauditoriaDeId ? 'border-l-[3px] border-l-info' : ''}`} style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.05)' }}>
               <div className="flex items-start justify-between mb-2 gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="font-barlow-condensed text-base font-bold text-navy">{e.tiendaNombre}</div>
-                    {e.reauditoriaDeId && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">↩ Re</span>}
+                    {e.reauditoriaDeId && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">↩ Re-auditoría</span>}
                   </div>
-                  <div className="text-[11px] text-text-3 mt-0.5">{e.hora} · {e.auditor}{e.picker ? ` · ${getPickerDisplay(e.picker)}` : ''}</div>
+                  <div className="text-[11px] text-text-3 mt-0.5">{e.hora} · {e.auditor}{e.picker ? ` · ${displayPicker(e.picker, pickerNames)}` : ''}</div>
                 </div>
                 <span className={`font-barlow-condensed text-[11px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${e.resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.10)] border-success text-success' : 'bg-[rgba(211,47,47,0.10)] border-red text-red'}`}>
                   {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
@@ -831,6 +977,12 @@ function HistoryContent({ history, today, onReaudit, onExportPDF }: {
                 </div>
               )}
               {e.observaciones && <div className="mt-1.5 px-2.5 py-1.5 bg-bg rounded-btn text-[11px] text-text-2 italic border-l-2 border-navy/20 mb-2">{e.observaciones}</div>}
+              {e.fotoUrl && (
+                <a href={e.fotoUrl} target="_blank" rel="noopener noreferrer" className="block mt-2 mb-2 rounded-card overflow-hidden border border-border">
+                  <img src={e.fotoUrl} alt="foto del error" className="w-full object-cover" style={{ maxHeight: 160 }} />
+                  <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1">📷 Foto adjunta · toca para abrir</div>
+                </a>
+              )}
               {e.resultado === 'malo' && <button onClick={() => onReaudit(e)} className="w-full py-2 border border-dashed border-info/40 rounded-btn text-info text-[12px] font-bold cursor-pointer bg-transparent transition-all">↩ Re-auditar</button>}
             </div>
           ))}
@@ -840,43 +992,58 @@ function HistoryContent({ history, today, onReaudit, onExportPDF }: {
 }
 
 /* ── Desktop Stats Panel ── */
-function StatsPanel({ history, today, onReaudit, odooConfig }: {
+function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false, pickerNames, onRefresh }: {
   history: AuditEntry[]; today: string;
   onReaudit: (e: AuditEntry) => void; odooConfig: OdooConfig;
+  onlyHistory?: boolean; pickerNames: Record<string, string>; onRefresh?: () => void;
 }) {
-  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history'>(onlyHistory ? 'history' : 'dashboard');
   return (
     <div className="flex flex-col h-full bg-bg">
-      <div className="flex border-b border-border bg-white flex-shrink-0">
-        {([['dashboard', '📊 Dashboard'], ['ranking', '🏆 Ranking'], ['history', '📋 Historial']] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {!onlyHistory && (
+        <div className="flex border-b border-border bg-white flex-shrink-0">
+          {([['dashboard', '📊 Dashboard'], ['ranking', '🏆 Ranking'], ['history', '📋 Historial']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {onlyHistory && (
+        <div className="px-4 py-2.5 bg-white border-b border-border flex-shrink-0">
+          <span className="font-barlow-condensed text-[15px] font-bold text-navy">📋 Tu historial</span>
+        </div>
+      )}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>}
-        {tab === 'ranking' && <RankingContent history={history} odooConfig={odooConfig} />}
-        {tab === 'history' && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} />}
+        {!onlyHistory && tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
+        {!onlyHistory && tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
+        {(onlyHistory || tab === 'history')  && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} onRefresh={onRefresh} pickerNames={pickerNames} />}
       </div>
     </div>
   );
 }
 
 /* ── Mobile Menu ── */
-function MobileMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: (v: 'dashboard' | 'history' | 'ranking') => void }) {
+function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
+  onClose: () => void;
+  onNavigate: (v: 'dashboard' | 'history' | 'ranking') => void;
+  onlyHistory?: boolean;
+}) {
+  const items = onlyHistory
+    ? [{ icon: '📋', label: 'Historial', sub: 'Tus auditorías por fecha', v: 'history' as const }]
+    : [
+        { icon: '📊', label: 'Dashboard del día', sub: 'KPIs y métricas de hoy', v: 'dashboard' as const },
+        { icon: '🏆', label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades', v: 'ranking' as const },
+        { icon: '📋', label: 'Historial', sub: 'Auditorías por fecha + exportar PDF', v: 'history' as const },
+      ];
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[24px] overflow-hidden" style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.22)' }}>
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mt-4 mb-1" />
         <div className="p-4 pb-8 space-y-2">
-          {([
-            { icon: '📊', label: 'Dashboard del día', sub: 'KPIs y métricas de hoy', v: 'dashboard' as const },
-            { icon: '🏆', label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades', v: 'ranking' as const },
-            { icon: '📋', label: 'Historial', sub: 'Auditorías por fecha + exportar PDF', v: 'history' as const },
-          ]).map(({ icon, label, sub, v }) => (
+          {items.map(({ icon, label, sub, v }) => (
             <button key={v} onClick={() => onNavigate(v)}
               className="w-full flex items-center gap-4 px-4 py-3.5 bg-bg hover:bg-bg-2 rounded-card cursor-pointer border border-border text-left transition-colors">
               <span className="text-[28px]">{icon}</span>
@@ -897,8 +1064,11 @@ function MobileMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: 
    MAIN SCREEN
 ════════════════════════════════════════ */
 export function AuditoriaScreen() {
-  const { signOut, user } = useAuth();
+  const { signOut, user, profile, loading: authLoading } = useAuth();
   const { showToast, state } = useApp();
+  const userRole        = profile?.role ?? 'auditor';
+  const isAdminAud      = userRole === 'admin-auditoria';
+  const isAuditorOnly   = userRole === 'auditor';
   const router = useRouter();
 
   const [auditor,           setAuditor]           = useState('');
@@ -917,36 +1087,123 @@ export function AuditoriaScreen() {
   const [tiendaOpen,  setTiendaOpen]  = useState(false);
   const tiendaRef = useRef<HTMLDivElement>(null);
 
-  const [showOdooConf,   setShowOdooConf]   = useState(false);
-  const [odooConfig,     setOdooConfig]     = useState<OdooConfig>({ url: '', db: '', username: '', apiKey: '' });
-  const [view,           setView]           = useState<'form' | 'history' | 'ranking' | 'dashboard'>('form');
+  const odooConfig = useMemo(() => getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' }, []);
+  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision' | 'config'>('form');
+  const [viewInit,       setViewInit]       = useState(false);
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError,   setHistoryError]   = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [palletFiles,    setPalletFiles]    = useState<Record<string, File>>({});
+  const [palletPreviews, setPalletPreviews] = useState<Record<string, string>>({});
+  const [fotoFile,       setFotoFile]       = useState<File | null>(null);
+  const [fotoPreview,    setFotoPreview]    = useState('');
+  const [submitting,     setSubmitting]     = useState(false);
+  const [pickerNamesState, setPickerNamesState] = useState<Record<string, string>>({ ...PICKER_NAMES });
+  const [auditorList,      setAuditorList]      = useState<string[]>([]);
+  const [odooAutoDetected, setOdooAutoDetected] = useState(false);
+  const [confirmSubmit,    setConfirmSubmit]    = useState(false);
+  const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
+  const palletsInputRef = useRef<HTMLInputElement>(null);
+  const [sections, setSections] = useState({ id: true, contenido: true, resultado: true, evidencia: true });
+  const toggleSection = (k: keyof typeof sections) => setSections(s => ({ ...s, [k]: !s[k] }));
 
+  // Set initial view once profile loads
   useEffect(() => {
-    const cfg = getOdooConfig(); if (cfg) setOdooConfig(cfg);
-    (async () => {
+    if (!authLoading && !viewInit) {
+      if (isAdminAud) setView('hub');
+      setViewInit(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAdminAud, viewInit]);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true); setHistoryError('');
+    try {
       const { data, error } = await supabase
         .from('audit_entries')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
-      if (data && !error && data.length > 0) {
+      if (error) throw new Error(error.message);
+      if (data && data.length > 0) {
         setHistory(data.map(r => rowToEntry(r as Record<string, unknown>)));
       } else {
-        // Fallback: localStorage (migration / offline)
-        try {
-          const h = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[];
-          setHistory(h.slice(-200).reverse());
-        } catch { /* empty */ }
+        const h = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[];
+        setHistory(h.slice(-200).reverse());
       }
-    })();
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Error al cargar historial');
+      try {
+        const h = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[];
+        setHistory(h.slice(-200).reverse());
+      } catch { /* empty */ }
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHistory(); }, []);
+  useEffect(() => {
+    supabase.from('picker_config').select('nombres, auditores').eq('id', 1).single()
+      .then(({ data }) => {
+        if (data?.nombres && typeof data.nombres === 'object') {
+          const loaded = data.nombres as Record<string, string>;
+          setPickerNamesState({ ...PICKER_NAMES, ...loaded });
+        }
+        if (Array.isArray(data?.auditores)) {
+          setAuditorList(data.auditores as string[]);
+        }
+      });
   }, []);
-  useEffect(() => { setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' }))); }, [tipo]);
+  useEffect(() => {
+    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' })));
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({});
+    setPalletPreviews({});
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    setFotoFile(null);
+    setFotoPreview('');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipo]);
+
+  const handleTipoChange = (val: TipoAuditoria) => {
+    if (val === tipo) return;
+    const hasPhotos = Object.keys(palletFiles).length > 0 || !!fotoFile;
+    if (hasPhotos) { setTipoPending(val); } else { setTipo(val); }
+  };
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (tiendaRef.current && !tiendaRef.current.contains(e.target as Node)) setTiendaOpen(false); };
     document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Autosave draft to sessionStorage
+  useEffect(() => {
+    if (!auditor && !picker && !tienda) return;
+    const handle = setTimeout(() => {
+      try {
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ auditor, picker, tiendaCod: tienda?.cod, tipo, pallets, tieneErrores, tiposError }));
+      } catch { /* empty */ }
+    }, 1500);
+    return () => clearTimeout(handle);
+  }, [auditor, picker, tienda, tipo, pallets, tieneErrores, tiposError]);
+
+  // Restore draft on mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as { auditor?: string; picker?: string; tiendaCod?: string; tipo?: TipoAuditoria; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[] };
+      if (draft.auditor) setAuditor(draft.auditor);
+      if (draft.picker) setPicker(draft.picker);
+      if (draft.tiendaCod) setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === draft.tiendaCod) ?? null);
+      if (draft.tipo) setTipo(draft.tipo);
+      if (draft.pallets) setPallets(draft.pallets);
+      if (draft.tieneErrores !== undefined) setTieneErrores(draft.tieneErrores ?? null);
+      if (draft.tiposError?.length) setTiposError(draft.tiposError);
+    } catch { /* empty */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const correccion = useMemo<CorreccionAuditoria>(() => {
@@ -954,7 +1211,7 @@ export function AuditoriaScreen() {
     const f = tiposError.includes('faltante'), s = tiposError.includes('sobrante');
     if (f && s) return 'cruce'; if (f) return 'faltante'; if (s) return 'sobrante'; return 'correcto';
   }, [tieneErrores, tiposError]);
-  const resultado = useMemo<ResultadoAuditoria>(() => correccion === 'correcto' ? 'bueno' : 'malo', [correccion]);
+  const resultado = useMemo<ResultadoAuditoria>(() => tieneErrores === true ? 'malo' : 'bueno', [tieneErrores]);
 
   const tiendaFiltered = TODAS_LAS_TIENDAS.filter(t => {
     const q = tiendaQuery.toLowerCase();
@@ -963,31 +1220,77 @@ export function AuditoriaScreen() {
 
   const updateOperacion = (i: number, codigo: string) => setOperaciones(ops => ops.map((op, j) => j === i ? { ...op, codigo } : op));
 
-  const handleOpSelect = (codigo: string, responsable: string | undefined) => {
-    if (responsable && !picker) {
-      const match = matchOdooResponsable(responsable);
-      if (match) { setPicker(match); showToast(`Picker detectado: ${getPickerDisplay(match)}`, '#2563EB'); }
+  const handleOpSelect = (_codigo: string, responsable: string | undefined) => {
+    if (responsable) {
+      const match = matchPickerNames(responsable, pickerNamesState);
+      if (match) {
+        setPicker(match);
+        setOdooAutoDetected(true);
+        showToast(`Picker detectado: ${displayPicker(match, pickerNamesState)}`, '#2563EB');
+      }
     }
-    void codigo;
   };
 
   const toggleTipoError = (t: TipoError) => { setTiposError(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]); setProductos([]); };
 
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
-  const handleSubmit = () => {
+  const handleSubmitClick = () => {
     if (!auditor.trim()) { showToast('Ingresa el nombre del auditor', '#D97706'); return; }
     if (!tienda) { showToast('Selecciona una tienda', '#D97706'); return; }
     if (operaciones.some(op => !op.codigo.trim())) { showToast('Completa todas las operaciones', '#D97706'); return; }
     if (!pallets || parseInt(pallets) <= 0) { showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
     if (tieneErrores === null) { showToast('Indica si hubo errores', '#D97706'); return; }
     if (tieneErrores && tiposError.length === 0) { showToast('Selecciona el tipo de error', '#D97706'); return; }
+    setConfirmSubmit(true);
+  };
+
+  const handleSubmit = async () => {
+    setConfirmSubmit(false);
+    if (!tienda) return;
+    setSubmitting(true);
     const now = new Date();
+    const entryId = `AUD-${Date.now()}`;
+    const uploadedFotos: { label: string; url: string }[] = [];
+    const palletCount = parseInt(pallets) || 0;
+    if (user) {
+      for (let n = 1; n <= palletCount; n++) {
+        const file = palletFiles[String(n)];
+        if (!file) continue;
+        const ext = file.name.split('.').pop() || 'jpg';
+        const path = `${user.id}/${entryId}_pallet${n}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('audit-photos')
+          .upload(path, file, { contentType: file.type, upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+          uploadedFotos.push({ label: `Pallet ${n}`, url: publicUrl });
+        } else {
+          showToast(`⚠ Error al subir foto pallet ${n}`, '#D97706');
+        }
+      }
+    }
+    let uploadedFotoUrl: string | undefined;
+    if (user && fotoFile) {
+      const ext = fotoFile.name.split('.').pop() || 'jpg';
+      const path = `${user.id}/${entryId}_error.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('audit-photos')
+        .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
+      if (!upErr) {
+        const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+        uploadedFotoUrl = publicUrl;
+      } else {
+        showToast('⚠ Error al subir foto de productos', '#D97706');
+      }
+    }
     const entry: AuditEntry = {
-      id: `AUD-${Date.now()}`, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
+      id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
       auditor: auditor.trim(), picker: picker.trim(), tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
-      tipo, operaciones, pallets: parseInt(pallets), tieneErrores: tieneErrores === true, tiposError, productos,
+      tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
+      fotoUrl: uploadedFotoUrl,
+      palletFotos: uploadedFotos.length > 0 ? uploadedFotos : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
@@ -997,14 +1300,21 @@ export function AuditoriaScreen() {
     try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
     sheetsAuditoriaWrite(entry, state.sheetsUrl);
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
-    setTienda(null); setTiendaQuery(''); setPicker(''); setTipo('comida'); setPallets('');
+    try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* empty */ }
+    setTienda(null); setTiendaQuery(''); setPicker(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({}); setPalletPreviews({});
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    setFotoFile(null); setFotoPreview('');
+    setSubmitting(false);
   };
 
   const iniciarReauditoria = (entry: AuditEntry) => {
+    if (reauditoriaOrigen) { showToast('Termina o cancela la re-auditoría en curso primero', '#D97706'); return; }
     setReauditoriaOrigen(entry);
     setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === entry.tiendaCod) ?? null);
-    setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || '');
+    setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || ''); setOdooAutoDetected(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones('');
     setView('form');
   };
@@ -1012,27 +1322,103 @@ export function AuditoriaScreen() {
   const today = new Date().toLocaleDateString('es-CL');
   const todayEntries = useMemo(() => history.filter(e => e.fecha === today), [history, today]);
 
-  /* ════ RENDER ════ */
+  /* ── Hub view (admin-auditoria only) ── */
+  if (isAdminAud && view === 'hub') {
+    return (
+      <div className="fixed inset-0 flex flex-col overflow-hidden"
+        style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+        <div className="flex items-center gap-2 px-4 py-3.5 flex-shrink-0"
+          style={{ background: 'rgba(0,0,0,0.18)', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
+          <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/70 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+          <div className="flex-1">
+            <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
+            <div className="text-[11px] text-white/40 uppercase tracking-widest">Admin Auditoría</div>
+          </div>
+          <button onClick={async () => { await signOut(); router.push('/login'); }}
+            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
+          {[
+            { icon: '📝', title: 'Agregar Audición', desc: 'Registrar nueva auditoría de pallet', fn: () => setView('form'), border: 'rgba(34,197,94,0.45)', bg: 'rgba(34,197,94,0.14)', shadow: 'rgba(34,197,94,0.22)' },
+            { icon: '📊', title: 'Estadísticas', desc: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'), border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.14)', shadow: 'rgba(37,99,235,0.22)' },
+            { icon: '🔍', title: 'Revisión Auditoría', desc: 'Lista · Fotos · Estadísticas', fn: () => router.push('/auditoria-admin'), border: 'rgba(124,58,237,0.45)', bg: 'rgba(124,58,237,0.14)', shadow: 'rgba(124,58,237,0.22)' },
+            { icon: '📋', title: 'Historial', desc: 'Tus auditorías por fecha', fn: () => setView('revision'), border: 'rgba(217,119,6,0.45)', bg: 'rgba(217,119,6,0.14)', shadow: 'rgba(217,119,6,0.22)' },
+            { icon: '⚙️', title: 'Configuración', desc: 'Nombres de pickers · Ajustes del sistema', fn: () => setView('config'), border: 'rgba(20,184,166,0.45)', bg: 'rgba(20,184,166,0.14)', shadow: 'rgba(20,184,166,0.22)' },
+          ].map(({ icon, title, desc, fn, border, bg, shadow }) => (
+            <button key={title} onClick={fn}
+              className="w-full rounded-2xl px-5 py-4 flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98] text-left border-2"
+              style={{ background: bg, borderColor: border, boxShadow: `0 6px 20px ${shadow}` }}>
+              <span className="text-[40px] leading-none flex-shrink-0">{icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-wide uppercase leading-tight">{title}</div>
+                <div className="text-[12px] text-white/55 mt-0.5">{desc}</div>
+              </div>
+              <span className="ml-auto text-white/30 text-[20px] flex-shrink-0">›</span>
+            </button>
+          ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Stats view (admin-auditoria: Dashboard + Ranking) ── */
+  if (isAdminAud && view === 'stats') {
+    return (
+      <AdminAudStats history={history} today={today} odooConfig={odooConfig} onBack={() => setView('hub')} pickerNames={pickerNamesState} />
+    );
+  }
+
+  /* ── Revision view (admin-auditoria: History of all) ── */
+  if (isAdminAud && view === 'revision') {
+    return (
+      <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+          <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+          <div className="flex-1">
+            <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
+            <div className="text-[11px] text-white/40">Todos los registros</div>
+          </div>
+        </div>
+        <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={pickerNamesState} />
+      </div>
+    );
+  }
+
+  /* ── Config view (admin-auditoria: picker names + future settings) ── */
+  if (isAdminAud && view === 'config') {
+    return (
+      <ConfigPanel
+        onBack={() => setView('hub')}
+        onSaved={(names, auds) => { setPickerNamesState({ ...names }); setAuditorList(auds); }}
+      />
+    );
+  }
+
+  /* ════ FORM RENDER (all roles) ════ */
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
 
       {/* ── HEADER ── */}
       <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-        <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+        {isAdminAud
+          ? <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+          : <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+        }
         <div className="flex-1">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
           <div className="text-[11px] text-white/40 uppercase tracking-widest">Control de calidad pallet</div>
         </div>
-        {/* Mobile: hamburger + config + logout */}
+        {/* Mobile: hamburger + logout */}
         <div className="flex md:hidden items-center gap-1">
-          <button onClick={() => setShowOdooConf(true)} className="border-none bg-white/10 text-white/60 text-[15px] cursor-pointer px-2.5 py-1.5 rounded-full">⚙</button>
-          <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>
+          {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>}
           <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full">Salir</button>
         </div>
-        {/* Desktop: config + logout */}
+        {/* Desktop: logout */}
         <div className="hidden md:flex items-center gap-1">
-          <button onClick={() => setShowOdooConf(true)} className="border-none bg-white/10 text-white/60 text-[15px] cursor-pointer px-2.5 py-1.5 rounded-full">⚙</button>
           <button onClick={async () => { await signOut(); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white/70 transition-colors">Salir</button>
         </div>
       </div>
@@ -1041,181 +1427,518 @@ export function AuditoriaScreen() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* LEFT: FORM */}
-        <div className="flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border">
-          <div className="px-4 pb-8">
+        <div className={isAdminAud
+          ? 'flex-1 overflow-y-auto'
+          : isAuditorOnly
+            ? 'flex-1 flex flex-col overflow-hidden'
+            : 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border'}>
+          {/* Auditor tab bar */}
+          {isAuditorOnly && (
+            <div className="hidden md:flex border-b border-border bg-white flex-shrink-0">
+              {([{ v: 'form' as const, label: '📝 Formulario' }, { v: 'history' as const, label: '📋 Historial' }]).map(({ v: tv, label }) => (
+                <button key={tv} onClick={() => setView(tv)}
+                  className={`flex-1 py-3 font-barlow-condensed text-[14px] font-bold border-b-2 cursor-pointer transition-colors ${tv === 'history' ? (view === 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3') : (view !== 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3')}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Auditor: inline history view */}
+          {isAuditorOnly && view === 'history' && (
+            <div className="hidden md:flex flex-1 overflow-hidden flex-col">
+              <div className="max-w-[480px] mx-auto w-full flex-1 overflow-hidden flex flex-col">
+                <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={pickerNamesState} />
+              </div>
+            </div>
+          )}
+          {(!isAuditorOnly || view !== 'history') && <div className={`px-4 pb-8${isAdminAud ? ' max-w-2xl mx-auto' : isAuditorOnly ? ' md:max-w-[480px] md:mx-auto overflow-y-auto flex-1' : ''}`}>
+
+            {/* History error banner (#18) */}
+            {historyError && !historyLoading && (
+              <div className="mt-4 flex items-center gap-2 bg-[rgba(211,47,47,0.07)] border border-red/20 rounded-card px-3 py-2">
+                <span className="text-red text-[14px]">⚠</span>
+                <span className="text-[11px] text-red flex-1 truncate">Error al cargar historial</span>
+                <button onClick={() => loadHistory()} className="text-[11px] font-bold text-red border border-red/30 rounded-btn px-2 py-0.5 cursor-pointer bg-transparent">Reintentar</button>
+                <button onClick={() => setHistoryError('')} className="text-red/50 text-[16px] leading-none border-none bg-transparent cursor-pointer px-1">×</button>
+              </div>
+            )}
 
             {/* Re-audit banner */}
             {reauditoriaOrigen && (
-              <div className="mt-4 flex items-center gap-2 bg-[rgba(37,99,235,0.08)] border border-info/30 rounded-card px-3 py-2.5">
-                <span className="text-info text-[18px]">↩</span>
-                <div className="flex-1 min-w-0"><div className="text-[12px] font-bold text-info">Re-auditoría</div><div className="text-[11px] text-text-3 truncate">Original: {reauditoriaOrigen.tiendaNombre} · {reauditoriaOrigen.hora} · {CORR_LABEL[reauditoriaOrigen.correccion]}</div></div>
-                <button onClick={() => setReauditoriaOrigen(null)} className="border-none bg-transparent text-text-3 cursor-pointer text-[18px] leading-none px-1">×</button>
-              </div>
-            )}
-
-            <SLabel>Auditor</SLabel>
-            <input type="text" value={auditor} onChange={e => setAuditor(e.target.value)} placeholder="Nombre del auditor"
-              className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[16px] outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
-
-            <SLabel>Picker (armador del pallet)</SLabel>
-            <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-              {PICKERS_LIST.map((p, i) => {
-                const real = PICKER_NAMES[p];
-                const isSelected = picker === p;
-                return (
-                  <button key={p} onClick={() => setPicker(prev => prev === p ? '' : p)}
-                    className={`py-2 px-1 rounded-btn border font-barlow-condensed text-[12px] font-bold cursor-pointer transition-all flex flex-col items-center leading-tight ${isSelected ? 'bg-[rgba(26,37,80,0.10)] border-navy text-navy' : 'border-border bg-white text-text-3'}`}>
-                    <span className="text-[11px] font-bold">{`P.${i + 1}`}</span>
-                    {real && <span className="text-[9px] font-normal truncate w-full text-center">{real.split(' ')[0]}</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {picker && (
-              <div className="text-center text-[12px] text-navy font-semibold py-1 px-3 bg-[rgba(26,37,80,0.05)] rounded-btn border border-navy/10">
-                {getPickerDisplay(picker)}{PICKER_NAMES[picker] ? ` — ${picker}` : ''}
-              </div>
-            )}
-
-            <SLabel>Tienda</SLabel>
-            <div ref={tiendaRef} className="relative">
-              <div onClick={() => setTiendaOpen(o => !o)}
-                className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${tiendaOpen ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`} style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-                {tienda ? (
-                  <div className="flex-1 min-w-0"><span className="font-semibold text-text text-[15px]">{tienda.nombre}</span><span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span><span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span></div>
-                ) : <span className="text-text-3 font-barlow text-[15px]">Seleccionar tienda…</span>}
-                <span className="text-text-3 ml-2 flex-shrink-0">{tiendaOpen ? '▲' : '▼'}</span>
-              </div>
-              {tiendaOpen && (
-                <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
-                  <div className="p-2 border-b border-border"><input autoFocus type="text" value={tiendaQuery} onChange={e => setTiendaQuery(e.target.value)} placeholder="Buscar…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" /></div>
-                  <div className="max-h-56 overflow-y-auto">
-                    {tiendaFiltered.length === 0 && <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>}
-                    {tiendaFiltered.map(t => (
-                      <div key={t.cod} onClick={() => { setTienda(t); setTiendaOpen(false); setTiendaQuery(''); }} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${tienda?.cod === t.cod ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
-                        <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded">{t.cod}</span>
-                        <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-text truncate">{t.nombre}</div><div className="text-[11px] text-text-3">{t.comuna || t.region}</div></div>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${t.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{t.area === 'santiago' ? 'STG' : 'REG'}</span>
-                      </div>
-                    ))}
+              <div className="mt-4 rounded-card overflow-hidden border-2 border-info" style={{ boxShadow: '0 4px 16px rgba(37,99,235,0.20)' }}>
+                <div className="px-3 py-2 flex items-center gap-2" style={{ background: 'linear-gradient(135deg, rgba(37,99,235,0.15) 0%, rgba(37,99,235,0.08) 100%)' }}>
+                  <span className="text-info text-[22px] font-bold">↩</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-barlow-condensed text-[15px] font-bold text-info uppercase tracking-wide">Re-auditoría en curso</div>
+                    <div className="text-[11px] text-text-2 truncate mt-0.5">
+                      Original: <strong>{reauditoriaOrigen.tiendaNombre}</strong> · {reauditoriaOrigen.hora} · {CORR_LABEL[reauditoriaOrigen.correccion]}
+                    </div>
                   </div>
+                  <button onClick={() => setReauditoriaOrigen(null)} className="border-none bg-info/10 text-info cursor-pointer text-[16px] leading-none px-2 py-1 rounded-btn font-bold">× Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {/* ── SECCIÓN 1: IDENTIFICACIÓN ── */}
+            <AccordionSection title="Identificación" open={sections.id} onToggle={() => toggleSection('id')}>
+              <SLabel>Auditor</SLabel>
+              <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={setAuditor} />
+
+              <SLabel>Picker (armador del pallet)</SLabel>
+              <PickerNameSelector picker={picker} pickerNames={pickerNamesState} odooDetected={odooAutoDetected} onChange={p => { setPicker(p); setOdooAutoDetected(false); }} />
+              {!picker && (
+                <div className="mt-1 text-[11px] text-text-3 flex items-center gap-1">
+                  <span>🔄</span><span>Se auto-detecta al cargar operación Odoo</span>
                 </div>
               )}
-            </div>
 
-            <SLabel>Tipo de contenido</SLabel>
-            <div className="grid grid-cols-3 gap-1.5">
-              {TIPOS.map(({ value, label }) => (
-                <button key={value} onClick={() => setTipo(value)} className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all ${tipo === value ? TIPO_COLOR[value] : 'border-border bg-white text-text-2'}`}>{label}</button>
-              ))}
-            </div>
-
-            <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
-            {operaciones.map((op, i) => (
-              <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
-                onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
-                odooConfig={odooConfig} onNeedConfig={() => setShowOdooConf(true)} />
-            ))}
-
-            <SLabel>Pallets auditados</SLabel>
-            <input type="number" inputMode="numeric" min="1" max="99" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0"
-              className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
-
-            <SLabel>¿Tuvo errores?</SLabel>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setTieneErrores(false)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
-              <button onClick={() => setTieneErrores(true)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
-            </div>
-
-            {tieneErrores === true && (
-              <>
-                <SLabel>Tipo de error</SLabel>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['faltante', 'sobrante'] as TipoError[]).map(t => (
-                    <button key={t} onClick={() => toggleTipoError(t)} className={`py-3 rounded-btn border-[1.5px] font-barlow-condensed text-[15px] font-bold cursor-pointer transition-all ${tiposError.includes(t) ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}>{t === 'faltante' ? '↓ Faltante' : '↑ Sobrante'}</button>
-                  ))}
+              <SLabel>Tienda</SLabel>
+              <div ref={tiendaRef} className="relative">
+                <div onClick={() => setTiendaOpen(o => !o)}
+                  className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${tiendaOpen ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`} style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                  {tienda ? (
+                    <div className="flex-1 min-w-0"><span className="font-semibold text-text text-[15px]">{tienda.nombre}</span><span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span><span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span></div>
+                  ) : <span className="text-text-3 font-barlow text-[15px]">Seleccionar tienda…</span>}
+                  <span className="text-text-3 ml-2 flex-shrink-0">{tiendaOpen ? '▲' : '▼'}</span>
                 </div>
-                {tiposError.length === 2 && <div className="text-[11px] text-info text-center mt-1 font-semibold">Ambos → Cruce</div>}
-                {tiposError.length > 0 && (
-                  <div className="mt-3">
-                    {productos.length > 0 && (
-                      <div className="mb-2">{productos.map((p, i) => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return <div key={i} className="flex items-center gap-2 bg-white border border-border rounded-btn px-3 py-2 mb-1.5" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.05)' }}><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${p.tipo === 'faltante' ? 'bg-[rgba(211,47,47,0.10)] text-red' : 'bg-[rgba(217,119,6,0.10)] text-warn'}`}>{p.tipo}</span><span className="font-mono text-[11px] text-text-3 flex-shrink-0">[{p.codigo}]</span><span className="text-[12px] text-text flex-1 truncate">{p.nombre}</span><span className={`font-bold text-[13px] flex-shrink-0 ${p.tipo === 'faltante' ? 'text-red' : 'text-warn'}`}>{r}</span><button onClick={() => setProductos(prev => prev.filter((_, j) => j !== i))} className="text-red/50 hover:text-red border-none bg-transparent cursor-pointer text-[18px] leading-none flex-shrink-0 px-1">×</button></div>; })}
-                      </div>
-                    )}
-                    <ProductSearch odooConfig={odooConfig} tiposError={tiposError} operacionCodes={operaciones.map(op => op.codigo)} onAdd={p => setProductos(prev => [...prev, p])} onNeedConfig={() => setShowOdooConf(true)} />
+                {tiendaOpen && (
+                  <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+                    <div className="p-2 border-b border-border"><input autoFocus type="text" value={tiendaQuery} onChange={e => setTiendaQuery(e.target.value)} placeholder="Buscar…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" /></div>
+                    <div className="max-h-56 overflow-y-auto">
+                      {tiendaFiltered.length === 0 && <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>}
+                      {tiendaFiltered.map(t => (
+                        <div key={t.cod} onClick={() => { setTienda(t); setTiendaOpen(false); setTiendaQuery(''); }} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${tienda?.cod === t.cod ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
+                          <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded">{t.cod}</span>
+                          <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-text truncate">{t.nombre}</div><div className="text-[11px] text-text-3">{t.comuna || t.region}</div></div>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${t.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{t.area === 'santiago' ? 'STG' : 'REG'}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-              </>
-            )}
+              </div>
+            </AccordionSection>
 
-            {tieneErrores !== null && (
-              <>
-                <SLabel>Corrección <span className="text-[9px] font-normal ml-1 normal-case">automática</span></SLabel>
-                <div className={`py-3.5 px-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold text-center ${CORR_COLOR[correccion]}`}>{CORR_LABEL[correccion]}</div>
-                <SLabel>Resultado <span className="text-[9px] font-normal ml-1 normal-case">automático</span></SLabel>
-                <div className={`py-5 rounded-card border-2 font-barlow-condensed text-[26px] font-extrabold text-center ${resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-[rgba(211,47,47,0.12)] border-red text-red'}`}
-                  style={resultado === 'bueno' ? { boxShadow: '0 4px 16px rgba(22,163,74,0.18)' } : { boxShadow: '0 4px 16px rgba(211,47,47,0.18)' }}>
-                  {resultado === 'bueno' ? '✓ BUENO' : '✗ MALO'}
+            {/* ── SECCIÓN 2: CONTENIDO ── */}
+            <AccordionSection title="Contenido" open={sections.contenido} onToggle={() => toggleSection('contenido')}>
+              <SLabel>Tipo de contenido</SLabel>
+              <div className="grid grid-cols-3 gap-1.5">
+                {TIPOS.map(({ value, label }) => (
+                  <button key={value} onClick={() => handleTipoChange(value)} className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all ${tipo === value ? TIPO_COLOR[value] : 'border-border bg-white text-text-2'}`}>{label}</button>
+                ))}
+              </div>
+
+              <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
+              {operaciones.map((op, i) => (
+                <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
+                  onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
+                  odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+              ))}
+
+              <SLabel>Pallets auditados</SLabel>
+              <input ref={palletsInputRef} type="number" inputMode="numeric" min="1" max="99" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0"
+                onFocus={() => setTimeout(() => palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)}
+                className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+              {parseInt(pallets) > 0 && (
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional</span></div>
+                  {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
+                    const key = String(n);
+                    const preview = palletPreviews[key];
+                    return (
+                      <div key={key}>
+                        {preview ? (
+                          <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                            <img src={preview} alt={`Pallet ${n}`} className="w-full object-cover" style={{ maxHeight: 140 }} />
+                            <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">Pallet {n}</div>
+                            <button
+                              onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
+                              className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                              style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+                          </div>
+                        ) : (
+                          <label className="flex items-center gap-3 px-4 py-2.5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                            <span className="text-[22px]">📷</span>
+                            <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
+                            <input type="file" accept="image/*" className="hidden"
+                              onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); } }} />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </>
-            )}
+              )}
+            </AccordionSection>
 
-            <SLabel>Observaciones <span className="text-[9px] font-normal ml-1 normal-case">opcional</span></SLabel>
-            <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
-              className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+            {/* ── SECCIÓN 3: RESULTADO ── */}
+            <AccordionSection title="Resultado" open={sections.resultado} onToggle={() => toggleSection('resultado')}>
+              <SLabel>¿Tuvo errores?</SLabel>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setTieneErrores(false)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
+                <button onClick={() => setTieneErrores(true)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
+              </div>
 
-            <button onClick={handleSubmit} disabled={!canSubmit}
+              {tieneErrores === true && (
+                <>
+                  <SLabel>Tipo de error</SLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['faltante', 'sobrante'] as TipoError[]).map(t => (
+                      <button key={t} onClick={() => toggleTipoError(t)} className={`rounded-btn border-[1.5px] font-barlow-condensed text-[17px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 ${tiposError.includes(t) ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}
+                        style={{ minHeight: 52 }}>{t === 'faltante' ? '↓ Faltante' : '↑ Sobrante'}</button>
+                    ))}
+                  </div>
+                  {tiposError.length === 2 && <div className="text-[11px] text-info text-center mt-1 font-semibold">Ambos → Cruce</div>}
+                  {tiposError.length > 0 && (
+                    <div className="mt-3">
+                      {productos.length > 0 && (
+                        <div className="mb-2">{productos.map((p, i) => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return <div key={i} className="flex items-center gap-2 bg-white border border-border rounded-btn px-3 py-2 mb-1.5" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.05)' }}><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${p.tipo === 'faltante' ? 'bg-[rgba(211,47,47,0.10)] text-red' : 'bg-[rgba(217,119,6,0.10)] text-warn'}`}>{p.tipo}</span><span className="font-mono text-[11px] text-text-3 flex-shrink-0">[{p.codigo}]</span><span className="text-[12px] text-text flex-1 truncate">{p.nombre}</span><span className={`font-bold text-[13px] flex-shrink-0 ${p.tipo === 'faltante' ? 'text-red' : 'text-warn'}`}>{r}</span><button onClick={() => setProductos(prev => prev.filter((_, j) => j !== i))} className="text-red/50 hover:text-red border-none bg-transparent cursor-pointer text-[18px] leading-none flex-shrink-0 px-1">×</button></div>; })}
+                        </div>
+                      )}
+                      <ProductSearch odooConfig={odooConfig} tiposError={tiposError} operacionCodes={operaciones.map(op => op.codigo)} onAdd={p => setProductos(prev => [...prev, p])} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {tieneErrores !== null && !(tieneErrores && tiposError.length === 0) && (
+                <>
+                  <SLabel>Corrección <span className="text-[9px] font-normal ml-1 normal-case">automática</span></SLabel>
+                  <div className={`py-3.5 px-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold text-center ${CORR_COLOR[correccion]}`}>{CORR_LABEL[correccion]}</div>
+                  <SLabel>Resultado <span className="text-[9px] font-normal ml-1 normal-case">automático</span></SLabel>
+                  <div className={`py-5 rounded-card border-2 font-barlow-condensed text-[26px] font-extrabold text-center ${resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-[rgba(211,47,47,0.12)] border-red text-red'}`}
+                    style={resultado === 'bueno' ? { boxShadow: '0 4px 16px rgba(22,163,74,0.18)' } : { boxShadow: '0 4px 16px rgba(211,47,47,0.18)' }}>
+                    {resultado === 'bueno' ? '✓ BUENO' : '✗ MALO'}
+                  </div>
+                </>
+              )}
+            </AccordionSection>
+
+            {/* ── SECCIÓN 4: EVIDENCIA ── */}
+            <AccordionSection title="Evidencia" badge="opcional" open={sections.evidencia} onToggle={() => toggleSection('evidencia')}>
+              <SLabel>Observaciones <span className="text-[9px] font-normal ml-1 normal-case">opcional</span></SLabel>
+              <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
+                className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+
+              <SLabel>Foto de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados</span></SLabel>
+              {fotoPreview ? (
+                <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                  <img src={fotoPreview} alt="foto de productos" className="w-full object-cover" style={{ maxHeight: 180 }} />
+                  <button
+                    onClick={() => { URL.revokeObjectURL(fotoPreview); setFotoFile(null); setFotoPreview(''); }}
+                    className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                    style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                  <span className="text-[28px]">📷</span>
+                  <span className="text-[13px] text-text-3 font-barlow">Adjuntar foto de productos con error</span>
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }} />
+                </label>
+              )}
+            </AccordionSection>
+
+            <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
               className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
-              style={{ background: canSubmit ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
-              ✓ Registrar auditoría
+              style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
+              {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
             </button>
-          </div>
+          </div>}
         </div>
 
-        {/* RIGHT: STATS PANEL (desktop only) */}
-        <div className="hidden md:flex md:flex-1 overflow-hidden">
-          <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} />
-        </div>
+        {/* RIGHT: STATS PANEL (desktop only, not for admin-auditoria or auditor) */}
+        {!isAdminAud && !isAuditorOnly && (
+          <div className="hidden md:flex md:flex-1 overflow-hidden">
+            <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} pickerNames={pickerNamesState} onRefresh={loadHistory} />
+          </div>
+        )}
       </div>
 
-      {/* ── MOBILE OVERLAYS ── */}
-      {view === 'dashboard' && (
+      {/* ── MOBILE OVERLAYS (not for admin-auditoria) ── */}
+      {!isAdminAud && view === 'dashboard' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="flex-1"><div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Dashboard</div><div className="text-[11px] text-white/40">{today} · {todayEntries.length} auditorías</div></div>
           </div>
-          <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} /></div>
+          <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNamesState} /></div>
         </div>
       )}
-      {view === 'ranking' && (
+      {!isAdminAud && view === 'ranking' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Ranking Pickers</div>
           </div>
-          <RankingContent history={history} odooConfig={odooConfig} />
+          <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNamesState} />
         </div>
       )}
-      {view === 'history' && (
+      {!isAdminAud && view === 'history' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Historial</div>
           </div>
-          <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} />
+          <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={pickerNamesState} />
         </div>
       )}
 
       {/* ── MOBILE MENU ── */}
-      {mobileMenuOpen && <MobileMenu onClose={() => setMobileMenuOpen(false)} onNavigate={v => { setView(v); setMobileMenuOpen(false); }} />}
-
-      {/* ── ODOO CONFIG ── */}
-      {showOdooConf && (
-        <OdooConfigModal initial={odooConfig}
-          onSave={cfg => { saveOdooConfig(cfg); setOdooConfig(cfg); showToast('✓ Config Odoo guardada', '#16A34A'); }}
-          onClose={() => setShowOdooConf(false)} />
+      {!isAdminAud && mobileMenuOpen && (
+        <MobileMenu
+          onlyHistory={isAuditorOnly}
+          onClose={() => setMobileMenuOpen(false)}
+          onNavigate={v => { setView(v); setMobileMenuOpen(false); }}
+        />
       )}
+
+      {/* ── TIPO CHANGE WARNING (#7) ── */}
+      {tipoPending !== null && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setTipoPending(null)} />
+          <div className="relative bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <div className="font-barlow-condensed text-[18px] font-bold text-navy mb-2">¿Cambiar tipo?</div>
+            <div className="text-[13px] text-text-2 mb-4">Las fotos adjuntas se eliminarán al cambiar el tipo de contenido.</div>
+            <div className="flex gap-2">
+              <button onClick={() => setTipoPending(null)} className="flex-1 py-3 border border-border rounded-card font-barlow-condensed text-[15px] font-bold text-text-2 cursor-pointer">Cancelar</button>
+              <button onClick={() => { setTipo(tipoPending!); setTipoPending(null); }} className="flex-1 py-3 bg-navy text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer" style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>Sí, cambiar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIRM SUBMIT MODAL (#6) ── */}
+      {confirmSubmit && tienda && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmSubmit(false)} />
+          <div className="relative bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <div className="font-barlow-condensed text-[20px] font-bold text-navy mb-3">Confirmar registro</div>
+            <div className="space-y-2.5 mb-4">
+              <div className="flex justify-between items-start py-1.5 border-b border-border">
+                <span className="text-text-3 text-[12px]">Tienda</span>
+                <span className="font-semibold text-text text-[13px] text-right ml-4">{tienda.nombre}</span>
+              </div>
+              {picker && (
+                <div className="flex justify-between items-center py-1.5 border-b border-border">
+                  <span className="text-text-3 text-[12px]">Picker</span>
+                  <span className="font-semibold text-text text-[13px]">{displayPicker(picker, pickerNamesState)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center py-1.5 border-b border-border">
+                <span className="text-text-3 text-[12px]">Tipo</span>
+                <span className="font-semibold text-text text-[13px] capitalize">{tipo}</span>
+              </div>
+              <div className="flex justify-between items-center py-1.5 border-b border-border">
+                <span className="text-text-3 text-[12px]">Pallets</span>
+                <span className="font-semibold text-text text-[13px]">{pallets}</span>
+              </div>
+              <div className="flex justify-between items-center py-1.5">
+                <span className="text-text-3 text-[12px]">Resultado</span>
+                <span className={`font-barlow-condensed font-bold text-[20px] ${resultado === 'bueno' ? 'text-success' : 'text-red'}`}>{resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}</span>
+              </div>
+              {tieneErrores && productos.length > 0 && (
+                <div className="text-[11px] text-text-3 italic">{productos.length} producto{productos.length !== 1 ? 's' : ''} con error · {tiposError.join(', ')}</div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmSubmit(false)} className="flex-1 py-3 border border-border rounded-card font-barlow-condensed text-[15px] font-bold text-text-2 cursor-pointer">Cancelar</button>
+              <button onClick={handleSubmit} className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer" style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════ Admin-Auditoria Stats Screen ════ */
+function AdminAudStats({ history, today, odooConfig, onBack, pickerNames }: {
+  history: AuditEntry[]; today: string; odooConfig: OdooConfig; onBack: () => void; pickerNames: Record<string, string>;
+}) {
+  const [tab, setTab] = useState<'dashboard' | 'ranking'>('dashboard');
+  return (
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Estadísticas</div>
+      </div>
+      <div className="flex border-b border-border bg-white flex-shrink-0">
+        {([['dashboard', '📊 Dashboard del día'], ['ranking', '🏆 Ranking de Pickers']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
+        {tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
+      </div>
+    </div>
+  );
+}
+
+/* ════ Config Panel ════ */
+function ConfigPanel({ onBack, onSaved }: {
+  onBack: () => void;
+  onSaved: (names: Record<string, string>, auditores: string[]) => void;
+}) {
+  const [names,        setNames]        = useState<Record<string, string>>(Object.fromEntries(Object.keys(PICKER_NAMES).map(k => [k, ''])));
+  const [auditores,    setAuditores]    = useState<string[]>([]);
+  const [newAuditor,   setNewAuditor]   = useState('');
+  const [saving,       setSaving]       = useState(false);
+  const [saved,        setSaved]        = useState(false);
+  const [error,        setError]        = useState('');
+
+  useEffect(() => {
+    supabase.from('picker_config').select('nombres, auditores').eq('id', 1).single()
+      .then(({ data }) => {
+        if (data?.nombres && typeof data.nombres === 'object') {
+            const defaults = Object.fromEntries(PICKERS_LIST.map(k => [k, '']));
+            setNames({ ...defaults, ...(data.nombres as Record<string, string>) });
+          }
+        if (Array.isArray(data?.auditores)) setAuditores(data.auditores as string[]);
+      });
+  }, []);
+
+  const addAuditor = () => {
+    const name = newAuditor.trim();
+    if (!name || auditores.includes(name)) return;
+    setAuditores(prev => [...prev, name].sort());
+    setNewAuditor('');
+  };
+
+  const removeAuditor = (name: string) => setAuditores(prev => prev.filter(a => a !== name));
+
+  const handleSave = async () => {
+    setSaving(true); setError('');
+    const { error: err } = await supabase
+      .from('picker_config')
+      .upsert({ id: 1, nombres: names, auditores, updated_at: new Date().toISOString() });
+    if (err) {
+      setError(err.message);
+    } else {
+      onSaved(names, auditores);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        style={{ background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)', boxShadow: '0 2px 16px rgba(15,118,110,0.35)' }}>
+        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <div className="flex-1">
+          <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Configuración</div>
+          <div className="text-[11px] text-white/50">Admin Auditoría</div>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-4 py-2 rounded-xl font-barlow-condensed text-[15px] font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+          style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
+          {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="max-w-2xl mx-auto flex flex-col gap-5">
+
+          {/* Picker names section */}
+          <div className="bg-white border border-border rounded-card overflow-hidden"
+            style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <span className="text-[20px]">👷</span>
+              <div>
+                <div className="font-barlow-condensed text-[17px] font-bold text-navy">Nombres de Pickers</div>
+                <div className="text-[11px] text-text-3">Asigna el nombre real de cada posición de picker</div>
+              </div>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {PICKERS_LIST.map((p, i) => (
+                <div key={p} className="flex items-center gap-2.5">
+                  <span className="font-mono text-[12px] font-bold text-text-3 bg-bg-2 border border-border px-2 py-1.5 rounded-btn flex-shrink-0 w-10 text-center">
+                    P.{i + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={names[p] ?? ''}
+                    onChange={e => setNames(n => ({ ...n, [p]: e.target.value }))}
+                    placeholder="Nombre del picker…"
+                    className="flex-1 bg-white border border-border rounded-btn px-2.5 py-1.5 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Auditor list section */}
+          <div className="bg-white border border-border rounded-card overflow-hidden"
+            style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <span className="text-[20px]">👤</span>
+              <div>
+                <div className="font-barlow-condensed text-[17px] font-bold text-navy">Auditores</div>
+                <div className="text-[11px] text-text-3">Lista de auditores disponibles para seleccionar en el formulario</div>
+              </div>
+            </div>
+            <div className="p-4 flex flex-col gap-2">
+              {/* Add new */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newAuditor}
+                  onChange={e => setNewAuditor(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAuditor(); } }}
+                  placeholder="Nombre del auditor…"
+                  className="flex-1 bg-white border border-border rounded-btn px-3 py-2 text-[14px] text-text outline-none focus:border-navy transition-colors [-webkit-appearance:none]"
+                />
+                <button
+                  onClick={addAuditor}
+                  disabled={!newAuditor.trim()}
+                  className="px-4 py-2 rounded-btn font-barlow-condensed text-[14px] font-bold text-white cursor-pointer disabled:opacity-40 active:scale-95 transition-all"
+                  style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                  + Agregar
+                </button>
+              </div>
+              {/* List */}
+              {auditores.length === 0 && (
+                <div className="text-center text-text-3 text-[12px] py-3 italic">Sin auditores configurados aún</div>
+              )}
+              {auditores.map(name => (
+                <div key={name} className="flex items-center justify-between px-3 py-2.5 bg-bg rounded-btn border border-border">
+                  <span className="text-[14px] font-semibold text-text">{name}</span>
+                  <button onClick={() => removeAuditor(name)}
+                    className="border-none bg-transparent text-text-3 hover:text-red cursor-pointer text-[18px] leading-none px-1 transition-colors">×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Future settings placeholder */}
+          <div className="bg-white border border-dashed border-border rounded-card p-4"
+            style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[20px] opacity-40">🔧</span>
+              <div className="font-barlow-condensed text-[16px] font-bold text-text-3">Próximas configuraciones</div>
+            </div>
+            <div className="text-[12px] text-text-3 italic">
+              Aquí aparecerán futuros ajustes del sistema: rangos de calidad, notificaciones, integración Odoo, etc.
+            </div>
+          </div>
+
+          {error && (
+            <div className="text-sm text-red text-center px-3 py-2.5 rounded-card border border-red/20"
+              style={{ background: 'rgba(211,47,47,0.06)' }}>{error}</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
