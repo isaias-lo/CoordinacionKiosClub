@@ -147,6 +147,11 @@ export function LaunchScreen() {
           className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border border-white/20 text-white/65 bg-white/8 hover:bg-white/15 hover:text-white transition-all">
           📋 Historial
         </button>
+        <button onClick={() => router.push('/registros')}
+          className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border transition-all"
+          style={{ borderColor: 'rgba(16,185,129,0.5)', color: '#10B981', background: 'rgba(16,185,129,0.1)' }}>
+          🗄️ Registros
+        </button>
         {isAdmin && (
           <button onClick={() => router.push('/admin/usuarios')}
             className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border transition-all"

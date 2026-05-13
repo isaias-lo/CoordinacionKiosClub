@@ -15,7 +15,7 @@ import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
@@ -619,6 +619,17 @@ export default function RutasScreen() {
       onSuccess: msg => { setHistorialMsg(msg); setHistorialStatus('success'); },
       onWarn:    msg => { setHistorialMsg(msg); setHistorialStatus('warn'); },
       onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
+    });
+    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+
+    // Mark all dispatched stores as En camino in Supabase
+    const cods = [...new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)))];
+    cods.forEach(cod => {
+      fetch('/api/seguimiento', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ cod, estado: 'En camino' }),
+      }).catch(() => {});
     });
   }
 

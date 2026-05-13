@@ -1,21 +1,28 @@
 import type { SantiagoItem } from '../types';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 
-export const SANTIAGO_SHEETS_URL =
-  'https://script.google.com/macros/s/AKfycbzrBdzGrmT_0uBwzVxoPi3nubtsIVSYBrnNgdaAr43f2rjS2PQr_XZ-NGw--CTH4DMFOQ/exec';
-
 const URBAN_COMMUNES = new Set([
   'Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa',
   'Maipú', 'La Florida', 'Quilicura', 'Huechuraba', 'La Reina',
   'Lo Barnechea', 'Puente Alto',
 ]);
 
-function buildSantiagoRows(
+// Columnas DESPACHO RM:
+// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+// TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
+// N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR
+function buildRows(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
-): Record<string, unknown>[] {
-  const fecha = new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'');
-  const rows: Record<string, unknown>[] = [];
+): (string | number)[][] {
+  const now   = new Date();
+  const dd    = String(now.getDate()).padStart(2, '0');
+  const mm    = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy  = String(now.getFullYear());
+  const stamp = `${dd}${mm}${yyyy}`;
+  const fecha = `${dd}/${mm}/${yyyy}`;
+
+  const rows: (string | number)[][] = [];
 
   for (const [cod, tiendaItems] of Object.entries(items)) {
     if (!tiendaItems.length) continue;
@@ -23,28 +30,31 @@ function buildSantiagoRows(
     if (!tienda) continue;
 
     for (const item of tiendaItems) {
-      rows.push({
-        ID:              `${item.orden}${cod}${fecha}`,
-        FECHA_DESPACHO:  `${parseInt(fecha.slice(0,2))}/${fecha.slice(2,4)}/${fecha.slice(4)}`,
-        COD_TIENDA:      cod,
-        TIENDA:          tienda.tienda,
-        TIPO_CARGAMENTO: item.tipo,
-        REGIMEN_CARGA:   regimen,
-        TRANSPORTE:      'Luis Fica',
-        CARGA:           item.contenido,
-        REGION_DESTINO:  tienda.region,
-        COMUNA_DESTINO:  tienda.comuna,
-        TIPO_COMUNA:     URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano',
-        PESO_KG:         item.peso,
-        ALTO:            item.alto,
-        LARGO:           item.largo,
-        ANCHO:           item.ancho,
-        PESO_V:          item.pesoVolumetrico,
-        VENTANA_HORARIA: tienda.ventanaHoraria,
-        ESTADO:          item.estado,
-        N_Pallet_Bulto:  item.orden,
-        FECHA_LLEGADA:   '',
-      });
+      rows.push([
+        `${item.orden}${cod}${stamp}`,                                    // ID
+        fecha,                                                             // FECHA
+        cod,                                                               // COD
+        tienda.tienda,                                                     // TIENDA
+        item.tipo,                                                         // TIPO
+        regimen,                                                           // REGIMEN
+        'Luis Fica',                                                       // TRANSPORTE
+        item.contenido,                                                    // CARGA
+        tienda.region,                                                     // REGION
+        tienda.comuna,                                                     // COMUNA
+        URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano',     // TIPO_COMUNA
+        item.peso       || '',                                             // PESO_KG
+        item.alto       || '',                                             // ALTO
+        item.largo      || '',                                             // LARGO
+        item.ancho      || '',                                             // ANCHO
+        item.pesoVolumetrico || '',                                        // PESO_V
+        tienda.ventanaHoraria || '',                                       // VENTANA
+        item.estado,                                                       // ESTADO
+        item.orden,                                                        // N_PALLET_BULTO
+        '',                                                                // FECHA_LLEGADA
+        '',                                                                // CONDUCTOR
+        '',                                                                // RUTA
+        '',                                                                // SUPERVISOR
+      ]);
     }
   }
 
@@ -54,21 +64,13 @@ function buildSantiagoRows(
 export function sheetsSantiagoWrite(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
-): boolean {
-  const rows = buildSantiagoRows(items, regimen);
-  if (!rows.length) return false;
+): void {
+  const rows = buildRows(items, regimen);
+  if (!rows.length) return;
 
-  // no-cors responses are always opaque — nothing to read back.
-  // Fire in background with a timeout so we never block the UI.
-  const ctrl = new AbortController();
-  setTimeout(() => ctrl.abort(), 10_000);
-  fetch(SANTIAGO_SHEETS_URL, {
-    method: 'POST',
-    mode: 'no-cors',
+  fetch('/api/sheets-write', {
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'write', rows }),
-    signal: ctrl.signal,
-  }).catch(() => {});
-
-  return true;
+    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows }),
+  }).catch(err => console.error('[sheetsSantiagoWrite]', err));
 }

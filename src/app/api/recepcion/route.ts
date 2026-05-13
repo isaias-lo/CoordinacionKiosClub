@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 interface RecepcionBody {
@@ -12,6 +13,30 @@ interface RecepcionBody {
   receptor: string;
   rut: string;
   signatureDataUrl: string;
+}
+
+const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
+
+function getAuth() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
+  const clean = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  return new google.auth.GoogleAuth({
+    credentials: JSON.parse(clean),
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+}
+
+async function writeToSheet(row: (string | number)[]) {
+  const auth = getAuth();
+  const gs   = google.sheets({ version: 'v4', auth });
+  await gs.spreadsheets.values.append({
+    spreadsheetId:    SPREADSHEET_ID,
+    range:            'RECEPCIÓN TIENDA!A1',
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody:      { values: [row] },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -49,6 +74,40 @@ export async function POST(request: NextRequest) {
     });
 
     if (insertError) throw new Error(insertError.message);
+
+    // Update seguimiento in dispatch tables
+    const nuevoEstado =
+      body.palletsRecibidos === body.palletsSent &&
+      body.bultosRecibidos  === body.bultosSent
+        ? 'Recibido'
+        : 'Diferencia';
+
+    await Promise.all([
+      sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
+      sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
+    ]);
+
+    // Write to RECEPCIÓN TIENDA sheet in Base de Datos
+    const now  = new Date();
+    const dd   = String(now.getDate()).padStart(2, '0');
+    const mm   = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(now.getFullYear());
+    const hh   = String(now.getHours()).padStart(2, '0');
+    const min  = String(now.getMinutes()).padStart(2, '0');
+
+    await writeToSheet([
+      `${dd}/${mm}/${yyyy} ${hh}:${min}`, // Fecha/Hora
+      body.cod,                            // Código
+      body.tienda,                         // Tienda
+      body.direccion,                      // Dirección
+      body.palletsSent,                    // Pallets Enviados
+      body.bultosSent,                     // Bultos Enviados
+      body.palletsRecibidos,               // Pallets Recibidos
+      body.bultosRecibidos,                // Bultos Recibidos
+      body.receptor,                       // Receptor
+      body.rut,                            // RUT
+      publicUrl,                           // Firma
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

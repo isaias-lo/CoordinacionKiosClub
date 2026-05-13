@@ -67,11 +67,12 @@ function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
   const p = new URLSearchParams({ cod: store.cod, p: String(pallets), b: String(bultos) });
   if (allGuias.length > 0) p.set('g', allGuias.join(','));
   if (driveFileId) p.set('drv', driveFileId);
-  return `https://toolskios.vercel.app/recepcion?${p.toString()}`;
+  const base = typeof window !== 'undefined' ? window.location.origin : 'https://toolskios.vercel.app';
+  return `${base}/recepcion?${p.toString()}`;
 }
 
 /* ── Label (100×150mm para Zebra) ── */
-function Label({ store, item, qrUrl }: { store: StoreLabel; item: LabelItem; qrUrl: string }) {
+function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: LabelItem; qrUrl: string; hasGuide: boolean }) {
   const isPallet = item.tipo === 'Pallet';
   const badgeBg  = isPallet ? '#1B2A6B' : '#D97706';
 
@@ -112,10 +113,21 @@ function Label({ store, item, qrUrl }: { store: StoreLabel; item: LabelItem; qrU
       <div style={{ borderTop: '1px solid #e0e0e0', marginBottom: '4mm' }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '2mm' }}>
-        <QRCodeSVG value={qrUrl} size={168} level="M" />
-        <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '1mm' }}>
-          Escanear para ver guías de despacho
-        </div>
+        {hasGuide ? (
+          <>
+            <QRCodeSVG value={qrUrl} size={168} level="M" />
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '1mm' }}>
+              Escanear para confirmar recepción
+            </div>
+          </>
+        ) : (
+          <div style={{ width: 168, height: 168, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4mm' }}>
+            <div style={{ fontSize: '22pt', opacity: 0.25 }}>📄</div>
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7pt', color: '#bbb', textAlign: 'center', padding: '0 8px', lineHeight: 1.4 }}>
+              Sube guía de despacho<br />para activar el QR
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ borderTop: '1px solid #e0e0e0', marginTop: '3mm', paddingTop: '3mm' }}>
@@ -327,6 +339,14 @@ export function EstadoPage() {
         } catch { /* non-blocking */ }
 
         newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum, driveFileId };
+
+        // Mark dispatch rows as En camino in Supabase
+        fetch('/api/seguimiento', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cod: storeCod, estado: 'Pendiente' }),
+        }).catch(() => {});
+
         assigned++;
       } catch { skipped++; }
     }
@@ -391,9 +411,10 @@ export function EstadoPage() {
           {stores
             .filter(store => printCods.has(store.cod))
             .flatMap(store => {
-              const qrUrl = buildQrUrl(store, guides[store.cod]?.driveFileId);
+              const qrUrl    = buildQrUrl(store, guides[store.cod]?.driveFileId);
+              const hasGuide = !!guides[store.cod];
               return store.items.map((item, idx) => (
-                <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} />
+                <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} hasGuide={hasGuide} />
               ));
             })}
         </div>,
@@ -561,17 +582,18 @@ export function EstadoPage() {
               {/* Scale labels for preview only — 100mm≈378px, 150mm≈567px at 96dpi */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', gap: 16 }}>
                 {(() => {
-                  const SCALE  = 0.63;
+                  const SCALE    = 0.63;
                   const W = 378 * SCALE; // ≈238px
                   const H = 567 * SCALE; // ≈357px
-                  const qrUrl = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
+                  const qrUrl    = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
+                  const hasGuide = !!guides[selectedStore.cod];
                   return selectedStore.items.map((item, idx) => (
                     <div
                       key={idx}
                       className="shadow-xl rounded-xl overflow-hidden flex-shrink-0"
                       style={{ border: '1px solid #d0d4df', width: W, height: H, position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, transform: `scale(${SCALE})`, transformOrigin: 'top left' }}>
-                        <Label store={selectedStore} item={item} qrUrl={qrUrl} />
+                        <Label store={selectedStore} item={item} qrUrl={qrUrl} hasGuide={hasGuide} />
                       </div>
                     </div>
                   ));

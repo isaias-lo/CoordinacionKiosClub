@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppProvider } from '../context/AppContext';
 import { EstadoPage } from '../features/despacho/estado/EstadoPage';
+import { SeguimientoPanel } from '../features/despacho/estado/SeguimientoPanel';
 
 const NAV_TABS = [
   { label: 'INICIO',    path: '/',                    color: 'bg-white/12 border-white/20' },
@@ -12,8 +14,11 @@ const NAV_TABS = [
   { label: 'AUDITORÍA', path: '/auditoria',           color: 'bg-[rgba(124,58,237,0.22)] border-[rgba(124,58,237,0.50)]' },
 ];
 
+type View = 'etiquetas' | 'estado';
+
 function EstadoContent() {
   const router = useRouter();
+  const [view, setView] = useState<View>('etiquetas');
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
@@ -24,8 +29,8 @@ function EstadoContent() {
         {/* Mobile: logo+título arriba, botones abajo. Desktop: todo en una fila */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between px-4 pt-3 pb-3 gap-2">
 
-          {/* Logo + título */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Logo + título + view toggle */}
+          <div className="flex items-center gap-3 flex-shrink-0">
             <img
               src="/logo.png"
               className="h-7 brightness-0 invert"
@@ -34,6 +39,26 @@ function EstadoContent() {
             />
             <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase">
               Estado / Seguimiento
+            </div>
+
+            {/* Toggle ETIQUETAS / ESTADO */}
+            <div className="flex rounded-full overflow-hidden border border-white/20 ml-1">
+              <button
+                onClick={() => setView('etiquetas')}
+                className="px-3 py-1 font-barlow-condensed text-[12px] font-bold tracking-widest uppercase cursor-pointer transition-all"
+                style={view === 'etiquetas'
+                  ? { background: 'rgba(255,255,255,0.20)', color: '#fff' }
+                  : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
+                Etiquetas
+              </button>
+              <button
+                onClick={() => setView('estado')}
+                className="px-3 py-1 font-barlow-condensed text-[12px] font-bold tracking-widest uppercase cursor-pointer transition-all"
+                style={view === 'estado'
+                  ? { background: 'rgba(255,255,255,0.20)', color: '#fff' }
+                  : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
+                Estado
+              </button>
             </div>
           </div>
 
@@ -52,7 +77,7 @@ function EstadoContent() {
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        <EstadoPage />
+        {view === 'etiquetas' ? <EstadoPage /> : <SeguimientoPanel />}
       </div>
     </div>
   );

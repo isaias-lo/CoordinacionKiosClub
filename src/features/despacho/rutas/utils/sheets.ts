@@ -217,6 +217,105 @@ export function parseCalendarioAuth(values: string[][]): Record<string, {rm:stri
   return cal;
 }
 
+// ── Despacho RM → Base de Datos ──────────────────────────────────────────────
+
+const URBAN_RM = new Set([
+  'Santiago','Providencia','Las Condes','Vitacura','Ñuñoa','Maipú',
+  'La Florida','Quilicura','Huechuraba','La Reina','Lo Barnechea','Puente Alto',
+]);
+
+// Columnas: ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+//           TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
+//           N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR
+export function guardarDespachoRMFn(params: {
+  fecha: string;
+  supervisor: string;
+  rutas: Ruta[];
+  tiendas: Record<string, TiendaInfo>;
+}): void {
+  const { fecha, supervisor, rutas, tiendas } = params;
+  if (!rutas?.length) return;
+
+  const now   = new Date();
+  const dd    = String(now.getDate()).padStart(2, '0');
+  const mm    = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy  = String(now.getFullYear());
+  const stamp = `${dd}${mm}${yyyy}`;
+
+  const rows: (string | number)[][] = [];
+
+  rutas.forEach((ruta, ri) => {
+    const conductor  = ruta._choferAsignado || ruta.v.ch || '';
+    const vehiculo   = ruta.v.p;
+    const rutaNum    = ri + 1;
+
+    ruta.ts.forEach(ts => {
+      const info   = tiendas[ts.c];
+      const nombre = info?.n ?? ts.c;
+      const zona   = info?.z ?? '';
+      const tipoCom = URBAN_RM.has(zona) ? 'Urbano' : 'Urbano'; // Santiago siempre urbano
+
+      // Fila pallets
+      if (ts.p > 0) {
+        rows.push([
+          `${rutaNum}${ts.c}${stamp}P`,   // ID
+          fecha,                           // FECHA
+          ts.c,                            // COD
+          nombre,                          // TIENDA
+          'Pallet',                        // TIPO
+          'Carga',                         // REGIMEN
+          vehiculo,                        // TRANSPORTE
+          '',                              // CARGA
+          'REGIÓN METROPOLITANA',          // REGION
+          zona,                            // COMUNA
+          tipoCom,                         // TIPO_COMUNA
+          '', '', '', '', '',              // PESO_KG, ALTO, LARGO, ANCHO, PESO_V
+          '',                              // VENTANA
+          'Listo para despachar',          // ESTADO
+          ts.p,                            // N_PALLET_BULTO
+          '',                              // FECHA_LLEGADA
+          conductor,                       // CONDUCTOR
+          rutaNum,                         // RUTA
+          supervisor,                      // SUPERVISOR
+        ]);
+      }
+
+      // Fila bultos
+      if (ts.b > 0) {
+        rows.push([
+          `${rutaNum}${ts.c}${stamp}B`,
+          fecha,
+          ts.c,
+          nombre,
+          'Bulto',
+          'Carga',
+          vehiculo,
+          '',
+          'REGIÓN METROPOLITANA',
+          zona,
+          tipoCom,
+          '', '', '', '', '',
+          '',
+          'Listo para despachar',
+          ts.b,
+          '',
+          conductor,
+          rutaNum,
+          supervisor,
+        ]);
+      }
+    });
+  });
+
+  if (!rows.length) return;
+
+  fetch('/api/sheets-write', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows }),
+  }).catch(err => console.error('[guardarDespachoRM]', err));
+}
+
 interface GuardarHistorialParams {
   fecha: string;
   supervisor: string;
