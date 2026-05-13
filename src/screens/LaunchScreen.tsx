@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../components/AuthProvider';
@@ -15,8 +15,28 @@ export function LaunchScreen() {
   const router = useRouter();
   const { profile, signOut } = useAuth();
   const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
+  const [pendingCount, setPendingCount] = useState(0);
 
   const isAdmin = profile?.role === 'admin';
+
+  const loadPending = useCallback(async () => {
+    if (!isAdmin) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const res = await fetch('/api/admin/users', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await res.json() as { users?: { role: string }[] };
+    if (data.users) {
+      setPendingCount(data.users.filter((u: { role: string }) => u.role === 'pending').length);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    loadPending();
+    const interval = setInterval(loadPending, 30000);
+    return () => clearInterval(interval);
+  }, [loadPending]);
 
   useEffect(() => {
     supabase
@@ -110,6 +130,19 @@ export function LaunchScreen() {
       </div>
 
       <div className="flex gap-3 mt-4">
+        {isAdmin && pendingCount > 0 && (
+          <button
+            onClick={() => router.push('/admin/usuarios')}
+            className="relative px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border transition-all active:scale-95"
+            style={{ borderColor: 'rgba(234,179,8,0.5)', color: '#EAB308', background: 'rgba(234,179,8,0.1)' }}>
+            🔔 Pendientes
+            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-[10px] font-bold text-black flex items-center justify-center"
+                  style={{ background: '#EAB308' }}>
+              {pendingCount}
+            </span>
+          </button>
+        )}
+
         <button onClick={() => router.push('/historial')}
           className="px-4 py-2.5 rounded-full font-barlow text-[13px] cursor-pointer border border-white/20 text-white/65 bg-white/8 hover:bg-white/15 hover:text-white transition-all">
           📋 Historial

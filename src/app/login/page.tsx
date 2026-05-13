@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -132,6 +133,11 @@ export default function LoginPage() {
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
+
+        <div className="mt-6 flex justify-between">
+          <Link href="/registro" className="text-white/40 text-sm">Crear cuenta</Link>
+          <Link href="/recuperar-contrasena" className="text-white/40 text-sm">¿Olvidaste tu contraseña?</Link>
+        </div>
 
         {/* Role legend */}
         <div className="mt-8 flex justify-center gap-4">
