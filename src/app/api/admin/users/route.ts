@@ -69,23 +69,38 @@ export async function PATCH(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
-  const { id, role, full_name } = await request.json() as {
-    id: string; role?: string; full_name?: string;
+  const { id, role, full_name, password } = await request.json() as {
+    id: string; role?: string; full_name?: string; password?: string;
   };
   if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
 
   const sb = adminSb();
   const { data: { user: existing } } = await sb.auth.admin.getUserById(id);
-  const meta = { ...(existing?.user_metadata ?? {}), ...(role ? { role } : {}), ...(full_name ? { full_name } : {}) };
+  const meta: Record<string, unknown> = { ...(existing?.user_metadata ?? {}) };
+  if (role)      meta.role      = role;
+  if (full_name) meta.full_name = full_name;
 
-  const { error } = await sb.auth.admin.updateUserById(id, { user_metadata: meta });
+  const updatePayload: Record<string, unknown> = { user_metadata: meta };
+  if (password) updatePayload.password = password;
+
+  const { error } = await sb.auth.admin.updateUserById(id, updatePayload);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Keep profiles table in sync
-  const update: Record<string, string> = {};
-  if (role)      update.role      = role;
-  if (full_name) update.full_name = full_name;
-  if (Object.keys(update).length) await sb.from('profiles').update(update).eq('id', id);
+  if (role || full_name) {
+    const updateData: Record<string, string> = { id };
+    if (role)      updateData.role      = role;
+    if (full_name) updateData.full_name = full_name;
+
+    const { error: profileErr } = await sb.from('profiles').update(updateData).eq('id', id);
+    if (profileErr) {
+      if (profileErr.code === 'PGRST116') {
+        await sb.from('profiles').upsert(updateData);
+      } else {
+        console.error('[PATCH] profiles sync error:', profileErr.message);
+      }
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

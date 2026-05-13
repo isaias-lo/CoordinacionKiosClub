@@ -5,6 +5,7 @@ const ROLE_HOME: Record<string, string> = {
   auditor:          '/auditoria',
   'admin-auditoria':'/auditoria',
   despachador:      '/',
+  supervisor:       '/',
   admin:            '/',
 };
 
@@ -12,6 +13,7 @@ const ROLE_ALLOWED: Record<string, string[]> = {
   auditor:          ['/auditoria', '/historial'],
   'admin-auditoria':['/auditoria', '/auditoria-admin'],
   despachador:      ['/', '/despacho', '/recepcion', '/historial'],
+  supervisor:       ['/', '/despacho', '/recepcion', '/control-espejos', '/historial'],
   admin:            ['*'],
 };
 
@@ -26,6 +28,9 @@ function isAllowed(role: string, pathname: string): boolean {
 function roleHome(role: string): string {
   return ROLE_HOME[role] ?? '/auditoria';
 }
+
+const PUBLIC_ROUTES = ['/login', '/registro', '/recuperar-contrasena', '/actualizar-contrasena'];
+const PENDING_REDIRECT = '/espera';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -53,21 +58,28 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // ── Not authenticated ──
   if (!user) {
-    if (pathname === '/login') return response;
+    if (PUBLIC_ROUTES.some(p => pathname === p)) return response;
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Role is stored in JWT user_metadata — no DB call needed
   const role = (user.user_metadata?.role as string | undefined) ?? 'auditor';
 
-  // ── Authenticated on login page → redirect to role home ──
+  if (PUBLIC_ROUTES.some(p => pathname === p)) {
+    return NextResponse.redirect(new URL(roleHome(role), request.url));
+  }
+
+  if (role === 'pending') {
+    if (pathname !== PENDING_REDIRECT) {
+      return NextResponse.redirect(new URL(PENDING_REDIRECT, request.url));
+    }
+    return response;
+  }
+
   if (pathname === '/login') {
     return NextResponse.redirect(new URL(roleHome(role), request.url));
   }
 
-  // ── Role-based route protection ──
   if (!isAllowed(role, pathname)) {
     return NextResponse.redirect(new URL(roleHome(role), request.url));
   }
