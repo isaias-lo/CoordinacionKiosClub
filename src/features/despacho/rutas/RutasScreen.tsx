@@ -15,7 +15,7 @@ import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
@@ -620,6 +620,7 @@ export default function RutasScreen() {
       onWarn:    msg => { setHistorialMsg(msg); setHistorialStatus('warn'); },
       onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
     });
+    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
   }
 
   // ── Driver change ─────────────────────────────────────────────────

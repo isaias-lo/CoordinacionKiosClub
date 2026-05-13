@@ -1,9 +1,6 @@
 import { TIENDAS } from '../data/tiendas';
 import type { DispatchItem, TipoContenido } from '../../../../types';
 
-export const REGIONES_SHEETS_URL =
-  'https://script.google.com/macros/s/AKfycbzrBdzGrmT_0uBwzVxoPi3nubtsIVSYBrnNgdaAr43f2rjS2PQr_XZ-NGw--CTH4DMFOQ/exec';
-
 const CARGA_LABEL: Record<TipoContenido, string> = {
   comida:         'Comida',
   hogar:          'Hogar',
@@ -16,18 +13,22 @@ const URBAN_COMMUNES = new Set([
   'Lo Barnechea', 'Puente Alto',
 ]);
 
-function buildRegionesSheetsRows(
+// Columnas: ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+//           TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
+//           N_PALLET_BULTO,FECHA_LLEGADA,GUIA,VALOR
+function buildRows(
   dispatchData: Record<string, DispatchItem[]>,
   regimen: string,
-): Record<string, unknown>[] {
-  const fecha = new Date()
-    .toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    .replace(/\//g, '');                          // "DDMMYYYY"
-
-  const fechaFmt = `${parseInt(fecha.slice(0, 2))}/${fecha.slice(2, 4)}/${fecha.slice(4)}`;
+): (string | number)[][] {
+  const now   = new Date();
+  const dd    = String(now.getDate()).padStart(2, '0');
+  const mm    = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy  = String(now.getFullYear());
+  const stamp = `${dd}${mm}${yyyy}`;
+  const fecha = `${dd}/${mm}/${yyyy}`;
   const transporte = regimen === 'Falabella' ? 'Falabella' : 'Carga';
 
-  const rows: Record<string, unknown>[] = [];
+  const rows: (string | number)[][] = [];
 
   for (const [storeName, items] of Object.entries(dispatchData)) {
     if (!items.length) continue;
@@ -37,32 +38,32 @@ function buildRegionesSheetsRows(
     for (const item of items) {
       const pesoV = item.alto && item.largo && item.ancho
         ? Math.round((item.alto * item.largo * item.ancho) / 6000 * 100) / 100
-        : 0;
+        : '';
 
-      rows.push({
-        ID:              `${item.orden}${tienda.cod}${fecha}`,
-        FECHA_DESPACHO:  fechaFmt,
-        COD_TIENDA:      tienda.cod,
-        TIENDA:          tienda.name,
-        TIPO_CARGAMENTO: item.pkg === 'pallet' ? 'Pallet' : 'Bulto',
-        REGIMEN_CARGA:   regimen,
-        TRANSPORTE:      transporte,
-        CARGA:           CARGA_LABEL[item.tipo] ?? item.tipo,
-        REGION_DESTINO:  tienda.region,
-        COMUNA_DESTINO:  tienda.comuna,
-        TIPO_COMUNA:     URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano',
-        PESO_KG:         item.peso,
-        ALTO:            item.alto || '',
-        LARGO:           item.largo || '',
-        ANCHO:           item.ancho || '',
-        PESO_V:          pesoV || '',
-        VENTANA_HORARIA: '',
-        ESTADO:          'Listo para despachar',
-        N_Pallet_Bulto:  item.orden,
-        GUIA:            item.guia || '',
-        VALOR:           item.valor || '',
-        FECHA_LLEGADA:   '',
-      });
+      rows.push([
+        `${item.orden}${tienda.cod}${stamp}`,          // ID
+        fecha,                                          // FECHA
+        tienda.cod,                                     // COD
+        tienda.name,                                    // TIENDA
+        item.pkg === 'pallet' ? 'Pallet' : 'Bulto',    // TIPO
+        regimen,                                        // REGIMEN
+        transporte,                                     // TRANSPORTE
+        CARGA_LABEL[item.tipo] ?? item.tipo,            // CARGA
+        tienda.region,                                  // REGION
+        tienda.comuna,                                  // COMUNA
+        URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano', // TIPO_COMUNA
+        item.peso || '',                                // PESO_KG
+        item.alto  || '',                               // ALTO
+        item.largo || '',                               // LARGO
+        item.ancho || '',                               // ANCHO
+        pesoV,                                          // PESO_V
+        '',                                             // VENTANA
+        'Listo para despachar',                         // ESTADO
+        item.orden,                                     // N_PALLET_BULTO
+        '',                                             // FECHA_LLEGADA
+        item.guia  || '',                               // GUIA
+        item.valor || '',                               // VALOR
+      ]);
     }
   }
 
@@ -72,19 +73,13 @@ function buildRegionesSheetsRows(
 export function sheetsRegionesWrite(
   dispatchData: Record<string, DispatchItem[]>,
   regimen = 'Carga',
-): boolean {
-  const rows = buildRegionesSheetsRows(dispatchData, regimen);
-  if (!rows.length) return false;
+): void {
+  const rows = buildRows(dispatchData, regimen);
+  if (!rows.length) return;
 
-  const ctrl = new AbortController();
-  setTimeout(() => ctrl.abort(), 10_000);
-  fetch(REGIONES_SHEETS_URL, {
+  fetch('/api/sheets-write', {
     method:  'POST',
-    mode:    'no-cors',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ action: 'write', sheetName: 'DespachoRegiones', rows }),
-    signal:  ctrl.signal,
-  }).catch(() => {});
-
-  return true;
+    body:    JSON.stringify({ sheet: 'DESPACHO REGIONES', rows }),
+  }).catch(err => console.error('[sheetsRegionesWrite]', err));
 }
