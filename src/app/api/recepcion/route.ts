@@ -84,18 +84,17 @@ export async function POST(request: NextRequest) {
     const min  = String(now.getMinutes()).padStart(2, '0');
 
     await writeToSheet([
-      `${dd}/${mm}/${yyyy}`,         // FECHA
-      `${hh}:${min}`,                // HORA
-      body.cod,                      // COD
-      body.tienda,                   // TIENDA
-      body.direccion,                // DIRECCIÓN
-      body.palletsSent,              // PALLETS ENVIADOS
-      body.bultosSent,               // BULTOS ENVIADOS
-      body.palletsRecibidos,         // PALLETS RECIBIDOS
-      body.bultosRecibidos,          // BULTOS RECIBIDOS
-      body.receptor,                 // RECEPTOR
-      body.rut,                      // RUT
-      publicUrl,                     // FIRMA URL
+      `${dd}/${mm}/${yyyy} ${hh}:${min}`, // Fecha/Hora
+      body.cod,                            // Código
+      body.tienda,                         // Tienda
+      body.direccion,                      // Dirección
+      body.palletsSent,                    // Pallets Enviados
+      body.bultosSent,                     // Bultos Enviados
+      body.palletsRecibidos,               // Pallets Recibidos
+      body.bultosRecibidos,                // Bultos Recibidos
+      body.receptor,                       // Receptor
+      body.rut,                            // RUT
+      publicUrl,                           // Firma
     ]);
 
     return NextResponse.json({ ok: true });
