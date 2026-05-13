@@ -142,6 +142,13 @@ export default function AuditoriaAdminPage() {
   const [lightbox,     setLightbox]     = useState<string | null>(null);
   const [tab,          setTab]          = useState<'lista' | 'fotos' | 'stats'>('lista');
 
+  // Client-side role guard (middleware handles server-side, this prevents flicker)
+  useEffect(() => {
+    if (profile && profile.role !== 'admin-auditoria' && profile.role !== 'admin') {
+      router.replace('/');
+    }
+  }, [profile, router]);
+
   useEffect(() => {
     supabase
       .from('audit_entries')
