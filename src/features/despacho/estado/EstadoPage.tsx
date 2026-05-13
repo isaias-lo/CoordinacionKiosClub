@@ -67,7 +67,8 @@ function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
   const p = new URLSearchParams({ cod: store.cod, p: String(pallets), b: String(bultos) });
   if (allGuias.length > 0) p.set('g', allGuias.join(','));
   if (driveFileId) p.set('drv', driveFileId);
-  return `https://toolskios.vercel.app/recepcion?${p.toString()}`;
+  const base = typeof window !== 'undefined' ? window.location.origin : 'https://toolskios.vercel.app';
+  return `${base}/recepcion?${p.toString()}`;
 }
 
 /* ── Label (100×150mm para Zebra) ── */
