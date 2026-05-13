@@ -46,6 +46,7 @@ export interface ProductoError {
   unidades: number;
   tipo: TipoError;
   cantidadEsperada?: number;
+  operacionCod?: string;
 }
 
 export interface AuditEntry {
@@ -54,6 +55,7 @@ export interface AuditEntry {
   hora: string;
   auditor: string;
   picker: string;
+  pickerNombre?: string;
   tiendaCod: string;
   tiendaNombre: string;
   tiendaArea: 'regiones' | 'santiago';
@@ -68,5 +70,6 @@ export interface AuditEntry {
   observaciones: string;
   reauditoriaDeId?: string;
   fotoUrl?: string;
+  fotoUrls?: string[];
   palletFotos?: { label: string; url: string }[];
 }

@@ -350,24 +350,41 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
   const [unidades, setUnidades] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoError>(tiposError[0] ?? 'faltante');
   const [manualNombre, setManualNombre] = useState('');
+  const [selectedOp, setSelectedOp] = useState('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (!tiposError.includes(tipoProd)) setTipoProd(tiposError[0] ?? 'faltante'); }, [tiposError]);
+  const cleanCodigo = (raw: string) => {
+    const stripped = raw.replace(/[\[\]]/g, '').trim().toUpperCase();
+    return stripped;
+  };
   const buscar = async () => {
     if (!odooConfig.url) { onNeedConfig(); return; }
-    const cod = codigo.replace(/[\[\]]/g, '').trim().toUpperCase(); if (!cod) return;
+    const cod = cleanCodigo(codigo); if (!cod) return;
     setLoading(true); setError(''); setFound(null);
-    try { const prod = await buscarProducto(odooConfig, cod, operacionCodes.filter(Boolean)); if (prod) setFound(prod); else setError(`"${cod}" no encontrado`); }
+    try {
+      const ops = selectedOp ? [selectedOp] : operacionCodes.filter(Boolean);
+      const prod = await buscarProducto(odooConfig, cod, ops);
+      if (prod) setFound(prod);
+      else {
+        // retry with last-6-digit suffix search if input was 6 chars
+        if (cod.length === 6) {
+          const prod2 = await buscarProducto(odooConfig, cod, ops);
+          if (prod2) { setFound(prod2); return; }
+        }
+        setError(`"${cod}" no encontrado`);
+      }
+    }
     catch (e) { setError(e instanceof Error ? e.message : 'Error'); } finally { setLoading(false); }
   };
   const confirmar = () => {
     if (!found || !unidades || parseInt(unidades) <= 0) return;
-    onAdd({ codigo: found.codigo, nombre: found.nombre, unidades: parseInt(unidades), tipo: tipoProd, cantidadEsperada: found.cantidadEsperada });
+    onAdd({ codigo: found.codigo, nombre: found.nombre, unidades: parseInt(unidades), tipo: tipoProd, cantidadEsperada: found.cantidadEsperada, operacionCod: selectedOp || undefined });
     setCodigo(''); setFound(null); setUnidades(''); setError('');
   };
   const confirmarManual = () => {
-    const cod = codigo.replace(/[\[\]]/g, '').trim().toUpperCase();
+    const cod = cleanCodigo(codigo);
     if (!cod || !unidades || parseInt(unidades) <= 0) return;
-    onAdd({ codigo: cod, nombre: manualNombre.trim() || cod, unidades: parseInt(unidades), tipo: tipoProd });
+    onAdd({ codigo: cod, nombre: manualNombre.trim() || cod, unidades: parseInt(unidades), tipo: tipoProd, operacionCod: selectedOp || undefined });
     setCodigo(''); setManualNombre(''); setUnidades('');
   };
   const ratioPreview = useMemo(() => {
@@ -386,9 +403,20 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
           </div>
         )}
       </div>
+      {operacionCodes.filter(Boolean).length > 1 && (
+        <div className="mb-2">
+          <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1">Operación de origen</div>
+          <div className="flex flex-wrap gap-1">
+            <button onClick={() => setSelectedOp('')} className={`px-2 py-1 rounded-btn text-[10px] font-bold border cursor-pointer ${!selectedOp ? 'bg-navy text-white border-navy' : 'bg-white text-text-3 border-border'}`}>Todas</button>
+            {operacionCodes.filter(Boolean).map(op => (
+              <button key={op} onClick={() => setSelectedOp(op === selectedOp ? '' : op)} className={`px-2 py-1 rounded-btn text-[10px] font-bold font-mono border cursor-pointer ${selectedOp === op ? 'bg-info text-white border-info' : 'bg-white text-text-2 border-border'}`}>{op}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {manualMode ? (
         <div className="flex flex-col gap-2">
-          <input type="text" value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código producto"
+          <input type="text" value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código (con o sin corchetes, o últimos 6 dígitos)"
             className="bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
           <input type="text" value={manualNombre} onChange={e => setManualNombre(e.target.value)} placeholder="Nombre (opcional)"
             className="bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-barlow text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
@@ -402,7 +430,7 @@ function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedCo
       ) : (
         <>
           <div className="flex gap-2">
-            <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031]"
+            <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031] o VINF031"
               className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
             <button onClick={buscar} disabled={loading || !codigo.trim()} className="px-3 py-2 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12">
               {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
@@ -533,6 +561,65 @@ function PickerNameSelector({ picker, pickerNames, onChange, odooDetected }: {
                 className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${picker === key ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
                 <div className="font-barlow text-[14px] font-semibold">{name}</div>
                 <div className="text-[11px] text-text-3">{key.replace('Pickers ', 'P.')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Picker Nombre Selector (dropdown of real names for the actual armador de pallet) ── */
+function PickerNombreSelector({ pickerNombre, pickerNames, onChange }: {
+  pickerNombre: string; pickerNames: Record<string, string>; onChange: (n: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const names = Object.entries(pickerNames)
+    .filter(([, n]) => n.trim() !== '')
+    .map(([, n]) => n.trim());
+  const uniqueNames = Array.from(new Set(names)).sort();
+  const filtered = uniqueNames.filter(n => !query || n.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div ref={ref} className="relative">
+      <div onClick={() => setOpen(o => !o)}
+        className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${open ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`}
+        style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+        {pickerNombre
+          ? <span className="font-semibold text-text text-[15px]">{pickerNombre}</span>
+          : <span className="text-text-3 font-barlow text-[15px]">{uniqueNames.length === 0 ? 'Sin pickers configurados…' : 'Seleccionar picker…'}</span>}
+        <span className="text-text-3 ml-2 flex-shrink-0">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+          {uniqueNames.length > 4 && (
+            <div className="p-2 border-b border-border">
+              <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Buscar picker…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
+            </div>
+          )}
+          <div className="max-h-48 overflow-y-auto">
+            {pickerNombre && (
+              <div onClick={() => { onChange(''); setOpen(false); setQuery(''); }}
+                className="px-4 py-2 cursor-pointer border-b border-border/40 text-text-3 text-[12px] italic hover:bg-bg">
+                — Sin picker
+              </div>
+            )}
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{uniqueNames.length === 0 ? 'Configura pickers en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.map(name => (
+              <div key={name} onClick={() => { onChange(name); setOpen(false); setQuery(''); }}
+                className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 font-barlow text-[14px] ${pickerNombre === name ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
+                {name}
               </div>
             ))}
           </div>
@@ -1096,9 +1183,10 @@ export function AuditoriaScreen() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [palletFiles,    setPalletFiles]    = useState<Record<string, File>>({});
   const [palletPreviews, setPalletPreviews] = useState<Record<string, string>>({});
-  const [fotoFile,       setFotoFile]       = useState<File | null>(null);
-  const [fotoPreview,    setFotoPreview]    = useState('');
+  const [fotoFiles,      setFotoFiles]      = useState<File[]>([]);
+  const [fotoPreviews,   setFotoPreviews]   = useState<string[]>([]);
   const [submitting,     setSubmitting]     = useState(false);
+  const [pickerNombre,   setPickerNombre]   = useState('');
   const [pickerNamesState, setPickerNamesState] = useState<Record<string, string>>({ ...PICKER_NAMES });
   const [auditorList,      setAuditorList]      = useState<string[]>([]);
   const [odooAutoDetected, setOdooAutoDetected] = useState(false);
@@ -1156,20 +1244,28 @@ export function AuditoriaScreen() {
         }
       });
   }, []);
+  // Auto-fill auditor from logged-in profile name
+  useEffect(() => {
+    if (!authLoading && !auditor && profile?.full_name) {
+      setAuditor(profile.full_name);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, profile?.full_name]);
+
   useEffect(() => {
     setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' })));
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({});
     setPalletPreviews({});
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
-    setFotoFile(null);
-    setFotoPreview('');
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]);
+    setFotoPreviews([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
   const handleTipoChange = (val: TipoAuditoria) => {
     if (val === tipo) return;
-    const hasPhotos = Object.keys(palletFiles).length > 0 || !!fotoFile;
+    const hasPhotos = Object.keys(palletFiles).length > 0 || fotoFiles.length > 0;
     if (hasPhotos) { setTipoPending(val); } else { setTipo(val); }
   };
   useEffect(() => { if (!tieneErrores) { setTiposError([]); setProductos([]); } }, [tieneErrores]);
@@ -1183,20 +1279,21 @@ export function AuditoriaScreen() {
     if (!auditor && !picker && !tienda) return;
     const handle = setTimeout(() => {
       try {
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ auditor, picker, tiendaCod: tienda?.cod, tipo, pallets, tieneErrores, tiposError }));
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ auditor, picker, pickerNombre, tiendaCod: tienda?.cod, tipo, pallets, tieneErrores, tiposError }));
       } catch { /* empty */ }
     }, 1500);
     return () => clearTimeout(handle);
-  }, [auditor, picker, tienda, tipo, pallets, tieneErrores, tiposError]);
+  }, [auditor, picker, pickerNombre, tienda, tipo, pallets, tieneErrores, tiposError]);
 
   // Restore draft on mount
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (!raw) return;
-      const draft = JSON.parse(raw) as { auditor?: string; picker?: string; tiendaCod?: string; tipo?: TipoAuditoria; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[] };
+      const draft = JSON.parse(raw) as { auditor?: string; picker?: string; pickerNombre?: string; tiendaCod?: string; tipo?: TipoAuditoria; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[] };
       if (draft.auditor) setAuditor(draft.auditor);
       if (draft.picker) setPicker(draft.picker);
+      if (draft.pickerNombre) setPickerNombre(draft.pickerNombre);
       if (draft.tiendaCod) setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === draft.tiendaCod) ?? null);
       if (draft.tipo) setTipo(draft.tipo);
       if (draft.pallets) setPallets(draft.pallets);
@@ -1270,26 +1367,30 @@ export function AuditoriaScreen() {
         }
       }
     }
-    let uploadedFotoUrl: string | undefined;
-    if (user && fotoFile) {
-      const ext = fotoFile.name.split('.').pop() || 'jpg';
-      const path = `${user.id}/${entryId}_error.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('audit-photos')
-        .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-      if (!upErr) {
-        const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-        uploadedFotoUrl = publicUrl;
-      } else {
-        showToast('⚠ Error al subir foto de productos', '#D97706');
+    const uploadedFotoUrls: string[] = [];
+    if (user && fotoFiles.length > 0) {
+      for (let fi = 0; fi < fotoFiles.length; fi++) {
+        const fotoFile = fotoFiles[fi];
+        const ext = fotoFile.name.split('.').pop() || 'jpg';
+        const path = `${user.id}/${entryId}_foto${fi + 1}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('audit-photos')
+          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+          uploadedFotoUrls.push(publicUrl);
+        } else {
+          showToast(`⚠ Error al subir foto de productos ${fi + 1}`, '#D97706');
+        }
       }
     }
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-      auditor: auditor.trim(), picker: picker.trim(), tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
+      auditor: auditor.trim(), picker: picker.trim(), pickerNombre: pickerNombre.trim() || undefined,
+      tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
-      fotoUrl: uploadedFotoUrl,
+      fotoUrls: uploadedFotoUrls.length > 0 ? uploadedFotoUrls : undefined,
       palletFotos: uploadedFotos.length > 0 ? uploadedFotos : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
@@ -1301,12 +1402,12 @@ export function AuditoriaScreen() {
     sheetsAuditoriaWrite(entry, state.sheetsUrl);
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
     try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* empty */ }
-    setTienda(null); setTiendaQuery(''); setPicker(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({});
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
-    setFotoFile(null); setFotoPreview('');
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]); setFotoPreviews([]);
     setSubmitting(false);
   };
 
@@ -1428,7 +1529,7 @@ export function AuditoriaScreen() {
 
         {/* LEFT: FORM */}
         <div className={isAdminAud
-          ? 'flex-1 overflow-y-auto'
+          ? 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto'
           : isAuditorOnly
             ? 'flex-1 flex flex-col overflow-hidden'
             : 'flex-1 md:flex-none md:w-[420px] lg:w-[460px] overflow-y-auto md:border-r md:border-border'}>
@@ -1484,13 +1585,16 @@ export function AuditoriaScreen() {
               <SLabel>Auditor</SLabel>
               <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={setAuditor} />
 
-              <SLabel>Picker (armador del pallet)</SLabel>
+              <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna</span></SLabel>
               <PickerNameSelector picker={picker} pickerNames={pickerNamesState} odooDetected={odooAutoDetected} onChange={p => { setPicker(p); setOdooAutoDetected(false); }} />
               {!picker && (
                 <div className="mt-1 text-[11px] text-text-3 flex items-center gap-1">
                   <span>🔄</span><span>Se auto-detecta al cargar operación Odoo</span>
                 </div>
               )}
+
+              <SLabel>Picker (armador de pallet)</SLabel>
+              <PickerNombreSelector pickerNombre={pickerNombre} pickerNames={pickerNamesState} onChange={setPickerNombre} />
 
               <SLabel>Tienda</SLabel>
               <div ref={tiendaRef} className="relative">
@@ -1620,23 +1724,41 @@ export function AuditoriaScreen() {
               <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
                 className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
-              <SLabel>Foto de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados</span></SLabel>
-              {fotoPreview ? (
-                <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                  <img src={fotoPreview} alt="foto de productos" className="w-full object-cover" style={{ maxHeight: 180 }} />
-                  <button
-                    onClick={() => { URL.revokeObjectURL(fotoPreview); setFotoFile(null); setFotoPreview(''); }}
-                    className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                    style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+              <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados · múltiples permitidas</span></SLabel>
+              {fotoPreviews.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {fotoPreviews.map((preview, idx) => (
+                    <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                      <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ maxHeight: 120 }} />
+                      <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
+                      <button
+                        onClick={() => {
+                          URL.revokeObjectURL(preview);
+                          setFotoPreviews(p => p.filter((_, i) => i !== idx));
+                          setFotoFiles(f => f.filter((_, i) => i !== idx));
+                        }}
+                        className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                        style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                  <span className="text-[28px]">📷</span>
-                  <span className="text-[13px] text-text-3 font-barlow">Adjuntar foto de productos con error</span>
-                  <input type="file" accept="image/*" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }} />
-                </label>
               )}
+              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                <span className="text-[28px]">📷</span>
+                <div>
+                  <div className="text-[13px] text-text-2 font-barlow font-semibold">Agregar foto{fotoPreviews.length > 0 ? ` (${fotoPreviews.length} adjunta${fotoPreviews.length !== 1 ? 's' : ''})` : ''}</div>
+                  <div className="text-[11px] text-text-3">Toca para seleccionar desde galería</div>
+                </div>
+                <input type="file" accept="image/*" multiple className="hidden"
+                  onChange={e => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length === 0) return;
+                    const newPreviews = files.map(f => URL.createObjectURL(f));
+                    setFotoFiles(prev => [...prev, ...files]);
+                    setFotoPreviews(prev => [...prev, ...newPreviews]);
+                    e.target.value = '';
+                  }} />
+              </label>
             </AccordionSection>
 
             <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
@@ -1651,6 +1773,12 @@ export function AuditoriaScreen() {
         {!isAdminAud && !isAuditorOnly && (
           <div className="hidden md:flex md:flex-1 overflow-hidden">
             <StatsPanel history={history} today={today} onReaudit={iniciarReauditoria} odooConfig={odooConfig} pickerNames={pickerNamesState} onRefresh={loadHistory} />
+          </div>
+        )}
+        {/* RIGHT: ADMIN DESKTOP PANEL (dashboard + ranking + historial) */}
+        {isAdminAud && (
+          <div className="hidden md:flex md:flex-1 overflow-hidden border-l border-border flex-col">
+            <AdminDesktopPanel history={history} today={today} odooConfig={odooConfig} pickerNames={pickerNamesState} onReaudit={e => { iniciarReauditoria(e); }} onRefresh={loadHistory} />
           </div>
         )}
       </div>
@@ -1716,12 +1844,22 @@ export function AuditoriaScreen() {
             <div className="font-barlow-condensed text-[20px] font-bold text-navy mb-3">Confirmar registro</div>
             <div className="space-y-2.5 mb-4">
               <div className="flex justify-between items-start py-1.5 border-b border-border">
+                <span className="text-text-3 text-[12px]">Auditor</span>
+                <span className="font-semibold text-text text-[13px] text-right ml-4">{auditor}</span>
+              </div>
+              <div className="flex justify-between items-start py-1.5 border-b border-border">
                 <span className="text-text-3 text-[12px]">Tienda</span>
                 <span className="font-semibold text-text text-[13px] text-right ml-4">{tienda.nombre}</span>
               </div>
-              {picker && (
+              {pickerNombre && (
                 <div className="flex justify-between items-center py-1.5 border-b border-border">
                   <span className="text-text-3 text-[12px]">Picker</span>
+                  <span className="font-semibold text-text text-[13px]">{pickerNombre}</span>
+                </div>
+              )}
+              {picker && (
+                <div className="flex justify-between items-center py-1.5 border-b border-border">
+                  <span className="text-text-3 text-[12px]">Id. pistola</span>
                   <span className="font-semibold text-text text-[13px]">{displayPicker(picker, pickerNamesState)}</span>
                 </div>
               )}
@@ -1748,6 +1886,36 @@ export function AuditoriaScreen() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ════ Admin Desktop Right Panel (dashboard + ranking + historial tabs) ════ */
+function AdminDesktopPanel({ history, today, odooConfig, pickerNames, onReaudit, onRefresh }: {
+  history: AuditEntry[]; today: string; odooConfig: OdooConfig;
+  pickerNames: Record<string, string>; onReaudit: (e: AuditEntry) => void; onRefresh: () => void;
+}) {
+  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'historial'>('dashboard');
+  const tabs = [
+    { key: 'dashboard' as const, label: '📊 Dashboard' },
+    { key: 'ranking' as const, label: '🏆 Ranking' },
+    { key: 'historial' as const, label: '📋 Historial' },
+  ];
+  return (
+    <div className="flex flex-col h-full w-full overflow-hidden bg-bg">
+      <div className="flex border-b border-border bg-white flex-shrink-0">
+        {tabs.map(({ key, label }) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex-1 py-2.5 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
+        {tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
+        {tab === 'historial' && <HistoryContent history={history} today={today} onReaudit={onReaudit} onRefresh={onRefresh} pickerNames={pickerNames} />}
+      </div>
     </div>
   );
 }

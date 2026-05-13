@@ -69,23 +69,49 @@ function EntryCard({ entry, onPhotoClick }: { entry: AuditEntry; onPhotoClick: (
         </div>
       )}
 
-      {/* Pallet photos */}
-      {entry.palletFotos && entry.palletFotos.length > 0 && (
-        <div className="flex flex-col gap-1.5 mt-1">
-          {entry.palletFotos.map((pf, idx) => (
-            <button key={idx} onClick={() => onPhotoClick(pf.url)}
-              className="block w-full rounded-card overflow-hidden border border-border cursor-pointer"
-              style={{ padding: 0, background: 'none' }}>
-              <img src={pf.url} alt={pf.label} className="w-full object-cover" style={{ maxHeight: 160 }} />
-              <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1 text-left">
-                📷 {pf.label} · toca para ampliar
-              </div>
-            </button>
-          ))}
+      {/* Picker nombre */}
+      {entry.pickerNombre && (
+        <div className="mb-2 text-[11px] text-text-2">
+          <span className="text-text-3">Picker: </span><strong>{entry.pickerNombre}</strong>
         </div>
       )}
-      {/* Error photo (legacy) */}
-      {entry.fotoUrl && (
+
+      {/* Pallet photos */}
+      {entry.palletFotos && entry.palletFotos.length > 0 && (
+        <div className="mt-1 mb-2">
+          <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5">Fotos de pallets</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {entry.palletFotos.map((pf, idx) => (
+              <button key={idx} onClick={() => onPhotoClick(pf.url)}
+                className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
+                style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
+                <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1.5">
+                  <div className="text-white text-[10px] font-bold">{pf.label}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Product photos (multi) */}
+      {entry.fotoUrls && entry.fotoUrls.length > 0 && (
+        <div className="mt-1 mb-2">
+          <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5">Fotos de productos con error</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {entry.fotoUrls.map((url, idx) => (
+              <button key={idx} onClick={() => onPhotoClick(url)}
+                className="relative rounded-card overflow-hidden border border-red/20 cursor-pointer group"
+                style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
+                <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                <div className="absolute top-1 left-1.5 bg-red text-white text-[9px] font-bold px-1.5 py-0.5 rounded">#{idx + 1}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Error photo (legacy single) */}
+      {entry.fotoUrl && !entry.fotoUrls?.length && (
         <button
           onClick={() => onPhotoClick(entry.fotoUrl!)}
           className="block w-full rounded-card overflow-hidden border border-border cursor-pointer mt-1"
@@ -158,7 +184,7 @@ export default function AuditoriaAdminPage() {
       .sort((a, b) => b.total - a.total);
   }, [filtered]);
 
-  const withPhotos = useMemo(() => filtered.filter(e => e.fotoUrl || (e.palletFotos && e.palletFotos.length > 0)), [filtered]);
+  const withPhotos = useMemo(() => filtered.filter(e => e.fotoUrl || (e.fotoUrls && e.fotoUrls.length > 0) || (e.palletFotos && e.palletFotos.length > 0)), [filtered]);
 
   const today = new Date().toLocaleDateString('es-CL');
 
@@ -265,144 +291,242 @@ export default function AuditoriaAdminPage() {
               </div>
             )
             : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {withPhotos.flatMap(e => {
-                  const cards = [];
-                  if (e.palletFotos && e.palletFotos.length > 0) {
-                    e.palletFotos.forEach((pf, idx) => {
-                      cards.push(
-                        <button key={`${e.id}_pallet${idx}`} onClick={() => setLightbox(pf.url)}
-                          className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
-                          style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                          <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
-                            <div className="text-white/80 text-[9px] font-bold uppercase tracking-wide">{pf.label}</div>
-                            <div className="text-white text-[10px] font-bold truncate">{e.tiendaNombre}</div>
-                            <div className="text-white/60 text-[9px]">{e.fecha} · {e.auditor}</div>
+              <div className="space-y-4">
+                {withPhotos.map(e => {
+                  const palletCount = e.palletFotos?.length ?? 0;
+                  const prodCount = (e.fotoUrls?.length ?? 0) + (e.fotoUrl && !e.fotoUrls?.length ? 1 : 0);
+                  return (
+                    <div key={e.id} className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+                      {/* Entry header */}
+                      <div className="px-3 py-2.5 border-b border-border bg-bg flex items-center gap-2 flex-wrap">
+                        <span className="font-barlow-condensed text-[14px] font-bold text-navy">{e.tiendaNombre}</span>
+                        <span className="font-mono text-[10px] text-text-3 bg-white border border-border px-1.5 py-0.5 rounded">{e.tiendaCod}</span>
+                        <span className="text-[11px] text-text-3">{e.fecha} · {e.hora} · {e.auditor}</span>
+                        {e.pickerNombre && <span className="text-[11px] text-text-2 font-semibold">{e.pickerNombre}</span>}
+                        <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full ${e.resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.12)] text-success' : 'bg-[rgba(211,47,47,0.12)] text-red'}`}>
+                          {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
+                        </span>
+                      </div>
+                      <div className="p-3">
+                        {/* Pallet photos section */}
+                        {palletCount > 0 && (
+                          <div className="mb-3">
+                            <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5 flex items-center gap-1">
+                              📦 Pallets <span className="font-normal normal-case text-text-3">({palletCount} foto{palletCount !== 1 ? 's' : ''})</span>
+                            </div>
+                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5">
+                              {e.palletFotos!.map((pf, idx) => (
+                                <button key={idx} onClick={() => setLightbox(pf.url)}
+                                  className="relative rounded-lg overflow-hidden border border-border cursor-pointer group"
+                                  style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
+                                  <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150" />
+                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-1 py-1">
+                                    <div className="text-white text-[9px] font-bold">{pf.label}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </button>
-                      );
-                    });
-                  }
-                  if (e.fotoUrl) {
-                    cards.push(
-                      <button key={`${e.id}_error`} onClick={() => setLightbox(e.fotoUrl!)}
-                        className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
-                        style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                        <img src={e.fotoUrl} alt="foto del error" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
-                          <div className="text-white/80 text-[9px] font-bold uppercase tracking-wide">Foto de error</div>
-                          <div className="text-white text-[10px] font-bold truncate">{e.tiendaNombre}</div>
-                          <div className="text-white/60 text-[9px]">{e.fecha} · {e.auditor}</div>
-                          <div className={`inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${e.resultado === 'bueno' ? 'bg-success text-white' : 'bg-red text-white'}`}>
-                            {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
+                        )}
+                        {/* Product photos section */}
+                        {prodCount > 0 && (
+                          <div>
+                            <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5 flex items-center gap-1">
+                              ⚠ Errores <span className="font-normal normal-case text-text-3">({prodCount} foto{prodCount !== 1 ? 's' : ''})</span>
+                            </div>
+                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5">
+                              {(e.fotoUrls && e.fotoUrls.length > 0 ? e.fotoUrls : e.fotoUrl ? [e.fotoUrl] : []).map((url, idx) => (
+                                <button key={idx} onClick={() => setLightbox(url)}
+                                  className="relative rounded-lg overflow-hidden border border-red/30 cursor-pointer group"
+                                  style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
+                                  <img src={url} alt={`Error ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150" />
+                                  <div className="absolute top-1 left-1 bg-red text-white text-[9px] font-bold px-1 py-0.5 rounded">#{idx + 1}</div>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    );
-                  }
-                  return cards;
+                        )}
+                      </div>
+                    </div>
+                  );
                 })}
               </div>
             )
         )}
 
         {/* Stats */}
-        {!loading && tab === 'stats' && (
-          auditorStats.length === 0
-            ? (
-              <div className="text-center py-16 text-text-3">
-                <div className="text-[40px] mb-3">📊</div>
-                <div className="font-barlow-condensed text-[16px]">Sin datos para los filtros seleccionados.</div>
-              </div>
-            )
-            : (
-              <div className="space-y-3">
-                {/* Summary */}
-                <div className="grid grid-cols-3 gap-3 mb-4">
-                  {[
-                    { v: filtered.length, l: 'Auditorías', c: '#1a2550' },
-                    { v: filtered.filter(e => e.resultado === 'bueno').length, l: 'Buenas', c: '#16A34A' },
-                    { v: filtered.filter(e => e.resultado === 'malo').length, l: 'Malas', c: '#D32F2F' },
-                  ].map(({ v, l, c }) => (
-                    <div key={l} className="bg-white border border-border rounded-card p-3 text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-                      <div className="font-barlow-condensed text-[26px] font-bold" style={{ color: c }}>{v}</div>
-                      <div className="text-[10px] text-text-3 uppercase tracking-wide">{l}</div>
-                    </div>
-                  ))}
-                </div>
+        {!loading && tab === 'stats' && (() => {
+          if (filtered.length === 0) return (
+            <div className="text-center py-16 text-text-3">
+              <div className="text-[40px] mb-3">📊</div>
+              <div className="font-barlow-condensed text-[16px]">Sin datos para los filtros seleccionados.</div>
+            </div>
+          );
+          const buenas = filtered.filter(e => e.resultado === 'bueno').length;
+          const malas = filtered.filter(e => e.resultado === 'malo').length;
+          const passPct = filtered.length ? Math.round((buenas / filtered.length) * 100) : 0;
+          const totalPallets = filtered.reduce((s, e) => s + e.pallets, 0);
+          const totalFaltante = filtered.reduce((s, e) => s + (e.tiposError.includes('faltante') ? 1 : 0), 0);
+          const totalSobrante = filtered.reduce((s, e) => s + (e.tiposError.includes('sobrante') ? 1 : 0), 0);
+          const totalCruce = filtered.filter(e => e.correccion === 'cruce').length;
+          const withPhotosCount = filtered.filter(e => e.fotoUrl || (e.fotoUrls && e.fotoUrls.length > 0) || (e.palletFotos && e.palletFotos.length > 0)).length;
 
-                {/* Per-auditor table */}
+          // Picker stats
+          const pickerMap = new Map<string, { total: number; bueno: number; nombre: string }>();
+          for (const e of filtered) {
+            const key = e.pickerNombre?.trim() || e.picker?.trim(); if (!key) continue;
+            if (!pickerMap.has(key)) pickerMap.set(key, { total: 0, bueno: 0, nombre: key });
+            const s = pickerMap.get(key)!; s.total++;
+            if (e.resultado === 'bueno') s.bueno++;
+          }
+          const pickerStats = Array.from(pickerMap.values()).sort((a, b) => b.total - a.total);
+
+          // Tienda stats (worst first)
+          const tiendaMap = new Map<string, { total: number; bueno: number; cod: string }>();
+          for (const e of filtered) {
+            if (!tiendaMap.has(e.tiendaNombre)) tiendaMap.set(e.tiendaNombre, { total: 0, bueno: 0, cod: e.tiendaCod });
+            const s = tiendaMap.get(e.tiendaNombre)!; s.total++;
+            if (e.resultado === 'bueno') s.bueno++;
+          }
+          const tiendaStats = Array.from(tiendaMap.entries())
+            .map(([nombre, s]) => ({ nombre, ...s, pct: Math.round((s.bueno / s.total) * 100) }))
+            .sort((a, b) => a.pct - b.pct || b.total - a.total)
+            .slice(0, 10);
+
+          return (
+            <div className="space-y-4">
+              {/* KPI grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { v: filtered.length, l: 'Auditorías', c: '#1a2550' },
+                  { v: `${passPct}%`, l: 'Aprobación', c: passPct >= 80 ? '#16A34A' : passPct >= 60 ? '#D97706' : '#D32F2F' },
+                  { v: totalPallets, l: 'Pallets', c: '#2563EB' },
+                  { v: withPhotosCount, l: 'Con fotos', c: '#7C3AED' },
+                ].map(({ v, l, c }) => (
+                  <div key={l} className="bg-white border border-border rounded-card p-3 text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                    <div className="font-barlow-condensed text-[28px] font-black leading-none" style={{ color: c }}>{v}</div>
+                    <div className="text-[10px] text-text-3 uppercase tracking-wide mt-1">{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Resultado + Corrección */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white border border-border rounded-card p-3" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                  <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-2">Resultado</div>
+                  <div className="flex gap-3">
+                    <div className="flex-1 text-center"><div className="font-barlow-condensed text-[24px] font-bold text-success">{buenas}</div><div className="text-[10px] text-text-3">✓ Buenos</div></div>
+                    <div className="flex-1 text-center"><div className="font-barlow-condensed text-[24px] font-bold text-red">{malas}</div><div className="text-[10px] text-text-3">✗ Malos</div></div>
+                  </div>
+                  <div className="mt-2 h-2 bg-bg-2 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${passPct}%`, background: `linear-gradient(90deg, #16A34A80, #16A34A)` }} />
+                  </div>
+                </div>
+                <div className="bg-white border border-border rounded-card p-3" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                  <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-2">Tipo de error</div>
+                  <div className="space-y-1">
+                    {[
+                      { label: '↓ Faltante', v: totalFaltante, c: '#D32F2F' },
+                      { label: '↑ Sobrante', v: totalSobrante, c: '#D97706' },
+                      { label: '↔ Cruce', v: totalCruce, c: '#2563EB' },
+                    ].map(({ label, v, c }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold flex-shrink-0" style={{ color: c, minWidth: 72 }}>{label}</span>
+                        <div className="flex-1 h-2 bg-bg-2 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: filtered.length ? `${(v / filtered.length) * 100}%` : '0%', background: c }} />
+                        </div>
+                        <span className="text-[11px] font-bold text-text-2 flex-shrink-0 w-6 text-right">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-auditor */}
+              <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+                <div className="px-4 py-2.5 border-b border-border bg-bg flex items-center justify-between">
+                  <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-wider text-text-3">Rendimiento por auditor</span>
+                  <span className="text-[11px] text-text-3">{auditorStats.length} auditor{auditorStats.length !== 1 ? 'es' : ''}</span>
+                </div>
+                {auditorStats.map(({ auditor: aud, total, bueno, malo }) => {
+                  const pct = total > 0 ? Math.round((bueno / total) * 100) : 0;
+                  const color = pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F';
+                  return (
+                    <div key={aud} className="px-4 py-3 border-b border-border last:border-b-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
+                            style={{ background: color }}>{aud.slice(0, 2).toUpperCase()}</div>
+                          <span className="font-barlow-condensed text-[15px] font-bold text-navy">{aud}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[12px]">
+                          <span className="text-success font-bold">{bueno}✓</span>
+                          <span className="text-red font-bold">{malo}✗</span>
+                          <span className="font-black text-[14px]" style={{ color }}>{pct}%</span>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-bg-2 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}80, ${color})` }} />
+                      </div>
+                      <div className="text-[10px] text-text-3 mt-0.5">{total} auditoría{total !== 1 ? 's' : ''}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Picker ranking */}
+              {pickerStats.length > 0 && (
                 <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
                   <div className="px-4 py-2.5 border-b border-border bg-bg">
-                    <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-wider text-text-3">Rendimiento por auditor</span>
+                    <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-wider text-text-3">Ranking de pickers</span>
                   </div>
-                  {auditorStats.map(({ auditor, total, bueno, malo }) => {
+                  {pickerStats.slice(0, 10).map(({ nombre, total, bueno }, i) => {
                     const pct = total > 0 ? Math.round((bueno / total) * 100) : 0;
                     const color = pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F';
-                    const withFoto = filtered.filter(e => e.auditor === auditor && (e.fotoUrl || (e.palletFotos && e.palletFotos.length > 0))).length;
+                    const medals = ['🥇', '🥈', '🥉'];
                     return (
-                      <div key={auditor} className="px-4 py-3 border-b border-border last:border-b-0">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div>
-                            <span className="font-barlow-condensed text-[15px] font-bold text-navy">{auditor}</span>
-                            {withFoto > 0 && <span className="ml-2 text-[10px] text-text-3">📷 {withFoto} fotos</span>}
-                          </div>
-                          <div className="flex items-center gap-3 text-[13px]">
-                            <span className="text-success font-bold">{bueno} ✓</span>
-                            <span className="text-red font-bold">{malo} ✗</span>
-                            <span className="font-bold" style={{ color }}>{pct}%</span>
-                          </div>
+                      <div key={nombre} className="px-4 py-2.5 border-b border-border last:border-b-0 flex items-center gap-3">
+                        <span className="text-[16px] w-6 flex-shrink-0">{medals[i] ?? `#${i + 1}`}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-[13px] text-text truncate">{nombre}</div>
+                          <div className="text-[10px] text-text-3">{total} auditado{total !== 1 ? 's' : ''}</div>
                         </div>
-                        <div className="h-2 bg-bg-2 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}80, ${color})` }} />
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-black text-[16px] font-barlow-condensed" style={{ color }}>{pct}%</div>
+                          <div className="text-[10px] text-text-3">{bueno}/{total}</div>
                         </div>
-                        <div className="text-[10px] text-text-3 mt-1">{total} auditoría{total !== 1 ? 's' : ''} en el período</div>
                       </div>
                     );
                   })}
                 </div>
+              )}
 
-                {/* Tienda breakdown */}
-                {(() => {
-                  const tiendaMap = new Map<string, { total: number; bueno: number; cod: string }>();
-                  for (const e of filtered) {
-                    if (!tiendaMap.has(e.tiendaNombre)) tiendaMap.set(e.tiendaNombre, { total: 0, bueno: 0, cod: e.tiendaCod });
-                    const s = tiendaMap.get(e.tiendaNombre)!;
-                    s.total++;
-                    if (e.resultado === 'bueno') s.bueno++;
-                  }
-                  const sorted = Array.from(tiendaMap.entries())
-                    .map(([nombre, s]) => ({ nombre, ...s, pct: Math.round((s.bueno / s.total) * 100) }))
-                    .sort((a, b) => b.total - a.total)
-                    .slice(0, 15);
-                  if (!sorted.length) return null;
-                  return (
-                    <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-                      <div className="px-4 py-2.5 border-b border-border bg-bg">
-                        <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-wider text-text-3">Tiendas más auditadas</span>
+              {/* Tiendas con más errores */}
+              {tiendaStats.length > 0 && (
+                <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+                  <div className="px-4 py-2.5 border-b border-border bg-bg">
+                    <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-wider text-text-3">Tiendas con más errores</span>
+                  </div>
+                  {tiendaStats.map(({ nombre, cod, total, bueno, pct }) => {
+                    const c = pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F';
+                    return (
+                      <div key={cod} className="px-4 py-2.5 border-b border-border last:border-b-0 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-[13px] text-text truncate">{nombre}</div>
+                          <div className="font-mono text-[10px] text-text-3">{cod} · {total - bueno} error{(total - bueno) !== 1 ? 'es' : ''}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-bold text-[14px] font-barlow-condensed" style={{ color: c }}>{pct}%</div>
+                          <div className="text-[10px] text-text-3">{bueno}/{total}</div>
+                        </div>
                       </div>
-                      {sorted.map(({ nombre, cod, total, bueno, pct }) => {
-                        const c = pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F';
-                        return (
-                          <div key={cod} className="px-4 py-2.5 border-b border-border last:border-b-0 flex items-center gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="font-semibold text-[13px] text-text truncate">{nombre}</div>
-                              <div className="font-mono text-[10px] text-text-3">{cod}</div>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <div className="font-bold text-[13px]" style={{ color: c }}>{pct}%</div>
-                              <div className="text-[10px] text-text-3">{bueno}/{total}</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-            )
-        )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Lightbox */}

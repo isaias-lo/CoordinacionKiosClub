@@ -180,6 +180,12 @@ export function LaunchScreen() {
             </div>
           </div>
           <button
+            onClick={() => router.push('/perfil')}
+            className="px-3 py-1.5 rounded-full text-[12px] text-white/60 cursor-pointer transition-all hover:text-white hover:bg-white/10"
+            style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+            Mi perfil
+          </button>
+          <button
             onClick={async () => { await signOut(); router.push('/login'); }}
             className="px-3 py-1.5 rounded-full text-[12px] text-white/50 cursor-pointer transition-all hover:text-white hover:bg-white/10"
             style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
