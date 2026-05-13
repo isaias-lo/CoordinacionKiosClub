@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useApp } from '../context/AppContext';
+import { useAuth } from './AuthProvider';
 
 const LOGO_SRC = '/logo.png';
 
@@ -12,6 +13,7 @@ interface AppHeaderProps {
 export function AppHeader({ onFinish }: AppHeaderProps) {
   const { state } = useApp();
   const router = useRouter();
+  const { signOut } = useAuth();
 
   const confirmBackHome = () => {
     const totalItems = Object.values(state.dispatch).reduce((acc, items) => acc + items.length, 0);
@@ -43,6 +45,11 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
         onClick={onFinish}
         className="px-3.5 py-1.5 bg-red text-white border-none rounded-full font-barlow-condensed text-[13px] font-bold tracking-wide cursor-pointer whitespace-nowrap transition-all active:bg-red-dark">
         ✓ Terminar
+      </button>
+      <button
+        onClick={async () => { await signOut(); router.push('/login'); }}
+        className="px-3.5 py-1.5 bg-white/8 text-white/50 border border-white/15 rounded-full font-barlow-condensed text-[13px] font-bold tracking-wide cursor-pointer whitespace-nowrap transition-all hover:text-white/80 hover:bg-white/15">
+        Salir
       </button>
     </div>
   );

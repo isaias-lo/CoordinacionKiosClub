@@ -5,25 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../components/AuthProvider';
 import { getPickerDisplay } from '../../features/auditoria/data/pickerNames';
+import { rowToEntry } from '../../features/auditoria/utils/converters';
 import type { AuditEntry, CorreccionAuditoria } from '../../features/auditoria/types';
-import type { ProductoError, OperacionEntry, TipoError, TipoAuditoria } from '../../features/auditoria/types';
-
-function rowToEntry(r: Record<string, unknown>): AuditEntry {
-  return {
-    id: r.id as string, fecha: r.fecha as string, hora: r.hora as string,
-    auditor: r.auditor as string, picker: r.picker as string,
-    tiendaCod: r.tienda_cod as string, tiendaNombre: r.tienda_nombre as string,
-    tiendaArea: r.tienda_area as AuditEntry['tiendaArea'],
-    tipo: r.tipo as TipoAuditoria, operaciones: (r.operaciones as OperacionEntry[]) ?? [],
-    pallets: r.pallets as number, tieneErrores: r.tiene_errores as boolean,
-    tiposError: (r.tipos_error as TipoError[]) ?? [],
-    correccion: r.correccion as CorreccionAuditoria, resultado: r.resultado as AuditEntry['resultado'],
-    observaciones: r.observaciones as string,
-    reauditoriaDeId: r.reauditoria_de_id as string | undefined,
-    productos: (r.productos as ProductoError[]) ?? [],
-    fotoUrl: (r.foto_url as string) || undefined,
-  };
-}
 
 const CORR_LABEL: Record<CorreccionAuditoria, string> = {
   correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante',
@@ -86,7 +69,22 @@ function EntryCard({ entry, onPhotoClick }: { entry: AuditEntry; onPhotoClick: (
         </div>
       )}
 
-      {/* Photo */}
+      {/* Pallet photos */}
+      {entry.palletFotos && entry.palletFotos.length > 0 && (
+        <div className="flex flex-col gap-1.5 mt-1">
+          {entry.palletFotos.map((pf, idx) => (
+            <button key={idx} onClick={() => onPhotoClick(pf.url)}
+              className="block w-full rounded-card overflow-hidden border border-border cursor-pointer"
+              style={{ padding: 0, background: 'none' }}>
+              <img src={pf.url} alt={pf.label} className="w-full object-cover" style={{ maxHeight: 160 }} />
+              <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1 text-left">
+                📷 {pf.label} · toca para ampliar
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {/* Error photo (legacy) */}
       {entry.fotoUrl && (
         <button
           onClick={() => onPhotoClick(entry.fotoUrl!)}
@@ -95,7 +93,7 @@ function EntryCard({ entry, onPhotoClick }: { entry: AuditEntry; onPhotoClick: (
         >
           <img src={entry.fotoUrl} alt="foto del error" className="w-full object-cover" style={{ maxHeight: 180 }} />
           <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1 text-left">
-            📷 Foto adjunta · toca para ampliar
+            📷 Foto de error · toca para ampliar
           </div>
         </button>
       )}
@@ -160,7 +158,7 @@ export default function AuditoriaAdminPage() {
       .sort((a, b) => b.total - a.total);
   }, [filtered]);
 
-  const withPhotos = useMemo(() => filtered.filter(e => e.fotoUrl), [filtered]);
+  const withPhotos = useMemo(() => filtered.filter(e => e.fotoUrl || (e.palletFotos && e.palletFotos.length > 0)), [filtered]);
 
   const today = new Date().toLocaleDateString('es-CL');
 
@@ -268,20 +266,43 @@ export default function AuditoriaAdminPage() {
             )
             : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {withPhotos.map(e => (
-                  <button key={e.id} onClick={() => setLightbox(e.fotoUrl!)}
-                    className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
-                    style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                    <img src={e.fotoUrl} alt="foto" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
-                      <div className="text-white text-[10px] font-bold truncate">{e.tiendaNombre}</div>
-                      <div className="text-white/60 text-[9px]">{e.fecha} · {e.auditor}</div>
-                      <div className={`inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${e.resultado === 'bueno' ? 'bg-success text-white' : 'bg-red text-white'}`}>
-                        {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                {withPhotos.flatMap(e => {
+                  const cards = [];
+                  if (e.palletFotos && e.palletFotos.length > 0) {
+                    e.palletFotos.forEach((pf, idx) => {
+                      cards.push(
+                        <button key={`${e.id}_pallet${idx}`} onClick={() => setLightbox(pf.url)}
+                          className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
+                          style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
+                          <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
+                            <div className="text-white/80 text-[9px] font-bold uppercase tracking-wide">{pf.label}</div>
+                            <div className="text-white text-[10px] font-bold truncate">{e.tiendaNombre}</div>
+                            <div className="text-white/60 text-[9px]">{e.fecha} · {e.auditor}</div>
+                          </div>
+                        </button>
+                      );
+                    });
+                  }
+                  if (e.fotoUrl) {
+                    cards.push(
+                      <button key={`${e.id}_error`} onClick={() => setLightbox(e.fotoUrl!)}
+                        className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
+                        style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
+                        <img src={e.fotoUrl} alt="foto del error" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
+                          <div className="text-white/80 text-[9px] font-bold uppercase tracking-wide">Foto de error</div>
+                          <div className="text-white text-[10px] font-bold truncate">{e.tiendaNombre}</div>
+                          <div className="text-white/60 text-[9px]">{e.fecha} · {e.auditor}</div>
+                          <div className={`inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${e.resultado === 'bueno' ? 'bg-success text-white' : 'bg-red text-white'}`}>
+                            {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  }
+                  return cards;
+                })}
               </div>
             )
         )}
@@ -319,7 +340,7 @@ export default function AuditoriaAdminPage() {
                   {auditorStats.map(({ auditor, total, bueno, malo }) => {
                     const pct = total > 0 ? Math.round((bueno / total) * 100) : 0;
                     const color = pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F';
-                    const withFoto = filtered.filter(e => e.auditor === auditor && e.fotoUrl).length;
+                    const withFoto = filtered.filter(e => e.auditor === auditor && (e.fotoUrl || (e.palletFotos && e.palletFotos.length > 0))).length;
                     return (
                       <div key={auditor} className="px-4 py-3 border-b border-border last:border-b-0">
                         <div className="flex items-center justify-between mb-1.5">

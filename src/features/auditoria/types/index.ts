@@ -68,4 +68,5 @@ export interface AuditEntry {
   observaciones: string;
   reauditoriaDeId?: string;
   fotoUrl?: string;
+  palletFotos?: { label: string; url: string }[];
 }

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../../../components/AuthProvider';
 import Header         from './components/Header';
 import InputSection   from './components/InputSection';
 import ResultsSection from './components/ResultsSection';
@@ -64,6 +65,7 @@ interface ComparisonData {
 
 export default function RutasScreen() {
   const router = useRouter();
+  const { signOut } = useAuth();
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -650,6 +652,7 @@ export default function RutasScreen() {
           sessionStorage.removeItem('despacho_from');
           router.push(from || '/despacho/santiago');
         }}
+        onSignOut={async () => { await signOut(); router.push('/login'); }}
       />
 
       <main className="max-w-[700px] mx-auto px-3.5 py-5">

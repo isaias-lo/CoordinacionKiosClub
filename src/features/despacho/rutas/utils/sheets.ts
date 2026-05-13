@@ -6,7 +6,10 @@ import type { Ruta } from './routing';
 
 export async function fetchAuthenticatedSheet(sheet: string): Promise<{ values: string[][] }> {
   const res = await fetch(`/api/sheets?sheet=${encodeURIComponent(sheet)}`);
-  if (!res.ok) throw new Error('API error');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
