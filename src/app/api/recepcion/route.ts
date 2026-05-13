@@ -75,6 +75,24 @@ export async function POST(request: NextRequest) {
 
     if (insertError) throw new Error(insertError.message);
 
+    // Update estado_recepcion in dispatch tables
+    const nuevoEstado =
+      body.palletsRecibidos === body.palletsSent &&
+      body.bultosRecibidos  === body.bultosSent
+        ? 'Recibido'
+        : 'Diferencia';
+
+    await Promise.all([
+      sb.from('despacho_rm')
+        .update({ estado_recepcion: nuevoEstado })
+        .eq('cod', body.cod)
+        .eq('estado_recepcion', 'Pendiente'),
+      sb.from('despacho_regiones')
+        .update({ estado_recepcion: nuevoEstado })
+        .eq('cod', body.cod)
+        .eq('estado_recepcion', 'Pendiente'),
+    ]);
+
     // Write to RECEPCIÓN TIENDA sheet in Base de Datos
     const now  = new Date();
     const dd   = String(now.getDate()).padStart(2, '0');
