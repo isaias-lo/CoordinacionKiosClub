@@ -3,42 +3,96 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-type TabKey = 'regiones' | 'rm' | 'recepcion';
+type TabKey = 'rm' | 'regiones' | 'recepcion';
 
-const SHEETS: Record<TabKey, string> = {
-  regiones:  'DESPACHO REGIONES',
-  rm:        'DESPACHO RM',
-  recepcion: 'RECEPCIÓN TIENDA',
-};
+const TABS: { key: TabKey; label: string; table: string }[] = [
+  { key: 'rm',        label: 'Despacho RM',       table: 'despacho_rm' },
+  { key: 'regiones',  label: 'Despacho Regiones',  table: 'despacho_regiones' },
+  { key: 'recepcion', label: 'Recepción Tienda',   table: 'recepcion' },
+];
 
-const COLORS: Record<TabKey, { bg: string; border: string; text: string }> = {
-  regiones:  { bg: 'rgba(211,47,47,0.15)',   border: 'rgba(211,47,47,0.4)',   text: '#EF4444' },
+const TAB_COLORS: Record<TabKey, { bg: string; border: string; text: string }> = {
   rm:        { bg: 'rgba(37,99,235,0.15)',   border: 'rgba(37,99,235,0.4)',   text: '#3B82F6' },
+  regiones:  { bg: 'rgba(211,47,47,0.15)',   border: 'rgba(211,47,47,0.4)',   text: '#EF4444' },
   recepcion: { bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.4)',  text: '#10B981' },
 };
 
+const SEGUIMIENTO_STYLE: Record<string, { bg: string; color: string }> = {
+  'Pendiente': { bg: 'rgba(239,68,68,0.15)',    color: '#EF4444' },
+  'En camino': { bg: 'rgba(234,179,8,0.18)',    color: '#EAB308' },
+  'Recibido':  { bg: 'rgba(16,185,129,0.15)',   color: '#10B981' },
+  'Diferencia':{ bg: 'rgba(245,158,11,0.15)',   color: '#F97316' },
+};
+
+// Columns to show per table (order matters)
+const TABLE_COLS: Record<TabKey, string[]> = {
+  rm: [
+    'fecha','cod','tienda','tipo','regimen','carga','region','comuna',
+    'peso_kg','estado','n_pallet_bulto','conductor','ruta','supervisor','seguimiento',
+  ],
+  regiones: [
+    'fecha','cod','tienda','tipo','regimen','carga','region','comuna',
+    'peso_kg','estado','n_pallet_bulto','guia','valor','seguimiento',
+  ],
+  recepcion: [
+    'created_at','cod','tienda','pallets_sent','bultos_sent',
+    'pallets_recibidos','bultos_recibidos','receptor','rut',
+  ],
+};
+
+const COL_LABEL: Record<string, string> = {
+  fecha: 'Fecha', cod: 'Cod', tienda: 'Tienda', tipo: 'Tipo', regimen: 'Régimen',
+  carga: 'Carga', region: 'Región', comuna: 'Comuna', peso_kg: 'Peso kg',
+  estado: 'Estado', n_pallet_bulto: 'N°', conductor: 'Conductor', ruta: 'Ruta',
+  supervisor: 'Supervisor', seguimiento: 'Seguimiento', guia: 'Guía', valor: 'Valor',
+  created_at: 'Fecha/Hora', pallets_sent: 'P. Enviados', bultos_sent: 'B. Enviados',
+  pallets_recibidos: 'P. Recibidos', bultos_recibidos: 'B. Recibidos',
+  receptor: 'Receptor', rut: 'RUT',
+};
+
+function SeguimientoBadge({ valor }: { valor: string }) {
+  const style = SEGUIMIENTO_STYLE[valor] ?? { bg: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' };
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 10px', borderRadius: 99,
+      fontSize: 11, fontWeight: 700, background: style.bg, color: style.color,
+      whiteSpace: 'nowrap',
+    }}>
+      {valor || '—'}
+    </span>
+  );
+}
+
+function formatCell(col: string, val: unknown): React.ReactNode {
+  if (col === 'seguimiento') return <SeguimientoBadge valor={String(val ?? '')} />;
+  if (col === 'created_at' && val) {
+    const d = new Date(String(val));
+    return `${d.toLocaleDateString('es-CL')} ${d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  return String(val ?? '');
+}
+
 export default function RegistrosPage() {
-  const router = useRouter();
-  const [tab,     setTab]     = useState<TabKey>('regiones');
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [rows,    setRows]    = useState<string[][]>([]);
+  const router  = useRouter();
+  const [tab,     setTab]     = useState<TabKey>('rm');
+  const [rows,    setRows]    = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
   const [search,  setSearch]  = useState('');
 
-  const loadSheet = useCallback(async (sheet: string) => {
+  const tabCfg   = TABS.find(t => t.key === tab)!;
+  const cols      = TABLE_COLS[tab];
+  const color     = TAB_COLORS[tab];
+
+  const loadData = useCallback(async (table: string) => {
     setLoading(true);
     setError('');
-    setHeaders([]);
     setRows([]);
     try {
-      const res  = await fetch(`/api/sheets?sheet=${encodeURIComponent(sheet)}`);
-      const data = await res.json() as { values?: string[][]; error?: string };
+      const res  = await fetch(`/api/despacho-records?table=${encodeURIComponent(table)}`);
+      const data = await res.json() as { data?: Record<string, unknown>[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      const values = data.values ?? [];
-      if (values.length === 0) { setLoading(false); return; }
-      setHeaders(values[0]);
-      setRows(values.slice(1).filter(r => r.some(c => c)));
+      setRows(data.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar datos');
     } finally {
@@ -46,13 +100,11 @@ export default function RegistrosPage() {
     }
   }, []);
 
-  useEffect(() => { loadSheet(SHEETS[tab]); }, [tab, loadSheet]);
+  useEffect(() => { loadData(tabCfg.table); }, [tab, tabCfg.table, loadData]);
 
   const filtered = search.trim()
-    ? rows.filter(r => r.some(c => c?.toLowerCase().includes(search.toLowerCase())))
+    ? rows.filter(r => cols.some(c => String(r[c] ?? '').toLowerCase().includes(search.toLowerCase())))
     : rows;
-
-  const color = COLORS[tab];
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden"
@@ -73,24 +125,40 @@ export default function RegistrosPage() {
             {loading ? 'Cargando…' : `${filtered.length} registros`}
           </div>
         </div>
-        <button onClick={() => loadSheet(SHEETS[tab])}
+        <button onClick={() => loadData(tabCfg.table)}
           className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
           ↺ Actualizar
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex-shrink-0 flex gap-2 px-4 pt-3 pb-1">
-        {(['regiones', 'rm', 'recepcion'] as TabKey[]).map(t => (
-          <button key={t} onClick={() => { setTab(t); setSearch(''); }}
+      <div className="flex-shrink-0 flex gap-2 px-4 pt-3 pb-1 flex-wrap">
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); }}
             className="px-4 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold uppercase tracking-wider cursor-pointer transition-all"
-            style={tab === t
-              ? { background: COLORS[t].bg, border: `1px solid ${COLORS[t].border}`, color: COLORS[t].text }
+            style={tab === t.key
+              ? { background: TAB_COLORS[t.key].bg, border: `1px solid ${TAB_COLORS[t.key].border}`, color: TAB_COLORS[t.key].text }
               : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }}>
-            {t === 'regiones' ? 'Despacho Regiones' : t === 'rm' ? 'Despacho RM' : 'Recepción Tienda'}
+            {t.label}
           </button>
         ))}
       </div>
+
+      {/* Seguimiento legend (only for dispatch tabs) */}
+      {tab !== 'recepcion' && (
+        <div className="flex-shrink-0 flex gap-2 px-4 py-2 flex-wrap">
+          {Object.entries(SEGUIMIENTO_STYLE).map(([estado, s]) => (
+            <span key={estado} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+              background: s.bg, color: s.color,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, display: 'inline-block' }} />
+              {estado}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Search */}
       <div className="flex-shrink-0 px-4 py-2">
@@ -106,16 +174,14 @@ export default function RegistrosPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-4 pb-4">
-        {loading && (
-          <div className="text-center text-white/40 py-16 text-sm">Cargando datos…</div>
-        )}
-        {error && (
+        {loading && <div className="text-center text-white/40 py-16 text-sm">Cargando datos…</div>}
+        {error   && (
           <div className="text-sm text-red-400 text-center py-4 rounded-xl mb-4"
                style={{ background: 'rgba(211,47,47,0.1)' }}>{error}</div>
         )}
         {!loading && !error && filtered.length === 0 && (
           <div className="text-center text-white/30 py-16 text-sm">
-            {search ? 'Sin resultados para tu búsqueda' : 'No hay registros en esta hoja todavía'}
+            {search ? 'Sin resultados para tu búsqueda' : 'No hay registros todavía'}
           </div>
         )}
 
@@ -126,22 +192,22 @@ export default function RegistrosPage() {
               <table className="w-full text-[12px] border-collapse">
                 <thead>
                   <tr style={{ background: color.bg }}>
-                    {headers.map((h, i) => (
-                      <th key={i} className="px-3 py-2.5 text-left font-bold uppercase tracking-wider whitespace-nowrap"
+                    {cols.map(c => (
+                      <th key={c} className="px-3 py-2.5 text-left font-bold uppercase tracking-wider whitespace-nowrap"
                           style={{ color: color.text, borderBottom: `1px solid ${color.border}` }}>
-                        {h}
+                        {COL_LABEL[c] ?? c}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.slice().reverse().map((row, ri) => (
+                  {filtered.map((row, ri) => (
                     <tr key={ri}
                         className="border-b transition-colors hover:bg-white/5"
                         style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                      {headers.map((_, ci) => (
-                        <td key={ci} className="px-3 py-2 text-white/80 whitespace-nowrap max-w-[200px] truncate">
-                          {row[ci] ?? ''}
+                      {cols.map(c => (
+                        <td key={c} className="px-3 py-2 text-white/80 whitespace-nowrap max-w-[200px] truncate">
+                          {formatCell(c, row[c])}
                         </td>
                       ))}
                     </tr>
@@ -149,10 +215,9 @@ export default function RegistrosPage() {
                 </tbody>
               </table>
             </div>
-
             <div className="px-4 py-2 text-[11px] text-white/30 border-t"
                  style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              {filtered.length} registros · Hoja: {SHEETS[tab]}
+              {filtered.length} registros · {tabCfg.label}
             </div>
           </div>
         )}

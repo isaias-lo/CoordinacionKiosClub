@@ -338,6 +338,14 @@ export function EstadoPage() {
         } catch { /* non-blocking */ }
 
         newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum, driveFileId };
+
+        // Mark dispatch rows as En camino in Supabase
+        fetch('/api/seguimiento', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cod: storeCod, estado: 'En camino' }),
+        }).catch(() => {});
+
         assigned++;
       } catch { skipped++; }
     }
