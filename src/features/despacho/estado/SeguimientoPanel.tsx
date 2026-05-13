@@ -65,15 +65,17 @@ export function SeguimientoPanel() {
           : ['despacho_rm', 'despacho_regiones'];
 
       const results = await Promise.all(
-        tables.map(t =>
-          fetch(`/api/despacho-records?table=${t}`)
-            .then(r => r.json() as Promise<{ data?: DespachoRow[] }>)
-            .then(d => d.data ?? [])
-        )
+        tables.map(async t => {
+          const res = await fetch(`/api/despacho-records?table=${t}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status} al cargar ${t}`);
+          const json = await res.json() as { data?: DespachoRow[]; error?: string };
+          if (json.error) throw new Error(json.error);
+          return json.data ?? [];
+        })
       );
       setRows(results.flat());
-    } catch {
-      setError('Error al cargar datos');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar datos');
     } finally {
       setLoading(false);
     }
@@ -184,10 +186,24 @@ export function SeguimientoPanel() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-4 pb-4">
         {loading && <div className="text-center text-text-3 py-16 text-sm">Cargando datos…</div>}
-        {error   && <div className="text-center text-red py-8 text-sm">{error}</div>}
+        {error && (
+          <div className="mx-auto max-w-md mt-8 p-4 rounded-xl text-sm text-red-700 font-medium"
+               style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            ⚠️ {error}
+          </div>
+        )}
         {!loading && !error && filtered.length === 0 && (
-          <div className="text-center text-text-3 py-20 text-sm">
-            {search || date ? 'Sin resultados para los filtros aplicados' : 'Sin registros de despacho todavía'}
+          <div className="text-center py-20 px-8">
+            <div className="text-4xl mb-3 opacity-20">📦</div>
+            <p className="text-text-2 font-semibold text-[15px] mb-1">
+              {rows.length > 0 ? 'Sin resultados para los filtros aplicados' : 'Sin registros en Supabase todavía'}
+            </p>
+            {rows.length === 0 && (
+              <p className="text-text-3 text-[13px] leading-relaxed mt-2">
+                Los registros aparecen aquí cuando presionas<br />
+                <strong>"Registrar despacho"</strong> en Bodega Santiago o <strong>"Terminar"</strong> en Bodega Regiones.
+              </p>
+            )}
           </div>
         )}
 
