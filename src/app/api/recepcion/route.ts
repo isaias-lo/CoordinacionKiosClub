@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) throw new Error(insertError.message);
 
-    // Update estado_recepcion in dispatch tables
+    // Update seguimiento in dispatch tables
     const nuevoEstado =
       body.palletsRecibidos === body.palletsSent &&
       body.bultosRecibidos  === body.bultosSent
@@ -84,13 +84,13 @@ export async function POST(request: NextRequest) {
 
     await Promise.all([
       sb.from('despacho_rm')
-        .update({ estado_recepcion: nuevoEstado })
+        .update({ seguimiento: nuevoEstado })
         .eq('cod', body.cod)
-        .eq('estado_recepcion', 'Pendiente'),
+        .eq('seguimiento', 'Pendiente'),
       sb.from('despacho_regiones')
-        .update({ estado_recepcion: nuevoEstado })
+        .update({ seguimiento: nuevoEstado })
         .eq('cod', body.cod)
-        .eq('estado_recepcion', 'Pendiente'),
+        .eq('seguimiento', 'Pendiente'),
     ]);
 
     // Write to RECEPCIÓN TIENDA sheet in Base de Datos

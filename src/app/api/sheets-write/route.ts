@@ -51,7 +51,7 @@ function toRmRecord(row: (string | number)[]) {
     conductor:        String(row[20] ?? ''),
     ruta:             String(row[21] ?? ''),
     supervisor:       String(row[22] ?? ''),
-    estado_recepcion: 'Pendiente',
+    seguimiento: 'Pendiente',
   };
 }
 
@@ -79,7 +79,7 @@ function toRegionesRecord(row: (string | number)[]) {
     fecha_llegada:    String(row[19] ?? ''),
     guia:             String(row[20] ?? ''),
     valor:            n(row[21] ?? ''),
-    estado_recepcion: 'Pendiente',
+    seguimiento: 'Pendiente',
   };
 }
 
