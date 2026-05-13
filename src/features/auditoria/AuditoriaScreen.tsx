@@ -1665,7 +1665,7 @@ export function AuditoriaScreen() {
                             <span className="text-[22px]">📷</span>
                             <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
                             <input type="file" accept="image/*" className="hidden"
-                              onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); } }} />
+                              onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
                           </label>
                         )}
                       </div>
@@ -1743,19 +1743,22 @@ export function AuditoriaScreen() {
                   ))}
                 </div>
               )}
-              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
                 <span className="text-[28px]">📷</span>
                 <div>
-                  <div className="text-[13px] text-text-2 font-barlow font-semibold">Agregar foto{fotoPreviews.length > 0 ? ` (${fotoPreviews.length} adjunta${fotoPreviews.length !== 1 ? 's' : ''})` : ''}</div>
-                  <div className="text-[11px] text-text-3">Toca para seleccionar desde galería</div>
+                  <div className="text-[13px] text-text-2 font-barlow font-semibold">
+                    {fotoPreviews.length > 0 ? `+ Agregar otra foto (${fotoPreviews.length} adjunta${fotoPreviews.length !== 1 ? 's' : ''})` : 'Adjuntar foto de error'}
+                  </div>
+                  <div className="text-[11px] text-text-3">Toca para agregar una foto · repite para más</div>
                 </div>
-                <input type="file" accept="image/*" multiple className="hidden"
+                {/* No "multiple" — iOS-safe: el usuario toca una vez por foto */}
+                <input type="file" accept="image/*" className="hidden"
                   onChange={e => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length === 0) return;
-                    const newPreviews = files.map(f => URL.createObjectURL(f));
-                    setFotoFiles(prev => [...prev, ...files]);
-                    setFotoPreviews(prev => [...prev, ...newPreviews]);
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setFotoFiles(prev => [...prev, f]);
+                    setFotoPreviews(prev => [...prev, URL.createObjectURL(f)]);
+                    // Reset para permitir seleccionar otra foto inmediatamente en iOS
                     e.target.value = '';
                   }} />
               </label>
