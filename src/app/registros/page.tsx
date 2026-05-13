@@ -18,6 +18,7 @@ const TAB_COLORS: Record<TabKey, { bg: string; border: string; text: string }> =
 };
 
 const SEGUIMIENTO_STYLE: Record<string, { bg: string; color: string }> = {
+  'Registrado':{ bg: 'rgba(148,163,184,0.15)',  color: '#94A3B8' },
   'Pendiente': { bg: 'rgba(239,68,68,0.15)',    color: '#EF4444' },
   'En camino': { bg: 'rgba(234,179,8,0.18)',    color: '#EAB308' },
   'Recibido':  { bg: 'rgba(16,185,129,0.15)',   color: '#10B981' },

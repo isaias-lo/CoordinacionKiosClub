@@ -83,14 +83,8 @@ export async function POST(request: NextRequest) {
         : 'Diferencia';
 
     await Promise.all([
-      sb.from('despacho_rm')
-        .update({ seguimiento: nuevoEstado })
-        .eq('cod', body.cod)
-        .eq('seguimiento', 'Pendiente'),
-      sb.from('despacho_regiones')
-        .update({ seguimiento: nuevoEstado })
-        .eq('cod', body.cod)
-        .eq('seguimiento', 'Pendiente'),
+      sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
+      sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
     ]);
 
     // Write to RECEPCIÓN TIENDA sheet in Base de Datos

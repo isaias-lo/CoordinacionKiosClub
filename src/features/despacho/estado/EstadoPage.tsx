@@ -343,7 +343,7 @@ export function EstadoPage() {
         fetch('/api/seguimiento', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cod: storeCod, estado: 'En camino' }),
+          body: JSON.stringify({ cod: storeCod, estado: 'Pendiente' }),
         }).catch(() => {});
 
         assigned++;

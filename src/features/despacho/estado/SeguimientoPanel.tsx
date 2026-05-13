@@ -18,10 +18,11 @@ interface DespachoRow {
 }
 
 const SEG_STYLE: Record<string, { bg: string; color: string; dot: string }> = {
-  'Pendiente':  { bg: 'rgba(239,68,68,0.15)',  color: '#EF4444', dot: '#EF4444' },
-  'En camino':  { bg: 'rgba(234,179,8,0.18)',  color: '#EAB308', dot: '#EAB308' },
-  'Recibido':   { bg: 'rgba(16,185,129,0.15)', color: '#10B981', dot: '#10B981' },
-  'Diferencia': { bg: 'rgba(249,115,22,0.15)', color: '#F97316', dot: '#F97316' },
+  'Registrado': { bg: 'rgba(148,163,184,0.15)', color: '#94A3B8', dot: '#94A3B8' },
+  'Pendiente':  { bg: 'rgba(239,68,68,0.15)',   color: '#EF4444', dot: '#EF4444' },
+  'En camino':  { bg: 'rgba(234,179,8,0.18)',   color: '#EAB308', dot: '#EAB308' },
+  'Recibido':   { bg: 'rgba(16,185,129,0.15)',  color: '#10B981', dot: '#10B981' },
+  'Diferencia': { bg: 'rgba(249,115,22,0.15)',  color: '#F97316', dot: '#F97316' },
 };
 
 function Badge({ value }: { value: string }) {
@@ -96,6 +97,7 @@ export function SeguimientoPanel() {
   }, {});
 
   const SUMMARY = [
+    { key: 'Registrado', label: 'Registrado', ...SEG_STYLE['Registrado'] },
     { key: 'Pendiente',  label: 'Pendiente',  ...SEG_STYLE['Pendiente']  },
     { key: 'En camino',  label: 'En camino',  ...SEG_STYLE['En camino']  },
     { key: 'Recibido',   label: 'Recibido',   ...SEG_STYLE['Recibido']   },

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
-const VALID_ESTADOS = new Set(['Pendiente', 'En camino', 'Recibido', 'Diferencia']);
+const VALID_ESTADOS = new Set(['Registrado', 'Pendiente', 'En camino', 'Recibido', 'Diferencia']);
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -14,14 +14,8 @@ export async function PATCH(request: NextRequest) {
     const sb = supabaseServer();
 
     await Promise.all([
-      sb.from('despacho_rm')
-        .update({ seguimiento: estado })
-        .eq('cod', cod)
-        .eq('seguimiento', 'Pendiente'),
-      sb.from('despacho_regiones')
-        .update({ seguimiento: estado })
-        .eq('cod', cod)
-        .eq('seguimiento', 'Pendiente'),
+      sb.from('despacho_rm').update({ seguimiento: estado }).eq('cod', cod),
+      sb.from('despacho_regiones').update({ seguimiento: estado }).eq('cod', cod),
     ]);
 
     return NextResponse.json({ ok: true });

@@ -621,6 +621,16 @@ export default function RutasScreen() {
       onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
     });
     guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+
+    // Mark all dispatched stores as En camino in Supabase
+    const cods = [...new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)))];
+    cods.forEach(cod => {
+      fetch('/api/seguimiento', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ cod, estado: 'En camino' }),
+      }).catch(() => {});
+    });
   }
 
   // ── Driver change ─────────────────────────────────────────────────
