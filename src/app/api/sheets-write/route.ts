@@ -20,10 +20,10 @@ async function getAuth() {
   });
 }
 
-function n(v: string | number): number | string {
+function n(v: string | number): number | null {
   if (typeof v === 'number') return v;
-  const parsed = parseFloat(v);
-  return isNaN(parsed) ? v : parsed;
+  const parsed = parseFloat(String(v));
+  return isNaN(parsed) ? null : parsed;
 }
 
 function toRmRecord(row: (string | number)[]) {
@@ -115,7 +115,10 @@ export async function POST(request: NextRequest) {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await sb.from(table).upsert(records as any[], { onConflict: 'id' });
-      if (error) console.error(`[sheets-write] Supabase ${table}:`, error.message);
+      if (error) {
+        console.error(`[sheets-write] Supabase ${table}:`, error.message, error.details);
+        return NextResponse.json({ ok: true, written: rows.length, supabaseError: error.message });
+      }
     }
 
     return NextResponse.json({ ok: true, written: rows.length });
