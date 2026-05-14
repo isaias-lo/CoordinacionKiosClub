@@ -59,8 +59,15 @@ export function LaunchScreen() {
 
       {/* Logo */}
       <div className="mb-6 flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="KiosClub" className="h-14 brightness-0 invert" style={{ width: 'auto' }} />
+        <div className="flex flex-col gap-[3px] leading-none">
+          <div className="flex items-baseline gap-[2px]">
+            <span style={{ fontSize: 28, fontWeight: 800, color: '#D42B2B', letterSpacing: '-0.5px', fontFamily: 'Barlow Condensed, sans-serif' }}>KIOS</span>
+            <span style={{ fontSize: 22, fontStyle: 'italic', fontWeight: 700, color: '#D42B2B', fontFamily: 'Barlow Condensed, sans-serif' }}>Club</span>
+          </div>
+          <div className="flex gap-[3px] rounded-[2px] px-1.5 py-[3px]" style={{ background: '#1B2A6B' }}>
+            {[0,1,2,3,4].map(i => <span key={i} style={{ color: '#fff', fontSize: 8 }}>★</span>)}
+          </div>
+        </div>
       </div>
 
       <div className="font-barlow-condensed text-xs font-semibold tracking-widest uppercase text-white/50 mb-1 text-center">
