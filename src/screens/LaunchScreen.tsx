@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 import { Settings, Users, Bell, LogOut } from 'lucide-react';
 
 const ROLE_LABEL: Record<string, string> = {
-  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda',
+  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda', 'supervisor-picking': 'Supervisor Picking',
 };
 
 function AccountMenu({ onClose, isAdmin, pendingCount }: { onClose: () => void; isAdmin: boolean; pendingCount: number }) {
@@ -141,8 +141,9 @@ export function LaunchScreen() {
   const [pendingCount, setPendingCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
 
-  const isAdmin     = profile?.role === 'admin';
-  const isRecepcion = profile?.role === 'recepcion-tienda';
+  const isAdmin           = profile?.role === 'admin';
+  const isRecepcion       = profile?.role === 'recepcion-tienda';
+  const isSupervisorPick  = profile?.role === 'supervisor-picking';
 
   const loadPending = useCallback(async () => {
     if (!isAdmin) return;
@@ -262,6 +263,16 @@ export function LaunchScreen() {
             <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
           </button>
         </div>
+      ) : isSupervisorPick ? (
+        <div className="w-full max-w-sm mb-8">
+          <button
+            onClick={() => router.push('/picking')}
+            className="w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
+            style={{ height: 88, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
+            <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-10" style={{ gridAutoRows: '88px' }}>
           <button onClick={() => router.push('/despacho-hub')}
@@ -276,6 +287,15 @@ export function LaunchScreen() {
             <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
             <div className="text-xs text-white/55 mt-1">Tiendas · Auditoría</div>
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => router.push('/picking')}
+              className="col-span-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
+              style={{ background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.25)' }}>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
+              <div className="text-xs text-white/55 mt-1">Supervisión de operaciones</div>
+            </button>
+          )}
         </div>
       )}
 

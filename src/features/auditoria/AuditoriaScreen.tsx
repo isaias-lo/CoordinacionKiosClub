@@ -91,6 +91,20 @@ interface PickerStats {
 interface WeekTrend { key: string; label: string; pct: number | null }
 
 /* ── Helpers ── */
+
+// Mapea categorías del código de barra picking → TipoAuditoria
+function catsToTipo(cats: string): TipoAuditoria {
+  const s = new Set(cats.split(',').map(c => c.trim().toLowerCase()));
+  const c = s.has('comida'), a = s.has('aseo'), h = s.has('hogar');
+  if (c && a && h) return 'completo';
+  if (c && a) return 'comida-aseo';
+  if (a && h) return 'aseo-hogar';
+  if (c) return 'comida';
+  if (a) return 'aseo';
+  if (h) return 'hogar';
+  return 'comida';
+}
+
 function calcAuditado(u: number, tipo: TipoError, esp: number) {
   return tipo === 'faltante' ? esp - u : esp + u;
 }
@@ -358,6 +372,61 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Barcode Scanner para autocompletar operación (pistola lectora) ── */
+function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
+  const [value, setValue]       = useState('');
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // La pistola emite los caracteres del código muy rápido y luego un Enter automático
+  const tryParse = (raw: string) => {
+    const ok = onScan(raw.trim());
+    setFeedback(ok
+      ? { ok: true,  msg: '✓ Tienda, picker y contenido asignados' }
+      : { ok: false, msg: '✗ Código no reconocido' }
+    );
+    setValue('');
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  return (
+    <div className="mb-3 rounded-card overflow-hidden border-[1.5px]"
+      style={{ borderColor: 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)' }}>
+      <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
+        <span style={{ fontSize: 15 }}>📷</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Pistola lectora — apunta al código del pallet
+        </span>
+      </div>
+      <div className="px-3 pb-2.5">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) tryParse(value); }}
+          placeholder="Listo para escanear…"
+          className="w-full bg-white border-[1.5px] rounded-btn px-3 py-2.5 font-mono text-[14px] outline-none"
+          style={{ borderColor: feedback?.ok ? '#16A34A' : feedback ? '#D32F2F' : 'rgba(37,99,235,0.40)', boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        {feedback ? (
+          <div className="mt-1 text-[12px] font-semibold" style={{ color: feedback.ok ? '#16A34A' : '#D32F2F' }}>
+            {feedback.msg}
+          </div>
+        ) : (
+          <div className="mt-1 text-[11px]" style={{ color: 'rgba(37,99,235,0.55)' }}>
+            Asigna tienda, picker y contenido automáticamente
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1182,6 +1251,7 @@ export function AuditoriaScreen() {
   const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
   const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const palletsInputRef = useRef<HTMLInputElement>(null);
+  const pendingScanRef  = useRef<string[] | null>(null);
   const [sections, setSections] = useState({ id: true, contenido: true, resultado: true, evidencia: true });
   const toggleSection = (k: keyof typeof sections) => setSections(s => ({ ...s, [k]: !s[k] }));
 
@@ -1261,7 +1331,9 @@ export function AuditoriaScreen() {
   }, [authLoading, profile?.full_name]);
 
   useEffect(() => {
-    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map(st => ({ subTipo: st, codigo: '' })));
+    const codes = pendingScanRef.current;
+    pendingScanRef.current = null;
+    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => ({ subTipo: st, codigo: codes?.[i] ?? '' })));
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({});
     setPalletPreviews({});
@@ -1336,6 +1408,34 @@ export function AuditoriaScreen() {
         showToast(`Picker detectado: ${displayPicker(match, PICKER_NAMES)}`, '#2563EB');
       }
     }
+  };
+
+  // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
+  const handleBarcodeScan = (raw: string): boolean => {
+    const parts = raw.split('|');
+    if (parts.length < 3) return false;
+    const [storeCod, pickerName, refs, , cats] = parts;
+    const opCodes = (refs ?? '').split('+').filter(Boolean);
+    if (opCodes.length === 0) return false;
+
+    const newTipo = cats ? catsToTipo(cats) : tipo;
+
+    if (pickerName?.trim()) setPickerNombre(pickerName.trim());
+
+    const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === storeCod);
+    if (matchedTienda) setTienda(matchedTienda);
+
+    if (newTipo !== tipo) {
+      // El useEffect de tipo se encargará de setOperaciones usando pendingScanRef
+      pendingScanRef.current = opCodes;
+      setTipo(newTipo);
+    } else {
+      // Tipo igual: set operaciones directamente
+      setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
+    }
+
+    showToast(`✓ ${storeCod} · ${pickerName?.trim() || 'sin nombre'}`, '#16A34A');
+    return true;
   };
 
   const toggleTipoError = (t: TipoError) => { setTiposError(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]); setProductos([]); };
@@ -1723,6 +1823,7 @@ export function AuditoriaScreen() {
               </div>
 
               <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
+              <BarcodeInputScanner onScan={handleBarcodeScan} />
               {operaciones.map((op, i) => (
                 <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
                   onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}

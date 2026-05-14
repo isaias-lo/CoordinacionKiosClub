@@ -2,21 +2,23 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const ROLE_HOME: Record<string, string> = {
-  auditor:             '/auditoria',
-  'admin-auditoria':   '/auditoria',
-  despachador:         '/',
-  supervisor:          '/',
-  admin:               '/',
-  'recepcion-tienda':  '/tiendas',
+  auditor:               '/auditoria',
+  'admin-auditoria':     '/auditoria',
+  despachador:           '/',
+  supervisor:            '/',
+  admin:                 '/',
+  'recepcion-tienda':    '/tiendas',
+  'supervisor-picking':  '/picking',
 };
 
 const ROLE_ALLOWED: Record<string, string[]> = {
-  auditor:             ['/auditoria', '/historial', '/perfil'],
-  'admin-auditoria':   ['/auditoria', '/auditoria-admin', '/perfil'],
-  despachador:         ['/', '/despacho', '/despacho-hub', '/control-interno', '/recepcion', '/historial', '/perfil'],
-  supervisor:          ['/', '/despacho', '/despacho-hub', '/control-interno', '/recepcion', '/control-espejos', '/historial', '/perfil'],
-  'recepcion-tienda':  ['/tiendas', '/recepcion', '/perfil'],
-  admin:               ['*'],
+  auditor:               ['/auditoria', '/historial', '/perfil'],
+  'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
+  despachador:           ['/', '/despacho', '/despacho-hub', '/control-interno', '/recepcion', '/historial', '/perfil'],
+  supervisor:            ['/', '/despacho', '/despacho-hub', '/control-interno', '/recepcion', '/control-espejos', '/historial', '/perfil'],
+  'recepcion-tienda':    ['/tiendas', '/recepcion', '/perfil'],
+  'supervisor-picking':  ['/picking', '/perfil'],
+  admin:                 ['*'],
 };
 
 function isAllowed(role: string, pathname: string): boolean {
