@@ -2,17 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { AppProvider } from '../context/AppContext';
+import { ProfilePill } from '../components/ProfilePill';
 import { EstadoPage } from '../features/despacho/estado/EstadoPage';
 import { SeguimientoPanel } from '../features/despacho/estado/SeguimientoPanel';
-
-const NAV_TABS = [
-  { label: 'INICIO',    path: '/',                    color: 'bg-white/12 border-white/20' },
-  { label: 'SANTIAGO',  path: '/despacho/santiago',   color: 'bg-[rgba(37,99,235,0.22)] border-[rgba(37,99,235,0.50)]' },
-  { label: 'REGIONES',  path: '/despacho/regiones',   color: 'bg-[rgba(211,47,47,0.22)] border-[rgba(211,47,47,0.50)]' },
-  { label: 'ENRUTADOR', path: '/despacho',            color: 'bg-[rgba(34,197,94,0.18)] border-[rgba(34,197,94,0.40)]' },
-  { label: 'AUDITORÍA', path: '/auditoria',           color: 'bg-[rgba(124,58,237,0.22)] border-[rgba(124,58,237,0.50)]' },
-];
 
 type View = 'etiquetas' | 'estado';
 
@@ -26,53 +20,44 @@ function EstadoContent() {
         className="flex-shrink-0 bg-navy"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
 
-        {/* Mobile: logo+título arriba, botones abajo. Desktop: todo en una fila */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between px-4 pt-3 pb-3 gap-2">
+        <div className="flex items-center px-4 pt-3 pb-3 gap-3">
+          <button
+            onClick={() => router.push('/despacho-hub')}
+            className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+            style={{
+              width: 36, height: 36,
+              background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+              border: '1px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+            }}>
+            <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+          </button>
 
-          {/* Logo + título + view toggle */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <img
-              src="/logo.png"
-              className="h-7 brightness-0 invert"
-              alt="KiosClub"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
-            <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase">
-              Estado / Seguimiento
-            </div>
-
-            {/* Toggle ETIQUETAS / ESTADO */}
-            <div className="flex rounded-full overflow-hidden border border-white/20 ml-1">
-              <button
-                onClick={() => setView('etiquetas')}
-                className="px-3 py-1 font-barlow-condensed text-[12px] font-bold tracking-widest uppercase cursor-pointer transition-all"
-                style={view === 'etiquetas'
-                  ? { background: 'rgba(255,255,255,0.20)', color: '#fff' }
-                  : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
-                Etiquetas
-              </button>
-              <button
-                onClick={() => setView('estado')}
-                className="px-3 py-1 font-barlow-condensed text-[12px] font-bold tracking-widest uppercase cursor-pointer transition-all"
-                style={view === 'estado'
-                  ? { background: 'rgba(255,255,255,0.20)', color: '#fff' }
-                  : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
-                Estado
-              </button>
-            </div>
+          <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1">
+            Estado / Seguimiento
           </div>
 
-          {/* Botones de navegación */}
-          <div className="flex gap-2 overflow-x-auto no-scrollbar lg:justify-end">
-            {NAV_TABS.map(({ label, path, color }) => (
-              <button
-                key={path}
-                onClick={() => router.push(path)}
-                className={`flex-shrink-0 px-3 py-1.5 ${color} text-white border rounded-full font-barlow-condensed text-[13px] font-bold tracking-widest uppercase cursor-pointer transition-all active:opacity-70`}>
-                {label}
-              </button>
-            ))}
+          {/* Toggle ETIQUETAS / ESTADO */}
+          <div className="flex rounded-full overflow-hidden border border-white/20">
+            <button
+              onClick={() => setView('etiquetas')}
+              className="flex-1 px-5 py-2.5 font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer transition-all"
+              style={view === 'etiquetas'
+                ? { background: 'rgba(255,255,255,0.22)', color: '#fff' }
+                : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
+              Etiquetas
+            </button>
+            <button
+              onClick={() => setView('estado')}
+              className="flex-1 px-5 py-2.5 font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer transition-all"
+              style={view === 'estado'
+                ? { background: 'rgba(255,255,255,0.22)', color: '#fff' }
+                : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
+              Estado
+            </button>
           </div>
+
+          <ProfilePill compact />
         </div>
       </div>
 

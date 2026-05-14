@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ProfilePill } from '../components/ProfilePill';
 import { supabase } from '../lib/supabase';
 import { exportToTemplate } from '../features/despacho/regiones/utils/exportUtils';
 import type { HistoryEntry } from '../types';
@@ -64,11 +66,18 @@ export function HistScreen() {
   return (
     <div className="fixed inset-0 bg-bg overflow-y-auto">
       <div className="bg-navy px-4 py-3.5 flex items-center gap-3.5 sticky top-0 z-10">
-        <button onClick={() => router.push('/')}
-          className="bg-none border-none text-white/70 text-sm cursor-pointer font-barlow flex items-center gap-1.5 py-1">
-          ← Volver
+        <button onClick={() => router.push('/despacho-hub')}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{
+            width: 36, height: 36,
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+          }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
-        <div className="font-barlow-condensed text-xl font-bold text-white tracking-wide">Historial</div>
+        <div className="font-barlow-condensed text-xl font-bold text-white tracking-wide flex-1">Historial</div>
+        <ProfilePill compact />
       </div>
 
       <div className="p-3.5">

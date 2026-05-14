@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
+import { ProfilePill } from '../../components/ProfilePill';
 import { QRScanner } from './QRScanner';
 import { RecepcionForm } from './RecepcionForm';
 
@@ -81,8 +83,15 @@ export function RecepcionTiendaScreen() {
 
       {/* Header */}
       <div style={{ background: '#1B2A6B', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
-        <button onClick={() => router.push('/')} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff', fontSize: 13, cursor: 'pointer', padding: '6px 12px', borderRadius: 20, fontWeight: 600 }}>
-          ←
+        <button onClick={() => router.push('/control-interno')}
+          style={{
+            width: 36, height: 36, flexShrink: 0,
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+            borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ color: '#fff', fontWeight: 800, fontSize: 17, letterSpacing: '0.02em' }}>Tiendas / Recepción</div>
@@ -92,10 +101,7 @@ export function RecepcionTiendaScreen() {
             </div>
           )}
         </div>
-        <button onClick={async () => { await signOut(); router.push('/login'); }}
-          style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', fontSize: 12, cursor: 'pointer', padding: '6px 12px', borderRadius: 20 }}>
-          Salir
-        </button>
+        <ProfilePill compact />
       </div>
 
       {/* Tabs */}

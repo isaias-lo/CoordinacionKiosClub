@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronLeft } from 'lucide-react';
 import type { TiendaInfo } from '../data/tiendas';
 
 interface Props {
@@ -39,11 +40,16 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
           {onBack && (
             <button
               onClick={onBack}
-              className="h-[34px] px-3 rounded-[8px] flex items-center gap-1.5 bg-kbg border border-black/[0.1] hover:bg-kred/[0.07] hover:border-kred/[0.2] transition-all text-kmuted hover:text-kred"
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95"
               aria-label="Volver"
+              style={{
+                width: 36, height: 36,
+                background: 'linear-gradient(145deg, rgba(26,37,80,0.10), rgba(26,37,80,0.05))',
+                border: '1px solid rgba(26,37,80,0.15)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.60)',
+              }}
             >
-              <span className="text-[18px] leading-none">←</span>
-              <span className="text-[12px] font-semibold uppercase tracking-wide">Volver</span>
+              <ChevronLeft size={18} color="rgba(26,37,80,0.75)" strokeWidth={2} />
             </button>
           )}
           <div className="flex flex-col gap-0.5 leading-none">
@@ -92,7 +98,8 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                   onClick={() => { onBack(); setMenuOpen(false); }}
                   className="w-full h-[42px] px-3 rounded-[8px] bg-kbg border border-black/[0.12] text-kmuted text-[13px] font-semibold flex items-center gap-2.5 transition-all hover:border-kred/[0.25] hover:text-kred"
                 >
-                  ← Volver al Despacho
+                  <ChevronLeft size={16} strokeWidth={2} />
+                  Volver
                 </button>
               )}
               <button

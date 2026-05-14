@@ -1,6 +1,8 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Navigation } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
@@ -151,6 +153,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 /* ── Main page ── */
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
@@ -942,6 +945,23 @@ export function TiendasPage() {
               <p className="text-[13px] opacity-60">Sin resultados</p>
             </div>
           )}
+        </div>
+
+        {/* ENRUTADOR */}
+        <div className="px-2 py-2 border-t border-border flex-shrink-0">
+          <button
+            onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-full cursor-pointer transition-all active:opacity-70"
+            style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                 style={{
+                   background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
+                   boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
+                 }}>
+              <Navigation size={14} color="#fff" strokeWidth={2} />
+            </div>
+            <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>ENRUTADOR</span>
+          </button>
         </div>
       </div>
 

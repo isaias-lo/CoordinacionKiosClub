@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../components/AuthProvider';
+import { ProfilePill } from '../../components/ProfilePill';
 import { getPickerDisplay } from '../../features/auditoria/data/pickerNames';
 import { rowToEntry } from '../../features/auditoria/utils/converters';
 import type { AuditEntry, CorreccionAuditoria } from '../../features/auditoria/types';
@@ -275,9 +277,15 @@ export default function AuditoriaAdminPage() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-        <button onClick={() => router.push('/')}
-          className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">
-          ← Inicio
+        <button onClick={() => router.push('/control-interno')}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{
+            width: 36, height: 36,
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+          }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Admin Auditoría</div>
@@ -290,6 +298,7 @@ export default function AuditoriaAdminPage() {
             📷 {withPhotos.length}
           </span>
         )}
+        <ProfilePill compact />
       </div>
 
       {/* Filters */}

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { Navigation } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
@@ -656,10 +657,17 @@ export function StepForm() {
           </button>
         )}
         <button onClick={enrutar}
-          className="w-full lg:w-auto lg:flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-kred text-white rounded-btn font-barlow-condensed text-[18px] font-bold uppercase tracking-wide cursor-pointer active:opacity-80"
-          style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}
-          title="Ir a Despacho">
-          <span>Despacho</span>
+          className="w-full lg:w-auto lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
+          style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
+          title="Ir al Enrutador">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+               style={{
+                 background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
+                 boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
+               }}>
+            <Navigation size={14} color="#fff" strokeWidth={2} />
+          </div>
+          <span className="font-barlow-condensed text-[15px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>Enrutador</span>
         </button>
       </div>
     </div>
@@ -1219,11 +1227,6 @@ export function StepForm() {
 
       {/* ─── LEFT PANEL ─── */}
       <div className={`${view === 'list' ? 'flex' : 'hidden'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
-
-        <div className="hidden lg:flex px-3 py-1.5 bg-white border-b border-border items-center gap-2 flex-shrink-0">
-          <span className="font-barlow-condensed text-[10px] uppercase tracking-widest text-text-3">Paso 2 de 2</span>
-          <span className="font-barlow-condensed text-[12px] font-bold text-info">· {regimen}</span>
-        </div>
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}

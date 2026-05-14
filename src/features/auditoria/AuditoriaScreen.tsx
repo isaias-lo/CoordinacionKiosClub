@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
+import { ProfilePill } from '../../components/ProfilePill';
 import { supabase } from '../../lib/supabase';
 import { entryToRow, rowToEntry } from './utils/converters';
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
@@ -1134,7 +1136,7 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
    MAIN SCREEN
 ════════════════════════════════════════ */
 export function AuditoriaScreen() {
-  const { signOut, user, profile, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const { showToast, state } = useApp();
   const userRole        = profile?.role ?? 'auditor';
   const isAdminAud      = userRole === 'admin-auditoria' || userRole === 'admin';
@@ -1475,17 +1477,21 @@ export function AuditoriaScreen() {
         style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
         <div className="flex items-center gap-2 px-4 py-3.5 flex-shrink-0"
           style={{ background: 'rgba(0,0,0,0.18)', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
-          <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/70 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+          <button onClick={() => router.push(userRole === 'admin' ? '/control-interno' : '/')}
+            className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+            style={{
+              width: 36, height: 36,
+              background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+              border: '1px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+            }}>
+            <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+          </button>
           <div className="flex-1">
             <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
             <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'} · {profile?.full_name ?? ''}</div>
           </div>
-          <button onClick={() => router.push('/perfil')}
-            className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white transition-colors">
-            👤 Perfil
-          </button>
-          <button onClick={async () => { await signOut(); router.push('/login'); }}
-            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
+          <ProfilePill compact />
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
@@ -1526,15 +1532,21 @@ export function AuditoriaScreen() {
       <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
           style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-          <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+          <button onClick={() => setView('hub')}
+            className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+            style={{
+              width: 36, height: 36,
+              background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+              border: '1px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+            }}>
+            <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+          </button>
           <div className="flex-1">
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
             <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
           </div>
-          <button onClick={() => router.push('/perfil')}
-            className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white transition-colors">👤 Perfil</button>
-          <button onClick={async () => { await signOut(); router.push('/login'); }}
-            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70">Salir</button>
+          <ProfilePill compact />
         </div>
         <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
       </div>
@@ -1547,7 +1559,6 @@ export function AuditoriaScreen() {
       <ConfigPanel
         onBack={() => setView('hub')}
         onSaved={(list, auds) => { setPickerNombresList(list); setAuditorList(auds); }}
-        onSignOut={async () => { await signOut(); router.push('/login'); }}
         userRole={userRole}
       />
     );
@@ -1561,8 +1572,26 @@ export function AuditoriaScreen() {
       <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
         {isAdminAud
-          ? <button onClick={() => setView('hub')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
-          : <button onClick={() => router.push('/')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Inicio</button>
+          ? <button onClick={() => setView('hub')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{
+                width: 36, height: 36,
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                border: '1px solid rgba(255,255,255,0.15)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+              }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
+          : <button onClick={() => router.push('/')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{
+                width: 36, height: 36,
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                border: '1px solid rgba(255,255,255,0.15)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+              }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
         }
         <div className="flex-1">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
@@ -1570,16 +1599,14 @@ export function AuditoriaScreen() {
             {userRole === 'admin' ? 'Admin' : userRole === 'admin-auditoria' ? 'Admin Auditoría' : 'Auditor'} · Control de calidad
           </div>
         </div>
-        {/* Mobile: hamburger + perfil + logout */}
+        {/* Mobile: hamburger + profile */}
         <div className="flex md:hidden items-center gap-1">
           {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>}
-          <button onClick={() => router.push('/perfil')} className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white transition-colors">👤</button>
-          <button onClick={async () => { await signOut(); router.push('/login'); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full">Salir</button>
+          <ProfilePill compact />
         </div>
-        {/* Desktop: perfil + logout */}
+        {/* Desktop: profile */}
         <div className="hidden md:flex items-center gap-1">
-          <button onClick={() => router.push('/perfil')} className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white transition-colors">👤 Perfil</button>
-          <button onClick={async () => { await signOut(); router.push('/login'); }} className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-2.5 py-1.5 rounded-full hover:text-white/70 transition-colors">Salir</button>
+          <ProfilePill />
         </div>
       </div>
 
@@ -2055,10 +2082,9 @@ function AdminAudStats({ history, today, odooConfig, onBack, pickerNames }: {
 }
 
 /* ════ Config Panel ════ */
-function ConfigPanel({ onBack, onSaved, onSignOut, userRole }: {
+function ConfigPanel({ onBack, onSaved, userRole }: {
   onBack: () => void;
   onSaved: (pickerNombresList: string[], auditores: string[]) => void;
-  onSignOut?: () => void;
   userRole?: string;
 }) {
   const [pickerList,   setPickerList]   = useState<string[]>([]);
@@ -2131,10 +2157,7 @@ function ConfigPanel({ onBack, onSaved, onSignOut, userRole }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
-        {onSignOut && (
-          <button onClick={onSignOut}
-            className="border-none bg-white/8 text-white/45 text-[12px] cursor-pointer px-3 py-1.5 rounded-full hover:text-white/70 ml-1">Salir</button>
-        )}
+        <ProfilePill compact />
       </div>
 
       {/* Body */}

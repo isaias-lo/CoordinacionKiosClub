@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
+import { ProfilePill } from '@/components/ProfilePill';
 
 interface AppUser {
   id: string;
@@ -197,8 +198,9 @@ export default function UsuariosPage() {
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
            style={{ background: 'rgba(26,37,80,0.8)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <button onClick={() => router.push('/')}
-          className="border-none bg-white/10 text-white/70 text-[13px] cursor-pointer px-3 py-1.5 rounded-full">
-          ← Inicio
+          className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
+          <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">INICIO</span>
         </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">
@@ -228,6 +230,7 @@ export default function UsuariosPage() {
           style={{ background: 'linear-gradient(135deg,#2563EB,#1D4ED8)', boxShadow: '0 4px 16px rgba(37,99,235,0.4)' }}>
           + Nuevo
         </button>
+        <ProfilePill compact />
       </div>
 
       {/* Bell dropdown */}

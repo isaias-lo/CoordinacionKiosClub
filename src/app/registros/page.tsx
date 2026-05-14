@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
+import { ProfilePill } from '@/components/ProfilePill';
 
 type TabKey = 'rm' | 'regiones' | 'recepcion';
 
@@ -114,9 +116,15 @@ export default function RegistrosPage() {
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
            style={{ background: 'rgba(26,37,80,0.8)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <button onClick={() => router.push('/')}
-          className="border-none bg-white/10 text-white/70 text-[13px] cursor-pointer px-3 py-1.5 rounded-full">
-          ← Inicio
+        <button onClick={() => router.push('/despacho-hub')}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{
+            width: 36, height: 36,
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+          }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">
@@ -130,6 +138,7 @@ export default function RegistrosPage() {
           className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
           ↺ Actualizar
         </button>
+        <ProfilePill compact />
       </div>
 
       {/* Tabs */}

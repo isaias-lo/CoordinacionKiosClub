@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SantiagoProvider } from '../../features/despacho/santiago/context/SantiagoContext';
+import { ProfilePill } from '../../components/ProfilePill';
 
 function RutasScreenWrapper({ onBack }: { onBack: () => void }) {
   const [RutasScreen, setRutasScreen] = useState<React.ComponentType<{ onBack?: () => void }> | null>(null);
@@ -88,7 +89,15 @@ function DespachoContent() {
   }, []);
 
   const handleBack = useCallback(() => {
-    router.push('/despacho/santiago');
+    if (typeof window !== 'undefined') {
+      const from = sessionStorage.getItem('despacho_from');
+      if (from) {
+        sessionStorage.removeItem('despacho_from');
+        router.push(from);
+        return;
+      }
+    }
+    router.push('/despacho-hub');
   }, [router]);
 
   if (!mounted) {
@@ -119,9 +128,11 @@ function DespachoContent() {
         </div>
         <button
           onClick={() => router.push('/')}
-          className="px-4 py-2 bg-white/12 text-white border border-white/20 rounded-full font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer whitespace-nowrap transition-all active:bg-white/20">
-          INICIO
+          className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
+          <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">INICIO</span>
         </button>
+        <ProfilePill compact />
       </div>
       <div className="flex-1 overflow-hidden">
         <RutasScreenWrapper onBack={handleBack} />
