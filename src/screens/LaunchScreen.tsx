@@ -58,8 +58,18 @@ export function LaunchScreen() {
          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
 
       {/* Logo */}
-      <div className="w-48 h-16 mb-6 flex items-center justify-center">
-        <span className="font-barlow-condensed text-3xl font-bold text-white tracking-widest">KiosClub</span>
+      <div className="mb-6 flex items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo-kiosclub.png"
+          alt="KiosClub"
+          style={{
+            height: 52,
+            width: 'auto',
+            mixBlendMode: 'screen',   // elimina el fondo rojo sobre fondo oscuro
+            objectFit: 'contain',
+          }}
+        />
       </div>
 
       <div className="font-barlow-condensed text-xs font-semibold tracking-widest uppercase text-white/50 mb-1 text-center">
