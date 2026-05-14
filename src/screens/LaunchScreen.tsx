@@ -82,34 +82,20 @@ export function LaunchScreen() {
         </div>
       ) : (
         /* Dos tiles principales */
-        <div className="flex flex-col gap-3 w-full max-w-sm mb-10">
+        <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-10" style={{ gridAutoRows: '88px' }}>
 
           <button onClick={() => router.push('/despacho-hub')}
-            className="relative overflow-hidden rounded-2xl px-6 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98]"
-            style={{ height: 96, background: 'rgba(37,99,235,0.14)', border: '2px solid rgba(37,99,235,0.35)', boxShadow: '0 8px 28px rgba(37,99,235,0.18)' }}>
-            <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-                 style={{ background: 'rgba(37,99,235,0.30)' }}>
-              <span className="text-xl">🚛</span>
-            </div>
-            <div className="flex-1 text-left">
-              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
-              <div className="text-xs text-white/50 mt-0.5">Bodegas · Enrutador · Seguimiento</div>
-            </div>
-            <span className="text-white/25 text-lg">›</span>
+            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
+            style={{ background: 'rgba(37,99,235,0.18)', border: '2px solid rgba(37,99,235,0.40)', boxShadow: '0 8px 24px rgba(37,99,235,0.22)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
+            <div className="text-xs text-white/55 mt-1">Bodegas · Enrutador</div>
           </button>
 
           <button onClick={() => router.push('/control-interno')}
-            className="relative overflow-hidden rounded-2xl px-6 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98]"
-            style={{ height: 96, background: 'rgba(16,185,129,0.11)', border: '2px solid rgba(16,185,129,0.30)', boxShadow: '0 8px 28px rgba(16,185,129,0.14)' }}>
-            <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-                 style={{ background: 'rgba(16,185,129,0.25)' }}>
-              <span className="text-xl">🏪</span>
-            </div>
-            <div className="flex-1 text-left">
-              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
-              <div className="text-xs text-white/50 mt-0.5">Tiendas · Auditoría</div>
-            </div>
-            <span className="text-white/25 text-lg">›</span>
+            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
+            style={{ background: 'rgba(16,185,129,0.16)', border: '2px solid rgba(16,185,129,0.40)', boxShadow: '0 8px 24px rgba(16,185,129,0.18)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
+            <div className="text-xs text-white/55 mt-1">Tiendas · Auditoría</div>
           </button>
 
         </div>
