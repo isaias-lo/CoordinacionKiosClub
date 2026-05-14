@@ -55,26 +55,40 @@ export default function DespachoHubPage() {
         </div>
       </div>
 
-      {/* Tabs — scroll horizontal */}
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-6" style={{ paddingRight: 24 }}>
+      {/* Móvil: fila horizontal scrollable · Desktop: grid 2 cols */}
+      <div className="px-6">
+        {/* Desktop */}
+        <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-sm md:mx-auto" style={{ gridAutoRows: '110px' }}>
+          {tabs.map(t => (
+            <button key={t.label} onClick={t.onClick}
+              className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+              style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
+              <div className="text-xs text-white/60 mt-1">{t.sub}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Móvil */}
+      <div className="flex md:hidden gap-3 overflow-x-auto no-scrollbar px-6">
         {tabs.map(t => (
-          <button
-            key={t.label}
-            onClick={t.onClick}
+          <button key={t.label} onClick={t.onClick}
             className="flex-shrink-0 relative overflow-hidden rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
             style={{
-              width: 155, height: 110,
+              width: 'calc((100vw - 60px) / 2)',
+              height: 110,
               background: t.bg,
               borderColor: t.border,
               boxShadow: `0 8px 24px ${t.shadow}`,
             }}>
-            <div className="font-barlow-condensed text-lg font-bold text-white tracking-widest uppercase leading-tight px-3">{t.label}</div>
+            <div className="font-barlow-condensed text-lg font-bold text-white tracking-widest uppercase leading-tight px-2">{t.label}</div>
             <div className="text-[11px] text-white/60 mt-1">{t.sub}</div>
           </button>
         ))}
-        {/* trailing spacer so last card doesn't clip */}
         <div className="flex-shrink-0 w-2" />
       </div>
+
     </div>
   );
 }
