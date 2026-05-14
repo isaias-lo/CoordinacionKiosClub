@@ -12,8 +12,102 @@ const CORR_LABEL: Record<CorreccionAuditoria, string> = {
   correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante',
 };
 
+/* ── Photo carousel box ── */
+interface CarouselBoxProps {
+  title: string;
+  photos: { url: string; label?: string }[];
+  accentColor: string;
+  onOpenLightbox: (photos: { url: string; label?: string }[], startIdx: number) => void;
+}
+function CarouselBox({ title, photos, accentColor, onOpenLightbox }: CarouselBoxProps) {
+  if (!photos.length) return null;
+  const cover = photos[0];
+  return (
+    <button
+      onClick={() => onOpenLightbox(photos, 0)}
+      className="relative rounded-card overflow-hidden border cursor-pointer group text-left"
+      style={{ padding: 0, background: 'none', borderColor: accentColor + '40', minWidth: 0, flex: 1 }}>
+      <div style={{ aspectRatio: '4/3', overflow: 'hidden', background: '#F3F4F6' }}>
+        <img src={cover.url} alt={cover.label ?? title} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.2s' }}
+          className="group-hover:scale-105" />
+      </div>
+      <div style={{ padding: '6px 8px', background: '#fff', borderTop: `2px solid ${accentColor}` }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</div>
+        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>{photos.length} foto{photos.length !== 1 ? 's' : ''} · toca para ver</div>
+      </div>
+      {photos.length > 1 && (
+        <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.60)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99 }}>
+          +{photos.length - 1}
+        </div>
+      )}
+    </button>
+  );
+}
+
+/* ── Lightbox carousel ── */
+interface LightboxProps {
+  photos: { url: string; label?: string }[];
+  startIdx: number;
+  onClose: () => void;
+}
+function LightboxCarousel({ photos, startIdx, onClose }: LightboxProps) {
+  const [idx, setIdx] = useState(startIdx);
+  const prev = () => setIdx(i => (i - 1 + photos.length) % photos.length);
+  const next = () => setIdx(i => (i + 1) % photos.length);
+  const current = photos[idx];
+
+  // Close on backdrop click
+  function handleBackdrop(e: React.MouseEvent) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
+  return (
+    <div onClick={handleBackdrop} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.92)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
+      {/* Close */}
+      <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '50%', width: 36, height: 36, fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+
+      {/* Counter */}
+      <div style={{ position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 600 }}>
+        {idx + 1} / {photos.length}
+      </div>
+
+      {/* Image */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '60px 60px 40px' }}>
+        <img src={current.url} alt={current.label ?? `Foto ${idx + 1}`}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }} />
+      </div>
+
+      {/* Label */}
+      {current.label && (
+        <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: 600, marginBottom: 8, textAlign: 'center' }}>{current.label}</div>
+      )}
+
+      {/* Arrows */}
+      {photos.length > 1 && (
+        <div style={{ display: 'flex', gap: 16, paddingBottom: 24 }}>
+          <button onClick={prev} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 12, width: 48, height: 48, fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>←</button>
+          {/* Thumbnail strip */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: 240, overflowX: 'auto' }}>
+            {photos.map((p, i) => (
+              <button key={i} onClick={() => setIdx(i)}
+                style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 8, overflow: 'hidden', border: i === idx ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)', padding: 0, background: 'none', cursor: 'pointer', opacity: i === idx ? 1 : 0.6, transition: 'opacity 0.15s' }}>
+                <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              </button>
+            ))}
+          </div>
+          <button onClick={next} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 12, width: 48, height: 48, fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>→</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Entry card ── */
-function EntryCard({ entry, onPhotoClick }: { entry: AuditEntry; onPhotoClick: (url: string) => void }) {
+function EntryCard({ entry, onOpenLightbox }: {
+  entry: AuditEntry;
+  onPhotoClick?: (url: string) => void;
+  onOpenLightbox: (photos: { url: string; label?: string }[], startIdx: number) => void;
+}) {
   const corrColor = {
     correcto: '#16A34A', cruce: '#2563EB', faltante: '#D32F2F', sobrante: '#D97706',
   }[entry.correccion];
@@ -76,53 +170,23 @@ function EntryCard({ entry, onPhotoClick }: { entry: AuditEntry; onPhotoClick: (
         </div>
       )}
 
-      {/* Pallet photos */}
-      {entry.palletFotos && entry.palletFotos.length > 0 && (
-        <div className="mt-1 mb-2">
-          <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5">Fotos de pallets</div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {entry.palletFotos.map((pf, idx) => (
-              <button key={idx} onClick={() => onPhotoClick(pf.url)}
-                className="relative rounded-card overflow-hidden border border-border cursor-pointer group"
-                style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1.5">
-                  <div className="text-white text-[10px] font-bold">{pf.label}</div>
-                </div>
-              </button>
-            ))}
+      {/* Photo gallery — carousel boxes */}
+      {(() => {
+        const palletPhotos   = (entry.palletFotos ?? []).map(pf => ({ url: pf.url, label: pf.label }));
+        const errorPhotos    = (entry.errorFotoUrls ?? []).map((url, i) => ({ url, label: `Error #${i + 1}` }));
+        const productPhotos  = (entry.fotoUrls ?? []).map((url, i) => ({ url, label: `Producto #${i + 1}` }));
+        // legacy single photo
+        if (!productPhotos.length && entry.fotoUrl) productPhotos.push({ url: entry.fotoUrl, label: 'Foto error' });
+        const hasPhotos = palletPhotos.length + errorPhotos.length + productPhotos.length > 0;
+        if (!hasPhotos) return null;
+        return (
+          <div className="mt-2 flex gap-2">
+            <CarouselBox title={`Pallets (${palletPhotos.length})`}  photos={palletPhotos}  accentColor="#1B2A6B" onOpenLightbox={onOpenLightbox} />
+            <CarouselBox title={`Errores (${errorPhotos.length})`}   photos={errorPhotos}   accentColor="#EF4444" onOpenLightbox={onOpenLightbox} />
+            <CarouselBox title={`Productos (${productPhotos.length})`} photos={productPhotos} accentColor="#D97706" onOpenLightbox={onOpenLightbox} />
           </div>
-        </div>
-      )}
-      {/* Product photos (multi) */}
-      {entry.fotoUrls && entry.fotoUrls.length > 0 && (
-        <div className="mt-1 mb-2">
-          <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5">Fotos de productos con error</div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {entry.fotoUrls.map((url, idx) => (
-              <button key={idx} onClick={() => onPhotoClick(url)}
-                className="relative rounded-card overflow-hidden border border-red/20 cursor-pointer group"
-                style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                <div className="absolute top-1 left-1.5 bg-red text-white text-[9px] font-bold px-1.5 py-0.5 rounded">#{idx + 1}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {/* Error photo (legacy single) */}
-      {entry.fotoUrl && !entry.fotoUrls?.length && (
-        <button
-          onClick={() => onPhotoClick(entry.fotoUrl!)}
-          className="block w-full rounded-card overflow-hidden border border-border cursor-pointer mt-1"
-          style={{ padding: 0, background: 'none' }}
-        >
-          <img src={entry.fotoUrl} alt="foto del error" className="w-full object-cover" style={{ maxHeight: 180 }} />
-          <div className="px-2 py-1 bg-bg text-[10px] text-text-3 flex items-center gap-1 text-left">
-            📷 Foto de error · toca para ampliar
-          </div>
-        </button>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -139,8 +203,19 @@ export default function AuditoriaAdminPage() {
   const [fechaFilter,  setFechaFilter]  = useState('');
   const [tiendaFilter, setTiendaFilter] = useState('');
   const [auditorFilter,setAuditorFilter]= useState('');
-  const [lightbox,     setLightbox]     = useState<string | null>(null);
-  const [tab,          setTab]          = useState<'lista' | 'fotos' | 'stats'>('lista');
+  const [lightbox,        setLightbox]        = useState<string | null>(null);
+  const [carouselPhotos,  setCarouselPhotos]  = useState<{ url: string; label?: string }[] | null>(null);
+  const [carouselIdx,     setCarouselIdx]     = useState(0);
+  const [tab,             setTab]             = useState<'lista' | 'fotos' | 'stats'>('lista');
+
+  function openLightbox(photos: { url: string; label?: string }[], startIdx: number) {
+    setCarouselPhotos(photos);
+    setCarouselIdx(startIdx);
+  }
+  function closeLightbox() {
+    setCarouselPhotos(null);
+    setLightbox(null);
+  }
 
   // Client-side role guard (middleware handles server-side, this prevents flicker)
   useEffect(() => {
@@ -284,7 +359,7 @@ export default function AuditoriaAdminPage() {
 
         {/* Lista */}
         {!loading && tab === 'lista' && filtered.map(e => (
-          <EntryCard key={e.id} entry={e} onPhotoClick={setLightbox} />
+          <EntryCard key={e.id} entry={e} onOpenLightbox={openLightbox} />
         ))}
 
         {/* Fotos */}
@@ -300,7 +375,6 @@ export default function AuditoriaAdminPage() {
             : (
               <div className="space-y-4">
                 {withPhotos.map(e => {
-                  const palletCount = e.palletFotos?.length ?? 0;
                   const prodCount = (e.fotoUrls?.length ?? 0) + (e.fotoUrl && !e.fotoUrls?.length ? 1 : 0);
                   return (
                     <div key={e.id} className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
@@ -314,45 +388,16 @@ export default function AuditoriaAdminPage() {
                           {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
                         </span>
                       </div>
-                      <div className="p-3">
-                        {/* Pallet photos section */}
-                        {palletCount > 0 && (
-                          <div className="mb-3">
-                            <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5 flex items-center gap-1">
-                              📦 Pallets <span className="font-normal normal-case text-text-3">({palletCount} foto{palletCount !== 1 ? 's' : ''})</span>
-                            </div>
-                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5">
-                              {e.palletFotos!.map((pf, idx) => (
-                                <button key={idx} onClick={() => setLightbox(pf.url)}
-                                  className="relative rounded-lg overflow-hidden border border-border cursor-pointer group"
-                                  style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                                  <img src={pf.url} alt={pf.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150" />
-                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-1 py-1">
-                                    <div className="text-white text-[9px] font-bold">{pf.label}</div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {/* Product photos section */}
-                        {prodCount > 0 && (
-                          <div>
-                            <div className="text-[10px] text-text-3 uppercase tracking-wide font-bold mb-1.5 flex items-center gap-1">
-                              ⚠ Errores <span className="font-normal normal-case text-text-3">({prodCount} foto{prodCount !== 1 ? 's' : ''})</span>
-                            </div>
-                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5">
-                              {(e.fotoUrls && e.fotoUrls.length > 0 ? e.fotoUrls : e.fotoUrl ? [e.fotoUrl] : []).map((url, idx) => (
-                                <button key={idx} onClick={() => setLightbox(url)}
-                                  className="relative rounded-lg overflow-hidden border border-red/30 cursor-pointer group"
-                                  style={{ padding: 0, background: 'none', aspectRatio: '1' }}>
-                                  <img src={url} alt={`Error ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150" />
-                                  <div className="absolute top-1 left-1 bg-red text-white text-[9px] font-bold px-1 py-0.5 rounded">#{idx + 1}</div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                      <div className="p-3 flex gap-2">
+                        <CarouselBox title={`Pallets (${(e.palletFotos ?? []).length})`}
+                          photos={(e.palletFotos ?? []).map(pf => ({ url: pf.url, label: pf.label }))}
+                          accentColor="#1B2A6B" onOpenLightbox={openLightbox} />
+                        <CarouselBox title={`Errores (${(e.errorFotoUrls ?? []).length})`}
+                          photos={(e.errorFotoUrls ?? []).map((url, i) => ({ url, label: `Error #${i + 1}` }))}
+                          accentColor="#EF4444" onOpenLightbox={openLightbox} />
+                        <CarouselBox title={`Productos (${prodCount})`}
+                          photos={(e.fotoUrls?.length ? e.fotoUrls : e.fotoUrl ? [e.fotoUrl] : []).map((url, i) => ({ url, label: `Producto #${i + 1}` }))}
+                          accentColor="#D97706" onOpenLightbox={openLightbox} />
                       </div>
                     </div>
                   );
@@ -536,33 +581,17 @@ export default function AuditoriaAdminPage() {
         })()}
       </div>
 
-      {/* Lightbox */}
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.92)' }}
-          onClick={() => setLightbox(null)}>
-          <img
-            src={lightbox}
-            alt="foto ampliada"
-            className="max-w-full max-h-full object-contain"
-            style={{ maxWidth: '96vw', maxHeight: '90vh' }}
-            onClick={e => e.stopPropagation()}
-          />
-          <button
-            onClick={() => setLightbox(null)}
-            className="absolute top-4 right-4 text-white border-none bg-white/15 rounded-full w-10 h-10 text-[22px] cursor-pointer flex items-center justify-center font-bold">
-            ×
-          </button>
-          <a
-            href={lightbox}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white text-[13px] font-bold bg-white/15 px-4 py-2 rounded-full"
-            onClick={e => e.stopPropagation()}>
-            ↗ Abrir original
-          </a>
+      {/* Legacy single-image lightbox (for onPhotoClick compatibility) */}
+      {lightbox && !carouselPhotos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.92)' }} onClick={closeLightbox}>
+          <img src={lightbox} alt="foto ampliada" className="max-w-full max-h-full object-contain" style={{ maxWidth: '96vw', maxHeight: '90vh' }} onClick={e => e.stopPropagation()} />
+          <button onClick={closeLightbox} className="absolute top-4 right-4 text-white border-none bg-white/15 rounded-full w-10 h-10 text-[22px] cursor-pointer flex items-center justify-center font-bold">×</button>
         </div>
+      )}
+
+      {/* Carousel lightbox */}
+      {carouselPhotos && (
+        <LightboxCarousel photos={carouselPhotos} startIdx={carouselIdx} onClose={closeLightbox} />
       )}
     </div>
   );

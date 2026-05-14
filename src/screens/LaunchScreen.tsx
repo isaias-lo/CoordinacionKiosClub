@@ -7,7 +7,7 @@ import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
 
 const ROLE_LABEL: Record<string, string> = {
-  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin',
+  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda',
 };
 
 export function LaunchScreen() {
@@ -17,7 +17,8 @@ export function LaunchScreen() {
   const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
   const [pendingCount, setPendingCount] = useState(0);
 
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin        = profile?.role === 'admin';
+  const isRecepcion    = profile?.role === 'recepcion-tienda';
 
   const loadPending = useCallback(async () => {
     if (!isAdmin) return;
@@ -76,49 +77,70 @@ export function LaunchScreen() {
         ¿A dónde vas hoy?
       </div>
 
-      <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-8" style={{ gridAutoRows: '88px' }}>
-        <button onClick={goToRegiones}
-          className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
-          style={{ background: '#D32F2F', boxShadow: '0 8px 24px rgba(211,47,47,0.4)' }}>
-          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Bodega Regiones</div>
-          <div className="text-xs text-white/60 mt-1">Despacho nacional</div>
-        </button>
-
-        <button
-          onClick={() => router.push('/despacho/santiago')}
-          className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-info/40"
-          style={{ background: 'rgba(37,99,235,0.18)', boxShadow: '0 8px 24px rgba(37,99,235,0.25)' }}>
-          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Bodega Santiago</div>
-          <div className="text-xs text-white/60 mt-1">Despacho local RM</div>
-        </button>
-
-        <button
-          onClick={() => router.push('/despacho')}
-          className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(34,197,94,0.50)]"
-          style={{ background: 'rgba(34,197,94,0.16)', boxShadow: '0 8px 24px rgba(34,197,94,0.20)' }}>
-          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
-          <div className="text-xs text-white/60 mt-1">Sistema de enrutamiento</div>
-        </button>
-
-        {isAdmin && (
+      {/* Vista recepcion-tienda: solo muestra botón TIENDAS */}
+      {isRecepcion ? (
+        <div className="w-full max-w-sm mb-8">
           <button
-            onClick={() => router.push('/auditoria')}
-            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(124,58,237,0.50)]"
-            style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 8px 24px rgba(124,58,237,0.20)' }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
-            <div className="text-xs text-white/60 mt-1">Control de calidad pallets</div>
+            onClick={() => router.push('/tiendas')}
+            className="w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
+            style={{ height: 88, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas / Recepción</div>
+            <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
           </button>
-        )}
-        {!isAdmin && <div />}{/* placeholder to keep grid layout */}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-8" style={{ gridAutoRows: '88px' }}>
+          <button onClick={goToRegiones}
+            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
+            style={{ background: '#D32F2F', boxShadow: '0 8px 24px rgba(211,47,47,0.4)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Bodega Regiones</div>
+            <div className="text-xs text-white/60 mt-1">Despacho nacional</div>
+          </button>
 
-        <button
-          onClick={() => router.push('/despacho/estado')}
-          className="col-span-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.50)]"
-          style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 8px 24px rgba(245,158,11,0.18)' }}>
-          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Estado / Seguimiento</div>
-          <div className="text-xs text-white/60 mt-1">Etiquetas Zebra · Guías · QR</div>
-        </button>
-      </div>
+          <button
+            onClick={() => router.push('/despacho/santiago')}
+            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-info/40"
+            style={{ background: 'rgba(37,99,235,0.18)', boxShadow: '0 8px 24px rgba(37,99,235,0.25)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Bodega Santiago</div>
+            <div className="text-xs text-white/60 mt-1">Despacho local RM</div>
+          </button>
+
+          <button
+            onClick={() => router.push('/despacho')}
+            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(34,197,94,0.50)]"
+            style={{ background: 'rgba(34,197,94,0.16)', boxShadow: '0 8px 24px rgba(34,197,94,0.20)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
+            <div className="text-xs text-white/60 mt-1">Sistema de enrutamiento</div>
+          </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => router.push('/auditoria')}
+              className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(124,58,237,0.50)]"
+              style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 8px 24px rgba(124,58,237,0.20)' }}>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
+              <div className="text-xs text-white/60 mt-1">Control de calidad pallets</div>
+            </button>
+          )}
+          {!isAdmin && <div />}
+
+          <button
+            onClick={() => router.push('/tiendas')}
+            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
+            style={{ background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.20)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas</div>
+            <div className="text-xs text-white/60 mt-1">Recepción de despacho</div>
+          </button>
+
+          <button
+            onClick={() => router.push('/despacho/estado')}
+            className="col-span-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.50)]"
+            style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 8px 24px rgba(245,158,11,0.18)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Estado / Seguimiento</div>
+            <div className="text-xs text-white/60 mt-1">Etiquetas Zebra · Guías · QR</div>
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-5">
         {[['dias', 'días'], ['pallets', 'pallets'], ['bultos', 'bultos']].map(([k, l]) => (

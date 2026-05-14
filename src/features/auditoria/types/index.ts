@@ -71,5 +71,6 @@ export interface AuditEntry {
   reauditoriaDeId?: string;
   fotoUrl?: string;
   fotoUrls?: string[];
+  errorFotoUrls?: string[];
   palletFotos?: { label: string; url: string }[];
 }

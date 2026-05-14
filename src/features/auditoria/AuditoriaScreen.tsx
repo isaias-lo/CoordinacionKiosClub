@@ -1165,11 +1165,13 @@ export function AuditoriaScreen() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError,   setHistoryError]   = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [palletFiles,    setPalletFiles]    = useState<Record<string, File>>({});
-  const [palletPreviews, setPalletPreviews] = useState<Record<string, string>>({});
-  const [fotoFiles,      setFotoFiles]      = useState<File[]>([]);
-  const [fotoPreviews,   setFotoPreviews]   = useState<string[]>([]);
-  const [submitting,     setSubmitting]     = useState(false);
+  const [palletFiles,      setPalletFiles]      = useState<Record<string, File>>({});
+  const [palletPreviews,   setPalletPreviews]   = useState<Record<string, string>>({});
+  const [fotoFiles,        setFotoFiles]        = useState<File[]>([]);
+  const [fotoPreviews,     setFotoPreviews]     = useState<string[]>([]);
+  const [errorFotoFiles,   setErrorFotoFiles]   = useState<File[]>([]);
+  const [errorFotoPreviews,setErrorFotoPreviews]= useState<string[]>([]);
+  const [submitting,       setSubmitting]       = useState(false);
   const [pickerNombre,   setPickerNombre]   = useState('');
   const [pickerNombresList, setPickerNombresList] = useState<string[]>([]);
   const [auditorList,       setAuditorList]       = useState<string[]>([]);
@@ -1264,6 +1266,9 @@ export function AuditoriaScreen() {
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setFotoFiles([]);
     setFotoPreviews([]);
+    errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setErrorFotoFiles([]);
+    setErrorFotoPreviews([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
@@ -1388,14 +1393,32 @@ export function AuditoriaScreen() {
         }
       }
     }
+    const uploadedErrorFotoUrls: string[] = [];
+    if (canUploadPhotos && errorFotoFiles.length > 0) {
+      for (let fi = 0; fi < errorFotoFiles.length; fi++) {
+        const fotoFile = errorFotoFiles[fi];
+        const ext = fotoFile.name.split('.').pop() || 'jpg';
+        const path = `${user.id}/${entryId}_error${fi + 1}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('audit-photos')
+          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
+          uploadedErrorFotoUrls.push(publicUrl);
+        } else {
+          showToast(`⚠ Error al subir foto de error ${fi + 1}`, '#D97706');
+        }
+      }
+    }
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
       auditor: auditor.trim(), picker: picker.trim(), pickerNombre: pickerNombre.trim() || undefined,
       tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
-      fotoUrls: uploadedFotoUrls.length > 0 ? uploadedFotoUrls : undefined,
-      palletFotos: uploadedFotos.length > 0 ? uploadedFotos : undefined,
+      fotoUrls:       uploadedFotoUrls.length      > 0 ? uploadedFotoUrls      : undefined,
+      errorFotoUrls:  uploadedErrorFotoUrls.length > 0 ? uploadedErrorFotoUrls : undefined,
+      palletFotos:    uploadedFotos.length         > 0 ? uploadedFotos         : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
@@ -1428,6 +1451,8 @@ export function AuditoriaScreen() {
     setPalletFiles({}); setPalletPreviews({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setFotoFiles([]); setFotoPreviews([]);
+    errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setErrorFotoFiles([]); setErrorFotoPreviews([]);
     setSubmitting(false);
   };
 
@@ -1762,12 +1787,54 @@ export function AuditoriaScreen() {
               <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
                 className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
 
-              <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · errores detectados · múltiples permitidas</span></SLabel>
+              {/* Fotos de errores — solo si hubo errores */}
+              {tieneErrores === true && (
+                <>
+                  <SLabel>Fotos de errores <span className="text-[9px] font-normal ml-1 normal-case">evidencia del error detectado · múltiples</span></SLabel>
+                  {errorFotoPreviews.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      {errorFotoPreviews.map((preview, idx) => (
+                        <div key={idx} className="relative rounded-card overflow-hidden border-2 border-red/30" style={{ boxShadow: '0 2px 8px rgba(211,47,47,0.10)' }}>
+                          <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                          <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-red/80 rounded px-1.5 py-0.5">Error #{idx + 1}</div>
+                          <button
+                            onClick={() => {
+                              URL.revokeObjectURL(preview);
+                              setErrorFotoPreviews(p => p.filter((_, i) => i !== idx));
+                              setErrorFotoFiles(f => f.filter((_, i) => i !== idx));
+                            }}
+                            className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                            style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer hover:border-red/50 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
+                    <span className="text-[28px]">🚨</span>
+                    <div>
+                      <div className="text-[13px] text-red font-barlow font-semibold">
+                        {errorFotoPreviews.length > 0 ? `+ Agregar más (${errorFotoPreviews.length} foto${errorFotoPreviews.length !== 1 ? 's' : ''} de error)` : 'Fotografiar el error'}
+                      </div>
+                      <div className="text-[11px] text-text-3">Selecciona una o varias fotos del error</div>
+                    </div>
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => {
+                        const files = Array.from(e.target.files ?? []);
+                        if (!files.length) return;
+                        setErrorFotoFiles(prev => [...prev, ...files]);
+                        setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                        e.target.value = '';
+                      }} />
+                  </label>
+                </>
+              )}
+
+              <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · múltiples permitidas</span></SLabel>
               {fotoPreviews.length > 0 && (
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   {fotoPreviews.map((preview, idx) => (
                     <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                      <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ maxHeight: 120 }} />
+                      <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
                       <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
                       <button
                         onClick={() => {
@@ -1785,18 +1852,16 @@ export function AuditoriaScreen() {
                 <span className="text-[28px]">📷</span>
                 <div>
                   <div className="text-[13px] text-text-2 font-barlow font-semibold">
-                    {fotoPreviews.length > 0 ? `+ Agregar otra foto (${fotoPreviews.length} adjunta${fotoPreviews.length !== 1 ? 's' : ''})` : 'Adjuntar foto de error'}
+                    {fotoPreviews.length > 0 ? `+ Agregar más (${fotoPreviews.length} foto${fotoPreviews.length !== 1 ? 's' : ''} de producto)` : 'Adjuntar fotos de productos'}
                   </div>
-                  <div className="text-[11px] text-text-3">Toca para agregar una foto · repite para más</div>
+                  <div className="text-[11px] text-text-3">Selecciona una o varias fotos a la vez</div>
                 </div>
-                {/* No "multiple" — iOS-safe: el usuario toca una vez por foto */}
-                <input type="file" accept="image/*" className="hidden"
+                <input type="file" accept="image/*" multiple className="hidden"
                   onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    setFotoFiles(prev => [...prev, f]);
-                    setFotoPreviews(prev => [...prev, URL.createObjectURL(f)]);
-                    // Reset para permitir seleccionar otra foto inmediatamente en iOS
+                    const files = Array.from(e.target.files ?? []);
+                    if (!files.length) return;
+                    setFotoFiles(prev => [...prev, ...files]);
+                    setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                     e.target.value = '';
                   }} />
               </label>

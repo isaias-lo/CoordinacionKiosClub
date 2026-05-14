@@ -13,6 +13,10 @@ interface RecepcionBody {
   receptor: string;
   rut: string;
   signatureDataUrl: string;
+  observaciones?: string;
+  selloEstado?: string;
+  selloFotoUrl?: string;
+  estadoFotoUrls?: string[];
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -61,16 +65,20 @@ export async function POST(request: NextRequest) {
 
     // Insert record into recepcion table
     const { error: insertError } = await sb.from('recepcion').insert({
-      cod: body.cod,
-      tienda: body.tienda,
-      direccion: body.direccion,
-      pallets_sent: body.palletsSent,
-      bultos_sent: body.bultosSent,
+      cod:               body.cod,
+      tienda:            body.tienda,
+      direccion:         body.direccion,
+      pallets_sent:      body.palletsSent,
+      bultos_sent:       body.bultosSent,
       pallets_recibidos: body.palletsRecibidos,
-      bultos_recibidos: body.bultosRecibidos,
-      receptor: body.receptor,
-      rut: body.rut,
-      firma_url: publicUrl,
+      bultos_recibidos:  body.bultosRecibidos,
+      receptor:          body.receptor,
+      rut:               body.rut,
+      firma_url:         publicUrl,
+      observaciones:     body.observaciones ?? '',
+      sello_estado:      body.selloEstado ?? '',
+      sello_foto_url:    body.selloFotoUrl ?? '',
+      estado_fotos:      body.estadoFotoUrls ?? [],
     });
 
     if (insertError) throw new Error(insertError.message);
@@ -96,17 +104,21 @@ export async function POST(request: NextRequest) {
     const min  = String(now.getMinutes()).padStart(2, '0');
 
     await writeToSheet([
-      `${dd}/${mm}/${yyyy} ${hh}:${min}`, // Fecha/Hora
-      body.cod,                            // Código
-      body.tienda,                         // Tienda
-      body.direccion,                      // Dirección
-      body.palletsSent,                    // Pallets Enviados
-      body.bultosSent,                     // Bultos Enviados
-      body.palletsRecibidos,               // Pallets Recibidos
-      body.bultosRecibidos,                // Bultos Recibidos
-      body.receptor,                       // Receptor
-      body.rut,                            // RUT
-      publicUrl,                           // Firma
+      `${dd}/${mm}/${yyyy} ${hh}:${min}`,           // Fecha/Hora
+      body.cod,                                      // Código
+      body.tienda,                                   // Tienda
+      body.direccion,                                // Dirección
+      body.palletsSent,                              // Pallets Enviados
+      body.bultosSent,                               // Bultos Enviados
+      body.palletsRecibidos,                         // Pallets Recibidos
+      body.bultosRecibidos,                          // Bultos Recibidos
+      body.receptor,                                 // Receptor
+      body.rut,                                      // RUT
+      publicUrl,                                     // Firma
+      body.selloEstado ?? '',                        // Estado Sello
+      body.selloFotoUrl ?? '',                       // Foto Sello
+      (body.estadoFotoUrls ?? []).length.toString(), // N° Fotos Estado
+      body.observaciones ?? '',                      // Observaciones
     ]);
 
     return NextResponse.json({ ok: true });

@@ -15,9 +15,10 @@ export function entryToRow(entry: AuditEntry, userId: string) {
     correccion: entry.correccion, resultado: entry.resultado,
     observaciones: entry.observaciones, reauditoria_de_id: entry.reauditoriaDeId ?? null,
     productos: entry.productos,
-    foto_url: entry.fotoUrl ?? null,
-    foto_urls: entry.fotoUrls ?? [],
-    pallet_fotos: entry.palletFotos ?? [],
+    foto_url:        entry.fotoUrl ?? null,
+    foto_urls:       entry.fotoUrls ?? [],
+    error_foto_urls: entry.errorFotoUrls ?? [],
+    pallet_fotos:    entry.palletFotos ?? [],
   };
 }
 
@@ -35,8 +36,9 @@ export function rowToEntry(r: Record<string, unknown>): AuditEntry {
     observaciones: r.observaciones as string,
     reauditoriaDeId: r.reauditoria_de_id as string | undefined,
     productos: (r.productos as ProductoError[]) ?? [],
-    fotoUrl: (r.foto_url as string) || undefined,
-    fotoUrls: (r.foto_urls as string[]) || undefined,
-    palletFotos: (r.pallet_fotos as AuditEntry['palletFotos']) || undefined,
+    fotoUrl:       (r.foto_url as string) || undefined,
+    fotoUrls:      (r.foto_urls as string[]) || undefined,
+    errorFotoUrls: (r.error_foto_urls as string[]) || undefined,
+    palletFotos:   (r.pallet_fotos as AuditEntry['palletFotos']) || undefined,
   };
 }
