@@ -104,55 +104,76 @@ function StateBadge({ state }: { state: string }) {
 
 // ─── 1D Barcode ───────────────────────────────────────────────────────────────
 
-function Barcode1D({ value }: { value: string }) {
+function Barcode1D({ value, height = 72 }: { value: string; height?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
   useEffect(() => {
     if (!svgRef.current || !value) return;
     import('jsbarcode').then(({ default: JsBarcode }) => {
       if (!svgRef.current) return;
       try {
-        JsBarcode(svgRef.current, value, { format: 'CODE128', width: 2.2, height: 72, displayValue: false, margin: 10, background: '#ffffff', lineColor: '#000000' });
+        JsBarcode(svgRef.current, value, { format: 'CODE128', width: 2, height, displayValue: false, margin: 6, background: '#ffffff', lineColor: '#000000' });
       } catch {
         const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2.2, height: 72, displayValue: false, margin: 10 }); } catch { /* ignore */ }
+        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2, height, displayValue: false, margin: 6 }); } catch { /* ignore */ }
       }
     });
-  }, [value]);
+  }, [value, height]);
   return <svg ref={svgRef} className="w-full" />;
 }
 
-// ─── Barcode Card (un pallet por tarjeta) ────────────────────────────────────
+// ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
-function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCategories }: {
+function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCategories, totalPickers }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; allCategories: string[];
+  totalPickers: number;
 }) {
-  const todayStr = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const storeName = getStoreName(storeCod);
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3 print:mb-0 print:border-0 print:rounded-none print:break-after-page">
-      <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0">
-          <div className="font-barlow-condensed text-[18px] font-bold text-navy uppercase tracking-wide leading-tight">
-            {storeCod} — {getStoreName(storeCod)}
+    <div
+      className="picking-label bg-white border-2 border-gray-200 rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border print:border-gray-400"
+      style={{ maxWidth: 520, margin: '0 auto 16px' }}
+    >
+      <div className="flex flex-col" style={{ padding: '14px 16px 10px', minHeight: 200 }}>
+
+        {/* Top row: picker (izquierda) + número de pallet (derecha) */}
+        <div className="flex items-start justify-between" style={{ marginBottom: 6 }}>
+          <div className="min-w-0 flex-1 pr-3">
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#111', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {pickerLabel}
+            </div>
+            <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>
+              Pickers {totalPickers}
+              {allCategories.length > 0 && <span style={{ marginLeft: 6 }}>{allCategories.join(' · ')}</span>}
+            </div>
           </div>
-          <div className="text-[15px] text-text-2 font-semibold mt-0.5 truncate">{pickerLabel}</div>
+          <div className="shrink-0 text-right">
+            <div className="font-barlow-condensed font-black text-amber-600 leading-none" style={{ fontSize: 48 }}>
+              P-{palletNum}
+            </div>
+            <div style={{ fontSize: 10, color: '#aaa', textAlign: 'right' }}>de {total}</div>
+          </div>
         </div>
-        <div className="text-right ml-2 shrink-0">
-          <div className="font-barlow-condensed text-[36px] font-bold text-amber-600 leading-none">{palletNum}</div>
-          <div className="text-[12px] text-text-3 uppercase">de {total}</div>
+
+        {/* Centro: código de tienda + nombre */}
+        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: '8px 0 6px' }}>
+          <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
+            style={{ fontSize: 'clamp(38px, 9vw, 62px)', letterSpacing: '3px' }}>
+            {storeCod}
+          </div>
+          <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide" style={{ fontSize: 15, marginTop: 4 }}>
+            {storeName}
+          </div>
         </div>
-      </div>
-      <div className="border border-gray-100 rounded-lg p-2 bg-white">
-        <Barcode1D value={value} />
-        <div className="text-center text-[11px] font-mono text-text-3 mt-1 select-all break-all">{value}</div>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5 items-center justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {allCategories.map(c => (
-            <span key={c} className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-[rgba(26,37,80,0.07)] text-navy">{c}</span>
-          ))}
+
+        {/* Código de barras en la parte inferior */}
+        <div style={{ marginTop: 6 }}>
+          <Barcode1D value={value} height={46} />
+          <div style={{ textAlign: 'center', fontSize: 9, fontFamily: 'monospace', color: '#bbb', marginTop: 2, wordBreak: 'break-all', lineHeight: 1.2 }}>
+            {value}
+          </div>
         </div>
-        <div className="text-[11px] text-text-3">{todayStr}</div>
+
       </div>
     </div>
   );
@@ -160,14 +181,16 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCatego
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, refreshingId }: {
+function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, refreshingId, totalPickers }: {
   group: PickerGroup; displayName: string; pallets: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; refreshingId: number | null;
+  totalPickers: number;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
   const refs          = group.operations.map(o => o.name).join('+');
+  const cats          = allCategories.join(',');
   // El nombre se incluye en el barcode. Si no se ingresó, usar el nombre Odoo (group.key)
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
@@ -300,12 +323,13 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
               {Array.from({ length: pallets }, (_, i) => (
                 <BarcodeCard
                   key={i}
-                  value={`${group.storeCod}|${barcodePickerName}|${refs}|P${i + 1}`}
+                  value={`${group.storeCod}|${barcodePickerName}|${refs}|P${i + 1}|${cats}`}
                   palletNum={i + 1}
                   total={pallets}
                   storeCod={group.storeCod}
                   pickerLabel={pickerLabel}
                   allCategories={allCategories}
+                  totalPickers={totalPickers}
                 />
               ))}
             </div>
@@ -644,6 +668,11 @@ export function PickingScreen() {
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
+      <style dangerouslySetInnerHTML={{ __html:
+        '@media print{@page{size:150mm 100mm;margin:0}' +
+        '.picking-label{width:150mm!important;height:100mm!important;max-width:150mm!important;' +
+        'border-radius:0!important;margin:0!important;border:1px solid #ccc!important;}}'
+      }} />
 
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 print:hidden"
@@ -784,6 +813,7 @@ export function PickingScreen() {
                           onPalletsChange={n => setPickerPallets(prev => ({ ...prev, [group.stateKey]: n }))}
                           onRefreshOp={(op) => void refreshOp(op, cod)}
                           refreshingId={refreshingId}
+                          totalPickers={storeGroups.length}
                         />
                       ))}
                     </div>
