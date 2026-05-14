@@ -9,41 +9,28 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PickingOperation {
-  id: number;
-  name: string;
-  origin: string;
-  partner: string;
-  fromLocation: string;
-  toLocation: string;
-  state: string;
-  scheduledDate: string;
-  dateDone: string | null;
-  pickingType: string;
-  responsible: string;
-  responsibleId: number | null;
-  categories: string[];
-  storeCodeFromOrigin: string;
-  originDate: string;
+  id: number; name: string; origin: string; partner: string;
+  fromLocation: string; toLocation: string; state: string;
+  scheduledDate: string; dateDone: string | null; pickingType: string;
+  responsible: string; responsibleId: number | null;
+  categories: string[]; storeCodeFromOrigin: string; originDate: string;
 }
-
-interface PickerGroup {
-  key: string;
-  operations: PickingOperation[];
-}
-
-interface TodayStore {
-  cod: string;
-  name: string;
-  sources: ('rm' | 'regiones')[];
-}
-
+interface PickerGroup { key: string; operations: PickingOperation[]; }
+interface TodayStore { cod: string; name: string; sources: ('rm' | 'regiones')[]; }
 type View = 'search' | 'planilla' | 'barcode';
-
+type StoreGroupKey = 'region' | 'costa' | 'santiago';
 interface OdooConfig { url: string; db: string; username: string; apiKey: string; }
 
 const SAVED_NAMES_KEY = 'picking_saved_picker_names';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const ABAST_KEYWORDS = [
+  { kw: 'Abastecimiento Comida',    cat: 'Comida' },
+  { kw: 'Abastecimiento Aseo',      cat: 'Aseo' },
+  { kw: 'Abastecimiento Chocolate', cat: 'Chocolate' },
+  { kw: 'Abastecimiento Hogar',     cat: 'Hogar' },
+] as const;
 
 const STATE_INFO: Record<string, { label: string; color: string; bg: string; border: string }> = {
   draft:     { label: 'Borrador',   color: '#6B7280', bg: 'rgba(107,114,128,0.10)', border: 'rgba(107,114,128,0.25)' },
@@ -54,24 +41,43 @@ const STATE_INFO: Record<string, { label: string; color: string; bg: string; bor
   cancel:    { label: 'Cancelado',  color: '#DC2626', bg: 'rgba(220,38,38,0.10)',  border: 'rgba(220,38,38,0.30)' },
 };
 
+const GROUP_LABELS: Record<StoreGroupKey, string> = {
+  region: 'Regiones', costa: 'Costa', santiago: 'Santiago',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function parseOrigin(origin: string): { categories: string[]; storeCode: string; originDate: string } {
-  const categories: string[] = [];
-  const catMatch = origin.match(/\(([^)]+)\)/);
-  if (catMatch) catMatch[1].split(',').forEach(c => { const t = c.trim(); if (t) categories.push(t); });
+  const categories: string[] = ABAST_KEYWORDS
+    .filter(({ kw }) => origin.includes(kw))
+    .map(({ cat }) => cat as string);
+  if (categories.length === 0) {
+    const catMatch = origin.match(/\(([^)]+)\)/);
+    if (catMatch) catMatch[1].split(',').forEach(c => { const t = c.trim(); if (t) categories.push(t); });
+  }
   const storeMatch = origin.match(/\b(\d{2}[A-Z]{2,4})\b/);
   const dateMatch = origin.match(/Fecha\((\d{2}\/\d{2}\/\d{4})\)/) ?? origin.match(/(\d{2}\/\d{2}\/\d{4})/);
   return { categories, storeCode: storeMatch?.[1] ?? '', originDate: dateMatch?.[1] ?? '' };
+}
+
+function isAbastecimientoOp(origin: string): boolean {
+  return ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw));
 }
 
 function getStoreName(cod: string): string {
   return TIENDAS_INICIAL[cod]?.n ?? cod;
 }
 
+function getStoreGroup(store: TodayStore): StoreGroupKey {
+  const z = TIENDAS_INICIAL[store.cod]?.z ?? '';
+  if (z === 'Región' || store.sources.includes('regiones')) return 'region';
+  if (z === 'Costa') return 'costa';
+  return 'santiago';
+}
+
 function todayDDMMYYYY(): string {
   const d = new Date();
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dd}/${mm}/${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
 function StateBadge({ state }: { state: string }) {
@@ -84,7 +90,7 @@ function StateBadge({ state }: { state: string }) {
   );
 }
 
-// ─── 1D Barcode (Code128 via JsBarcode) ──────────────────────────────────────
+// ─── 1D Barcode ───────────────────────────────────────────────────────────────
 
 function Barcode1D({ value }: { value: string }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -96,24 +102,25 @@ function Barcode1D({ value }: { value: string }) {
         JsBarcode(svgRef.current, value, { format: 'CODE128', width: 2.5, height: 80, displayValue: false, margin: 12, background: '#ffffff', lineColor: '#000000' });
       } catch {
         const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2.5, height: 80, displayValue: false, margin: 12 }); }
-        catch { /* ignore */ }
+        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2.5, height: 80, displayValue: false, margin: 12 }); } catch { /* ignore */ }
       }
     });
   }, [value]);
   return <svg ref={svgRef} className="w-full" />;
 }
 
-// ─── Barcode Sheet ─────────────────────────────────────────────────────────────
+// ─── Barcode Sheet ────────────────────────────────────────────────────────────
 
-function BarcodeSheet({ group, storeCode, displayName, pallets, onBack }: {
-  group: PickerGroup; storeCode: string; displayName: string; pallets: number; onBack: () => void;
+function BarcodeSheet({ group, storeCode, displayName, pallets, chocolateBoxes, onBack }: {
+  group: PickerGroup; storeCode: string; displayName: string;
+  pallets: number; chocolateBoxes: number; onBack: () => void;
 }) {
   const copies = Math.max(1, pallets);
   const storeName = getStoreName(storeCode);
   const refs = group.operations.map(o => o.name).join('+');
   const pickerLabel = displayName || group.key;
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
+  const hasChocolate = allCategories.includes('Chocolate');
   const todayStr = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
@@ -174,6 +181,12 @@ function BarcodeSheet({ group, storeCode, displayName, pallets, onBack }: {
                     ))}
                   </div>
                 )}
+                {hasChocolate && chocolateBoxes > 0 && (
+                  <div className="flex items-center gap-2 mt-1 pt-1 border-t border-dashed border-amber-200">
+                    <span className="text-[11px] font-bold text-amber-700">🍫 Cajas chocolate:</span>
+                    <span className="font-barlow-condensed text-[20px] font-bold text-amber-600">{chocolateBoxes}</span>
+                  </div>
+                )}
                 <div className="text-[10px] text-text-3">{todayStr}</div>
               </div>
             </div>
@@ -186,13 +199,15 @@ function BarcodeSheet({ group, storeCode, displayName, pallets, onBack }: {
 
 // ─── Picker Group Card ────────────────────────────────────────────────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onGenerateCodes, onRefreshOp, refreshingId }: {
-  group: PickerGroup; displayName: string; pallets: number;
+function PickerGroupCard({ group, displayName, pallets, chocolateBoxes, onNameChange, onPalletsChange, onChocolateChange, onGenerateCodes, onRefreshOp, refreshingId }: {
+  group: PickerGroup; displayName: string; pallets: number; chocolateBoxes: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
+  onChocolateChange: (n: number) => void;
   onGenerateCodes: () => void; onRefreshOp: (op: PickingOperation) => void; refreshingId: number | null;
 }) {
   const allDone = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
+  const hasChocolate = allCategories.includes('Chocolate');
 
   return (
     <div className="bg-white border rounded-card overflow-hidden"
@@ -215,7 +230,11 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
         {allCategories.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {allCategories.map(c => (
-              <span key={c} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[rgba(26,37,80,0.07)] text-navy">{c}</span>
+              <span key={c} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                c === 'Chocolate' ? 'bg-amber-100 text-amber-800' : 'bg-[rgba(26,37,80,0.07)] text-navy'
+              }`}>
+                {c === 'Chocolate' ? '🍫 ' : ''}{c}
+              </span>
             ))}
           </div>
         )}
@@ -233,26 +252,17 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
               {op.categories.length > 0 && (
                 <div className="text-[11px] text-text-3 mt-0.5">{op.categories.join(' · ')}</div>
               )}
-              {/* De → A: full Odoo location names */}
               {(op.fromLocation || op.toLocation) && (
                 <div className="text-[11px] text-text-3 mt-0.5 flex items-center gap-1 flex-wrap">
-                  {op.fromLocation && (
-                    <><span className="font-semibold text-text-2">De:</span>
-                    <span>{op.fromLocation}</span></>
-                  )}
+                  {op.fromLocation && <><span className="font-semibold text-text-2">De:</span><span>{op.fromLocation}</span></>}
                   {op.fromLocation && op.toLocation && <span className="mx-0.5">→</span>}
-                  {op.toLocation && (
-                    <><span className="font-semibold text-text-2">A:</span>
-                    <span className="font-semibold text-navy">{op.toLocation}</span></>
-                  )}
+                  {op.toLocation && <><span className="font-semibold text-text-2">A:</span><span className="font-semibold text-navy">{op.toLocation}</span></>}
                 </div>
               )}
-              {op.origin && (
-                <div className="text-[10px] text-text-3 mt-0.5 truncate">{op.origin}</div>
-              )}
+              {op.origin && <div className="text-[10px] text-text-3 mt-0.5 truncate">{op.origin}</div>}
             </div>
             {op.state !== 'done' && (
-              <button onClick={() => onRefreshOp(op)} disabled={refreshingId === op.id} title="Verificar estado en Odoo"
+              <button onClick={() => onRefreshOp(op)} disabled={refreshingId === op.id}
                 className="text-[11px] shrink-0 border rounded-full px-2 py-1 cursor-pointer disabled:opacity-40"
                 style={{ borderColor: 'rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
                 {refreshingId === op.id ? '⏳' : '↻'}
@@ -262,7 +272,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
         ))}
       </div>
 
-      {/* Name + pallets */}
+      {/* Inputs */}
       <div className="px-4 py-4 space-y-3">
         <div>
           <label className="text-[10px] font-bold text-text-3 uppercase tracking-wide block mb-1">Nombre del picker</label>
@@ -270,6 +280,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
             placeholder={`Nombre real para ${group.key}…`}
             className="w-full border border-border rounded-card px-3 py-2.5 text-[14px] font-barlow text-text bg-white outline-none focus:border-amber-400 transition-colors" />
         </div>
+
         <div>
           <label className="text-[10px] font-bold text-text-3 uppercase tracking-wide block mb-1">Cantidad de pallets</label>
           <div className="flex items-center gap-3">
@@ -283,6 +294,26 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
               className="w-10 h-10 rounded-full border border-border font-bold text-[20px] text-text-2 cursor-pointer bg-bg hover:bg-border flex items-center justify-center transition-colors">+</button>
           </div>
         </div>
+
+        {hasChocolate && (
+          <div>
+            <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wide block mb-1">🍫 Cajas de chocolate</label>
+            <div className="flex items-center gap-3">
+              <button onClick={() => onChocolateChange(Math.max(0, chocolateBoxes - 1))}
+                className="w-10 h-10 rounded-full border font-bold text-[20px] cursor-pointer flex items-center justify-center transition-colors"
+                style={{ borderColor: 'rgba(217,119,6,0.4)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>−</button>
+              <input type="number" min={0} value={chocolateBoxes === 0 ? '' : chocolateBoxes}
+                onChange={e => onChocolateChange(Math.max(0, parseInt(e.target.value) || 0))}
+                placeholder="0"
+                className="flex-1 border rounded-card px-3 py-2.5 text-[22px] font-barlow-condensed font-bold text-center bg-white outline-none transition-colors"
+                style={{ borderColor: 'rgba(217,119,6,0.4)', color: '#D97706' }} />
+              <button onClick={() => onChocolateChange(chocolateBoxes + 1)}
+                className="w-10 h-10 rounded-full border font-bold text-[20px] cursor-pointer flex items-center justify-center transition-colors"
+                style={{ borderColor: 'rgba(217,119,6,0.4)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>+</button>
+            </div>
+          </div>
+        )}
+
         <button onClick={onGenerateCodes} disabled={pallets === 0}
           className="w-full py-3 rounded-card font-barlow-condensed text-[16px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-95"
           style={{ background: pallets > 0 ? 'linear-gradient(135deg, #78350F, #D97706)' : 'rgba(107,114,128,0.3)' }}>
@@ -293,7 +324,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   );
 }
 
-// ─── Left Panel: Tiendas de Hoy ───────────────────────────────────────────────
+// ─── Store List Panel ─────────────────────────────────────────────────────────
 
 function StoreListPanel({ storeCod, loading, pickerGroupsCount, todayStores, storesLoading, onSelectStore }: {
   storeCod: string; loading: boolean; pickerGroupsCount: number;
@@ -302,46 +333,57 @@ function StoreListPanel({ storeCod, loading, pickerGroupsCount, todayStores, sto
 }) {
   const [q, setQ] = useState('');
 
-  // Filter today's stores; if search returns no match, fall back to TIENDAS_INICIAL
-  const { list, isFallback } = useMemo(() => {
+  const { grouped, isFallback } = useMemo(() => {
     const upper = q.trim().toUpperCase();
+    let source: TodayStore[];
+    let fallback = false;
+
     if (todayStores.length > 0) {
       const filtered = upper
         ? todayStores.filter(s => s.cod.includes(upper) || s.name.toUpperCase().includes(upper))
         : todayStores;
-      if (filtered.length > 0) return { list: filtered, isFallback: false };
+      if (filtered.length > 0) {
+        source = filtered;
+      } else {
+        source = Object.entries(TIENDAS_INICIAL)
+          .filter(([cod, info]) => !upper || cod.includes(upper) || info.n.toUpperCase().includes(upper))
+          .map(([cod, info]) => ({ cod, name: info.n, sources: [] as ('rm' | 'regiones')[] }));
+        fallback = true;
+      }
+    } else {
+      source = Object.entries(TIENDAS_INICIAL)
+        .filter(([cod, info]) => !upper || cod.includes(upper) || info.n.toUpperCase().includes(upper))
+        .map(([cod, info]) => ({ cod, name: info.n, sources: [] as ('rm' | 'regiones')[] }));
+      fallback = true;
     }
-    // Fallback: search all known tiendas
-    const all = Object.entries(TIENDAS_INICIAL)
-      .filter(([cod, info]) => !upper || cod.includes(upper) || info.n.toUpperCase().includes(upper))
-      .map(([cod, info]) => ({ cod, name: info.n, sources: [] as ('rm'|'regiones')[] }));
-    return { list: all, isFallback: true };
+
+    const groups: Record<StoreGroupKey, TodayStore[]> = { region: [], costa: [], santiago: [] };
+    for (const store of source) groups[getStoreGroup(store)].push(store);
+    for (const key of Object.keys(groups) as StoreGroupKey[]) {
+      groups[key].sort((a, b) => a.cod.localeCompare(b.cod));
+    }
+    return { grouped: groups, isFallback: fallback };
   }, [q, todayStores]);
 
-  const sourceLabel = (sources: ('rm' | 'regiones')[]) => {
-    if (sources.includes('rm') && sources.includes('regiones')) return 'RM+Reg';
-    if (sources.includes('rm')) return 'RM';
-    if (sources.includes('regiones')) return 'Reg';
-    return null;
+  const GROUP_ORDER: StoreGroupKey[] = ['region', 'costa', 'santiago'];
+
+  const GROUP_STYLE: Record<StoreGroupKey, { bg: string; color: string }> = {
+    region:   { bg: 'rgba(37,99,235,0.07)',  color: '#1D4ED8' },
+    costa:    { bg: 'rgba(16,185,129,0.07)', color: '#059669' },
+    santiago: { bg: 'rgba(26,37,80,0.05)',   color: '#374151' },
   };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-
-      {/* Panel header */}
       <div className="px-3 pt-4 pb-3 border-b border-border flex-shrink-0">
         <div className="font-barlow-condensed text-[13px] font-bold text-navy uppercase tracking-widest mb-2 flex items-center gap-2">
           Tiendas de hoy
           {storesLoading
             ? <span className="text-[10px] text-text-3 font-normal normal-case">cargando…</span>
             : todayStores.length > 0
-              ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[rgba(217,119,6,0.12)] text-amber-700">
-                  {todayStores.length}
-                </span>
+              ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[rgba(217,119,6,0.12)] text-amber-700">{todayStores.length}</span>
               : null}
         </div>
-
-        {/* Search */}
         <div className="flex items-center gap-2 bg-[#F5F6FA] border border-border rounded-card px-3 py-2">
           <svg className="w-3.5 h-3.5 text-text-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -349,61 +391,60 @@ function StoreListPanel({ storeCod, loading, pickerGroupsCount, todayStores, sto
           <input type="text" value={q} onChange={e => setQ(e.target.value)}
             placeholder="Buscar tienda…"
             className="flex-1 bg-transparent border-none outline-none text-[13px] font-barlow text-text min-w-0" />
-          {q && (
-            <button onClick={() => setQ('')} className="text-text-3 border-none bg-transparent cursor-pointer text-[16px] leading-none shrink-0">×</button>
-          )}
+          {q && <button onClick={() => setQ('')} className="text-text-3 border-none bg-transparent cursor-pointer text-[16px] leading-none shrink-0">×</button>}
         </div>
-
-        {/* Fallback note */}
         {isFallback && !storesLoading && (
           <div className="mt-2 text-[10px] text-text-3 italic">
-            {todayStores.length === 0 ? 'Sin despachos hoy — mostrando todas las tiendas' : 'Sin coincidencias en hoy — buscando en todas'}
+            {todayStores.length === 0 ? 'Sin despachos hoy — mostrando todas las tiendas' : 'Sin coincidencias hoy — buscando en todas'}
           </div>
         )}
       </div>
 
-      {/* Store list */}
       <div className="flex-1 overflow-y-auto">
-        {storesLoading && (
-          <div className="px-4 py-6 text-center text-[12px] text-text-3">Cargando despachos de hoy…</div>
-        )}
+        {storesLoading && <div className="px-4 py-6 text-center text-[12px] text-text-3">Cargando despachos de hoy…</div>}
 
-        {!storesLoading && list.map(store => {
-          const isSelected = store.cod === storeCod;
-          const isLoading  = isSelected && loading;
-          const badge      = sourceLabel(store.sources);
+        {!storesLoading && GROUP_ORDER.map(gKey => {
+          const stores = grouped[gKey];
+          if (stores.length === 0) return null;
+          const style = GROUP_STYLE[gKey];
           return (
-            <button key={store.cod} onClick={() => onSelectStore(store.cod)} disabled={isLoading}
-              className="w-full flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 cursor-pointer text-left transition-all hover:bg-[rgba(217,119,6,0.04)] disabled:cursor-wait"
-              style={{
-                background: isSelected ? 'rgba(217,119,6,0.08)' : undefined,
-                borderLeft: `3px solid ${isSelected ? '#D97706' : 'transparent'}`,
-              }}>
-              <span className="font-mono text-[11px] font-bold shrink-0 px-1.5 py-0.5 rounded"
-                style={{
-                  background: isSelected ? 'rgba(217,119,6,0.15)' : 'rgba(26,37,80,0.07)',
-                  color: isSelected ? '#D97706' : '#374151',
-                }}>
-                {store.cod}
-              </span>
-              <span className="text-[12px] truncate flex-1"
-                style={{ color: isSelected ? '#D97706' : '#374151', fontWeight: isSelected ? 600 : 400 }}>
-                {store.name}
-              </span>
-              {badge && (
-                <span className="text-[9px] font-bold px-1 py-0.5 rounded shrink-0"
-                  style={{ background: 'rgba(26,37,80,0.06)', color: '#6B7280' }}>
-                  {badge}
-                </span>
-              )}
-              {isLoading && <span className="text-[12px] shrink-0">⏳</span>}
-              {isSelected && !isLoading && pickerGroupsCount > 0 && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                  style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
-                  {pickerGroupsCount}
-                </span>
-              )}
-            </button>
+            <div key={gKey}>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest sticky top-0 z-10"
+                style={{ background: style.bg, color: style.color, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                {GROUP_LABELS[gKey]} ({stores.length})
+              </div>
+              {stores.map(store => {
+                const isSelected = store.cod === storeCod;
+                const isLoading  = isSelected && loading;
+                return (
+                  <button key={store.cod} onClick={() => onSelectStore(store.cod)} disabled={isLoading}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 cursor-pointer text-left transition-all hover:bg-[rgba(217,119,6,0.04)] disabled:cursor-wait"
+                    style={{ background: isSelected ? 'rgba(217,119,6,0.08)' : undefined, borderLeft: `3px solid ${isSelected ? '#D97706' : 'transparent'}` }}>
+                    <span className="font-mono text-[11px] font-bold shrink-0 px-1.5 py-0.5 rounded"
+                      style={{ background: isSelected ? 'rgba(217,119,6,0.15)' : 'rgba(26,37,80,0.07)', color: isSelected ? '#D97706' : '#374151' }}>
+                      {store.cod}
+                    </span>
+                    <span className="text-[12px] truncate flex-1"
+                      style={{ color: isSelected ? '#D97706' : '#374151', fontWeight: isSelected ? 600 : 400 }}>
+                      {store.name}
+                    </span>
+                    {store.sources.length > 0 && !isFallback && (
+                      <span className="text-[9px] font-bold px-1 py-0.5 rounded shrink-0"
+                        style={{ background: 'rgba(26,37,80,0.06)', color: '#6B7280' }}>
+                        {store.sources.includes('rm') && store.sources.includes('regiones') ? 'RM+Reg' : store.sources.includes('rm') ? 'RM' : 'Reg'}
+                      </span>
+                    )}
+                    {isLoading && <span className="text-[12px] shrink-0">⏳</span>}
+                    {isSelected && !isLoading && pickerGroupsCount > 0 && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
+                        {pickerGroupsCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           );
         })}
       </div>
@@ -422,14 +463,11 @@ export function PickingScreen() {
 
   const [view, setView] = useState<View>('search');
   const [storeCod, setStoreCod] = useState('');
-
   const [operations, setOperations] = useState<PickingOperation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-
-  // Today's tiendas from despacho sheets
   const [todayStores, setTodayStores] = useState<TodayStore[]>([]);
   const [storesLoading, setStoresLoading] = useState(false);
 
@@ -439,40 +477,35 @@ export function PickingScreen() {
     catch { return {}; }
   });
   const [pickerPallets, setPickerPallets] = useState<Record<string, number>>({});
+  const [pickerChocolate, setPickerChocolate] = useState<Record<string, number>>({});
   const [barcodeGroup, setBarcodeGroup] = useState<PickerGroup | null>(null);
+  const [barcodeChocolate, setBarcodeChocolate] = useState(0);
 
   useEffect(() => {
     localStorage.setItem(SAVED_NAMES_KEY, JSON.stringify(pickerDisplayNames));
   }, [pickerDisplayNames]);
 
-  // ── Load today's tiendas from despacho_rm + despacho_regiones ──
   useEffect(() => {
     const today = todayDDMMYYYY();
     setStoresLoading(true);
-
     Promise.allSettled([
       fetch('/api/despacho-records?table=despacho_rm').then(r => r.json()) as Promise<{ data?: { fecha: string; cod: string; tienda: string }[] }>,
       fetch('/api/despacho-records?table=despacho_regiones').then(r => r.json()) as Promise<{ data?: { fecha: string; cod: string; tienda: string }[] }>,
     ]).then(([rmResult, regResult]) => {
       const map = new Map<string, TodayStore>();
-
       const addRows = (rows: { fecha: string; cod: string; tienda: string }[], source: 'rm' | 'regiones') => {
-        rows
-          .filter(r => r.fecha === today && r.cod?.trim())
-          .forEach(r => {
-            const cod = r.cod.trim();
-            if (!map.has(cod)) {
-              map.set(cod, { cod, name: r.tienda?.trim() || getStoreName(cod), sources: [source] });
-            } else if (!map.get(cod)!.sources.includes(source)) {
-              map.get(cod)!.sources.push(source);
-            }
-          });
+        rows.filter(r => r.fecha === today && r.cod?.trim()).forEach(r => {
+          const cod = r.cod.trim();
+          if (!map.has(cod)) {
+            map.set(cod, { cod, name: r.tienda?.trim() || getStoreName(cod), sources: [source] });
+          } else if (!map.get(cod)!.sources.includes(source)) {
+            map.get(cod)!.sources.push(source);
+          }
+        });
       };
-
       if (rmResult.status === 'fulfilled' && Array.isArray(rmResult.value.data)) addRows(rmResult.value.data, 'rm');
       if (regResult.status === 'fulfilled' && Array.isArray(regResult.value.data)) addRows(regResult.value.data, 'regiones');
-
-      setTodayStores([...map.values()].sort((a, b) => a.cod.localeCompare(b.cod)));
+      setTodayStores([...map.values()]);
       setStoresLoading(false);
     });
   }, []);
@@ -489,8 +522,7 @@ export function PickingScreen() {
 
   const fetchOperations = useCallback(async (cod: string) => {
     if (!hasOdoo) { setError('Odoo no configurado.'); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const res = await fetch('/api/odoo', {
         method: 'POST',
@@ -507,10 +539,12 @@ export function PickingScreen() {
         error?: string;
       };
       if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
-      const parsed: PickingOperation[] = (data.pickings ?? []).map(p => {
-        const { categories, storeCode, originDate } = parseOrigin(p.origin);
-        return { ...p, categories, storeCodeFromOrigin: storeCode, originDate };
-      });
+      const parsed: PickingOperation[] = (data.pickings ?? [])
+        .filter(p => isAbastecimientoOp(p.origin))
+        .map(p => {
+          const { categories, storeCode, originDate } = parseOrigin(p.origin);
+          return { ...p, categories, storeCodeFromOrigin: storeCode, originDate };
+        });
       setOperations(parsed);
       setLastRefresh(new Date());
       setView('planilla');
@@ -545,7 +579,6 @@ export function PickingScreen() {
     setRefreshingId(null);
   }, [hasOdoo, odooConfig]);
 
-  // ── Barcode sheet: full-screen takeover ──
   if (view === 'barcode' && barcodeGroup) {
     return (
       <BarcodeSheet
@@ -553,6 +586,7 @@ export function PickingScreen() {
         storeCode={storeCod}
         displayName={pickerDisplayNames[barcodeGroup.key] ?? ''}
         pallets={pickerPallets[barcodeGroup.key] ?? 1}
+        chocolateBoxes={barcodeChocolate}
         onBack={() => { setView('planilla'); setBarcodeGroup(null); }}
       />
     );
@@ -562,76 +596,60 @@ export function PickingScreen() {
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
-
-      {/* ── Header (full width) ── */}
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #78350F 0%, #D97706 100%)', boxShadow: '0 2px 16px rgba(217,119,6,0.35)' }}>
-
         <button className="lg:hidden border-none bg-white/15 text-white text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full"
           onClick={() => view === 'planilla' ? setView('search') : router.push('/')}>
           {view === 'planilla' ? '← Tiendas' : '← Inicio'}
         </button>
         <button className="hidden lg:inline-flex border-none bg-white/15 text-white text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full"
-          onClick={() => router.push('/')}>
-          ← Inicio
-        </button>
-
+          onClick={() => router.push('/')}>← Inicio</button>
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
           <div className="text-[11px] text-white/50 uppercase tracking-widest truncate">
             {storeCod ? `${storeCod} · ${getStoreName(storeCod)} · ${todayLabel}` : `Supervisión · ${profile?.full_name ?? ''}`}
           </div>
         </div>
-
         <button onClick={() => router.push('/perfil')}
           className="border-none bg-white/12 text-white/80 text-[12px] cursor-pointer px-3 py-1.5 rounded-full shrink-0">👤</button>
         <button onClick={async () => { await signOut(); router.push('/login'); }}
           className="border-none bg-white/10 text-white/70 text-[12px] cursor-pointer font-barlow px-3 py-1.5 rounded-full shrink-0">Salir</button>
       </div>
 
-      {/* ── Split body ── */}
       <div className="flex-1 flex overflow-hidden">
-
-        {/* LEFT PANEL — mobile: shown on 'search', desktop: always */}
+        {/* LEFT PANEL */}
         <div className={[
           'flex flex-col bg-white border-r border-border shrink-0 overflow-hidden',
           'w-full lg:w-72 xl:w-80',
           view === 'planilla' ? 'hidden lg:flex' : 'flex',
         ].join(' ')}>
           <StoreListPanel
-            storeCod={storeCod}
-            loading={loading}
-            pickerGroupsCount={pickerGroups.length}
-            todayStores={todayStores}
-            storesLoading={storesLoading}
+            storeCod={storeCod} loading={loading} pickerGroupsCount={pickerGroups.length}
+            todayStores={todayStores} storesLoading={storesLoading}
             onSelectStore={handleSelectStore}
           />
         </div>
 
-        {/* RIGHT PANEL — mobile: shown on 'planilla', desktop: always */}
+        {/* RIGHT PANEL */}
         <div className={[
           'flex flex-col flex-1 overflow-hidden',
           view === 'search' ? 'hidden lg:flex' : 'flex',
         ].join(' ')}>
-
-          {/* Desktop empty state */}
           {view === 'search' && (
             <div className="m-auto text-center px-8 py-12">
               <div className="text-[52px] mb-4">🏪</div>
               <div className="font-barlow-condensed text-[22px] font-bold text-text-2 mb-2">Selecciona una tienda</div>
               <div className="text-[13px] text-text-3 max-w-xs mx-auto">
-                Elige una tienda del panel izquierdo para ver las operaciones de picking de hoy.
+                Elige una tienda del panel izquierdo para ver las operaciones de hoy.
               </div>
               {!hasOdoo && (
                 <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-card px-4 py-3 text-[12px] text-red text-left inline-block">
-                  <span className="font-bold">Odoo no configurado.</span><br />
-                  <code className="text-[11px]">NEXT_PUBLIC_ODOO_URL · DB · USERNAME · API_KEY</code>
+                  <span className="font-bold">Odoo no configurado.</span>
                 </div>
               )}
             </div>
           )}
 
-          {/* Planilla */}
           {view === 'planilla' && (
             <div className="flex-1 overflow-y-auto px-4 pb-10">
               <div className="mt-4 flex items-center justify-between">
@@ -661,9 +679,9 @@ export function PickingScreen() {
               {pickerGroups.length === 0 && !loading && (
                 <div className="mt-8 text-center">
                   <div className="text-[40px] mb-3">📦</div>
-                  <div className="font-barlow-condensed text-[18px] font-bold text-text-2">Sin operaciones para hoy</div>
+                  <div className="font-barlow-condensed text-[18px] font-bold text-text-2">Sin operaciones de Abastecimiento</div>
                   <div className="text-[13px] text-text-3 mt-1">
-                    No hay operaciones de picking {storeCod ? `para ${storeCod}` : ''} en Odoo para hoy.
+                    No hay operaciones de Comida, Aseo, Chocolate o Hogar para {storeCod || 'esta tienda'} hoy.
                   </div>
                 </div>
               )}
@@ -675,9 +693,15 @@ export function PickingScreen() {
                     group={group}
                     displayName={pickerDisplayNames[group.key] ?? ''}
                     pallets={pickerPallets[group.key] ?? 0}
+                    chocolateBoxes={pickerChocolate[group.key] ?? 0}
                     onNameChange={name => setPickerDisplayNames(prev => ({ ...prev, [group.key]: name }))}
                     onPalletsChange={n => setPickerPallets(prev => ({ ...prev, [group.key]: n }))}
-                    onGenerateCodes={() => { setBarcodeGroup(group); setView('barcode'); }}
+                    onChocolateChange={n => setPickerChocolate(prev => ({ ...prev, [group.key]: n }))}
+                    onGenerateCodes={() => {
+                      setBarcodeGroup(group);
+                      setBarcodeChocolate(pickerChocolate[group.key] ?? 0);
+                      setView('barcode');
+                    }}
                     onRefreshOp={refreshOp}
                     refreshingId={refreshingId}
                   />
