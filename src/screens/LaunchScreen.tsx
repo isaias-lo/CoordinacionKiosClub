@@ -10,31 +10,6 @@ const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda',
 };
 
-function ModuleCard({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl overflow-hidden transition-all"
-         style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${open ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)'}` }}>
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 cursor-pointer transition-all active:scale-[0.98]"
-        style={{ height: 52, background: open ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
-        <span className="font-barlow-condensed text-sm font-bold tracking-[0.18em] uppercase"
-              style={{ color: open ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.45)' }}>
-          {label}
-        </span>
-        <span className="text-[11px] transition-transform duration-200"
-              style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', display: 'inline-block' }}>
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className="px-3 pb-3">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function LaunchScreen() {
   const { dispatch } = useApp();
@@ -42,10 +17,7 @@ export function LaunchScreen() {
   const { profile, signOut } = useAuth();
   const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
   const [pendingCount, setPendingCount] = useState(0);
-  const [openModule, setOpenModule] = useState<'despacho' | 'control' | null>(null);
-
-  const toggleModule = (m: 'despacho' | 'control') =>
-    setOpenModule(prev => prev === m ? null : m);
+  const [activeModule, setActiveModule] = useState<'despacho' | 'control'>('despacho');
 
   const isAdmin     = profile?.role === 'admin';
   const isRecepcion = profile?.role === 'recepcion-tienda';
@@ -120,65 +92,87 @@ export function LaunchScreen() {
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-sm mb-8 flex flex-col gap-3">
+        <div className="w-full max-w-sm mb-8 flex flex-col gap-4">
 
-          {/* ── Módulo DESPACHO ── */}
-          <ModuleCard label="Despacho" open={openModule === 'despacho'} onToggle={() => toggleModule('despacho')}>
-            <div className="grid grid-cols-2 gap-2.5 mt-1" style={{ gridAutoRows: '76px' }}>
+          {/* ── Tab selector ── */}
+          <div className="flex rounded-2xl p-1 gap-1"
+               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}>
+            {(['despacho', 'control'] as const).map(m => {
+              const active = activeModule === m;
+              const label  = m === 'despacho' ? 'Despacho' : 'Control Interno';
+              return (
+                <button key={m} onClick={() => setActiveModule(m)}
+                  className="flex-1 rounded-xl py-2.5 cursor-pointer transition-all active:scale-[0.97]"
+                  style={{
+                    background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
+                    border: active ? '1px solid rgba(255,255,255,0.18)' : '1px solid transparent',
+                    boxShadow: active ? '0 2px 12px rgba(0,0,0,0.25)' : 'none',
+                  }}>
+                  <span className="font-barlow-condensed text-sm font-bold tracking-[0.15em] uppercase"
+                        style={{ color: active ? '#fff' : 'rgba(255,255,255,0.38)' }}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Contenido del tab activo ── */}
+          {activeModule === 'despacho' && (
+            <div className="grid grid-cols-2 gap-2.5" style={{ gridAutoRows: '82px' }}>
 
               <button onClick={goToRegiones}
-                className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
-                style={{ background: '#D32F2F', boxShadow: '0 6px 18px rgba(211,47,47,0.35)' }}>
+                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
+                style={{ background: '#D32F2F', boxShadow: '0 6px 20px rgba(211,47,47,0.38)' }}>
                 <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Bodega Regiones</div>
                 <div className="text-[11px] text-white/60 mt-0.5">Despacho nacional</div>
               </button>
 
               <button onClick={() => router.push('/despacho/santiago')}
-                className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-info/40"
-                style={{ background: 'rgba(37,99,235,0.18)', boxShadow: '0 6px 18px rgba(37,99,235,0.22)' }}>
+                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-info/40"
+                style={{ background: 'rgba(37,99,235,0.18)', boxShadow: '0 6px 20px rgba(37,99,235,0.25)' }}>
                 <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Bodega Santiago</div>
                 <div className="text-[11px] text-white/60 mt-0.5">Despacho local RM</div>
               </button>
 
               <button onClick={() => router.push('/despacho')}
-                className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(34,197,94,0.50)]"
-                style={{ background: 'rgba(34,197,94,0.16)', boxShadow: '0 6px 18px rgba(34,197,94,0.18)' }}>
+                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(34,197,94,0.50)]"
+                style={{ background: 'rgba(34,197,94,0.16)', boxShadow: '0 6px 20px rgba(34,197,94,0.20)' }}>
                 <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Enrutador</div>
                 <div className="text-[11px] text-white/60 mt-0.5">Sistema de enrutamiento</div>
               </button>
 
               <button onClick={() => router.push('/despacho/estado')}
-                className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.50)]"
-                style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 6px 18px rgba(245,158,11,0.16)' }}>
+                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.50)]"
+                style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 6px 20px rgba(245,158,11,0.18)' }}>
                 <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Estado / Seguimiento</div>
                 <div className="text-[11px] text-white/60 mt-0.5">Etiquetas · Guías · QR</div>
               </button>
 
             </div>
-          </ModuleCard>
+          )}
 
-          {/* ── Módulo CONTROL INTERNO ── */}
-          <ModuleCard label="Control Interno" open={openModule === 'control'} onToggle={() => toggleModule('control')}>
-            <div className="grid gap-2.5 mt-1" style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gridAutoRows: '76px' }}>
+          {activeModule === 'control' && (
+            <div className="grid gap-2.5" style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gridAutoRows: '82px' }}>
 
               <button onClick={() => router.push('/tiendas')}
-                className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-                style={{ background: 'rgba(16,185,129,0.18)', boxShadow: '0 6px 18px rgba(16,185,129,0.18)' }}>
+                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
+                style={{ background: 'rgba(16,185,129,0.18)', boxShadow: '0 6px 20px rgba(16,185,129,0.20)' }}>
                 <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Tiendas</div>
                 <div className="text-[11px] text-white/60 mt-0.5">Recepción de despacho</div>
               </button>
 
               {isAdmin && (
                 <button onClick={() => router.push('/auditoria')}
-                  className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(124,58,237,0.50)]"
-                  style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 6px 18px rgba(124,58,237,0.18)' }}>
+                  className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(124,58,237,0.50)]"
+                  style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 6px 20px rgba(124,58,237,0.20)' }}>
                   <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
                   <div className="text-[11px] text-white/60 mt-0.5">Control de calidad pallets</div>
                 </button>
               )}
 
             </div>
-          </ModuleCard>
+          )}
 
         </div>
       )}
