@@ -241,6 +241,78 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    /* ── picking_today_operations ── */
+    if (action === 'picking_today_operations') {
+      const storeCod = (query || '').trim().toUpperCase();
+
+      // Build today's date range in UTC (Odoo stores datetimes in UTC)
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      const domain: unknown[] = [
+        ['state', 'not in', ['draft', 'cancel']],
+        ['scheduled_date', '>=', todayStr + ' 00:00:00'],
+        ['scheduled_date', '<=', todayStr + ' 23:59:59'],
+      ];
+      if (storeCod) {
+        domain.push(['origin', 'ilike', storeCod]);
+      } else {
+        domain.push(['picking_type_id.name', 'ilike', 'pick']);
+      }
+
+      const pickings = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
+          fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
+                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
+          limit: 50,
+          order: 'scheduled_date asc',
+        }],
+      })) as Array<{
+        id: number; name: string; origin: string | false;
+        partner_id: [number, string] | false;
+        location_id: [number, string]; location_dest_id: [number, string];
+        state: string; scheduled_date: string | false; date_done: string | false;
+        picking_type_id: [number, string];
+        user_id: [number, string] | false;
+      }>;
+
+      return NextResponse.json({
+        pickings: pickings.map(p => ({
+          id: p.id,
+          name: p.name,
+          origin: typeof p.origin === 'string' ? p.origin : '',
+          partner: Array.isArray(p.partner_id) ? p.partner_id[1] : '',
+          fromLocation: Array.isArray(p.location_id) ? p.location_id[1] : '',
+          toLocation: Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
+          state: p.state,
+          scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
+          dateDone: typeof p.date_done === 'string' ? p.date_done : null,
+          pickingType: Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
+          responsible: Array.isArray(p.user_id) ? p.user_id[1] : '',
+          responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
+        })),
+      });
+    }
+
+    /* ── picking_check_state ── */
+    if (action === 'picking_check_state') {
+      if (!query) return NextResponse.json({ error: 'Referencia requerida' }, { status: 400 });
+      const result = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read',
+          [[['name', '=', query]]],
+          { fields: ['name', 'state', 'date_done'], limit: 1 },
+        ],
+      })) as Array<{ id: number; name: string; state: string; date_done: string | false }>;
+      if (!result.length) return NextResponse.json({ error: 'Operación no encontrada' }, { status: 404 });
+      return NextResponse.json({
+        state: result[0].state,
+        dateDone: typeof result[0].date_done === 'string' ? result[0].date_done : null,
+      });
+    }
+
     return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 });
 
   } catch (err) {

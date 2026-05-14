@@ -7,7 +7,7 @@ import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
 
 const ROLE_LABEL: Record<string, string> = {
-  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda',
+  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda', 'supervisor-picking': 'Supervisor Picking',
 };
 
 export function LaunchScreen() {
@@ -17,8 +17,9 @@ export function LaunchScreen() {
   const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
   const [pendingCount, setPendingCount] = useState(0);
 
-  const isAdmin        = profile?.role === 'admin';
-  const isRecepcion    = profile?.role === 'recepcion-tienda';
+  const isAdmin           = profile?.role === 'admin';
+  const isRecepcion       = profile?.role === 'recepcion-tienda';
+  const isSupervisorPick  = profile?.role === 'supervisor-picking';
 
   const loadPending = useCallback(async () => {
     if (!isAdmin) return;
@@ -88,6 +89,16 @@ export function LaunchScreen() {
             <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
           </button>
         </div>
+      ) : isSupervisorPick ? (
+        <div className="w-full max-w-sm mb-8">
+          <button
+            onClick={() => router.push('/picking')}
+            className="w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
+            style={{ height: 88, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
+            <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-8" style={{ gridAutoRows: '88px' }}>
           <button onClick={goToRegiones}
@@ -120,6 +131,17 @@ export function LaunchScreen() {
               style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 8px 24px rgba(124,58,237,0.20)' }}>
               <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
               <div className="text-xs text-white/60 mt-1">Control de calidad pallets</div>
+            </button>
+          )}
+          {!isAdmin && <div />}
+
+          {isAdmin && (
+            <button
+              onClick={() => router.push('/picking')}
+              className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
+              style={{ background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.25)' }}>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
+              <div className="text-xs text-white/60 mt-1">Supervisión operaciones</div>
             </button>
           )}
           {!isAdmin && <div />}
