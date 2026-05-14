@@ -10,7 +10,7 @@ const NAV_TABS = [
   { label: 'INICIO',    path: '/',                    color: 'bg-white/12 border-white/20' },
   { label: 'SANTIAGO',  path: '/despacho/santiago',   color: 'bg-[rgba(37,99,235,0.22)] border-[rgba(37,99,235,0.50)]' },
   { label: 'REGIONES',  path: '/despacho/regiones',   color: 'bg-[rgba(211,47,47,0.22)] border-[rgba(211,47,47,0.50)]' },
-  { label: 'DESPACHO',  path: '/despacho',            color: 'bg-[rgba(34,197,94,0.18)] border-[rgba(34,197,94,0.40)]' },
+  { label: 'ENRUTADOR', path: '/despacho',            color: 'bg-[rgba(34,197,94,0.18)] border-[rgba(34,197,94,0.40)]' },
   { label: 'AUDITORÍA', path: '/auditoria',           color: 'bg-[rgba(124,58,237,0.22)] border-[rgba(124,58,237,0.50)]' },
 ];
 
