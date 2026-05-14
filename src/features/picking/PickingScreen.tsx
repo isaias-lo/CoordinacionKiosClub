@@ -134,17 +134,17 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCatego
       className="picking-label bg-white border-2 border-gray-200 rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border print:border-gray-400"
       style={{ maxWidth: 520, margin: '0 auto 16px' }}
     >
-      <div className="flex flex-col" style={{ padding: '14px 16px 10px', minHeight: 200 }}>
+      <div className="flex flex-col" style={{ padding: '12px 14px 8px', minHeight: 200 }}>
 
         {/* Top row: picker (izquierda) + número de pallet (derecha) */}
-        <div className="flex items-start justify-between" style={{ marginBottom: 6 }}>
+        <div className="flex items-start justify-between" style={{ marginBottom: 4 }}>
           <div className="min-w-0 flex-1 pr-3">
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#111', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {/* Nombre del picker — letra grande */}
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#111', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {pickerLabel}
             </div>
-            <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 2, fontWeight: 500 }}>
               Pickers {totalPickers}
-              {allCategories.length > 0 && <span style={{ marginLeft: 6 }}>{allCategories.join(' · ')}</span>}
             </div>
           </div>
           <div className="shrink-0 text-right">
@@ -155,10 +155,23 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCatego
           </div>
         </div>
 
+        {/* Categorías — prominentes */}
+        {allCategories.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+            {allCategories.map(c => (
+              <span key={c} style={{
+                fontSize: 16, fontWeight: 800, color: '#1A2550',
+                background: 'rgba(26,37,80,0.09)', borderRadius: 6,
+                padding: '2px 10px', letterSpacing: '0.5px',
+              }}>{c}</span>
+            ))}
+          </div>
+        )}
+
         {/* Centro: código de tienda + nombre */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: '8px 0 6px' }}>
+        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: '4px 0' }}>
           <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
-            style={{ fontSize: 'clamp(38px, 9vw, 62px)', letterSpacing: '3px' }}>
+            style={{ fontSize: 'clamp(36px, 9vw, 60px)', letterSpacing: '3px' }}>
             {storeCod}
           </div>
           <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide" style={{ fontSize: 15, marginTop: 4 }}>
@@ -167,9 +180,9 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCatego
         </div>
 
         {/* Código de barras en la parte inferior */}
-        <div style={{ marginTop: 6 }}>
-          <Barcode1D value={value} height={46} />
-          <div style={{ textAlign: 'center', fontSize: 9, fontFamily: 'monospace', color: '#bbb', marginTop: 2, wordBreak: 'break-all', lineHeight: 1.2 }}>
+        <div style={{ marginTop: 4 }}>
+          <Barcode1D value={value} height={44} />
+          <div style={{ textAlign: 'center', fontSize: 9, fontFamily: 'monospace', color: '#bbb', marginTop: 1, wordBreak: 'break-all', lineHeight: 1.2 }}>
             {value}
           </div>
         </div>

@@ -374,53 +374,57 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
   );
 }
 
-/* ── Barcode Scanner para autocompletar operación ── */
+/* ── Barcode Scanner para autocompletar operación (pistola lectora) ── */
 function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
-  const [open, setOpen]         = useState(false);
   const [value, setValue]       = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // La pistola emite los caracteres del código muy rápido y luego un Enter automático
   const tryParse = (raw: string) => {
     const ok = onScan(raw.trim());
     setFeedback(ok
-      ? { ok: true,  msg: '✓ Código leído correctamente' }
-      : { ok: false, msg: '✗ Formato no reconocido (esperado: COD|Picker|Refs|P#|Cats)' }
+      ? { ok: true,  msg: '✓ Tienda, picker y contenido asignados' }
+      : { ok: false, msg: '✗ Código no reconocido' }
     );
     setValue('');
-    setTimeout(() => setFeedback(null), 2500);
+    setTimeout(() => setFeedback(null), 3000);
   };
 
   return (
-    <div className="mb-2">
-      <button
-        type="button"
-        onClick={() => { setOpen(o => !o); if (!open) setTimeout(() => inputRef.current?.focus(), 80); }}
-        className="w-full flex items-center gap-2 py-2.5 px-3 rounded-btn border-[1.5px] cursor-pointer transition-all"
-        style={{ borderStyle: 'dashed', borderColor: 'rgba(37,99,235,0.40)', background: 'rgba(37,99,235,0.04)', color: '#2563EB', fontSize: 13, fontWeight: 600 }}>
-        <span style={{ fontSize: 16 }}>📷</span>
-        {open ? 'Ocultar escáner' : 'Autocompletar con código de barra del pallet'}
-      </button>
-      {open && (
-        <div className="mt-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && value.trim()) tryParse(value); }}
-            placeholder="Escanea el código de barra del pallet…"
-            className="w-full bg-white border-[1.5px] border-info rounded-btn px-3 py-2.5 font-mono text-[13px] outline-none focus:border-navy"
-            style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
-          />
-          <div className="text-[11px] text-text-3 mt-1">Apunta el lector al código e irá al campo automáticamente (Enter o trigger del lector)</div>
-          {feedback && (
-            <div className="mt-1 text-[12px] font-semibold" style={{ color: feedback.ok ? '#16A34A' : '#D32F2F' }}>
-              {feedback.msg}
-            </div>
-          )}
-        </div>
-      )}
+    <div className="mb-3 rounded-card overflow-hidden border-[1.5px]"
+      style={{ borderColor: 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)' }}>
+      <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
+        <span style={{ fontSize: 15 }}>📷</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Pistola lectora — apunta al código del pallet
+        </span>
+      </div>
+      <div className="px-3 pb-2.5">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) tryParse(value); }}
+          placeholder="Listo para escanear…"
+          className="w-full bg-white border-[1.5px] rounded-btn px-3 py-2.5 font-mono text-[14px] outline-none"
+          style={{ borderColor: feedback?.ok ? '#16A34A' : feedback ? '#D32F2F' : 'rgba(37,99,235,0.40)', boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        {feedback ? (
+          <div className="mt-1 text-[12px] font-semibold" style={{ color: feedback.ok ? '#16A34A' : '#D32F2F' }}>
+            {feedback.msg}
+          </div>
+        ) : (
+          <div className="mt-1 text-[11px]" style={{ color: 'rgba(37,99,235,0.55)' }}>
+            Asigna tienda, picker y contenido automáticamente
+          </div>
+        )}
+      </div>
     </div>
   );
 }
