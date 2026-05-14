@@ -33,8 +33,8 @@ const EMPTY: Tienda = {
 };
 
 const S = {
-  page: { minHeight: '100vh', background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', padding: '20px 16px 40px' } as React.CSSProperties,
-  header: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 } as React.CSSProperties,
+  page: { position: 'fixed', inset: 0, overflowY: 'auto', background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', padding: '20px 16px 40px' } as React.CSSProperties,
+  header: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' } as React.CSSProperties,
   backBtn: { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, color: '#fff', padding: '8px 14px', fontSize: 13, cursor: 'pointer' } as React.CSSProperties,
   title: { color: '#fff', fontSize: 20, fontWeight: 700, flex: 1 } as React.CSSProperties,
   card: { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: '14px 16px', marginBottom: 10 } as React.CSSProperties,
@@ -72,6 +72,7 @@ export default function TiendasAdminPage() {
   const [modal,      setModal]      = useState<'add' | 'edit' | null>(null);
   const [form,       setForm]       = useState<Tienda>(EMPTY);
   const [saving,     setSaving]     = useState(false);
+  const [skipped,    setSkipped]    = useState<{ row: number; raw: string; reason: string }[]>([]);
 
   const isAdmin = profile?.role === 'admin';
 
@@ -91,11 +92,13 @@ export default function TiendasAdminPage() {
   async function handleSync() {
     setSyncing(true);
     setMsg('');
+    setSkipped([]);
     try {
       const res  = await fetch('/api/tiendas/sync', { method: 'POST' });
-      const data = await res.json() as { ok?: boolean; synced?: number; error?: string };
+      const data = await res.json() as { ok?: boolean; synced?: number; error?: string; skipped?: { row: number; raw: string; reason: string }[] };
       if (data.ok) {
-        setMsg(`✓ Sincronizado: ${data.synced} tiendas`);
+        setMsg(`✓ Sincronizado: ${data.synced} tiendas${data.skipped?.length ? ` · ${data.skipped.length} saltadas` : ''}`);
+        setSkipped(data.skipped ?? []);
         await load();
       } else {
         setMsg(`Error: ${data.error}`);
@@ -175,8 +178,24 @@ export default function TiendasAdminPage() {
       </div>
 
       {msg && (
-        <div style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: 10, color: '#34D399', padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+        <div style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: 10, color: '#34D399', padding: '10px 14px', marginBottom: skipped.length ? 8 : 14, fontSize: 13 }}>
           {msg}
+        </div>
+      )}
+
+      {skipped.length > 0 && (
+        <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <div style={{ color: '#F87171', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+            ⚠️ {skipped.length} fila{skipped.length > 1 ? 's' : ''} no importada{skipped.length > 1 ? 's' : ''} — código no reconocido:
+          </div>
+          {skipped.map((s, i) => (
+            <div key={i} style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 4 }}>
+              Fila {s.row}: <span style={{ color: '#FCA5A5', fontFamily: 'monospace' }}>{s.raw}</span> — {s.reason}
+            </div>
+          ))}
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 8 }}>
+            Puedes agregarlas manualmente con el botón + Nueva si el código tiene un formato distinto.
+          </div>
         </div>
       )}
 

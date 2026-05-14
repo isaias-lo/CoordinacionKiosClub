@@ -26,6 +26,18 @@ function parseFloat_(s: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+// Same normalization as norm() in helpers.ts — strips accents incl. Ñ→N
+function normalizeCod(raw: string): string {
+  return raw.trim().toUpperCase()
+    .replace(/Ñ/g, 'N')
+    .replace(/[ÁÀÂÄ]/g, 'A').replace(/[ÉÈÊË]/g, 'E')
+    .replace(/[ÍÌÎÏ]/g, 'I').replace(/[ÓÒÔÖ]/g, 'O')
+    .replace(/[ÚÙÛÜ]/g, 'U');
+}
+
+// Valid store code: 0-2 digits, 2-4 uppercase ASCII letters, optional digit
+const COD_RE = /^[0-9]{0,2}[A-Z]{2,5}[0-9]?$/;
+
 export async function POST() {
   try {
     const auth = getAuth();
@@ -37,15 +49,23 @@ export async function POST() {
     });
 
     const values = response.data.values ?? [];
-    // Find first data row (skip headers — detect by looking for a valid código pattern)
-    const COD_RE = /^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/;
-
     const rows: Record<string, unknown>[] = [];
+    const skipped: { row: number; raw: string; reason: string }[] = [];
+
     for (let i = 0; i < values.length; i++) {
       const row = values[i];
       if (!row || !row[0]) continue;
-      const cod = String(row[0]).trim().toUpperCase();
-      if (!COD_RE.test(cod)) continue;
+
+      const raw = String(row[0]).trim();
+      const cod = normalizeCod(raw);
+
+      if (!COD_RE.test(cod)) {
+        // Only report rows that look like they might be tiendas (not obvious headers)
+        if (raw && !/^(CÓDIGO|COD|TIENDA|NOMBRE|#)/i.test(raw)) {
+          skipped.push({ row: i + 1, raw, reason: `Código "${cod}" no coincide con formato esperado` });
+        }
+        continue;
+      }
 
       const lat = parseFloat_(row[10] ?? '');
       const lon = parseFloat_(row[11] ?? '');
@@ -61,8 +81,8 @@ export async function POST() {
         ventana:        row[7]?.trim() ?? '',
         frecuencia:     row[8]?.trim() ?? '',
         prom_por_dia:   row[9]?.trim() ?? '',
-        lat:            lat,
-        lon:            lon,
+        lat,
+        lon,
         correos:        row[12]?.trim() ?? '',
         tel_encargado:  row[13]?.trim() ?? '',
         supervisor:     row[14]?.trim() ?? '',
@@ -73,14 +93,14 @@ export async function POST() {
     }
 
     if (!rows.length) {
-      return NextResponse.json({ ok: false, message: 'No se encontraron tiendas en el Sheet' });
+      return NextResponse.json({ ok: false, message: 'No se encontraron tiendas en el Sheet', skipped });
     }
 
     const sb = supabaseServer();
     const { error } = await sb.from('tiendas').upsert(rows, { onConflict: 'codigo' });
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, synced: rows.length });
+    return NextResponse.json({ ok: true, synced: rows.length, skipped });
   } catch (err) {
     console.error('[POST /api/tiendas/sync]', err);
     return NextResponse.json({ error: 'Error al sincronizar tiendas' }, { status: 500 });
