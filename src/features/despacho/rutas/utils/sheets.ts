@@ -44,9 +44,20 @@ export function parseTSheet(t: any, tiendas: Record<string, TiendaInfo>, gps: Re
     if (!c || !/^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(c)) return;
     if (!tiendas[c]) tiendas[c] = { n: '', z: '', v: '' };
     if (r.c[1]?.v) tiendas[c].n = String(r.c[1].v);
+    if (r.c[2]?.v) tiendas[c].d = String(r.c[2].v);
+    if (r.c[3]?.v) tiendas[c].region = String(r.c[3].v);
     if (r.c[5]?.v) tiendas[c].z = String(r.c[5].v).trim();
     else if (r.c[4]?.v) tiendas[c].z = String(r.c[4].v).trim();
+    if (r.c[5]?.v) tiendas[c].corredor = String(r.c[5].v).trim();
+    if (r.c[6]?.v) tiendas[c].tipo = String(r.c[6].v);
     if (r.c[7]?.v) tiendas[c].v = String(r.c[7].v);
+    if (r.c[8]?.v) tiendas[c].frecuencia = String(r.c[8].v);
+    // index 12 = CORREOS (added between LON and TEL ENCARGADO)
+    if (r.c[12]?.v) tiendas[c].correos = String(r.c[12].v);
+    if (r.c[13]?.v) tiendas[c].tel_encargado = String(r.c[13].v);
+    if (r.c[14]?.v) tiendas[c].supervisor = String(r.c[14].v);
+    if (r.c[15]?.v) tiendas[c].tel_supervisor = String(r.c[15].v);
+    if (r.c[16]?.v) tiendas[c].transportista = String(r.c[16].v);
     tiendas[c].activo = (r.c[17]?.v ? String(r.c[17].v).toUpperCase().trim() : 'SI') !== 'NO';
     const lat = r.c[10]?.v ? parseFloat(String(r.c[10].v).replace(',','.')) : null;
     const lon = r.c[11]?.v ? parseFloat(String(r.c[11].v).replace(',','.')) : null;
@@ -97,23 +108,34 @@ export function parseCalendario(t: any): Record<string, {rm:string[];costa:strin
 // ── Authenticated API Parsers ───────────────────────────────────────
 export function parseTSheetAuth(values: string[][], tiendas: Record<string, TiendaInfo>, gps: Record<string, number[]>) {
   if (!values || values.length < 3) return;
-  
+
   // Skip header rows, find data starting from row 2 (index 2)
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
     if (!row || row.length < 3) continue;
-    
+
     const cod = norm(row[0]);
     if (!cod || !/^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(cod)) continue;
-    
+
     if (!tiendas[cod]) tiendas[cod] = { n: '', z: '', v: '' };
     if (row[1]) tiendas[cod].n = row[1];
-    if (row[4]) tiendas[cod].z = row[4].trim();
+    if (row[2]) tiendas[cod].d = row[2];
+    if (row[3]) tiendas[cod].region = row[3];
     if (row[5]) tiendas[cod].z = row[5].trim();
+    else if (row[4]) tiendas[cod].z = row[4].trim();
+    if (row[5]) tiendas[cod].corredor = row[5].trim();
+    if (row[6]) tiendas[cod].tipo = row[6];
     if (row[7]) tiendas[cod].v = row[7];
+    if (row[8]) tiendas[cod].frecuencia = row[8];
+    // index 12 = CORREOS (added between LON and TEL ENCARGADO)
+    if (row[12]) tiendas[cod].correos = row[12];
+    if (row[13]) tiendas[cod].tel_encargado = row[13];
+    if (row[14]) tiendas[cod].supervisor = row[14];
+    if (row[15]) tiendas[cod].tel_supervisor = row[15];
+    if (row[16]) tiendas[cod].transportista = row[16];
     const actVal = row[17] ? row[17].toUpperCase().trim() : 'SI';
     tiendas[cod].activo = actVal !== 'NO';
-    
+
     const lat = row[10] ? parseFloat(row[10].replace(',', '.')) : null;
     const lon = row[11] ? parseFloat(row[11].replace(',', '.')) : null;
     if (lat && lon && !isNaN(lat) && !isNaN(lon) && lat > -60 && lat < -17 && lon > -76 && lon < -66) {

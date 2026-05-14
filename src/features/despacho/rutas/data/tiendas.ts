@@ -1,4 +1,22 @@
-export interface TiendaInfo { n: string; z: string; v: string; d?: string; activo?: boolean; corredor?: string; _parada?: boolean; _tipo?: string; _desc?: string; }
+export interface TiendaInfo {
+  n: string;        // nombre
+  z: string;        // sector/comuna (zona)
+  v: string;        // ventana horaria
+  d?: string;       // dirección
+  activo?: boolean;
+  corredor?: string;
+  region?: string;
+  tipo?: string;
+  frecuencia?: string;
+  correos?: string;
+  tel_encargado?: string;
+  supervisor?: string;
+  tel_supervisor?: string;
+  transportista?: string;
+  _parada?: boolean;
+  _tipo?: string;
+  _desc?: string;
+}
 
 export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   "32BNV":{n:"Buenaventura",z:"Corredor Poniente",v:"09:00-12:00",d:"San Ignacio 500, Quilicura"},
