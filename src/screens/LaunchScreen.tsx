@@ -60,16 +60,7 @@ export function LaunchScreen() {
       {/* Logo */}
       <div className="mb-6 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo-kiosclub.png"
-          alt="KiosClub"
-          style={{
-            height: 52,
-            width: 'auto',
-            mixBlendMode: 'screen',   // elimina el fondo rojo sobre fondo oscuro
-            objectFit: 'contain',
-          }}
-        />
+        <img src="/logo.png" alt="KiosClub" className="h-14 brightness-0 invert" style={{ width: 'auto' }} />
       </div>
 
       <div className="font-barlow-condensed text-xs font-semibold tracking-widest uppercase text-white/50 mb-1 text-center">
