@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useApp } from '../context/AppContext';
 import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
 
@@ -10,14 +9,11 @@ const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda',
 };
 
-
 export function LaunchScreen() {
-  const { dispatch } = useApp();
   const router = useRouter();
   const { profile, signOut } = useAuth();
   const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
   const [pendingCount, setPendingCount] = useState(0);
-  const [activeModule, setActiveModule] = useState<'despacho' | 'control'>('despacho');
 
   const isAdmin     = profile?.role === 'admin';
   const isRecepcion = profile?.role === 'recepcion-tienda';
@@ -57,13 +53,6 @@ export function LaunchScreen() {
       });
   }, []);
 
-  const goToRegiones = () => {
-    dispatch({ type: 'CLEAR_ALL' });
-    dispatch({ type: 'SET_TIENDA', payload: null });
-    dispatch({ type: 'SET_TAB', payload: 0 });
-    router.push('/despacho/regiones');
-  };
-
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center gap-0 px-6 py-10 overflow-y-auto"
          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
@@ -76,7 +65,7 @@ export function LaunchScreen() {
       <div className="font-barlow-condensed text-xs font-semibold tracking-widest uppercase text-white/50 mb-1 text-center">
         Sistema de despacho
       </div>
-      <div className="font-barlow-condensed text-3xl font-bold text-white text-center mb-8 leading-tight">
+      <div className="font-barlow-condensed text-3xl font-bold text-white text-center mb-10 leading-tight">
         ¿A dónde vas hoy?
       </div>
 
@@ -86,93 +75,42 @@ export function LaunchScreen() {
           <button
             onClick={() => router.push('/tiendas')}
             className="w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-            style={{ height: 88, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
+            style={{ height: 110, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
             <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas / Recepción</div>
             <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-sm mb-8 flex flex-col gap-4">
+        /* Dos tiles principales */
+        <div className="flex flex-col gap-3 w-full max-w-sm mb-10">
 
-          {/* ── Tab selector ── */}
-          <div className="flex rounded-2xl p-1 gap-1"
-               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}>
-            {(['despacho', 'control'] as const).map(m => {
-              const active = activeModule === m;
-              const label  = m === 'despacho' ? 'Despacho' : 'Control Interno';
-              return (
-                <button key={m} onClick={() => setActiveModule(m)}
-                  className="flex-1 rounded-xl py-2.5 cursor-pointer transition-all active:scale-[0.97]"
-                  style={{
-                    background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
-                    border: active ? '1px solid rgba(255,255,255,0.18)' : '1px solid transparent',
-                    boxShadow: active ? '0 2px 12px rgba(0,0,0,0.25)' : 'none',
-                  }}>
-                  <span className="font-barlow-condensed text-sm font-bold tracking-[0.15em] uppercase"
-                        style={{ color: active ? '#fff' : 'rgba(255,255,255,0.38)' }}>
-                    {label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── Contenido del tab activo ── */}
-          {activeModule === 'despacho' && (
-            <div className="grid grid-cols-2 gap-2.5" style={{ gridAutoRows: '82px' }}>
-
-              <button onClick={goToRegiones}
-                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
-                style={{ background: '#D32F2F', boxShadow: '0 6px 20px rgba(211,47,47,0.38)' }}>
-                <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Bodega Regiones</div>
-                <div className="text-[11px] text-white/60 mt-0.5">Despacho nacional</div>
-              </button>
-
-              <button onClick={() => router.push('/despacho/santiago')}
-                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-info/40"
-                style={{ background: 'rgba(37,99,235,0.18)', boxShadow: '0 6px 20px rgba(37,99,235,0.25)' }}>
-                <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Bodega Santiago</div>
-                <div className="text-[11px] text-white/60 mt-0.5">Despacho local RM</div>
-              </button>
-
-              <button onClick={() => router.push('/despacho')}
-                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(34,197,94,0.50)]"
-                style={{ background: 'rgba(34,197,94,0.16)', boxShadow: '0 6px 20px rgba(34,197,94,0.20)' }}>
-                <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Enrutador</div>
-                <div className="text-[11px] text-white/60 mt-0.5">Sistema de enrutamiento</div>
-              </button>
-
-              <button onClick={() => router.push('/despacho/estado')}
-                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.50)]"
-                style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 6px 20px rgba(245,158,11,0.18)' }}>
-                <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Estado / Seguimiento</div>
-                <div className="text-[11px] text-white/60 mt-0.5">Etiquetas · Guías · QR</div>
-              </button>
-
+          <button onClick={() => router.push('/despacho-hub')}
+            className="relative overflow-hidden rounded-2xl px-6 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98]"
+            style={{ height: 96, background: 'rgba(37,99,235,0.14)', border: '2px solid rgba(37,99,235,0.35)', boxShadow: '0 8px 28px rgba(37,99,235,0.18)' }}>
+            <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+                 style={{ background: 'rgba(37,99,235,0.30)' }}>
+              <span className="text-xl">🚛</span>
             </div>
-          )}
-
-          {activeModule === 'control' && (
-            <div className="grid gap-2.5" style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gridAutoRows: '82px' }}>
-
-              <button onClick={() => router.push('/tiendas')}
-                className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-                style={{ background: 'rgba(16,185,129,0.18)', boxShadow: '0 6px 20px rgba(16,185,129,0.20)' }}>
-                <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Tiendas</div>
-                <div className="text-[11px] text-white/60 mt-0.5">Recepción de despacho</div>
-              </button>
-
-              {isAdmin && (
-                <button onClick={() => router.push('/auditoria')}
-                  className="relative overflow-hidden rounded-2xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(124,58,237,0.50)]"
-                  style={{ background: 'rgba(124,58,237,0.16)', boxShadow: '0 6px 20px rgba(124,58,237,0.20)' }}>
-                  <div className="font-barlow-condensed text-base font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
-                  <div className="text-[11px] text-white/60 mt-0.5">Control de calidad pallets</div>
-                </button>
-              )}
-
+            <div className="flex-1 text-left">
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
+              <div className="text-xs text-white/50 mt-0.5">Bodegas · Enrutador · Seguimiento</div>
             </div>
-          )}
+            <span className="text-white/25 text-lg">›</span>
+          </button>
+
+          <button onClick={() => router.push('/control-interno')}
+            className="relative overflow-hidden rounded-2xl px-6 flex items-center gap-5 cursor-pointer transition-all active:scale-[0.98]"
+            style={{ height: 96, background: 'rgba(16,185,129,0.11)', border: '2px solid rgba(16,185,129,0.30)', boxShadow: '0 8px 28px rgba(16,185,129,0.14)' }}>
+            <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+                 style={{ background: 'rgba(16,185,129,0.25)' }}>
+              <span className="text-xl">🏪</span>
+            </div>
+            <div className="flex-1 text-left">
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
+              <div className="text-xs text-white/50 mt-0.5">Tiendas · Auditoría</div>
+            </div>
+            <span className="text-white/25 text-lg">›</span>
+          </button>
 
         </div>
       )}
