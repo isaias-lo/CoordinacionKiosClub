@@ -8,12 +8,27 @@ export default function ControlInternoPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
 
+  const tabs = [
+    {
+      label: 'Tiendas', sub: 'Recepción de despacho',
+      border: 'rgba(16,185,129,0.5)', bg: 'rgba(16,185,129,0.18)', shadow: 'rgba(16,185,129,0.22)',
+      onClick: () => router.push('/tiendas'),
+      adminOnly: false,
+    },
+    {
+      label: 'Auditoría', sub: 'Control de calidad pallets',
+      border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.20)',
+      onClick: () => router.push('/auditoria'),
+      adminOnly: true,
+    },
+  ].filter(t => !t.adminOnly || isAdmin);
+
   return (
-    <div className="fixed inset-0 flex flex-col px-6 py-10 overflow-y-auto"
+    <div className="fixed inset-0 flex flex-col py-10 overflow-y-auto"
          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
 
       {/* Back + title */}
-      <div className="flex items-center gap-3 mb-10">
+      <div className="flex items-center gap-3 mb-10 px-6">
         <button
           onClick={() => router.push('/')}
           className="flex items-center justify-center rounded-xl cursor-pointer transition-all active:scale-95"
@@ -26,26 +41,24 @@ export default function ControlInternoPage() {
         </div>
       </div>
 
-      {/* Grid de tabs */}
-      <div className="grid gap-3 w-full max-w-sm mx-auto"
-           style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gridAutoRows: '110px' }}>
-
-        <button onClick={() => router.push('/tiendas')}
-          className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-          style={{ background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.22)' }}>
-          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas</div>
-          <div className="text-xs text-white/60 mt-1">Recepción de despacho</div>
-        </button>
-
-        {isAdmin && (
-          <button onClick={() => router.push('/auditoria')}
-            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(245,158,11,0.55)]"
-            style={{ background: 'rgba(245,158,11,0.13)', boxShadow: '0 8px 24px rgba(245,158,11,0.20)' }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Auditoría</div>
-            <div className="text-xs text-white/60 mt-1">Control de calidad pallets</div>
+      {/* Tabs — scroll horizontal */}
+      <div className="flex gap-3 overflow-x-auto no-scrollbar px-6">
+        {tabs.map(t => (
+          <button
+            key={t.label}
+            onClick={t.onClick}
+            className="flex-shrink-0 relative overflow-hidden rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+            style={{
+              width: 155, height: 110,
+              background: t.bg,
+              borderColor: t.border,
+              boxShadow: `0 8px 24px ${t.shadow}`,
+            }}>
+            <div className="font-barlow-condensed text-lg font-bold text-white tracking-widest uppercase leading-tight px-3">{t.label}</div>
+            <div className="text-[11px] text-white/60 mt-1">{t.sub}</div>
           </button>
-        )}
-
+        ))}
+        <div className="flex-shrink-0 w-2" />
       </div>
     </div>
   );
