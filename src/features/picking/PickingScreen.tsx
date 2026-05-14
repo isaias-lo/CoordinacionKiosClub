@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,10 +76,6 @@ function getStoreGroup(store: TodayStore): StoreGroupKey {
   return 'santiago';
 }
 
-function todayDDMMYYYY(): string {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
 
 function StateBadge({ state }: { state: string }) {
   const info = STATE_INFO[state] ?? { label: state, color: '#6B7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.25)' };
@@ -486,28 +483,20 @@ export function PickingScreen() {
   }, [pickerDisplayNames]);
 
   useEffect(() => {
-    const today = todayDDMMYYYY();
+    const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
     setStoresLoading(true);
-    Promise.allSettled([
-      fetch('/api/despacho-records?table=despacho_rm').then(r => r.json()) as Promise<{ data?: { fecha: string; cod: string; tienda: string }[] }>,
-      fetch('/api/despacho-records?table=despacho_regiones').then(r => r.json()) as Promise<{ data?: { fecha: string; cod: string; tienda: string }[] }>,
-    ]).then(([rmResult, regResult]) => {
-      const map = new Map<string, TodayStore>();
-      const addRows = (rows: { fecha: string; cod: string; tienda: string }[], source: 'rm' | 'regiones') => {
-        rows.filter(r => r.fecha === today && r.cod?.trim()).forEach(r => {
-          const cod = r.cod.trim();
-          if (!map.has(cod)) {
-            map.set(cod, { cod, name: r.tienda?.trim() || getStoreName(cod), sources: [source] });
-          } else if (!map.get(cod)!.sources.includes(source)) {
-            map.get(cod)!.sources.push(source);
-          }
-        });
-      };
-      if (rmResult.status === 'fulfilled' && Array.isArray(rmResult.value.data)) addRows(rmResult.value.data, 'rm');
-      if (regResult.status === 'fulfilled' && Array.isArray(regResult.value.data)) addRows(regResult.value.data, 'regiones');
-      setTodayStores([...map.values()]);
+    fetchCalendarioCompleto().then(cal => {
+      const today = DAY_CODES[new Date().getDay()];
+      const day = cal[today];
+      if (!day) { setStoresLoading(false); return; }
+      const stores: TodayStore[] = [
+        ...day.fal.map(cod  => ({ cod, name: getStoreName(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
+        ...day.costa.map(cod => ({ cod, name: getStoreName(cod), sources: ['rm']      as ('rm' | 'regiones')[] })),
+        ...day.rm.map(cod   => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+      ];
+      setTodayStores(stores);
       setStoresLoading(false);
-    });
+    }).catch(() => setStoresLoading(false));
   }, []);
 
   const pickerGroups = useMemo((): PickerGroup[] => {
