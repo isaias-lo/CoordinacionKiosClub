@@ -10,11 +10,28 @@ const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda',
 };
 
-function ModuleLabel({ label }: { label: string }) {
+function ModuleCard({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.18em] uppercase mb-2 px-1"
-         style={{ color: 'rgba(255,255,255,0.35)' }}>
-      {label}
+    <div className="rounded-2xl overflow-hidden transition-all"
+         style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${open ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)'}` }}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 cursor-pointer transition-all active:scale-[0.98]"
+        style={{ height: 52, background: open ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
+        <span className="font-barlow-condensed text-sm font-bold tracking-[0.18em] uppercase"
+              style={{ color: open ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.45)' }}>
+          {label}
+        </span>
+        <span className="text-[11px] transition-transform duration-200"
+              style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', display: 'inline-block' }}>
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -25,6 +42,10 @@ export function LaunchScreen() {
   const { profile, signOut } = useAuth();
   const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
   const [pendingCount, setPendingCount] = useState(0);
+  const [openModule, setOpenModule] = useState<'despacho' | 'control' | null>(null);
+
+  const toggleModule = (m: 'despacho' | 'control') =>
+    setOpenModule(prev => prev === m ? null : m);
 
   const isAdmin     = profile?.role === 'admin';
   const isRecepcion = profile?.role === 'recepcion-tienda';
@@ -99,12 +120,11 @@ export function LaunchScreen() {
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-sm mb-8 flex flex-col gap-5">
+        <div className="w-full max-w-sm mb-8 flex flex-col gap-3">
 
           {/* ── Módulo DESPACHO ── */}
-          <div className="rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <ModuleLabel label="Despacho" />
-            <div className="grid grid-cols-2 gap-2.5" style={{ gridAutoRows: '76px' }}>
+          <ModuleCard label="Despacho" open={openModule === 'despacho'} onToggle={() => toggleModule('despacho')}>
+            <div className="grid grid-cols-2 gap-2.5 mt-1" style={{ gridAutoRows: '76px' }}>
 
               <button onClick={goToRegiones}
                 className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[#B71C1C]"
@@ -135,12 +155,11 @@ export function LaunchScreen() {
               </button>
 
             </div>
-          </div>
+          </ModuleCard>
 
           {/* ── Módulo CONTROL INTERNO ── */}
-          <div className="rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <ModuleLabel label="Control Interno" />
-            <div className="grid gap-2.5" style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gridAutoRows: '76px' }}>
+          <ModuleCard label="Control Interno" open={openModule === 'control'} onToggle={() => toggleModule('control')}>
+            <div className="grid gap-2.5 mt-1" style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gridAutoRows: '76px' }}>
 
               <button onClick={() => router.push('/tiendas')}
                 className="relative overflow-hidden rounded-xl px-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
@@ -159,7 +178,7 @@ export function LaunchScreen() {
               )}
 
             </div>
-          </div>
+          </ModuleCard>
 
         </div>
       )}
