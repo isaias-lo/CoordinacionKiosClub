@@ -46,7 +46,7 @@ function parseQRData(raw: string): QRData | null {
 
 export function RecepcionTiendaScreen() {
   const router       = useRouter();
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('recepcion');
   const [step,      setStep]      = useState<Step>('scanner');
   const [qrData,    setQrData]    = useState<QRData | null>(null);
