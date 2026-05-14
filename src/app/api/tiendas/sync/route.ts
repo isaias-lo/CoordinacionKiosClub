@@ -60,8 +60,12 @@ export async function POST() {
       const cod = normalizeCod(raw);
 
       if (!COD_RE.test(cod)) {
-        // Only report rows that look like they might be tiendas (not obvious headers)
-        if (raw && !/^(CÓDIGO|COD|TIENDA|NOMBRE|#)/i.test(raw)) {
+        // Solo reportar filas que parecen ser tiendas reales (no títulos ni encabezados)
+        const looksLikeHeader = !raw
+          || raw.length > 15                          // título demasiado largo
+          || /[⚡📦🏪|—–]/u.test(raw)               // emojis o separadores de título
+          || /^(CÓDIGO|COD|TIENDA|NOMBRE|N°|#)/i.test(raw); // encabezados de columna
+        if (!looksLikeHeader) {
           skipped.push({ row: i + 1, raw, reason: `Código "${cod}" no coincide con formato esperado` });
         }
         continue;
