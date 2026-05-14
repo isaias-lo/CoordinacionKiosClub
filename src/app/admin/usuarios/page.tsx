@@ -15,11 +15,12 @@ interface AppUser {
 }
 
 const ROLE_OPTS = [
-  { value: 'auditor',         label: 'Auditor',          color: '#9333EA' },
-  { value: 'admin-auditoria',label: 'Admin Auditoría',   color: '#0891B2' },
-  { value: 'despachador',     label: 'Despachador',      color: '#2563EB' },
-  { value: 'supervisor',      label: 'Supervisor',        color: '#16A34A' },
-  { value: 'admin',           label: 'Administrador',     color: '#D97706' },
+  { value: 'auditor',           label: 'Auditor',            color: '#9333EA' },
+  { value: 'admin-auditoria',   label: 'Admin Auditoría',    color: '#0891B2' },
+  { value: 'despachador',       label: 'Despachador',        color: '#2563EB' },
+  { value: 'supervisor',        label: 'Supervisor',         color: '#16A34A' },
+  { value: 'recepcion-tienda',  label: 'Recepción Tienda',   color: '#10B981' },
+  { value: 'admin',             label: 'Administrador',      color: '#D97706' },
 ];
 
 function roleColor(role: string) {
