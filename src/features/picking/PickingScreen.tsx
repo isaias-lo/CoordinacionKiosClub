@@ -194,11 +194,13 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, allCatego
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, refreshingId, totalPickers }: {
+function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, refreshingId, totalPickers, palletOffset, totalStorePallets }: {
   group: PickerGroup; displayName: string; pallets: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; refreshingId: number | null;
   totalPickers: number;
+  palletOffset: number;
+  totalStorePallets: number;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -336,9 +338,9 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
               {Array.from({ length: pallets }, (_, i) => (
                 <BarcodeCard
                   key={i}
-                  value={`${group.storeCod}|${barcodePickerName}|${refs}|P${i + 1}|${cats}`}
-                  palletNum={i + 1}
-                  total={pallets}
+                  value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
+                  palletNum={palletOffset + i + 1}
+                  total={totalStorePallets}
                   storeCod={group.storeCod}
                   pickerLabel={pickerLabel}
                   allCategories={allCategories}
@@ -816,19 +818,30 @@ export function PickingScreen() {
                     </div>
 
                     <div className="space-y-4">
-                      {storeGroups.map(group => (
-                        <PickerGroupCard
-                          key={group.stateKey}
-                          group={group}
-                          displayName={pickerDisplayNames[group.stateKey] ?? ''}
-                          pallets={pickerPallets[group.stateKey] ?? 0}
-                          onNameChange={name => setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }))}
-                          onPalletsChange={n => setPickerPallets(prev => ({ ...prev, [group.stateKey]: n }))}
-                          onRefreshOp={(op) => void refreshOp(op, cod)}
-                          refreshingId={refreshingId}
-                          totalPickers={storeGroups.length}
-                        />
-                      ))}
+                      {(() => {
+                        const totalStorePallets = storeGroups.reduce((s, g) => s + (pickerPallets[g.stateKey] ?? 0), 0);
+                        let offset = 0;
+                        return storeGroups.map(group => {
+                          const groupPallets = pickerPallets[group.stateKey] ?? 0;
+                          const currentOffset = offset;
+                          offset += groupPallets;
+                          return (
+                            <PickerGroupCard
+                              key={group.stateKey}
+                              group={group}
+                              displayName={pickerDisplayNames[group.stateKey] ?? ''}
+                              pallets={groupPallets}
+                              onNameChange={name => setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }))}
+                              onPalletsChange={n => setPickerPallets(prev => ({ ...prev, [group.stateKey]: n }))}
+                              onRefreshOp={(op) => void refreshOp(op, cod)}
+                              refreshingId={refreshingId}
+                              totalPickers={storeGroups.length}
+                              palletOffset={currentOffset}
+                              totalStorePallets={totalStorePallets}
+                            />
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 );
