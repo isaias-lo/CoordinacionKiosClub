@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { ProfilePill } from '../../components/ProfilePill';
 
 export default function DespachoHubPage() {
   const router = useRouter();
@@ -49,60 +50,98 @@ export default function DespachoHubPage() {
   ];
 
   return (
-    <div className="fixed inset-0 flex flex-col py-10 overflow-y-auto"
-         style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+    <>
+      <style>{`
+        @media (max-width: 480px) {
+          .dh-root {
+            padding: 0 !important;
+            overflow: hidden !important;
+            height: 100dvh !important;
+            justify-content: flex-start !important;
+          }
+          .dh-header {
+            justify-content: space-between !important;
+            margin-bottom: 0 !important;
+            padding: 12px 20px !important;
+          }
+          .dh-avatar-hdr { display: block !important; }
+          .dh-mobile-cards {
+            flex: 1 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            padding: 12px 16px 20px !important;
+            gap: 10px !important;
+            min-height: 0;
+          }
+          .dh-mobile-card {
+            flex: 1 !important;
+            height: auto !important;
+          }
+        }
+      `}</style>
 
-      {/* Back + title */}
-      <div className="flex items-center gap-3 mb-10 px-6">
-        <button
-          onClick={() => router.push('/')}
-          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95"
-          style={{
-            width: 36, height: 36,
-            background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-            border: '1px solid rgba(255,255,255,0.15)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
-          }}>
-          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-        </button>
-        <div>
-          <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
-          <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Despacho</div>
+      <div className="dh-root fixed inset-0 flex flex-col py-10 overflow-y-auto"
+           style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+
+        {/* Header */}
+        <div className="dh-header flex items-center gap-3 mb-10 px-6">
+          {/* Left: back + title grouped so space-between works cleanly */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{
+                width: 36, height: 36,
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                border: '1px solid rgba(255,255,255,0.15)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+              }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
+            <div>
+              <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
+              <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Despacho</div>
+            </div>
+          </div>
+
+          {/* Right: avatar — only visible on mobile via CSS */}
+          <div className="dh-avatar-hdr" style={{ display: 'none' }}>
+            <ProfilePill compact />
+          </div>
         </div>
-      </div>
 
-      {/* Móvil: fila horizontal scrollable · Desktop: grid 2 cols */}
-      <div className="px-6">
-        {/* Desktop */}
-        <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-sm md:mx-auto" style={{ gridAutoRows: '110px' }}>
+        {/* Desktop grid */}
+        <div className="px-6">
+          <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-sm md:mx-auto" style={{ gridAutoRows: '110px' }}>
+            {tabs.map(t => (
+              <button key={t.label} onClick={t.onClick}
+                className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+                style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
+                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
+                <div className="text-xs text-white/60 mt-1">{t.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Mobile list */}
+        <div className="dh-mobile-cards flex md:hidden flex-col gap-3 px-6">
           {tabs.map(t => (
             <button key={t.label} onClick={t.onClick}
-              className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
-              style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
+              className="dh-mobile-card w-full relative overflow-hidden rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+              style={{
+                height: 88,
+                background: t.bg,
+                borderColor: t.border,
+                boxShadow: `0 8px 24px ${t.shadow}`,
+              }}>
               <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
               <div className="text-xs text-white/60 mt-1">{t.sub}</div>
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Móvil */}
-      <div className="flex md:hidden flex-col gap-3 px-6">
-        {tabs.map(t => (
-          <button key={t.label} onClick={t.onClick}
-            className="w-full relative overflow-hidden rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
-            style={{
-              height: 88,
-              background: t.bg,
-              borderColor: t.border,
-              boxShadow: `0 8px 24px ${t.shadow}`,
-            }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-            <div className="text-xs text-white/60 mt-1">{t.sub}</div>
-          </button>
-        ))}
       </div>
-
-    </div>
+    </>
   );
 }
