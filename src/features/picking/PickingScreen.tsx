@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { ProfilePill } from '@/components/ProfilePill';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
@@ -523,7 +524,7 @@ function saveSession(data: PickingSession): void {
 
 export function PickingScreen() {
   const router = useRouter();
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
 
   const odooConfig: OdooConfig = getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' };
   const hasOdoo = !!odooConfig.url;
@@ -693,7 +694,7 @@ export function PickingScreen() {
       <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 print:hidden"
         style={{ background: 'linear-gradient(135deg, #78350F 0%, #D97706 100%)', boxShadow: '0 2px 16px rgba(217,119,6,0.35)' }}>
         <button className="lg:hidden border-none bg-white/15 text-white text-[14px] cursor-pointer font-barlow px-3 py-2 rounded-full"
-          onClick={() => setPanelView(v => v === 'planilla' ? 'stores' : 'planilla')}>
+          onClick={() => panelView === 'planilla' ? setPanelView('stores') : router.push('/')}>
           {panelView === 'planilla' ? '← Tiendas' : '← Inicio'}
         </button>
         <button className="hidden lg:inline-flex border-none bg-white/15 text-white text-[14px] cursor-pointer font-barlow px-3 py-2 rounded-full"
@@ -727,10 +728,7 @@ export function PickingScreen() {
             ↻ {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
-        <button onClick={() => router.push('/perfil')}
-          className="border-none bg-white/12 text-white/80 text-[14px] cursor-pointer px-3 py-2 rounded-full shrink-0">👤</button>
-        <button onClick={async () => { await signOut(); router.push('/login'); }}
-          className="border-none bg-white/10 text-white/70 text-[14px] cursor-pointer font-barlow px-3 py-2 rounded-full shrink-0">Salir</button>
+        <ProfilePill />
       </div>
 
       {/* ── Split body ── */}

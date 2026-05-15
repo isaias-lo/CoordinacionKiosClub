@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2 } from 'lucide-react';
+import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, LayoutDashboard, Trophy, History, Users, UserCheck, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -1361,7 +1361,9 @@ function HistoryContent({ history, today, onReaudit, onExportPDF, onRefresh, pic
         {fechasDisponibles.length === 0 ? <span className="text-[12px] text-text-3">Sin registros</span>
           : fechasDisponibles.map(f => <button key={f} onClick={() => setHistFecha(f)} className={`flex-shrink-0 px-3 py-1 rounded-full text-[12px] font-bold border cursor-pointer ${histFecha === f ? 'bg-navy text-white border-navy' : 'bg-white text-text-2 border-border'}`}>{f === today ? 'Hoy' : f}</button>)}
         {onRefresh && (
-          <button onClick={handleRefresh} className={`flex-shrink-0 ml-auto border-none bg-transparent text-text-3 cursor-pointer text-[18px] transition-transform ${refreshing ? 'animate-spin' : 'hover:text-navy'}`} title="Actualizar">↻</button>
+          <button onClick={handleRefresh} className={`flex-shrink-0 ml-auto border-none bg-transparent text-text-3 cursor-pointer transition-all ${refreshing ? 'animate-spin' : 'hover:text-navy'}`} title="Actualizar">
+            <RefreshCw size={16} strokeWidth={2} />
+          </button>
         )}
       </div>
       {filtrado.length > 0 && (
@@ -1426,9 +1428,14 @@ function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false
     <div className="flex flex-col h-full bg-bg">
       {!onlyHistory && (
         <div className="flex border-b border-border bg-white flex-shrink-0">
-          {([['dashboard', '📊 Dashboard'], ['ranking', '🏆 Ranking'], ['history', '📋 Historial']] as const).map(([key, label]) => (
+          {([
+            { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
+            { key: 'ranking'   as const, label: 'Ranking',   Icon: Trophy },
+            { key: 'history'   as const, label: 'Historial', Icon: History },
+          ]).map(({ key, label, Icon }) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              <Icon size={13} strokeWidth={2} />
               {label}
             </button>
           ))}
@@ -1436,7 +1443,12 @@ function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false
       )}
       {onlyHistory && (
         <div className="px-4 py-2.5 bg-white border-b border-border flex-shrink-0">
-          <span className="font-barlow-condensed text-[15px] font-bold text-navy">📋 Tu historial</span>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+              <History size={14} color="#1a2550" strokeWidth={2} />
+            </div>
+            <span className="font-barlow-condensed text-[15px] font-bold text-navy">Tu historial</span>
+          </div>
         </div>
       )}
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -1455,11 +1467,11 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
   onlyHistory?: boolean;
 }) {
   const items = onlyHistory
-    ? [{ icon: '📋', label: 'Historial', sub: 'Tus auditorías por fecha', v: 'history' as const }]
+    ? [{ Icon: History,        label: 'Historial',        sub: 'Tus auditorías por fecha',                   v: 'history'   as const }]
     : [
-        { icon: '📊', label: 'Dashboard del día', sub: 'KPIs y métricas de hoy', v: 'dashboard' as const },
-        { icon: '🏆', label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades', v: 'ranking' as const },
-        { icon: '📋', label: 'Historial', sub: 'Auditorías por fecha + exportar PDF', v: 'history' as const },
+        { Icon: LayoutDashboard, label: 'Dashboard del día', sub: 'KPIs y métricas de hoy',                    v: 'dashboard' as const },
+        { Icon: Trophy,          label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades',    v: 'ranking'   as const },
+        { Icon: History,        label: 'Historial',        sub: 'Auditorías por fecha + exportar PDF',         v: 'history'   as const },
       ];
   return (
     <div className="fixed inset-0 z-50">
@@ -1467,10 +1479,13 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
       <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[24px] overflow-hidden" style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.22)' }}>
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mt-4 mb-1" />
         <div className="p-4 pb-8 space-y-2">
-          {items.map(({ icon, label, sub, v }) => (
+          {items.map(({ Icon, label, sub, v }) => (
             <button key={v} onClick={() => onNavigate(v)}
               className="w-full flex items-center gap-4 px-4 py-3.5 bg-bg hover:bg-bg-2 rounded-card cursor-pointer border border-border text-left transition-colors">
-              <span className="text-[28px]">{icon}</span>
+              <div className="w-11 h-11 flex items-center justify-center rounded-xl flex-shrink-0"
+                style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.10), rgba(26,37,80,0.05))', border: '1px solid rgba(26,37,80,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }}>
+                <Icon size={22} color="#1a2550" strokeWidth={1.8} />
+              </div>
               <div className="flex-1">
                 <div className="font-barlow-condensed text-[17px] font-bold text-navy">{label}</div>
                 <div className="text-[12px] text-text-3 mt-0.5">{sub}</div>
@@ -1905,7 +1920,7 @@ export function AuditoriaScreen() {
                   width: 36, height: 36,
                   background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                   border: '1px solid rgba(255,255,255,0.15)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+                  boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
                 }}>
                 <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
               </button>
@@ -1977,7 +1992,7 @@ export function AuditoriaScreen() {
               width: 36, height: 36,
               background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
               border: '1px solid rgba(255,255,255,0.15)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+              boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
             }}>
             <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
           </button>
@@ -1985,7 +2000,7 @@ export function AuditoriaScreen() {
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
             <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
           </div>
-          <ProfilePill compact />
+          <ProfilePill />
         </div>
         <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
       </div>
@@ -2017,7 +2032,7 @@ export function AuditoriaScreen() {
                 width: 36, height: 36,
                 background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                 border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
@@ -2027,7 +2042,7 @@ export function AuditoriaScreen() {
                 width: 36, height: 36,
                 background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                 border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
@@ -2070,9 +2085,13 @@ export function AuditoriaScreen() {
           {/* Auditor tab bar */}
           {isAuditorOnly && (
             <div className="hidden md:flex border-b border-border bg-white flex-shrink-0">
-              {([{ v: 'form' as const, label: '📝 Formulario' }, { v: 'history' as const, label: '📋 Historial' }]).map(({ v: tv, label }) => (
+              {([
+                { v: 'form'    as const, label: 'Formulario', Icon: ClipboardPlus },
+                { v: 'history' as const, label: 'Historial',  Icon: History },
+              ]).map(({ v: tv, label, Icon }) => (
                 <button key={tv} onClick={() => setView(tv)}
-                  className={`flex-1 py-3 font-barlow-condensed text-[14px] font-bold border-b-2 cursor-pointer transition-colors ${tv === 'history' ? (view === 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3') : (view !== 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3')}`}>
+                  className={`flex-1 py-3 font-barlow-condensed text-[14px] font-bold border-b-2 cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${tv === 'history' ? (view === 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3') : (view !== 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3')}`}>
+                  <Icon size={13} strokeWidth={2} />
                   {label}
                 </button>
               ))}
@@ -2360,7 +2379,11 @@ export function AuditoriaScreen() {
       {!isAdminAud && view === 'dashboard' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-            <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+            <button onClick={() => setView('form')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
             <div className="flex-1"><div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Dashboard</div><div className="text-[11px] text-white/40">{today} · {todayEntries.length} auditorías</div></div>
           </div>
           <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={PICKER_NAMES} /></div>
@@ -2369,7 +2392,11 @@ export function AuditoriaScreen() {
       {!isAdminAud && view === 'ranking' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-            <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+            <button onClick={() => setView('form')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Ranking Pickers</div>
           </div>
           <RankingContent history={history} odooConfig={odooConfig} pickerNames={PICKER_NAMES} />
@@ -2378,7 +2405,11 @@ export function AuditoriaScreen() {
       {!isAdminAud && view === 'history' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-            <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+            <button onClick={() => setView('form')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Historial</div>
           </div>
           <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
@@ -2470,16 +2501,17 @@ function AdminDesktopPanel({ history, today, odooConfig, pickerNames, onReaudit,
 }) {
   const [tab, setTab] = useState<'dashboard' | 'ranking' | 'historial'>('dashboard');
   const tabs = [
-    { key: 'dashboard' as const, label: '📊 Dashboard' },
-    { key: 'ranking' as const, label: '🏆 Ranking' },
-    { key: 'historial' as const, label: '📋 Historial' },
+    { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
+    { key: 'ranking'   as const, label: 'Ranking',   Icon: Trophy },
+    { key: 'historial' as const, label: 'Historial', Icon: History },
   ];
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-bg">
       <div className="flex border-b border-border bg-white flex-shrink-0">
-        {tabs.map(({ key, label }) => (
+        {tabs.map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`flex-1 py-2.5 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            className={`flex-1 py-2.5 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            <Icon size={12} strokeWidth={2} />
             {label}
           </button>
         ))}
@@ -2502,13 +2534,22 @@ function AdminAudStats({ history, today, odooConfig, onBack, pickerNames }: {
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <button onClick={onBack}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        </button>
         <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Estadísticas</div>
+        <ProfilePill />
       </div>
       <div className="flex border-b border-border bg-white flex-shrink-0">
-        {([['dashboard', '📊 Dashboard del día'], ['ranking', '🏆 Ranking de Pickers']] as const).map(([key, label]) => (
+        {([
+          { key: 'dashboard' as const, label: 'Dashboard del día',  Icon: LayoutDashboard },
+          { key: 'ranking'   as const, label: 'Ranking de Pickers', Icon: Trophy },
+        ]).map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            <Icon size={13} strokeWidth={2} />
             {label}
           </button>
         ))}
@@ -2574,7 +2615,11 @@ function ProduccionPanel({ onBack, pickerNombresList }: {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #92400E 0%, #D97706 100%)', boxShadow: '0 2px 16px rgba(146,64,14,0.35)' }}>
-        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <button onClick={onBack}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Producción diaria</div>
           <div className="text-[11px] text-white/50 uppercase tracking-widest">Pallets producidos por picker</div>
@@ -2584,6 +2629,7 @@ function ProduccionPanel({ onBack, pickerNombresList }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
+        <ProfilePill />
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
@@ -2664,6 +2710,7 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
   const [savingParams, setSavingParams] = useState(false);
   const [savedParams,  setSavedParams]  = useState(false);
   const [minimoCalc,   setMinimoCalc]   = useState(73);
+  const [minimoModo,   setMinimoModo]   = useState<'auto' | 'manual'>('auto');
 
   useEffect(() => {
     supabase.from('picker_config').select('nombres, auditores, picker_nombres').eq('id', 1).single()
@@ -2716,7 +2763,11 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)', boxShadow: '0 2px 16px rgba(15,118,110,0.35)' }}>
-        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <button onClick={onBack}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Configuración</div>
           <div className="text-[11px] text-white/50 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
@@ -2728,7 +2779,7 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
-        <ProfilePill compact />
+        <ProfilePill />
       </div>
 
       {/* Body */}
@@ -2739,7 +2790,9 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
           <div className="bg-white border border-border rounded-card overflow-hidden"
             style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <span className="text-[20px]">👷</span>
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+                <Users size={15} color="#1a2550" strokeWidth={2} />
+              </div>
               <div>
                 <div className="font-barlow-condensed text-[17px] font-bold text-navy">Pickers (armadores de pallet)</div>
                 <div className="text-[11px] text-text-3">Nombres disponibles para seleccionar en el formulario · Odoo asigna el número</div>
@@ -2782,7 +2835,9 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
           <div className="bg-white border border-border rounded-card overflow-hidden"
             style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <span className="text-[20px]">👤</span>
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+                <UserCheck size={15} color="#1a2550" strokeWidth={2} />
+              </div>
               <div>
                 <div className="font-barlow-condensed text-[17px] font-bold text-navy">Auditores</div>
                 <div className="text-[11px] text-text-3">Lista de auditores disponibles para seleccionar en el formulario</div>
@@ -2827,7 +2882,9 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
               style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-[20px]">📐</span>
+                  <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+                    <SlidersHorizontal size={15} color="#1a2550" strokeWidth={2} />
+                  </div>
                   <div>
                     <div className="font-barlow-condensed text-[17px] font-bold text-navy">Parámetros de métricas</div>
                     <div className="text-[11px] text-text-3">Sistema de bono y auditoría estadística</div>
@@ -2852,7 +2909,7 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
                   <div className="text-[12px] font-bold text-text-2 mb-1.5">Nivel de confianza</div>
                   <div className="flex gap-2">
                     {([['1.645', '90%'], ['1.96', '95%'], ['2.576', '99%']] as const).map(([z, lbl]) => (
-                      <button key={z} onClick={() => { const p = { ...params, nivel_confianza_z: parseFloat(z) }; setParams(p); setMinimoCalc(calcMinimo(parseFloat(z), p.margen_error)); }}
+                      <button key={z} onClick={() => { const newZ = parseFloat(z); const newMin = calcMinimo(newZ, params.margen_error); setMinimoCalc(newMin); setParams({ ...params, nivel_confianza_z: newZ, ...(minimoModo === 'auto' ? { minimo_auditorias: newMin } : {}) }); }}
                         className="flex-1 py-2 rounded-btn border text-[13px] font-bold cursor-pointer transition-all"
                         style={params.nivel_confianza_z === parseFloat(z) ? { background: '#1a2550', color: '#fff', borderColor: '#1a2550' } : { background: 'white', color: '#374151', borderColor: '#E5E7EB' }}>
                         {lbl}
@@ -2866,7 +2923,7 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
                   <div className="text-[12px] font-bold text-text-2 mb-1.5">Margen de error</div>
                   <div className="flex gap-2">
                     {([['0.03', '±3%'], ['0.05', '±5%'], ['0.10', '±10%']] as const).map(([e, lbl]) => (
-                      <button key={e} onClick={() => { const p = { ...params, margen_error: parseFloat(e) }; setParams(p); setMinimoCalc(calcMinimo(p.nivel_confianza_z, parseFloat(e))); }}
+                      <button key={e} onClick={() => { const newE = parseFloat(e); const newMin = calcMinimo(params.nivel_confianza_z, newE); setMinimoCalc(newMin); setParams({ ...params, margen_error: newE, ...(minimoModo === 'auto' ? { minimo_auditorias: newMin } : {}) }); }}
                         className="flex-1 py-2 rounded-btn border text-[13px] font-bold cursor-pointer transition-all"
                         style={params.margen_error === parseFloat(e) ? { background: '#1a2550', color: '#fff', borderColor: '#1a2550' } : { background: 'white', color: '#374151', borderColor: '#E5E7EB' }}>
                         {lbl}
@@ -2875,11 +2932,50 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
                   </div>
                 </div>
 
-                {/* Mínimo calculado automáticamente */}
-                <div className="px-3 py-2.5 rounded-btn border border-info/30" style={{ background: 'rgba(37,99,235,0.05)' }}>
-                  <div className="text-[11px] text-info font-bold uppercase tracking-wide mb-0.5">Mínimo calculado automáticamente</div>
-                  <div className="font-barlow-condensed text-[24px] font-extrabold text-navy">{minimoCalc} <span className="text-[14px] font-normal text-text-3">pallets por picker</span></div>
-                  <div className="text-[10px] text-text-3 mt-0.5">CEIL((Z² × 0.95 × 0.05) / e²) con Z={params.nivel_confianza_z}, e={params.margen_error}</div>
+                {/* Mínimo de auditorías por picker */}
+                <div className="px-3 py-2.5 rounded-btn border"
+                  style={{ background: minimoModo === 'auto' ? 'rgba(37,99,235,0.05)' : 'rgba(217,119,6,0.06)', borderColor: minimoModo === 'auto' ? 'rgba(37,99,235,0.3)' : 'rgba(217,119,6,0.35)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: minimoModo === 'auto' ? '#2563eb' : '#d97706' }}>
+                      Mínimo por picker
+                    </div>
+                    <div className="flex rounded-full overflow-hidden border font-barlow-condensed text-[11px] font-bold" style={{ borderColor: 'rgba(26,37,80,0.18)' }}>
+                      <button
+                        onClick={() => { setMinimoModo('auto'); setParams(p => p ? { ...p, minimo_auditorias: minimoCalc } : p); }}
+                        className="px-2.5 py-1 transition-all cursor-pointer tracking-wider"
+                        style={minimoModo === 'auto' ? { background: '#1a2550', color: '#fff' } : { background: 'transparent', color: '#9ca3af' }}>
+                        AUTO
+                      </button>
+                      <button
+                        onClick={() => setMinimoModo('manual')}
+                        className="px-2.5 py-1 transition-all cursor-pointer tracking-wider"
+                        style={minimoModo === 'manual' ? { background: '#d97706', color: '#fff' } : { background: 'transparent', color: '#9ca3af' }}>
+                        MANUAL
+                      </button>
+                    </div>
+                  </div>
+                  {minimoModo === 'auto' ? (
+                    <>
+                      <div className="font-barlow-condensed text-[24px] font-extrabold text-navy">{minimoCalc} <span className="text-[14px] font-normal text-text-3">pallets por picker</span></div>
+                      <div className="text-[10px] text-text-3 mt-0.5">CEIL((Z² × 0.95 × 0.05) / e²) con Z={params.nivel_confianza_z}, e={params.margen_error}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={999}
+                          value={params.minimo_auditorias}
+                          onChange={e => { const v = Math.max(1, parseInt(e.target.value) || 1); setParams(p => p ? { ...p, minimo_auditorias: v } : p); }}
+                          className="w-24 bg-white border border-border rounded-btn px-3 py-1.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none transition-colors text-center [-webkit-appearance:none]"
+                          style={{ focusBorderColor: '#d97706' } as React.CSSProperties}
+                        />
+                        <span className="text-[13px] text-text-3">pallets por picker</span>
+                      </div>
+                      <div className="text-[10px] mt-1.5" style={{ color: '#d97706' }}>Valor manual · Fórmula estadística: {minimoCalc} pallets</div>
+                    </>
+                  )}
                 </div>
 
                 {/* Umbral bono */}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ClipboardList, Camera, BarChart3 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -277,13 +277,13 @@ export default function AuditoriaAdminPage() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-        <button onClick={() => router.push('/control-interno')}
+        <button onClick={() => router.push('/auditoria')}
           className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
           style={{
             width: 36, height: 36,
             background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
             border: '1px solid rgba(255,255,255,0.15)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+            boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
           }}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
@@ -293,12 +293,7 @@ export default function AuditoriaAdminPage() {
             {profile?.full_name ?? 'Admin'} · {filtered.length} registros
           </div>
         </div>
-        {withPhotos.length > 0 && (
-          <span className="bg-white/15 text-white text-[12px] font-bold px-2.5 py-1 rounded-full">
-            📷 {withPhotos.length}
-          </span>
-        )}
-        <ProfilePill compact />
+        <ProfilePill />
       </div>
 
       {/* Filters */}
@@ -341,12 +336,13 @@ export default function AuditoriaAdminPage() {
       {/* Tabs */}
       <div className="flex border-b border-border bg-white flex-shrink-0">
         {([
-          ['lista',  '📋 Lista',  filtered.length],
-          ['fotos',  '📷 Fotos',  withPhotos.length],
-          ['stats',  '📊 Stats',  auditorStats.length],
-        ] as const).map(([key, label, count]) => (
+          { key: 'lista'  as const, label: 'Lista',  Icon: ClipboardList, count: filtered.length },
+          { key: 'fotos'  as const, label: 'Fotos',  Icon: Camera,        count: withPhotos.length },
+          { key: 'stats'  as const, label: 'Stats',  Icon: BarChart3,     count: auditorStats.length },
+        ]).map(({ key, label, Icon, count }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex-1 py-2.5 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            <Icon size={13} strokeWidth={2} />
             {label}
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === key ? 'bg-navy text-white' : 'bg-bg-2 text-text-3'}`}>{count}</span>
           </button>

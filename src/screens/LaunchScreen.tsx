@@ -216,6 +216,12 @@ export function LaunchScreen() {
         @keyframes ls-logo-spring { from { opacity:0; transform: scale(0.75); }      to { opacity:1; transform: scale(1); } }
         @keyframes ls-fade-in     { from { opacity:0; } to { opacity:1; } }
 
+        @media (min-width: 481px) {
+          .ls-brand-main  { font-size: 52px !important; }
+          .ls-brand-sub   { font-size: 40px !important; }
+          .ls-brand-star  { font-size: 13px !important; }
+          .ls-logo        { margin-top: -100px !important; }
+        }
         @media (max-width: 480px) {
           .ls-animate .ls-mobile-hdr  { animation: ls-from-top    0.55s cubic-bezier(0.34,1.56,0.64,1) 0.35s both; }
           .ls-animate .ls-logo        { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.05s both; }
@@ -265,7 +271,6 @@ export function LaunchScreen() {
             grid-auto-rows: 1fr !important;
             margin-bottom: 0 !important;
           }
-          .ls-card-icon { display: flex !important; }
           .ls-nav-card {
             align-items: flex-start !important;
             padding-left: 16px !important;
@@ -361,20 +366,20 @@ export function LaunchScreen() {
         )}
 
         {/* Logo */}
-        <div className="ls-logo mb-6 flex items-center justify-center">
+        <div className="ls-logo mb-2 flex items-center justify-center">
           <div className="flex flex-col gap-[3px] leading-none">
             <div className="flex items-baseline gap-[2px]">
-              <span style={{ fontSize: 28, fontWeight: 800, color: '#D42B2B', letterSpacing: '-0.5px', fontFamily: 'Barlow Condensed, sans-serif' }}>KIOS</span>
-              <span style={{ fontSize: 22, fontStyle: 'italic', fontWeight: 700, color: '#D42B2B', fontFamily: 'Barlow Condensed, sans-serif' }}>Club</span>
+              <span className="ls-brand-main" style={{ fontSize: 28, fontWeight: 800, color: '#D42B2B', letterSpacing: '-0.5px', fontFamily: 'Barlow Condensed, sans-serif' }}>KIOS</span>
+              <span className="ls-brand-sub" style={{ fontSize: 22, fontStyle: 'italic', fontWeight: 700, color: '#D42B2B', fontFamily: 'Barlow Condensed, sans-serif' }}>Club</span>
             </div>
             <div className="flex gap-[3px] rounded-[2px] px-1.5 py-[3px]" style={{ background: '#1B2A6B' }}>
-              {[0,1,2,3,4].map(i => <span key={i} style={{ color: '#fff', fontSize: 8 }}>★</span>)}
+              {[0,1,2,3,4].map(i => <span key={i} className="ls-brand-star" style={{ color: '#fff', fontSize: 8 }}>★</span>)}
             </div>
           </div>
         </div>
 
-        <div className="ls-tagline font-barlow-condensed text-xs font-semibold tracking-widest uppercase text-white/50 mb-1 text-center">
-          Sistema de despacho
+        <div className="ls-tagline font-barlow-condensed text-base font-bold tracking-widest uppercase text-white/60 mb-1 text-center">
+          Sistema Interno
         </div>
         <div className="ls-title font-barlow-condensed text-3xl font-bold text-white text-center mb-10 leading-tight">
           ¿A dónde vas hoy?
@@ -386,9 +391,9 @@ export function LaunchScreen() {
             <button
               onClick={() => router.push('/tiendas')}
               className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-              style={{ height: 110, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
-              <div className="ls-card-icon" style={{ display: 'none', marginBottom: 8 }}>
-                <Store size={20} color="rgba(52,211,153,0.9)" strokeWidth={1.8} />
+              style={{ height: 140, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
+              <div className="ls-card-icon mb-2.5 flex">
+                <Store size={28} color="rgba(52,211,153,0.9)" strokeWidth={1.6} />
               </div>
               <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas / Recepción</div>
               <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
@@ -399,9 +404,9 @@ export function LaunchScreen() {
             <button
               onClick={() => router.push('/picking')}
               className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
-              style={{ height: 88, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
-              <div className="ls-card-icon" style={{ display: 'none', marginBottom: 8 }}>
-                <Layers size={20} color="rgba(234,179,8,0.9)" strokeWidth={1.8} />
+              style={{ height: 140, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
+              <div className="ls-card-icon mb-2.5 flex">
+                <Layers size={28} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
               </div>
               <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
               <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
@@ -409,12 +414,12 @@ export function LaunchScreen() {
           </div>
         ) : (
           <div className="ls-cards-outer w-full max-w-sm">
-            <div className="ls-cards-grid grid grid-cols-2 gap-3 mb-10" style={{ gridAutoRows: '88px' }}>
+            <div className="ls-cards-grid grid grid-cols-2 gap-3 mb-10" style={{ gridAutoRows: '130px' }}>
               <button onClick={() => router.push('/despacho-hub')}
                 className="ls-nav-card ls-card-0 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
                 style={{ background: 'rgba(37,99,235,0.18)', border: '2px solid rgba(37,99,235,0.40)', boxShadow: '0 8px 24px rgba(37,99,235,0.22)' }}>
-                <div className="ls-card-icon" style={{ display: 'none', marginBottom: 8 }}>
-                  <Truck size={18} color="rgba(96,165,250,0.9)" strokeWidth={1.8} />
+                <div className="ls-card-icon mb-2.5 flex">
+                  <Truck size={24} color="rgba(96,165,250,0.9)" strokeWidth={1.6} />
                 </div>
                 <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
                 <div className="text-xs text-white/55 mt-1">Bodegas · Enrutador</div>
@@ -422,8 +427,8 @@ export function LaunchScreen() {
               <button onClick={() => router.push('/control-interno')}
                 className="ls-nav-card ls-card-1 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
                 style={{ background: 'rgba(16,185,129,0.16)', border: '2px solid rgba(16,185,129,0.40)', boxShadow: '0 8px 24px rgba(16,185,129,0.18)' }}>
-                <div className="ls-card-icon" style={{ display: 'none', marginBottom: 8 }}>
-                  <ClipboardList size={18} color="rgba(52,211,153,0.9)" strokeWidth={1.8} />
+                <div className="ls-card-icon mb-2.5 flex">
+                  <ClipboardList size={24} color="rgba(52,211,153,0.9)" strokeWidth={1.6} />
                 </div>
                 <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
                 <div className="text-xs text-white/55 mt-1">Tiendas · Auditoría</div>
@@ -433,8 +438,8 @@ export function LaunchScreen() {
                   onClick={() => router.push('/picking')}
                   className="ls-nav-card ls-card-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
                   style={{ background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.25)' }}>
-                  <div className="ls-card-icon" style={{ display: 'none', marginBottom: 8 }}>
-                    <Layers size={18} color="rgba(234,179,8,0.9)" strokeWidth={1.8} />
+                  <div className="ls-card-icon mb-2.5 flex">
+                    <Layers size={24} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
                   </div>
                   <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
                   <div className="text-xs text-white/55 mt-1">Supervisión de operaciones</div>

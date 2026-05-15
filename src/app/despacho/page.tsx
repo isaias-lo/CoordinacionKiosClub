@@ -132,7 +132,7 @@ function DespachoContent() {
           style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
           <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">INICIO</span>
         </button>
-        <ProfilePill compact />
+        <ProfilePill />
       </div>
       <div className="flex-1 overflow-hidden">
         <RutasScreenWrapper onBack={handleBack} />
