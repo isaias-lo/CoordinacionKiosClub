@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -1855,51 +1855,101 @@ export function AuditoriaScreen() {
 
   /* ── Hub view (admin-auditoria only) ── */
   if (isAdminAud && view === 'hub') {
+    const hubCards = [
+      { Icon: ClipboardPlus,   title: 'Agregar Audición',   sub: 'Registrar nueva auditoría de pallet',    fn: () => setView('form'),               border: 'rgba(34,197,94,0.55)',  bg: 'rgba(34,197,94,0.18)',  shadow: 'rgba(34,197,94,0.22)' },
+      { Icon: BarChart3,       title: 'Estadísticas',        sub: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'),              border: 'rgba(37,99,235,0.55)',  bg: 'rgba(37,99,235,0.18)',  shadow: 'rgba(37,99,235,0.22)' },
+      { Icon: PackageOpen,     title: 'Producción diaria',   sub: 'Registrar pallets producidos por picker',fn: () => setView('produccion'),          border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.16)', shadow: 'rgba(245,158,11,0.20)' },
+      { Icon: Search,           title: 'Revisión Auditoría',  sub: 'Lista · Fotos · Estadísticas',           fn: () => router.push('/auditoria-admin'),border: 'rgba(124,58,237,0.55)', bg: 'rgba(124,58,237,0.18)', shadow: 'rgba(124,58,237,0.22)' },
+      { Icon: Clock,           title: 'Historial',           sub: 'Tus auditorías por fecha',               fn: () => setView('revision'),            border: 'rgba(217,119,6,0.55)',  bg: 'rgba(217,119,6,0.16)',  shadow: 'rgba(217,119,6,0.20)' },
+      { Icon: Settings2,       title: 'Configuración',       sub: 'Pickers · Auditores · Parámetros',       fn: () => setView('config'),              border: 'rgba(20,184,166,0.55)', bg: 'rgba(20,184,166,0.18)', shadow: 'rgba(20,184,166,0.20)' },
+    ];
     return (
-      <div className="fixed inset-0 flex flex-col overflow-hidden"
-        style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
-        <div className="flex items-center gap-2 px-4 py-3.5 flex-shrink-0"
-          style={{ background: 'rgba(0,0,0,0.18)', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
-          <button onClick={() => router.push(userRole === 'admin' ? '/control-interno' : '/')}
-            className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-            style={{
-              width: 36, height: 36,
-              background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-              border: '1px solid rgba(255,255,255,0.15)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
-            }}>
-            <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-          </button>
-          <div className="flex-1">
-            <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
-            <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'} · {profile?.full_name ?? ''}</div>
-          </div>
-          <ProfilePill compact />
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
-          {[
-            { icon: '📝', title: 'Agregar Audición', desc: 'Registrar nueva auditoría de pallet', fn: () => setView('form'), border: 'rgba(34,197,94,0.45)', bg: 'rgba(34,197,94,0.14)', shadow: 'rgba(34,197,94,0.22)' },
-            { icon: '📊', title: 'Estadísticas', desc: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'), border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.14)', shadow: 'rgba(37,99,235,0.22)' },
-            { icon: '🏭', title: 'Producción diaria', desc: 'Registrar pallets producidos por picker', fn: () => setView('produccion'), border: 'rgba(245,158,11,0.45)', bg: 'rgba(245,158,11,0.14)', shadow: 'rgba(245,158,11,0.22)' },
-            { icon: '🔍', title: 'Revisión Auditoría', desc: 'Lista · Fotos · Estadísticas', fn: () => router.push('/auditoria-admin'), border: 'rgba(124,58,237,0.45)', bg: 'rgba(124,58,237,0.14)', shadow: 'rgba(124,58,237,0.22)' },
-            { icon: '📋', title: 'Historial', desc: 'Tus auditorías por fecha', fn: () => setView('revision'), border: 'rgba(217,119,6,0.45)', bg: 'rgba(217,119,6,0.14)', shadow: 'rgba(217,119,6,0.22)' },
-            { icon: '⚙️', title: 'Configuración', desc: 'Nombres de pickers · Ajustes del sistema', fn: () => setView('config'), border: 'rgba(20,184,166,0.45)', bg: 'rgba(20,184,166,0.14)', shadow: 'rgba(20,184,166,0.22)' },
-          ].map(({ icon, title, desc, fn, border, bg, shadow }) => (
-            <button key={title} onClick={fn}
-              className="w-full rounded-2xl px-5 py-4 flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98] text-left border-2"
-              style={{ background: bg, borderColor: border, boxShadow: `0 6px 20px ${shadow}` }}>
-              <span className="text-[40px] leading-none flex-shrink-0">{icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-wide uppercase leading-tight">{title}</div>
-                <div className="text-[12px] text-white/55 mt-0.5">{desc}</div>
+      <>
+        <style>{`
+          @media (max-width: 480px) {
+            .aud-hub-root {
+              padding: 0 !important;
+              overflow: hidden !important;
+              height: 100dvh !important;
+            }
+            .aud-hub-header {
+              margin-bottom: 0 !important;
+              padding: 12px 20px !important;
+            }
+            .aud-hub-desktop { display: none !important; }
+            .aud-hub-mobile {
+              display: flex !important;
+              flex: 1 !important;
+              flex-direction: column !important;
+              padding: 12px 16px 24px !important;
+              gap: 9px !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
+            .aud-hub-mobile-card {
+              flex: 1 !important;
+              height: auto !important;
+            }
+          }
+        `}</style>
+        <div className="aud-hub-root fixed inset-0 flex flex-col py-10 overflow-y-auto"
+          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+
+          {/* Header */}
+          <div className="aud-hub-header flex items-center justify-between gap-3 mb-10 px-6">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.push(userRole === 'admin' ? '/control-interno' : '/')}
+                className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+                style={{
+                  width: 36, height: 36,
+                  background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+                }}>
+                <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+              </button>
+              <div>
+                <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
+                <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Auditoría</div>
               </div>
-              <span className="ml-auto text-white/30 text-[20px] flex-shrink-0">›</span>
-            </button>
-          ))}
+            </div>
+            <ProfilePill compact />
           </div>
+
+          {/* Desktop grid */}
+          <div className="aud-hub-desktop px-6">
+            <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-lg md:mx-auto">
+              {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }) => (
+                <button key={title} onClick={fn}
+                  className="relative overflow-hidden rounded-2xl px-5 py-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+                  style={{ background: bg, borderColor: border, boxShadow: `0 8px 24px ${shadow}`, minHeight: 118 }}>
+                  <Icon size={28} color="rgba(255,255,255,0.85)" strokeWidth={1.5} style={{ marginBottom: 10 }} />
+                  <div className="font-barlow-condensed text-[18px] font-bold text-white tracking-widest uppercase leading-tight">{title}</div>
+                  <div className="text-[11px] text-white/55 mt-0.5">{sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="aud-hub-mobile flex md:hidden flex-col gap-3 px-6">
+            {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }) => (
+              <button key={title} onClick={fn}
+                className="aud-hub-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer transition-all active:scale-[0.98] border-2 text-left"
+                style={{ background: bg, borderColor: border, boxShadow: `0 6px 20px ${shadow}`, minHeight: 66 }}>
+                <Icon size={24} color="rgba(255,255,255,0.85)" strokeWidth={1.5} style={{ flexShrink: 0 }} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-barlow-condensed text-[18px] font-bold text-white tracking-wide uppercase leading-tight">{title}</div>
+                  <div className="text-[11px] text-white/55">{sub}</div>
+                </div>
+                <ChevronLeft size={16} color="rgba(255,255,255,0.3)" strokeWidth={2.5} style={{ flexShrink: 0, transform: 'rotate(180deg)' }} />
+              </button>
+            ))}
+          </div>
+
         </div>
-      </div>
+      </>
     );
   }
 
