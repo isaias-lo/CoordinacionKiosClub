@@ -37,7 +37,7 @@ const EMPTY: Tienda = {
 const S = {
   page: { position: 'fixed', inset: 0, overflowY: 'auto', background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', padding: '20px 16px 40px' } as React.CSSProperties,
   header: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' } as React.CSSProperties,
-  backBtn: { width: 36, height: 36, flexShrink: 0, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' } as React.CSSProperties,
+  backBtn: { width: 36, height: 36, flexShrink: 0, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' } as React.CSSProperties,
   title: { color: '#fff', fontSize: 20, fontWeight: 700, flex: 1 } as React.CSSProperties,
   card: { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: '14px 16px', marginBottom: 10 } as React.CSSProperties,
   row: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },

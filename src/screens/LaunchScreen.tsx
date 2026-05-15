@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
-import { Settings, Users, Bell, LogOut } from 'lucide-react';
+import { Settings, Users, Bell, LogOut, Truck, ClipboardList, Layers, Store } from 'lucide-react';
 
 const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda', 'supervisor-picking': 'Supervisor Picking',
@@ -135,15 +135,33 @@ function AccountMenu({ onClose, isAdmin, pendingCount }: { onClose: () => void; 
 }
 
 export function LaunchScreen() {
-  const router = useRouter();
-  const { profile } = useAuth();
-  const [stats, setStats] = useState({ dias: 0, pallets: 0, bultos: 0 });
+  const router       = useRouter();
+  const { profile }  = useAuth();
+  const [stats, setStats]           = useState({ dias: 0, pallets: 0, bultos: 0 });
   const [pendingCount, setPendingCount] = useState(0);
-  const [showMenu, setShowMenu] = useState(false);
+  const [showMenu, setShowMenu]     = useState(false);
+  const [isMobile, setIsMobile]           = useState(false);
+  const [skipAnim, setSkipAnim]           = useState(true);
 
-  const isAdmin           = profile?.role === 'admin';
-  const isRecepcion       = profile?.role === 'recepcion-tienda';
-  const isSupervisorPick  = profile?.role === 'supervisor-picking';
+  const isAdmin          = profile?.role === 'admin';
+  const isRecepcion      = profile?.role === 'recepcion-tienda';
+  const isSupervisorPick = profile?.role === 'supervisor-picking';
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 480);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    const already = sessionStorage.getItem('home_animated');
+    setSkipAnim(!!already);
+    if (!already) {
+      const t = setTimeout(() => sessionStorage.setItem('home_animated', '1'), 1200);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const loadPending = useCallback(async () => {
     if (!isAdmin) return;
@@ -182,134 +200,266 @@ export function LaunchScreen() {
 
   const initial = (profile?.full_name ?? 'U')[0].toUpperCase();
 
+  const todayLabel = (() => {
+    const s = new Date().toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  })();
+
   return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center gap-0 px-6 py-10 overflow-y-auto"
-         style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+    <>
+      <style>{`
+        @keyframes ls-from-left   { from { opacity:0; transform: translateX(-60px); } to { opacity:1; transform: translateX(0); } }
+        @keyframes ls-from-right  { from { opacity:0; transform: translateX(60px);  } to { opacity:1; transform: translateX(0); } }
+        @keyframes ls-from-bottom { from { opacity:0; transform: translateY(50px);  } to { opacity:1; transform: translateY(0); } }
+        @keyframes ls-from-bottom2{ from { opacity:0; transform: translateY(70px);  } to { opacity:1; transform: translateY(0); } }
+        @keyframes ls-from-top    { from { opacity:0; transform: translateY(-50px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes ls-logo-spring { from { opacity:0; transform: scale(0.75); }      to { opacity:1; transform: scale(1); } }
+        @keyframes ls-fade-in     { from { opacity:0; } to { opacity:1; } }
 
-      {/* Profile — top-right corner, both desktop and mobile */}
-      {profile && (
-        <div className="absolute top-4 right-4 z-20">
-          <div className="relative">
+        @media (min-width: 481px) {
+          .ls-brand-main  { font-size: 52px !important; }
+          .ls-brand-sub   { font-size: 40px !important; }
+          .ls-brand-star  { font-size: 13px !important; }
+          .ls-logo        { margin-top: -100px !important; }
+        }
+        @media (max-width: 480px) {
+          .ls-animate .ls-mobile-hdr  { animation: ls-from-top    0.55s cubic-bezier(0.34,1.56,0.64,1) 0.35s both; }
+          .ls-animate .ls-logo        { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.05s both; }
+          .ls-animate .ls-tagline     { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.08s both; }
+          .ls-animate .ls-title       { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.11s both; }
+          .ls-animate .ls-card-0      { animation: ls-from-left    0.6s  cubic-bezier(0.34,1.56,0.64,1) 0.18s both; }
+          .ls-animate .ls-card-1      { animation: ls-from-right   0.6s  cubic-bezier(0.34,1.56,0.64,1) 0.18s both; }
+          .ls-animate .ls-card-2      { animation: ls-from-bottom  0.6s  cubic-bezier(0.34,1.56,0.64,1) 0.28s both; }
+          .ls-animate .ls-card-solo   { animation: ls-logo-spring  0.65s cubic-bezier(0.34,1.56,0.64,1) 0.15s both; }
+          .ls-animate .ls-stats-row   { animation: ls-from-bottom2 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.35s both; }
 
-            {/* Desktop: pill con nombre */}
-            <button
-              onClick={() => setShowMenu(v => !v)}
-              className="hidden md:flex items-center gap-3 pl-1.5 pr-4 py-1.5 rounded-full cursor-pointer transition-all active:scale-95"
-              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-[17px] font-bold text-white flex-shrink-0"
-                   style={{ background: 'rgba(37,99,235,0.55)' }}>
-                {initial}
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-white text-[17px] font-medium">{profile.full_name ?? 'Usuario'}</span>
-                <span className="text-[13px] text-white/40 uppercase tracking-wider mt-[2px]">{ROLE_LABEL[profile.role] ?? profile.role}</span>
-              </div>
-              <span className="text-white/40 text-[12px] ml-1">{showMenu ? '▲' : '▼'}</span>
-            </button>
+          .ls-root {
+            justify-content: flex-start !important;
+            align-items: stretch !important;
+            overflow: hidden !important;
+            padding: 0 !important;
+            height: 100dvh !important;
+          }
+          .ls-mobile-hdr { display: flex !important; }
+          .ls-avatar-float { display: none !important; }
+          .ls-logo {
+            margin-bottom: 4px !important;
+            padding: 6px 24px 0 !important;
+            justify-content: center !important;
+          }
+          .ls-tagline { margin-bottom: 2px !important; padding: 0 24px; }
+          .ls-title   { margin-bottom: 8px !important;  padding: 0 24px; }
+          .ls-cards-outer {
+            flex: 1 !important;
+            min-height: 0;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-bottom: 0 !important;
+            padding: 0 16px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            box-sizing: border-box;
+          }
+          .ls-cards-outer > button {
+            flex: 1;
+            height: auto !important;
+            min-height: 120px;
+          }
+          .ls-cards-grid {
+            flex: 1 !important;
+            height: 100% !important;
+            grid-auto-rows: 1fr !important;
+            margin-bottom: 0 !important;
+          }
+          .ls-nav-card {
+            align-items: flex-start !important;
+            padding-left: 16px !important;
+            padding-top: 14px !important;
+            text-align: left !important;
+          }
+          .ls-stats-row {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr 1fr !important;
+            gap: 0 !important;
+            padding: 10px 24px 16px !important;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0;
+          }
+          .ls-stat-item {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          .ls-stat-item + .ls-stat-item { border-left: 1px solid rgba(255,255,255,0.12); }
+        }
+      `}</style>
 
-            {/* Mobile: solo el círculo con badge de pendientes */}
-            <button
-              onClick={() => setShowMenu(v => !v)}
-              className="md:hidden relative flex items-center justify-center w-11 h-11 rounded-full cursor-pointer transition-all active:scale-95"
-              style={{ background: 'rgba(37,99,235,0.55)', border: '2px solid rgba(255,255,255,0.15)' }}>
-              <span className="text-[18px] font-bold text-white">{initial}</span>
-              {isAdmin && pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold text-black flex items-center justify-center"
-                      style={{ background: '#EAB308' }}>
-                  {pendingCount}
-                </span>
+      <div className={`ls-root${skipAnim ? '' : ' ls-animate'} fixed inset-0 flex flex-col items-center justify-center gap-0 px-6 py-10 overflow-y-auto`}
+           style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+
+        {/* Mobile compact header — hidden on desktop via inline style, shown via CSS media query */}
+        <div className="ls-mobile-hdr"
+             style={{ display: 'none', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', flexShrink: 0 }}>
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, fontWeight: 600, letterSpacing: '0.02em' }}>
+            {todayLabel}
+          </span>
+          {profile && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowMenu(v => !v)}
+                style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(37,99,235,0.55)', border: '2px solid rgba(255,255,255,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{initial}</span>
+                {isAdmin && pendingCount > 0 && (
+                  <span style={{ position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: '50%', background: '#EAB308', fontSize: 10, fontWeight: 700, color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+              {showMenu && isMobile && (
+                <AccountMenu onClose={() => setShowMenu(false)} isAdmin={isAdmin} pendingCount={pendingCount} />
               )}
-            </button>
-
-            {showMenu && (
-              <AccountMenu
-                onClose={() => setShowMenu(false)}
-                isAdmin={isAdmin}
-                pendingCount={pendingCount}
-              />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Logo */}
-      <div className="mb-6 flex items-center justify-center">
-        <div className="flex flex-col gap-[3px] leading-none">
-          <div className="flex items-baseline gap-[2px]">
-            <span style={{ fontSize: 28, fontWeight: 800, color: '#D42B2B', letterSpacing: '-0.5px', fontFamily: 'Barlow Condensed, sans-serif' }}>KIOS</span>
-            <span style={{ fontSize: 22, fontStyle: 'italic', fontWeight: 700, color: '#D42B2B', fontFamily: 'Barlow Condensed, sans-serif' }}>Club</span>
-          </div>
-          <div className="flex gap-[3px] rounded-[2px] px-1.5 py-[3px]" style={{ background: '#1B2A6B' }}>
-            {[0,1,2,3,4].map(i => <span key={i} style={{ color: '#fff', fontSize: 8 }}>★</span>)}
-          </div>
-        </div>
-      </div>
-
-      <div className="font-barlow-condensed text-xs font-semibold tracking-widest uppercase text-white/50 mb-1 text-center">
-        Sistema de despacho
-      </div>
-      <div className="font-barlow-condensed text-3xl font-bold text-white text-center mb-10 leading-tight">
-        ¿A dónde vas hoy?
-      </div>
-
-      {/* Vista recepcion-tienda */}
-      {isRecepcion ? (
-        <div className="w-full max-w-sm mb-8">
-          <button
-            onClick={() => router.push('/tiendas')}
-            className="w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-            style={{ height: 110, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas / Recepción</div>
-            <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
-          </button>
-        </div>
-      ) : isSupervisorPick ? (
-        <div className="w-full max-w-sm mb-8">
-          <button
-            onClick={() => router.push('/picking')}
-            className="w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
-            style={{ height: 88, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
-            <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 w-full max-w-sm mb-10" style={{ gridAutoRows: '88px' }}>
-          <button onClick={() => router.push('/despacho-hub')}
-            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
-            style={{ background: 'rgba(37,99,235,0.18)', border: '2px solid rgba(37,99,235,0.40)', boxShadow: '0 8px 24px rgba(37,99,235,0.22)' }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
-            <div className="text-xs text-white/55 mt-1">Bodegas · Enrutador</div>
-          </button>
-          <button onClick={() => router.push('/control-interno')}
-            className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
-            style={{ background: 'rgba(16,185,129,0.16)', border: '2px solid rgba(16,185,129,0.40)', boxShadow: '0 8px 24px rgba(16,185,129,0.18)' }}>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
-            <div className="text-xs text-white/55 mt-1">Tiendas · Auditoría</div>
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => router.push('/picking')}
-              className="col-span-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
-              style={{ background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.25)' }}>
-              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
-              <div className="text-xs text-white/55 mt-1">Supervisión de operaciones</div>
-            </button>
+            </div>
           )}
         </div>
-      )}
 
-      {/* Stats */}
-      <div className="flex gap-5">
-        {[['dias', 'días'], ['pallets', 'pallets'], ['bultos', 'bultos']].map(([k, l]) => (
-          <div key={k} className="text-center">
-            <div className="font-mono text-2xl font-medium text-white">{stats[k as keyof typeof stats]}</div>
-            <div className="text-[11px] text-white/50 uppercase tracking-wider mt-0.5">{l}</div>
+        {/* Profile — floating avatar, desktop only (hidden on mobile via CSS) */}
+        {profile && (
+          <div className="ls-avatar-float absolute top-4 right-4 z-20">
+            <div className="relative">
+
+              {/* Desktop: pill con nombre */}
+              <button
+                onClick={() => setShowMenu(v => !v)}
+                className="hidden md:flex items-center gap-3 pl-1.5 pr-4 py-1.5 rounded-full cursor-pointer transition-all active:scale-95"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-[17px] font-bold text-white flex-shrink-0"
+                     style={{ background: 'rgba(37,99,235,0.55)' }}>
+                  {initial}
+                </div>
+                <div className="flex flex-col leading-none">
+                  <span className="text-white text-[17px] font-medium">{profile.full_name ?? 'Usuario'}</span>
+                  <span className="text-[13px] text-white/40 uppercase tracking-wider mt-[2px]">{ROLE_LABEL[profile.role] ?? profile.role}</span>
+                </div>
+                <span className="text-white/40 text-[12px] ml-1">{showMenu ? '▲' : '▼'}</span>
+              </button>
+
+              {/* Mobile: solo el círculo (sólo activo entre 481px–767px; en ≤480px usa el mobile header) */}
+              <button
+                onClick={() => setShowMenu(v => !v)}
+                className="md:hidden relative flex items-center justify-center w-11 h-11 rounded-full cursor-pointer transition-all active:scale-95"
+                style={{ background: 'rgba(37,99,235,0.55)', border: '2px solid rgba(255,255,255,0.15)' }}>
+                <span className="text-[18px] font-bold text-white">{initial}</span>
+                {isAdmin && pendingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold text-black flex items-center justify-center"
+                        style={{ background: '#EAB308' }}>
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+
+              {showMenu && !isMobile && (
+                <AccountMenu onClose={() => setShowMenu(false)} isAdmin={isAdmin} pendingCount={pendingCount} />
+              )}
+            </div>
           </div>
-        ))}
+        )}
+
+        {/* Logo */}
+        <div className="ls-logo mb-2 flex items-center justify-center">
+          <div className="flex flex-col gap-[3px] leading-none">
+            <div className="flex items-baseline gap-[2px]">
+              <span className="ls-brand-main" style={{ fontSize: 28, fontWeight: 800, color: '#D42B2B', letterSpacing: '-0.5px', fontFamily: 'Barlow Condensed, sans-serif' }}>KIOS</span>
+              <span className="ls-brand-sub" style={{ fontSize: 22, fontStyle: 'italic', fontWeight: 700, color: '#D42B2B', fontFamily: 'Barlow Condensed, sans-serif' }}>Club</span>
+            </div>
+            <div className="flex gap-[3px] rounded-[2px] px-1.5 py-[3px]" style={{ background: '#1B2A6B' }}>
+              {[0,1,2,3,4].map(i => <span key={i} className="ls-brand-star" style={{ color: '#fff', fontSize: 8 }}>★</span>)}
+            </div>
+          </div>
+        </div>
+
+        <div className="ls-tagline font-barlow-condensed text-base font-bold tracking-widest uppercase text-white/60 mb-1 text-center">
+          Sistema Interno
+        </div>
+        <div className="ls-title font-barlow-condensed text-3xl font-bold text-white text-center mb-10 leading-tight">
+          ¿A dónde vas hoy?
+        </div>
+
+        {/* Vista recepcion-tienda */}
+        {isRecepcion ? (
+          <div className="ls-cards-outer w-full max-w-sm mb-8">
+            <button
+              onClick={() => router.push('/tiendas')}
+              className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
+              style={{ height: 140, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
+              <div className="ls-card-icon mb-2.5 flex">
+                <Store size={28} color="rgba(52,211,153,0.9)" strokeWidth={1.6} />
+              </div>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas / Recepción</div>
+              <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
+            </button>
+          </div>
+        ) : isSupervisorPick ? (
+          <div className="ls-cards-outer w-full max-w-sm mb-8">
+            <button
+              onClick={() => router.push('/picking')}
+              className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
+              style={{ height: 140, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
+              <div className="ls-card-icon mb-2.5 flex">
+                <Layers size={28} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
+              </div>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
+              <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
+            </button>
+          </div>
+        ) : (
+          <div className="ls-cards-outer w-full max-w-sm">
+            <div className="ls-cards-grid grid grid-cols-2 gap-3 mb-10" style={{ gridAutoRows: '130px' }}>
+              <button onClick={() => router.push('/despacho-hub')}
+                className="ls-nav-card ls-card-0 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
+                style={{ background: 'rgba(37,99,235,0.18)', border: '2px solid rgba(37,99,235,0.40)', boxShadow: '0 8px 24px rgba(37,99,235,0.22)' }}>
+                <div className="ls-card-icon mb-2.5 flex">
+                  <Truck size={24} color="rgba(96,165,250,0.9)" strokeWidth={1.6} />
+                </div>
+                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
+                <div className="text-xs text-white/55 mt-1">Bodegas · Enrutador</div>
+              </button>
+              <button onClick={() => router.push('/control-interno')}
+                className="ls-nav-card ls-card-1 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
+                style={{ background: 'rgba(16,185,129,0.16)', border: '2px solid rgba(16,185,129,0.40)', boxShadow: '0 8px 24px rgba(16,185,129,0.18)' }}>
+                <div className="ls-card-icon mb-2.5 flex">
+                  <ClipboardList size={24} color="rgba(52,211,153,0.9)" strokeWidth={1.6} />
+                </div>
+                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
+                <div className="text-xs text-white/55 mt-1">Tiendas · Auditoría</div>
+              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => router.push('/picking')}
+                  className="ls-nav-card ls-card-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
+                  style={{ background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.25)' }}>
+                  <div className="ls-card-icon mb-2.5 flex">
+                    <Layers size={24} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
+                  </div>
+                  <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
+                  <div className="text-xs text-white/55 mt-1">Supervisión de operaciones</div>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="ls-stats-row flex gap-5">
+          {[['dias', 'días'], ['pallets', 'pallets'], ['bultos', 'bultos']].map(([k, l]) => (
+            <div key={k} className="ls-stat-item text-center">
+              <div className="font-mono text-2xl font-medium text-white">{stats[k as keyof typeof stats]}</div>
+              <div className="text-[11px] text-white/50 uppercase tracking-wider mt-0.5">{l}</div>
+            </div>
+          ))}
+        </div>
+
       </div>
-
-
-    </div>
+    </>
   );
 }

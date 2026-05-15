@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, LayoutDashboard, Trophy, History, Users, UserCheck, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -13,6 +13,15 @@ import { PICKER_NAMES, PICKERS_LIST, getPickerDisplay } from './data/pickerNames
 import { buscarOperaciones, buscarProducto, getOdooConfig, getPickerOdooStats } from './utils/odooApi';
 import type { PickerOdooStats } from './utils/odooApi';
 import { sheetsAuditoriaWrite } from './utils/sheetsAuditoria';
+import {
+  fetchParametros, fetchProduccionMes, fetchProduccionHoy,
+  computeMetricas, semaforo, calcMinimo,
+  BONO_LABEL, BONO_COLOR, BONO_BG, calcIndiceEquidad,
+  todayISO as metricasTodayISO,
+  fechaCLtoISO, mesActualISO,
+  saveParametros,
+} from './utils/metricas';
+import type { Parametros, MetricasPicker } from './utils/metricas';
 import type {
   TipoAuditoria, CorreccionAuditoria, ResultadoAuditoria,
   TiendaRef, OperacionOdoo, OdooConfig, AuditEntry,
@@ -684,9 +693,10 @@ function PickerNombreSelector({ pickerNombre, pickerNombresList, onChange }: {
 }
 
 /* ── Picker Card (improved ranking card) ── */
-function PickerCard({ stats, rank, trend, odooConfig, compact = false, pickerNames }: {
+function PickerCard({ stats, rank, trend, odooConfig, compact = false, pickerNames, metrica }: {
   stats: PickerStats; rank: number; trend: WeekTrend[];
   odooConfig: OdooConfig; compact?: boolean; pickerNames: Record<string, string>;
+  metrica?: MetricasPicker;
 }) {
   const [odooStats, setOdooStats] = useState<PickerOdooStats | null>(null);
   const [loadingOdoo, setLoadingOdoo] = useState(false);
@@ -723,9 +733,19 @@ function PickerCard({ stats, rank, trend, odooConfig, compact = false, pickerNam
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-barlow-condensed text-[18px] font-bold text-navy leading-tight">{realName || stats.picker}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="font-barlow-condensed text-[18px] font-bold text-navy leading-tight">{realName || stats.picker}</div>
+              {metrica && (
+                <span style={{ padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: BONO_BG[metrica.estado_bono], color: BONO_COLOR[metrica.estado_bono] }}>
+                  {BONO_LABEL[metrica.estado_bono]}
+                </span>
+              )}
+            </div>
             {realName && <div className="text-[11px] text-text-3">{stats.picker}</div>}
             <div className="text-[12px] text-text-3 mt-0.5">{stats.bueno} buenos · {stats.malo} malos · {stats.total} total · {stats.totalPallets} pal.</div>
+            {metrica && metrica.auditados_mes > 0 && (
+              <div className="text-[11px] text-text-3 mt-0.5">Mes: {metrica.auditados_mes} aud. · déficit: {metrica.deficit > 0 ? <span style={{ color: '#D32F2F', fontWeight: 700 }}>{metrica.deficit}</span> : <span style={{ color: '#16A34A' }}>✓</span>}</div>
+            )}
           </div>
           {/* Big % */}
           <div className="text-right flex-shrink-0">
@@ -814,6 +834,29 @@ const PERIOD_LABELS: Record<DashPeriod, string> = { hoy: 'Hoy', semana: '7 días
 /* ── Dashboard Content ── */
 function DashboardContent({ history, today, pickerNames }: { history: AuditEntry[]; today: string; pickerNames: Record<string, string> }) {
   const [period, setPeriod] = useState<DashPeriod>('hoy');
+  const [params, setParams] = useState<Parametros | null>(null);
+  const [resumen, setResumen] = useState<ReturnType<typeof computeMetricas> | null>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+
+  // Cargar parámetros y producción al montar o cambiar period
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoadingMetrics(true);
+      const [p, prodMes, prodHoy] = await Promise.all([
+        fetchParametros(),
+        fetchProduccionMes(new Date()),
+        fetchProduccionHoy(),
+      ]);
+      if (cancelled) return;
+      setParams(p);
+      const todayIso = metricasTodayISO();
+      setResumen(computeMetricas(history, prodMes, prodHoy, p, todayIso));
+      setLoadingMetrics(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [history]);
 
   const entries = useMemo(() => {
     if (period === 'hoy') return history.filter(e => e.fecha === today);
@@ -823,14 +866,16 @@ function DashboardContent({ history, today, pickerNames }: { history: AuditEntry
     return history.filter(e => { const d = parseEsCL(e.fecha); return d !== null && d >= cutoff; });
   }, [history, period, today]);
 
+  // Entradas del mes actual
+  const entriesMes = useMemo(() => {
+    const { from, to } = mesActualISO();
+    return history.filter(e => { const iso = fechaCLtoISO(e.fecha); return iso >= from && iso <= to; });
+  }, [history]);
+
   const buenosH = entries.filter(e => e.resultado === 'bueno').length;
   const pct = entries.length ? Math.round((buenosH / entries.length) * 100) : 0;
   const palletsH = entries.reduce((s, e) => s + e.pallets, 0);
   const erroresH = entries.filter(e => e.tieneErrores).length;
-
-  const pickerMap = new Map<string, { b: number; t: number }>();
-  entries.forEach(e => { if (!e.picker) return; if (!pickerMap.has(e.picker)) pickerMap.set(e.picker, { b: 0, t: 0 }); const s = pickerMap.get(e.picker)!; s.t++; if (e.resultado === 'bueno') s.b++; });
-  const topPicker = Array.from(pickerMap.entries()).sort((a, b) => (b[1].b / (b[1].t || 1)) - (a[1].b / (a[1].t || 1)))[0];
 
   const tiendaErrMap = new Map<string, number>();
   entries.forEach(e => { if (e.resultado === 'malo') tiendaErrMap.set(e.tiendaNombre, (tiendaErrMap.get(e.tiendaNombre) ?? 0) + 1); });
@@ -844,15 +889,226 @@ function DashboardContent({ history, today, pickerNames }: { history: AuditEntry
       {(Object.keys(PERIOD_LABELS) as DashPeriod[]).map(p => (
         <button key={p} onClick={() => setPeriod(p)}
           className="flex-1 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-all border-none"
-          style={period === p
-            ? { background: '#1a2550', color: '#fff' }
-            : { background: 'rgba(26,37,80,0.07)', color: '#6B7280' }}>
+          style={period === p ? { background: '#1a2550', color: '#fff' } : { background: 'rgba(26,37,80,0.07)', color: '#6B7280' }}>
           {PERIOD_LABELS[p]}
         </button>
       ))}
     </div>
   );
 
+  /* ── Vista HOY ── */
+  if (period === 'hoy') {
+    const minimo = params?.minimo_auditorias ?? 73;
+    return (
+      <div className="p-4 space-y-3">
+        {periodSelector}
+
+        {/* Cobertura global del día */}
+        {resumen && (
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Producidos', value: resumen.total_producidos, color: '#1a2550' },
+              { label: 'Auditados', value: resumen.total_auditados, color: '#2563EB' },
+              { label: 'Cobertura', value: resumen.total_producidos > 0 ? `${resumen.cobertura_global}%` : '—', color: resumen.cobertura_global >= (params?.cobertura_diaria_meta ?? 30) ? '#16A34A' : '#D97706' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-card p-3 text-center border border-border" style={{ background: 'rgba(26,37,80,0.04)', boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                <div className="font-barlow-condensed text-[28px] font-extrabold leading-tight" style={{ color }}>{value}</div>
+                <div className="text-[10px] text-text-3 uppercase tracking-wide mt-0.5">{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tabla de prioridad */}
+        {loadingMetrics ? (
+          <div className="text-center py-6 text-text-3 text-[12px]">Cargando métricas…</div>
+        ) : resumen && resumen.pickers.length > 0 ? (
+          <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+            <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
+              <span className="text-[15px]">🎯</span>
+              <span className="font-barlow-condensed text-[15px] font-bold text-navy">Prioridad de auditoría hoy</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'rgba(26,37,80,0.04)' }}>
+                    {['Picker', 'Prod.hoy', 'Audit.hoy', 'Cuota', 'Mes', 'Faltan', 'Hoy'].map(h => (
+                      <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#6B7280', letterSpacing: '0.05em', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {resumen.pickers.map((m, i) => {
+                    const s = semaforo(m);
+                    const dot = s === 'rojo' ? '#D32F2F' : s === 'amarillo' ? '#D97706' : '#16A34A';
+                    return (
+                      <tr key={m.picker_nombre} style={{ borderBottom: i < resumen.pickers.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+                        <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1a2550' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, display: 'inline-block' }} />
+                            <span style={{ fontSize: 12 }}>{m.picker_nombre}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '6px 8px', color: '#374151' }}>{m.producidos_hoy || '—'}</td>
+                        <td style={{ padding: '6px 8px', color: '#374151' }}>{m.auditados_hoy || '—'}</td>
+                        <td style={{ padding: '6px 8px', color: '#374151' }}>{m.producidos_hoy > 0 ? m.cuota_hoy : '—'}</td>
+                        <td style={{ padding: '6px 8px', color: '#374151' }}>{m.auditados_mes}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 700, color: m.deficit > 0 ? '#D32F2F' : '#16A34A' }}>{m.deficit > 0 ? m.deficit : '✓'}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 700 }}>
+                          {m.necesarios_hoy > 0
+                            ? <span style={{ background: s === 'rojo' ? 'rgba(211,47,47,0.10)' : 'rgba(217,119,6,0.10)', color: dot, padding: '2px 7px', borderRadius: 6, fontSize: 11 }}>{m.necesarios_hoy}</span>
+                            : <span style={{ color: '#16A34A' }}>✓</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-2 flex gap-4 border-t border-border text-[10px] text-text-3">
+              <span><span style={{ color: '#16A34A' }}>●</span> Cumplió mínimo</span>
+              <span><span style={{ color: '#D97706' }}>●</span> Pendiente</span>
+              <span><span style={{ color: '#D32F2F' }}>●</span> Urgente (después 15:00)</span>
+              <span>Mínimo mensual: <strong>{minimo}</strong> pallets</span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-text-3 text-[12px]">Sin datos de producción para hoy. Registra producción en la sección correspondiente.</div>
+        )}
+
+        {/* KPI rápidos de auditorías de hoy */}
+        {entries.length > 0 && (
+          <>
+            <div className="text-[11px] text-text-3 text-center">{entries.length} auditorías registradas hoy</div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { label: '% Aprobación', value: `${pct}%`, color: pct >= 80 ? '#16A34A' : pct >= 60 ? '#D97706' : '#D32F2F', bg: pct >= 80 ? 'rgba(22,163,74,0.08)' : pct >= 60 ? 'rgba(217,119,6,0.08)' : 'rgba(211,47,47,0.08)' },
+                { label: 'Con errores', value: erroresH, color: erroresH > 0 ? '#D32F2F' : '#16A34A', bg: erroresH > 0 ? 'rgba(211,47,47,0.07)' : 'rgba(22,163,74,0.07)' },
+              ].map(({ label, value, color, bg }) => (
+                <div key={label} className="rounded-card p-3.5 text-center border border-border" style={{ background: bg, boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+                  <div className="font-barlow-condensed text-[34px] font-extrabold leading-tight" style={{ color }}>{value}</div>
+                  <div className="text-[11px] text-text-3 uppercase tracking-wide mt-1">{label}</div>
+                </div>
+              ))}
+            </div>
+            {/* Recent audits */}
+            <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+              <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Últimas auditorías</div>
+              {entries.slice(0, 6).map(e => (
+                <div key={e.id} className="flex items-center gap-2.5 py-2 border-b border-border/40 last:border-0">
+                  <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${e.resultado === 'bueno' ? 'bg-success' : 'bg-red'}`} />
+                  <span className="text-[12px] text-text-2 flex-shrink-0 w-10">{e.hora}</span>
+                  <span className="text-[13px] font-medium text-text flex-1 truncate">{e.tiendaNombre}</span>
+                  {e.picker && <span className="text-[11px] text-text-3 flex-shrink-0">{displayPicker(e.picker, pickerNames)}</span>}
+                  <span className={`font-barlow-condensed text-[13px] font-bold flex-shrink-0 ${e.resultado === 'bueno' ? 'text-success' : 'text-red'}`}>{e.resultado === 'bueno' ? '✓' : '✗'}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  /* ── Vista TOTAL (mes actual) ── */
+  if (period === 'total') {
+    const minimo = params?.minimo_auditorias ?? 73;
+    const indiceEquidad = resumen ? calcIndiceEquidad(resumen.pickers) : null;
+
+    return (
+      <div className="p-4 space-y-3">
+        {periodSelector}
+
+        {/* Resumen mensual por picker */}
+        {loadingMetrics ? (
+          <div className="text-center py-6 text-text-3 text-[12px]">Cargando métricas del mes…</div>
+        ) : resumen && resumen.pickers.length > 0 ? (
+          <>
+            <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+              <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px]">📅</span>
+                  <span className="font-barlow-condensed text-[15px] font-bold text-navy">Resumen mensual · mes actual</span>
+                </div>
+                <span className="text-[11px] text-text-3">Mínimo: {minimo} pallets</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(26,37,80,0.04)' }}>
+                      {['Picker', 'Auditados', 'Cobertura', 'Efectividad', 'Estado bono'].map(h => (
+                        <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#6B7280', letterSpacing: '0.05em', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumen.pickers.map((m, i) => (
+                      <tr key={m.picker_nombre} style={{ borderBottom: i < resumen.pickers.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+                        <td style={{ padding: '7px 8px', fontWeight: 600, color: '#1a2550', fontSize: 12 }}>{m.picker_nombre}</td>
+                        <td style={{ padding: '7px 8px', color: '#374151' }}>
+                          <span style={{ fontWeight: 700 }}>{m.auditados_mes}</span>
+                          <span style={{ color: '#9CA3AF', fontSize: 10, marginLeft: 2 }}>/{minimo}</span>
+                        </td>
+                        <td style={{ padding: '7px 8px', color: m.cobertura_picker_mes !== null ? '#374151' : '#9CA3AF' }}>
+                          {m.cobertura_picker_mes !== null ? `${m.cobertura_picker_mes}%` : '—'}
+                        </td>
+                        <td style={{ padding: '7px 8px' }}>
+                          {m.efectividad_pct !== null && m.auditados_mes >= 20
+                            ? <span style={{ fontWeight: 700, color: m.efectividad_pct >= (params?.umbral_bono_pct ?? 95) ? '#16A34A' : '#D32F2F' }}>{m.efectividad_pct}%</span>
+                            : <span style={{ color: '#9CA3AF', fontSize: 11 }}>Insuf.</span>}
+                        </td>
+                        <td style={{ padding: '7px 8px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: BONO_BG[m.estado_bono], color: BONO_COLOR[m.estado_bono] }}>
+                            {BONO_LABEL[m.estado_bono]}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Índice de equidad */}
+            {indiceEquidad !== null && (
+              <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+                <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1">Índice de equidad del área</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-barlow-condensed text-[34px] font-extrabold" style={{ color: indiceEquidad <= 15 ? '#16A34A' : indiceEquidad <= 30 ? '#D97706' : '#D32F2F' }}>{indiceEquidad}pp</span>
+                  <span className="text-[12px] text-text-3">diferencia cobertura máx − mín · menor es más justo</span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-8 text-text-3"><div className="text-[40px] mb-3">📊</div><div className="text-[15px] font-barlow-condensed">Sin datos suficientes para el mes actual.</div></div>
+        )}
+
+        {/* KPIs del mes desde audit_entries */}
+        {entriesMes.length > 0 && (() => {
+          const bm = entriesMes.filter(e => e.resultado === 'bueno').length;
+          const pm = entriesMes.reduce((s, e) => s + e.pallets, 0);
+          const pctm = entriesMes.length ? Math.round((bm / entriesMes.length) * 100) : 0;
+          return (
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Auditorías', value: entriesMes.length, color: '#1a2550' },
+                { label: 'Pallets', value: pm, color: '#2563EB' },
+                { label: 'Aprobación', value: `${pctm}%`, color: pctm >= 80 ? '#16A34A' : '#D97706' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="rounded-card p-3 text-center border border-border" style={{ background: 'rgba(26,37,80,0.04)' }}>
+                  <div className="font-barlow-condensed text-[26px] font-extrabold leading-tight" style={{ color }}>{value}</div>
+                  <div className="text-[10px] text-text-3 uppercase tracking-wide mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+    );
+  }
+
+  /* ── Vista 7D / 30D ── */
   if (entries.length === 0) return (
     <div className="p-4">
       {periodSelector}
@@ -860,12 +1116,26 @@ function DashboardContent({ history, today, pickerNames }: { history: AuditEntry
     </div>
   );
 
+  // Efectividad por picker en el período
+  const pickerPeriodMap = new Map<string, { total: number; ok: number; pallets: number; nombre: string }>();
+  entries.forEach(e => {
+    const nombre = e.pickerNombre?.trim() || displayPicker(e.picker ?? '', pickerNames);
+    if (!nombre) return;
+    if (!pickerPeriodMap.has(nombre)) pickerPeriodMap.set(nombre, { total: 0, ok: 0, pallets: 0, nombre });
+    const s = pickerPeriodMap.get(nombre)!;
+    s.total++;
+    s.pallets += e.pallets;
+    if (!e.tieneErrores) s.ok++;
+  });
+  const pickerPeriodList = Array.from(pickerPeriodMap.values())
+    .map(s => ({ ...s, efectividad: s.total > 0 ? Math.round((s.ok / s.total) * 100) : 0 }))
+    .sort((a, b) => b.efectividad - a.efectividad);
+
   return (
     <div className="p-4 space-y-3">
       {periodSelector}
-      <div className="text-[11px] text-text-3 text-center -mt-1 mb-0.5">
-        {entries.length} auditorías · todos los auditores
-      </div>
+      <div className="text-[11px] text-text-3 text-center -mt-1">{entries.length} auditorías · {PERIOD_LABELS[period]}</div>
+
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-2.5">
         {[
@@ -875,47 +1145,38 @@ function DashboardContent({ history, today, pickerNames }: { history: AuditEntry
           { label: 'Con errores', value: erroresH, color: erroresH > 0 ? '#D32F2F' : '#16A34A', bg: erroresH > 0 ? 'rgba(211,47,47,0.07)' : 'rgba(22,163,74,0.07)' },
         ].map(({ label, value, color, bg }) => (
           <div key={label} className="rounded-card p-3.5 text-center border border-border" style={{ background: bg, boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-            <div className="font-barlow-condensed text-[38px] font-extrabold leading-tight" style={{ color }}>{value}</div>
+            <div className="font-barlow-condensed text-[34px] font-extrabold leading-tight" style={{ color }}>{value}</div>
             <div className="text-[11px] text-text-3 uppercase tracking-wide mt-1">{label}</div>
           </div>
         ))}
       </div>
 
-      {/* Top picker */}
-      {topPicker && (
-        <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-          <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2.5">⭐ Mejor picker hoy</div>
-          <div className="flex items-center gap-3">
-            <div className="text-[32px]">🥇</div>
-            <div className="flex-1">
-              <div className="font-barlow-condensed text-[20px] font-bold text-navy">{displayPicker(topPicker[0], pickerNames)}</div>
-              {pickerNames[topPicker[0]]?.trim() && <div className="text-[11px] text-text-3">{topPicker[0]}</div>}
-              <div className="text-[12px] text-text-2 mt-0.5">{topPicker[1].b}/{topPicker[1].t} buenos hoy</div>
-            </div>
-            <div className="font-barlow-condensed text-[36px] font-extrabold text-success">{Math.round((topPicker[1].b / topPicker[1].t) * 100)}%</div>
+      {/* Efectividad por picker */}
+      {pickerPeriodList.length > 0 && (
+        <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+          <div className="px-4 py-2.5 border-b border-border">
+            <span className="font-barlow-condensed text-[15px] font-bold text-navy">Efectividad por picker</span>
           </div>
+          {pickerPeriodList.map(s => (
+            <div key={s.nombre} className="px-4 py-3 border-b border-border/40 last:border-0">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-[13px] text-text">{s.nombre}</span>
+                {s.total >= 20
+                  ? <span className="font-barlow-condensed text-[18px] font-bold" style={{ color: effColor(s.efectividad) }}>{s.efectividad}%</span>
+                  : <span className="text-[11px] text-text-3 italic">Muestra insuficiente</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-2 bg-bg-2 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${s.efectividad}%`, background: effColor(s.efectividad) }} />
+                </div>
+                <span className="text-[10px] text-text-3 flex-shrink-0">{s.ok}/{s.total} · {s.pallets}p</span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Correction breakdown */}
-      <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-        <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-3">Distribución de correcciones</div>
-        <div className="flex rounded-full overflow-hidden h-5 mb-3">
-          {(Object.entries(corrBreak) as [CorreccionAuditoria, number][]).filter(([, v]) => v > 0).map(([k, v]) => (
-            <div key={k} style={{ flex: v, background: CORR_COLORS[k] }} title={`${CORR_LABEL[k]}: ${v}`} />
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.entries(corrBreak) as [CorreccionAuditoria, number][]).map(([k, v]) => (
-            <div key={k} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: CORR_COLORS[k] }} />
-              <span className="text-[12px] text-text-2">{CORR_LABEL[k]}: <strong>{v}</strong></span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Top error stores */}
+      {/* Tiendas con más errores */}
       {topErrTiendas.length > 0 && (
         <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
           <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Tiendas con más errores</div>
@@ -929,18 +1190,22 @@ function DashboardContent({ history, today, pickerNames }: { history: AuditEntry
         </div>
       )}
 
-      {/* Recent audits */}
+      {/* Distribución de correcciones */}
       <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-        <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-2">Últimas auditorías</div>
-        {entries.slice(0, 6).map(e => (
-          <div key={e.id} className="flex items-center gap-2.5 py-2 border-b border-border/40 last:border-0">
-            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${e.resultado === 'bueno' ? 'bg-success' : 'bg-red'}`} />
-            <span className="text-[12px] text-text-2 flex-shrink-0 w-10">{e.hora}</span>
-            <span className="text-[13px] font-medium text-text flex-1 truncate">{e.tiendaNombre}</span>
-            {e.picker && <span className="text-[11px] text-text-3 flex-shrink-0">{displayPicker(e.picker, pickerNames)}</span>}
-            <span className={`font-barlow-condensed text-[13px] font-bold flex-shrink-0 ${e.resultado === 'bueno' ? 'text-success' : 'text-red'}`}>{e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}</span>
-          </div>
-        ))}
+        <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-3">Distribución de correcciones</div>
+        <div className="flex rounded-full overflow-hidden h-4 mb-3">
+          {(Object.entries(corrBreak) as [CorreccionAuditoria, number][]).filter(([, v]) => v > 0).map(([k, v]) => (
+            <div key={k} style={{ flex: v, background: CORR_COLORS[k] }} title={`${CORR_LABEL[k]}: ${v}`} />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.entries(corrBreak) as [CorreccionAuditoria, number][]).map(([k, v]) => (
+            <div key={k} className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: CORR_COLORS[k] }} />
+              <span className="text-[12px] text-text-2">{CORR_LABEL[k]}: <strong>{v}</strong></span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -951,6 +1216,20 @@ function RankingContent({ history, odooConfig, pickerNames }: { history: AuditEn
   const [scope, setScope] = useState<'hoy' | 'total'>('total');
   const [rView, setRView] = useState<'barras' | 'semanal'>('barras');
   const [selectedPickers, setSelectedPickers] = useState<string[]>([]);
+  const [metricasPickers, setMetricasPickers] = useState<MetricasPicker[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const [p, prodMes, prodHoy] = await Promise.all([fetchParametros(), fetchProduccionMes(new Date()), fetchProduccionHoy()]);
+      if (cancelled) return;
+      const r = computeMetricas(history, prodMes, prodHoy, p, metricasTodayISO());
+      setMetricasPickers(r.pickers);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [history]);
+
   const today = new Date().toLocaleDateString('es-CL');
   const entries = scope === 'hoy' ? history.filter(e => e.fecha === today) : history;
   const rankingData = useMemo(() => computeRanking(entries), [entries]);
@@ -997,9 +1276,13 @@ function RankingContent({ history, odooConfig, pickerNames }: { history: AuditEn
           rankingData.length === 0
             ? <div className="text-center py-16 text-text-3"><div className="text-[40px] mb-3">📊</div><div className="font-barlow-condensed text-[16px]">Sin datos para {scope === 'hoy' ? 'hoy' : 'el histórico'}.</div></div>
             : <>
-                {rankingData.map((s, i) => (
-                  <PickerCard key={s.picker} stats={s} rank={i + 1} trend={computeWeeklyTrend(history, s.picker)} odooConfig={odooConfig} pickerNames={pickerNames} />
-                ))}
+                {rankingData.map((s, i) => {
+                  const realName = pickerNames[s.picker]?.trim() || s.picker;
+                  const metrica = metricasPickers.find(m => m.picker_nombre === realName || m.picker_nombre === s.picker);
+                  return (
+                    <PickerCard key={s.picker} stats={s} rank={i + 1} trend={computeWeeklyTrend(history, s.picker)} odooConfig={odooConfig} pickerNames={pickerNames} metrica={metrica} />
+                  );
+                })}
                 {(() => {
                   const activos = new Set(rankingData.map(r => r.picker));
                   const sin = PICKERS_LIST.filter(p => !activos.has(p));
@@ -1078,7 +1361,9 @@ function HistoryContent({ history, today, onReaudit, onExportPDF, onRefresh, pic
         {fechasDisponibles.length === 0 ? <span className="text-[12px] text-text-3">Sin registros</span>
           : fechasDisponibles.map(f => <button key={f} onClick={() => setHistFecha(f)} className={`flex-shrink-0 px-3 py-1 rounded-full text-[12px] font-bold border cursor-pointer ${histFecha === f ? 'bg-navy text-white border-navy' : 'bg-white text-text-2 border-border'}`}>{f === today ? 'Hoy' : f}</button>)}
         {onRefresh && (
-          <button onClick={handleRefresh} className={`flex-shrink-0 ml-auto border-none bg-transparent text-text-3 cursor-pointer text-[18px] transition-transform ${refreshing ? 'animate-spin' : 'hover:text-navy'}`} title="Actualizar">↻</button>
+          <button onClick={handleRefresh} className={`flex-shrink-0 ml-auto border-none bg-transparent text-text-3 cursor-pointer transition-all ${refreshing ? 'animate-spin' : 'hover:text-navy'}`} title="Actualizar">
+            <RefreshCw size={16} strokeWidth={2} />
+          </button>
         )}
       </div>
       {filtrado.length > 0 && (
@@ -1143,9 +1428,14 @@ function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false
     <div className="flex flex-col h-full bg-bg">
       {!onlyHistory && (
         <div className="flex border-b border-border bg-white flex-shrink-0">
-          {([['dashboard', '📊 Dashboard'], ['ranking', '🏆 Ranking'], ['history', '📋 Historial']] as const).map(([key, label]) => (
+          {([
+            { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
+            { key: 'ranking'   as const, label: 'Ranking',   Icon: Trophy },
+            { key: 'history'   as const, label: 'Historial', Icon: History },
+          ]).map(({ key, label, Icon }) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              <Icon size={13} strokeWidth={2} />
               {label}
             </button>
           ))}
@@ -1153,7 +1443,12 @@ function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false
       )}
       {onlyHistory && (
         <div className="px-4 py-2.5 bg-white border-b border-border flex-shrink-0">
-          <span className="font-barlow-condensed text-[15px] font-bold text-navy">📋 Tu historial</span>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+              <History size={14} color="#1a2550" strokeWidth={2} />
+            </div>
+            <span className="font-barlow-condensed text-[15px] font-bold text-navy">Tu historial</span>
+          </div>
         </div>
       )}
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -1172,11 +1467,11 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
   onlyHistory?: boolean;
 }) {
   const items = onlyHistory
-    ? [{ icon: '📋', label: 'Historial', sub: 'Tus auditorías por fecha', v: 'history' as const }]
+    ? [{ Icon: History,        label: 'Historial',        sub: 'Tus auditorías por fecha',                   v: 'history'   as const }]
     : [
-        { icon: '📊', label: 'Dashboard del día', sub: 'KPIs y métricas de hoy', v: 'dashboard' as const },
-        { icon: '🏆', label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades', v: 'ranking' as const },
-        { icon: '📋', label: 'Historial', sub: 'Auditorías por fecha + exportar PDF', v: 'history' as const },
+        { Icon: LayoutDashboard, label: 'Dashboard del día', sub: 'KPIs y métricas de hoy',                    v: 'dashboard' as const },
+        { Icon: Trophy,          label: 'Ranking de Pickers', sub: 'Eficiencia y estadísticas de unidades',    v: 'ranking'   as const },
+        { Icon: History,        label: 'Historial',        sub: 'Auditorías por fecha + exportar PDF',         v: 'history'   as const },
       ];
   return (
     <div className="fixed inset-0 z-50">
@@ -1184,10 +1479,13 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
       <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[24px] overflow-hidden" style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.22)' }}>
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mt-4 mb-1" />
         <div className="p-4 pb-8 space-y-2">
-          {items.map(({ icon, label, sub, v }) => (
+          {items.map(({ Icon, label, sub, v }) => (
             <button key={v} onClick={() => onNavigate(v)}
               className="w-full flex items-center gap-4 px-4 py-3.5 bg-bg hover:bg-bg-2 rounded-card cursor-pointer border border-border text-left transition-colors">
-              <span className="text-[28px]">{icon}</span>
+              <div className="w-11 h-11 flex items-center justify-center rounded-xl flex-shrink-0"
+                style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.10), rgba(26,37,80,0.05))', border: '1px solid rgba(26,37,80,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }}>
+                <Icon size={22} color="#1a2550" strokeWidth={1.8} />
+              </div>
               <div className="flex-1">
                 <div className="font-barlow-condensed text-[17px] font-bold text-navy">{label}</div>
                 <div className="text-[12px] text-text-3 mt-0.5">{sub}</div>
@@ -1230,7 +1528,7 @@ export function AuditoriaScreen() {
   const tiendaRef = useRef<HTMLDivElement>(null);
 
   const odooConfig = useMemo(() => getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' }, []);
-  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision' | 'config'>('form');
+  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision' | 'config' | 'produccion'>('form');
   const [viewInit,       setViewInit]       = useState(false);
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -1572,50 +1870,101 @@ export function AuditoriaScreen() {
 
   /* ── Hub view (admin-auditoria only) ── */
   if (isAdminAud && view === 'hub') {
+    const hubCards = [
+      { Icon: ClipboardPlus,   title: 'Agregar Audición',   sub: 'Registrar nueva auditoría de pallet',    fn: () => setView('form'),               border: 'rgba(34,197,94,0.55)',  bg: 'rgba(34,197,94,0.18)',  shadow: 'rgba(34,197,94,0.22)' },
+      { Icon: BarChart3,       title: 'Estadísticas',        sub: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'),              border: 'rgba(37,99,235,0.55)',  bg: 'rgba(37,99,235,0.18)',  shadow: 'rgba(37,99,235,0.22)' },
+      { Icon: PackageOpen,     title: 'Producción diaria',   sub: 'Registrar pallets producidos por picker',fn: () => setView('produccion'),          border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.16)', shadow: 'rgba(245,158,11,0.20)' },
+      { Icon: Search,           title: 'Revisión Auditoría',  sub: 'Lista · Fotos · Estadísticas',           fn: () => router.push('/auditoria-admin'),border: 'rgba(124,58,237,0.55)', bg: 'rgba(124,58,237,0.18)', shadow: 'rgba(124,58,237,0.22)' },
+      { Icon: Clock,           title: 'Historial',           sub: 'Tus auditorías por fecha',               fn: () => setView('revision'),            border: 'rgba(217,119,6,0.55)',  bg: 'rgba(217,119,6,0.16)',  shadow: 'rgba(217,119,6,0.20)' },
+      { Icon: Settings2,       title: 'Configuración',       sub: 'Pickers · Auditores · Parámetros',       fn: () => setView('config'),              border: 'rgba(20,184,166,0.55)', bg: 'rgba(20,184,166,0.18)', shadow: 'rgba(20,184,166,0.20)' },
+    ];
     return (
-      <div className="fixed inset-0 flex flex-col overflow-hidden"
-        style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
-        <div className="flex items-center gap-2 px-4 py-3.5 flex-shrink-0"
-          style={{ background: 'rgba(0,0,0,0.18)', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
-          <button onClick={() => router.push(userRole === 'admin' ? '/control-interno' : '/')}
-            className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-            style={{
-              width: 36, height: 36,
-              background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-              border: '1px solid rgba(255,255,255,0.15)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
-            }}>
-            <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-          </button>
-          <div className="flex-1">
-            <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase">Auditoría</div>
-            <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'} · {profile?.full_name ?? ''}</div>
-          </div>
-          <ProfilePill compact />
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
-          {[
-            { icon: '📝', title: 'Agregar Audición', desc: 'Registrar nueva auditoría de pallet', fn: () => setView('form'), border: 'rgba(34,197,94,0.45)', bg: 'rgba(34,197,94,0.14)', shadow: 'rgba(34,197,94,0.22)' },
-            { icon: '📊', title: 'Estadísticas', desc: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'), border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.14)', shadow: 'rgba(37,99,235,0.22)' },
-            { icon: '🔍', title: 'Revisión Auditoría', desc: 'Lista · Fotos · Estadísticas', fn: () => router.push('/auditoria-admin'), border: 'rgba(124,58,237,0.45)', bg: 'rgba(124,58,237,0.14)', shadow: 'rgba(124,58,237,0.22)' },
-            { icon: '📋', title: 'Historial', desc: 'Tus auditorías por fecha', fn: () => setView('revision'), border: 'rgba(217,119,6,0.45)', bg: 'rgba(217,119,6,0.14)', shadow: 'rgba(217,119,6,0.22)' },
-            { icon: '⚙️', title: 'Configuración', desc: 'Nombres de pickers · Ajustes del sistema', fn: () => setView('config'), border: 'rgba(20,184,166,0.45)', bg: 'rgba(20,184,166,0.14)', shadow: 'rgba(20,184,166,0.22)' },
-          ].map(({ icon, title, desc, fn, border, bg, shadow }) => (
-            <button key={title} onClick={fn}
-              className="w-full rounded-2xl px-5 py-4 flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98] text-left border-2"
-              style={{ background: bg, borderColor: border, boxShadow: `0 6px 20px ${shadow}` }}>
-              <span className="text-[40px] leading-none flex-shrink-0">{icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-wide uppercase leading-tight">{title}</div>
-                <div className="text-[12px] text-white/55 mt-0.5">{desc}</div>
+      <>
+        <style>{`
+          @media (max-width: 480px) {
+            .aud-hub-root {
+              padding: 0 !important;
+              overflow: hidden !important;
+              height: 100dvh !important;
+            }
+            .aud-hub-header {
+              margin-bottom: 0 !important;
+              padding: 12px 20px !important;
+            }
+            .aud-hub-desktop { display: none !important; }
+            .aud-hub-mobile {
+              display: flex !important;
+              flex: 1 !important;
+              flex-direction: column !important;
+              padding: 12px 16px 24px !important;
+              gap: 9px !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
+            .aud-hub-mobile-card {
+              flex: 1 !important;
+              height: auto !important;
+            }
+          }
+        `}</style>
+        <div className="aud-hub-root fixed inset-0 flex flex-col py-10 overflow-y-auto"
+          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+
+          {/* Header */}
+          <div className="aud-hub-header flex items-center justify-between gap-3 mb-10 px-6">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.push(userRole === 'admin' ? '/control-interno' : '/')}
+                className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+                style={{
+                  width: 36, height: 36,
+                  background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
+                }}>
+                <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+              </button>
+              <div>
+                <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
+                <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Auditoría</div>
               </div>
-              <span className="ml-auto text-white/30 text-[20px] flex-shrink-0">›</span>
-            </button>
-          ))}
+            </div>
+            <ProfilePill compact />
           </div>
+
+          {/* Desktop grid */}
+          <div className="aud-hub-desktop px-6">
+            <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-lg md:mx-auto">
+              {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }) => (
+                <button key={title} onClick={fn}
+                  className="relative overflow-hidden rounded-2xl px-5 py-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+                  style={{ background: bg, borderColor: border, boxShadow: `0 8px 24px ${shadow}`, minHeight: 118 }}>
+                  <Icon size={28} color="rgba(255,255,255,0.85)" strokeWidth={1.5} style={{ marginBottom: 10 }} />
+                  <div className="font-barlow-condensed text-[18px] font-bold text-white tracking-widest uppercase leading-tight">{title}</div>
+                  <div className="text-[11px] text-white/55 mt-0.5">{sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="aud-hub-mobile flex md:hidden flex-col gap-3 px-6">
+            {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }) => (
+              <button key={title} onClick={fn}
+                className="aud-hub-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer transition-all active:scale-[0.98] border-2 text-left"
+                style={{ background: bg, borderColor: border, boxShadow: `0 6px 20px ${shadow}`, minHeight: 66 }}>
+                <Icon size={24} color="rgba(255,255,255,0.85)" strokeWidth={1.5} style={{ flexShrink: 0 }} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-barlow-condensed text-[18px] font-bold text-white tracking-wide uppercase leading-tight">{title}</div>
+                  <div className="text-[11px] text-white/55">{sub}</div>
+                </div>
+                <ChevronLeft size={16} color="rgba(255,255,255,0.3)" strokeWidth={2.5} style={{ flexShrink: 0, transform: 'rotate(180deg)' }} />
+              </button>
+            ))}
+          </div>
+
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1624,6 +1973,11 @@ export function AuditoriaScreen() {
     return (
       <AdminAudStats history={history} today={today} odooConfig={odooConfig} onBack={() => setView('hub')} pickerNames={PICKER_NAMES} />
     );
+  }
+
+  /* ── Producción diaria view ── */
+  if (isAdminAud && view === 'produccion') {
+    return <ProduccionPanel onBack={() => setView('hub')} pickerNombresList={pickerNombresList} />;
   }
 
   /* ── Revision view (admin-auditoria: History of all) ── */
@@ -1638,7 +1992,7 @@ export function AuditoriaScreen() {
               width: 36, height: 36,
               background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
               border: '1px solid rgba(255,255,255,0.15)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+              boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
             }}>
             <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
           </button>
@@ -1646,7 +2000,7 @@ export function AuditoriaScreen() {
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
             <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
           </div>
-          <ProfilePill compact />
+          <ProfilePill />
         </div>
         <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
       </div>
@@ -1678,7 +2032,7 @@ export function AuditoriaScreen() {
                 width: 36, height: 36,
                 background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                 border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
@@ -1688,7 +2042,7 @@ export function AuditoriaScreen() {
                 width: 36, height: 36,
                 background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                 border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
@@ -1731,9 +2085,13 @@ export function AuditoriaScreen() {
           {/* Auditor tab bar */}
           {isAuditorOnly && (
             <div className="hidden md:flex border-b border-border bg-white flex-shrink-0">
-              {([{ v: 'form' as const, label: '📝 Formulario' }, { v: 'history' as const, label: '📋 Historial' }]).map(({ v: tv, label }) => (
+              {([
+                { v: 'form'    as const, label: 'Formulario', Icon: ClipboardPlus },
+                { v: 'history' as const, label: 'Historial',  Icon: History },
+              ]).map(({ v: tv, label, Icon }) => (
                 <button key={tv} onClick={() => setView(tv)}
-                  className={`flex-1 py-3 font-barlow-condensed text-[14px] font-bold border-b-2 cursor-pointer transition-colors ${tv === 'history' ? (view === 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3') : (view !== 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3')}`}>
+                  className={`flex-1 py-3 font-barlow-condensed text-[14px] font-bold border-b-2 cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${tv === 'history' ? (view === 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3') : (view !== 'history' ? 'border-navy text-navy' : 'border-transparent text-text-3')}`}>
+                  <Icon size={13} strokeWidth={2} />
                   {label}
                 </button>
               ))}
@@ -2021,7 +2379,11 @@ export function AuditoriaScreen() {
       {!isAdminAud && view === 'dashboard' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-            <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+            <button onClick={() => setView('form')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
             <div className="flex-1"><div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Dashboard</div><div className="text-[11px] text-white/40">{today} · {todayEntries.length} auditorías</div></div>
           </div>
           <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={PICKER_NAMES} /></div>
@@ -2030,7 +2392,11 @@ export function AuditoriaScreen() {
       {!isAdminAud && view === 'ranking' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-            <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+            <button onClick={() => setView('form')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Ranking Pickers</div>
           </div>
           <RankingContent history={history} odooConfig={odooConfig} pickerNames={PICKER_NAMES} />
@@ -2039,7 +2405,11 @@ export function AuditoriaScreen() {
       {!isAdminAud && view === 'history' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-            <button onClick={() => setView('form')} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+            <button onClick={() => setView('form')}
+              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+              style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Historial</div>
           </div>
           <HistoryContent history={history} today={today} onReaudit={iniciarReauditoria} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
@@ -2131,16 +2501,17 @@ function AdminDesktopPanel({ history, today, odooConfig, pickerNames, onReaudit,
 }) {
   const [tab, setTab] = useState<'dashboard' | 'ranking' | 'historial'>('dashboard');
   const tabs = [
-    { key: 'dashboard' as const, label: '📊 Dashboard' },
-    { key: 'ranking' as const, label: '🏆 Ranking' },
-    { key: 'historial' as const, label: '📋 Historial' },
+    { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
+    { key: 'ranking'   as const, label: 'Ranking',   Icon: Trophy },
+    { key: 'historial' as const, label: 'Historial', Icon: History },
   ];
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-bg">
       <div className="flex border-b border-border bg-white flex-shrink-0">
-        {tabs.map(({ key, label }) => (
+        {tabs.map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`flex-1 py-2.5 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            className={`flex-1 py-2.5 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            <Icon size={12} strokeWidth={2} />
             {label}
           </button>
         ))}
@@ -2163,13 +2534,22 @@ function AdminAudStats({ history, today, odooConfig, onBack, pickerNames }: {
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
-        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <button onClick={onBack}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        </button>
         <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Estadísticas</div>
+        <ProfilePill />
       </div>
       <div className="flex border-b border-border bg-white flex-shrink-0">
-        {([['dashboard', '📊 Dashboard del día'], ['ranking', '🏆 Ranking de Pickers']] as const).map(([key, label]) => (
+        {([
+          { key: 'dashboard' as const, label: 'Dashboard del día',  Icon: LayoutDashboard },
+          { key: 'ranking'   as const, label: 'Ranking de Pickers', Icon: Trophy },
+        ]).map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy' : 'border-transparent text-text-3'}`}>
+            <Icon size={13} strokeWidth={2} />
             {label}
           </button>
         ))}
@@ -2177,6 +2557,135 @@ function AdminAudStats({ history, today, odooConfig, onBack, pickerNames }: {
       <div className="flex-1 overflow-hidden flex flex-col">
         {tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
         {tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
+      </div>
+    </div>
+  );
+}
+
+/* ════ Producción Diaria Panel ════ */
+function ProduccionPanel({ onBack, pickerNombresList }: {
+  onBack: () => void;
+  pickerNombresList: string[];
+}) {
+  const todayStr = metricasTodayISO();
+  const [fecha,        setFecha]        = useState(todayStr);
+  const [produccion,   setProduccion]   = useState<Record<string, string>>({});
+  const [saved,        setSaved]        = useState(false);
+  const [saving,       setSaving]       = useState(false);
+  const [error,        setError]        = useState('');
+  const [configPickers, setConfigPickers] = useState<string[]>([]);
+
+  // Cargar pickers desde picker_config si no vienen por prop
+  useEffect(() => {
+    const list = pickerNombresList.length > 0 ? pickerNombresList : [];
+    if (list.length > 0) { setConfigPickers(list); return; }
+    supabase.from('picker_config').select('picker_nombres').eq('id', 1).single()
+      .then(({ data }) => { if (Array.isArray(data?.picker_nombres)) setConfigPickers(data.picker_nombres as string[]); });
+  }, [pickerNombresList]);
+
+  // Cargar producción guardada para la fecha seleccionada
+  useEffect(() => {
+    supabase.from('produccion_diaria').select('picker_nombre, pallets_producidos').eq('fecha', fecha)
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data ?? []).forEach((r: { picker_nombre: string; pallets_producidos: number }) => {
+          map[r.picker_nombre] = String(r.pallets_producidos);
+        });
+        setProduccion(map);
+      });
+  }, [fecha]);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSaved(false);
+    const rows = Object.entries(produccion)
+      .filter(([, v]) => v !== '' && !isNaN(parseInt(v)))
+      .map(([picker_nombre, v]) => ({ picker_nombre, fecha, pallets_producidos: parseInt(v) }));
+    if (rows.length === 0) { setSaving(false); setError('Ingresa al menos un valor.'); return; }
+    const { error: err } = await supabase
+      .from('produccion_diaria')
+      .upsert(rows, { onConflict: 'picker_nombre,fecha' });
+    if (err) { setError(err.message); } else { setSaved(true); setTimeout(() => setSaved(false), 2500); }
+    setSaving(false);
+  };
+
+  const pickers = configPickers.length > 0 ? configPickers : [];
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        style={{ background: 'linear-gradient(135deg, #92400E 0%, #D97706 100%)', boxShadow: '0 2px 16px rgba(146,64,14,0.35)' }}>
+        <button onClick={onBack}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        </button>
+        <div className="flex-1">
+          <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Producción diaria</div>
+          <div className="text-[11px] text-white/50 uppercase tracking-widest">Pallets producidos por picker</div>
+        </div>
+        <button onClick={handleSave} disabled={saving || pickers.length === 0}
+          className="px-4 py-2 rounded-xl font-barlow-condensed text-[15px] font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+          style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
+          {saving ? '⏳' : saved ? '✓ Guardado' : 'Guardar'}
+        </button>
+        <ProfilePill />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="max-w-xl mx-auto flex flex-col gap-4">
+
+          {/* Selector de fecha */}
+          <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+            <div className="text-[12px] font-bold text-text-2 uppercase tracking-wide mb-2">Fecha</div>
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} max={todayStr}
+              className="w-full border border-border rounded-btn px-3 py-2.5 text-[15px] text-text font-barlow outline-none focus:border-navy [-webkit-appearance:none]"
+              style={{ background: 'white' }} />
+          </div>
+
+          {/* Tabla de pickers */}
+          {pickers.length === 0 ? (
+            <div className="text-center py-10 text-text-3">
+              <div className="text-[36px] mb-2">👷</div>
+              <div className="text-[14px] font-barlow-condensed">Sin pickers configurados.</div>
+              <div className="text-[12px] mt-1">Agrega pickers en Configuración primero.</div>
+            </div>
+          ) : (
+            <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+              <div className="px-4 py-3 border-b border-border">
+                <div className="font-barlow-condensed text-[16px] font-bold text-navy">Pallets producidos · {fecha}</div>
+                <div className="text-[11px] text-text-3 mt-0.5">Ingresa 0 o deja vacío si el picker no trabajó hoy</div>
+              </div>
+              <div className="divide-y divide-border/60">
+                {pickers.map(nombre => (
+                  <div key={nombre} className="flex items-center gap-3 px-4 py-3">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-[13px]"
+                      style={{ background: '#1a2550' }}>
+                      {nombre.trim().split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                    </div>
+                    <span className="flex-1 text-[14px] font-semibold text-text">{nombre}</span>
+                    <input
+                      type="number" inputMode="numeric" min="0" max="999"
+                      value={produccion[nombre] ?? ''}
+                      onChange={e => setProduccion(p => ({ ...p, [nombre]: e.target.value }))}
+                      placeholder="0"
+                      className="w-20 border border-border rounded-btn px-3 py-2 text-[16px] text-center font-barlow text-text font-bold outline-none focus:border-navy [-webkit-appearance:none]"
+                      style={{ background: 'white' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-2.5 bg-bg border-t border-border text-[11px] text-text-3">
+                Total: <strong className="text-navy">{Object.values(produccion).reduce((s, v) => s + (parseInt(v) || 0), 0)} pallets</strong>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="text-sm text-red text-center px-3 py-2.5 rounded-card border border-red/20"
+              style={{ background: 'rgba(211,47,47,0.06)' }}>{error}</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2196,6 +2705,13 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
   const [saved,        setSaved]        = useState(false);
   const [error,        setError]        = useState('');
 
+  // Parámetros de métricas
+  const [params,       setParams]       = useState<Parametros | null>(null);
+  const [savingParams, setSavingParams] = useState(false);
+  const [savedParams,  setSavedParams]  = useState(false);
+  const [minimoCalc,   setMinimoCalc]   = useState(73);
+  const [minimoModo,   setMinimoModo]   = useState<'auto' | 'manual'>('auto');
+
   useEffect(() => {
     supabase.from('picker_config').select('nombres, auditores, picker_nombres').eq('id', 1).single()
       .then(({ data }) => {
@@ -2207,6 +2723,7 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
         }
         if (Array.isArray(data?.auditores)) setAuditores(data.auditores as string[]);
       });
+    fetchParametros().then(p => { setParams(p); setMinimoCalc(calcMinimo(p.nivel_confianza_z, p.margen_error)); });
   }, []);
 
   const addPicker = () => {
@@ -2246,7 +2763,11 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)', boxShadow: '0 2px 16px rgba(15,118,110,0.35)' }}>
-        <button onClick={onBack} className="border-none bg-white/10 text-white/80 text-[13px] cursor-pointer font-barlow px-3 py-1.5 rounded-full">← Volver</button>
+        <button onClick={onBack}
+          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Configuración</div>
           <div className="text-[11px] text-white/50 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
@@ -2258,7 +2779,7 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
-        <ProfilePill compact />
+        <ProfilePill />
       </div>
 
       {/* Body */}
@@ -2269,7 +2790,9 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
           <div className="bg-white border border-border rounded-card overflow-hidden"
             style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <span className="text-[20px]">👷</span>
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+                <Users size={15} color="#1a2550" strokeWidth={2} />
+              </div>
               <div>
                 <div className="font-barlow-condensed text-[17px] font-bold text-navy">Pickers (armadores de pallet)</div>
                 <div className="text-[11px] text-text-3">Nombres disponibles para seleccionar en el formulario · Odoo asigna el número</div>
@@ -2312,7 +2835,9 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
           <div className="bg-white border border-border rounded-card overflow-hidden"
             style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <span className="text-[20px]">👤</span>
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+                <UserCheck size={15} color="#1a2550" strokeWidth={2} />
+              </div>
               <div>
                 <div className="font-barlow-condensed text-[17px] font-bold text-navy">Auditores</div>
                 <div className="text-[11px] text-text-3">Lista de auditores disponibles para seleccionar en el formulario</div>
@@ -2351,17 +2876,134 @@ function ConfigPanel({ onBack, onSaved, userRole }: {
             </div>
           </div>
 
-          {/* Future settings placeholder */}
-          <div className="bg-white border border-dashed border-border rounded-card p-4"
-            style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[20px] opacity-40">🔧</span>
-              <div className="font-barlow-condensed text-[16px] font-bold text-text-3">Próximas configuraciones</div>
+          {/* Parámetros de métricas */}
+          {params && (
+            <div className="bg-white border border-border rounded-card overflow-hidden"
+              style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.06)' }}>
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0" style={{ background: 'linear-gradient(145deg, rgba(26,37,80,0.12), rgba(26,37,80,0.06))', border: '1px solid rgba(26,37,80,0.10)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)' }}>
+                    <SlidersHorizontal size={15} color="#1a2550" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <div className="font-barlow-condensed text-[17px] font-bold text-navy">Parámetros de métricas</div>
+                    <div className="text-[11px] text-text-3">Sistema de bono y auditoría estadística</div>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    setSavingParams(true);
+                    await saveParametros(params);
+                    setSavingParams(false); setSavedParams(true);
+                    setTimeout(() => setSavedParams(false), 2500);
+                  }}
+                  disabled={savingParams}
+                  className="px-3 py-1.5 rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+                  style={{ background: savedParams ? 'rgba(22,163,74,0.15)' : 'rgba(26,37,80,0.08)', color: savedParams ? '#16A34A' : '#1a2550', border: '1px solid', borderColor: savedParams ? '#16A34A' : 'rgba(26,37,80,0.15)' }}>
+                  {savingParams ? '⏳' : savedParams ? '✓ Guardado' : 'Guardar'}
+                </button>
+              </div>
+              <div className="p-4 flex flex-col gap-4">
+                {/* Nivel de confianza */}
+                <div>
+                  <div className="text-[12px] font-bold text-text-2 mb-1.5">Nivel de confianza</div>
+                  <div className="flex gap-2">
+                    {([['1.645', '90%'], ['1.96', '95%'], ['2.576', '99%']] as const).map(([z, lbl]) => (
+                      <button key={z} onClick={() => { const newZ = parseFloat(z); const newMin = calcMinimo(newZ, params.margen_error); setMinimoCalc(newMin); setParams({ ...params, nivel_confianza_z: newZ, ...(minimoModo === 'auto' ? { minimo_auditorias: newMin } : {}) }); }}
+                        className="flex-1 py-2 rounded-btn border text-[13px] font-bold cursor-pointer transition-all"
+                        style={params.nivel_confianza_z === parseFloat(z) ? { background: '#1a2550', color: '#fff', borderColor: '#1a2550' } : { background: 'white', color: '#374151', borderColor: '#E5E7EB' }}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Margen de error */}
+                <div>
+                  <div className="text-[12px] font-bold text-text-2 mb-1.5">Margen de error</div>
+                  <div className="flex gap-2">
+                    {([['0.03', '±3%'], ['0.05', '±5%'], ['0.10', '±10%']] as const).map(([e, lbl]) => (
+                      <button key={e} onClick={() => { const newE = parseFloat(e); const newMin = calcMinimo(params.nivel_confianza_z, newE); setMinimoCalc(newMin); setParams({ ...params, margen_error: newE, ...(minimoModo === 'auto' ? { minimo_auditorias: newMin } : {}) }); }}
+                        className="flex-1 py-2 rounded-btn border text-[13px] font-bold cursor-pointer transition-all"
+                        style={params.margen_error === parseFloat(e) ? { background: '#1a2550', color: '#fff', borderColor: '#1a2550' } : { background: 'white', color: '#374151', borderColor: '#E5E7EB' }}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mínimo de auditorías por picker */}
+                <div className="px-3 py-2.5 rounded-btn border"
+                  style={{ background: minimoModo === 'auto' ? 'rgba(37,99,235,0.05)' : 'rgba(217,119,6,0.06)', borderColor: minimoModo === 'auto' ? 'rgba(37,99,235,0.3)' : 'rgba(217,119,6,0.35)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: minimoModo === 'auto' ? '#2563eb' : '#d97706' }}>
+                      Mínimo por picker
+                    </div>
+                    <div className="flex rounded-full overflow-hidden border font-barlow-condensed text-[11px] font-bold" style={{ borderColor: 'rgba(26,37,80,0.18)' }}>
+                      <button
+                        onClick={() => { setMinimoModo('auto'); setParams(p => p ? { ...p, minimo_auditorias: minimoCalc } : p); }}
+                        className="px-2.5 py-1 transition-all cursor-pointer tracking-wider"
+                        style={minimoModo === 'auto' ? { background: '#1a2550', color: '#fff' } : { background: 'transparent', color: '#9ca3af' }}>
+                        AUTO
+                      </button>
+                      <button
+                        onClick={() => setMinimoModo('manual')}
+                        className="px-2.5 py-1 transition-all cursor-pointer tracking-wider"
+                        style={minimoModo === 'manual' ? { background: '#d97706', color: '#fff' } : { background: 'transparent', color: '#9ca3af' }}>
+                        MANUAL
+                      </button>
+                    </div>
+                  </div>
+                  {minimoModo === 'auto' ? (
+                    <>
+                      <div className="font-barlow-condensed text-[24px] font-extrabold text-navy">{minimoCalc} <span className="text-[14px] font-normal text-text-3">pallets por picker</span></div>
+                      <div className="text-[10px] text-text-3 mt-0.5">CEIL((Z² × 0.95 × 0.05) / e²) con Z={params.nivel_confianza_z}, e={params.margen_error}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={999}
+                          value={params.minimo_auditorias}
+                          onChange={e => { const v = Math.max(1, parseInt(e.target.value) || 1); setParams(p => p ? { ...p, minimo_auditorias: v } : p); }}
+                          className="w-24 bg-white border border-border rounded-btn px-3 py-1.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none transition-colors text-center [-webkit-appearance:none]"
+                          style={{ focusBorderColor: '#d97706' } as React.CSSProperties}
+                        />
+                        <span className="text-[13px] text-text-3">pallets por picker</span>
+                      </div>
+                      <div className="text-[10px] mt-1.5" style={{ color: '#d97706' }}>Valor manual · Fórmula estadística: {minimoCalc} pallets</div>
+                    </>
+                  )}
+                </div>
+
+                {/* Umbral bono */}
+                <div>
+                  <div className="flex justify-between mb-1.5">
+                    <div className="text-[12px] font-bold text-text-2">Efectividad mínima para bono (%)</div>
+                    <div className="font-barlow-condensed text-[16px] font-bold text-navy">{params.umbral_bono_pct}%</div>
+                  </div>
+                  <input type="range" min={70} max={100} step={1} value={params.umbral_bono_pct}
+                    onChange={e => setParams(p => p ? { ...p, umbral_bono_pct: parseInt(e.target.value) } : p)}
+                    className="w-full" style={{ accentColor: '#1a2550' }} />
+                  <div className="flex justify-between text-[10px] text-text-3 mt-0.5"><span>70%</span><span>100%</span></div>
+                </div>
+
+                {/* Meta cobertura diaria */}
+                <div>
+                  <div className="flex justify-between mb-1.5">
+                    <div className="text-[12px] font-bold text-text-2">Meta de cobertura diaria (%)</div>
+                    <div className="font-barlow-condensed text-[16px] font-bold text-navy">{params.cobertura_diaria_meta}%</div>
+                  </div>
+                  <input type="range" min={10} max={100} step={5} value={params.cobertura_diaria_meta}
+                    onChange={e => setParams(p => p ? { ...p, cobertura_diaria_meta: parseInt(e.target.value) } : p)}
+                    className="w-full" style={{ accentColor: '#1a2550' }} />
+                  <div className="flex justify-between text-[10px] text-text-3 mt-0.5"><span>10%</span><span>100%</span></div>
+                </div>
+              </div>
             </div>
-            <div className="text-[12px] text-text-3 italic">
-              Aquí aparecerán futuros ajustes del sistema: rangos de calidad, notificaciones, integración Odoo, etc.
-            </div>
-          </div>
+          )}
 
           {error && (
             <div className="text-sm text-red text-center px-3 py-2.5 rounded-card border border-red/20"

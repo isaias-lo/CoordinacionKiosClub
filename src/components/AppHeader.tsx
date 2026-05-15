@@ -31,7 +31,7 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
           width: 36, height: 36,
           background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
           border: '1px solid rgba(255,255,255,0.15)',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+          boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
         }}>
         <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
       </button>
@@ -51,7 +51,7 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
         </div>
         <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">TERMINAR</span>
       </button>
-      <ProfilePill compact />
+      <ProfilePill />
     </div>
   );
 }

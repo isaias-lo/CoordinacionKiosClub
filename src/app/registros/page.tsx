@@ -2,15 +2,16 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Truck, MapPin, Store } from 'lucide-react';
 import { ProfilePill } from '@/components/ProfilePill';
+import type { LucideIcon } from 'lucide-react';
 
 type TabKey = 'rm' | 'regiones' | 'recepcion';
 
-const TABS: { key: TabKey; label: string; table: string }[] = [
-  { key: 'rm',        label: 'Despacho RM',       table: 'despacho_rm' },
-  { key: 'regiones',  label: 'Despacho Regiones',  table: 'despacho_regiones' },
-  { key: 'recepcion', label: 'Recepción Tienda',   table: 'recepcion' },
+const TABS: { key: TabKey; label: string; table: string; Icon: LucideIcon }[] = [
+  { key: 'rm',        label: 'Despacho RM',       table: 'despacho_rm',       Icon: Truck },
+  { key: 'regiones',  label: 'Despacho Regiones',  table: 'despacho_regiones', Icon: MapPin },
+  { key: 'recepcion', label: 'Recepción Tienda',   table: 'recepcion',         Icon: Store },
 ];
 
 const TAB_COLORS: Record<TabKey, { bg: string; border: string; text: string }> = {
@@ -122,7 +123,7 @@ export default function RegistrosPage() {
             width: 36, height: 36,
             background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
             border: '1px solid rgba(255,255,255,0.15)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
+            boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
           }}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
@@ -138,17 +139,18 @@ export default function RegistrosPage() {
           className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
           ↺ Actualizar
         </button>
-        <ProfilePill compact />
+        <ProfilePill />
       </div>
 
       {/* Tabs */}
       <div className="flex-shrink-0 flex gap-2 px-4 pt-3 pb-1 flex-wrap">
         {TABS.map(t => (
           <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); }}
-            className="px-4 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold uppercase tracking-wider cursor-pointer transition-all"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold uppercase tracking-wider cursor-pointer transition-all"
             style={tab === t.key
               ? { background: TAB_COLORS[t.key].bg, border: `1px solid ${TAB_COLORS[t.key].border}`, color: TAB_COLORS[t.key].text }
               : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }}>
+            <t.Icon size={13} strokeWidth={2} />
             {t.label}
           </button>
         ))}
