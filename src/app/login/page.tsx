@@ -81,7 +81,7 @@ export default function LoginPage() {
 
         @media (max-width: 480px) {
           .lg-root {
-            align-items: stretch !important;
+            align-items: center !important;
             justify-content: center !important;
             padding: 0 24px !important;
             height: 100dvh !important;

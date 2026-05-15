@@ -94,7 +94,7 @@ export function RecepcionTiendaScreen() {
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div style={{ flex: 1 }}>
-          <div style={{ color: '#fff', fontWeight: 800, fontSize: 17, letterSpacing: '0.02em' }}>Tiendas / Recepción</div>
+          <div style={{ color: '#fff', fontWeight: 800, fontSize: 17, letterSpacing: '0.02em' }}>Recepción / Tiendas</div>
           {profile && (
             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 1 }}>
               {profile.full_name ?? profile.id}
@@ -121,22 +121,24 @@ export function RecepcionTiendaScreen() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {activeTab === 'recepcion' && (
           <>
             {step === 'scanner' && (
-              <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear QR de tienda</p>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {/* Description header */}
+                <div style={{ padding: '14px 20px 10px', textAlign: 'center', flexShrink: 0 }}>
+                  <p style={{ margin: '0 0 3px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear QR de tienda</p>
                   <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al código QR impreso en la etiqueta Zebra</p>
                 </div>
                 {qrError && (
-                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>
+                  <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0 }}>
                     ⚠️ {qrError}
                   </div>
                 )}
-                <div style={{ background: '#fff', borderRadius: 20, padding: 16, boxShadow: '0 2px 20px rgba(0,0,0,0.06)' }}>
+                {/* Camera fills remaining space */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <QRScanner onDetect={handleQRDetected} />
                 </div>
               </div>

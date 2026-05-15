@@ -236,9 +236,9 @@ export function LaunchScreen() {
           .ls-root {
             justify-content: flex-start !important;
             align-items: stretch !important;
-            overflow: hidden !important;
+            overflow-y: auto !important;
             padding: 0 !important;
-            height: 100dvh !important;
+            min-height: 100dvh !important;
           }
           .ls-mobile-hdr { display: flex !important; }
           .ls-avatar-float { display: none !important; }
@@ -248,34 +248,25 @@ export function LaunchScreen() {
             justify-content: center !important;
           }
           .ls-tagline { margin-bottom: 2px !important; padding: 0 24px; }
-          .ls-title   { margin-bottom: 8px !important;  padding: 0 24px; }
+          .ls-title   { margin-bottom: 12px !important; padding: 0 24px; }
           .ls-cards-outer {
-            flex: 1 !important;
-            min-height: 0;
             width: 100% !important;
             max-width: 100% !important;
-            margin-bottom: 0 !important;
-            padding: 0 16px !important;
-            display: flex !important;
-            flex-direction: column !important;
+            padding: 0 16px 8px !important;
             box-sizing: border-box;
           }
           .ls-cards-outer > button {
-            flex: 1;
-            height: auto !important;
-            min-height: 120px;
+            height: 130px !important;
           }
           .ls-cards-grid {
-            flex: 1 !important;
-            height: 100% !important;
-            grid-auto-rows: 1fr !important;
+            grid-auto-rows: 130px !important;
             margin-bottom: 0 !important;
           }
           .ls-nav-card {
-            align-items: flex-start !important;
-            padding-left: 16px !important;
-            padding-top: 14px !important;
-            text-align: left !important;
+            align-items: center !important;
+            padding-left: 0 !important;
+            padding-top: 0 !important;
+            text-align: center !important;
           }
           .ls-stats-row {
             display: grid !important;
