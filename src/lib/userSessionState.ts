@@ -7,30 +7,31 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Upsert the shared state for today (all authenticated users share the same row per fuente). */
 export async function pushSessionState(fuente: Fuente, state: unknown): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
 
-  await supabase.from('user_session_state').upsert(
+  await supabase.from('shared_session_state').upsert(
     {
-      user_id:    session.user.id,
       fecha:      todayISO(),
       fuente,
       state,
+      updated_by: session.user.id,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'user_id,fecha,fuente' },
+    { onConflict: 'fecha,fuente' },
   );
 }
 
+/** Fetch today's shared state. Any authenticated user can read. */
 export async function fetchSessionState(fuente: Fuente): Promise<unknown | null> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
 
   const { data } = await supabase
-    .from('user_session_state')
+    .from('shared_session_state')
     .select('state')
-    .eq('user_id', session.user.id)
     .eq('fecha', todayISO())
     .eq('fuente', fuente)
     .maybeSingle();
@@ -38,21 +39,25 @@ export async function fetchSessionState(fuente: Fuente): Promise<unknown | null>
   return data?.state ?? null;
 }
 
+/**
+ * Subscribe to real-time changes on the shared state.
+ * All users (including other people) trigger this callback when they push changes.
+ */
 export function subscribeToSessionState(
   fuente: Fuente,
-  userId: string,
+  _userId: string,
   onState: (state: unknown) => void,
 ): () => void {
   const fecha = todayISO();
   const channel = supabase
-    .channel(`session-state-${fuente}-${userId}-${fecha}`)
+    .channel(`shared-state-${fuente}-${fecha}`)
     .on(
       'postgres_changes',
       {
         event: '*',
         schema: 'public',
-        table: 'user_session_state',
-        filter: `user_id=eq.${userId}`,
+        table:  'shared_session_state',
+        filter: `fuente=eq.${fuente}`,
       },
       (payload) => {
         const row = payload.new as { fecha: string; fuente: string; state: unknown } | null;

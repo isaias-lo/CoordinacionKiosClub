@@ -102,10 +102,15 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
   const { user } = useAuth();
   const userId = user?.id;
+
+  // Always-current ref so Realtime handler never sees stale state
+  const stateRef   = useRef(state);
+  stateRef.current = state;
+
   const lastPushedRef = useRef<string>('');
   const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch from Supabase on login + subscribe to Realtime for cross-device sync
+  // Load shared state + subscribe to everyone's real-time changes
   useEffect(() => {
     if (!userId) return;
 
@@ -118,16 +123,36 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     });
 
     const unsub = subscribeToSessionState('santiago', userId, (remoteState) => {
-      const s = remoteState as SyncableState;
-      if ((s.step as string) === 'resumen') s.step = 'form';
-      lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
-      dispatch({ type: 'LOAD_STATE', payload: s });
+      const remote = remoteState as SyncableState;
+      if ((remote.step as string) === 'resumen') remote.step = 'form';
+
+      const localPayload: SyncableState = {
+        step:    stateRef.current.step,
+        regimen: stateRef.current.regimen,
+        items:   stateRef.current.items,
+      };
+      const localStr = JSON.stringify(localPayload);
+      const isDirty  = localStr !== lastPushedRef.current;
+
+      if (isDirty && remote.items) {
+        // Merge items: remote provides the base, local modifications per tienda win.
+        const merged = { ...remote.items, ...stateRef.current.items };
+        // Don't update lastPushedRef → sync effect will push the merged result
+        dispatch({
+          type: 'LOAD_STATE',
+          payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged },
+        });
+      } else {
+        // Nothing pending locally — accept remote (another user's update)
+        lastPushedRef.current = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
+        dispatch({ type: 'LOAD_STATE', payload: remote });
+      }
     });
 
     return unsub;
   }, [userId]);
 
-  // Debounced push to Supabase (1.5s) + localStorage fallback
+  // Debounced push to shared Supabase state (800 ms) + localStorage fallback
   useEffect(() => {
     const payload: SyncableState = { step: state.step, regimen: state.regimen, items: state.items };
     const current = JSON.stringify(payload);
@@ -138,7 +163,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       lastPushedRef.current = current;
       pushSessionState('santiago', payload);
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
-    }, 1500);
+    }, 800);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

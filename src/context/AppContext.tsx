@@ -153,10 +153,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
   const { user } = useAuth();
   const userId = user?.id;
+
+  // Always-current ref so Realtime handler never sees stale state
+  const stateRef     = useRef(state);
+  stateRef.current   = state;
+
   const lastPushedRef = useRef<string>('');
   const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch from Supabase on login + subscribe to Realtime for cross-device sync
+  // Load shared state + subscribe to everyone's real-time changes
   useEffect(() => {
     if (!userId) return;
 
@@ -168,15 +173,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     const unsub = subscribeToSessionState('regiones', userId, (remoteState) => {
-      const s = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
-      lastPushedRef.current = JSON.stringify(remoteState);
-      dispatch({ type: 'LOAD_STATE', payload: s });
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+
+      // Detect whether we have local unsynced changes
+      const localStr = JSON.stringify({
+        dispatch: stateRef.current.dispatch,
+        pdfData:  stateRef.current.pdfData,
+      });
+      const isDirty = localStr !== lastPushedRef.current;
+
+      if (isDirty && remote.dispatch) {
+        // Merge: remote tiendas provide the base, our local modifications win per tienda.
+        // This prevents losing local items that haven't been pushed yet.
+        const merged = { ...remote.dispatch, ...stateRef.current.dispatch };
+        // Don't update lastPushedRef → the sync effect will push the merged result
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged, pdfData: stateRef.current.pdfData } });
+      } else {
+        // Nothing pending locally — accept remote as-is (could be another user's update)
+        lastPushedRef.current = JSON.stringify(remoteState);
+        dispatch({ type: 'LOAD_STATE', payload: remote });
+      }
     });
 
     return unsub;
   }, [userId]);
 
-  // Debounced push to Supabase (1.5s) + localStorage fallback
+  // Debounced push to shared Supabase state (800 ms) + localStorage fallback
   useEffect(() => {
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
     const current = JSON.stringify(payload);
@@ -187,7 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastPushedRef.current = current;
       pushSessionState('regiones', payload);
       try { localStorage.setItem(REGIONES_KEY, current); } catch {}
-    }, 1500);
+    }, 800);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
