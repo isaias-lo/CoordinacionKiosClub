@@ -11,7 +11,6 @@ export default function DespachoHubPage() {
   const { dispatch } = useApp();
 
   const goToRegiones = () => {
-    dispatch({ type: 'CLEAR_ALL' });
     dispatch({ type: 'SET_TIENDA', payload: null });
     dispatch({ type: 'SET_TAB', payload: 0 });
     router.push('/despacho/regiones');
