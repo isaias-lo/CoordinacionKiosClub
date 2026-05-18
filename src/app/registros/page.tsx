@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Truck, MapPin, Store } from 'lucide-react';
 import { ProfilePill } from '@/components/ProfilePill';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import type { LucideIcon } from 'lucide-react';
 
 type TabKey = 'rm' | 'regiones' | 'recepcion';
@@ -104,7 +105,19 @@ export default function RegistrosPage() {
     }
   }, []);
 
+  // Silent refresh (no loading spinner, no row clear) used by Realtime subscription
+  const silentRefresh = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/despacho-records?table=${encodeURIComponent(tabCfg.table)}`);
+      const data = await res.json() as { data?: Record<string, unknown>[] };
+      if (res.ok) setRows(data.data ?? []);
+    } catch {}
+  }, [tabCfg.table]);
+
   useEffect(() => { loadData(tabCfg.table); }, [tab, tabCfg.table, loadData]);
+
+  // Auto-refresh when another user inserts/updates a row in the active table
+  useRealtimeRefresh(tabCfg.table, silentRefresh);
 
   const filtered = search.trim()
     ? rows.filter(r => cols.some(c => String(r[c] ?? '').toLowerCase().includes(search.toLowerCase())))

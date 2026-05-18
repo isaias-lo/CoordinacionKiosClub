@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 
 interface DespachoRow {
   id: string;
@@ -81,7 +82,30 @@ export function SeguimientoPanel() {
     }
   }, [source]);
 
+  // Silent refresh (no spinner) used by Realtime — keeps current rows visible while refetching
+  const silentLoad = useCallback(async () => {
+    try {
+      const tables = source === 'rm'
+        ? ['despacho_rm']
+        : source === 'regiones'
+          ? ['despacho_regiones']
+          : ['despacho_rm', 'despacho_regiones'];
+      const results = await Promise.all(
+        tables.map(async t => {
+          const res  = await fetch(`/api/despacho-records?table=${t}`);
+          if (!res.ok) return [];
+          const json = await res.json() as { data?: DespachoRow[] };
+          return json.data ?? [];
+        })
+      );
+      setRows(results.flat());
+    } catch {}
+  }, [source]);
+
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh when the Enrutador or another user updates seguimiento status
+  useRealtimeRefresh('despacho_rm,despacho_regiones', silentLoad);
 
   const displayDate = toDisplayDate(date); // DD/MM/YYYY para comparar con campo `fecha`
 
