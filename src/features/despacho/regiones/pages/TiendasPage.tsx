@@ -11,6 +11,7 @@ import { getTiendasDelDia } from '../../utils/useCalendario';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
+import { CombineItemsModal } from '@/components/CombineItemsModal';
 
 /* ── Per-day calendar overrides ── */
 const todayDateKey   = `calendarExtra_${new Date().toISOString().split('T')[0]}`;
@@ -192,6 +193,13 @@ export function TiendasPage() {
   const multiFileRef  = useRef<HTMLInputElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const formScrollRef = useRef<HTMLDivElement>(null);
+
+  /* Combine items (drag-to-merge) */
+  const [dragIdx,      setDragIdx]      = useState<number | null>(null);
+  const [dropIdx,      setDropIdx]      = useState<number | null>(null);
+  const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
+  const itemDragRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg } = state;
 
@@ -517,6 +525,24 @@ export function TiendasPage() {
     showToast('Dimensiones copiadas', '#7C3AED');
   };
 
+  /* ── Combine items handler ── */
+  const handleCombineConfirm = (peso: number, alto: number) => {
+    if (!combineModal || !selectedTienda) return;
+    const { srcIdx, tgtIdx } = combineModal;
+    const src = items[srcIdx];
+    const tgt = items[tgtIdx];
+    const mergedGuia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
+    const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
+    const mergedTipo: TipoContenido  = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
+    const survivors = items.filter((_, i) => i !== srcIdx && i !== tgtIdx);
+    let pc = 0, bc = 0;
+    const renumbered = survivors.map(it => ({ ...it, orden: it.pkg === 'pallet' ? `pallet${++pc}` : `bulto${++bc}` }));
+    const newOrden = src.pkg === 'pallet' ? `pallet${++pc}` : `bulto${++bc}`;
+    renumbered.push({ peso, alto, ancho: src.ancho, largo: src.largo, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, pkg: src.pkg, orden: newOrden });
+    dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumbered });
+    setCombineModal(null);
+  };
+
   /* ── Right panel ── */
   const renderForm = () => {
     if (!selectedTienda) return null;
@@ -802,7 +828,20 @@ export function TiendasPage() {
                 const dims = [item.alto, item.ancho, item.largo].filter(Boolean);
                 const isEditing = editingIdx === i;
                 return (
-                  <div key={i} className={`bg-white border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 shadow-card transition-all ${isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border'}`}>
+                  <div
+                    key={i}
+                    ref={el => { itemDragRefs.current[i] = el; }}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
+                    onDragOver={(e) => { if (dragIdx !== null && dragIdx !== i && items[dragIdx]?.pkg === item.pkg) { e.preventDefault(); setDropIdx(i); } }}
+                    onDragLeave={() => setDropIdx(prev => prev === i ? null : prev)}
+                    onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== i && items[dragIdx]?.pkg === item.pkg) setCombineModal({ srcIdx: dragIdx, tgtIdx: i }); setDragIdx(null); setDropIdx(null); }}
+                    onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                    onTouchStart={() => { longPressRef.current = setTimeout(() => { setDragIdx(i); navigator.vibrate?.(30); }, 400); }}
+                    onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
+                    onTouchEnd={(e) => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } if (dragIdx === null) return; e.preventDefault(); if (dragIdx === i) { setDragIdx(null); return; } if (items[dragIdx]?.pkg === item.pkg) { setCombineModal({ srcIdx: dragIdx, tgtIdx: i }); setDragIdx(null); } }}
+                    className={`bg-white border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 shadow-card transition-all cursor-grab select-none ${dropIdx === i ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border'} ${dragIdx === i ? 'opacity-50' : ''}`}
+                  >
                     <div className="font-mono text-[11px] text-text-3 w-4 text-center flex-shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
@@ -1000,6 +1039,26 @@ export function TiendasPage() {
       <div className="h-[200px] sm:h-[220px] lg:h-auto border-t-2 border-border lg:border-t-0 lg:w-[28%] lg:min-w-[200px] flex flex-col overflow-hidden flex-shrink-0">
         <ResumenPage panel />
       </div>
+
+      {combineModal && (() => {
+        const src = items[combineModal.srcIdx];
+        const tgt = items[combineModal.tgtIdx];
+        const srcLabel = `${src.orden} · ${src.peso}kg${src.guia ? ` · #${src.guia}` : ''}${src.valor ? ` · $${src.valor.toLocaleString('es-CL')}` : ''}`;
+        const tgtLabel = `${tgt.orden} · ${tgt.peso}kg${tgt.guia ? ` · #${tgt.guia}` : ''}${tgt.valor ? ` · $${tgt.valor.toLocaleString('es-CL')}` : ''}`;
+        const mergedGuia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
+        const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
+        return (
+          <CombineItemsModal
+            pkgLabel={src.pkg === 'pallet' ? 'Pallets' : 'Bultos'}
+            srcLabel={srcLabel}
+            tgtLabel={tgtLabel}
+            mergedGuia={mergedGuia || undefined}
+            mergedValor={mergedValor || undefined}
+            onConfirm={handleCombineConfirm}
+            onCancel={() => { setCombineModal(null); setDragIdx(null); setDropIdx(null); }}
+          />
+        );
+      })()}
 
     </div>
   );

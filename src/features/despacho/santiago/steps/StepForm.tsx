@@ -10,6 +10,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { pushCounts } from '../../../../lib/despachoSesion';
+import { CombineItemsModal } from '@/components/CombineItemsModal';
 
 /* ── Calendar localStorage ── */
 const todayKey    = new Date().toISOString().split('T')[0];
@@ -212,6 +213,13 @@ export function StepForm() {
   const [largo,     setLargo]     = useState('');
   const [ancho,     setAncho]     = useState('');
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+
+  /* Combine items (drag-to-merge) */
+  const [dragIdx,         setDragIdx]         = useState<number | null>(null);
+  const [dropIdx,         setDropIdx]         = useState<number | null>(null);
+  const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
+  const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
+  const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Preset / multi-form */
   const [presets,  setPresets]  = useState<Record<string, { pallets: number; bultos: number }>>({});
@@ -462,6 +470,24 @@ export function StepForm() {
     formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const cancelEdit = () => { setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho(''); };
+
+  /* ── Combine items handler ── */
+  const handleSantiagoCombineConfirm = (peso: number, alto: number) => {
+    if (!combineModal || !currentTienda) return;
+    const { srcIdx, tgtIdx } = combineModal;
+    const tiendaItems2 = items[currentTienda.cod] || [];
+    const src = tiendaItems2[srcIdx];
+    const tgt = tiendaItems2[tgtIdx];
+    const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
+    const ancho2 = src.ancho; const largo2 = src.largo;
+    const pesoVolumetrico = Math.round((alto * ancho2 * largo2) / 5000);
+    const newItem: SantiagoItem = { ...src, id: `${currentTienda.cod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, orden: '' };
+    const higher = Math.max(srcIdx, tgtIdx); const lower = Math.min(srcIdx, tgtIdx);
+    dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx: higher });
+    dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx: lower });
+    dispatch({ type: 'ADD_ITEM', item: newItem });
+    setCombineModal(null);
+  };
 
   /* ── Preset bar ── */
   const updateInlinePreset = (field: 'pallets' | 'bultos', value: string) => {
@@ -1187,7 +1213,20 @@ export function StepForm() {
                 {tiendaItems.map((item, idx) => {
                   const isEditing = editingIdx === idx;
                   return (
-                    <div key={item.id} className={`bg-white border-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-all ${isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border'}`}>
+                    <div
+                      key={item.id}
+                      ref={el => { itemDragRefs.current[idx] = el; }}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(idx); }}
+                      onDragOver={(e) => { if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo) { e.preventDefault(); setDropIdx(idx); } }}
+                      onDragLeave={() => setDropIdx(prev => prev === idx ? null : prev)}
+                      onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo) setCombineModal({ srcIdx: dragIdx, tgtIdx: idx }); setDragIdx(null); setDropIdx(null); }}
+                      onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                      onTouchStart={() => { longPressRef.current = setTimeout(() => { setDragIdx(idx); navigator.vibrate?.(30); }, 400); }}
+                      onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
+                      onTouchEnd={(e) => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } if (dragIdx === null) return; e.preventDefault(); if (dragIdx === idx) { setDragIdx(null); return; } if (tiendaItems[dragIdx]?.tipo === item.tipo) { setCombineModal({ srcIdx: dragIdx, tgtIdx: idx }); setDragIdx(null); } }}
+                      className={`bg-white border-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-all cursor-grab select-none ${dropIdx === idx ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border'} ${dragIdx === idx ? 'opacity-50' : ''}`}
+                    >
                       <div className="font-mono text-[11px] text-text-3 w-5 text-center flex-shrink-0">{idx + 1}</div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
@@ -1294,6 +1333,24 @@ export function StepForm() {
           onConfirm={() => { removeFromToday(confirmRemove); setConfirmRemove(null); }}
           onCancel={() => setConfirmRemove(null)} />
       )}
+
+      {combineModal && (() => {
+        const allItems = currentTienda ? (items[currentTienda.cod] || []) : [];
+        const src = allItems[combineModal.srcIdx];
+        const tgt = allItems[combineModal.tgtIdx];
+        if (!src || !tgt) return null;
+        const srcLabel = `${src.orden || src.tipo} · ${src.peso}kg · ${src.contenido}`;
+        const tgtLabel = `${tgt.orden || tgt.tipo} · ${tgt.peso}kg · ${tgt.contenido}`;
+        return (
+          <CombineItemsModal
+            pkgLabel={src.tipo === 'Pallet' ? 'Pallets' : 'Bultos'}
+            srcLabel={srcLabel}
+            tgtLabel={tgtLabel}
+            onConfirm={handleSantiagoCombineConfirm}
+            onCancel={() => { setCombineModal(null); setDragIdx(null); setDropIdx(null); }}
+          />
+        );
+      })()}
     </div>
   );
 }
