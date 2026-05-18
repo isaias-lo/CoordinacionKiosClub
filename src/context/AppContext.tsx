@@ -167,19 +167,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown) => {
-      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
-      const remoteStr = JSON.stringify(remoteState);
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]> };
+      // Only compare dispatch — pdfData is transient UI state and must not be overwritten by remote
+      const remoteStr = JSON.stringify({ dispatch: remote.dispatch });
       if (remoteStr === lastPushedRef.current) return; // already in sync
 
-      const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData });
+      const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch });
       const isDirty  = localStr !== lastPushedRef.current;
 
       if (isDirty && remote.dispatch) {
         const merged = { ...remote.dispatch, ...stateRef.current.dispatch };
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged, pdfData: stateRef.current.pdfData } });
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged } });
       } else {
         lastPushedRef.current = remoteStr;
-        dispatch({ type: 'LOAD_STATE', payload: remote });
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: remote.dispatch } });
       }
     };
 
@@ -188,8 +189,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
-        lastPushedRef.current = JSON.stringify(remote);
-        dispatch({ type: 'LOAD_STATE', payload: remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } });
+        const r = remote as { dispatch?: Record<string, DispatchItem[]> };
+        lastPushedRef.current = JSON.stringify({ dispatch: r.dispatch });
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: r.dispatch } });
       })
       .catch(() => { isInitializedRef.current = true; });
 
@@ -208,9 +210,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   // Debounced push to Supabase (800 ms after last change) + localStorage fallback
+  // pdfData is intentionally excluded — it is transient UI state (guide loader) and must not
+  // overwrite another device's locally-loaded pdfData. Guide numbers are already in each DispatchItem.
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
+    const payload = { dispatch: state.dispatch };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
 
@@ -218,11 +222,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     debounceRef.current = setTimeout(() => {
       lastPushedRef.current = current;
       pushSessionState('regiones', payload, userId ?? undefined);
-      try { localStorage.setItem(REGIONES_KEY, current); } catch {}
+      try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [state.dispatch, state.pdfData]);
+  }, [state.dispatch]);
 
   const showToast = useCallback((msg: string, color?: string) => {
     dispatch({ type: 'SHOW_TOAST', msg, color });
