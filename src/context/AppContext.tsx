@@ -172,26 +172,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
 
-      // Local always wins for tiendas it already has — remote only adds what local doesn't have yet.
-      // This prevents a stale or empty remote from wiping locally-loaded guides or added items.
-      const mergedDispatch = { ...(remote.dispatch ?? {}), ...stateRef.current.dispatch };
-      const mergedPdf     = { ...(remote.pdfData  ?? {}), ...stateRef.current.pdfData  };
+      // Per-tienda merge for dispatch:
+      //   - If local changed since last push (dirty) → keep local (unsaved additions/edits)
+      //   - If local matches last push (clean) → use remote (applies deletions from other devices)
+      let lastDispatch: Record<string, DispatchItem[]> = {};
+      try { lastDispatch = (JSON.parse(lastPushedRef.current) as { dispatch?: Record<string, DispatchItem[]> }).dispatch ?? {}; } catch { lastDispatch = {}; }
 
-      // If local is clean (matches last push), update baseline so push effect knows what's new
-      const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData });
+      const remoteDispatch = remote.dispatch ?? {};
+      const localDispatch  = stateRef.current.dispatch;
+      const allTiendas     = new Set([...Object.keys(remoteDispatch), ...Object.keys(localDispatch)]);
+      const mergedDispatch: Record<string, DispatchItem[]> = {};
+
+      for (const tienda of allTiendas) {
+        const localItems  = localDispatch[tienda];
+        const remItems    = remoteDispatch[tienda];
+        const lastItems   = lastDispatch[tienda];
+        const localDirty  = JSON.stringify(localItems ?? []) !== JSON.stringify(lastItems ?? []);
+        // Dirty → local wins (protect unsaved work). Clean → remote wins (accept deletions/edits).
+        mergedDispatch[tienda] = localDirty ? (localItems ?? []) : (remItems ?? localItems ?? []);
+      }
+
+      // pdfData: local always wins — guides are loaded locally and shared outward, never inward.
+      const mergedPdf = { ...(remote.pdfData ?? {}), ...stateRef.current.pdfData };
+
+      const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: stateRef.current.pdfData });
       if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;
 
       dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
     };
 
-    // Initial fetch — same merge rule: local wins, remote adds new tiendas/guides
+    // Initial fetch: remote (server) wins for dispatch — authoritative state on fresh load.
+    // Local only keeps tiendas that remote doesn't mention (locally-only additions not yet pushed).
+    // pdfData: local wins (guides are device-local, shared outward to remote).
     fetchSessionState('regiones')
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
         const r = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
-        const mergedDispatch = { ...(r.dispatch  ?? {}), ...stateRef.current.dispatch };
-        const mergedPdf      = { ...(r.pdfData   ?? {}), ...stateRef.current.pdfData  };
+        const remoteDispatch  = r.dispatch ?? {};
+        const localOnlyTiendas = Object.fromEntries(
+          Object.entries(stateRef.current.dispatch).filter(([k]) => !remoteDispatch[k])
+        );
+        const mergedDispatch = { ...remoteDispatch, ...localOnlyTiendas };
+        const mergedPdf      = { ...(r.pdfData ?? {}), ...stateRef.current.pdfData };
         lastPushedRef.current = JSON.stringify(remote);
         dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
       })
