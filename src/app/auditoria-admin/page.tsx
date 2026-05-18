@@ -227,15 +227,26 @@ export default function AuditoriaAdminPage() {
   }, [profile, router]);
 
   useEffect(() => {
-    supabase
-      .from('audit_entries')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500)
-      .then(({ data }) => {
-        if (data) setEntries(data.map(r => rowToEntry(r as Record<string, unknown>)));
-        setLoading(false);
-      });
+    const loadEntries = () => {
+      supabase
+        .from('audit_entries')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500)
+        .then(({ data }) => {
+          if (data) setEntries(data.map(r => rowToEntry(r as Record<string, unknown>)));
+          setLoading(false);
+        });
+    };
+
+    loadEntries();
+
+    const channel = supabase
+      .channel('auditoria-admin-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_entries' }, () => loadEntries())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fechas = useMemo(() =>

@@ -9,6 +9,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
+import { pushCounts } from '../../../../lib/despachoSesion';
 
 /* ── Calendar localStorage ── */
 const todayKey    = new Date().toISOString().split('T')[0];
@@ -247,6 +248,7 @@ export function StepForm() {
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     localStorage.setItem('santiagoCounts', JSON.stringify({ date: todayKey, counts }));
+    pushCounts('santiago', counts).catch(() => {});
   }, [items]);
 
   // Read despachoCounts → sync from Despacho

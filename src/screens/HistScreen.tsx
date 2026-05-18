@@ -32,27 +32,37 @@ export function HistScreen() {
   })();
 
   useEffect(() => {
-    supabase
-      .from('dispatch_history')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(150)
-      .then(({ data, error }) => {
-        if (data && !error) {
-          setHistory(data as DispatchRow[]);
-        } else {
-          // Fallback: localStorage
-          setHistory(localEntries.slice().reverse().map((e, i) => ({
-            id: i,
-            created_at: '',
-            date: e.date,
-            total_pallets: e.totalPallets,
-            total_bultos: e.totalBultos,
-            tiendas: e.tiendas,
-          })));
-        }
-        setLoading(false);
-      });
+    const loadHistory = () => {
+      supabase
+        .from('dispatch_history')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(150)
+        .then(({ data, error }) => {
+          if (data && !error) {
+            setHistory(data as DispatchRow[]);
+          } else {
+            setHistory(localEntries.slice().reverse().map((e, i) => ({
+              id: i,
+              created_at: '',
+              date: e.date,
+              total_pallets: e.totalPallets,
+              total_bultos: e.totalBultos,
+              tiendas: e.tiendas,
+            })));
+          }
+          setLoading(false);
+        });
+    };
+
+    loadHistory();
+
+    const channel = supabase
+      .channel('historial-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_history' }, () => loadHistory())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

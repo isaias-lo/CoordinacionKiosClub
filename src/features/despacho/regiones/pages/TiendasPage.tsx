@@ -10,6 +10,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasDelDia } from '../../utils/useCalendario';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
+import { pushCounts } from '../../../../lib/despachoSesion';
 
 /* ── Per-day calendar overrides ── */
 const todayDateKey   = `calendarExtra_${new Date().toISOString().split('T')[0]}`;
@@ -208,6 +209,7 @@ export function TiendasPage() {
       if (p > 0 || b > 0) counts[tienda.cod] = { p, b };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
+    pushCounts('regiones', counts).catch(() => {});
   }, [dispatchData]);
 
   const [mounted, setMounted] = useState(false);

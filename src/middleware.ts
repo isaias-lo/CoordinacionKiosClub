@@ -14,23 +14,23 @@ const ROLE_HOME: Record<string, string> = {
 const ROLE_ALLOWED: Record<string, string[]> = {
   auditor:               ['/auditoria', '/historial', '/perfil'],
   'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
-  despachador:           ['/', '/despacho', '/despacho-hub', '/control-interno', '/recepcion', '/historial', '/perfil'],
-  supervisor:            ['/', '/despacho', '/despacho-hub', '/control-interno', '/recepcion', '/control-espejos', '/historial', '/perfil'],
+  despachador:           ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/registros', '/control-interno', '/recepcion', '/historial', '/perfil'],
+  supervisor:            ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/registros', '/control-interno', '/recepcion', '/historial', '/perfil'],
   'recepcion-tienda':    ['/tiendas', '/recepcion', '/perfil'],
   'supervisor-picking':  ['/picking', '/perfil'],
   admin:                 ['*'],
 };
 
-function isAllowed(role: string, pathname: string): boolean {
-  const allowed = ROLE_ALLOWED[role] ?? [];
+function isAllowed(role: string, pathname: string, customPaths?: string[]): boolean {
+  const allowed = customPaths ?? ROLE_ALLOWED[role] ?? [];
   if (allowed.includes('*')) return true;
   return allowed.some(p =>
     p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(p + '/')
   );
 }
 
-function roleHome(role: string): string {
-  return ROLE_HOME[role] ?? '/auditoria';
+function roleHome(role: string, metaHome?: string): string {
+  return metaHome ?? ROLE_HOME[role] ?? '/auditoria';
 }
 
 const PUBLIC_ROUTES = ['/login', '/registro', '/recuperar-contrasena', '/actualizar-contrasena'];
@@ -67,10 +67,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const role = (user.user_metadata?.role as string | undefined) ?? 'auditor';
+  const role       = (user.user_metadata?.role          as string   | undefined) ?? 'auditor';
+  const metaPaths  = user.user_metadata?.allowed_paths  as string[] | undefined;
+  const metaHome   = user.user_metadata?.home_path      as string   | undefined;
 
   if (PUBLIC_ROUTES.some(p => pathname === p)) {
-    return NextResponse.redirect(new URL(roleHome(role), request.url));
+    return NextResponse.redirect(new URL(roleHome(role, metaHome), request.url));
   }
 
   if (role === 'pending') {
@@ -81,11 +83,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === '/login') {
-    return NextResponse.redirect(new URL(roleHome(role), request.url));
+    return NextResponse.redirect(new URL(roleHome(role, metaHome), request.url));
   }
 
-  if (!isAllowed(role, pathname)) {
-    return NextResponse.redirect(new URL(roleHome(role), request.url));
+  if (!isAllowed(role, pathname, metaPaths)) {
+    return NextResponse.redirect(new URL(roleHome(role, metaHome), request.url));
   }
 
   return response;
