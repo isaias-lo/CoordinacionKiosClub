@@ -103,61 +103,68 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userId = user?.id;
 
-  // Always-current ref so Realtime handler never sees stale state
-  const stateRef   = useRef(state);
-  stateRef.current = state;
-
-  const lastPushedRef    = useRef<string>('');
-  const debounceRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always-current ref so async callbacks never see stale state
+  const stateRef        = useRef(state);
+  stateRef.current      = state;
+  const lastPushedRef   = useRef<string>('');
+  const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
 
-  // Load shared state + subscribe to everyone's real-time changes
+  // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
     isInitializedRef.current = false;
     if (!userId) return;
 
+    const normalize = (s: SyncableState): SyncableState => ({
+      ...s,
+      step: (s.step as string) === 'resumen' ? 'form' : s.step,
+    });
+
+    const handleRemote = (remoteState: unknown) => {
+      const remote = normalize(remoteState as SyncableState);
+      const remoteStr = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
+      if (remoteStr === lastPushedRef.current) return; // already in sync
+
+      const localStr = JSON.stringify({
+        step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
+      });
+      const isDirty = localStr !== lastPushedRef.current;
+
+      if (isDirty && remote.items) {
+        const merged = { ...remote.items, ...stateRef.current.items };
+        dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
+      } else {
+        lastPushedRef.current = remoteStr;
+        dispatch({ type: 'LOAD_STATE', payload: remote });
+      }
+    };
+
+    // Initial fetch
     fetchSessionState('santiago')
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
-        const s = remote as SyncableState;
-        if ((s.step as string) === 'resumen') s.step = 'form';
+        const s = normalize(remote as SyncableState);
         lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
         dispatch({ type: 'LOAD_STATE', payload: s });
       })
       .catch(() => { isInitializedRef.current = true; });
 
-    const unsub = subscribeToSessionState('santiago', userId, (remoteState) => {
-      const remote = remoteState as SyncableState;
-      if ((remote.step as string) === 'resumen') remote.step = 'form';
+    // Realtime subscription (instant when WebSocket works)
+    const unsub = subscribeToSessionState('santiago', userId, handleRemote);
 
-      const localPayload: SyncableState = {
-        step:    stateRef.current.step,
-        regimen: stateRef.current.regimen,
-        items:   stateRef.current.items,
-      };
-      const localStr = JSON.stringify(localPayload);
-      const isDirty  = localStr !== lastPushedRef.current;
+    // Polling fallback every 8 s — guarantees sync even when Realtime drops
+    const pollId = setInterval(async () => {
+      try {
+        const remote = await fetchSessionState('santiago');
+        if (remote) handleRemote(remote);
+      } catch {}
+    }, 8000);
 
-      if (isDirty && remote.items) {
-        // Merge items: remote provides the base, local modifications per tienda win.
-        const merged = { ...remote.items, ...stateRef.current.items };
-        // Don't update lastPushedRef → sync effect will push the merged result
-        dispatch({
-          type: 'LOAD_STATE',
-          payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged },
-        });
-      } else {
-        // Nothing pending locally — accept remote (another user's update)
-        lastPushedRef.current = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
-        dispatch({ type: 'LOAD_STATE', payload: remote });
-      }
-    });
-
-    return unsub;
+    return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
 
-  // Debounced push to shared Supabase state (800 ms) + localStorage fallback
+  // Debounced push to Supabase (800 ms after last change) + localStorage fallback
   useEffect(() => {
     if (!isInitializedRef.current) return;
     const payload: SyncableState = { step: state.step, regimen: state.regimen, items: state.items };
@@ -171,9 +178,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [state.step, state.regimen, state.items, state]);
 
   return (

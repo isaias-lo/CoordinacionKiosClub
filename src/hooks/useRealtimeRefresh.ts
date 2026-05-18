@@ -18,6 +18,7 @@ export function useRealtimeRefresh(
   tableKey: string,
   onRefresh: () => void,
   enabled = true,
+  pollMs = 15000,
 ): void {
   // Always-current ref so changing onRefresh never causes re-subscription
   const cbRef = useRef(onRefresh);
@@ -29,6 +30,7 @@ export function useRealtimeRefresh(
     const tables = tableKey.split(',').map(t => t.trim()).filter(Boolean);
     if (tables.length === 0) return;
 
+    // Realtime subscription (instant when WebSocket works)
     const channelId = `rt-${tables.join('-')}-${Math.random().toString(36).slice(2, 7)}`;
     let ch = supabase.channel(channelId);
 
@@ -41,7 +43,14 @@ export function useRealtimeRefresh(
     }
 
     ch.subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    // Polling fallback — fires onRefresh every pollMs even if Realtime drops
+    const pollId = setInterval(() => cbRef.current(), pollMs);
+
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(pollId);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableKey, enabled]);
+  }, [tableKey, enabled, pollMs]);
 }

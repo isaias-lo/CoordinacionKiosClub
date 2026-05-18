@@ -154,59 +154,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userId = user?.id;
 
-  // Always-current ref so Realtime handler never sees stale state
-  const stateRef     = useRef(state);
-  stateRef.current   = state;
-
+  // Always-current ref so async callbacks never see stale state
+  const stateRef        = useRef(state);
+  stateRef.current      = state;
   const lastPushedRef   = useRef<string>('');
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
 
-  // Load shared state + subscribe to everyone's real-time changes
+  // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
     isInitializedRef.current = false;
     if (!userId) return;
 
+    const handleRemote = (remoteState: unknown) => {
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+      const remoteStr = JSON.stringify(remoteState);
+      if (remoteStr === lastPushedRef.current) return; // already in sync
+
+      const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData });
+      const isDirty  = localStr !== lastPushedRef.current;
+
+      if (isDirty && remote.dispatch) {
+        const merged = { ...remote.dispatch, ...stateRef.current.dispatch };
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged, pdfData: stateRef.current.pdfData } });
+      } else {
+        lastPushedRef.current = remoteStr;
+        dispatch({ type: 'LOAD_STATE', payload: remote });
+      }
+    };
+
+    // Initial fetch
     fetchSessionState('regiones')
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
-        const s = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
         lastPushedRef.current = JSON.stringify(remote);
-        dispatch({ type: 'LOAD_STATE', payload: s });
+        dispatch({ type: 'LOAD_STATE', payload: remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } });
       })
       .catch(() => { isInitializedRef.current = true; });
 
-    const unsub = subscribeToSessionState('regiones', userId, (remoteState) => {
-      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+    // Realtime subscription (instant when WebSocket works)
+    const unsub = subscribeToSessionState('regiones', userId, handleRemote);
 
-      // Detect whether we have local unsynced changes
-      const localStr = JSON.stringify({
-        dispatch: stateRef.current.dispatch,
-        pdfData:  stateRef.current.pdfData,
-      });
-      const isDirty = localStr !== lastPushedRef.current;
+    // Polling fallback every 8 s — guarantees sync even when Realtime drops
+    const pollId = setInterval(async () => {
+      try {
+        const remote = await fetchSessionState('regiones');
+        if (remote) handleRemote(remote);
+      } catch {}
+    }, 8000);
 
-      if (isDirty && remote.dispatch) {
-        // Merge: remote tiendas provide the base, our local modifications win per tienda.
-        // This prevents losing local items that haven't been pushed yet.
-        const merged = { ...remote.dispatch, ...stateRef.current.dispatch };
-        // Don't update lastPushedRef → the sync effect will push the merged result
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged, pdfData: stateRef.current.pdfData } });
-      } else {
-        // Nothing pending locally — accept remote as-is (could be another user's update)
-        lastPushedRef.current = JSON.stringify(remoteState);
-        dispatch({ type: 'LOAD_STATE', payload: remote });
-      }
-    });
-
-    return unsub;
+    return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
 
-  // Debounced push to shared Supabase state (800 ms) + localStorage fallback
+  // Debounced push to Supabase (800 ms after last change) + localStorage fallback
   useEffect(() => {
-    // Guard: don't push before the initial Supabase fetch completes — prevents
-    // overwriting shared state with stale localStorage data on slow networks.
     if (!isInitializedRef.current) return;
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
     const current = JSON.stringify(payload);
@@ -219,9 +221,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(REGIONES_KEY, current); } catch {}
     }, 800);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [state.dispatch, state.pdfData]);
 
   const showToast = useCallback((msg: string, color?: string) => {
