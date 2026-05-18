@@ -1,7 +1,9 @@
 'use client';
 
-import { createContext, useContext, useReducer, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, ReactNode } from 'react';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
+import { useAuth } from '@/components/AuthProvider';
+import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -38,7 +40,8 @@ type Action =
   | { type: 'TOGGLE_ALL_SELECTION'; tienda: string; count: number }
   | { type: 'SET_SHEETS_URL'; payload: string }
   | { type: 'SHOW_TOAST'; msg: string; color?: string }
-  | { type: 'HIDE_TOAST' };
+  | { type: 'HIDE_TOAST' }
+  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } };
 
 function renumber(items: DispatchItem[]): DispatchItem[] {
   let pc = 1, bc = 1;
@@ -114,6 +117,12 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, toast: { msg: action.msg, color: action.color } };
     case 'HIDE_TOAST':
       return { ...state, toast: null };
+    case 'LOAD_STATE':
+      return {
+        ...state,
+        dispatch: action.payload.dispatch ?? state.dispatch,
+        pdfData:  action.payload.pdfData  ?? state.pdfData,
+      };
     default:
       return state;
   }
@@ -142,11 +151,47 @@ function loadInitialState(): AppState {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
+  const { user } = useAuth();
+  const userId = user?.id;
+  const lastPushedRef = useRef<string>('');
+  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Fetch from Supabase on login + subscribe to Realtime for cross-device sync
   useEffect(() => {
-    try {
-      localStorage.setItem(REGIONES_KEY, JSON.stringify({ dispatch: state.dispatch, pdfData: state.pdfData }));
-    } catch {}
+    if (!userId) return;
+
+    fetchSessionState('regiones').then((remote) => {
+      if (!remote) return;
+      const s = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+      lastPushedRef.current = JSON.stringify(remote);
+      dispatch({ type: 'LOAD_STATE', payload: s });
+    });
+
+    const unsub = subscribeToSessionState('regiones', userId, (remoteState) => {
+      const s = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+      lastPushedRef.current = JSON.stringify(remoteState);
+      dispatch({ type: 'LOAD_STATE', payload: s });
+    });
+
+    return unsub;
+  }, [userId]);
+
+  // Debounced push to Supabase (1.5s) + localStorage fallback
+  useEffect(() => {
+    const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
+    const current = JSON.stringify(payload);
+    if (current === lastPushedRef.current) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      lastPushedRef.current = current;
+      pushSessionState('regiones', payload);
+      try { localStorage.setItem(REGIONES_KEY, current); } catch {}
+    }, 1500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [state.dispatch, state.pdfData]);
 
   const showToast = useCallback((msg: string, color?: string) => {
