@@ -14,10 +14,6 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
   const router = useRouter();
 
   const confirmBack = (dest: string) => {
-    const totalItems = Object.values(state.dispatch).reduce((acc, items) => acc + items.length, 0);
-    if (totalItems > 0) {
-      if (!confirm('¿Volver? Los datos no guardados se perderán.')) return;
-    }
     router.push(dest);
   };
 
