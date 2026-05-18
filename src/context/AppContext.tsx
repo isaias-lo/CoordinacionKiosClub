@@ -172,32 +172,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
 
-      // Merge pdfData: remote adds tiendas that local doesn't have yet; local always keeps its own data.
-      // This allows Desktop to share loaded guides to Mobile without ever wiping local pdfData.
-      const mergedPdf = { ...(remote.pdfData ?? {}), ...stateRef.current.pdfData };
+      // Local always wins for tiendas it already has — remote only adds what local doesn't have yet.
+      // This prevents a stale or empty remote from wiping locally-loaded guides or added items.
+      const mergedDispatch = { ...(remote.dispatch ?? {}), ...stateRef.current.dispatch };
+      const mergedPdf     = { ...(remote.pdfData  ?? {}), ...stateRef.current.pdfData  };
 
+      // If local is clean (matches last push), update baseline so push effect knows what's new
       const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData });
-      const isDirty  = localStr !== lastPushedRef.current;
+      if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;
 
-      if (isDirty && remote.dispatch) {
-        const merged = { ...remote.dispatch, ...stateRef.current.dispatch };
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged, pdfData: mergedPdf } });
-      } else {
-        lastPushedRef.current = remoteStr;
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: remote.dispatch, pdfData: mergedPdf } });
-      }
+      dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
     };
 
-    // Initial fetch
+    // Initial fetch — same merge rule: local wins, remote adds new tiendas/guides
     fetchSessionState('regiones')
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
         const r = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
-        // On initial load, remote pdfData wins (shared guides from team); local adds what remote doesn't have
-        const mergedPdf = { ...stateRef.current.pdfData, ...(r.pdfData ?? {}) };
+        const mergedDispatch = { ...(r.dispatch  ?? {}), ...stateRef.current.dispatch };
+        const mergedPdf      = { ...(r.pdfData   ?? {}), ...stateRef.current.pdfData  };
         lastPushedRef.current = JSON.stringify(remote);
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: r.dispatch, pdfData: mergedPdf } });
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
       })
       .catch(() => { isInitializedRef.current = true; });
 
