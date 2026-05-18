@@ -47,8 +47,9 @@ export function subscribeToSessionState(
   onState: (state: unknown) => void,
 ): () => void {
   const fecha = todayISO();
+  const channelId = `shared-state-${fuente}-${fecha}-${Math.random().toString(36).slice(2, 7)}`;
   const channel = supabase
-    .channel(`shared-state-${fuente}-${fecha}`)
+    .channel(channelId)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'shared_session_state' },
