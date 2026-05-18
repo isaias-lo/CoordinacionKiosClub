@@ -107,20 +107,25 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const stateRef   = useRef(state);
   stateRef.current = state;
 
-  const lastPushedRef = useRef<string>('');
-  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPushedRef    = useRef<string>('');
+  const debounceRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitializedRef = useRef(false);
 
   // Load shared state + subscribe to everyone's real-time changes
   useEffect(() => {
+    isInitializedRef.current = false;
     if (!userId) return;
 
-    fetchSessionState('santiago').then((remote) => {
-      if (!remote) return;
-      const s = remote as SyncableState;
-      if ((s.step as string) === 'resumen') s.step = 'form';
-      lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
-      dispatch({ type: 'LOAD_STATE', payload: s });
-    });
+    fetchSessionState('santiago')
+      .then((remote) => {
+        isInitializedRef.current = true;
+        if (!remote) return;
+        const s = remote as SyncableState;
+        if ((s.step as string) === 'resumen') s.step = 'form';
+        lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
+        dispatch({ type: 'LOAD_STATE', payload: s });
+      })
+      .catch(() => { isInitializedRef.current = true; });
 
     const unsub = subscribeToSessionState('santiago', userId, (remoteState) => {
       const remote = remoteState as SyncableState;
@@ -154,6 +159,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
   // Debounced push to shared Supabase state (800 ms) + localStorage fallback
   useEffect(() => {
+    if (!isInitializedRef.current) return;
     const payload: SyncableState = { step: state.step, regimen: state.regimen, items: state.items };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;

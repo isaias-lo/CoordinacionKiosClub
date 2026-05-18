@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Truck, MapPin, Store } from 'lucide-react';
 import { ProfilePill } from '@/components/ProfilePill';
@@ -82,6 +82,7 @@ export default function RegistrosPage() {
   const [tab,     setTab]     = useState<TabKey>('rm');
   const [rows,    setRows]    = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error,   setError]   = useState('');
   const [search,  setSearch]  = useState('');
 
@@ -89,7 +90,7 @@ export default function RegistrosPage() {
   const cols      = TABLE_COLS[tab];
   const color     = TAB_COLORS[tab];
 
-  const loadData = useCallback(async (table: string) => {
+  const loadData = useCallback(async (table: string): Promise<Record<string, unknown>[]> => {
     setLoading(true);
     setError('');
     setRows([]);
@@ -97,9 +98,12 @@ export default function RegistrosPage() {
       const res  = await fetch(`/api/despacho-records?table=${encodeURIComponent(table)}`);
       const data = await res.json() as { data?: Record<string, unknown>[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setRows(data.data ?? []);
+      const loaded = data.data ?? [];
+      setRows(loaded);
+      return loaded;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar datos');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -114,7 +118,26 @@ export default function RegistrosPage() {
     } catch {}
   }, [tabCfg.table]);
 
-  useEffect(() => { loadData(tabCfg.table); }, [tab, tabCfg.table, loadData]);
+  const syncFromSheets = useCallback(async () => {
+    if (tabCfg.key === 'recepcion') return;
+    setSyncing(true);
+    try {
+      await fetch('/api/sync-despacho', { method: 'POST' });
+      await loadData(tabCfg.table);
+    } finally {
+      setSyncing(false);
+    }
+  }, [tabCfg.key, tabCfg.table, loadData]);
+
+  const didAutoSync = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    loadData(tabCfg.table).then((loaded) => {
+      if (loaded.length === 0 && tabCfg.key !== 'recepcion' && !didAutoSync.current[tabCfg.key]) {
+        didAutoSync.current[tabCfg.key] = true;
+        syncFromSheets();
+      }
+    });
+  }, [tab, tabCfg.table, tabCfg.key, loadData, syncFromSheets]);
 
   // Auto-refresh when another user inserts/updates a row in the active table
   useRealtimeRefresh(tabCfg.table, silentRefresh);
@@ -148,6 +171,13 @@ export default function RegistrosPage() {
             {loading ? 'Cargando…' : `${filtered.length} registros`}
           </div>
         </div>
+        {tab !== 'recepcion' && (
+          <button onClick={syncFromSheets} disabled={syncing}
+            className="px-3 py-1.5 rounded-xl text-[13px] cursor-pointer hover:bg-white/10 transition-colors border border-white/10 disabled:opacity-50"
+            style={{ color: '#10B981' }}>
+            {syncing ? 'Sincronizando…' : '⇅ Sheets'}
+          </button>
+        )}
         <button onClick={() => loadData(tabCfg.table)}
           className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
           ↺ Actualizar

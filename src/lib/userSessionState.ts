@@ -53,14 +53,10 @@ export function subscribeToSessionState(
     .channel(`shared-state-${fuente}-${fecha}`)
     .on(
       'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table:  'shared_session_state',
-        filter: `fuente=eq.${fuente}`,
-      },
+      { event: '*', schema: 'public', table: 'shared_session_state' },
       (payload) => {
         const row = payload.new as { fecha: string; fuente: string; state: unknown } | null;
+        // Filter in callback — more reliable than Supabase-side filter
         if (row?.fecha === fecha && row?.fuente === fuente) {
           onState(row.state);
         }

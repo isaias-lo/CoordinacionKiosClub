@@ -158,19 +158,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const stateRef     = useRef(state);
   stateRef.current   = state;
 
-  const lastPushedRef = useRef<string>('');
-  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPushedRef   = useRef<string>('');
+  const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitializedRef = useRef(false);
 
   // Load shared state + subscribe to everyone's real-time changes
   useEffect(() => {
+    isInitializedRef.current = false;
     if (!userId) return;
 
-    fetchSessionState('regiones').then((remote) => {
-      if (!remote) return;
-      const s = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
-      lastPushedRef.current = JSON.stringify(remote);
-      dispatch({ type: 'LOAD_STATE', payload: s });
-    });
+    fetchSessionState('regiones')
+      .then((remote) => {
+        isInitializedRef.current = true;
+        if (!remote) return;
+        const s = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+        lastPushedRef.current = JSON.stringify(remote);
+        dispatch({ type: 'LOAD_STATE', payload: s });
+      })
+      .catch(() => { isInitializedRef.current = true; });
 
     const unsub = subscribeToSessionState('regiones', userId, (remoteState) => {
       const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
@@ -200,6 +205,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Debounced push to shared Supabase state (800 ms) + localStorage fallback
   useEffect(() => {
+    // Guard: don't push before the initial Supabase fetch completes — prevents
+    // overwriting shared state with stale localStorage data on slow networks.
+    if (!isInitializedRef.current) return;
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;

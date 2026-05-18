@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 
 interface DespachoRow {
@@ -50,12 +50,13 @@ function toDisplayDate(iso: string): string {
 export function SeguimientoPanel() {
   const [rows,    setRows]    = useState<DespachoRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error,   setError]   = useState('');
   const [date,    setDate]    = useState(todayStr());
   const [search,  setSearch]  = useState('');
   const [source,  setSource]  = useState<'ambos' | 'rm' | 'regiones'>('ambos');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<DespachoRow[]> => {
     setLoading(true);
     setError('');
     try {
@@ -74,9 +75,12 @@ export function SeguimientoPanel() {
           return json.data ?? [];
         })
       );
-      setRows(results.flat());
+      const flat = results.flat();
+      setRows(flat);
+      return flat;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar datos');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -102,7 +106,27 @@ export function SeguimientoPanel() {
     } catch {}
   }, [source]);
 
-  useEffect(() => { load(); }, [load]);
+  const syncFromSheets = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await fetch('/api/sync-despacho', { method: 'POST' });
+      await load();
+    } finally {
+      setSyncing(false);
+    }
+  }, [load]);
+
+  // On mount: load, then auto-sync from Google Sheets if Supabase is empty
+  const didAutoSync = useRef(false);
+  useEffect(() => {
+    load().then((loadedRows) => {
+      if (loadedRows.length === 0 && !didAutoSync.current) {
+        didAutoSync.current = true;
+        syncFromSheets();
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
 
   // Auto-refresh when the Enrutador or another user updates seguimiento status
   useRealtimeRefresh('despacho_rm,despacho_regiones', silentLoad);
@@ -178,6 +202,12 @@ export function SeguimientoPanel() {
         <button onClick={load}
           className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-navy border border-navy/30 cursor-pointer hover:bg-[rgba(27,42,107,0.06)] transition-colors">
           ↺ Actualizar
+        </button>
+        <button onClick={syncFromSheets} disabled={syncing}
+          className="px-3 py-1.5 rounded-lg text-[12px] font-bold border cursor-pointer transition-colors disabled:opacity-50"
+          style={{ color: '#10B981', borderColor: 'rgba(16,185,129,0.3)' }}
+          title="Importar registros desde Google Sheets a Supabase">
+          {syncing ? 'Sincronizando…' : '⇅ Sheets'}
         </button>
       </div>
 
