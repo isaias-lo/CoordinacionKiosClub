@@ -217,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       lastPushedRef.current = current;
-      pushSessionState('regiones', payload);
+      pushSessionState('regiones', payload, userId ?? undefined);
       try { localStorage.setItem(REGIONES_KEY, current); } catch {}
     }, 800);
 

@@ -8,34 +8,32 @@ function todayISO(): string {
 }
 
 /** Upsert the shared state for today (all authenticated users share the same row per fuente). */
-export async function pushSessionState(fuente: Fuente, state: unknown): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return;
+export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string): Promise<void> {
+  const payload: Record<string, unknown> = {
+    fecha:      todayISO(),
+    fuente,
+    state,
+    updated_at: new Date().toISOString(),
+  };
+  if (userId) payload.updated_by = userId;
 
-  await supabase.from('shared_session_state').upsert(
-    {
-      fecha:      todayISO(),
-      fuente,
-      state,
-      updated_by: session.user.id,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'fecha,fuente' },
-  );
+  const { error } = await supabase
+    .from('shared_session_state')
+    .upsert(payload, { onConflict: 'fecha,fuente' });
+
+  if (error) console.error('[sync:push]', fuente, error.message, error.details);
 }
 
 /** Fetch today's shared state. Any authenticated user can read. */
 export async function fetchSessionState(fuente: Fuente): Promise<unknown | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return null;
-
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('shared_session_state')
     .select('state')
     .eq('fecha', todayISO())
     .eq('fuente', fuente)
     .maybeSingle();
 
+  if (error) console.error('[sync:fetch]', fuente, error.message);
   return data?.state ?? null;
 }
 

@@ -174,7 +174,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       lastPushedRef.current = current;
-      pushSessionState('santiago', payload);
+      pushSessionState('santiago', payload, userId ?? undefined);
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
