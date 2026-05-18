@@ -133,6 +133,7 @@ interface AppContextValue {
   dispatch: React.Dispatch<Action>;
   showToast: (msg: string, color?: string) => void;
   getStats: () => { pallets: number; bultos: number; tiendas: number };
+  flushPending: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -167,20 +168,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown) => {
-      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]> };
-      // Only compare dispatch — pdfData is transient UI state and must not be overwritten by remote
-      const remoteStr = JSON.stringify({ dispatch: remote.dispatch });
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+      const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
 
-      const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch });
+      // Merge pdfData: remote adds tiendas that local doesn't have yet; local always keeps its own data.
+      // This allows Desktop to share loaded guides to Mobile without ever wiping local pdfData.
+      const mergedPdf = { ...(remote.pdfData ?? {}), ...stateRef.current.pdfData };
+
+      const localStr = JSON.stringify({ dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData });
       const isDirty  = localStr !== lastPushedRef.current;
 
       if (isDirty && remote.dispatch) {
         const merged = { ...remote.dispatch, ...stateRef.current.dispatch };
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged } });
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: merged, pdfData: mergedPdf } });
       } else {
         lastPushedRef.current = remoteStr;
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: remote.dispatch } });
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: remote.dispatch, pdfData: mergedPdf } });
       }
     };
 
@@ -189,9 +193,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
-        const r = remote as { dispatch?: Record<string, DispatchItem[]> };
-        lastPushedRef.current = JSON.stringify({ dispatch: r.dispatch });
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: r.dispatch } });
+        const r = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
+        // On initial load, remote pdfData wins (shared guides from team); local adds what remote doesn't have
+        const mergedPdf = { ...stateRef.current.pdfData, ...(r.pdfData ?? {}) };
+        lastPushedRef.current = JSON.stringify(remote);
+        dispatch({ type: 'LOAD_STATE', payload: { dispatch: r.dispatch, pdfData: mergedPdf } });
       })
       .catch(() => { isInitializedRef.current = true; });
 
@@ -210,11 +216,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   // Debounced push to Supabase (800 ms after last change) + localStorage fallback
-  // pdfData is intentionally excluded — it is transient UI state (guide loader) and must not
-  // overwrite another device's locally-loaded pdfData. Guide numbers are already in each DispatchItem.
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: state.dispatch };
+    const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
 
@@ -226,7 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 800);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [state.dispatch]);
+  }, [state.dispatch, state.pdfData]);
 
   const showToast = useCallback((msg: string, color?: string) => {
     dispatch({ type: 'SHOW_TOAST', msg, color });
@@ -242,8 +246,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { pallets, bultos, tiendas };
   }, [state.dispatch]);
 
+  // Flush any pending debounced push immediately — call before navigating away so data is never lost.
+  const flushPending = useCallback(() => {
+    if (!isInitializedRef.current) return;
+    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData };
+    const current = JSON.stringify(payload);
+    if (current === lastPushedRef.current) return;
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    lastPushedRef.current = current;
+    pushSessionState('regiones', payload, userId ?? undefined);
+    try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
+  }, [userId]);
+
   return (
-    <AppContext.Provider value={{ state, dispatch, showToast, getStats }}>
+    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending }}>
       {children}
     </AppContext.Provider>
   );

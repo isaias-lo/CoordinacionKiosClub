@@ -10,10 +10,11 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ onFinish }: AppHeaderProps) {
-  const { state } = useApp();
+  const { state, flushPending } = useApp();
   const router = useRouter();
 
   const confirmBack = (dest: string) => {
+    flushPending(); // guardar inmediatamente antes de salir (evita perder el debounce de 800ms)
     router.push(dest);
   };
 
