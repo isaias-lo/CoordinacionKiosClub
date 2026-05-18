@@ -1606,6 +1606,18 @@ export function AuditoriaScreen() {
       setHistoryLoading(false);
     }
   };
+  // Realtime: re-fetch history whenever any audit_entries row changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('auditoria-screen-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_entries' }, () => {
+        if (viewInit) loadHistory();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewInit]);
+
   // loadHistory is called in the viewInit effect (after auth resolves) to ensure user context is ready
   useEffect(() => {
     supabase.from('picker_config').select('auditores, picker_nombres').eq('id', 1).single()

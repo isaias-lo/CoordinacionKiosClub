@@ -16,6 +16,8 @@ import { getDia, norm, todayStr } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
+import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
+import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
@@ -226,6 +228,37 @@ export default function RutasScreen() {
     return () => {
       window.removeEventListener('storage', syncFromSantiago);
       clearInterval(interval);
+    };
+  }, []);
+
+  // ── Supabase Realtime: cross-device sync ───────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const today = todayStr();
+
+    function applyRow(row: SesionRow) {
+      setCalT(prev => {
+        const c = norm(row.tienda_cod);
+        if (!prev[c] || manuallyEditedRef.current.has(c)) return prev;
+        if (prev[c].p === row.pallets && prev[c].b === row.bultos) return prev;
+        return {
+          ...prev,
+          [c]: { ...prev[c], p: row.pallets, b: row.bultos, on: row.pallets > 0 || row.bultos > 0 },
+        };
+      });
+    }
+
+    // Initial load: fetch any counts already in Supabase (from other devices today)
+    const initTimeout = setTimeout(() => {
+      fetchCounts(today).then(rows => rows.forEach(applyRow)).catch(() => {});
+    }, 1500);
+
+    // Subscribe to real-time changes from other devices
+    const unsub = subscribeToSesion(today, applyRow);
+
+    return () => {
+      clearTimeout(initTimeout);
+      unsub();
     };
   }, []);
 

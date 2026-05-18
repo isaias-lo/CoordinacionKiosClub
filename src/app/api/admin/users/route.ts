@@ -80,6 +80,14 @@ export async function PATCH(request: NextRequest) {
   if (role)      meta.role      = role;
   if (full_name) meta.full_name = full_name;
 
+  if (role) {
+    const { data: roleData } = await sb.from('roles').select('allowed_paths,home_path').eq('id', role).single();
+    if (roleData) {
+      meta.allowed_paths = roleData.allowed_paths;
+      meta.home_path     = roleData.home_path;
+    }
+  }
+
   const updatePayload: Record<string, unknown> = { user_metadata: meta };
   if (password) updatePayload.password = password;
 
