@@ -9,6 +9,8 @@ const ROLE_HOME: Record<string, string> = {
   admin:                 '/',
   'recepcion-tienda':    '/tiendas',
   'supervisor-picking':  '/picking',
+  'asistente-despacho':  '/despacho-hub',
+  'coordinador-flota':   '/despacho',
 };
 
 const ROLE_ALLOWED: Record<string, string[]> = {
@@ -19,6 +21,8 @@ const ROLE_ALLOWED: Record<string, string[]> = {
   'recepcion-tienda':    ['/tiendas', '/recepcion', '/perfil'],
   'supervisor-picking':  ['/picking', '/perfil'],
   admin:                 ['*'],
+  'asistente-despacho':  ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/perfil'],
+  'coordinador-flota':   ['/despacho', '/despacho-hub', '/perfil'],
 };
 
 function isAllowed(role: string, pathname: string, customPaths?: string[]): boolean {
