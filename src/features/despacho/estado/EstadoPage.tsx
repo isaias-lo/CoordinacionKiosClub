@@ -80,73 +80,75 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
   return (
     <div
       className="label-card bg-white flex flex-col"
-      style={{ width: '100mm', height: '150mm', padding: '6mm', boxSizing: 'border-box', pageBreakAfter: 'always', breakAfter: 'page' }}>
+      style={{ width: '100mm', height: '150mm', padding: '5mm', boxSizing: 'border-box', pageBreakAfter: 'always', breakAfter: 'page' }}>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '3mm', marginBottom: '4mm' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '2mm', marginBottom: '3mm' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'monospace', fontSize: '7pt', color: '#888', marginBottom: '1.5mm', letterSpacing: '0.5pt' }}>
+          <div style={{ fontFamily: 'monospace', fontSize: '7pt', color: '#888', marginBottom: '1mm', letterSpacing: '0.5pt' }}>
             {store.source === 'santiago' ? 'BODEGA SANTIAGO' : 'BODEGA REGIONES'}
           </div>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '24pt', fontWeight: 900, lineHeight: 1, color: '#111' }}>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '30pt', fontWeight: 900, lineHeight: 1, color: '#111' }}>
             {formatCod(store.cod)}
           </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '10.5pt', fontWeight: 700, color: '#222', marginTop: '1.5mm', lineHeight: 1.25 }}>
+          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '12pt', fontWeight: 700, color: '#222', marginTop: '1.5mm', lineHeight: 1.2 }}>
             {store.name}
           </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#666', marginTop: '1.5mm', lineHeight: 1.35 }}>
-            {store.address}
-          </div>
+          {store.address && (
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#666', marginTop: '1mm', lineHeight: 1.3 }}>
+              {store.address}
+            </div>
+          )}
         </div>
 
-        <div style={{ flexShrink: 0, textAlign: 'center', minWidth: '22mm' }}>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '9pt', fontWeight: 900, letterSpacing: '1pt', textTransform: 'uppercase', marginBottom: '0.5mm', color: badgeBg }}>
+        <div style={{ flexShrink: 0, textAlign: 'center', minWidth: '24mm' }}>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '10pt', fontWeight: 900, letterSpacing: '1pt', textTransform: 'uppercase', marginBottom: '0.5mm', color: badgeBg }}>
             {item.tipo}
           </div>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '38pt', fontWeight: 900, lineHeight: 1, color: badgeBg }}>
+          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '44pt', fontWeight: 900, lineHeight: 1, color: badgeBg }}>
             {item.itemNum}
           </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', marginTop: '0.5mm' }}>
+          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '9pt', color: '#999', marginTop: '0.5mm' }}>
             de {item.totalItems}
           </div>
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #e0e0e0', marginBottom: '4mm' }} />
+      <div style={{ borderTop: '1.5px solid #d0d0d0', marginBottom: '3mm' }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '2mm' }}>
         {hasGuide ? (
           <>
-            <QRCodeSVG value={qrUrl} size={168} level="M" />
+            <QRCodeSVG value={qrUrl} size={200} level="M" />
             <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '1mm' }}>
               Escanear para confirmar recepción
             </div>
           </>
         ) : (
-          <div style={{ width: 168, height: 168, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4mm' }}>
-            <div style={{ fontSize: '22pt', opacity: 0.25 }}>📄</div>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7pt', color: '#bbb', textAlign: 'center', padding: '0 8px', lineHeight: 1.4 }}>
+          <div style={{ width: 200, height: 200, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4mm' }}>
+            <div style={{ fontSize: '24pt', opacity: 0.25 }}>📄</div>
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#bbb', textAlign: 'center', padding: '0 8px', lineHeight: 1.4 }}>
               Sube guía de despacho<br />para activar el QR
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ borderTop: '1px solid #e0e0e0', marginTop: '3mm', paddingTop: '3mm' }}>
+      <div style={{ borderTop: '1.5px solid #d0d0d0', marginTop: '3mm', paddingTop: '3mm' }}>
         {item.guias.length > 0 && (
           <div style={{ marginBottom: '2mm' }}>
-            <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Guía:{' '}</span>
-            <span style={{ fontFamily: 'monospace', fontSize: '8pt', color: '#333' }}>{item.guias.join(' · ')}</span>
+            <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Guía:{' '}</span>
+            <span style={{ fontFamily: 'monospace', fontSize: '10pt', fontWeight: 700, color: '#222' }}>{item.guias.join(' · ')}</span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Peso</div>
-            <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '9.5pt', color: '#333' }}>{item.peso} kg</div>
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Peso</div>
+            <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '12pt', color: '#222' }}>{item.peso} kg</div>
           </div>
           {store.ventana && (
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Ventana</div>
-              <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8.5pt', fontWeight: 700, color: '#333' }}>{store.ventana}</div>
+              <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Ventana</div>
+              <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '10pt', fontWeight: 700, color: '#222' }}>{store.ventana}</div>
             </div>
           )}
         </div>
