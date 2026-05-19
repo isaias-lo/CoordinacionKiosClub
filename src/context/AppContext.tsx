@@ -269,9 +269,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.dispatch).length === 0 && Object.keys(payload.pdfData).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
+      const prevLastPushed = lastPushedRef.current;
       lastPushedRef.current = current;
       isPushingRef.current = true; // block handleRemote during the async upsert
       pushSessionState('regiones', payload, userId ?? undefined)
+        .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
     }, 800);
@@ -300,8 +302,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    const prevPushed = lastPushedRef.current;
     lastPushedRef.current = current;
-    pushSessionState('regiones', payload, userId ?? undefined);
+    pushSessionState('regiones', payload, userId ?? undefined)
+      .catch(() => { lastPushedRef.current = prevPushed; });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);
 

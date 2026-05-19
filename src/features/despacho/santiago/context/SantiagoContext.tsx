@@ -30,7 +30,7 @@ function loadState(): SantiagoState {
     const raw = localStorage.getItem(SANTIAGO_KEY);
     if (!raw) return defaultState;
     const s = JSON.parse(raw) as SantiagoState;
-    if ((s.step as string) === 'resumen') s.step = 'form';
+    s.step = 'regimen'; // always start at regime selection on fresh load; user must confirm
     return s;
   } catch {
     return defaultState;
@@ -87,7 +87,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
     case 'LOAD_STATE':
       return {
         ...state,
-        step:    action.payload.step    ?? state.step,
+        // step is intentionally not synced — each device controls its own navigation
         regimen: action.payload.regimen ?? state.regimen,
         items:   action.payload.items   ?? state.items,
       };
@@ -191,9 +191,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.items).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
+      const prevLastPushed = lastPushedRef.current;
       lastPushedRef.current = current;
       isPushingRef.current = true;
       pushSessionState('santiago', payload, userId ?? undefined)
+        .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
     }, 800);
@@ -208,8 +210,10 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    const prevPushed = lastPushedRef.current;
     lastPushedRef.current = current;
-    pushSessionState('santiago', payload, userId ?? undefined);
+    pushSessionState('santiago', payload, userId ?? undefined)
+      .catch(() => { lastPushedRef.current = prevPushed; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);
 
