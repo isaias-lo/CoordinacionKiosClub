@@ -724,8 +724,13 @@ export default function UsuariosPage() {
 
         {/* ── TAB: ROLES ── */}
         {activeTab === 'roles' && (
-          <div className="flex flex-col gap-3 max-w-2xl mx-auto">
-            {rolesLoading && <div className="text-center text-white/40 py-8 text-sm">Cargando roles...</div>}
+          <div className="flex flex-col gap-2.5 max-w-2xl mx-auto">
+            {rolesLoading && (
+              <div className="flex items-center justify-center gap-2.5 py-14">
+                <div className="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                <span className="text-white/40 text-[13px]">Cargando roles...</span>
+              </div>
+            )}
 
             {roles.map(role => {
               const isExpanded = expandedRole === role.id;
@@ -735,125 +740,159 @@ export default function UsuariosPage() {
               const unsaved = hasUnsavedPerms(role.id);
 
               return (
-                <div key={role.id} className="rounded-2xl overflow-hidden"
-                     style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${isExpanded ? role.color + '44' : 'rgba(255,255,255,0.07)'}`, transition: 'border-color 0.2s' }}>
+                <div key={role.id}
+                  className="rounded-2xl overflow-hidden transition-all duration-200"
+                  style={{
+                    background: isExpanded ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${isExpanded ? role.color + '50' : 'rgba(255,255,255,0.08)'}`,
+                    boxShadow: isExpanded ? `0 6px 28px ${role.color}14` : 'none',
+                  }}>
 
-                  {/* Card header */}
+                  {/* Header row */}
                   <button
-                    className="w-full flex items-center gap-3 px-4 py-3.5 cursor-pointer text-left"
+                    className="w-full flex items-stretch cursor-pointer text-left"
                     onClick={() => setExpandedRole(isExpanded ? null : role.id)}>
-                    {/* Color dot */}
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: role.color, boxShadow: `0 0 8px ${role.color}80` }} />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white text-[15px] font-semibold">{role.label}</span>
-                        {role.is_system && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-white/40"
-                                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            Sistema
-                          </span>
-                        )}
-                        {unsaved && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
-                                style={{ background: 'rgba(234,179,8,0.15)', color: '#EAB308', border: '1px solid rgba(234,179,8,0.3)' }}>
-                            Sin guardar
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-white/35 text-[11px] mt-0.5">
-                        {count} {count === 1 ? 'usuario' : 'usuarios'} · Home: {role.home_path === '/' ? 'Dashboard' : role.home_path}
-                      </div>
-                    </div>
+                    {/* Left color bar */}
+                    <div className="w-[3px] flex-shrink-0 transition-all" style={{ background: isExpanded ? role.color : `${role.color}60` }} />
 
-                    {/* Access preview pills */}
-                    <div className="flex gap-1 flex-shrink-0 max-w-[160px] overflow-hidden">
-                      {isFullAccess ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                              style={{ background: `${role.color}22`, color: role.color, border: `1px solid ${role.color}44` }}>
-                          Acceso total
+                    <div className="flex-1 flex items-center gap-3 px-4 py-4">
+                      {/* Icon circle */}
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                           style={{ background: `${role.color}20`, border: `1.5px solid ${role.color}40` }}>
+                        <span className="font-barlow-condensed text-[15px] font-extrabold" style={{ color: role.color }}>
+                          {role.label[0].toUpperCase()}
                         </span>
-                      ) : (
-                        role.allowed_paths.slice(0, 2).map(p => (
-                          <span key={p} className="px-2 py-0.5 rounded-full text-[10px] font-medium truncate"
-                                style={{ background: `${role.color}18`, color: role.color }}>
-                            {p === '/' ? 'Dashboard' : p.slice(1)}
-                          </span>
-                        ))
-                      )}
-                    </div>
+                      </div>
 
-                    <span className="text-white/40 text-[12px] flex-shrink-0 ml-1" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-white text-[15px] font-bold leading-tight">{role.label}</span>
+                          {role.is_system && (
+                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider"
+                                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.10)' }}>
+                              Sistema
+                            </span>
+                          )}
+                          {unsaved && (
+                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider"
+                                  style={{ background: 'rgba(234,179,8,0.15)', color: '#EAB308', border: '1px solid rgba(234,179,8,0.25)' }}>
+                              ● Sin guardar
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                                style={{ background: `${role.color}18`, color: role.color }}>
+                            {count} {count === 1 ? 'usuario' : 'usuarios'}
+                          </span>
+                          <span className="text-white/20 text-[10px]">·</span>
+                          <span className="text-white/35 text-[11px]">
+                            {role.home_path === '/' ? 'Dashboard' : role.home_path.replace(/^\//, '')}
+                          </span>
+                          {isFullAccess && (
+                            <>
+                              <span className="text-white/20 text-[10px]">·</span>
+                              <span className="text-[11px] font-bold" style={{ color: role.color }}>Acceso total</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Chevron */}
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+                           style={{
+                             background: isExpanded ? `${role.color}22` : 'rgba(255,255,255,0.06)',
+                             transform: isExpanded ? 'rotate(180deg)' : 'none',
+                           }}>
+                        <span className="text-[9px]" style={{ color: isExpanded ? role.color : 'rgba(255,255,255,0.35)' }}>▼</span>
+                      </div>
+                    </div>
                   </button>
 
-                  {/* Expanded content */}
+                  {/* Expanded body */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 flex flex-col gap-4"
-                         style={{ borderTop: `1px solid ${role.color}20` }}>
+                    <div className="flex flex-col gap-4 px-5 pb-5"
+                         style={{ borderTop: `1px solid ${role.color}1a` }}>
 
                       {isFullAccess ? (
-                        <div className="py-3 text-center">
-                          <span className="text-[13px] font-semibold" style={{ color: role.color }}>
+                        <div className="mt-4 py-5 px-4 rounded-xl text-center"
+                             style={{ background: `${role.color}0e`, border: `1px solid ${role.color}22` }}>
+                          <div className="text-[14px] font-bold mb-1" style={{ color: role.color }}>
                             Acceso total a todas las secciones
-                          </span>
-                          <div className="text-white/35 text-[11px] mt-1">Este rol no tiene restricciones de rutas</div>
+                          </div>
+                          <div className="text-white/35 text-[12px]">Este rol no tiene restricciones de rutas</div>
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center justify-between pt-3 pb-1">
-                            <span className="text-[11px] text-white/50 uppercase tracking-wider font-semibold">Acceso por módulo</span>
+                          {/* Permissions header */}
+                          <div className="flex items-center justify-between pt-4">
+                            <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-widest text-white/40">
+                              Permisos por módulo
+                            </span>
                             <button
                               onClick={() => toggleAllPaths(role.id, role.allowed_paths)}
-                              className="text-[10px] px-2 py-1 rounded-lg cursor-pointer transition-colors"
-                              style={{ color: role.color, background: `${role.color}15`, border: `1px solid ${role.color}25` }}>
-                              {ALL_SECTION_PATHS.every(p => editingPaths.includes(p)) ? 'Quitar todo' : 'Dar todo'}
+                              className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full cursor-pointer transition-all active:scale-95"
+                              style={{ color: role.color, background: `${role.color}15`, border: `1px solid ${role.color}30` }}>
+                              {ALL_SECTION_PATHS.every(p => editingPaths.includes(p)) ? 'Quitar todo' : 'Dar acceso total'}
                             </button>
                           </div>
 
+                          {/* Permission groups */}
                           <div className="flex flex-col gap-2">
                             {PERMISSION_GROUPS.map(group => {
-                              const state = groupState(group, editingPaths);
+                              const gState = groupState(group, editingPaths);
+                              const activeCount = group.sections.filter(s => editingPaths.includes(s.path)).length;
                               return (
-                                <div key={group.id} className="rounded-xl overflow-hidden"
-                                     style={{ border: `1px solid ${group.color}20`, background: 'rgba(255,255,255,0.02)' }}>
-                                  {/* Cabecera del grupo */}
+                                <div key={group.id} className="rounded-xl overflow-hidden transition-all"
+                                     style={{
+                                       border: `1px solid ${gState !== 'none' ? group.color + '30' : 'rgba(255,255,255,0.06)'}`,
+                                       background: gState !== 'none' ? `${group.color}08` : 'rgba(255,255,255,0.02)',
+                                     }}>
+                                  {/* Group header */}
                                   <button
                                     onClick={() => toggleRoleGroup(role.id, group, role.allowed_paths)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 cursor-pointer transition-all text-left"
-                                    style={{ background: state !== 'none' ? `${group.color}12` : 'transparent' }}>
-                                    <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 cursor-pointer text-left">
+                                    <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all"
                                          style={{
-                                           background: state === 'all' ? group.color : state === 'some' ? `${group.color}55` : 'rgba(255,255,255,0.08)',
-                                           border: state === 'none' ? '1px solid rgba(255,255,255,0.15)' : 'none',
+                                           background: gState === 'all' ? group.color : gState === 'some' ? `${group.color}55` : 'rgba(255,255,255,0.08)',
+                                           border: gState === 'none' ? '1.5px solid rgba(255,255,255,0.15)' : 'none',
                                          }}>
-                                      {state === 'all'  && <span className="text-white text-[9px] font-bold">✓</span>}
-                                      {state === 'some' && <span className="text-white text-[9px] font-bold">–</span>}
+                                      {gState === 'all'  && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
+                                      {gState === 'some' && <span className="text-white text-[10px] font-bold leading-none">–</span>}
                                     </div>
-                                    <span className="text-[12px] font-bold uppercase tracking-wider flex-1"
-                                          style={{ color: state !== 'none' ? group.color : 'rgba(255,255,255,0.35)' }}>
+                                    <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-wider flex-1"
+                                          style={{ color: gState !== 'none' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.30)' }}>
                                       {group.label}
                                     </span>
-                                    <span className="text-[10px] text-white/30">
-                                      {group.sections.filter(s => editingPaths.includes(s.path)).length}/{group.sections.length}
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full transition-all"
+                                          style={{
+                                            background: gState !== 'none' ? `${group.color}20` : 'rgba(255,255,255,0.05)',
+                                            color: gState !== 'none' ? group.color : 'rgba(255,255,255,0.25)',
+                                          }}>
+                                      {activeCount}/{group.sections.length}
                                     </span>
                                   </button>
-                                  {/* Sub-secciones */}
-                                  <div className="px-2 pb-1.5 flex flex-col gap-0.5">
+
+                                  {/* Sections grid */}
+                                  <div className="px-3 pb-2.5 grid grid-cols-2 gap-1">
                                     {group.sections.map(section => {
                                       const isOn = editingPaths.includes(section.path);
                                       return (
                                         <button key={section.path}
                                           onClick={() => togglePath(role.id, section.path, role.allowed_paths)}
                                           className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all cursor-pointer"
-                                          style={{ background: isOn ? `${group.color}10` : 'transparent' }}>
-                                          <div className="w-3 h-3 rounded flex items-center justify-center flex-shrink-0"
+                                          style={{ background: isOn ? `${group.color}12` : 'transparent' }}>
+                                          <div className="w-3.5 h-3.5 rounded-sm flex items-center justify-center flex-shrink-0 transition-all"
                                                style={{
                                                  background: isOn ? group.color : 'rgba(255,255,255,0.07)',
-                                                 border: isOn ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                                                 border: isOn ? 'none' : '1.5px solid rgba(255,255,255,0.14)',
                                                }}>
-                                            {isOn && <span className="text-white text-[8px] font-bold">✓</span>}
+                                            {isOn && <span className="text-white text-[8px] font-bold leading-none">✓</span>}
                                           </div>
-                                          <span className="text-[12px]" style={{ color: isOn ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)' }}>
+                                          <span className="text-[12px] truncate transition-colors"
+                                                style={{ color: isOn ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.35)' }}>
                                             {section.label}
                                           </span>
                                         </button>
@@ -864,39 +903,41 @@ export default function UsuariosPage() {
                               );
                             })}
 
-                            {/* Perfil siempre activo */}
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
-                                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                              <div className="w-3 h-3 rounded flex-shrink-0"
-                                   style={{ background: 'rgba(255,255,255,0.3)' }} />
-                              <span className="text-[12px] text-white/35">Perfil — siempre activo</span>
+                            {/* Perfil — locked */}
+                            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                                 style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                              <div className="w-3.5 h-3.5 rounded-sm flex items-center justify-center flex-shrink-0"
+                                   style={{ background: 'rgba(255,255,255,0.22)' }}>
+                                <span className="text-white text-[8px] font-bold leading-none">✓</span>
+                              </div>
+                              <span className="text-[12px] text-white/30">Perfil — siempre activo</span>
                             </div>
                           </div>
                         </>
                       )}
 
-                      {/* Actions */}
-                      <div className="flex gap-2 mt-1 flex-wrap">
+                      {/* Action bar */}
+                      <div className="flex gap-2 pt-1 flex-wrap">
                         {!isFullAccess && unsaved && (
                           <button
                             onClick={() => handleSaveRolePerms(role)}
                             disabled={savingRole === role.id}
-                            className="flex-1 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
-                            style={{ background: `linear-gradient(135deg,${role.color},${role.color}cc)`, boxShadow: `0 4px 12px ${role.color}40` }}>
-                            {savingRole === role.id ? 'Guardando...' : 'Guardar permisos'}
+                            className="flex-1 py-2.5 rounded-xl font-barlow-condensed text-[14px] font-bold tracking-widest text-white uppercase cursor-pointer disabled:opacity-50 active:scale-[0.98] transition-all"
+                            style={{ background: `linear-gradient(135deg,${role.color},${role.color}bb)`, boxShadow: `0 4px 14px ${role.color}38` }}>
+                            {savingRole === role.id ? 'Guardando…' : 'Guardar permisos'}
                           </button>
                         )}
                         <button
                           onClick={() => openEditRole(role)}
-                          className="px-4 py-2 rounded-xl text-[13px] text-white/60 cursor-pointer hover:text-white hover:bg-white/10 transition-colors"
-                          style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+                          className="px-4 py-2.5 rounded-xl font-barlow-condensed text-[13px] font-bold tracking-widest uppercase cursor-pointer transition-all active:scale-95"
+                          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.11)' }}>
                           Editar
                         </button>
                         {!role.is_system && (
                           <button
                             onClick={() => setDeleteRoleTarget(role)}
-                            className="px-4 py-2 rounded-xl text-[13px] text-red-400/70 cursor-pointer hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                            style={{ border: '1px solid rgba(239,68,68,0.2)' }}>
+                            className="px-4 py-2.5 rounded-xl font-barlow-condensed text-[13px] font-bold tracking-widest uppercase cursor-pointer transition-all active:scale-95"
+                            style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.18)' }}>
                             Eliminar
                           </button>
                         )}
