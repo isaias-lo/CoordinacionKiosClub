@@ -83,7 +83,7 @@ export function RecepcionTiendaScreen() {
 
       {/* Header */}
       <div style={{ background: '#1B2A6B', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
-        <button onClick={() => router.push('/control-interno')}
+        <button onClick={() => router.push('/despacho-hub')}
           style={{
             width: 36, height: 36, flexShrink: 0,
             background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
