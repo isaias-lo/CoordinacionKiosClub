@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Navigation } from 'lucide-react';
+import { Navigation, GripVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
@@ -1208,25 +1208,85 @@ export function StepForm() {
           {/* Items list */}
           {tiendaItems.length > 0 && (
             <div className="border-t border-border pt-3 mt-1">
-              <div className="font-barlow-condensed text-[12px] uppercase tracking-widest text-text-3 mb-3">Items ({tiendaItems.length})</div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-barlow-condensed text-[12px] uppercase tracking-widest text-text-3">Items ({tiendaItems.length})</div>
+                {tiendaItems.length >= 2 && (
+                  <div className="flex items-center gap-1 text-[10px] text-text-3 opacity-60">
+                    <GripVertical size={10} />
+                    <span>Arrastra sobre otro del mismo tipo para combinar</span>
+                  </div>
+                )}
+              </div>
               <div className="flex flex-col gap-2">
                 {tiendaItems.map((item, idx) => {
                   const isEditing = editingIdx === idx;
+                  const isDropTarget = dropIdx === idx && dragIdx !== null && tiendaItems[dragIdx]?.tipo === item.tipo;
+                  const isDragging   = dragIdx === idx;
                   return (
                     <div
                       key={item.id}
+                      data-item-idx={idx}
                       ref={el => { itemDragRefs.current[idx] = el; }}
                       draggable
                       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(idx); }}
-                      onDragOver={(e) => { if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo) { e.preventDefault(); setDropIdx(idx); } }}
+                      onDragOver={(e) => {
+                        if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo) {
+                          e.preventDefault(); setDropIdx(idx);
+                        }
+                      }}
                       onDragLeave={() => setDropIdx(prev => prev === idx ? null : prev)}
-                      onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo) setCombineModal({ srcIdx: dragIdx, tgtIdx: idx }); setDragIdx(null); setDropIdx(null); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo)
+                          setCombineModal({ srcIdx: dragIdx, tgtIdx: idx });
+                        setDragIdx(null); setDropIdx(null);
+                      }}
                       onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                      onTouchStart={() => { longPressRef.current = setTimeout(() => { setDragIdx(idx); navigator.vibrate?.(30); }, 400); }}
-                      onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
-                      onTouchEnd={(e) => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } if (dragIdx === null) return; e.preventDefault(); if (dragIdx === idx) { setDragIdx(null); return; } if (tiendaItems[dragIdx]?.tipo === item.tipo) { setCombineModal({ srcIdx: dragIdx, tgtIdx: idx }); setDragIdx(null); } }}
-                      className={`bg-white border-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-all cursor-grab select-none ${dropIdx === idx ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border'} ${dragIdx === idx ? 'opacity-50' : ''}`}
+                      onTouchStart={(e) => {
+                        const t = e.touches[0];
+                        (e.currentTarget as HTMLElement).dataset.touchStartX = String(t.clientX);
+                        (e.currentTarget as HTMLElement).dataset.touchStartY = String(t.clientY);
+                        longPressRef.current = setTimeout(() => {
+                          setDragIdx(idx);
+                          navigator.vibrate?.(25);
+                        }, 220);
+                      }}
+                      onTouchMove={(e) => {
+                        const t = e.touches[0];
+                        const el = e.currentTarget as HTMLElement;
+                        const dx = Math.abs(t.clientX - parseFloat(el.dataset.touchStartX ?? '0'));
+                        const dy = Math.abs(t.clientY - parseFloat(el.dataset.touchStartY ?? '0'));
+                        if (longPressRef.current && (dx > 8 || dy > 8)) {
+                          clearTimeout(longPressRef.current);
+                          longPressRef.current = null;
+                        }
+                        if (dragIdx === null) return;
+                        e.preventDefault();
+                        const under = document.elementFromPoint(t.clientX, t.clientY);
+                        const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
+                        const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
+                        setDropIdx(tgt !== -1 && tgt !== dragIdx ? tgt : null);
+                      }}
+                      onTouchEnd={(e) => {
+                        if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+                        if (dragIdx === null) return;
+                        e.preventDefault();
+                        const t = e.changedTouches[0];
+                        const under = document.elementFromPoint(t.clientX, t.clientY);
+                        const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
+                        const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
+                        if (tgt !== -1 && tgt !== dragIdx && tiendaItems[dragIdx]?.tipo === tiendaItems[tgt]?.tipo)
+                          setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt });
+                        setDragIdx(null); setDropIdx(null);
+                      }}
+                      className={[
+                        'bg-white border-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-all select-none',
+                        isDragging   ? 'opacity-40 scale-[0.97]' : '',
+                        isDropTarget ? 'border-emerald-500 bg-emerald-50 scale-[1.02]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border',
+                        dragIdx !== null ? 'cursor-grabbing' : 'cursor-grab',
+                      ].join(' ')}
                     >
+                      <GripVertical size={14} color="#CBD5E1" className="flex-shrink-0" />
                       <div className="font-mono text-[11px] text-text-3 w-5 text-center flex-shrink-0">{idx + 1}</div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap mb-0.5">

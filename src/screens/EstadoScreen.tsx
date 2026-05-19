@@ -2,17 +2,24 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Tag, Activity } from 'lucide-react';
+import { ChevronLeft, Tag, Activity, Scan } from 'lucide-react';
 import { AppProvider } from '../context/AppContext';
 import { ProfilePill } from '../components/ProfilePill';
 import { EstadoPage } from '../features/despacho/estado/EstadoPage';
 import { SeguimientoPanel } from '../features/despacho/estado/SeguimientoPanel';
+import { ScannerPanel } from '../features/despacho/estado/ScannerPanel';
 
-type View = 'etiquetas' | 'estado';
+type View = 'etiquetas' | 'escaneo' | 'estado';
 
 function EstadoContent() {
   const router = useRouter();
   const [view, setView] = useState<View>('etiquetas');
+
+  const tabs: { id: View; label: string; Icon: typeof Tag }[] = [
+    { id: 'etiquetas', label: 'Etiquetas', Icon: Tag },
+    { id: 'escaneo',   label: 'Escaneo',   Icon: Scan },
+    { id: 'estado',    label: 'Estado',    Icon: Activity },
+  ];
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
@@ -37,26 +44,20 @@ function EstadoContent() {
             Estado / Seguimiento
           </div>
 
-          {/* Toggle ETIQUETAS / ESTADO */}
+          {/* Tabs: ETIQUETAS / ESCANEO / ESTADO */}
           <div className="flex rounded-full overflow-hidden border border-white/20">
-            <button
-              onClick={() => setView('etiquetas')}
-              className="flex items-center gap-1.5 px-5 py-2.5 font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer transition-all"
-              style={view === 'etiquetas'
-                ? { background: 'rgba(255,255,255,0.22)', color: '#fff' }
-                : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
-              <Tag size={13} strokeWidth={2} />
-              Etiquetas
-            </button>
-            <button
-              onClick={() => setView('estado')}
-              className="flex items-center gap-1.5 px-5 py-2.5 font-barlow-condensed text-[15px] font-bold tracking-widest uppercase cursor-pointer transition-all"
-              style={view === 'estado'
-                ? { background: 'rgba(255,255,255,0.22)', color: '#fff' }
-                : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
-              <Activity size={13} strokeWidth={2} />
-              Estado
-            </button>
+            {tabs.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setView(id)}
+                className="flex items-center gap-1.5 px-4 py-2.5 font-barlow-condensed text-[14px] font-bold tracking-widest uppercase cursor-pointer transition-all"
+                style={view === id
+                  ? { background: 'rgba(255,255,255,0.22)', color: '#fff' }
+                  : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
+                <Icon size={13} strokeWidth={2} />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
           </div>
 
           <ProfilePill />
@@ -64,7 +65,9 @@ function EstadoContent() {
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        {view === 'etiquetas' ? <EstadoPage /> : <SeguimientoPanel />}
+        {view === 'etiquetas' && <EstadoPage />}
+        {view === 'escaneo'   && <ScannerPanel />}
+        {view === 'estado'    && <SeguimientoPanel />}
       </div>
     </div>
   );

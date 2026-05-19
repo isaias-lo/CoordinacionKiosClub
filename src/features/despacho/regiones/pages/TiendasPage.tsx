@@ -179,6 +179,7 @@ export function TiendasPage() {
       .catch(() => {});
   }, []);
 
+
   const [peso,  setPeso]  = useState('');
   const [alto,  setAlto]  = useState('');
   const [ancho, setAncho] = useState('100');
