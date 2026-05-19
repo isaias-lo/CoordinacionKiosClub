@@ -160,6 +160,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   stateRef.current      = state;
   const lastPushedRef   = useRef<string>('');
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
@@ -168,36 +169,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown) => {
-      if (debounceRef.current !== null) return; // pending local changes — skip remote to avoid overwriting
+      // Block if local push is pending (debounce) or in-flight (async upsert)
+      if (debounceRef.current !== null || isPushingRef.current) return;
       const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
 
-      // Per-tienda merge for dispatch:
-      //   - If local changed since last push (dirty) → keep local (unsaved additions/edits)
-      //   - If local matches last push (clean) → use remote (applies deletions from other devices)
-      let lastDispatch: Record<string, DispatchItem[]> = {};
-      try { lastDispatch = (JSON.parse(lastPushedRef.current) as { dispatch?: Record<string, DispatchItem[]> }).dispatch ?? {}; } catch { lastDispatch = {}; }
+      // Per-tienda merge: local dirty (changed since last push) → local wins; clean → remote wins.
+      let lastPushed: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } = {};
+      try { lastPushed = JSON.parse(lastPushedRef.current); } catch { lastPushed = {}; }
+      const lastDispatch = lastPushed.dispatch ?? {};
+      const lastPdfData  = lastPushed.pdfData  ?? {};
 
+      // ── dispatch merge ──────────────────────────────────────────────
       const remoteDispatch = remote.dispatch ?? {};
       const localDispatch  = stateRef.current.dispatch;
       const allTiendas     = new Set([...Object.keys(remoteDispatch), ...Object.keys(localDispatch)]);
       const mergedDispatch: Record<string, DispatchItem[]> = {};
-
       for (const tienda of allTiendas) {
-        const localItems  = localDispatch[tienda];
-        const remItems    = remoteDispatch[tienda];
-        const lastItems   = lastDispatch[tienda];
-        const localDirty  = JSON.stringify(localItems ?? []) !== JSON.stringify(lastItems ?? []);
-        // Dirty → local wins (protect unsaved work). Clean → remote wins (accept deletions/edits).
-        mergedDispatch[tienda] = localDirty ? (localItems ?? []) : (remItems ?? localItems ?? []);
+        const localItems = localDispatch[tienda];
+        const remItems   = remoteDispatch[tienda];
+        const lastItems  = lastDispatch[tienda];
+        const dirty      = JSON.stringify(localItems ?? []) !== JSON.stringify(lastItems ?? []);
+        mergedDispatch[tienda] = dirty ? (localItems ?? []) : (remItems ?? localItems ?? []);
       }
 
-      // pdfData: local always wins — guides are loaded locally and shared outward, never inward.
-      // Do NOT merge remote pdfData: spreading remote first would restore a key the user just deleted.
-      const mergedPdf = stateRef.current.pdfData;
+      // ── pdfData merge ───────────────────────────────────────────────
+      // Same dirty/clean logic: lets remote PDFs (uploaded by other users) propagate in,
+      // while protecting local uploads/clears from being overwritten.
+      const remotePdf = remote.pdfData ?? {};
+      const localPdf  = stateRef.current.pdfData;
+      const allPdfKeys = new Set([...Object.keys(remotePdf), ...Object.keys(localPdf), ...Object.keys(lastPdfData)]);
+      const mergedPdf: Record<string, PdfData> = {};
+      for (const tienda of allPdfKeys) {
+        const localEntry  = localPdf[tienda];
+        const remoteEntry = remotePdf[tienda];
+        const lastEntry   = lastPdfData[tienda];
+        const dirty       = JSON.stringify(localEntry) !== JSON.stringify(lastEntry);
+        if (dirty) {
+          if (localEntry !== undefined) mergedPdf[tienda] = localEntry; // local upload or clear
+        } else {
+          if      (remoteEntry !== undefined) mergedPdf[tienda] = remoteEntry; // remote upload wins
+          else if (localEntry  !== undefined) mergedPdf[tienda] = localEntry;
+        }
+      }
 
-      const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: stateRef.current.pdfData });
+      const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: localPdf });
       if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;
 
       dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
@@ -225,13 +242,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Realtime subscription (instant when WebSocket works)
     const unsub = subscribeToSessionState('regiones', userId, handleRemote);
 
-    // Polling fallback every 8 s — guarantees sync even when Realtime drops
+    // Polling fallback every 3 s — guarantees sync even when Realtime drops
     const pollId = setInterval(async () => {
       try {
         const remote = await fetchSessionState('regiones');
         if (remote) handleRemote(remote);
       } catch {}
-    }, 8000);
+    }, 3000);
 
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
@@ -245,9 +262,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      debounceRef.current = null; // clear before push so handleRemote can proceed again
+      debounceRef.current = null;
       lastPushedRef.current = current;
-      pushSessionState('regiones', payload, userId ?? undefined);
+      isPushingRef.current = true; // block handleRemote during the async upsert
+      pushSessionState('regiones', payload, userId ?? undefined)
+        .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
