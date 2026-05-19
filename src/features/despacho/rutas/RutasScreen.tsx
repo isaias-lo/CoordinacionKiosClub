@@ -206,12 +206,15 @@ export default function RutasScreen() {
               let changed = false;
               Object.entries(counts).forEach(([cod, data]) => {
                 const c = norm(cod);
-                // Skip chips the user has manually edited in this session
-                if (merged[c] && !manuallyEditedRef.current.has(c)) {
+                if (manuallyEditedRef.current.has(c)) return;
+                if (merged[c]) {
                   if (merged[c].p !== data.p || merged[c].b !== data.b) {
                     merged[c] = { ...merged[c], p: data.p, b: data.b, on: data.p > 0 || data.b > 0 };
                     changed = true;
                   }
+                } else if (data.p > 0 || data.b > 0) {
+                  merged[c] = { on: true, p: data.p, b: data.b, g: 'fal' };
+                  changed = true;
                 }
               });
               return changed ? merged : prev;
@@ -352,7 +355,7 @@ export default function RutasScreen() {
     if (modo !== 'man') return;
     const stores = Object.keys(calT || {}).filter(cod => {
       const grupo = calT[cod]?.g;
-      return grupo === 'rm' || grupo === 'costa';
+      return grupo === 'rm' || grupo === 'costa' || grupo === 'fal';
     });
     if (stores.length === 0) return;
     const newText = stores.map(cod => {

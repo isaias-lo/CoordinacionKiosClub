@@ -20,15 +20,18 @@ export default function CalendarMode({ calT, grps, onToggleGroup, onToggleChip, 
 
   return (
     <div>
-      <div className="flex gap-[7px] flex-wrap mb-3">
+      <div className="flex gap-2 flex-wrap mb-3">
         {grupos.map(([id, lb]) => (
           <button
             key={id}
             onClick={() => onToggleGroup(id)}
-            className={`h-[38px] px-5 rounded-full text-[13px] font-bold uppercase tracking-widest border-[2px] transition-all shadow-md hover:shadow-lg
+            style={grps.has(id)
+              ? { boxShadow: '0 3px 10px rgba(212,43,43,0.30), inset 0 1px 0 rgba(255,255,255,0.18)' }
+              : { boxShadow: '0 1px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(0,0,0,0.04)' }}
+            className={`h-[40px] px-5 rounded-[13px] text-[13px] font-bold uppercase tracking-widest border transition-all
               ${grps.has(id)
-                ? 'bg-kred border-kred text-white shadow-red-200'
-                : 'bg-white border-black/[0.12] text-kmuted hover:border-kred/[0.3]'}`}
+                ? 'bg-kred border-kred text-white'
+                : 'bg-white border-black/[0.07] text-kmuted hover:border-kred/[0.25] hover:text-kred'}`}
           >
             {lb}
           </button>
@@ -61,28 +64,35 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
   onUpdate: (cod: string, key: 'p' | 'b', val: string) => void;
 }) {
   return (
-    <div className={`flex flex-col items-center justify-center rounded-[12px] px-2 py-1.5 border-[1.5px] bg-kbg cursor-pointer transition-all h-[76px]
-      ${data.on ? 'border-kred bg-kred/[0.05]' : 'opacity-40 border-black/[0.09]'}`}>
+    <div
+      style={{ boxShadow: data.on ? '0 1px 4px rgba(212,43,43,0.12)' : '0 1px 3px rgba(0,0,0,0.06)' }}
+      className={`flex flex-col items-center justify-center rounded-[12px] px-2 py-2 border cursor-pointer transition-all h-[80px]
+        ${data.on
+          ? 'border-kred/[0.35] bg-kred/[0.04]'
+          : 'opacity-40 border-black/[0.07] bg-white'}`}
+    >
       <span
-        className={`font-mono text-[14px] font-bold mb-1 ${data.on ? 'text-kred' : 'text-kmuted'}`}
+        className={`font-mono text-[14px] font-bold mb-1.5 ${data.on ? 'text-kred' : 'text-kmuted'}`}
         onClick={() => onToggle(cod)}
       >
         {formatCod(cod)}
       </span>
-      <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
         <input
           type="number" min="0" max="20"
           value={data.p || ''}
           placeholder="P"
           onChange={e => onUpdate(cod, 'p', e.target.value)}
-          className="w-11 h-9 rounded-[4px] border border-black/[0.12] bg-white text-[13px] font-bold text-center text-ktext placeholder:text-kmuted placeholder:font-bold focus:outline-none"
+          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
+          className="w-10 h-[30px] rounded-[7px] border border-black/[0.09] bg-white text-[13px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
         />
         <input
           type="number" min="0" max="99"
           value={data.b || ''}
           placeholder="B"
           onChange={e => onUpdate(cod, 'b', e.target.value)}
-          className="w-11 h-9 rounded-[4px] border border-black/[0.12] bg-white text-[13px] font-bold text-center text-ktext placeholder:text-kmuted placeholder:font-bold focus:outline-none"
+          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
+          className="w-10 h-[30px] rounded-[7px] border border-black/[0.09] bg-white text-[13px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
         />
       </div>
     </div>

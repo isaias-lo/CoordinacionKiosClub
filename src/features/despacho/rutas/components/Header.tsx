@@ -24,6 +24,35 @@ interface Props {
   onAgregarVehiculo: (v: Vehiculo) => void;
 }
 
+/* ── Icon 3D container ─────────────────────────────────────────── */
+function Icon3D({ emoji, from, to, shadow }: { emoji: string; from: string; to: string; shadow: string }) {
+  return (
+    <span
+      style={{
+        background: `linear-gradient(145deg, ${from}, ${to})`,
+        boxShadow: `0 3px 8px ${shadow}, inset 0 1px 0 rgba(255,255,255,0.22)`,
+      }}
+      className="w-[38px] h-[38px] rounded-[11px] flex items-center justify-center text-[19px] flex-shrink-0 select-none"
+    >
+      {emoji}
+    </span>
+  );
+}
+
+/* ── Generic menu button ───────────────────────────────────────── */
+function MenuItem({ children, onClick, disabled = false }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(0,0,0,0.04)' }}
+      className="w-full h-[54px] px-3.5 rounded-[13px] bg-white border border-black/[0.07] flex items-center gap-3 transition-all active:scale-[0.98] hover:bg-kbg disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut, flota, conductores, onToggleFlota, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
   const [menuOpen,  setMenuOpen]  = useState(false);
   const [flotaOpen, setFlotaOpen] = useState(false);
@@ -34,14 +63,12 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
     : updateStatus === 'error'   ? 'Error — reintentar'
     : 'Actualizar datos';
 
-  const saveIcon = flotaStatus === 'saving' ? '···'
+  const saveIcon = flotaStatus === 'saving' ? '⏳'
     : flotaStatus === 'success' ? '✓'
-    : flotaStatus === 'error'   ? '⚠'
+    : flotaStatus === 'error'   ? '⚠️'
     : '💾';
 
-  const saveColor = flotaStatus === 'success' ? '#34C759'
-    : flotaStatus === 'error'   ? '#ff3b30'
-    : undefined;
+  const activosCount = flota.filter(v => v.on).length;
 
   return (
     <header className="bg-white border-b border-black/[0.09] sticky top-0 z-[100] no-print">
@@ -90,99 +117,124 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
         </button>
       </div>
 
-      {/* ── Hamburger menu ── */}
+      {/* ── Hamburger menu ─────────────────────────────────────────── */}
       {menuOpen && createPortal(
         <>
           <div className="fixed inset-0 z-[200]" onClick={() => setMenuOpen(false)} />
-          <div className="fixed right-0 top-0 z-[201] w-[min(280px,90vw)] h-full bg-white shadow-[-4px_0_20px_rgba(0,0,0,0.12)] flex flex-col overflow-y-auto">
+          <div className="fixed right-0 top-0 z-[201] w-[min(300px,92vw)] h-full bg-[#F2F2F7] flex flex-col overflow-y-auto">
 
-            {/* Header */}
-            <div className="bg-knavy px-4 py-3.5 flex items-center justify-between flex-shrink-0">
-              <span className="text-[15px] font-bold text-white tracking-tight">Menú</span>
-              <button
-                onClick={() => setMenuOpen(false)}
-                className="w-[28px] h-[28px] rounded-full bg-white/[0.15] flex items-center justify-center text-[14px] text-white hover:bg-white/[0.25] transition-all"
-              >
-                ✕
-              </button>
+            {/* Header panel */}
+            <div
+              style={{ background: 'linear-gradient(160deg, #1B2A6B 0%, #2D3FA0 100%)' }}
+              className="px-5 pt-5 pb-6 flex-shrink-0"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10px] font-semibold text-white/60 uppercase tracking-[1.2px] mb-1">Sistema de Enrutamiento</div>
+                  <div className="text-[20px] font-extrabold text-white tracking-tight">Menú</div>
+                </div>
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}
+                  className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-[13px] text-white hover:bg-white/25 transition-all"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            <div className="p-3 space-y-1.5">
+            {/* Menu items */}
+            <div className="p-4 space-y-2.5 flex-1">
 
-              {/* Volver */}
+              {/* ── Volver ── */}
               {onBack && (
-                <button
-                  onClick={() => { onBack(); setMenuOpen(false); }}
-                  className="w-full h-[46px] px-3.5 rounded-[10px] bg-kbg border border-black/[0.1] text-ktext text-[13px] font-semibold flex items-center gap-3 transition-all hover:border-kred/[0.3] hover:bg-kred/[0.04] hover:text-kred"
-                >
-                  <span className="w-[28px] h-[28px] rounded-[7px] bg-black/[0.05] flex items-center justify-center text-[14px] flex-shrink-0">←</span>
-                  Volver
-                </button>
+                <MenuItem onClick={() => { onBack(); setMenuOpen(false); }}>
+                  <Icon3D emoji="←" from="#8E8E93" to="#636366" shadow="rgba(99,99,102,0.35)" />
+                  <div className="flex-1 text-left">
+                    <div className="text-[14px] font-semibold text-ktext">Volver</div>
+                  </div>
+                  <span className="text-[16px] text-black/20 font-light">›</span>
+                </MenuItem>
               )}
 
-              {/* Configurar Calendario */}
-              <button
-                onClick={() => { onOpenConfig(); setMenuOpen(false); }}
-                className="w-full h-[46px] px-3.5 rounded-[10px] bg-kbg border border-black/[0.1] text-ktext text-[13px] font-semibold flex items-center gap-3 transition-all hover:border-kred/[0.3] hover:bg-kred/[0.04] hover:text-kred"
-              >
-                <span className="w-[28px] h-[28px] rounded-[7px] bg-kred/[0.09] flex items-center justify-center text-[14px] flex-shrink-0">📅</span>
-                Configurar Calendario
-              </button>
+              {/* ── Configurar Calendario ── */}
+              <MenuItem onClick={() => { onOpenConfig(); setMenuOpen(false); }}>
+                <Icon3D emoji="📅" from="#FF5252" to="#C42020" shadow="rgba(196,32,32,0.4)" />
+                <div className="flex-1 text-left">
+                  <div className="text-[14px] font-semibold text-ktext">Calendario</div>
+                  <div className="text-[11px] text-kmuted">Configurar despacho</div>
+                </div>
+                <span className="text-[16px] text-black/20 font-light">›</span>
+              </MenuItem>
 
-              {/* Flota + Guardar */}
-              <div className="flex gap-1.5">
+              {/* ── Flota (split: abrir panel | guardar) ── */}
+              <div
+                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(0,0,0,0.04)' }}
+                className="flex rounded-[13px] bg-white border border-black/[0.07] overflow-hidden"
+              >
                 <button
                   onClick={() => { setMenuOpen(false); setFlotaOpen(true); }}
-                  className="flex-1 h-[46px] px-3.5 rounded-[10px] bg-knavy/[0.07] border border-knavy/[0.18] text-knavy text-[13px] font-semibold flex items-center gap-3 transition-all hover:bg-knavy/[0.13]"
+                  className="flex-1 h-[54px] px-3.5 flex items-center gap-3 transition-all active:scale-[0.98] hover:bg-kbg"
                 >
-                  <span className="w-[28px] h-[28px] rounded-[7px] bg-knavy/[0.12] flex items-center justify-center text-[14px] flex-shrink-0">🚛</span>
-                  Flota
+                  <Icon3D emoji="🚛" from="#3D52CC" to="#1B2A6B" shadow="rgba(27,42,107,0.45)" />
+                  <div className="flex-1 text-left">
+                    <div className="text-[14px] font-semibold text-ktext">Flota</div>
+                    <div className="text-[11px] text-kmuted">{activosCount} activos · {flota.length} total</div>
+                  </div>
+                  <span className="text-[16px] text-black/20 font-light">›</span>
                 </button>
+                <div className="w-px bg-black/[0.07] my-3 flex-shrink-0" />
                 <button
                   onClick={onGuardarFlota}
                   disabled={flotaStatus === 'saving'}
                   title="Guardar Flota"
-                  style={{ color: saveColor }}
-                  className="w-[46px] h-[46px] rounded-[10px] bg-knavy/[0.07] border border-knavy/[0.18] flex items-center justify-center text-[17px] flex-shrink-0 transition-all disabled:opacity-50 hover:bg-knavy/[0.13] text-knavy"
+                  className={`w-[54px] flex items-center justify-center text-[19px] transition-all active:scale-95 disabled:opacity-50
+                    ${flotaStatus === 'success' ? 'text-[#34C759]' : flotaStatus === 'error' ? 'text-kred' : 'text-knavy'}`}
                 >
                   {saveIcon}
                 </button>
               </div>
 
-              {/* Actualizar datos */}
-              <button
+              {/* ── Actualizar datos ── */}
+              <MenuItem
                 onClick={() => { onUpdate(); setMenuOpen(false); }}
                 disabled={updateStatus === 'loading'}
-                className={`w-full h-[46px] px-3.5 rounded-[10px] border text-[13px] font-semibold flex items-center gap-3 transition-all disabled:opacity-60
-                  ${updateStatus === 'success'
-                    ? 'bg-[#34C759]/[0.07] border-[#34C759]/[0.25] text-[#34C759]'
-                    : updateStatus === 'error'
-                    ? 'bg-kred/[0.07] border-kred/[0.2] text-kred'
-                    : 'bg-kred/[0.06] border-kred/[0.15] text-kred hover:bg-kred/[0.11]'}`}
               >
-                <span className="w-[28px] h-[28px] rounded-[7px] bg-kred/[0.09] flex items-center justify-center text-[14px] flex-shrink-0">
-                  {updateStatus === 'success' ? '✓' : updateStatus === 'error' ? '⚠' : '↻'}
-                </span>
-                {updLabel}
-              </button>
+                <Icon3D
+                  emoji={updateStatus === 'success' ? '✅' : updateStatus === 'error' ? '⚠️' : '🔄'}
+                  from={updateStatus === 'success' ? '#30D158' : updateStatus === 'error' ? '#FF6B6B' : '#FF5252'}
+                  to={updateStatus === 'success' ? '#25A244' : updateStatus === 'error' ? '#C42020' : '#C42020'}
+                  shadow={updateStatus === 'success' ? 'rgba(37,162,68,0.4)' : 'rgba(196,32,32,0.4)'}
+                />
+                <div className="flex-1 text-left">
+                  <div className={`text-[14px] font-semibold ${updateStatus === 'success' ? 'text-[#25A244]' : updateStatus === 'error' ? 'text-kred' : 'text-ktext'}`}>
+                    {updLabel}
+                  </div>
+                  <div className="text-[11px] text-kmuted">{total} tiendas cargadas</div>
+                </div>
+              </MenuItem>
 
-              {/* Cerrar sesión */}
+              {/* ── Cerrar sesión ── */}
               {onSignOut && (
-                <button
-                  onClick={() => { setMenuOpen(false); onSignOut(); }}
-                  className="w-full h-[46px] px-3.5 rounded-[10px] bg-kbg border border-black/[0.09] text-kmuted text-[13px] font-semibold flex items-center gap-3 transition-all hover:bg-red-50 hover:border-kred/[0.2] hover:text-kred"
-                >
-                  <span className="w-[28px] h-[28px] rounded-[7px] bg-black/[0.04] flex items-center justify-center text-[14px] flex-shrink-0">↪</span>
-                  Cerrar sesión
-                </button>
+                <MenuItem onClick={() => { setMenuOpen(false); onSignOut(); }}>
+                  <Icon3D emoji="🚪" from="#FF6B6B" to="#C42020" shadow="rgba(196,32,32,0.35)" />
+                  <div className="flex-1 text-left">
+                    <div className="text-[14px] font-semibold text-kred">Cerrar sesión</div>
+                  </div>
+                </MenuItem>
               )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-6 pt-2 text-center">
+              <span className="text-[10px] text-kmuted font-mono">KiosClub · Enrutamiento v4.3</span>
             </div>
           </div>
         </>,
         document.body
       )}
 
-      {/* ── Panel Flota (overlay completo, igual que Calendario) ── */}
+      {/* ── Panel Flota (overlay completo) ─────────────────────────── */}
       {flotaOpen && createPortal(
         <>
           <div
@@ -192,20 +244,21 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
           <div className="fixed top-0 right-0 w-[min(390px,100%)] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)]">
 
             {/* Panel header */}
-            <div className="bg-knavy px-[18px] py-[18px] flex items-start justify-between sticky top-0 z-10 flex-shrink-0">
+            <div
+              style={{ background: 'linear-gradient(160deg, #1B2A6B 0%, #2D3FA0 100%)' }}
+              className="px-[18px] py-[18px] flex items-start justify-between sticky top-0 z-10 flex-shrink-0"
+            >
               <div>
-                <div className="text-[10px] font-semibold text-white/70 uppercase tracking-[1px]">CONFIGURACIÓN</div>
+                <div className="text-[10px] font-semibold text-white/60 uppercase tracking-[1px]">CONFIGURACIÓN</div>
                 <div className="text-[17px] font-bold text-white mt-0.5">🚛 Flota</div>
-                <div className="text-[12px] text-white/70 mt-0.5 leading-snug">
-                  {flota.filter(v => v.on).length} activos · {flota.length} en total
-                </div>
+                <div className="text-[12px] text-white/60 mt-0.5">{activosCount} activos · {flota.length} en total</div>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={onGuardarFlota}
                   disabled={flotaStatus === 'saving'}
-                  style={{ color: saveColor }}
-                  className="h-[30px] px-3 rounded-[7px] bg-white/[0.18] text-white text-[12px] font-bold flex items-center gap-1.5 hover:bg-white/[0.28] transition-all disabled:opacity-50"
+                  className={`h-[30px] px-3 rounded-[7px] bg-white/[0.18] text-[12px] font-bold flex items-center gap-1.5 hover:bg-white/[0.28] transition-all disabled:opacity-50
+                    ${flotaStatus === 'success' ? 'text-[#34C759]' : flotaStatus === 'error' ? 'text-red-300' : 'text-white'}`}
                 >
                   <span>{saveIcon}</span>
                   <span>{flotaStatus === 'saving' ? 'Guardando' : flotaStatus === 'success' ? 'Guardado' : flotaStatus === 'error' ? 'Error' : 'Guardar'}</span>
