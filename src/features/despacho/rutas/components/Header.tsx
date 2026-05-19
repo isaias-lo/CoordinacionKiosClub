@@ -25,7 +25,8 @@ interface Props {
 }
 
 export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut, flota, conductores, onToggleFlota, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen,  setMenuOpen]  = useState(false);
+  const [flotaOpen, setFlotaOpen] = useState(false);
   const total = Object.keys(tiendas).length;
 
   const updLabel = updateStatus === 'loading' ? 'Actualizando...'
@@ -33,13 +34,14 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
     : updateStatus === 'error'   ? 'Error — reintentar'
     : 'Actualizar datos';
 
-  const updIcon = updateStatus === 'success' ? '✓'
-    : updateStatus === 'error'   ? '⚠'
-    : '↻';
+  const saveIcon = flotaStatus === 'saving' ? '···'
+    : flotaStatus === 'success' ? '✓'
+    : flotaStatus === 'error'   ? '⚠'
+    : '💾';
 
-  const updColor = updateStatus === 'success' ? '#34C759'
-    : updateStatus === 'error'   ? '#ff3b30'
-    : '';
+  const saveColor = flotaStatus === 'success' ? '#34C759'
+    : flotaStatus === 'error'   ? '#ff3b30'
+    : undefined;
 
   return (
     <header className="bg-white border-b border-black/[0.09] sticky top-0 z-[100] no-print">
@@ -88,60 +90,137 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
         </button>
       </div>
 
+      {/* ── Hamburger menu ── */}
       {menuOpen && createPortal(
         <>
           <div className="fixed inset-0 z-[200]" onClick={() => setMenuOpen(false)} />
           <div className="fixed right-0 top-0 z-[201] w-[min(280px,90vw)] h-full bg-white shadow-[-4px_0_20px_rgba(0,0,0,0.12)] flex flex-col overflow-y-auto">
-            <div className="px-4 py-3 border-b border-black/[0.09] flex items-center justify-between">
-              <span className="text-[14px] font-bold text-ktext">Menú</span>
+
+            {/* Header */}
+            <div className="bg-knavy px-4 py-3.5 flex items-center justify-between flex-shrink-0">
+              <span className="text-[15px] font-bold text-white tracking-tight">Menú</span>
               <button
                 onClick={() => setMenuOpen(false)}
-                className="w-[30px] h-[30px] rounded-full bg-kbg flex items-center justify-center text-[16px] text-kmuted hover:text-ktext"
+                className="w-[28px] h-[28px] rounded-full bg-white/[0.15] flex items-center justify-center text-[14px] text-white hover:bg-white/[0.25] transition-all"
               >
                 ✕
               </button>
             </div>
-            <div className="p-3 space-y-2 flex-shrink-0">
+
+            <div className="p-3 space-y-1.5">
+
+              {/* Volver */}
               {onBack && (
                 <button
                   onClick={() => { onBack(); setMenuOpen(false); }}
-                  className="w-full h-[42px] px-3 rounded-[8px] bg-kbg border border-black/[0.12] text-kmuted text-[13px] font-semibold flex items-center gap-2.5 transition-all hover:border-kred/[0.25] hover:text-kred"
+                  className="w-full h-[46px] px-3.5 rounded-[10px] bg-kbg border border-black/[0.1] text-ktext text-[13px] font-semibold flex items-center gap-3 transition-all hover:border-kred/[0.3] hover:bg-kred/[0.04] hover:text-kred"
                 >
-                  <ChevronLeft size={16} strokeWidth={2} />
+                  <span className="w-[28px] h-[28px] rounded-[7px] bg-black/[0.05] flex items-center justify-center text-[14px] flex-shrink-0">←</span>
                   Volver
                 </button>
               )}
+
+              {/* Configurar Calendario */}
               <button
                 onClick={() => { onOpenConfig(); setMenuOpen(false); }}
-                className="w-full h-[42px] px-3 rounded-[8px] bg-kbg border border-black/[0.12] text-kmuted text-[13px] font-semibold flex items-center gap-2.5 transition-all hover:border-kred/[0.25] hover:text-kred"
+                className="w-full h-[46px] px-3.5 rounded-[10px] bg-kbg border border-black/[0.1] text-ktext text-[13px] font-semibold flex items-center gap-3 transition-all hover:border-kred/[0.3] hover:bg-kred/[0.04] hover:text-kred"
               >
-                📅 Configurar Calendario
+                <span className="w-[28px] h-[28px] rounded-[7px] bg-kred/[0.09] flex items-center justify-center text-[14px] flex-shrink-0">📅</span>
+                Configurar Calendario
               </button>
-              <button
-                onClick={() => { onGuardarFlota(); setMenuOpen(false); }}
-                disabled={flotaStatus === 'saving'}
-                className="w-full h-[42px] px-3 rounded-[8px] bg-knavy/[0.07] border border-knavy/[0.15] text-knavy text-[13px] font-semibold flex items-center gap-2.5 transition-all disabled:opacity-60"
-              >
-                💾 Guardar Flota
-              </button>
+
+              {/* Flota + Guardar */}
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => { setMenuOpen(false); setFlotaOpen(true); }}
+                  className="flex-1 h-[46px] px-3.5 rounded-[10px] bg-knavy/[0.07] border border-knavy/[0.18] text-knavy text-[13px] font-semibold flex items-center gap-3 transition-all hover:bg-knavy/[0.13]"
+                >
+                  <span className="w-[28px] h-[28px] rounded-[7px] bg-knavy/[0.12] flex items-center justify-center text-[14px] flex-shrink-0">🚛</span>
+                  Flota
+                </button>
+                <button
+                  onClick={onGuardarFlota}
+                  disabled={flotaStatus === 'saving'}
+                  title="Guardar Flota"
+                  style={{ color: saveColor }}
+                  className="w-[46px] h-[46px] rounded-[10px] bg-knavy/[0.07] border border-knavy/[0.18] flex items-center justify-center text-[17px] flex-shrink-0 transition-all disabled:opacity-50 hover:bg-knavy/[0.13] text-knavy"
+                >
+                  {saveIcon}
+                </button>
+              </div>
+
+              {/* Actualizar datos */}
               <button
                 onClick={() => { onUpdate(); setMenuOpen(false); }}
                 disabled={updateStatus === 'loading'}
-                style={{ color: updColor || undefined }}
-                className="w-full h-[42px] px-3 rounded-[8px] bg-kred/[0.07] border border-kred/[0.15] text-kred text-[13px] font-semibold flex items-center gap-2.5 transition-all disabled:opacity-60"
+                className={`w-full h-[46px] px-3.5 rounded-[10px] border text-[13px] font-semibold flex items-center gap-3 transition-all disabled:opacity-60
+                  ${updateStatus === 'success'
+                    ? 'bg-[#34C759]/[0.07] border-[#34C759]/[0.25] text-[#34C759]'
+                    : updateStatus === 'error'
+                    ? 'bg-kred/[0.07] border-kred/[0.2] text-kred'
+                    : 'bg-kred/[0.06] border-kred/[0.15] text-kred hover:bg-kred/[0.11]'}`}
               >
-                {updIcon} {updLabel}
+                <span className="w-[28px] h-[28px] rounded-[7px] bg-kred/[0.09] flex items-center justify-center text-[14px] flex-shrink-0">
+                  {updateStatus === 'success' ? '✓' : updateStatus === 'error' ? '⚠' : '↻'}
+                </span>
+                {updLabel}
               </button>
+
+              {/* Cerrar sesión */}
               {onSignOut && (
                 <button
                   onClick={() => { setMenuOpen(false); onSignOut(); }}
-                  className="w-full h-[42px] px-3 rounded-[8px] bg-gray-100 border border-black/[0.1] text-gray-500 text-[13px] font-semibold flex items-center gap-2.5 transition-all hover:bg-red-50 hover:border-kred/[0.2] hover:text-kred"
+                  className="w-full h-[46px] px-3.5 rounded-[10px] bg-kbg border border-black/[0.09] text-kmuted text-[13px] font-semibold flex items-center gap-3 transition-all hover:bg-red-50 hover:border-kred/[0.2] hover:text-kred"
                 >
-                  ↪ Cerrar sesión
+                  <span className="w-[28px] h-[28px] rounded-[7px] bg-black/[0.04] flex items-center justify-center text-[14px] flex-shrink-0">↪</span>
+                  Cerrar sesión
                 </button>
               )}
             </div>
-            <div className="border-t border-black/[0.09] px-2 pb-3">
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* ── Panel Flota (overlay completo, igual que Calendario) ── */}
+      {flotaOpen && createPortal(
+        <>
+          <div
+            className="fixed inset-0 bg-black/[0.42] z-[900] backdrop-blur-sm"
+            onClick={() => setFlotaOpen(false)}
+          />
+          <div className="fixed top-0 right-0 w-[min(390px,100%)] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)]">
+
+            {/* Panel header */}
+            <div className="bg-knavy px-[18px] py-[18px] flex items-start justify-between sticky top-0 z-10 flex-shrink-0">
+              <div>
+                <div className="text-[10px] font-semibold text-white/70 uppercase tracking-[1px]">CONFIGURACIÓN</div>
+                <div className="text-[17px] font-bold text-white mt-0.5">🚛 Flota</div>
+                <div className="text-[12px] text-white/70 mt-0.5 leading-snug">
+                  {flota.filter(v => v.on).length} activos · {flota.length} en total
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onGuardarFlota}
+                  disabled={flotaStatus === 'saving'}
+                  style={{ color: saveColor }}
+                  className="h-[30px] px-3 rounded-[7px] bg-white/[0.18] text-white text-[12px] font-bold flex items-center gap-1.5 hover:bg-white/[0.28] transition-all disabled:opacity-50"
+                >
+                  <span>{saveIcon}</span>
+                  <span>{flotaStatus === 'saving' ? 'Guardando' : flotaStatus === 'success' ? 'Guardado' : flotaStatus === 'error' ? 'Error' : 'Guardar'}</span>
+                </button>
+                <button
+                  onClick={() => setFlotaOpen(false)}
+                  className="w-[30px] h-[30px] rounded-[7px] bg-white/[0.18] text-white text-[13px] flex items-center justify-center hover:bg-white/[0.28] transition-all"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* FlotaGrid */}
+            <div className="px-3 py-3 flex-1">
               <FlotaGrid
                 flota={flota}
                 conductores={conductores}

@@ -151,7 +151,7 @@ export default function InputSection({
       {modo === 'drag' && (
         <div className="bg-white rounded-kios shadow-kios overflow-hidden mb-3.5">
           <div className="px-4 py-3 border-b border-black/[0.09] flex items-center justify-between">
-            <span className="text-[15px] font-bold text-ktext">🚛 Flota disponible hoy</span>
+            <span className="text-[15px] font-bold text-ktext">🚛 Flota</span>
             <span className="text-[11px] text-kmuted">{flota.filter(v => v.on).length} activos</span>
           </div>
           <div className="px-4 py-3.5">

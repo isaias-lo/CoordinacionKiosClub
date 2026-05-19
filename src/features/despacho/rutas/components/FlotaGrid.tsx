@@ -56,7 +56,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
   return (
     <div className="bg-white rounded-kios shadow-kios overflow-hidden mb-3.5">
       <div className="px-4 py-3 border-b border-black/[0.09] flex items-center justify-between">
-        <span className="text-[15px] font-bold text-ktext">🚛 Flota disponible hoy</span>
+        <span className="text-[15px] font-bold text-ktext">🚛 Flota</span>
         <button onClick={() => { setShowAgregar(!showAgregar); setError(''); }} className="text-[13px] text-kred font-semibold">
           {showAgregar ? '✕ Cancelar' : '➕ Agregar'}
         </button>
