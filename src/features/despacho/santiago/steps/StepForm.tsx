@@ -214,12 +214,18 @@ export function StepForm() {
   const [ancho,     setAncho]     = useState('');
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
 
-  /* Combine items (drag-to-merge) */
+  /* Combine items (drag-to-merge) — form view */
   const [dragIdx,         setDragIdx]         = useState<number | null>(null);
   const [dropIdx,         setDropIdx]         = useState<number | null>(null);
   const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
   const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
   const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* Combine items — resumen view */
+  const [rDragIdx, setRDragIdx] = useState<number | null>(null);
+  const [rDropIdx, setRDropIdx] = useState<number | null>(null);
+  const [rDragCod, setRDragCod] = useState<string | null>(null);
+  const rLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Preset / multi-form */
   const [presets,  setPresets]  = useState<Record<string, { pallets: number; bultos: number }>>({});
@@ -472,20 +478,24 @@ export function StepForm() {
   const cancelEdit = () => { setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho(''); };
 
   /* ── Combine items handler ── */
-  const handleSantiagoCombineConfirm = (peso: number, alto: number) => {
-    if (!combineModal || !currentTienda) return;
+  const handleSantiagoCombineConfirm = (peso: number, alto: number, cod?: string) => {
+    const tiendaCod = cod ?? currentTienda?.cod;
+    if (!combineModal || !tiendaCod) return;
     const { srcIdx, tgtIdx } = combineModal;
-    const tiendaItems2 = items[currentTienda.cod] || [];
-    const src = tiendaItems2[srcIdx];
-    const tgt = tiendaItems2[tgtIdx];
+    const allItems = items[tiendaCod] || [];
+    const src = allItems[srcIdx];
+    const tgt = allItems[tgtIdx];
+    if (!src || !tgt) return;
     const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
-    const ancho2 = src.ancho; const largo2 = src.largo;
-    const pesoVolumetrico = Math.round((alto * ancho2 * largo2) / 5000);
-    const newItem: SantiagoItem = { ...src, id: `${currentTienda.cod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, orden: '' };
-    const higher = Math.max(srcIdx, tgtIdx); const lower = Math.min(srcIdx, tgtIdx);
-    dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx: higher });
-    dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx: lower });
-    dispatch({ type: 'ADD_ITEM', item: newItem });
+    const pesoVolumetrico = Math.round((alto * src.ancho * src.largo) / 5000);
+    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico };
+    const higher = Math.max(srcIdx, tgtIdx);
+    const lower  = Math.min(srcIdx, tgtIdx);
+    const newList = allItems.filter((_, i) => i !== higher && i !== lower);
+    newList.splice(lower, 0, merged);
+    let pc = 0, bc = 0;
+    const renumbered = newList.map(i => ({ ...i, orden: i.tipo === 'Pallet' ? `P${++pc}` : `${++bc}B` }));
+    dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
     setCombineModal(null);
   };
 
@@ -910,8 +920,66 @@ export function StepForm() {
                           );
                         }
 
+                        const isRDrop    = rDragIdx !== null && rDragCod === cod && rDropIdx === idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo;
+                        const isRDragging = rDragCod === cod && rDragIdx === idx;
                         return (
-                          <div key={item.id} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40 last:border-b-0 bg-white">
+                          <div
+                            key={item.id}
+                            data-r-item-idx={idx}
+                            data-r-item-cod={cod}
+                            draggable
+                            onDragStart={() => { setRDragIdx(idx); setRDragCod(cod); }}
+                            onDragOver={(e) => {
+                              if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
+                                { e.preventDefault(); setRDropIdx(idx); }
+                            }}
+                            onDragLeave={() => setRDropIdx(prev => prev === idx ? null : prev)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
+                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx });
+                              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+                            }}
+                            onDragEnd={() => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); }}
+                            onTouchStart={(e) => {
+                              const t = e.touches[0];
+                              (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
+                              (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
+                              rLongPressRef.current = setTimeout(() => { setRDragIdx(idx); setRDragCod(cod); navigator.vibrate?.(25); }, 220);
+                            }}
+                            onTouchMove={(e) => {
+                              const t = e.touches[0];
+                              const el = e.currentTarget as HTMLElement;
+                              if (rLongPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
+                                { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
+                              if (rDragIdx === null) return;
+                              e.preventDefault();
+                              const under = document.elementFromPoint(t.clientX, t.clientY);
+                              const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
+                              const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
+                              const tgtCod = itemEl?.dataset.rItemCod;
+                              setRDropIdx(tgt !== -1 && tgt !== rDragIdx && tgtCod === cod ? tgt : null);
+                            }}
+                            onTouchEnd={(e) => {
+                              if (rLongPressRef.current) { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
+                              if (rDragIdx === null) return;
+                              e.preventDefault();
+                              const t = e.changedTouches[0];
+                              const under = document.elementFromPoint(t.clientX, t.clientY);
+                              const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
+                              const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
+                              const tgtCod = itemEl?.dataset.rItemCod;
+                              if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
+                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt });
+                              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+                            }}
+                            className={[
+                              'flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40 last:border-b-0 transition-all select-none',
+                              isRDragging ? 'opacity-40 bg-bg' : isRDrop ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : 'bg-white',
+                              rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab',
+                            ].join(' ')}
+                          >
+                            <GripVertical size={12} color="#CBD5E1" className="flex-shrink-0" />
                             <span className={`font-barlow-condensed text-[13px] font-bold min-w-[32px] ${item.tipo === 'Pallet' ? 'text-info' : 'text-warn'}`}>{item.orden}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -1395,7 +1463,8 @@ export function StepForm() {
       )}
 
       {combineModal && (() => {
-        const allItems = currentTienda ? (items[currentTienda.cod] || []) : [];
+        const activeCod = rDragCod ?? currentTienda?.cod;
+        const allItems  = activeCod ? (items[activeCod] || []) : [];
         const src = allItems[combineModal.srcIdx];
         const tgt = allItems[combineModal.tgtIdx];
         if (!src || !tgt) return null;
@@ -1406,8 +1475,12 @@ export function StepForm() {
             pkgLabel={src.tipo === 'Pallet' ? 'Pallets' : 'Bultos'}
             srcLabel={srcLabel}
             tgtLabel={tgtLabel}
-            onConfirm={handleSantiagoCombineConfirm}
-            onCancel={() => { setCombineModal(null); setDragIdx(null); setDropIdx(null); }}
+            onConfirm={(peso, alto) => handleSantiagoCombineConfirm(peso, alto, activeCod)}
+            onCancel={() => {
+              setCombineModal(null);
+              setDragIdx(null); setDropIdx(null);
+              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+            }}
           />
         );
       })()}

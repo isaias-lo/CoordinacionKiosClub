@@ -116,6 +116,7 @@ interface OdooPickingInfo {
   state: string;
   responsible: string;
   scheduledDate: string;
+  origin?: string;
 }
 
 /* ════════════════════════════════════════
@@ -408,13 +409,18 @@ export function ScannerPanel() {
                 <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-1.5">Operaciones Odoo hoy</div>
                 <div className="space-y-1">
                   {odooPickings.map((op, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[11px]">
-                      <span className="font-mono font-bold text-emerald-800">{op.name}</span>
-                      <span className="px-1.5 py-0.5 rounded-full font-bold" style={{ background: op.state === 'done' ? 'rgba(16,185,129,0.2)' : op.state === 'assigned' ? 'rgba(59,130,246,0.15)' : 'rgba(100,100,100,0.1)', color: op.state === 'done' ? '#059669' : op.state === 'assigned' ? '#2563EB' : '#64748B' }}>
-                        {STATE_LABELS[op.state] ?? op.state}
-                      </span>
-                      {op.responsible && (
-                        <span className="text-emerald-600 truncate">{op.responsible}</span>
+                    <div key={i} className="text-[11px] space-y-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-emerald-800">{op.name}</span>
+                        <span className="px-1.5 py-0.5 rounded-full font-bold" style={{ background: op.state === 'done' ? 'rgba(16,185,129,0.2)' : op.state === 'assigned' ? 'rgba(59,130,246,0.15)' : 'rgba(100,100,100,0.1)', color: op.state === 'done' ? '#059669' : op.state === 'assigned' ? '#2563EB' : '#64748B' }}>
+                          {STATE_LABELS[op.state] ?? op.state}
+                        </span>
+                        {op.responsible && (
+                          <span className="text-emerald-600 truncate">{op.responsible}</span>
+                        )}
+                      </div>
+                      {op.origin && (
+                        <div className="text-[10px] text-emerald-700 opacity-75 truncate pl-0.5">{op.origin}</div>
                       )}
                     </div>
                   ))}

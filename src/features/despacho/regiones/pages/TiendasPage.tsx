@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation } from 'lucide-react';
+import { Navigation, GripVertical } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
@@ -831,6 +831,7 @@ export function TiendasPage() {
                 return (
                   <div
                     key={i}
+                    data-item-idx={i}
                     ref={el => { itemDragRefs.current[i] = el; }}
                     draggable
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
@@ -838,11 +839,44 @@ export function TiendasPage() {
                     onDragLeave={() => setDropIdx(prev => prev === i ? null : prev)}
                     onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== i && items[dragIdx]?.pkg === item.pkg) setCombineModal({ srcIdx: dragIdx, tgtIdx: i }); setDragIdx(null); setDropIdx(null); }}
                     onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                    onTouchStart={() => { longPressRef.current = setTimeout(() => { setDragIdx(i); navigator.vibrate?.(30); }, 400); }}
-                    onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
-                    onTouchEnd={(e) => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } if (dragIdx === null) return; e.preventDefault(); if (dragIdx === i) { setDragIdx(null); return; } if (items[dragIdx]?.pkg === item.pkg) { setCombineModal({ srcIdx: dragIdx, tgtIdx: i }); setDragIdx(null); } }}
-                    className={`bg-white border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 shadow-card transition-all cursor-grab select-none ${dropIdx === i ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border'} ${dragIdx === i ? 'opacity-50' : ''}`}
+                    onTouchStart={(e) => {
+                      const t = e.touches[0];
+                      (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
+                      (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
+                      longPressRef.current = setTimeout(() => { setDragIdx(i); navigator.vibrate?.(25); }, 220);
+                    }}
+                    onTouchMove={(e) => {
+                      const t = e.touches[0];
+                      const el = e.currentTarget as HTMLElement;
+                      if (longPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
+                        { clearTimeout(longPressRef.current); longPressRef.current = null; }
+                      if (dragIdx === null) return;
+                      e.preventDefault();
+                      const under = document.elementFromPoint(t.clientX, t.clientY);
+                      const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
+                      const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
+                      setDropIdx(tgt !== -1 && tgt !== dragIdx ? tgt : null);
+                    }}
+                    onTouchEnd={(e) => {
+                      if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+                      if (dragIdx === null) return;
+                      e.preventDefault();
+                      const t = e.changedTouches[0];
+                      const under = document.elementFromPoint(t.clientX, t.clientY);
+                      const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
+                      const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
+                      if (tgt !== -1 && tgt !== dragIdx && items[dragIdx]?.pkg === items[tgt]?.pkg)
+                        setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt });
+                      setDragIdx(null); setDropIdx(null);
+                    }}
+                    className={[
+                      'bg-white border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 shadow-card transition-all select-none',
+                      dropIdx === i ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border',
+                      dragIdx === i ? 'opacity-40' : '',
+                      dragIdx !== null ? 'cursor-grabbing' : 'cursor-grab',
+                    ].join(' ')}
                   >
+                    <GripVertical size={13} color="#CBD5E1" className="flex-shrink-0" />
                     <div className="font-mono text-[11px] text-text-3 w-4 text-center flex-shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">

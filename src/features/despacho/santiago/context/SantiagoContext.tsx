@@ -40,6 +40,7 @@ type SantiagoAction =
   | { type: 'ADD_ITEM'; item: SantiagoItem }
   | { type: 'DELETE_ITEM'; tiendaCod: string; idx: number }
   | { type: 'EDIT_ITEM'; tiendaCod: string; idx: number; item: SantiagoItem }
+  | { type: 'SET_ITEMS'; tiendaCod: string; items: SantiagoItem[] }
   | { type: 'RESET' }
   | { type: 'LOAD_STATE'; payload: SyncableState };
 
@@ -72,6 +73,9 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
       list[action.idx] = action.item;
       return { ...state, items: { ...state.items, [action.tiendaCod]: list } };
     }
+
+    case 'SET_ITEMS':
+      return { ...state, items: { ...state.items, [action.tiendaCod]: action.items } };
 
     case 'RESET':
       return { ...defaultState };
