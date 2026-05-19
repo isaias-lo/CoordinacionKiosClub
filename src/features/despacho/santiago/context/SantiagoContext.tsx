@@ -125,6 +125,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     });
 
     const handleRemote = (remoteState: unknown) => {
+      if (debounceRef.current !== null) return; // pending local changes — skip remote to avoid overwriting
       const remote = normalize(remoteState as SyncableState);
       const remoteStr = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
       if (remoteStr === lastPushedRef.current) return; // already in sync
@@ -177,6 +178,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
+      debounceRef.current = null; // clear before push so handleRemote can proceed again
       lastPushedRef.current = current;
       pushSessionState('santiago', payload, userId ?? undefined);
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}

@@ -168,6 +168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown) => {
+      if (debounceRef.current !== null) return; // pending local changes — skip remote to avoid overwriting
       const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
@@ -193,7 +194,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       // pdfData: local always wins — guides are loaded locally and shared outward, never inward.
-      const mergedPdf = { ...(remote.pdfData ?? {}), ...stateRef.current.pdfData };
+      // Do NOT merge remote pdfData: spreading remote first would restore a key the user just deleted.
+      const mergedPdf = stateRef.current.pdfData;
 
       const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: stateRef.current.pdfData });
       if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;
@@ -243,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
+      debounceRef.current = null; // clear before push so handleRemote can proceed again
       lastPushedRef.current = current;
       pushSessionState('regiones', payload, userId ?? undefined);
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
