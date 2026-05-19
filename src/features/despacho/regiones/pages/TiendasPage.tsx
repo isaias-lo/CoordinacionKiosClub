@@ -759,6 +759,7 @@ export function TiendasPage() {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
+        {presetBar}
         <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
           <SLabel>Guía PDF</SLabel>
           <div
