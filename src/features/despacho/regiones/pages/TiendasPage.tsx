@@ -496,10 +496,7 @@ export function TiendasPage() {
     const a = parseFloat(alto) || 0, aw = parseFloat(ancho) || 0, l = parseFloat(largo) || 0;
     const errores = validarDimensiones(currentPkg, p, a, aw, l);
     if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
-    if (!hasPdf && editingIdx === null) {
-      if (!guia.trim()) { showToast('Ingresa el N° de guía', '#D97706'); return; }
-      if (!valor.trim() || parseFloat(valor) <= 0) { showToast('Ingresa el monto total', '#D97706'); return; }
-    }
+    // guia y valor son opcionales — se asignan retroactivamente al cargar el PDF
     if (editingIdx !== null) {
       const updated = items.map((it, i) => i !== editingIdx ? it : { ...it, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: hasPdf ? it.guia : guia.trim(), valor: hasPdf ? it.valor : (parseFloat(valor) || 0) });
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(updated) });
@@ -825,10 +822,10 @@ export function TiendasPage() {
             )}
           </div>
           {!hasPdf ? (
-            <><SLabel>Guía y valor</SLabel>
+            <><SLabel>Guía y valor <span className="text-[10px] font-normal normal-case tracking-normal text-text-3/70 ml-1">(opcional — se asigna con PDF)</span></SLabel>
               <div className="grid grid-cols-2 gap-1.5">
-                <Field label="N° Guía"><input type="text" value={guia} onChange={e => setGuia(e.target.value)} placeholder="146502" inputMode="numeric" className={inputCls} /></Field>
-                <Field label="Total $"><input type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="793170" inputMode="decimal" className={inputCls} /></Field>
+                <Field label="N° Guía"><input type="text" value={guia} onChange={e => setGuia(e.target.value)} placeholder="Cargar PDF →" inputMode="numeric" className={inputCls} /></Field>
+                <Field label="Total $"><input type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="Cargar PDF →" inputMode="decimal" className={inputCls} /></Field>
               </div>
             </>
           ) : (
