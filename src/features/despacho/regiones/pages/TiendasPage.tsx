@@ -366,7 +366,9 @@ export function TiendasPage() {
       const cleanName = file.name.replace(/\.pdf$/i, '');
       const match = cleanName.match(/^(\d{2}[A-Z]{2,3}\d?)/);
       if (!match) { console.warn('[PDF Multi] Sin código reconocible:', file.name); skipped++; continue; }
-      const storeName = codToName[match[1]];
+      const COD_ALIASES: Record<string, string> = { '38PSP': '38SP2' };
+      const cod = COD_ALIASES[match[1]] ?? match[1];
+      const storeName = codToName[cod];
       if (!storeName) { console.warn('[PDF Multi] Código no encontrado:', match[1], 'en', file.name); skipped++; continue; }
       try {
         const data = await processPdf(file);
