@@ -44,7 +44,8 @@ const GUIDES_KEY = `estadoGuias_${TODAY_KEY}`;
 function loadSantiagoItems(): Record<string, SantiagoItem[]> {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = localStorage.getItem('santiagoState');
+    // SantiagoContext writes to the dated key since the sync update
+    const raw = localStorage.getItem(`santiagoState_${TODAY_KEY}`) || localStorage.getItem('santiagoState');
     if (!raw) return {};
     const s = JSON.parse(raw) as SantiagoState;
     return s.items || {};
@@ -305,6 +306,23 @@ export function EstadoPage() {
     rebuild(g, appState.dispatch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch]);
+
+  // Poll Santiago localStorage every 3 s — SantiagoContext isn't in this tree
+  useEffect(() => {
+    let lastSantiago = JSON.stringify(loadSantiagoItems());
+    const id = setInterval(() => {
+      const current = JSON.stringify(loadSantiagoItems());
+      if (current !== lastSantiago) {
+        lastSantiago = current;
+        setGuides(prev => {
+          rebuild(prev, appState.dispatch);
+          return prev;
+        });
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.dispatch, rebuild]);
 
   const handleFiles = async (files: FileList) => {
     if (!files.length) return;
