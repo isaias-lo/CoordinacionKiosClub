@@ -167,6 +167,7 @@ export function TiendasPage() {
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number }>>({});
   const [formRows,          setFormRows]           = useState<FormRow[]>([]);
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
+  const [showTodas,         setShowTodas]          = useState(false);
 
   /* Calendar from Google Sheets */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
@@ -936,11 +937,11 @@ export function TiendasPage() {
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-      {/* Wrapper: on mobile = top row (tiendas+form), on desktop = transparent via contents */}
-      <div className="flex flex-row flex-1 min-h-0 overflow-hidden lg:contents">
+      {/* Wrapper: on mobile = top/bottom stack, on desktop = transparent via contents */}
+      <div className="flex flex-col lg:contents flex-1 min-h-0 overflow-hidden">
 
       {/* LEFT PANEL — lista de tiendas */}
-      <div className="w-[36%] sm:w-[33%] lg:w-[28%] min-w-[130px] lg:min-w-[160px] flex flex-col border-r-2 border-border overflow-hidden flex-shrink-0">
+      <div className="w-full h-[42vh] lg:w-[28%] lg:h-auto lg:min-w-[160px] flex flex-col border-b-2 lg:border-b-0 lg:border-r-2 border-border overflow-hidden flex-shrink-0">
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
@@ -1022,27 +1023,35 @@ export function TiendasPage() {
               onDrop={handleRemoveDrop}
               className={`transition-colors ${removeDropActive ? 'bg-[rgba(217,119,6,0.07)]' : ''}`}>
               {today.length > 0 && (
-                <div className={`px-2.5 py-2 border-b border-t sticky top-0 z-10 transition-all ${removeDropActive ? 'bg-[rgba(217,119,6,0.18)] border-warn/60' : 'bg-bg border-border'}`}>
-                  <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3">
+                <div
+                  onClick={() => !removeDropActive && setShowTodas(prev => !prev)}
+                  className={`px-2.5 py-2 border-b border-t sticky top-0 z-10 transition-all flex items-center ${removeDropActive ? 'cursor-default bg-[rgba(217,119,6,0.18)] border-warn/60' : 'cursor-pointer bg-bg border-border'}`}>
+                  <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3 flex-1">
                     {removeDropActive ? '↓ Suelta para retirar de hoy' : 'Todas'}
                   </span>
-                  {!removeDropActive && <span className="font-barlow-condensed text-[11px] text-text-3/50 ml-2 uppercase tracking-wide">arrastra a HOY ↑</span>}
+                  {!removeDropActive && (
+                    <span className="font-barlow-condensed text-[12px] text-text-3/50 select-none">
+                      {showTodas ? '▲' : '▼'}
+                    </span>
+                  )}
                 </div>
               )}
-              <div className="grid grid-cols-3 gap-1 p-1.5">
-                {others.map(t => {
-                  const cardItems = dispatchData[t.name] || [];
-                  return (
-                    <TiendaGridCard key={t.name} name={t.name}
-                      isActive={selectedTienda === t.name} isToday={false}
-                      itemCount={cardItems.length}
-                      palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
-                      hasPdf={!!state.pdfData[t.name]}
-                      onSelect={() => select(t.name)}
-                      onDragStart={e => handleAddDragStart(e, t.name)} />
-                  );
-                })}
-              </div>
+              {(showTodas || today.length === 0) && (
+                <div className="grid grid-cols-3 gap-1 p-1.5">
+                  {others.map(t => {
+                    const cardItems = dispatchData[t.name] || [];
+                    return (
+                      <TiendaGridCard key={t.name} name={t.name}
+                        isActive={selectedTienda === t.name} isToday={false}
+                        itemCount={cardItems.length}
+                        palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
+                        hasPdf={!!state.pdfData[t.name]}
+                        onSelect={() => select(t.name)}
+                        onDragStart={e => handleAddDragStart(e, t.name)} />
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
