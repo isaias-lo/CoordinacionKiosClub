@@ -217,7 +217,7 @@ export function StepForm() {
   /* Combine items (drag-to-merge) — form view */
   const [dragIdx,         setDragIdx]         = useState<number | null>(null);
   const [dropIdx,         setDropIdx]         = useState<number | null>(null);
-  const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
+  const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string } | null>(null);
   const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
   const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -689,13 +689,13 @@ export function StepForm() {
       <div className="px-3 pb-3 pt-1 flex gap-2">
         {activeTiendasCount > 0 && (
           <button onClick={goToResumen}
-            className="flex-1 py-3 bg-red text-white rounded-btn font-barlow-condensed text-[17px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
+            className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
             style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
             Ver resumen ({activeTiendasCount}) →
           </button>
         )}
         <button onClick={enrutar}
-          className="w-full lg:w-auto lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
+          className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
           style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
           title="Ir al Enrutador">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -705,7 +705,7 @@ export function StepForm() {
                }}>
             <Navigation size={14} color="#fff" strokeWidth={2} />
           </div>
-          <span className="font-barlow-condensed text-[15px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>Enrutador</span>
+          <span className="hidden lg:inline font-barlow-condensed text-[15px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>Enrutador</span>
         </button>
       </div>
     </div>
@@ -937,7 +937,7 @@ export function StepForm() {
                             onDrop={(e) => {
                               e.preventDefault();
                               if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
-                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx });
+                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod });
                               setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
                             }}
                             onDragEnd={() => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); }}
@@ -970,7 +970,7 @@ export function StepForm() {
                               const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
                               const tgtCod = itemEl?.dataset.rItemCod;
                               if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
-                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt });
+                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod });
                               setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
                             }}
                             className={[
@@ -1463,7 +1463,7 @@ export function StepForm() {
       )}
 
       {combineModal && (() => {
-        const activeCod = rDragCod ?? currentTienda?.cod;
+        const activeCod = combineModal.cod ?? rDragCod ?? currentTienda?.cod;
         const allItems  = activeCod ? (items[activeCod] || []) : [];
         const src = allItems[combineModal.srcIdx];
         const tgt = allItems[combineModal.tgtIdx];

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, GripVertical } from 'lucide-react';
+import { Navigation, GripVertical, ChevronLeft } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
@@ -166,6 +166,7 @@ export function TiendasPage() {
   const [multiDragOver,     setMultiDragOver]      = useState(false);
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number }>>({});
   const [formRows,          setFormRows]           = useState<FormRow[]>([]);
+  const [showMobileResumen, setShowMobileResumen]  = useState(false);
 
   /* Calendar from Google Sheets */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
@@ -934,8 +935,8 @@ export function TiendasPage() {
           </div>
         )}
 
-        {/* Toolbar: Multi-PDF */}
-        <div className="px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 flex gap-1.5">
+        {/* Toolbar: Multi-PDF — desktop only */}
+        <div className="hidden lg:flex px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 gap-1.5">
           <input ref={multiFileRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => e.target.files && handleMultiplePdfs(e.target.files)} />
           <button
             onClick={() => multiFileRef.current?.click()}
@@ -1023,8 +1024,18 @@ export function TiendasPage() {
           )}
         </div>
 
-        {/* ENRUTADOR */}
-        <div className="px-2 py-2 border-t border-border flex-shrink-0">
+        {/* Ver Resumen — mobile only */}
+        <div className="lg:hidden px-2 py-2 border-t border-border flex-shrink-0">
+          <button
+            onClick={() => setShowMobileResumen(true)}
+            className="w-full py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:opacity-80"
+            style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+            Ver Resumen →
+          </button>
+        </div>
+
+        {/* ENRUTADOR — desktop only */}
+        <div className="hidden lg:block px-2 py-2 border-t border-border flex-shrink-0">
           <button
             onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
             className="w-full flex items-center justify-center gap-2 py-2 rounded-full cursor-pointer transition-all active:opacity-70"
@@ -1070,10 +1081,41 @@ export function TiendasPage() {
 
       </div>{/* end top-row wrapper */}
 
-      {/* RIGHT PANEL — resumen (full width below on mobile/tablet, right column on desktop) */}
-      <div className="h-[200px] sm:h-[220px] lg:h-auto border-t-2 border-border lg:border-t-0 lg:w-[28%] lg:min-w-[200px] flex flex-col overflow-hidden flex-shrink-0">
+      {/* RIGHT PANEL — resumen (right column on desktop only) */}
+      <div className="hidden lg:flex lg:flex-col lg:h-auto lg:border-t-0 lg:w-[28%] lg:min-w-[200px] overflow-hidden flex-shrink-0">
         <ResumenPage panel />
       </div>
+
+      {/* Mobile Resumen Overlay */}
+      {showMobileResumen && (
+        <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
+          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
+               style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
+            <button
+              onClick={() => setShowMobileResumen(false)}
+              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95"
+              style={{
+                width: 36, height: 36,
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                border: '1px solid rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
+              }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
+            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1">Resumen</span>
+            <button
+              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+              className="flex items-center gap-2 py-2 px-3 rounded-full cursor-pointer transition-all active:opacity-70"
+              style={{ background: 'rgba(211,47,47,0.18)', border: '1px solid rgba(211,47,47,0.50)' }}>
+              <Navigation size={13} color="#EF4444" strokeWidth={2} />
+              <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#EF4444' }}>Enrutador</span>
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <ResumenPage panel />
+          </div>
+        </div>
+      )}
 
       {combineModal && (() => {
         const src = items[combineModal.srcIdx];
