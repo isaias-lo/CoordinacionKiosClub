@@ -242,7 +242,14 @@ export default function RutasScreen() {
     function applyRow(row: SesionRow) {
       setCalT(prev => {
         const c = norm(row.tienda_cod);
-        if (!prev[c] || manuallyEditedRef.current.has(c)) return prev;
+        if (manuallyEditedRef.current.has(c)) return prev;
+        if (!prev[c]) {
+          // Inject Regiones stores arriving via Supabase that aren't in the calendar yet
+          if (row.fuente === 'regiones' && (row.pallets > 0 || row.bultos > 0)) {
+            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, g: 'fal' } };
+          }
+          return prev;
+        }
         if (prev[c].p === row.pallets && prev[c].b === row.bultos) return prev;
         return {
           ...prev,
@@ -360,12 +367,10 @@ export default function RutasScreen() {
     if (stores.length === 0) return;
     const newText = stores.map(cod => {
       const data = calT[cod];
-      if (data.p || data.b) {
-        const p = data.p ? `${data.p}P` : '';
-        const b = data.b ? `${data.b}B` : '';
-        return `${cod} ${p}${p && b ? ' ' : ''}${b}`;
-      }
-      return cod;
+      const p = data.p ? `${data.p}P` : '';
+      const b = data.b ? `${data.b}B` : '';
+      const counts = [p, b].filter(Boolean).join(' ');
+      return counts ? `${cod}: ${counts}` : `${cod}:`;
     }).join('\n');
     if (manualText !== newText) setManualTextRef.current(newText);
   // eslint-disable-next-line react-hooks/exhaustive-deps

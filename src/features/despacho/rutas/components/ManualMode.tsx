@@ -37,7 +37,7 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
       <textarea
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={"LP: 3P 2B\nMQH 1P 2B\nTRE 5P"}
+        placeholder={"LP: 3P 2B\nMQH: 1P 2B\nTRE: 5P"}
         className="w-full min-h-[120px] px-3 py-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 resize-y text-[13px] font-mono text-ktext leading-[1.7] transition-colors focus:border-kred focus:outline-none"
       />
       <div className="text-[11px] text-kmuted mt-1.5 leading-relaxed space-y-0.5">
