@@ -949,9 +949,9 @@ export function TiendasPage() {
             className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-red placeholder:text-text-3" />
         </div>
 
-        {/* HOY chips */}
+        {/* HOY chips — desktop only; on mobile the grid below already shows status */}
         {todayNames.length > 0 && (
-          <div className="px-2 py-2.5 border-b flex-shrink-0 bg-[rgba(211,47,47,0.08)] border-[rgba(211,47,47,0.20)]">
+          <div className="hidden lg:block px-2 py-2.5 border-b flex-shrink-0 bg-[rgba(211,47,47,0.08)] border-[rgba(211,47,47,0.20)]">
             <div className="font-barlow-condensed text-[20px] font-extrabold uppercase tracking-widest text-red mb-2 text-center" style={{ letterSpacing: '0.18em' }}>HOY</div>
             <div className="flex flex-wrap gap-1 justify-center">
               {todayNames.map(name => (

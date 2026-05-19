@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, ReactNode, useEffect, useRef } from 'react';
+import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback } from 'react';
 import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
 } from '../types';
@@ -20,10 +20,14 @@ type SyncableState = {
   items: Record<string, SantiagoItem[]>;
 };
 
+const todayKey = new Date().toISOString().split('T')[0];
+const SANTIAGO_KEY = `santiagoState_${todayKey}`;
+export const SANTIAGO_TERMINADO_KEY = `santiagoTerminado_${todayKey}`;
+
 function loadState(): SantiagoState {
   if (typeof window === 'undefined') return defaultState;
   try {
-    const raw = localStorage.getItem('santiagoState');
+    const raw = localStorage.getItem(SANTIAGO_KEY);
     if (!raw) return defaultState;
     const s = JSON.parse(raw) as SantiagoState;
     if ((s.step as string) === 'resumen') s.step = 'form';
@@ -96,11 +100,10 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
 interface SantiagoContextValue {
   state: SantiagoState;
   dispatch: React.Dispatch<SantiagoAction>;
+  flushPending: () => void;
 }
 
 const SantiagoContext = createContext<SantiagoContextValue | null>(null);
-
-const SANTIAGO_KEY = 'santiagoState';
 
 export function SantiagoProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
@@ -112,7 +115,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   stateRef.current      = state;
   const lastPushedRef   = useRef<string>('');
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
+  const clearedAtRef    = useRef<number>(0); // timestamp of last intentional RESET push
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -125,7 +130,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     });
 
     const handleRemote = (remoteState: unknown) => {
-      if (debounceRef.current !== null) return; // pending local changes — skip remote to avoid overwriting
+      // Block if local push is pending (debounce) or in-flight (async upsert)
+      if (debounceRef.current !== null || isPushingRef.current) return;
+      // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
+      if (Date.now() - clearedAtRef.current < 30_000) return;
+
       const remote = normalize(remoteState as SyncableState);
       const remoteStr = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
       if (remoteStr === lastPushedRef.current) return; // already in sync
@@ -158,13 +167,13 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     // Realtime subscription (instant when WebSocket works)
     const unsub = subscribeToSessionState('santiago', userId, handleRemote);
 
-    // Polling fallback every 8 s — guarantees sync even when Realtime drops
+    // Polling fallback every 3 s — guarantees sync even when Realtime drops
     const pollId = setInterval(async () => {
       try {
         const remote = await fetchSessionState('santiago');
         if (remote) handleRemote(remote);
       } catch {}
-    }, 8000);
+    }, 3000);
 
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
@@ -178,17 +187,34 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      debounceRef.current = null; // clear before push so handleRemote can proceed again
+      debounceRef.current = null;
+      // Mark a clear so handleRemote won't restore data for 30 s
+      const isEmpty = Object.keys(payload.items).length === 0;
+      if (isEmpty) clearedAtRef.current = Date.now();
       lastPushedRef.current = current;
-      pushSessionState('santiago', payload, userId ?? undefined);
+      isPushingRef.current = true;
+      pushSessionState('santiago', payload, userId ?? undefined)
+        .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [state.step, state.regimen, state.items, state]);
 
+  // Flush any pending debounced push immediately — call before navigating away
+  const flushPending = useCallback(() => {
+    if (!isInitializedRef.current) return;
+    const payload: SyncableState = { step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items };
+    const current = JSON.stringify(payload);
+    if (current === lastPushedRef.current) return;
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    lastPushedRef.current = current;
+    pushSessionState('santiago', payload, userId ?? undefined);
+    try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(stateRef.current)); } catch {}
+  }, [userId]);
+
   return (
-    <SantiagoContext.Provider value={{ state, dispatch }}>
+    <SantiagoContext.Provider value={{ state, dispatch, flushPending }}>
       {children}
     </SantiagoContext.Provider>
   );

@@ -189,7 +189,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, onBack }: {
 ════════════════════════════════════════ */
 export function StepForm() {
   const router = useRouter();
-  const { state, dispatch } = useSantiago();
+  const { state, dispatch, flushPending } = useSantiago();
   const { showToast } = useApp();
   const { currentTienda, items, regimen } = state;
 
@@ -354,6 +354,7 @@ export function StepForm() {
     })).filter(t => t.p > 0 || t.b > 0);
     localStorage.setItem('rutasInput', JSON.stringify(rutasInput));
     sessionStorage.setItem('despacho_from', '/despacho/santiago');
+    flushPending(); // push antes de navegar — evita que el debounce se cancele al salir
     router.push('/despacho');
   };
 

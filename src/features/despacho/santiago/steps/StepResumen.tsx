@@ -1,10 +1,15 @@
 'use client';
 import { useState } from 'react';
-import { useSantiago } from '../context/SantiagoContext';
+import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
+import { pushSessionState } from '@/lib/userSessionState';
+import { useAuth } from '@/components/AuthProvider';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
+
+const todayKey = new Date().toISOString().split('T')[0];
+const SANTIAGO_STATE_KEY = `santiagoState_${todayKey}`;
 
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar',
@@ -18,6 +23,7 @@ const LABEL_SM = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
 
 export function StepResumen() {
   const { state, dispatch } = useSantiago();
+  const { user } = useAuth();
   const { showToast } = useApp();
   const { items, regimen } = state;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -45,6 +51,18 @@ export function StepResumen() {
       const b = it.filter(i => i.tipo === 'Bulto').length;
       return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : ''].filter(Boolean).join('+')}`;
     }).join(', ');
+
+  const doReset = async () => {
+    dispatch({ type: 'RESET' });
+    // Push empty state immediately — don't rely on debounce (cancelled on navigation)
+    const emptyPayload = { step: 'regimen' as const, regimen: null, items: {} };
+    try {
+      await pushSessionState('santiago', emptyPayload, user?.id ?? undefined);
+      localStorage.setItem(SANTIAGO_STATE_KEY, JSON.stringify(emptyPayload));
+    } catch {}
+    localStorage.setItem(SANTIAGO_TERMINADO_KEY,
+      new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
+  };
 
   const registrar = () => {
     if (!activeTiendas.length) { showToast('No hay items para registrar', '#D97706'); return; }
@@ -319,7 +337,7 @@ export function StepResumen() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-3 py-2.5 z-[150] flex gap-2"
            style={{ boxShadow: '0 -4px 16px rgba(26,37,80,0.10)' }}>
         <button
-          onClick={() => dispatch({ type: 'RESET' })}
+          onClick={doReset}
           className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
           title="Nuevo despacho">
           🗑
@@ -334,7 +352,7 @@ export function StepResumen() {
         <button
           onClick={() => {
             if (confirm('¿Iniciar nuevo despacho? Los datos actuales se perderán.')) {
-              dispatch({ type: 'RESET' });
+              doReset();
             }
           }}
           className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
