@@ -411,6 +411,9 @@ export default function RutasScreen() {
   function handleToggleFlota(idx: number) {
     setFlota(prev => prev.map((v, i) => i === idx ? { ...v, on: !v.on } : v));
   }
+  function handleToggleTlbd(idx: number) {
+    setFlota(prev => prev.map((v, i) => i === idx ? { ...v, tlbd: !v.tlbd } : v));
+  }
   function handleConductorChange(idx: number, nombre: string) {
     setFlota(prev => prev.map((v, i) => i === idx ? { ...v, ch: nombre } : v));
   }
@@ -697,6 +700,13 @@ export default function RutasScreen() {
           router.push(from || '/despacho/santiago');
         }}
         onSignOut={async () => { await signOut(); router.push('/login'); }}
+        flota={flota}
+        conductores={conductores}
+        onToggleFlota={handleToggleFlota}
+        onToggleTlbd={handleToggleTlbd}
+        onConductorChange={handleConductorChange}
+        onAgregarConductor={handleAgregarConductor}
+        onAgregarVehiculo={handleAgregarVehiculo}
       />
 
       <main className="max-w-[700px] mx-auto px-3.5 py-5">
@@ -725,10 +735,8 @@ export default function RutasScreen() {
               onToggleGroup={handleToggleGroup}
               onToggleChip={handleToggleChip}
               onUpdateChip={handleUpdateChip}
-              onToggleFlota={handleToggleFlota}
               onConductorChange={handleConductorChange}
               onAgregarConductor={handleAgregarConductor}
-              onAgregarVehiculo={handleAgregarVehiculo}
               onSupervisor={setSupervisor}
               onFecha={setFecha}
               onManual={setManualText}

@@ -1,7 +1,6 @@
 'use client';
 import CalendarMode   from './CalendarMode';
 import ManualMode     from './ManualMode';
-import FlotaGrid      from './FlotaGrid';
 import ManualDispatch from './ManualDispatch';
 import { getDia }     from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
@@ -32,10 +31,8 @@ interface Props {
   onToggleGroup: (gid: string) => void;
   onToggleChip: (cod: string) => void;
   onUpdateChip: (cod: string, key: 'p' | 'b', val: string) => void;
-  onToggleFlota: (idx: number) => void;
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
-  onAgregarVehiculo: (v: Vehiculo) => void;
   onSupervisor: (s: string) => void;
   onFecha: (f: string) => void;
   onManual: (t: string) => void;
@@ -51,7 +48,7 @@ export default function InputSection({
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
   onModo, onToggleGroup, onToggleChip, onUpdateChip,
-  onToggleFlota, onConductorChange, onAgregarConductor, onAgregarVehiculo,
+  onConductorChange, onAgregarConductor,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onLimpiar, onEliminarParada,
 }: Props) {
@@ -149,14 +146,6 @@ export default function InputSection({
         <div className="bg-[#FFF3CD] border border-amber-400 rounded-kios2 px-3 py-[11px] text-[13px] text-amber-800 mb-[11px] leading-relaxed">
           ⚠️ {errors.join(' · ')}
         </div>
-      )}
-
-      {modo !== 'drag' && (
-        <FlotaGrid
-          flota={flota} conductores={conductores}
-          onToggle={onToggleFlota} onConductorChange={onConductorChange}
-          onAgregarConductor={onAgregarConductor} onAgregarVehiculo={onAgregarVehiculo}
-        />
       )}
 
       {modo === 'drag' && (

@@ -6,6 +6,7 @@ interface Props {
   flota: Vehiculo[];
   conductores: string[];
   onToggle: (idx: number) => void;
+  onToggleTlbd: (idx: number) => void;
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
@@ -18,7 +19,7 @@ interface NuevoVehiculoState {
   porton: boolean | null; refrigerado: boolean; on: boolean; tlbd: boolean; empresa: string;
 }
 
-export default function FlotaGrid({ flota, conductores, onToggle, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
+export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [nuevoVehiculo, setNuevoVehiculo] = useState<NuevoVehiculoState>({
@@ -117,6 +118,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onConductorCha
               key={v.p} v={v} idx={i}
               conductores={conductores}
               onToggle={onToggle}
+              onToggleTlbd={onToggleTlbd}
               onConductorChange={onConductorChange}
               onAgregarConductor={onAgregarConductor}
             />
@@ -127,9 +129,10 @@ export default function FlotaGrid({ flota, conductores, onToggle, onConductorCha
   );
 }
 
-function VehicleCard({ v, idx, conductores, onToggle, onConductorChange, onAgregarConductor }: {
+function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor }: {
   v: Vehiculo; idx: number; conductores: string[];
   onToggle: (i: number) => void;
+  onToggleTlbd: (i: number) => void;
   onConductorChange: (i: number, n: string) => void;
   onAgregarConductor: (n: string) => void;
 }) {
@@ -186,6 +189,15 @@ function VehicleCard({ v, idx, conductores, onToggle, onConductorChange, onAgreg
       </div>
 
       <div className="px-3 pb-[10px]" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={() => onToggleTlbd(idx)}
+          className={`w-full h-[24px] rounded-[5px] text-[10px] font-bold mb-1.5 border transition-all
+            ${v.tlbd
+              ? 'bg-knavy text-white border-knavy'
+              : 'bg-transparent text-kmuted border-black/[0.09] hover:border-knavy/[0.35] hover:text-knavy'}`}
+        >
+          {v.tlbd ? '✓ 2ª Vuelta' : '2ª Vuelta'}
+        </button>
         {modoNuevo ? (
           <div className="flex gap-1">
             <input

@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft } from 'lucide-react';
 import type { TiendaInfo } from '../data/tiendas';
+import type { Vehiculo } from '../data/flota';
+import FlotaGrid from './FlotaGrid';
 
 interface Props {
   updateStatus: string;
@@ -13,9 +15,16 @@ interface Props {
   onGuardarFlota: () => void;
   onBack?: () => void;
   onSignOut?: () => void;
+  flota: Vehiculo[];
+  conductores: string[];
+  onToggleFlota: (idx: number) => void;
+  onToggleTlbd: (idx: number) => void;
+  onConductorChange: (idx: number, nombre: string) => void;
+  onAgregarConductor: (nombre: string) => void;
+  onAgregarVehiculo: (v: Vehiculo) => void;
 }
 
-export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut }: Props) {
+export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut, flota, conductores, onToggleFlota, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const total = Object.keys(tiendas).length;
 
@@ -92,7 +101,7 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                 ✕
               </button>
             </div>
-            <div className="p-3 space-y-2">
+            <div className="p-3 space-y-2 flex-shrink-0">
               {onBack && (
                 <button
                   onClick={() => { onBack(); setMenuOpen(false); }}
@@ -131,6 +140,17 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                   ↪ Cerrar sesión
                 </button>
               )}
+            </div>
+            <div className="border-t border-black/[0.09] px-2 pb-3">
+              <FlotaGrid
+                flota={flota}
+                conductores={conductores}
+                onToggle={onToggleFlota}
+                onToggleTlbd={onToggleTlbd}
+                onConductorChange={onConductorChange}
+                onAgregarConductor={onAgregarConductor}
+                onAgregarVehiculo={onAgregarVehiculo}
+              />
             </div>
           </div>
         </>,
