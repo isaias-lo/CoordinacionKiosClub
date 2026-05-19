@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, MapPin, Building2, Route, Activity, Clock, Database } from 'lucide-react';
+import { ChevronLeft, MapPin, Building2, Route, Activity, Clock, Database, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -52,6 +52,12 @@ export default function DespachoHubPage() {
       border: 'rgba(16,185,129,0.50)', bg: 'rgba(16,185,129,0.16)', shadow: 'rgba(16,185,129,0.20)',
       onClick: () => router.push('/registros'),
       Icon: Database, iconColor: 'rgba(52,211,153,0.9)',
+    },
+    {
+      label: 'Conductores', sub: 'Recepción de despacho',
+      border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
+      onClick: () => router.push('/tiendas'),
+      Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
     },
   ];
 

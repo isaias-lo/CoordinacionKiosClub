@@ -162,6 +162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
+  const clearedAtRef    = useRef<number>(0); // timestamp of last intentional CLEAR_ALL push
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -171,6 +172,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const handleRemote = (remoteState: unknown) => {
       // Block if local push is pending (debounce) or in-flight (async upsert)
       if (debounceRef.current !== null || isPushingRef.current) return;
+      // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
+      if (Date.now() - clearedAtRef.current < 30_000) return;
       const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
@@ -263,6 +266,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
+      // Mark a clear so handleRemote won't restore data for 30 s
+      const isEmpty = Object.keys(payload.dispatch).length === 0 && Object.keys(payload.pdfData).length === 0;
+      if (isEmpty) clearedAtRef.current = Date.now();
       lastPushedRef.current = current;
       isPushingRef.current = true; // block handleRemote during the async upsert
       pushSessionState('regiones', payload, userId ?? undefined)

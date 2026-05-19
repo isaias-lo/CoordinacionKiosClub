@@ -5,9 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
+import { pushSessionState } from '../../lib/userSessionState';
 import { buildRows, exportToTemplate } from '../../features/despacho/regiones/utils/exportUtils';
 import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/sheetsRegiones';
 import type { HistoryEntry } from '../../types';
+
+const todayKey = new Date().toISOString().split('T')[0];
+export const REGIONES_TERMINADO_KEY = `regionesTerminado_${todayKey}`;
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -64,7 +68,18 @@ export function FinishModal({ open, onClose }: Props) {
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
     dispatch({ type: 'CLEAR_ALL' });
-    setTimeout(() => router.push('/'), 700);
+
+    // Push empty state immediately — don't rely on AppContext's debounce which gets
+    // cancelled on navigation (700 ms < 800 ms). Without this, Supabase/localStorage
+    // keep the old data and restore it when the user re-enters.
+    const emptyPayload = { dispatch: {}, pdfData: {} };
+    try {
+      await pushSessionState('regiones', emptyPayload, user?.id ?? undefined);
+      localStorage.setItem(`regionesState_${todayKey}`, JSON.stringify(emptyPayload));
+    } catch {}
+    localStorage.setItem(REGIONES_TERMINADO_KEY, new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
+
+    router.push('/');
   };
 
   return (

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Store, ClipboardCheck, Search, Settings } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, Search, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -12,12 +12,6 @@ export default function ControlInternoPage() {
   const isAdmin = profile?.role === 'admin';
 
   const tabs: { label: string; sub: string; border: string; bg: string; shadow: string; onClick: () => void; adminOnly: boolean; Icon: LucideIcon; iconColor: string }[] = [
-    {
-      label: 'Tiendas', sub: 'Recepción de despacho',
-      border: 'rgba(16,185,129,0.5)', bg: 'rgba(16,185,129,0.18)', shadow: 'rgba(16,185,129,0.22)',
-      onClick: () => router.push('/tiendas'), adminOnly: false,
-      Icon: Store, iconColor: 'rgba(52,211,153,0.9)',
-    },
     {
       label: 'Auditoría', sub: 'Control de calidad pallets',
       border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.20)',
