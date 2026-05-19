@@ -167,6 +167,13 @@ export default function UsuariosPage() {
   const [createRoleError,   setCreateRoleError]   = useState('');
   const [createRoleContext, setCreateRoleContext] = useState<'standalone' | 'approve' | 'edit'>('standalone');
 
+  /* ── Edit Role Modal ── */
+  const [editRoleModal,  setEditRoleModal]  = useState(false);
+  const [editRoleTarget, setEditRoleTarget] = useState<AppRole | null>(null);
+  const [editRoleForm,   setEditRoleForm]   = useState({ label: '', color: '#2563EB', home_path: '/' });
+  const [editRoleSaving, setEditRoleSaving] = useState(false);
+  const [editRoleError,  setEditRoleError]  = useState('');
+
   const pendingUsers = users.filter(u => u.role === 'pending');
   const activeUsers  = users.filter(u => u.role !== 'pending');
 
@@ -293,6 +300,38 @@ export default function UsuariosPage() {
   }
 
   /* ── Create Role ── */
+
+  function openEditRole(role: AppRole) {
+    setEditRoleTarget(role);
+    setEditRoleForm({ label: role.label, color: role.color, home_path: role.home_path });
+    setEditRoleError('');
+    setEditRoleModal(true);
+  }
+
+  async function handleEditRole() {
+    if (!editRoleTarget || !editRoleForm.label.trim()) {
+      setEditRoleError('El nombre es requerido');
+      return;
+    }
+    setEditRoleSaving(true);
+    setEditRoleError('');
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/admin/roles', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ id: editRoleTarget.id, ...editRoleForm }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? 'Error al actualizar');
+      setRoles(prev => prev.map(r => r.id === editRoleTarget.id ? { ...r, ...editRoleForm } : r));
+      setEditRoleModal(false);
+    } catch (e) {
+      setEditRoleError(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setEditRoleSaving(false);
+    }
+  }
 
   function openCreateRole(context: 'standalone' | 'approve' | 'edit' = 'standalone') {
     setNewRole({ ...EMPTY_NEW_ROLE });
@@ -837,22 +876,28 @@ export default function UsuariosPage() {
                       )}
 
                       {/* Actions */}
-                      <div className="flex gap-2 mt-1">
+                      <div className="flex gap-2 mt-1 flex-wrap">
                         {!isFullAccess && unsaved && (
                           <button
                             onClick={() => handleSaveRolePerms(role)}
                             disabled={savingRole === role.id}
                             className="flex-1 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
                             style={{ background: `linear-gradient(135deg,${role.color},${role.color}cc)`, boxShadow: `0 4px 12px ${role.color}40` }}>
-                            {savingRole === role.id ? 'Guardando...' : 'Guardar cambios'}
+                            {savingRole === role.id ? 'Guardando...' : 'Guardar permisos'}
                           </button>
                         )}
+                        <button
+                          onClick={() => openEditRole(role)}
+                          className="px-4 py-2 rounded-xl text-[13px] text-white/60 cursor-pointer hover:text-white hover:bg-white/10 transition-colors"
+                          style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+                          Editar
+                        </button>
                         {!role.is_system && (
                           <button
                             onClick={() => setDeleteRoleTarget(role)}
                             className="px-4 py-2 rounded-xl text-[13px] text-red-400/70 cursor-pointer hover:text-red-400 hover:bg-red-400/10 transition-colors"
                             style={{ border: '1px solid rgba(239,68,68,0.2)' }}>
-                            Eliminar rol
+                            Eliminar
                           </button>
                         )}
                       </div>
@@ -1021,6 +1066,79 @@ export default function UsuariosPage() {
                 className="flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white uppercase cursor-pointer disabled:opacity-50"
                 style={{ background: 'rgba(211,47,47,0.8)' }}>
                 {deletingRole ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Role Modal ── */}
+      {editRoleModal && editRoleTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.75)' }} onClick={() => setEditRoleModal(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
+               style={{ background: '#1a2550', border: `1px solid ${editRoleTarget.color}44` }}>
+
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: editRoleForm.color, boxShadow: `0 0 8px ${editRoleForm.color}80` }} />
+              <span className="font-barlow-condensed text-xl font-bold text-white tracking-wider uppercase">Editar rol</span>
+            </div>
+
+            <Field label="Nombre del rol">
+              <input
+                type="text"
+                value={editRoleForm.label}
+                onChange={e => setEditRoleForm(f => ({ ...f, label: e.target.value }))}
+                placeholder="Ej: Coordinador"
+                className={inputCls}
+                style={{ WebkitTextFillColor: 'white', WebkitBoxShadow: '0 0 0 40px #1a2550 inset' }} />
+            </Field>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-white/65 uppercase tracking-wider">Color</label>
+              <div className="flex gap-2 flex-wrap">
+                {PRESET_COLORS.map(c => (
+                  <button key={c} onClick={() => setEditRoleForm(f => ({ ...f, color: c }))}
+                    className="w-7 h-7 rounded-full cursor-pointer transition-all"
+                    style={{
+                      background: c,
+                      boxShadow: editRoleForm.color === c ? `0 0 0 2px #1a2550, 0 0 0 4px ${c}` : 'none',
+                      transform: editRoleForm.color === c ? 'scale(1.15)' : 'scale(1)',
+                    }} />
+                ))}
+              </div>
+            </div>
+
+            <Field label="Pantalla de inicio">
+              <div className="relative">
+                <select
+                  value={editRoleForm.home_path}
+                  onChange={e => setEditRoleForm(f => ({ ...f, home_path: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl text-[15px] focus:outline-none border cursor-pointer appearance-none pr-8"
+                  style={{ background: 'rgba(255,255,255,0.09)', color: 'white', borderColor: 'rgba(255,255,255,0.2)', WebkitTextFillColor: 'white' }}>
+                  {HOME_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value} style={{ background: '#1a2550', color: 'white' }}>{o.label}</option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/50 text-[11px]">▼</span>
+              </div>
+            </Field>
+
+            {editRoleError && (
+              <div className="text-sm text-red-400 text-center px-2 py-2 rounded-lg"
+                   style={{ background: 'rgba(211,47,47,0.12)' }}>{editRoleError}</div>
+            )}
+
+            <div className="flex gap-2 mt-1">
+              <button onClick={() => setEditRoleModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-[14px] text-white/50 cursor-pointer hover:bg-white/8 transition-colors"
+                style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                Cancelar
+              </button>
+              <button onClick={handleEditRole} disabled={editRoleSaving || !editRoleForm.label.trim()}
+                className="flex-1 py-2.5 rounded-xl font-barlow-condensed text-[15px] font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+                style={{ background: `linear-gradient(135deg,${editRoleForm.color},${editRoleForm.color}cc)`, boxShadow: `0 4px 12px ${editRoleForm.color}40` }}>
+                {editRoleSaving ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
           </div>
