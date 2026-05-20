@@ -10,13 +10,22 @@ interface RecepcionBody {
   bultosSent: number;
   palletsRecibidos: number;
   bultosRecibidos: number;
+  conductor?: string;
+  pionetas?: string;
   receptor: string;
   rut: string;
   signatureDataUrl: string;
   observaciones?: string;
   selloEstado?: string;
-  selloFotoUrl?: string;
+  // New trazabilidad fields
+  selloLlegadaUrl?: string;
+  selloLlegadaHora?: string;
+  selloSalidaUrl?: string;
+  selloSalidaHora?: string;
+  cdSalidaUrl?: string;
+  cdSalidaHora?: string;
   estadoFotoUrls?: string[];
+  codigoVerificacion?: string;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -36,7 +45,7 @@ async function writeToSheet(row: (string | number)[]) {
   const gs   = google.sheets({ version: 'v4', auth });
   await gs.spreadsheets.values.append({
     spreadsheetId:    SPREADSHEET_ID,
-    range:            'RECEPCIÓN TIENDA!A1',
+    range:            'ENTREGA/TIENDA!A1',
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody:      { values: [row] },
@@ -63,39 +72,44 @@ export async function POST(request: NextRequest) {
       .from('signatures')
       .getPublicUrl(filename);
 
-    // Insert record into recepcion table
+    // Insert record
     const { error: insertError } = await sb.from('recepcion').insert({
-      cod:               body.cod,
-      tienda:            body.tienda,
-      direccion:         body.direccion,
-      pallets_sent:      body.palletsSent,
-      bultos_sent:       body.bultosSent,
-      pallets_recibidos: body.palletsRecibidos,
-      bultos_recibidos:  body.bultosRecibidos,
-      receptor:          body.receptor,
-      rut:               body.rut,
-      firma_url:         publicUrl,
-      observaciones:     body.observaciones ?? '',
-      sello_estado:      body.selloEstado ?? '',
-      sello_foto_url:    body.selloFotoUrl ?? '',
-      estado_fotos:      body.estadoFotoUrls ?? [],
+      cod:                  body.cod,
+      tienda:               body.tienda,
+      direccion:            body.direccion,
+      pallets_sent:         body.palletsSent,
+      bultos_sent:          body.bultosSent,
+      pallets_recibidos:    body.palletsRecibidos,
+      bultos_recibidos:     body.bultosRecibidos,
+      conductor:            body.conductor ?? '',
+      pionetas:             body.pionetas  ?? '',
+      receptor:             body.receptor,
+      rut:                  body.rut,
+      firma_url:            publicUrl,
+      observaciones:        body.observaciones        ?? '',
+      sello_estado:         body.selloEstado           ?? '',
+      sello_llegada_url:    body.selloLlegadaUrl       ?? '',
+      sello_llegada_hora:   body.selloLlegadaHora      ?? '',
+      sello_salida_url:     body.selloSalidaUrl        ?? '',
+      sello_salida_hora:    body.selloSalidaHora       ?? '',
+      cd_salida_url:        body.cdSalidaUrl           ?? '',
+      cd_salida_hora:       body.cdSalidaHora          ?? '',
+      estado_fotos:         body.estadoFotoUrls        ?? [],
+      codigo_verificacion:  body.codigoVerificacion    ?? '',
+      fuente:               'conductor',
     });
 
     if (insertError) throw new Error(insertError.message);
 
-    // Update seguimiento in dispatch tables
-    const nuevoEstado =
-      body.palletsRecibidos === body.palletsSent &&
-      body.bultosRecibidos  === body.bultosSent
-        ? 'Recibido'
-        : 'Diferencia';
+    // Conductor entrega → queda en 'Entregado' hasta que la tienda valide
+    const nuevoEstado = 'Entregado';
 
     await Promise.all([
       sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
       sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
     ]);
 
-    // Write to RECEPCIÓN TIENDA sheet in Base de Datos
+    // Write to ENTREGA/TIENDA sheet
     const now  = new Date();
     const dd   = String(now.getDate()).padStart(2, '0');
     const mm   = String(now.getMonth() + 1).padStart(2, '0');
@@ -104,21 +118,28 @@ export async function POST(request: NextRequest) {
     const min  = String(now.getMinutes()).padStart(2, '0');
 
     await writeToSheet([
-      `${dd}/${mm}/${yyyy} ${hh}:${min}`,           // Fecha/Hora
-      body.cod,                                      // Código
-      body.tienda,                                   // Tienda
-      body.direccion,                                // Dirección
-      body.palletsSent,                              // Pallets Enviados
-      body.bultosSent,                               // Bultos Enviados
-      body.palletsRecibidos,                         // Pallets Recibidos
-      body.bultosRecibidos,                          // Bultos Recibidos
-      body.receptor,                                 // Receptor
-      body.rut,                                      // RUT
-      publicUrl,                                     // Firma
-      body.selloEstado ?? '',                        // Estado Sello
-      body.selloFotoUrl ?? '',                       // Foto Sello
-      (body.estadoFotoUrls ?? []).length.toString(), // N° Fotos Estado
-      body.observaciones ?? '',                      // Observaciones
+      `${dd}/${mm}/${yyyy} ${hh}:${min}`,             // Fecha/Hora
+      body.cod,                                        // Código
+      body.tienda,                                     // Tienda
+      body.direccion,                                  // Dirección
+      body.conductor      ?? '',                       // Conductor
+      body.pionetas       ?? '',                       // Pionetas
+      body.palletsSent,                                // Pallets Enviados
+      body.bultosSent,                                 // Bultos Enviados
+      body.palletsRecibidos,                           // Pallets Recibidos
+      body.bultosRecibidos,                            // Bultos Recibidos
+      body.receptor,                                   // Receptor
+      body.rut,                                        // RUT
+      publicUrl,                                       // Firma
+      body.selloEstado        ?? '',                   // Estado Sello
+      body.selloLlegadaUrl    ?? '',                   // Foto Sello Llegada
+      body.selloLlegadaHora   ?? '',                   // Hora Sello Llegada
+      body.selloSalidaUrl     ?? '',                   // Foto Sello Salida
+      body.selloSalidaHora    ?? '',                   // Hora Sello Salida
+      body.cdSalidaUrl        ?? '',                   // Foto CD Salida
+      body.cdSalidaHora       ?? '',                   // Hora CD Salida
+      (body.estadoFotoUrls ?? []).length.toString(),   // N° Fotos Estado
+      body.observaciones      ?? '',                   // Observaciones
     ]);
 
     return NextResponse.json({ ok: true });

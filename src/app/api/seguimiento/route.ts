@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
-const VALID_ESTADOS = new Set(['Registrado', 'Pendiente', 'En camino', 'Recibido', 'Diferencia']);
+const VALID_ESTADOS = new Set(['Registrado', 'Pendiente', 'En camino', 'Entregado', 'Recibido', 'Diferencia']);
 
 export async function PATCH(request: NextRequest) {
   try {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ClipboardCheck, Search, Settings } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, Search, Settings, PackageCheck, CheckSquare } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -29,6 +29,18 @@ export default function ControlInternoPage() {
       border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.28)',
       onClick: () => router.push('/admin/tiendas'), adminOnly: true,
       Icon: Settings, iconColor: 'rgba(252,165,165,0.9)',
+    },
+    {
+      label: 'Recepción/Tienda', sub: 'Registro de entrega en tienda',
+      border: 'rgba(16,185,129,0.55)', bg: 'rgba(16,185,129,0.13)', shadow: 'rgba(16,185,129,0.20)',
+      onClick: () => router.push('/recepcion-tienda'), adminOnly: false,
+      Icon: PackageCheck, iconColor: 'rgba(52,211,153,0.9)',
+    },
+    {
+      label: 'Validación Tienda', sub: 'Confirmar entregas recibidas',
+      border: 'rgba(99,102,241,0.55)', bg: 'rgba(99,102,241,0.13)', shadow: 'rgba(99,102,241,0.20)',
+      onClick: () => router.push('/validacion-tienda'), adminOnly: false,
+      Icon: CheckSquare, iconColor: 'rgba(129,140,248,0.9)',
     },
   ].filter(t => !t.adminOnly || isAdmin);
 

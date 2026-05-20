@@ -16,9 +16,9 @@ const ROLE_HOME: Record<string, string> = {
 const ROLE_ALLOWED: Record<string, string[]> = {
   auditor:               ['/auditoria', '/historial', '/perfil'],
   'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
-  despachador:           ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/registros', '/control-interno', '/recepcion', '/historial', '/perfil'],
-  supervisor:            ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/registros', '/control-interno', '/recepcion', '/historial', '/perfil'],
-  'recepcion-tienda':    ['/tiendas', '/recepcion', '/perfil'],
+  despachador:           ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/perfil'],
+  supervisor:            ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/perfil'],
+  'recepcion-tienda':    ['/tiendas', '/recepcion-tienda', '/control-interno', '/validacion-tienda', '/perfil'],
   'supervisor-picking':  ['/picking', '/perfil'],
   admin:                 ['*'],
   'asistente-despacho':  ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/perfil'],
