@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
@@ -455,8 +454,28 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
     </div>
   );
 }
+// ─── 1D Barcode (Code128) ─────────────────────────────────────────────────────
 
-
+function Barcode1D({ value, height = 65 }: { value: string; height?: number }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    if (!svgRef.current || !value) return;
+    import('jsbarcode').then(({ default: JsBarcode }) => {
+      if (!svgRef.current) return;
+      try {
+        JsBarcode(svgRef.current, value, {
+          format: 'CODE128', width: 2, height,
+          displayValue: false, margin: 8,
+          background: '#ffffff', lineColor: '#000000',
+        });
+      } catch {
+        const safe = value.replace(/[^\x20-\x7E]/g, '');
+        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2, height, displayValue: false, margin: 8 }); } catch { /* ignore */ }
+      }
+    });
+  }, [value, height]);
+  return <svg ref={svgRef} style={{ width: '100%', display: 'block' }} />;
+}
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
@@ -520,17 +539,12 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
           </div>
         </div>
 
-        {/* QR Code — reemplaza Code128: más robusto, funciona con cualquier scanner Android */}
-        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <QRCodeSVG
-            value={value}
-            size={100}
-            level="M"
-            bgColor="#ffffff"
-            fgColor="#000000"
-            style={{ display: 'block' }}
-          />
-          <div style={{ fontSize: 8, fontFamily: 'monospace', color: '#bbb', textAlign: 'center', maxWidth: 200, wordBreak: 'break-all', lineHeight: 1.3 }}>
+        {/* Código de barras — 85% ancho para barras más gruesas al imprimir, altura 65px */}
+        <div style={{ marginTop: 6 }}>
+          <div style={{ width: '85%', margin: '0 auto' }}>
+            <Barcode1D value={value} height={65} />
+          </div>
+          <div style={{ textAlign: 'center', fontSize: 8, fontFamily: 'monospace', color: '#bbb', marginTop: 1, wordBreak: 'break-all', lineHeight: 1.2 }}>
             {value}
           </div>
         </div>
@@ -715,7 +729,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
               {Array.from({ length: pallets }, (_, i) => (
                 <BarcodeCard
                   key={i}
-                  value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
+                  value={`${group.storeCod};${barcodePickerName};${refs};P${palletOffset + i + 1};${cats}`}
                   palletNum={palletOffset + i + 1}
                   total={totalStorePallets}
                   storeCod={group.storeCod}
@@ -1177,7 +1191,7 @@ export function PickingScreen() {
           const label = pickerDisplayNames[group.stateKey] || group.key;
           for (let i = 0; i < groupPallets; i++) {
             labels.push({
-              value: `${group.storeCod}|${sanitizeForBarcode(label)}|${refs}|P${offset + i + 1}|${cats}`,
+              value: `${group.storeCod};${sanitizeForBarcode(label)};${refs};P${offset + i + 1};${cats}`,
               palletNum: offset + i + 1,
               total: totalStorePallets,
               storeCod: group.storeCod,

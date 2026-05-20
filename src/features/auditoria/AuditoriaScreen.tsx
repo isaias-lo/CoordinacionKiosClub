@@ -427,9 +427,11 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         const cur = el.value.trim();
-        // QR scanner envía el string completo (COD|picker|refs|P#|cats)
-        // Validar que tiene al menos 2 separadores '|' antes de parsear
-        if (cur && (cur.match(/\|/g) ?? []).length >= 2) tryParse(cur);
+        // Formato: COD;picker;refs;P#;cats  (o '|' legacy)
+        // Procesar si hay al menos 2 separadores del mismo tipo
+        const hasSemi = (cur.match(/;/g) ?? []).length >= 2;
+        const hasPipe = (cur.match(/\|/g) ?? []).length >= 2;
+        if (cur && (hasSemi || hasPipe)) tryParse(cur);
       }, 100);
     };
 
@@ -1790,7 +1792,9 @@ export function AuditoriaScreen() {
 
   // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
   const handleBarcodeScan = (raw: string): boolean => {
-    const parts = raw.split('|');
+    // Separador ';' (sin modificador de teclado). Fallback legacy con '|' para etiquetas antiguas.
+    const sep = raw.includes(';') ? ';' : '|';
+    const parts = raw.split(sep);
     if (parts.length < 3) return false;
     const [storeCod, pickerName, refs, , cats] = parts;
     const opCodes = (refs ?? '').split('+').filter(Boolean);
