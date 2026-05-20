@@ -23,7 +23,7 @@ interface StoreLabel {
 
 interface LabelItem {
   orden: string;
-  tipo: 'Pallet' | 'Bulto';
+  tipo: 'Pallet' | 'Bulto' | 'Contenedor';
   itemNum: number;
   totalItems: number;
   peso: number;
@@ -62,10 +62,12 @@ function saveGuides(g: Record<string, GuideEntry>) {
 }
 
 function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
-  const pallets  = store.items.filter(i => i.tipo === 'Pallet').length;
-  const bultos   = store.items.filter(i => i.tipo === 'Bulto').length;
+  const pallets     = store.items.filter(i => i.tipo === 'Pallet').length;
+  const bultos      = store.items.filter(i => i.tipo === 'Bulto').length;
+  const contenedores = store.items.filter(i => i.tipo === 'Contenedor').length;
   const allGuias = [...new Set(store.items.flatMap(i => i.guias))];
   const p = new URLSearchParams({ cod: store.cod, p: String(pallets), b: String(bultos) });
+  if (contenedores > 0) p.set('c', String(contenedores));
   if (allGuias.length > 0) p.set('g', allGuias.join(','));
   if (driveFileId) p.set('drv', driveFileId);
   const base = typeof window !== 'undefined' ? window.location.origin : 'https://toolskios.vercel.app';
@@ -74,8 +76,9 @@ function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
 
 /* ── Label (100×150mm para Zebra) ── */
 function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: LabelItem; qrUrl: string; hasGuide: boolean }) {
-  const isPallet = item.tipo === 'Pallet';
-  const badgeBg  = isPallet ? '#1B2A6B' : '#D97706';
+  const isPallet     = item.tipo === 'Pallet';
+  const isContenedor = item.tipo === 'Contenedor';
+  const badgeBg      = isPallet ? '#1B2A6B' : isContenedor ? '#6B21A8' : '#D97706';
 
   return (
     <div
@@ -173,8 +176,9 @@ function StoreCard({
   checked: boolean;
   onCheck: (v: boolean) => void;
 }) {
-  const pallets   = store.items.filter(i => i.tipo === 'Pallet').length;
-  const bultos    = store.items.filter(i => i.tipo === 'Bulto').length;
+  const pallets      = store.items.filter(i => i.tipo === 'Pallet').length;
+  const bultos       = store.items.filter(i => i.tipo === 'Bulto').length;
+  const contenedores = store.items.filter(i => i.tipo === 'Contenedor').length;
   const hasGuides = store.items.some(i => i.guias.length > 0);
   return (
     <div
@@ -216,6 +220,12 @@ function StoreCard({
         {bultos > 0 && (
           <span className="font-barlow-condensed text-[14px] font-bold text-warn bg-[rgba(217,119,6,0.10)] px-2.5 py-1 rounded-lg">
             {bultos}B
+          </span>
+        )}
+        {contenedores > 0 && (
+          <span className="font-barlow-condensed text-[14px] font-bold px-2.5 py-1 rounded-lg"
+            style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.10)' }}>
+            {contenedores}C
           </span>
         )}
       </div>
@@ -274,19 +284,22 @@ export function EstadoPage() {
       if (!items.length) return;
       const t = TIENDAS[name];
       if (!t) return;
-      const pallets  = items.filter(i => i.pkg === 'pallet');
-      const bultos   = items.filter(i => i.pkg === 'box');
-      const allItems = [...pallets, ...bultos];
-      const guide    = guideMap[t.cod];
-      const guideNums = guide?.guias || [];
-      const perItem  = allItems.length > 0 && (guide?.totalSum || 0) > 0 ? Math.round(guide!.totalSum / allItems.length) : 0;
+      const pallets     = items.filter(i => i.pkg === 'pallet');
+      const bultos      = items.filter(i => i.pkg === 'box');
+      const contenedores = items.filter(i => i.pkg === 'contenedor');
+      const allItems    = [...pallets, ...bultos, ...contenedores];
+      const guide       = guideMap[t.cod];
+      const guideNums   = guide?.guias || [];
+      const perItem     = allItems.length > 0 && (guide?.totalSum || 0) > 0 ? Math.round(guide!.totalSum / allItems.length) : 0;
       result.push({
         source: 'regiones', cod: t.cod, name: t.name, address: `${t.calle || ''} ${t.numero || ''}`.trim(), ventana: '',
         items: allItems.map((it, idx) => {
-          const isPallet  = it.pkg === 'pallet';
-          const typeItems = isPallet ? pallets : bultos;
-          const typeIdx   = typeItems.indexOf(it);
-          return { orden: it.orden, tipo: isPallet ? 'Pallet' : 'Bulto', itemNum: typeIdx + 1, totalItems: typeItems.length, peso: it.peso,
+          const isPallet     = it.pkg === 'pallet';
+          const isContenedor = it.pkg === 'contenedor';
+          const typeItems    = isPallet ? pallets : isContenedor ? contenedores : bultos;
+          const typeIdx      = typeItems.indexOf(it);
+          const tipo: 'Pallet' | 'Bulto' | 'Contenedor' = isPallet ? 'Pallet' : isContenedor ? 'Contenedor' : 'Bulto';
+          return { orden: it.orden, tipo, itemNum: typeIdx + 1, totalItems: typeItems.length, peso: it.peso,
             guias: it.guia ? [it.guia] : (guideNums.length > 0 ? (idx < guideNums.length ? [guideNums[idx]] : guideNums) : []),
             totalValue: it.valor || perItem };
         }),

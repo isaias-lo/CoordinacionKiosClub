@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type CountMap = Record<string, { p: number; b: number }>;
+export type CountMap = Record<string, { p: number; b: number; c: number }>;
 
 export interface SesionRow {
   fecha: string;
@@ -8,6 +8,7 @@ export interface SesionRow {
   tienda_cod: string;
   pallets: number;
   bultos: number;
+  contenedores: number;
 }
 
 function todayISO(): string {
@@ -27,10 +28,11 @@ export async function pushCounts(fuente: 'regiones' | 'santiago', counts: CountM
   const rows = entries.map(([cod, vals]) => ({
     fecha,
     fuente,
-    tienda_cod: cod,
-    pallets:    vals.p,
-    bultos:     vals.b,
-    updated_at: new Date().toISOString(),
+    tienda_cod:   cod,
+    pallets:      vals.p,
+    bultos:       vals.b,
+    contenedores: vals.c,
+    updated_at:   new Date().toISOString(),
   }));
 
   await supabase.from('despacho_sesion').upsert(rows, {
@@ -42,7 +44,7 @@ export async function pushCounts(fuente: 'regiones' | 'santiago', counts: CountM
 export async function fetchCounts(fecha: string): Promise<SesionRow[]> {
   const { data } = await supabase
     .from('despacho_sesion')
-    .select('fecha,fuente,tienda_cod,pallets,bultos')
+    .select('fecha,fuente,tienda_cod,pallets,bultos,contenedores')
     .eq('fecha', fecha);
   return (data ?? []) as SesionRow[];
 }

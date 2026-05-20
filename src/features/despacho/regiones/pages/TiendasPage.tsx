@@ -210,14 +210,15 @@ export function TiendasPage() {
     if (typeof window === 'undefined') return;
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const counts: Record<string, { p: number; b: number }> = {};
+    const counts: Record<string, { p: number; b: number; c: number }> = {};
     Object.entries(dispatchData).forEach(([name, items]) => {
       if (!items.length) return;
       const tienda = TIENDAS[name];
       if (!tienda) return;
       const p = items.filter(i => i.pkg === 'pallet').length;
       const b = items.filter(i => i.pkg === 'box').length;
-      if (p > 0 || b > 0) counts[tienda.cod] = { p, b };
+      const c = items.filter(i => i.pkg === 'contenedor').length;
+      if (p > 0 || b > 0 || c > 0) counts[tienda.cod] = { p, b, c };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
     pushCounts('regiones', counts).catch(() => {});

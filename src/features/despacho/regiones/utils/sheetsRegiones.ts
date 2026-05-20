@@ -45,7 +45,7 @@ function buildRows(
         fecha,                                          // FECHA
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
-        item.pkg === 'pallet' ? 'Pallet' : 'Bulto',    // TIPO
+        item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : 'Bulto',  // TIPO
         regimen,                                        // REGIMEN
         transporte,                                     // TRANSPORTE
         CARGA_LABEL[item.tipo] ?? item.tipo,            // CARGA

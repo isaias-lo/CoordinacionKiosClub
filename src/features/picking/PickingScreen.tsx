@@ -39,6 +39,9 @@ const SECTION_FILTER_KEY  = 'picking_section_filter';
 const COLS_PER_ROW_KEY    = 'picking_cols_per_row';
 const STATS_CACHE_KEY    = 'picking_stats_cache_v1';
 const PALLETS_KEY        = 'picking_pallets_v1';
+const PICKER_TYPES_KEY   = 'picking_types_v1';
+
+type PickerType = 'P' | 'C';
 const AUTO_REFRESH_MS    = 3 * 60 * 1000; // 3 min
 
 const STATS_DATE_FROM = '2026-05-01';
@@ -588,7 +591,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted, colsPerRow, onPrintSelected }: {
+function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted, colsPerRow, onPrintSelected, pickerType, onTypeChange }: {
   group: PickerGroup; displayName: string; pallets: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
@@ -598,6 +601,8 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   isPrinted: boolean;
   colsPerRow: number;
   onPrintSelected: (palletNums: Set<number>) => void;
+  pickerType: PickerType;
+  onTypeChange: (t: PickerType) => void;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -720,9 +725,34 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
             )}
           </div>
 
-          {/* Pallets */}
+          {/* Tipo: Pallet (P) o Contenedor (C) */}
           <div>
-            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">Cantidad de pallets</label>
+            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">Tipo de unidad</label>
+            <div className="flex gap-2">
+              {([
+                { key: 'P' as PickerType, label: 'Pallet (P)',      desc: '120×100 cm',   color: '#1E3A8A' },
+                { key: 'C' as PickerType, label: 'Contenedor (C)', desc: '110×80×150 cm', color: '#6B21A8' },
+              ]).map(({ key, label, desc, color }) => (
+                <button key={key} onClick={() => onTypeChange(key)}
+                  className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-xl border-2 cursor-pointer transition-all"
+                  style={{
+                    borderColor: pickerType === key ? color : 'rgba(26,37,80,0.12)',
+                    background: pickerType === key ? `${color}18` : 'transparent',
+                    color: pickerType === key ? color : '#6B7280',
+                  }}>
+                  <span className="text-[16px] font-black">{key}</span>
+                  <span className="text-[11px] font-semibold">{label.split(' ')[0]}</span>
+                  <span className="text-[10px] opacity-70">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cantidad */}
+          <div>
+            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">
+              Cantidad de {pickerType === 'C' ? 'contenedores' : 'pallets'}
+            </label>
             <div className="flex items-center gap-3">
               <button onClick={() => onPalletsChange(Math.max(0, pallets - 1))}
                 className="w-12 h-12 rounded-full border border-border font-bold text-[22px] text-text-2 cursor-pointer bg-bg hover:bg-border flex items-center justify-center transition-colors">−</button>
@@ -832,7 +862,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                         transition: 'outline 0.15s',
                       }}>
                       <BarcodeCard
-                        value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
+                        value={`${group.storeCod}|${barcodePickerName}|${refs}|${pickerType}${palletOffset + i + 1}|${cats}`}
                         palletNum={palletOffset + i + 1}
                         total={totalStorePallets}
                         storeCod={group.storeCod}
@@ -1083,6 +1113,12 @@ export function PickingScreen() {
     return Number(localStorage.getItem(COLS_PER_ROW_KEY) ?? '3');
   });
 
+  const [pickerTypes, setPickerTypes] = useState<Record<string, PickerType>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem(PICKER_TYPES_KEY) ?? '{}') as Record<string, PickerType>; }
+    catch { return {}; }
+  });
+
   const [pickerDisplayNames, setPickerDisplayNames] = useState<Record<string, string>>(() => {
     const fromSession = session.pickerDisplayNames;
     if (fromSession && Object.keys(fromSession).length > 0) return fromSession;
@@ -1299,11 +1335,12 @@ export function PickingScreen() {
           stateKey:    group.stateKey,
           pickerLabel: pickerDisplayNames[group.stateKey] || group.key,
           pallets,
+          tipo:        pickerTypes[group.stateKey] ?? 'P',
           date,
         }),
       });
     }
-  }, [pickerPallets, pickerDisplayNames]);
+  }, [pickerPallets, pickerDisplayNames, pickerTypes]);
 
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);
@@ -1359,9 +1396,10 @@ export function PickingScreen() {
           const refs  = group.operations.map(o => o.name).join('+');
           const cats  = allCategories.join(',');
           const label = pickerDisplayNames[group.stateKey] || group.key;
+          const tipo = pickerTypes[group.stateKey] ?? 'P';
           for (let i = 0; i < groupPallets; i++) {
             labels.push({
-              value: `${group.storeCod}|${sanitizeForBarcode(label)}|${refs}|P${offset + i + 1}|${cats}`,
+              value: `${group.storeCod}|${sanitizeForBarcode(label)}|${refs}|${tipo}${offset + i + 1}|${cats}`,
               palletNum: offset + i + 1,
               total: totalStorePallets,
               storeCod: group.storeCod,
@@ -1377,7 +1415,7 @@ export function PickingScreen() {
       }
     }
     return labels;
-  }, [selectedCods, allGroupedByStore, pickerPalletOrder, pickerPallets, pickerDisplayNames]);
+  }, [selectedCods, allGroupedByStore, pickerPalletOrder, pickerPallets, pickerDisplayNames, pickerTypes]);
 
   return (
     <>
@@ -1688,6 +1726,12 @@ export function PickingScreen() {
                               isPrinted={printedKeys.has(group.stateKey)}
                               colsPerRow={colsPerRow}
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
+                              pickerType={pickerTypes[group.stateKey] ?? 'P'}
+                              onTypeChange={t => {
+                                const next = { ...pickerTypes, [group.stateKey]: t };
+                                setPickerTypes(next);
+                                localStorage.setItem(PICKER_TYPES_KEY, JSON.stringify(next));
+                              }}
                             />
                           );
                         });

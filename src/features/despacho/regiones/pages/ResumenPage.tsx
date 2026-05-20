@@ -17,12 +17,16 @@ const TAG: Record<string, string> = {
   box:           'bg-[rgba(217,119,6,0.15)] text-warn',
 };
 const LABEL: Record<TipoContenido | TipoPaquete, string> = {
-  comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto',
+  comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor',
 };
 
 function renumber(list: DispatchItem[]): DispatchItem[] {
-  let pc = 1, bc = 1;
-  return list.map(it => ({ ...it, orden: it.pkg === 'pallet' ? `pallet${pc++}` : `bulto${bc++}` }));
+  let pc = 1, bc = 1, cc = 1;
+  return list.map(it =>
+    it.pkg === 'pallet'     ? { ...it, orden: `pallet${pc++}` }
+    : it.pkg === 'contenedor' ? { ...it, orden: `contenedor${cc++}` }
+    : { ...it, orden: `bulto${bc++}` }
+  );
 }
 
 const INPUT = 'w-full border border-border rounded-btn px-2 py-1.5 text-[13px] font-mono text-navy bg-white';

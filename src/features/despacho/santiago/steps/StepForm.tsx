@@ -20,13 +20,17 @@ function loadExtra():   string[] { try { return JSON.parse(localStorage.getItem(
 function loadRemoved(): string[] { try { return JSON.parse(localStorage.getItem(REMOVED_KEY) || '[]'); } catch { return []; } }
 
 /* ── Constants ── */
-const CONTENIDO_PALLET: ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
-const CONTENIDO_BULTO:  ContenidoSantiago[] = ['Hogar', 'Chocolate'];
+const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
+const CONTENIDO_BULTO:      ContenidoSantiago[] = ['Hogar', 'Chocolate'];
+const CONTENIDO_CONTENEDOR: ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
 const ESTADO_DEFAULT: EstadoItem = 'Listo para despachar';
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar', 'Despachado', 'Carga recibida', 'Carga No recibida por tienda',
 ];
-const CHOCOLATE_DIMS = { alto: 38, largo: 78, ancho: 52, peso: 5 };
+const CHOCOLATE_DIMS   = { alto: 38, largo: 78, ancho: 52, peso: 5 };
+const CONTENEDOR_LARGO = 110;
+const CONTENEDOR_ANCHO = 80;
+const CONTENEDOR_ALTO  = 150;
 
 /* ── FormRow ── */
 interface FormRow {
@@ -248,16 +252,17 @@ export function StepForm() {
   }, []);
 
   /* Despacho ↔ Santiago bidirectional sync */
-  const [despachoCounts, setDespachoCounts] = useState<Record<string, { p: number; b: number }>>({});
+  const [despachoCounts, setDespachoCounts] = useState<Record<string, { p: number; b: number; c: number }>>({});
 
   // Write santiagoCounts whenever items change → Despacho reads this
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const counts: Record<string, { p: number; b: number }> = {};
+    const counts: Record<string, { p: number; b: number; c: number }> = {};
     Object.entries(items).forEach(([cod, list]) => {
       const p = list.filter(i => i.tipo === 'Pallet').length;
       const b = list.filter(i => i.tipo === 'Bulto').length;
-      if (p > 0 || b > 0) counts[cod] = { p, b };
+      const c = list.filter(i => i.tipo === 'Contenedor').length;
+      if (p > 0 || b > 0 || c > 0) counts[cod] = { p, b, c };
     });
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -274,13 +279,15 @@ export function StepForm() {
       try {
         const raw = localStorage.getItem('despachoCounts');
         if (!raw) { setDespachoCounts({}); return; }
-        const payload: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(raw);
+        const payload: { date?: string; counts?: Record<string, { p: number; b: number; c?: number }> } = JSON.parse(raw);
         // New format: { date, counts } — discard if from a different day
         if (payload.counts !== undefined) {
-          setDespachoCounts(payload.date === todayKey ? payload.counts : {});
+          const c = payload.date === todayKey ? payload.counts : {};
+          setDespachoCounts(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, { p: v.p, b: v.b, c: v.c ?? 0 }])));
         } else {
           // Legacy format: plain counts object (no date stamp)
-          setDespachoCounts(payload as Record<string, { p: number; b: number }>);
+          const raw2 = payload as Record<string, { p: number; b: number; c?: number }>;
+          setDespachoCounts(Object.fromEntries(Object.entries(raw2).map(([k, v]) => [k, { p: v.p, b: v.b, c: v.c ?? 0 }])));
         }
       } catch (_) {}
     };
@@ -321,13 +328,14 @@ export function StepForm() {
   const tiendaPallets      = tiendaItems.filter(i => i.tipo === 'Pallet').length;
   const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;
 
-  const isChocolateBulto = tipo === 'Bulto' && contenido === 'Chocolate';
-  const finalLargo = tipo === 'Pallet' ? 120 : isChocolateBulto ? CHOCOLATE_DIMS.largo : (parseFloat(largo) || 0);
-  const finalAncho = tipo === 'Pallet' ? 100 : isChocolateBulto ? CHOCOLATE_DIMS.ancho : (parseFloat(ancho) || 0);
-  const finalAlto  = isChocolateBulto ? CHOCOLATE_DIMS.alto : (parseFloat(alto) || 0);
+  const isChocolateBulto  = tipo === 'Bulto' && contenido === 'Chocolate';
+  const isContenedor      = tipo === 'Contenedor';
+  const finalLargo = tipo === 'Pallet' ? 120 : isContenedor ? CONTENEDOR_LARGO : isChocolateBulto ? CHOCOLATE_DIMS.largo : (parseFloat(largo) || 0);
+  const finalAncho = tipo === 'Pallet' ? 100 : isContenedor ? CONTENEDOR_ANCHO : isChocolateBulto ? CHOCOLATE_DIMS.ancho : (parseFloat(ancho) || 0);
+  const finalAlto  = isContenedor ? CONTENEDOR_ALTO : isChocolateBulto ? CHOCOLATE_DIMS.alto : (parseFloat(alto) || 0);
   const pesoV      = (finalAlto * finalLargo * finalAncho) / 6000;
   const canAdd     = !!peso && parseFloat(peso) > 0 &&
-    (isChocolateBulto || (
+    (isChocolateBulto || isContenedor || (
       !!alto && parseFloat(alto) > 0 &&
       (tipo === 'Pallet' || (!!largo && parseFloat(largo) > 0 && !!ancho && parseFloat(ancho) > 0))
     ));
@@ -337,7 +345,8 @@ export function StepForm() {
     activeTiendas.map(([cod, it]) => {
       const p = it.filter(i => i.tipo === 'Pallet').length;
       const b = it.filter(i => i.tipo === 'Bulto').length;
-      return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : ''].filter(Boolean).join('+')}`;
+      const c = it.filter(i => i.tipo === 'Contenedor').length;
+      return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : '', c > 0 ? `${c}C` : ''].filter(Boolean).join('+')}`;
     }).join(', ');
 
   const registrar = () => {
@@ -454,19 +463,21 @@ export function StepForm() {
     }
     const pc = existing.filter(i => i.tipo === 'Pallet').length;
     const bc = existing.filter(i => i.tipo === 'Bulto').length;
+    const cc = existing.filter(i => i.tipo === 'Contenedor').length;
+    const orden = tipo === 'Pallet' ? `P${pc + 1}` : tipo === 'Contenedor' ? `C${cc + 1}` : `${bc + 1}B`;
     dispatch({
       type: 'ADD_ITEM',
       item: {
         id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo, contenido,
         peso: parseFloat(peso), alto: pA, largo: pL, ancho: pW,
         pesoVolumetrico: Math.round(pesoV * 100) / 100, regimen,
-        orden: tipo === 'Pallet' ? `P${pc + 1}` : `${bc + 1}B`,
+        orden,
         estado: ESTADO_DEFAULT,
       },
     });
     setPeso(''); setAlto('');
     if (tipo === 'Bulto' && !isChocolateBulto) { setLargo(''); setAncho(''); }
-    showToast(`✓ ${tipo === 'Pallet' ? `P${pc+1}` : `${bc+1}B`} agregado`, '#16A34A');
+    showToast(`✓ ${orden} agregado`, '#16A34A');
   };
 
   const startEdit = (idx: number) => {
@@ -494,8 +505,11 @@ export function StepForm() {
     const lower  = Math.min(srcIdx, tgtIdx);
     const newList = allItems.filter((_, i) => i !== higher && i !== lower);
     newList.splice(lower, 0, merged);
-    let pc = 0, bc = 0;
-    const renumbered = newList.map(i => ({ ...i, orden: i.tipo === 'Pallet' ? `P${++pc}` : `${++bc}B` }));
+    let pc = 0, bc = 0, cc = 0;
+    const renumbered = newList.map(i => ({
+      ...i,
+      orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : `${++bc}B`,
+    }));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
     setCombineModal(null);
   };
@@ -545,20 +559,22 @@ export function StepForm() {
     if (!currentTienda || !regimen) return;
     const p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
     const isChoc = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
-    const a  = isChoc ? CHOCOLATE_DIMS.alto  : (parseFloat(row.alto)  || 0);
-    const fL = row.tipo === 'Pallet' ? 120 : (isChoc ? CHOCOLATE_DIMS.largo : (parseFloat(row.largo) || 0));
-    const fA = row.tipo === 'Pallet' ? 100 : (isChoc ? CHOCOLATE_DIMS.ancho : (parseFloat(row.ancho) || 0));
-    if (!a) { showToast('Ingresa el alto', '#D97706'); return; }
+    const isCont = row.tipo === 'Contenedor';
+    const a  = isCont ? CONTENEDOR_ALTO  : isChoc ? CHOCOLATE_DIMS.alto  : (parseFloat(row.alto)  || 0);
+    const fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : (isChoc ? CHOCOLATE_DIMS.largo : (parseFloat(row.largo) || 0));
+    const fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : (isChoc ? CHOCOLATE_DIMS.ancho : (parseFloat(row.ancho) || 0));
+    if (!isCont && !a) { showToast('Ingresa el alto', '#D97706'); return; }
     if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
     const cod = currentTienda.cod;
     const existing = items[cod] || [];
     const pc = existing.filter(i => i.tipo === 'Pallet').length + 1;
     const bc = existing.filter(i => i.tipo === 'Bulto').length + 1;
+    const cc = existing.filter(i => i.tipo === 'Contenedor').length + 1;
     const savedItem: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
-      orden: row.tipo === 'Pallet' ? `P${pc}` : `${bc}B`,
+      orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : `${bc}B`,
       estado: ESTADO_DEFAULT,
     };
     dispatch({ type: 'ADD_ITEM', item: savedItem });
@@ -791,10 +807,11 @@ export function StepForm() {
             </div>
           ) : (
             activeTiendas.map(([cod, it]) => {
-              const t        = getTiendaSantiagoByCod(cod);
-              const pallets  = it.filter(i => i.tipo === 'Pallet').length;
-              const bultos   = it.filter(i => i.tipo === 'Bulto').length;
-              const isOpen   = resumenExpanded === cod;
+              const t           = getTiendaSantiagoByCod(cod);
+              const pallets     = it.filter(i => i.tipo === 'Pallet').length;
+              const bultos      = it.filter(i => i.tipo === 'Bulto').length;
+              const contenedores = it.filter(i => i.tipo === 'Contenedor').length;
+              const isOpen      = resumenExpanded === cod;
               const totalPeso = it.reduce((s, i) => s + i.peso, 0);
 
               return (
@@ -808,8 +825,9 @@ export function StepForm() {
                       <div className="text-[11px] text-text-3 truncate">{t?.comuna} · {t?.ventanaHoraria}</div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {pallets > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-2 py-0.5 rounded-full">{pallets}P</span>}
-                      {bultos  > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-2 py-0.5 rounded-full">{bultos}B</span>}
+                      {pallets     > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-2 py-0.5 rounded-full">{pallets}P</span>}
+                      {bultos      > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-2 py-0.5 rounded-full">{bultos}B</span>}
+                      {contenedores > 0 && <span className="font-barlow-condensed text-[13px] font-bold px-2 py-0.5 rounded-full border" style={{ color:'#6B21A8', background:'rgba(107,33,168,0.10)', borderColor:'rgba(107,33,168,0.20)' }}>{contenedores}C</span>}
                       <span className="text-text-3 text-[12px] ml-0.5">{isOpen ? '▲' : '▼'}</span>
                     </div>
                   </div>
@@ -1203,21 +1221,28 @@ export function StepForm() {
 
           {/* Tipo */}
           <div className="flex gap-2">
-            {(['Pallet', 'Bulto'] as TipoCargamento[]).map(t => (
+            {(['Pallet', 'Bulto', 'Contenedor'] as TipoCargamento[]).map(t => (
               <button key={t} onClick={() => setTipo(t)}
                 className={`flex-1 py-3 lg:py-2.5 rounded-btn font-barlow-condensed text-[17px] lg:text-[15px] font-bold cursor-pointer border-2 transition-all ${
                   tipo === t
-                    ? t === 'Pallet' ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'bg-[rgba(217,119,6,0.10)] border-warn text-warn'
+                    ? t === 'Pallet'     ? 'bg-[rgba(37,99,235,0.10)] border-info text-info'
+                    : t === 'Contenedor' ? 'bg-[rgba(107,33,168,0.10)] border-[#6B21A8] text-[#6B21A8]'
+                    :                     'bg-[rgba(217,119,6,0.10)] border-warn text-warn'
                     : 'bg-white border-border text-text-2'
                 }`}>
-                {t}
+                {t === 'Contenedor' ? 'Cont.' : t}
               </button>
             ))}
           </div>
+          {tipo === 'Contenedor' && (
+            <div className="text-[11px] text-[#6B21A8] font-semibold px-1">
+              Dims. fijas: {CONTENEDOR_LARGO}×{CONTENEDOR_ANCHO}×{CONTENEDOR_ALTO} cm (largo×ancho×alto)
+            </div>
+          )}
 
           {/* Contenido */}
           <div className="flex gap-2">
-            {(tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
+            {(tipo === 'Pallet' ? CONTENIDO_PALLET : tipo === 'Contenedor' ? CONTENIDO_CONTENEDOR : CONTENIDO_BULTO).map(c => (
               <button key={c} onClick={() => setContenido(c)}
                 className={`flex-1 py-2.5 lg:py-2 rounded-btn font-barlow text-[14px] lg:text-[13px] font-semibold cursor-pointer border-2 transition-all ${
                   contenido === c ? 'bg-[rgba(37,99,235,0.12)] border-info text-info' : 'bg-white border-border text-text-2'

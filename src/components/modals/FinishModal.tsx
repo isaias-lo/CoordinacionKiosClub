@@ -31,11 +31,16 @@ export function FinishModal({ open, onClose }: Props) {
     return null;
   }
 
-  let tp = 0, tb = 0;
+  let tp = 0, tb = 0, tc = 0;
   const tiendaStats = withItems.map(([name, items]) => {
-    let p = 0, b = 0, pesoT = 0, monto = 0;
-    items.forEach(i => { i.pkg === 'pallet' ? (p++, tp++) : (b++, tb++); pesoT += i.peso; monto += i.valor || 0; });
-    return { name, pallets: p, bultos: b, pesoTotal: pesoT.toLocaleString('es-CL'), monto };
+    let p = 0, b = 0, c = 0, pesoT = 0, monto = 0;
+    items.forEach(i => {
+      if (i.pkg === 'pallet') { p++; tp++; }
+      else if (i.pkg === 'contenedor') { c++; tc++; }
+      else { b++; tb++; }
+      pesoT += i.peso; monto += i.valor || 0;
+    });
+    return { name, pallets: p, bultos: b, contenedores: c, pesoTotal: pesoT.toLocaleString('es-CL'), monto };
   });
 
   const finish = async () => {
@@ -48,6 +53,7 @@ export function FinishModal({ open, onClose }: Props) {
       date: dispatchDate,
       totalPallets: tp,
       totalBultos: tb,
+      totalContenedores: tc,
       tiendas: tiendaStats,
       rows,
     };
@@ -55,7 +61,7 @@ export function FinishModal({ open, onClose }: Props) {
     if (user) {
       supabase.from('dispatch_history').insert({
         user_id: user.id, date: entry.date,
-        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos,
+        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos, total_contenedores: entry.totalContenedores,
         tiendas: entry.tiendas,
       }).then(({ error }) => { if (error) console.error('Dispatch save:', error.message); });
     }
@@ -88,12 +94,16 @@ export function FinishModal({ open, onClose }: Props) {
            style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.2)' }}>
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
         <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1 tracking-wide">Terminar despacho del día</h3>
-        <p className="text-sm text-text-2 mb-4">{dispatchDate} · {withItems.length} tiendas · {tp} pallets · {tb} bultos</p>
+        <p className="text-sm text-text-2 mb-4">
+          {dispatchDate} · {withItems.length} tiendas · {tp} pallets · {tb} bultos{tc > 0 ? ` · ${tc} contenedores` : ''}
+        </p>
 
-        {tiendaStats.map(({ name, pallets, bultos, monto }) => (
+        {tiendaStats.map(({ name, pallets, bultos, contenedores, monto }) => (
           <div key={name} className="flex justify-between py-1.5 border-b border-border text-[13px]">
             <span className="font-semibold text-text">{name}</span>
-            <span className="font-mono text-text-3">{pallets} pal · {bultos} bul{monto ? ` · $${monto.toLocaleString('es-CL')}` : ''}</span>
+            <span className="font-mono text-text-3">
+              {pallets > 0 ? `${pallets}P ` : ''}{bultos > 0 ? `${bultos}B ` : ''}{contenedores > 0 ? `${contenedores}C ` : ''}{monto ? `· $${monto.toLocaleString('es-CL')}` : ''}
+            </span>
           </div>
         ))}
 
