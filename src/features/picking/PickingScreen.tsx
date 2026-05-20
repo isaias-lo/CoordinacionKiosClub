@@ -819,13 +819,15 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                   </button>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colsPerRow}, minmax(0, 1fr))`, gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
                 {Array.from({ length: pallets }, (_, i) => {
                   const isSelected = selectedIndices.has(i);
+                  const itemWidth = `calc((100% - ${(colsPerRow - 1) * 8}px) / ${colsPerRow})`;
                   return (
                     <div key={i} onClick={() => toggleIndex(i)}
                       style={{
                         position: 'relative', cursor: 'pointer', borderRadius: 10,
+                        width: itemWidth, flexShrink: 0,
                         outline: isSelected ? '2.5px solid #2563EB' : '2.5px solid transparent',
                         transition: 'outline 0.15s',
                       }}>
