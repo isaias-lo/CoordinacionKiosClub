@@ -389,38 +389,81 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
 function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
   const [value, setValue]       = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [focused, setFocused]   = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // La pistola emite los caracteres del código muy rápido y luego un Enter automático
+  const refocus = () => setTimeout(() => inputRef.current?.focus(), 60);
+
   const tryParse = (raw: string) => {
-    const ok = onScan(raw.trim());
+    const clean = raw.trim();
+    if (!clean) return;
+    const ok = onScan(clean);
     setFeedback(ok
       ? { ok: true,  msg: '✓ Tienda, picker y contenido asignados' }
       : { ok: false, msg: '✗ Código no reconocido' }
     );
     setValue('');
     setTimeout(() => setFeedback(null), 3000);
+    // Re-enfocar tras escaneo para que el próximo código llegue aquí
+    refocus();
   };
+
+  // Fallback global: si la pistola dispara keystrokes fuera de cualquier input, enfocar aquí
+  useEffect(() => {
+    const handleGlobal = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // Carácter imprimible o Enter → redirigir al scanner input
+      if (e.key.length === 1 || e.key === 'Enter') inputRef.current?.focus();
+    };
+    document.addEventListener('keydown', handleGlobal);
+    return () => document.removeEventListener('keydown', handleGlobal);
+  }, []);
 
   return (
     <div className="mb-3 rounded-card overflow-hidden border-[1.5px]"
-      style={{ borderColor: 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)' }}>
+      style={{ borderColor: focused ? '#2563EB' : 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)', transition: 'border-color 0.15s' }}>
       <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
         <span style={{ fontSize: 15 }}>📷</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Pistola lectora — apunta al código del pallet
         </span>
+        {/* Botón de re-foco para handheld donde el teclado virtual interfiere */}
+        <button
+          type="button"
+          onPointerDown={e => { e.preventDefault(); refocus(); }}
+          style={{ marginLeft: 'auto', fontSize: 11, color: focused ? '#16A34A' : '#2563EB',
+            fontWeight: 700, background: focused ? 'rgba(22,163,74,0.10)' : 'rgba(37,99,235,0.08)',
+            border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 6 } as React.CSSProperties}>
+          {focused ? '● Activo' : '○ Activar'}
+        </button>
       </div>
       <div className="px-3 pb-2.5">
         <input
           ref={inputRef}
           type="text"
           value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) tryParse(value); }}
+          autoFocus
+          onChange={e => {
+            const v = e.target.value;
+            // Algunos scanners Android inyectan \n o \r como parte del valor
+            if (v.includes('\n') || v.includes('\r')) {
+              tryParse(v.replace(/[\n\r]/g, ''));
+            } else {
+              setValue(v);
+            }
+          }}
+          onKeyDown={e => {
+            if ((e.key === 'Enter' || e.key === 'Tab') && value.trim()) {
+              e.preventDefault();
+              tryParse(value);
+            }
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder="Listo para escanear…"
           className="w-full bg-white border-[1.5px] rounded-btn px-3 py-2.5 font-mono text-[14px] outline-none"
-          style={{ borderColor: feedback?.ok ? '#16A34A' : feedback ? '#D32F2F' : 'rgba(37,99,235,0.40)', boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
+          style={{ borderColor: feedback?.ok ? '#16A34A' : feedback ? '#D32F2F' : focused ? '#2563EB' : 'rgba(37,99,235,0.40)', boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -431,8 +474,8 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
             {feedback.msg}
           </div>
         ) : (
-          <div className="mt-1 text-[11px]" style={{ color: 'rgba(37,99,235,0.55)' }}>
-            Asigna tienda, picker y contenido automáticamente
+          <div className="mt-1 text-[11px]" style={{ color: focused ? '#2563EB' : 'rgba(37,99,235,0.55)' }}>
+            {focused ? 'Esperando código…' : 'Toca "Activar" o el campo para iniciar escaneo'}
           </div>
         )}
       </div>
