@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, LayoutDashboard, Trophy, History, Users, UserCheck, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -386,34 +386,74 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
 }
 
 /* ── Barcode Scanner para autocompletar operación (pistola lectora) ── */
+// Usa input NO controlado + eventos nativos para máxima compatibilidad con
+// Android Chrome + IME. En ese entorno, onKeyDown siempre devuelve key="Unidentified"
+// (keyCode 229) porque el IME intercepta las teclas antes de React. La solución:
+// – native 'input' event para detectar \n/\r inyectados por el scanner
+// – native 'keyup' (menos afectado por IME) para Enter
+// – timer de 100 ms como último recurso si el scanner no manda Enter
 function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
-  const [value, setValue]       = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [focused, setFocused]   = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [focused,  setFocused]  = useState(false);
+  const inputRef  = useRef<HTMLInputElement>(null);
+  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refocus = () => setTimeout(() => inputRef.current?.focus(), 60);
 
-  const tryParse = (raw: string) => {
-    const clean = raw.trim();
+  const tryParse = useCallback((raw: string) => {
+    const clean = raw.replace(/[\n\r]/g, '').trim();
     if (!clean) return;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     const ok = onScan(clean);
     setFeedback(ok
       ? { ok: true,  msg: '✓ Tienda, picker y contenido asignados' }
       : { ok: false, msg: '✗ Código no reconocido' }
     );
-    setValue('');
+    if (inputRef.current) inputRef.current.value = '';
     setTimeout(() => setFeedback(null), 3000);
-    // Re-enfocar tras escaneo para que el próximo código llegue aquí
     refocus();
-  };
+  }, [onScan]);
 
-  // Fallback global: si la pistola dispara keystrokes fuera de cualquier input, enfocar aquí
+  // Eventos nativos: evitan el filtro IME de Android Chrome
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const onInput = () => {
+      const v = el.value;
+      // Algunos scanners Android inyectan \n/\r dentro del propio valor
+      if (v.includes('\n') || v.includes('\r')) { tryParse(v); return; }
+      // Timer fallback: si el escáner no manda Enter, procesar tras 100 ms de silencio
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        const cur = el.value.trim();
+        // El código de pallet siempre contiene '|' como separador
+        if (cur && cur.includes('|')) tryParse(cur);
+      }, 100);
+    };
+
+    // keyup es menos bloqueado por IME que keydown; keyCode 13 = Enter
+    const onKeyUp = (e: KeyboardEvent) => {
+      if ((e.key === 'Enter' || e.keyCode === 13) && el.value.trim()) {
+        e.preventDefault();
+        tryParse(el.value);
+      }
+    };
+
+    el.addEventListener('input', onInput);
+    el.addEventListener('keyup', onKeyUp);
+    return () => {
+      el.removeEventListener('input', onInput);
+      el.removeEventListener('keyup', onKeyUp);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [tryParse]);
+
+  // Fallback global: si la pistola dispara fuera de cualquier input, enfocar aquí
   useEffect(() => {
     const handleGlobal = (e: KeyboardEvent) => {
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      // Carácter imprimible o Enter → redirigir al scanner input
       if (e.key.length === 1 || e.key === 'Enter') inputRef.current?.focus();
     };
     document.addEventListener('keydown', handleGlobal);
@@ -428,7 +468,6 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
         <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Pistola lectora — apunta al código del pallet
         </span>
-        {/* Botón de re-foco para handheld donde el teclado virtual interfiere */}
         <button
           type="button"
           onPointerDown={e => { e.preventDefault(); refocus(); }}
@@ -442,23 +481,8 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
         <input
           ref={inputRef}
           type="text"
-          value={value}
+          defaultValue=""
           autoFocus
-          onChange={e => {
-            const v = e.target.value;
-            // Algunos scanners Android inyectan \n o \r como parte del valor
-            if (v.includes('\n') || v.includes('\r')) {
-              tryParse(v.replace(/[\n\r]/g, ''));
-            } else {
-              setValue(v);
-            }
-          }}
-          onKeyDown={e => {
-            if ((e.key === 'Enter' || e.key === 'Tab') && value.trim()) {
-              e.preventDefault();
-              tryParse(value);
-            }
-          }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder="Listo para escanear…"
