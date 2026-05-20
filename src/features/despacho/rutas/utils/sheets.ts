@@ -146,22 +146,41 @@ export function parseTSheetAuth(values: string[][], tiendas: Record<string, Tien
 
 export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
   if (!values || values.length < 3) return;
-  
+
+  // Col layout: 0=Patente, 1=CapP, 2=CapB, 3=Tipo, 4=Portón, 5=Refrigerado,
+  //             6=Activo, 7=TLBD, 8=Chofer, 9=Empresa
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
-    if (!row || row.length < 3) continue;
-    
+    if (!row || row.length < 1) continue;
+
     const patUpper = row[0]?.trim().toUpperCase() || '';
     if (!patUpper) continue;
-    
+
     const existente = flota.find(v => v.p.toUpperCase() === patUpper);
     if (existente) {
       if (row[1]) existente.c = parseInt(row[1]) || existente.c;
       if (row[2]) existente.b = parseInt(row[2]) || existente.b;
       if (row[3]) existente.t = row[3];
+      if (row[4]) existente.porton = row[4].toUpperCase() === 'SI' ? true : row[4].toUpperCase() === 'NO' ? false : null;
+      if (row[5]) existente.refrigerado = row[5].toUpperCase() === 'SI';
       if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
       if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
       if (row[8]) existente.ch = row[8];
+      if (row[9]) existente.empresa = row[9];
+    } else {
+      // Vehículo en Sheets que no está en FLOTA_INICIAL → agregar
+      flota.push({
+        p:          patUpper,
+        c:          parseInt(row[1]) || 10,
+        b:          parseInt(row[2]) || 20,
+        t:          row[3] || 'Por confirmar',
+        porton:     row[4] ? (row[4].toUpperCase() === 'SI' ? true : row[4].toUpperCase() === 'NO' ? false : null) : null,
+        refrigerado: row[5] ? row[5].toUpperCase() === 'SI' : false,
+        on:         row[6] ? row[6].toUpperCase() === 'SI' : true,
+        tlbd:       row[7] ? row[7].toUpperCase() === 'SI' : false,
+        ch:         row[8] || '',
+        empresa:    row[9] || '',
+      });
     }
   }
 }

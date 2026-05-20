@@ -22,6 +22,7 @@ interface Props {
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
+  onEliminarVehiculo: (idx: number) => void;
 }
 
 /* ── Icon 3D container ─────────────────────────────────────────── */
@@ -53,7 +54,7 @@ function MenuItem({ children, onClick, disabled = false }: { children: React.Rea
   );
 }
 
-export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut, flota, conductores, onToggleFlota, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
+export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut, flota, conductores, onToggleFlota, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo }: Props) {
   const [menuOpen,  setMenuOpen]  = useState(false);
   const [flotaOpen, setFlotaOpen] = useState(false);
   const total = Object.keys(tiendas).length;
@@ -282,6 +283,7 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                 onConductorChange={onConductorChange}
                 onAgregarConductor={onAgregarConductor}
                 onAgregarVehiculo={onAgregarVehiculo}
+                onEliminarVehiculo={onEliminarVehiculo}
               />
             </div>
           </div>

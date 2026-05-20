@@ -10,6 +10,7 @@ interface Props {
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
+  onEliminarVehiculo: (idx: number) => void;
 }
 
 const NUEVO_KEY = '__nuevo__';
@@ -19,7 +20,7 @@ interface NuevoVehiculoState {
   porton: boolean | null; refrigerado: boolean; on: boolean; tlbd: boolean; empresa: string;
 }
 
-export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo }: Props) {
+export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [nuevoVehiculo, setNuevoVehiculo] = useState<NuevoVehiculoState>({
@@ -121,6 +122,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
               onToggleTlbd={onToggleTlbd}
               onConductorChange={onConductorChange}
               onAgregarConductor={onAgregarConductor}
+              onEliminar={onEliminarVehiculo}
             />
           ))}
         </div>
@@ -129,15 +131,17 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
   );
 }
 
-function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor }: {
+function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onEliminar }: {
   v: Vehiculo; idx: number; conductores: string[];
   onToggle: (i: number) => void;
   onToggleTlbd: (i: number) => void;
   onConductorChange: (i: number, n: string) => void;
   onAgregarConductor: (n: string) => void;
+  onEliminar: (i: number) => void;
 }) {
-  const [modoNuevo, setModoNuevo]     = useState(false);
-  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [modoNuevo, setModoNuevo]         = useState(false);
+  const [nuevoNombre, setNuevoNombre]     = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -226,6 +230,20 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
             </select>
             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-kmuted pointer-events-none">▼</span>
           </div>
+        )}
+        {confirmDelete ? (
+          <div className="mt-1.5 flex gap-1">
+            <span className="flex-1 text-[10px] text-kred font-semibold flex items-center">¿Eliminar {v.p}?</span>
+            <button onClick={() => onEliminar(idx)} className="h-[24px] px-2 rounded-[5px] bg-kred text-white text-[10px] font-bold">Sí</button>
+            <button onClick={() => setConfirmDelete(false)} className="h-[24px] px-2 rounded-[5px] border border-black/[0.09] text-kmuted text-[10px]">No</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="mt-1.5 w-full h-[22px] rounded-[5px] text-[10px] text-kmuted border border-black/[0.07] bg-transparent hover:border-kred/[0.4] hover:text-kred transition-all"
+          >
+            🗑 Eliminar
+          </button>
         )}
       </div>
     </div>

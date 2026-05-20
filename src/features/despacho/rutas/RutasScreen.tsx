@@ -431,7 +431,28 @@ export default function RutasScreen() {
     setConductores(prev => prev.includes(n) ? prev : [...prev, n]);
   }
   function handleAgregarVehiculo(vehiculo: Vehiculo) {
-    setFlota(prev => [...prev, vehiculo]);
+    setFlota(prev => {
+      const newFlota = [...prev, vehiculo];
+      guardarFlotaFn({
+        flota: newFlota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
+        onStart:   () => setFlotaStatus('saving'),
+        onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
+        onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
+      });
+      return newFlota;
+    });
+  }
+  function handleEliminarVehiculo(idx: number) {
+    setFlota(prev => {
+      const newFlota = prev.filter((_, i) => i !== idx);
+      guardarFlotaFn({
+        flota: newFlota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
+        onStart:   () => setFlotaStatus('saving'),
+        onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
+        onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
+      });
+      return newFlota;
+    });
   }
 
   // ── Manual text parser ────────────────────────────────────────────
@@ -715,6 +736,7 @@ export default function RutasScreen() {
         onConductorChange={handleConductorChange}
         onAgregarConductor={handleAgregarConductor}
         onAgregarVehiculo={handleAgregarVehiculo}
+        onEliminarVehiculo={handleEliminarVehiculo}
       />
 
       <main className="max-w-[700px] mx-auto px-3.5 py-5">
