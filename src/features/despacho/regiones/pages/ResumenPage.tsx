@@ -291,10 +291,14 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
                             <div>
                               <div className={LABEL_SM}>Paquete</div>
                               <div className="flex gap-1">
-                                {(['pallet', 'box'] as TipoPaquete[]).map(p => (
+                                {(['pallet', 'box', 'contenedor'] as TipoPaquete[]).map(p => (
                                   <button key={p} onClick={() => setEditPkg(p)}
                                     className={`font-barlow-condensed text-[11px] font-bold px-2 py-0.5 rounded-full border transition-all ${
-                                      editPkg === p ? 'bg-info text-white border-info' : 'bg-white text-text-2 border-border'
+                                      editPkg === p
+                                        ? p === 'pallet'     ? 'bg-info text-white border-info'
+                                        : p === 'contenedor' ? 'bg-[#6B21A8] text-white border-[#6B21A8]'
+                                        : 'bg-warn text-white border-warn'
+                                        : 'bg-white text-text-2 border-border'
                                     }`}>
                                     {LABEL[p]}
                                   </button>

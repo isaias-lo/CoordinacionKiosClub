@@ -9,6 +9,7 @@ interface QRData {
   cod: string;
   palletsSent: number;
   bultosSent: number;
+  contenedoresSent: number;
   guias: string[];
   driveFileId?: string;
 }
@@ -51,11 +52,12 @@ const S: Record<string, React.CSSProperties> = {
 };
 
 export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
-  const { cod, palletsSent, bultosSent, guias, driveFileId } = qrData;
+  const { cod, palletsSent, bultosSent, contenedoresSent, guias, driveFileId } = qrData;
   const store = TIENDAS_INICIAL[cod];
 
-  const [palletsRec,    setPalletsRec]    = useState(String(palletsSent));
-  const [bultosRec,     setBultosRec]     = useState(String(bultosSent));
+  const [palletsRec,      setPalletsRec]      = useState(String(palletsSent));
+  const [bultosRec,       setBultosRec]       = useState(String(bultosSent));
+  const [contenedoresRec, setContenedoresRec] = useState(String(contenedoresSent));
   const [selloEstado,   setSelloEstado]   = useState<SelloEstado | null>(null);
   const [selloFile,     setSelloFile]     = useState<File | null>(null);
   const [selloPreview,  setSelloPreview]  = useState('');
@@ -172,8 +174,10 @@ export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
           direccion:        store?.d ?? '',
           palletsSent,
           bultosSent,
-          palletsRecibidos: parseInt(palletsRec) || 0,
-          bultosRecibidos:  parseInt(bultosRec)  || 0,
+          contenedoresSent,
+          palletsRecibidos:    parseInt(palletsRec)      || 0,
+          bultosRecibidos:     parseInt(bultosRec)       || 0,
+          contenedoresRecibidos: parseInt(contenedoresRec) || 0,
           receptor:         receptor.trim(),
           rut:              rut.trim(),
           observaciones:    observaciones.trim(),
@@ -211,8 +215,9 @@ export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
           <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#1F2937' }}>{store?.n ?? cod}</p>
           {store?.d && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6B7280' }}>{store.d}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            {palletsSent > 0 && <span style={{ background: '#EEF2FF', color: '#1B2A6B', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{palletsSent} pallet{palletsSent !== 1 ? 's' : ''} enviado{palletsSent !== 1 ? 's' : ''}</span>}
-            {bultosSent  > 0 && <span style={{ background: '#FEF3C7', color: '#D97706', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{bultosSent} bulto{bultosSent !== 1 ? 's' : ''} enviado{bultosSent !== 1 ? 's' : ''}</span>}
+            {palletsSent      > 0 && <span style={{ background: '#EEF2FF', color: '#1B2A6B', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{palletsSent} pallet{palletsSent !== 1 ? 's' : ''} enviado{palletsSent !== 1 ? 's' : ''}</span>}
+            {bultosSent       > 0 && <span style={{ background: '#FEF3C7', color: '#D97706', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{bultosSent} bulto{bultosSent !== 1 ? 's' : ''} enviado{bultosSent !== 1 ? 's' : ''}</span>}
+            {contenedoresSent > 0 && <span style={{ background: 'rgba(107,33,168,0.12)', color: '#6B21A8', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{contenedoresSent} contenedor{contenedoresSent !== 1 ? 'es' : ''} enviado{contenedoresSent !== 1 ? 's' : ''}</span>}
             {guias.length > 0 && <span style={{ background: '#F3F4F6', color: '#6B7280', fontSize: 12, fontFamily: 'monospace', padding: '4px 12px', borderRadius: 99 }}>Guía {guias.join(' · ')}</span>}
           </div>
         </div>
@@ -220,7 +225,7 @@ export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
         {/* Cantidad recibida */}
         <div style={S.card}>
           <p style={S.sectionTitle}>Cantidad recibida</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: contenedoresSent > 0 ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
             <div>
               <label style={S.label}>Pallets recibidos</label>
               <input type="number" min="0" inputMode="numeric" value={palletsRec} onChange={e => setPalletsRec(e.target.value)} style={inputNum} />
@@ -229,6 +234,12 @@ export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
               <label style={S.label}>Bultos recibidos</label>
               <input type="number" min="0" inputMode="numeric" value={bultosRec} onChange={e => setBultosRec(e.target.value)} style={inputNum} />
             </div>
+            {contenedoresSent > 0 && (
+              <div>
+                <label style={S.label}>Contenedores recibidos</label>
+                <input type="number" min="0" inputMode="numeric" value={contenedoresRec} onChange={e => setContenedoresRec(e.target.value)} style={inputNum} />
+              </div>
+            )}
           </div>
         </div>
 

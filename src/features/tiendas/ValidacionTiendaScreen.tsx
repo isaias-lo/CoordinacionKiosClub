@@ -22,8 +22,10 @@ interface RecepcionRow {
   cod: string;
   pallets_sent: number;
   bultos_sent: number;
+  contenedores_sent: number;
   pallets_recibidos: number;
   bultos_recibidos: number;
+  contenedores_recibidos: number;
   conductor: string;
   receptor: string;
   observaciones: string;
@@ -36,7 +38,7 @@ interface Pendiente {
   recepcion: RecepcionRow | null;
 }
 
-type ConfirmState = { palletsRec: string; bultosRec: string; saving: boolean; error: string };
+type ConfirmState = { palletsRec: string; bultosRec: string; contenedoresRec: string; saving: boolean; error: string };
 
 export function ValidacionTiendaScreen() {
   const router      = useRouter();
@@ -98,8 +100,9 @@ export function ValidacionTiendaScreen() {
     setConfirming(prev => ({
       ...prev,
       [cod]: {
-        palletsRec: String(rec?.pallets_recibidos ?? rec?.pallets_sent ?? 0),
-        bultosRec:  String(rec?.bultos_recibidos  ?? rec?.bultos_sent  ?? 0),
+        palletsRec:      String(rec?.pallets_recibidos      ?? rec?.pallets_sent      ?? 0),
+        bultosRec:       String(rec?.bultos_recibidos       ?? rec?.bultos_sent       ?? 0),
+        contenedoresRec: String(rec?.contenedores_recibidos ?? rec?.contenedores_sent ?? 0),
         saving: false,
         error:  '',
       },
@@ -113,11 +116,13 @@ export function ValidacionTiendaScreen() {
   async function handleConfirm(p: Pendiente) {
     const c = confirming[p.despacho.cod];
     if (!c) return;
-    const palletsRec = parseInt(c.palletsRec) || 0;
-    const bultosRec  = parseInt(c.bultosRec)  || 0;
-    const palletsSent = p.recepcion?.pallets_sent ?? 0;
-    const bultosSent  = p.recepcion?.bultos_sent  ?? 0;
-    const nuevoEstado = palletsRec === palletsSent && bultosRec === bultosSent
+    const palletsRec      = parseInt(c.palletsRec)      || 0;
+    const bultosRec       = parseInt(c.bultosRec)       || 0;
+    const contenedoresRec = parseInt(c.contenedoresRec) || 0;
+    const palletsSent      = p.recepcion?.pallets_sent      ?? 0;
+    const bultosSent       = p.recepcion?.bultos_sent       ?? 0;
+    const contenedoresSent = p.recepcion?.contenedores_sent ?? 0;
+    const nuevoEstado = palletsRec === palletsSent && bultosRec === bultosSent && contenedoresRec === contenedoresSent
       ? 'Recibido'
       : 'Diferencia';
 
@@ -232,8 +237,9 @@ export function ValidacionTiendaScreen() {
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>ENVIADO</div>
-                  {(r?.pallets_sent ?? 0) > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: '#1B2A6B' }}>{r?.pallets_sent} pallets</div>}
-                  {(r?.bultos_sent  ?? 0) > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: '#D97706' }}>{r?.bultos_sent} bultos</div>}
+                  {(r?.pallets_sent      ?? 0) > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: '#1B2A6B' }}>{r?.pallets_sent} pallets</div>}
+                  {(r?.bultos_sent       ?? 0) > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: '#D97706' }}>{r?.bultos_sent} bultos</div>}
+                  {(r?.contenedores_sent ?? 0) > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: '#6B21A8' }}>{r?.contenedores_sent} contenedores</div>}
                   {!r && <div style={{ fontSize: 12, color: '#9CA3AF' }}>{d.n_pallet_bulto}</div>}
                 </div>
               </div>
@@ -255,6 +261,12 @@ export function ValidacionTiendaScreen() {
                         <span style={{ fontSize: 12, color: '#9CA3AF' }}> / {r.bultos_sent} bultos</span>
                       </div>
                     )}
+                    {(r.contenedores_sent ?? 0) > 0 && (
+                      <div>
+                        <span style={{ fontSize: 18, fontWeight: 800, color: (r.contenedores_recibidos ?? 0) === r.contenedores_sent ? '#10B981' : '#EF4444' }}>{r.contenedores_recibidos ?? 0}</span>
+                        <span style={{ fontSize: 12, color: '#9CA3AF' }}> / {r.contenedores_sent} contenedores</span>
+                      </div>
+                    )}
                   </div>
                   {r.observaciones && (
                     <div style={{ marginTop: 6, fontSize: 12, color: '#6B7280', fontStyle: 'italic' }}>"{r.observaciones}"</div>
@@ -266,7 +278,7 @@ export function ValidacionTiendaScreen() {
               {isOpen ? (
                 <div style={{ borderTop: '1px solid #E5E7EB', padding: '14px 16px', background: '#FAFBFF' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#6366F1', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 10 }}>Confirmar cantidades reales recibidas</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: (p.recepcion?.contenedores_sent ?? 0) > 0 ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10, marginBottom: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 4 }}>Pallets recibidos</label>
                       <input
@@ -285,6 +297,17 @@ export function ValidacionTiendaScreen() {
                         style={{ width: '100%', border: '2px solid #E5E7EB', borderRadius: 10, padding: '10px 0', fontSize: 22, fontWeight: 800, textAlign: 'center', outline: 'none', color: '#1F2937', boxSizing: 'border-box' }}
                       />
                     </div>
+                    {(p.recepcion?.contenedores_sent ?? 0) > 0 && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 4 }}>Contenedores recibidos</label>
+                        <input
+                          type="number" min="0" inputMode="numeric"
+                          value={conf.contenedoresRec}
+                          onChange={e => setConfirming(prev => ({ ...prev, [d.cod]: { ...prev[d.cod], contenedoresRec: e.target.value } }))}
+                          style={{ width: '100%', border: '2px solid #E5E7EB', borderRadius: 10, padding: '10px 0', fontSize: 22, fontWeight: 800, textAlign: 'center', outline: 'none', color: '#6B21A8', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    )}
                   </div>
                   {conf.error && <div style={{ fontSize: 12, color: '#B91C1C', marginBottom: 8 }}>⚠️ {conf.error}</div>}
                   <div style={{ display: 'flex', gap: 8 }}>

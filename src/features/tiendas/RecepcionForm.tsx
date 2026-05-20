@@ -42,14 +42,15 @@ async function uploadPhoto(file: File, path: string): Promise<string> {
 }
 
 export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDone, onBack }: Props) {
-  const { cod, palletsSent, bultosSent, guias, driveFileId } = qrData;
+  const { cod, palletsSent, bultosSent, contenedoresSent, guias, driveFileId } = qrData;
   const store = TIENDAS_INICIAL[cod];
 
   // Form fields
-  const [conductor,      setConductor]      = useState('');
-  const [pionetas,       setPionetas]       = useState<string[]>(['']);
-  const [palletsRec,     setPalletsRec]     = useState(String(palletsSent));
-  const [bultosRec,      setBultosRec]      = useState(String(bultosSent));
+  const [conductor,        setConductor]        = useState('');
+  const [pionetas,         setPionetas]         = useState<string[]>(['']);
+  const [palletsRec,       setPalletsRec]       = useState(String(palletsSent));
+  const [bultosRec,        setBultosRec]        = useState(String(bultosSent));
+  const [contenedoresRec,  setContenedoresRec]  = useState(String(contenedoresSent));
   const [estadoFiles,    setEstadoFiles]    = useState<File[]>([]);
   const [estadoPreviews, setEstadoPreviews] = useState<string[]>([]);
   const [receptor,       setReceptor]       = useState('');
@@ -233,9 +234,10 @@ export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDon
           cod,
           tienda:            store?.n ?? cod,
           direccion:         store?.d ?? '',
-          palletsSent,       bultosSent,
-          palletsRecibidos:  parseInt(palletsRec) || 0,
-          bultosRecibidos:   parseInt(bultosRec)  || 0,
+          palletsSent,       bultosSent,       contenedoresSent,
+          palletsRecibidos:      parseInt(palletsRec)      || 0,
+          bultosRecibidos:       parseInt(bultosRec)       || 0,
+          contenedoresRecibidos: parseInt(contenedoresRec) || 0,
           conductor:         conductor.trim(),
           pionetas:          pionetas.filter(p => p.trim()).join(', '),
           receptor:          receptor.trim(),
@@ -373,8 +375,9 @@ export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDon
           <p style={{ margin: '5px 0 0', fontSize: 17, fontWeight: 700, color: '#1F2937' }}>{store?.n ?? cod}</p>
           {store?.d && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6B7280' }}>{store.d}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-            {palletsSent > 0 && <span style={{ background: '#EEF2FF', color: '#1B2A6B', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 99 }}>{palletsSent} pallets enviados</span>}
-            {bultosSent  > 0 && <span style={{ background: '#FEF3C7', color: '#D97706', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 99 }}>{bultosSent} bultos enviados</span>}
+            {palletsSent      > 0 && <span style={{ background: '#EEF2FF', color: '#1B2A6B', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 99 }}>{palletsSent} pallets enviados</span>}
+            {bultosSent       > 0 && <span style={{ background: '#FEF3C7', color: '#D97706', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 99 }}>{bultosSent} bultos enviados</span>}
+            {contenedoresSent > 0 && <span style={{ background: 'rgba(107,33,168,0.12)', color: '#6B21A8', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 99 }}>{contenedoresSent} contenedores enviados</span>}
             {guias.length > 0 && <span style={{ background: '#F3F4F6', color: '#6B7280', fontSize: 11, fontFamily: 'monospace', padding: '4px 10px', borderRadius: 99 }}>Guía {guias.join(' · ')}</span>}
           </div>
 
@@ -412,7 +415,7 @@ export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDon
         {/* Cantidad recibida */}
         <div style={S.card}>
           <p style={S.sectionTitle}>Cantidad recibida</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: contenedoresSent > 0 ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
             <div>
               <label style={S.label}>Pallets recibidos</label>
               <input type="number" min="0" inputMode="numeric" value={palletsRec} onChange={e => setPalletsRec(e.target.value)} style={inputNum} />
@@ -421,6 +424,12 @@ export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDon
               <label style={S.label}>Bultos recibidos</label>
               <input type="number" min="0" inputMode="numeric" value={bultosRec} onChange={e => setBultosRec(e.target.value)} style={inputNum} />
             </div>
+            {contenedoresSent > 0 && (
+              <div>
+                <label style={S.label}>Contenedores recibidos</label>
+                <input type="number" min="0" inputMode="numeric" value={contenedoresRec} onChange={e => setContenedoresRec(e.target.value)} style={inputNum} />
+              </div>
+            )}
           </div>
         </div>
 

@@ -8,8 +8,10 @@ interface RecepcionTiendaBody {
   direccion: string;
   palletsSent: number;
   bultosSent: number;
+  contenedoresSent: number;
   palletsRecibidos: number;
   bultosRecibidos: number;
+  contenedoresRecibidos: number;
   receptor: string;
   rut: string;
   signatureDataUrl: string;
@@ -68,10 +70,12 @@ export async function POST(request: NextRequest) {
       cod:               body.cod,
       tienda:            body.tienda,
       direccion:         body.direccion,
-      pallets_sent:      body.palletsSent,
-      bultos_sent:       body.bultosSent,
-      pallets_recibidos: body.palletsRecibidos,
-      bultos_recibidos:  body.bultosRecibidos,
+      pallets_sent:            body.palletsSent,
+      bultos_sent:             body.bultosSent,
+      contenedores_sent:       body.contenedoresSent      ?? 0,
+      pallets_recibidos:       body.palletsRecibidos,
+      bultos_recibidos:        body.bultosRecibidos,
+      contenedores_recibidos:  body.contenedoresRecibidos ?? 0,
       conductor:         '',
       pionetas:          '',
       receptor:          body.receptor,
@@ -109,8 +113,10 @@ export async function POST(request: NextRequest) {
       body.direccion,                                 // Dirección
       body.palletsSent,                               // Pallets Enviados
       body.bultosSent,                                // Bultos Enviados
+      body.contenedoresSent      ?? 0,                // Contenedores Enviados
       body.palletsRecibidos,                          // Pallets Recibidos
       body.bultosRecibidos,                           // Bultos Recibidos
+      body.contenedoresRecibidos ?? 0,                // Contenedores Recibidos
       body.receptor,                                  // Receptor
       body.rut,                                       // RUT
       publicUrl,                                      // Firma

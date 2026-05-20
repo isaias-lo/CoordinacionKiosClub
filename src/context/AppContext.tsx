@@ -162,11 +162,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
   stateRef.current      = state;
-  const lastPushedRef   = useRef<string>('');
+  const lastPushedRef   = useRef<string>((() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const raw = localStorage.getItem(REGIONES_KEY);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      return JSON.stringify({ dispatch: parsed.dispatch || {}, pdfData: parsed.pdfData || {} });
+    } catch { return ''; }
+  })());
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
   const clearedAtRef    = useRef<number>(0); // timestamp of last intentional CLEAR_ALL push
+  const lastPushCompletedAtRef = useRef<number>(0); // timestamp when last Supabase push completed
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -176,6 +185,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const handleRemote = (remoteState: unknown) => {
       // Block if local push is pending (debounce) or in-flight (async upsert)
       if (debounceRef.current !== null || isPushingRef.current) return;
+      // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to overwrite our data
+      if (Date.now() - lastPushCompletedAtRef.current < 3_000) return;
       // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
@@ -227,35 +238,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
     };
 
-    // Initial fetch: remote (server) wins for dispatch — authoritative state on fresh load.
-    // Local only keeps tiendas that remote doesn't mention (locally-only additions not yet pushed).
-    // pdfData: local wins (guides are device-local, shared outward to remote).
+    // Initial fetch: use same per-tienda dirty merge as handleRemote.
+    // lastPushedRef is pre-seeded from localStorage so the baseline reflects last session's state.
+    // Items added since page load (dirty) → local wins; unchanged items → remote wins.
     fetchSessionState('regiones')
       .then((remote) => {
         isInitializedRef.current = true;
-        if (!remote) return;
-        const r = remote as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> };
-        const remoteDispatch  = r.dispatch ?? {};
-        const localOnlyTiendas = Object.fromEntries(
-          Object.entries(stateRef.current.dispatch).filter(([k]) => !remoteDispatch[k])
-        );
-        const mergedDispatch = { ...remoteDispatch, ...localOnlyTiendas };
-        const mergedPdf      = { ...(r.pdfData ?? {}), ...stateRef.current.pdfData };
-        lastPushedRef.current = JSON.stringify(remote);
-        dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
+        if (remote) handleRemote(remote);
       })
       .catch(() => { isInitializedRef.current = true; });
 
     // Realtime subscription (instant when WebSocket works)
     const unsub = subscribeToSessionState('regiones', userId, handleRemote);
 
-    // Polling fallback every 3 s — guarantees sync even when Realtime drops
+    // Polling fallback every 15 s — guarantees sync even when Realtime drops.
+    // 3 s was too aggressive: frequent polls created race-condition windows after pushes.
     const pollId = setInterval(async () => {
       try {
         const remote = await fetchSessionState('regiones');
         if (remote) handleRemote(remote);
       } catch {}
-    }, 3000);
+    }, 15_000);
 
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
@@ -278,7 +281,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isPushingRef.current = true; // block handleRemote during the async upsert
       pushSessionState('regiones', payload, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
-        .finally(() => { isPushingRef.current = false; });
+        .finally(() => { isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now(); });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
@@ -313,7 +316,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const prevPushed = lastPushedRef.current;
     lastPushedRef.current = current;
     pushSessionState('regiones', payload, userId ?? undefined)
-      .catch(() => { lastPushedRef.current = prevPushed; });
+      .catch(() => { lastPushedRef.current = prevPushed; })
+      .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);
 

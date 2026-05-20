@@ -488,8 +488,12 @@ export function TiendasPage() {
   };
   const cancelEdit = () => { setEditingIdx(null); resetForm(); };
   const renumberItems = (list: DispatchItem[]) => {
-    let pc = 1, bc = 1;
-    return list.map(it => { const ord = it.pkg === 'pallet' ? `pallet${pc}` : `bulto${bc}`; it.pkg === 'pallet' ? pc++ : bc++; return { ...it, orden: ord }; });
+    let pc = 1, bc = 1, cc = 1;
+    return list.map(it => {
+      if (it.pkg === 'pallet')     return { ...it, orden: `pallet${pc++}` };
+      if (it.pkg === 'contenedor') return { ...it, orden: `contenedor${cc++}` };
+      return { ...it, orden: `bulto${bc++}` };
+    });
   };
   const saveItem = () => {
     if (!selectedTienda) return;
@@ -504,9 +508,9 @@ export function TiendasPage() {
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(updated) });
       setEditingIdx(null); resetForm(); showToast('✓ Item actualizado', '#16A34A'); return;
     }
-    let pc = 1, bc = 1;
-    items.forEach(i => { i.pkg === 'pallet' ? pc++ : bc++; });
-    const orden = currentPkg === 'pallet' ? `pallet${pc}` : `bulto${bc}`;
+    let pc = 1, bc = 1, cc = 1;
+    items.forEach(i => { if (i.pkg === 'pallet') pc++; else if (i.pkg === 'contenedor') cc++; else bc++; });
+    const orden = currentPkg === 'pallet' ? `pallet${pc}` : currentPkg === 'contenedor' ? `contenedor${cc}` : `bulto${bc}`;
     const itemGuia  = hasPdf ? nextGuiaAuto : guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(valor) || 0);
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor } });

@@ -617,10 +617,11 @@ export function StepForm() {
     if (!resumenEditing) return;
     const { cod, idx, tipo: rTipo, contenido: rContenido, estado: rEstado } = resumenEditing;
     const item = (items[cod] || [])[idx];
-    const isChoc = rTipo === 'Bulto' && rContenido === 'Chocolate';
-    const alto  = isChoc ? CHOCOLATE_DIMS.alto  : (parseInt(resumenEditing.alto) || 0);
-    const largo = rTipo === 'Pallet' ? item.largo : (isChoc ? CHOCOLATE_DIMS.largo : (parseInt(resumenEditing.largo) || 0));
-    const ancho = rTipo === 'Pallet' ? item.ancho : (isChoc ? CHOCOLATE_DIMS.ancho : (parseInt(resumenEditing.ancho) || 0));
+    const isChoc       = rTipo === 'Bulto'      && rContenido === 'Chocolate';
+    const isContenedor = rTipo === 'Contenedor';
+    const alto  = isContenedor ? CONTENEDOR_ALTO  : isChoc ? CHOCOLATE_DIMS.alto  : (parseInt(resumenEditing.alto)  || 0);
+    const largo = isContenedor ? CONTENEDOR_LARGO : rTipo === 'Pallet' ? item.largo : (isChoc ? CHOCOLATE_DIMS.largo : (parseInt(resumenEditing.largo) || 0));
+    const ancho = isContenedor ? CONTENEDOR_ANCHO : rTipo === 'Pallet' ? item.ancho : (isChoc ? CHOCOLATE_DIMS.ancho : (parseInt(resumenEditing.ancho) || 0));
     dispatch({
       type: 'EDIT_ITEM', tiendaCod: cod, idx,
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
@@ -853,11 +854,15 @@ export function StepForm() {
                                 <div className="mb-2.5">
                                   <div className={LABEL_CLS}>Tipo</div>
                                   <div className="flex gap-2 mt-1">
-                                    {(['Pallet', 'Bulto'] as TipoCargamento[]).map(tp => (
+                                    {(['Pallet', 'Bulto', 'Contenedor'] as TipoCargamento[]).map(tp => (
                                       <button key={tp}
-                                        onClick={() => setResumenEditing(prev => prev ? { ...prev, tipo: tp, contenido: tp === 'Pallet' ? 'Comida' : 'Hogar' } : prev)}
+                                        onClick={() => setResumenEditing(prev => prev ? { ...prev, tipo: tp, contenido: tp === 'Pallet' ? 'Comida' : tp === 'Contenedor' ? 'Hogar' : 'Hogar' } : prev)}
                                         className={`flex-1 font-barlow-condensed text-[14px] font-bold py-2 rounded-full border transition-all ${
-                                          re.tipo === tp ? (tp === 'Pallet' ? 'bg-info text-white border-info' : 'bg-warn text-white border-warn') : 'bg-white text-text-2 border-border'
+                                          re.tipo === tp
+                                            ? tp === 'Pallet'     ? 'bg-info text-white border-info'
+                                            : tp === 'Contenedor' ? 'bg-[#6B21A8] text-white border-[#6B21A8]'
+                                            : 'bg-warn text-white border-warn'
+                                            : 'bg-white text-text-2 border-border'
                                         }`}>{tp}</button>
                                     ))}
                                   </div>

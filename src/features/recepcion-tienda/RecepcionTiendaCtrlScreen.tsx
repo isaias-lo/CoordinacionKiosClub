@@ -12,6 +12,7 @@ interface QRData {
   cod: string;
   palletsSent: number;
   bultosSent: number;
+  contenedoresSent: number;
   guias: string[];
   driveFileId?: string;
 }
@@ -30,13 +31,14 @@ function parseQRData(raw: string): QRData | null {
     if (!cod) return null;
     return {
       cod,
-      palletsSent: parseInt(params.get('p') ?? '0', 10),
-      bultosSent:  parseInt(params.get('b') ?? '0', 10),
-      guias:       params.get('g') ? params.get('g')!.split(',').filter(Boolean) : [],
-      driveFileId: params.get('drv') ?? undefined,
+      palletsSent:      parseInt(params.get('p') ?? '0', 10),
+      bultosSent:       parseInt(params.get('b') ?? '0', 10),
+      contenedoresSent: parseInt(params.get('c') ?? '0', 10),
+      guias:            params.get('g') ? params.get('g')!.split(',').filter(Boolean) : [],
+      driveFileId:      params.get('drv') ?? undefined,
     };
   } catch {
-    return { cod: raw, palletsSent: 0, bultosSent: 0, guias: [] };
+    return { cod: raw, palletsSent: 0, bultosSent: 0, contenedoresSent: 0, guias: [] };
   }
 }
 
