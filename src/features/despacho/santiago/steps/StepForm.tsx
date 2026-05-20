@@ -1095,9 +1095,9 @@ export function StepForm() {
             {formRows.map(row => {
               if (row.saved && row.savedItem) {
                 return (
-                  <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
+                  <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : 'text-warn'}`}>{row.savedItem.orden}</span>
+                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : 'text-warn'}`}>{row.savedItem.orden}</span>
                       <div className="flex gap-1">
                         <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
                         <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
@@ -1114,16 +1114,18 @@ export function StepForm() {
                   </div>
                 );
               }
-              const isChocRow = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
+              const isChocRow  = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
+              const isContRow  = row.tipo === 'Contenedor';
               const canSaveRow = parseFloat(row.peso) > 0 &&
-                (isChocRow || (parseFloat(row.alto) > 0 &&
+                (isChocRow || isContRow || (parseFloat(row.alto) > 0 &&
                   (row.tipo === 'Pallet' || (parseFloat(row.largo) > 0 && parseFloat(row.ancho) > 0))));
               return (
-                <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : 'text-warn'}`}>{row.tipo}</span>
+                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : 'text-warn'}`}>{row.tipo}</span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
+                  {!isContRow && (
                   <div className="flex gap-0.5 mb-2">
                     {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
                       <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
@@ -1132,6 +1134,7 @@ export function StepForm() {
                       </button>
                     ))}
                   </div>
+                  )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
                       <label className="text-[9px] text-text-3 uppercase block mb-0.5">peso</label>
@@ -1139,7 +1142,7 @@ export function StepForm() {
                         placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
                     </div>
-                    {!isChocRow && (
+                    {!isChocRow && !isContRow && (
                       <div>
                         <label className="text-[9px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
@@ -1168,8 +1171,13 @@ export function StepForm() {
                       {CHOCOLATE_DIMS.alto}×{CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho} cm · fijas
                     </div>
                   )}
+                  {isContRow && (
+                    <div className="mb-1.5 text-[9px] text-[#6B21A8] bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.15)] rounded px-1.5 py-1">
+                      110×80×150 cm · fijas
+                    </div>
+                  )}
                   <button onClick={() => saveRow(row)} disabled={!canSaveRow}
-                    className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : 'bg-warn'}`}>
+                    className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : 'bg-warn'}`}>
                     + Agregar
                   </button>
                 </div>
@@ -1177,8 +1185,9 @@ export function StepForm() {
             })}
           </div>
           <div className="flex gap-2 pb-2">
-            <button onClick={() => addFormRow('Pallet')} className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
-            <button onClick={() => addFormRow('Bulto')}  className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
+            <button onClick={() => addFormRow('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
+            <button onClick={() => addFormRow('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
+            <button onClick={() => addFormRow('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
           </div>
           {activeTiendasCount > 0 && (
             <button onClick={goToResumen}

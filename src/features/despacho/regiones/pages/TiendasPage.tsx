@@ -499,8 +499,11 @@ export function TiendasPage() {
     if (!selectedTienda) return;
     const p = parseFloat(peso);
     if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-    const a = parseFloat(alto) || 0, aw = parseFloat(ancho) || 0, l = parseFloat(largo) || 0;
-    const errores = validarDimensiones(currentPkg, p, a, aw, l);
+    const isCont = currentPkg === 'contenedor';
+    const a  = isCont ? 150 : (parseFloat(alto)  || 0);
+    const aw = isCont ? 80  : (parseFloat(ancho) || 0);
+    const l  = isCont ? 110 : (parseFloat(largo) || 0);
+    const errores = isCont ? [] : validarDimensiones(currentPkg, p, a, aw, l);
     if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
     // guia y valor son opcionales — se asignan retroactivamente al cargar el PDF
     if (editingIdx !== null) {
@@ -803,22 +806,37 @@ export function TiendasPage() {
           {currentPkg === 'box' && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">Bulto siempre es Hogar</div>}
           <SLabel>Tipo</SLabel>
           <div className="flex gap-1.5">
-            {(['pallet', 'box'] as TipoPaquete[]).map(p => (
+            {(['pallet', 'box', 'contenedor'] as TipoPaquete[]).map(p => (
               <button key={p} onClick={() => setPkg(p)}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all ${currentPkg === p ? (p === 'pallet' ? 'bg-[rgba(37,99,235,0.08)] border-info text-info' : 'bg-[rgba(217,119,6,0.08)] border-warn text-warn') : 'border-border bg-white text-text-2'}`}>
-                {p === 'pallet' ? 'Pallet' : 'Bulto'}
+                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all ${
+                  currentPkg === p
+                    ? p === 'pallet'     ? 'bg-[rgba(37,99,235,0.08)] border-info text-info'
+                    : p === 'contenedor' ? 'bg-[rgba(107,33,168,0.08)] border-[#6B21A8] text-[#6B21A8]'
+                    : 'bg-[rgba(217,119,6,0.08)] border-warn text-warn'
+                    : 'border-border bg-white text-text-2'
+                }`}>
+                {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Contenedor' : 'Bulto'}
               </button>
             ))}
           </div>
           <SLabel>Peso y dimensiones</SLabel>
           <div className="grid grid-cols-2 gap-1.5">
             <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder="500" inputMode="decimal" className={inputCls} /></Field>
-            <Field label="Alto cm"><input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal" className={inputCls} /></Field>
+            {currentPkg !== 'contenedor' && (
+              <Field label="Alto cm"><input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal" className={inputCls} /></Field>
+            )}
             {currentPkg === 'pallet' ? (
               <div className="col-span-2 flex flex-col gap-1">
                 <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Ancho × Largo</label>
                 <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-info text-center">
                   100 × 120 cm — fijo
+                </div>
+              </div>
+            ) : currentPkg === 'contenedor' ? (
+              <div className="col-span-2 flex flex-col gap-1">
+                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
+                <div className="bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-[#6B21A8] text-center">
+                  80 × 110 cm · alto 150 cm — fijo
                 </div>
               </div>
             ) : (

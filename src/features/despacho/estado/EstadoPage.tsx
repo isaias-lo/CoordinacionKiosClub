@@ -261,17 +261,17 @@ export function EstadoPage() {
       if (!items.length) return;
       const t = getTiendaSantiagoByCod(cod);
       if (!t) return;
-      const pallets  = items.filter(i => i.tipo === 'Pallet');
-      const bultos   = items.filter(i => i.tipo === 'Bulto');
-      const allItems = [...pallets, ...bultos];
-      const guide    = guideMap[cod];
-      const guideNums = guide?.guias || [];
-      const perItem  = allItems.length > 0 && (guide?.totalSum || 0) > 0 ? Math.round(guide!.totalSum / allItems.length) : 0;
+      const pallets     = items.filter(i => i.tipo === 'Pallet');
+      const bultos      = items.filter(i => i.tipo === 'Bulto');
+      const contenedores = items.filter(i => i.tipo === 'Contenedor');
+      const allItems    = [...pallets, ...bultos, ...contenedores];
+      const guide       = guideMap[cod];
+      const guideNums   = guide?.guias || [];
+      const perItem     = allItems.length > 0 && (guide?.totalSum || 0) > 0 ? Math.round(guide!.totalSum / allItems.length) : 0;
       result.push({
         source: 'santiago', cod, name: t.tienda, address: t.direccion, ventana: t.ventanaHoraria,
         items: allItems.map((it, idx) => {
-          const isPallet  = it.tipo === 'Pallet';
-          const typeItems = isPallet ? pallets : bultos;
+          const typeItems = it.tipo === 'Pallet' ? pallets : it.tipo === 'Contenedor' ? contenedores : bultos;
           const typeIdx   = typeItems.indexOf(it);
           return { orden: it.orden, tipo: it.tipo, itemNum: typeIdx + 1, totalItems: typeItems.length, peso: it.peso,
             guias: guideNums.length > 0 ? (idx < guideNums.length ? [guideNums[idx]] : guideNums) : [],
