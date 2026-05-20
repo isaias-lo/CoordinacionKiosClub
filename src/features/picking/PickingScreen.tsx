@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
@@ -455,24 +456,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
   );
 }
 
-// ─── 1D Barcode ───────────────────────────────────────────────────────────────
 
-function Barcode1D({ value, height = 72 }: { value: string; height?: number }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  useEffect(() => {
-    if (!svgRef.current || !value) return;
-    import('jsbarcode').then(({ default: JsBarcode }) => {
-      if (!svgRef.current) return;
-      try {
-        JsBarcode(svgRef.current, value, { format: 'CODE128', width: 2, height, displayValue: false, margin: 6, background: '#ffffff', lineColor: '#000000' });
-      } catch {
-        const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2, height, displayValue: false, margin: 6 }); } catch { /* ignore */ }
-      }
-    });
-  }, [value, height]);
-  return <svg ref={svgRef} className="w-full" />;
-}
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
@@ -536,12 +520,17 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
           </div>
         </div>
 
-        {/* Código de barras en la parte inferior */}
-        <div style={{ marginTop: 4 }}>
-          <div style={{ width: '70%', margin: '0 auto' }}>
-            <Barcode1D value={value} height={44} />
-          </div>
-          <div style={{ textAlign: 'center', fontSize: 9, fontFamily: 'monospace', color: '#bbb', marginTop: 1, wordBreak: 'break-all', lineHeight: 1.2 }}>
+        {/* QR Code — reemplaza Code128: más robusto, funciona con cualquier scanner Android */}
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <QRCodeSVG
+            value={value}
+            size={100}
+            level="M"
+            bgColor="#ffffff"
+            fgColor="#000000"
+            style={{ display: 'block' }}
+          />
+          <div style={{ fontSize: 8, fontFamily: 'monospace', color: '#bbb', textAlign: 'center', maxWidth: 200, wordBreak: 'break-all', lineHeight: 1.3 }}>
             {value}
           </div>
         </div>

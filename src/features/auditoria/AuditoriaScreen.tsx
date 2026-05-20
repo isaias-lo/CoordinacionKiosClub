@@ -427,8 +427,9 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         const cur = el.value.trim();
-        // El código de pallet siempre contiene '|' como separador
-        if (cur && cur.includes('|')) tryParse(cur);
+        // QR scanner envía el string completo (COD|picker|refs|P#|cats)
+        // Validar que tiene al menos 2 separadores '|' antes de parsear
+        if (cur && (cur.match(/\|/g) ?? []).length >= 2) tryParse(cur);
       }, 100);
     };
 
