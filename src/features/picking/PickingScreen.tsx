@@ -773,20 +773,22 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                   {isPrinted ? '↺ Re-imprimir' : '🖨 Imprimir'}
                 </button>
               </div>
-              {Array.from({ length: pallets }, (_, i) => (
-                <BarcodeCard
-                  key={i}
-                  value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
-                  palletNum={palletOffset + i + 1}
-                  total={totalStorePallets}
-                  storeCod={group.storeCod}
-                  pickerLabel={pickerLabel}
-                  responsibleKey={group.key}
-                  allCategories={allCategories}
-                  totalPickers={totalPickers}
-                  compact
-                />
-              ))}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {Array.from({ length: pallets }, (_, i) => (
+                  <BarcodeCard
+                    key={i}
+                    value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
+                    palletNum={palletOffset + i + 1}
+                    total={totalStorePallets}
+                    storeCod={group.storeCod}
+                    pickerLabel={pickerLabel}
+                    responsibleKey={group.key}
+                    allCategories={allCategories}
+                    totalPickers={totalPickers}
+                    compact
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
