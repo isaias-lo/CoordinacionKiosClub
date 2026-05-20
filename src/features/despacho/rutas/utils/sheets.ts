@@ -165,7 +165,8 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
       if (row[5]) existente.refrigerado = row[5].toUpperCase() === 'SI';
       if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
       if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
-      if (row[8])  existente.ch = row[8];
+      if (row[8])  existente.ch  = row[8];
+      if (row[9])  existente.tel = row[9];
       if (row[10]) existente.empresa = row[10];
     } else {
       // Vehículo en Sheets que no está en FLOTA_INICIAL → agregar
@@ -179,6 +180,7 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
         on:          row[6] ? row[6].toUpperCase() === 'SI' : true,
         tlbd:        row[7] ? row[7].toUpperCase() === 'SI' : false,
         ch:          row[8] || '',
+        tel:         row[9] || '',
         empresa:     row[10] || '',
       });
     }

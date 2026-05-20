@@ -16,7 +16,7 @@ interface Props {
 const NUEVO_KEY = '__nuevo__';
 
 interface NuevoVehiculoState {
-  p: string; c: number | string; b: number | string; t: string; ch: string;
+  p: string; c: number | string; b: number | string; t: string; ch: string; tel: string;
   porton: boolean | null; refrigerado: boolean; on: boolean; tlbd: boolean; empresa: string;
 }
 
@@ -24,7 +24,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [nuevoVehiculo, setNuevoVehiculo] = useState<NuevoVehiculoState>({
-    p: '', c: 10, b: 20, t: '', ch: '',
+    p: '', c: 10, b: 20, t: '', ch: '', tel: '',
     porton: null, refrigerado: false, on: true, tlbd: false, empresa: '',
   });
 
@@ -42,6 +42,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
       b: parseInt(String(v.b)) || 20,
       t: v.t || 'Por confirmar',
       ch: v.ch || '',
+      tel: v.tel || '',
       porton: v.porton,
       refrigerado: v.refrigerado,
       tlbd: v.tlbd,
@@ -49,7 +50,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
       empresa: v.empresa || '',
     });
 
-    setNuevoVehiculo({ p: '', c: 10, b: 20, t: '', ch: '', porton: null, refrigerado: false, on: true, tlbd: false, empresa: '' });
+    setNuevoVehiculo({ p: '', c: 10, b: 20, t: '', ch: '', tel: '', porton: null, refrigerado: false, on: true, tlbd: false, empresa: '' });
     setError('');
     setShowAgregar(false);
   }
@@ -87,9 +88,14 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
               <input type="text" value={nuevoVehiculo.ch} onChange={e => setNuevoVehiculo({...nuevoVehiculo, ch: e.target.value})}
                 placeholder="Conductor"
                 className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
+              <input type="tel" value={nuevoVehiculo.tel} onChange={e => setNuevoVehiculo({...nuevoVehiculo, tel: e.target.value})}
+                placeholder="Teléfono conductor"
+                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
+            </div>
+            <div className="mb-2">
               <input type="text" value={nuevoVehiculo.empresa} onChange={e => setNuevoVehiculo({...nuevoVehiculo, empresa: e.target.value})}
                 placeholder="Empresa"
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
+                className="w-full text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ktext mb-3">
               <label className="flex items-center gap-1">
@@ -142,6 +148,7 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
   const [modoNuevo, setModoNuevo]         = useState(false);
   const [nuevoNombre, setNuevoNombre]     = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showTel, setShowTel]             = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -188,7 +195,17 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
         </div>
         <div className={`font-mono text-[13px] font-bold mb-0.5 flex items-center flex-wrap pr-6 ${v.on ? 'text-kred' : 'text-ktext'}`}>
           {v.p}{portonBadge}{refrBadge}
+          {v.tel && (
+            <button
+              onClick={e => { e.stopPropagation(); setShowTel(s => !s); }}
+              className="ml-1 text-[10px] text-kmuted hover:text-knavy transition-colors"
+              title={showTel ? 'Ocultar teléfono' : 'Ver teléfono'}
+            >📞</button>
+          )}
         </div>
+        {showTel && v.tel && (
+          <div className="text-[10px] text-knavy font-semibold mb-0.5 tracking-wide">{v.tel}</div>
+        )}
         <div className="text-[11px] text-kmuted">{v.c}P máx · {v.t}</div>
       </div>
 
