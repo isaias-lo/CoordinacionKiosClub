@@ -163,26 +163,26 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Personal</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {row.conductor && (
+              {!!row.conductor && (
                 <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>CONDUCTOR</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{String(row.conductor)}</div>
                 </div>
               )}
-              {row.pionetas && String(row.pionetas).trim() && (
+              {!!(row.pionetas && String(row.pionetas).trim()) && (
                 <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>PIONETA(S)</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{String(row.pionetas)}</div>
                 </div>
               )}
-              {row.receptor && (
+              {!!row.receptor && (
                 <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>RECEPTOR</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{String(row.receptor)}</div>
-                  {row.rut && <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'monospace', marginTop: 2 }}>{String(row.rut)}</div>}
+                  {!!row.rut && <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'monospace', marginTop: 2 }}>{String(row.rut)}</div>}
                 </div>
               )}
-              {row.sello_estado && (
+              {!!row.sello_estado && (
                 <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>ESTADO SELLO</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: row.sello_estado === 'intacto' ? '#10B981' : row.sello_estado === 'roto' ? '#EF4444' : '#F97316' }}>
@@ -194,7 +194,7 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
           </div>
 
           {/* Trazabilidad sellos */}
-          {(row.sello_llegada_url || row.sello_salida_url || row.cd_salida_url) && (
+          {!!(row.sello_llegada_url || row.sello_salida_url || row.cd_salida_url) && (
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Trazabilidad de sellos</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
@@ -223,7 +223,7 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
           )}
 
           {/* Firma */}
-          {row.firma_url && (
+          {!!row.firma_url && (
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Firma del receptor</div>
               <a href={String(row.firma_url)} target="_blank" rel="noopener noreferrer">
@@ -233,7 +233,7 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
           )}
 
           {/* Observaciones */}
-          {row.observaciones && String(row.observaciones).trim() && (
+          {!!(row.observaciones && String(row.observaciones).trim()) && (
             <div style={{ background: '#FFFBEB', borderRadius: 12, padding: '12px 14px', border: '1px solid #FDE68A' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Observaciones</div>
               <div style={{ fontSize: 13, color: '#78350F', lineHeight: 1.5 }}>{String(row.observaciones)}</div>
@@ -241,7 +241,7 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
           )}
 
           {/* Código verificación */}
-          {row.codigo_verificacion && (
+          {!!row.codigo_verificacion && (
             <div style={{ background: '#F0F4FF', borderRadius: 12, padding: '10px 14px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#1B2A6B', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Código OTP verificado</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#1B2A6B', fontFamily: 'monospace', letterSpacing: '0.3em' }}>{String(row.codigo_verificacion)}</div>
