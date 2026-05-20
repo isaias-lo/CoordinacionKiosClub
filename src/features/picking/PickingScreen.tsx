@@ -485,68 +485,68 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
   const storeName = getStoreName(storeCod);
   return (
     <div
-      className="picking-label bg-white border-2 border-gray-200 rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border print:border-gray-400"
-      style={{ maxWidth: 680, margin: '0 auto 16px' }}
+      className="picking-label bg-white border-2 border-gray-200 rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border-0"
+      style={{ maxWidth: 720, margin: '0 auto 20px' }}
     >
-      <div className="flex flex-col" style={{ padding: '12px 14px 8px', minHeight: 200 }}>
+      <div className="flex flex-col" style={{ padding: '20px 22px 14px', minHeight: 480 }}>
 
         {/* Top row: picker (izquierda) + número de pallet (derecha) */}
-        <div className="flex items-start justify-between" style={{ marginBottom: 4 }}>
-          <div className="min-w-0 flex-1 pr-3">
-            {/* Responsable Odoo — siempre visible */}
-            <div style={{ fontSize: 11, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 1 }}>
+        <div className="flex items-start justify-between" style={{ marginBottom: 8 }}>
+          <div className="min-w-0 flex-1 pr-4">
+            {/* Responsable Odoo */}
+            <div style={{ fontSize: 12, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>
               {responsibleKey}
             </div>
             {/* Nombre del picker — letra grande */}
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#111', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 34, fontWeight: 800, color: '#111', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {pickerLabel}
             </div>
-            <div style={{ fontSize: 12, color: '#888', marginTop: 2, fontWeight: 500 }}>
+            <div style={{ fontSize: 15, color: '#888', marginTop: 4, fontWeight: 500 }}>
               {totalPickers} picker{totalPickers !== 1 ? 's' : ''} en tienda
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <div className="font-barlow-condensed font-black text-amber-600 leading-none" style={{ fontSize: 48 }}>
+            <div className="font-barlow-condensed font-black text-amber-600 leading-none" style={{ fontSize: 80 }}>
               P-{palletNum}
             </div>
-            <div style={{ fontSize: 10, color: '#aaa', textAlign: 'right' }}>de {total}</div>
+            <div style={{ fontSize: 13, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
           </div>
         </div>
 
         {/* Categorías — prominentes */}
         {allCategories.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
             {allCategories.map(c => (
               <span key={c} style={{
-                fontSize: 16, fontWeight: 800, color: '#1A2550',
-                background: 'rgba(26,37,80,0.09)', borderRadius: 6,
-                padding: '2px 10px', letterSpacing: '0.5px',
+                fontSize: 22, fontWeight: 800, color: '#1A2550',
+                background: 'rgba(26,37,80,0.09)', borderRadius: 8,
+                padding: '4px 14px', letterSpacing: '0.5px',
               }}>{c}</span>
             ))}
           </div>
         )}
 
         {/* Centro: código de tienda + nombre */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: '4px 0' }}>
+        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: '12px 0' }}>
           <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
-            style={{ fontSize: 'clamp(36px, 9vw, 60px)', letterSpacing: '3px' }}>
+            style={{ fontSize: 'clamp(64px, 14vw, 100px)', letterSpacing: '4px' }}>
             {storeCod}
           </div>
-          <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide" style={{ fontSize: 15, marginTop: 4 }}>
+          <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide" style={{ fontSize: 26, marginTop: 8 }}>
             {storeName}
           </div>
         </div>
 
         {/* Código de barras en la parte inferior */}
-        <div style={{ marginTop: 4 }}>
-          <div style={{ width: '70%', margin: '0 auto' }}>
-            <Barcode1D value={value} height={44} />
+        <div style={{ marginTop: 8 }}>
+          <div style={{ width: '88%', margin: '0 auto' }}>
+            <Barcode1D value={value} height={76} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
             <div style={{ fontSize: 9, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
               {value}
             </div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 8 }}>
               {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             </div>
           </div>
@@ -576,16 +576,12 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
 
-  const borderColor = allDone
-    ? 'rgba(22,163,74,0.40)'
-    : isPrinted
-      ? 'rgba(217,119,6,0.35)'
-      : 'rgba(26,37,80,0.12)';
-  const shadow = allDone
-    ? '0 2px 16px rgba(22,163,74,0.12)'
-    : isPrinted
-      ? '0 2px 16px rgba(217,119,6,0.10)'
-      : '0 1px 8px rgba(26,37,80,0.07)';
+  const borderColor = allDone || isPrinted
+    ? 'rgba(22,163,74,0.45)'
+    : 'rgba(26,37,80,0.12)';
+  const shadow = allDone || isPrinted
+    ? '0 2px 16px rgba(22,163,74,0.14)'
+    : '0 1px 8px rgba(26,37,80,0.07)';
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
@@ -593,8 +589,8 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
       {/* Card header */}
       <div className="px-5 py-3 border-b flex items-center justify-between"
         style={{
-          background:  allDone ? 'rgba(22,163,74,0.05)' : isPrinted ? 'rgba(217,119,6,0.04)' : 'rgba(26,37,80,0.02)',
-          borderColor: allDone ? 'rgba(22,163,74,0.15)' : isPrinted ? 'rgba(217,119,6,0.20)' : '#F0F2F5',
+          background:  allDone || isPrinted ? 'rgba(22,163,74,0.05)' : 'rgba(26,37,80,0.02)',
+          borderColor: allDone || isPrinted ? 'rgba(22,163,74,0.18)' : '#F0F2F5',
         }}>
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-mono text-[14px] font-bold text-navy bg-[rgba(26,37,80,0.09)] px-3 py-1 rounded-lg shrink-0">{group.key}</span>
@@ -602,7 +598,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
           {allDone && <span className="text-[13px] font-bold text-[#16A34A] shrink-0">✓ Realizado</span>}
           {isPrinted && (
             <span className="text-[12px] font-bold shrink-0 px-2.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(217,119,6,0.15)', color: '#D97706', border: '1px solid rgba(217,119,6,0.35)' }}>
+              style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.35)' }}>
               🖨 Ya impreso
             </span>
           )}
@@ -744,7 +740,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                 <button onClick={onPrint}
                   className="flex items-center gap-1.5 text-[14px] font-bold cursor-pointer px-4 py-2 rounded-xl transition-all active:scale-95"
                   style={isPrinted
-                    ? { background: 'rgba(217,119,6,0.12)', color: '#D97706', border: '1px solid rgba(217,119,6,0.4)' }
+                    ? { background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.4)' }
                     : { background: 'linear-gradient(135deg, #78350F, #D97706)', color: '#fff' }}>
                   {isPrinted ? '↺ Re-imprimir' : '🖨 Imprimir'}
                 </button>
@@ -1272,12 +1268,13 @@ export function PickingScreen() {
     <>
     <style dangerouslySetInnerHTML={{ __html:
       '@media print{' +
-      '@page{size:200mm 100mm;margin:0}' +
+      '@page{size:letter portrait;margin:8mm}' +
       'body>*{display:none!important}' +
       '.picking-print-root{display:block!important}' +
       '.picking-label{display:flex!important;flex-direction:column;' +
-      'width:200mm!important;height:100mm!important;max-width:200mm!important;' +
-      'border-radius:0!important;margin:0!important;border:1px solid #ccc!important;' +
+      'width:200mm!important;height:263mm!important;max-width:200mm!important;' +
+      'border-radius:0!important;margin:0!important;border:none!important;' +
+      'padding:10mm!important;box-sizing:border-box!important;' +
       'break-after:page;page-break-after:always;overflow:hidden}' +
       '.picking-label:last-child{break-after:avoid;page-break-after:avoid}}'
     }} />
