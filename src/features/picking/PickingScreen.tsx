@@ -35,7 +35,8 @@ interface PickingSession {
 
 const SAVED_NAMES_KEY    = 'picking_saved_picker_names';
 const SESSION_KEY        = 'picking_session_v1';
-const SECTION_FILTER_KEY = 'picking_section_filter';
+const SECTION_FILTER_KEY  = 'picking_section_filter';
+const COLS_PER_ROW_KEY    = 'picking_cols_per_row';
 const STATS_CACHE_KEY    = 'picking_stats_cache_v1';
 const PALLETS_KEY        = 'picking_pallets_v1';
 const AUTO_REFRESH_MS    = 3 * 60 * 1000; // 3 min
@@ -587,7 +588,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted }: {
+function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted, colsPerRow }: {
   group: PickerGroup; displayName: string; pallets: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
@@ -595,6 +596,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   palletOffset: number;
   totalStorePallets: number;
   isPrinted: boolean;
+  colsPerRow: number;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -773,7 +775,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                   {isPrinted ? '↺ Re-imprimir' : '🖨 Imprimir'}
                 </button>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colsPerRow}, minmax(0, 1fr))`, gap: 8 }}>
                 {Array.from({ length: pallets }, (_, i) => (
                   <BarcodeCard
                     key={i}
@@ -1007,6 +1009,11 @@ export function PickingScreen() {
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>(() => {
     if (typeof window === 'undefined') return 'all';
     return (localStorage.getItem(SECTION_FILTER_KEY) as SectionFilter) ?? 'all';
+  });
+
+  const [colsPerRow, setColsPerRow] = useState<number>(() => {
+    if (typeof window === 'undefined') return 3;
+    return Number(localStorage.getItem(COLS_PER_ROW_KEY) ?? '3');
   });
 
   const [pickerDisplayNames, setPickerDisplayNames] = useState<Record<string, string>>(() => {
@@ -1438,25 +1445,47 @@ export function PickingScreen() {
           ) : (
             <div className="flex-1 overflow-y-auto px-4 pb-10">
 
-              {/* Filtro de sección */}
-              <div className="mt-4 mb-3 print:hidden">
-                <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest mb-2">Sección del supervisor</div>
-                <div className="flex gap-2">
-                  {([
-                    { key: 'all',         label: 'Todas' },
-                    { key: 'aseo-comida', label: 'Aseo y Comida' },
-                    { key: 'hogar',       label: 'Hogar' },
-                  ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
-                    <button key={key} onClick={() => setSectionFilter(key)}
-                      className="px-4 py-2 rounded-xl text-[13px] font-bold cursor-pointer transition-all active:scale-95"
-                      style={{
-                        background: sectionFilter === key ? 'linear-gradient(135deg, #78350F, #D97706)' : 'rgba(26,37,80,0.06)',
-                        color: sectionFilter === key ? '#fff' : '#6B7280',
-                        border: `1px solid ${sectionFilter === key ? 'rgba(217,119,6,0.5)' : 'rgba(26,37,80,0.12)'}`,
-                      }}>
-                      {label}
-                    </button>
-                  ))}
+              {/* Filtro de sección + columnas por fila */}
+              <div className="mt-4 mb-3 print:hidden flex flex-wrap items-end gap-6">
+                <div>
+                  <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest mb-2">Sección del supervisor</div>
+                  <div className="flex gap-2">
+                    {([
+                      { key: 'all',         label: 'Todas' },
+                      { key: 'aseo-comida', label: 'Aseo y Comida' },
+                      { key: 'hogar',       label: 'Hogar' },
+                    ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
+                      <button key={key} onClick={() => setSectionFilter(key)}
+                        className="px-4 py-2 rounded-xl text-[13px] font-bold cursor-pointer transition-all active:scale-95"
+                        style={{
+                          background: sectionFilter === key ? 'linear-gradient(135deg, #78350F, #D97706)' : 'rgba(26,37,80,0.06)',
+                          color: sectionFilter === key ? '#fff' : '#6B7280',
+                          border: `1px solid ${sectionFilter === key ? 'rgba(217,119,6,0.5)' : 'rgba(26,37,80,0.12)'}`,
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest mb-2">Etiquetas por fila</div>
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <button key={n} onClick={() => {
+                        setColsPerRow(n);
+                        localStorage.setItem(COLS_PER_ROW_KEY, String(n));
+                      }}
+                        className="w-8 h-8 rounded-lg text-[13px] font-bold cursor-pointer transition-all active:scale-95"
+                        style={{
+                          background: colsPerRow === n ? 'linear-gradient(135deg, #1E3A8A, #2563EB)' : 'rgba(26,37,80,0.06)',
+                          color: colsPerRow === n ? '#fff' : '#6B7280',
+                          border: `1px solid ${colsPerRow === n ? 'rgba(37,99,235,0.5)' : 'rgba(26,37,80,0.12)'}`,
+                        }}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1578,6 +1607,7 @@ export function PickingScreen() {
                               palletOffset={offset}
                               totalStorePallets={totalStorePallets}
                               isPrinted={printedKeys.has(group.stateKey)}
+                              colsPerRow={colsPerRow}
                             />
                           );
                         });
