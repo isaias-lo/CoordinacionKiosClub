@@ -122,7 +122,7 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
       {menuOpen && createPortal(
         <>
           <div className="fixed inset-0 z-[200]" onClick={() => setMenuOpen(false)} />
-          <div className="fixed right-0 top-0 z-[201] w-[min(300px,92vw)] h-full bg-[#F2F2F7] flex flex-col overflow-y-auto">
+          <div className="fixed right-0 top-0 z-[201] w-[min(300px,92vw)] lg:w-[400px] h-full bg-[#F2F2F7] flex flex-col overflow-y-auto">
 
             {/* Header panel */}
             <div
@@ -242,7 +242,7 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
             className="fixed inset-0 bg-black/[0.42] z-[900] backdrop-blur-sm"
             onClick={() => setFlotaOpen(false)}
           />
-          <div className="fixed top-0 right-0 w-[min(390px,100%)] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)]">
+          <div className="fixed top-0 right-0 w-[min(390px,100%)] lg:w-[620px] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)]">
 
             {/* Panel header */}
             <div

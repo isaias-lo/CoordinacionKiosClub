@@ -110,7 +110,7 @@ export default function ConfigPanel({ isOpen, cal, tiendas, dnom, dcol, onClose,
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       />
 
-      <div className={`fixed top-0 right-0 w-[min(390px,100%)] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)] transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed top-0 right-0 w-[min(390px,100%)] lg:w-[620px] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)] transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
 
         <div className="bg-kred px-[18px] py-[18px] flex items-start justify-between sticky top-0 z-10">
           <div>
@@ -169,7 +169,7 @@ export default function ConfigPanel({ isOpen, cal, tiendas, dnom, dcol, onClose,
           </div>
         </div>
 
-        <div className="px-4 pb-6 flex-1">
+        <div className="px-4 pb-6 flex-1 lg:grid lg:grid-cols-2 lg:gap-x-4 lg:content-start">
           {DIAS.map(dia => {
             const ts = cfgTmp[dia]?.[cfgGrp as 'rm'|'costa'|'fal'] || [];
             return (

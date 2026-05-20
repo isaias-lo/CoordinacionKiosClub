@@ -119,7 +119,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
         <div className="text-[12px] text-kmuted bg-kred/[0.05] border border-kred/[0.1] rounded-kios2 px-3 py-2 mb-3 leading-relaxed">
           💡 <strong>TLBD53</strong> (3P máx) se reserva para 2a vuelta o válvula de alivio.
         </div>
-        <div className="grid grid-cols-2 gap-[7px]">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-[7px]">
           {flota.map((v, i) => (
             <VehicleCard
               key={v.p} v={v} idx={i}
