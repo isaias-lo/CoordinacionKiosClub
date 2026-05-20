@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
       pickings?: string[];
     };
     const { action, config, query = '', pickings = [] } = body;
+    const dateFrom = (body as { dateFrom?: string }).dateFrom ?? '2026-05-01';
+    const dateTo   = (body as { dateTo?:   string }).dateTo   ?? '2026-05-31';
     let { url } = config;
     const { db, username, apiKey } = config;
 
@@ -252,6 +254,8 @@ export async function POST(req: NextRequest) {
         ['state', 'not in', ['draft', 'cancel']],
         ['scheduled_date', '>=', todayStr + ' 00:00:00'],
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
+        ['origin', 'ilike', 'Abastecimiento'],
+        ['origin', 'not ilike', 'AUDITORIA'],
       ];
       if (storeCod) {
         domain.push(['origin', 'ilike', storeCod]);
@@ -264,7 +268,7 @@ export async function POST(req: NextRequest) {
         method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
           fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
-                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
+                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'move_ids'],
           limit: 50,
           order: 'scheduled_date asc',
         }],
@@ -275,6 +279,7 @@ export async function POST(req: NextRequest) {
         state: string; scheduled_date: string | false; date_done: string | false;
         picking_type_id: [number, string];
         user_id: [number, string] | false;
+        move_ids: number[];
       }>;
 
       return NextResponse.json({
@@ -291,8 +296,95 @@ export async function POST(req: NextRequest) {
           pickingType: Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
           responsible: Array.isArray(p.user_id) ? p.user_id[1] : '',
           responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
+          lineCount: Array.isArray(p.move_ids) ? p.move_ids.length : 0,
         })),
       });
+    }
+
+    /* ── picking_stats_range ── */
+    if (action === 'picking_stats_range') {
+      const domainPick: unknown[] = [
+        ['state', '=', 'done'],
+        ['date_done', '>=', dateFrom + ' 00:00:00'],
+        ['date_done', '<=', dateTo   + ' 23:59:59'],
+        ['origin', 'ilike', 'Abastecimiento'],
+        ['origin', 'not ilike', 'AUDITORIA'],
+      ];
+
+      // 1. Fetch all done pickings in range (user + timing)
+      const rawPickings = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domainPick], {
+          fields: ['id', 'user_id', 'scheduled_date', 'date_done'],
+          limit: 8000, order: 'id asc',
+        }],
+      })) as Array<{
+        id: number;
+        user_id: [number, string] | false;
+        scheduled_date: string | false;
+        date_done: string | false;
+      }>;
+
+      if (!rawPickings.length) {
+        return NextResponse.json({ stats: [], dateFrom, dateTo });
+      }
+
+      const pickingIds = rawPickings.map(p => p.id);
+
+      // 2. Get qty_done sum + line count per picking from stock.move.line
+      const mlGroups = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.move.line', 'read_group',
+          [
+            [['picking_id', 'in', pickingIds], ['state', '=', 'done']],
+            ['qty_done'],
+            ['picking_id'],
+          ],
+          {},
+        ],
+      })) as Array<{ picking_id: [number, string] | false; qty_done: number; picking_id_count: number }>;
+
+      const mlByPicking: Record<number, { units: number; lines: number }> = {};
+      for (const g of mlGroups) {
+        if (!Array.isArray(g.picking_id)) continue;
+        mlByPicking[g.picking_id[0]] = { units: g.qty_done ?? 0, lines: g.picking_id_count ?? 0 };
+      }
+
+      // 3. Aggregate by user
+      const byUser: Record<number, {
+        name: string; ops: number;
+        totalMinutes: number; units: number; lines: number;
+      }> = {};
+
+      for (const p of rawPickings) {
+        if (!Array.isArray(p.user_id)) continue;
+        const [userId, userName] = p.user_id;
+        if (!byUser[userId]) byUser[userId] = { name: userName, ops: 0, totalMinutes: 0, units: 0, lines: 0 };
+        const u = byUser[userId];
+        u.ops++;
+        if (typeof p.scheduled_date === 'string' && typeof p.date_done === 'string') {
+          const diffMin = (new Date(p.date_done).getTime() - new Date(p.scheduled_date).getTime()) / 60_000;
+          // Sólo contar duraciones razonables (> 0 y < 8h)
+          if (diffMin > 0 && diffMin < 480) u.totalMinutes += diffMin;
+        }
+        const ml = mlByPicking[p.id];
+        if (ml) { u.units += ml.units; u.lines += ml.lines; }
+      }
+
+      const stats = Object.values(byUser)
+        .map(u => ({
+          name:              u.name,
+          ops:               u.ops,
+          totalMinutes:      Math.round(u.totalMinutes),
+          avgMinutesPerOp:   u.ops   > 0 ? Math.round(u.totalMinutes / u.ops)   : 0,
+          units:             Math.round(u.units),
+          lineCount:         u.lines,
+          avgSecondsPerLine: u.lines > 0 ? Math.round((u.totalMinutes * 60) / u.lines) : 0,
+          cph:               u.totalMinutes > 0 ? Math.round((u.units / u.totalMinutes) * 60) : 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      return NextResponse.json({ stats, dateFrom, dateTo, total: rawPickings.length });
     }
 
     /* ── picking_check_state ── */
