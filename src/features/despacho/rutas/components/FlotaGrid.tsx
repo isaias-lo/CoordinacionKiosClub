@@ -20,6 +20,17 @@ interface NuevoVehiculoState {
   porton: boolean | null; refrigerado: boolean; on: boolean; tlbd: boolean; empresa: string;
 }
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-kred bg-white";
+
 export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
@@ -55,83 +66,113 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
     setShowAgregar(false);
   }
 
+  const nv = nuevoVehiculo;
+  const setNv = (patch: Partial<NuevoVehiculoState>) => setNuevoVehiculo(prev => ({ ...prev, ...patch }));
+
   return (
-    <div className="bg-white rounded-kios shadow-kios overflow-hidden mb-3.5">
-      <div className="px-4 py-3 border-b border-black/[0.09] flex items-center justify-between">
-        <span className="text-[15px] font-bold text-ktext">🚛 Flota</span>
-        <button onClick={() => { setShowAgregar(!showAgregar); setError(''); }} className="text-[13px] text-kred font-semibold">
-          {showAgregar ? '✕ Cancelar' : '➕ Agregar'}
+    <div>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-[11px] font-semibold text-kmuted uppercase tracking-widest mb-0.5">Vehículos registrados</div>
+          <div className="text-[15px] font-bold text-ktext">{flota.filter(v => v.on).length} activos · {flota.length} en total</div>
+        </div>
+        <button
+          onClick={() => { setShowAgregar(!showAgregar); setError(''); }}
+          className={`h-[36px] px-4 rounded-[9px] text-[13px] font-bold transition-all border-2 ${showAgregar ? 'bg-kbg border-black/[0.12] text-kmuted' : 'bg-kred border-kred text-white'}`}
+        >
+          {showAgregar ? '✕ Cancelar' : '＋ Nuevo vehículo'}
         </button>
       </div>
-      <div className="px-4 py-3.5">
-        {showAgregar && (
-          <div className="bg-kred/[0.05] border border-kred/[0.2] rounded-kios2 p-3 mb-3">
-            <div className="text-[12px] font-bold text-kred mb-2">Nuevo Vehículo</div>
-            {error && <div className="text-[11px] text-kred mb-2 bg-kred/[0.1] px-2 py-1 rounded">{error}</div>}
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <input type="text" value={nuevoVehiculo.p} onChange={e => setNuevoVehiculo({...nuevoVehiculo, p: e.target.value.toUpperCase()})}
-                placeholder="Patente *" maxLength={6}
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-              <input type="text" value={nuevoVehiculo.t} onChange={e => setNuevoVehiculo({...nuevoVehiculo, t: e.target.value})}
-                placeholder="Tipo"
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-            </div>
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <input type="number" value={nuevoVehiculo.c} onChange={e => setNuevoVehiculo({...nuevoVehiculo, c: e.target.value})}
-                placeholder="Cap. Pallets"
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-              <input type="number" value={nuevoVehiculo.b} onChange={e => setNuevoVehiculo({...nuevoVehiculo, b: e.target.value})}
-                placeholder="Cap. Bultos"
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-            </div>
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <input type="text" value={nuevoVehiculo.ch} onChange={e => setNuevoVehiculo({...nuevoVehiculo, ch: e.target.value})}
-                placeholder="Conductor"
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-              <input type="tel" value={nuevoVehiculo.tel} onChange={e => setNuevoVehiculo({...nuevoVehiculo, tel: e.target.value})}
-                placeholder="Teléfono conductor"
-                className="text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-            </div>
-            <div className="mb-2">
-              <input type="text" value={nuevoVehiculo.empresa} onChange={e => setNuevoVehiculo({...nuevoVehiculo, empresa: e.target.value})}
-                placeholder="Empresa"
-                className="w-full text-[13px] px-2 h-[34px] rounded-[6px] border border-black/[0.2] text-ktext focus:outline-none focus:border-kred bg-white" />
-            </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ktext mb-3">
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={nuevoVehiculo.porton === true} onChange={e => setNuevoVehiculo({...nuevoVehiculo, porton: e.target.checked ? true : null})} />
-                Portón Hidraúlico
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={nuevoVehiculo.refrigerado} onChange={e => setNuevoVehiculo({...nuevoVehiculo, refrigerado: e.target.checked})} />
-                Refrigerado
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={nuevoVehiculo.tlbd} onChange={e => setNuevoVehiculo({...nuevoVehiculo, tlbd: e.target.checked})} />
-                2ª Vuelta (TLBD)
-              </label>
-            </div>
-            <button onClick={handleAgregarVehiculo} className="w-full h-[38px] rounded-[6px] bg-kred text-white text-[13px] font-bold">
-              Agregar Vehículo
-            </button>
+
+      {/* ── Formulario nuevo vehículo ── */}
+      {showAgregar && (
+        <div className="bg-[#FFF8F8] border-2 border-kred/[0.25] rounded-[14px] p-4 mb-5">
+          <div className="text-[16px] font-bold text-kred mb-4">Nuevo vehículo</div>
+          {error && (
+            <div className="text-[13px] text-kred mb-3 bg-kred/[0.08] px-3 py-2 rounded-[8px] font-semibold">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Field label="Patente *">
+              <input type="text" value={nv.p} onChange={e => setNv({ p: e.target.value.toUpperCase() })}
+                placeholder="Ej: TYKK42" maxLength={6} className={inputCls} />
+            </Field>
+            <Field label="Tipo de vehículo">
+              <input type="text" value={nv.t} onChange={e => setNv({ t: e.target.value })}
+                placeholder="Ej: Camión grande" className={inputCls} />
+            </Field>
           </div>
-        )}
-        <div className="text-[12px] text-kmuted bg-kred/[0.05] border border-kred/[0.1] rounded-kios2 px-3 py-2 mb-3 leading-relaxed">
-          💡 <strong>TLBD53</strong> (3P máx) se reserva para 2a vuelta o válvula de alivio.
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Field label="Cap. Pallets">
+              <input type="number" value={nv.c} onChange={e => setNv({ c: e.target.value })}
+                placeholder="10" className={inputCls} />
+            </Field>
+            <Field label="Cap. Bultos">
+              <input type="number" value={nv.b} onChange={e => setNv({ b: e.target.value })}
+                placeholder="20" className={inputCls} />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Field label="Conductor">
+              <input type="text" value={nv.ch} onChange={e => setNv({ ch: e.target.value })}
+                placeholder="Nombre completo" className={inputCls} />
+            </Field>
+            <Field label="Teléfono conductor">
+              <input type="tel" value={nv.tel} onChange={e => setNv({ tel: e.target.value })}
+                placeholder="+56 9 ..." className={inputCls} />
+            </Field>
+          </div>
+
+          <div className="mb-4">
+            <Field label="Empresa">
+              <input type="text" value={nv.empresa} onChange={e => setNv({ empresa: e.target.value })}
+                placeholder="Nombre de la empresa" className={inputCls} />
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-[13px] text-ktext mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4" checked={nv.porton === true} onChange={e => setNv({ porton: e.target.checked ? true : null })} />
+              <span>Portón hidráulico</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4" checked={nv.refrigerado} onChange={e => setNv({ refrigerado: e.target.checked })} />
+              <span>Refrigerado</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4" checked={nv.tlbd} onChange={e => setNv({ tlbd: e.target.checked })} />
+              <span>2ª Vuelta (TLBD)</span>
+            </label>
+          </div>
+
+          <button onClick={handleAgregarVehiculo}
+            className="w-full h-[44px] rounded-[10px] bg-kred text-white text-[15px] font-bold">
+            Agregar vehículo
+          </button>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-[7px]">
-          {flota.map((v, i) => (
-            <VehicleCard
-              key={v.p} v={v} idx={i}
-              conductores={conductores}
-              onToggle={onToggle}
-              onToggleTlbd={onToggleTlbd}
-              onConductorChange={onConductorChange}
-              onAgregarConductor={onAgregarConductor}
-              onEliminar={onEliminarVehiculo}
-            />
-          ))}
-        </div>
+      )}
+
+      {/* ── Aviso TLBD ── */}
+      <div className="text-[12px] text-kmuted bg-knavy/[0.05] border border-knavy/[0.12] rounded-[10px] px-3.5 py-2.5 mb-4 leading-relaxed">
+        💡 <strong className="text-knavy">TLBD53</strong> (3P máx) se reserva para 2ª vuelta o válvula de alivio.
+      </div>
+
+      {/* ── Grid de tarjetas ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {flota.map((v, i) => (
+          <VehicleCard
+            key={v.p} v={v} idx={i}
+            conductores={conductores}
+            onToggle={onToggle}
+            onToggleTlbd={onToggleTlbd}
+            onConductorChange={onConductorChange}
+            onAgregarConductor={onAgregarConductor}
+            onEliminar={onEliminarVehiculo}
+          />
+        ))}
       </div>
     </div>
   );
@@ -169,99 +210,117 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
 
   function cancelarNuevo() { setModoNuevo(false); setNuevoNombre(''); }
 
-  const portonBadge = v.porton === true
-    ? <span className="text-[9px] font-semibold text-[#34C759] bg-[#EAF7EE] border border-[#34C759] rounded px-1 ml-1">PORTÓN</span>
-    : v.porton === false
-    ? <span className="text-[9px] font-semibold text-kmuted bg-kbg border border-[#E5E5EA] rounded px-1 ml-1">Sin portón</span>
-    : null;
-
-  const refrBadge = v.refrigerado
-    ? <span className="text-[9px] font-semibold text-[#5856D6] bg-[#EBEAFC] border border-[#5856D6] rounded px-1 ml-1">FRÍO</span>
-    : null;
-
   return (
-    <div className={`rounded-kios2 border-[1.5px] bg-kbg transition-all relative overflow-hidden
-      ${v.on ? 'border-kred bg-kred/[0.04]' : 'border-black/[0.09]'}
+    <div className={`rounded-[14px] border-2 bg-white transition-all overflow-hidden
+      ${v.on ? 'border-kred shadow-[0_2px_12px_rgba(212,43,43,0.12)]' : 'border-black/[0.10] shadow-sm'}
       ${v.tlbd ? 'border-dashed' : ''}`}>
-      <div onClick={() => onToggle(idx)} className="px-3 pt-[11px] pb-2 cursor-pointer select-none">
-        {v.tlbd && (
-          <div className="inline-block text-[9px] font-bold text-knavy bg-knavy/[0.09] border border-knavy/[0.15] rounded-[3px] px-1 py-px mb-1 tracking-[0.5px]">
-            2a VUELTA
+
+      {/* ── Top: patente + toggle ── */}
+      <div
+        onClick={() => onToggle(idx)}
+        className={`px-4 pt-4 pb-3 cursor-pointer select-none ${v.on ? 'bg-kred/[0.03]' : ''}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            {v.tlbd && (
+              <div className="inline-flex items-center text-[11px] font-bold text-knavy bg-knavy/[0.10] border border-knavy/[0.20] rounded-[5px] px-2 py-0.5 mb-2 tracking-wide">
+                2ª VUELTA
+              </div>
+            )}
+            <div className={`font-mono text-[20px] font-extrabold tracking-wider leading-none mb-1 ${v.on ? 'text-kred' : 'text-ktext'}`}>
+              {v.p}
+              {v.tel && (
+                <button
+                  onClick={e => { e.stopPropagation(); setShowTel(s => !s); }}
+                  className="ml-2 text-[14px] text-kmuted hover:text-knavy transition-colors align-middle"
+                  title={showTel ? 'Ocultar teléfono' : 'Ver teléfono'}
+                >📞</button>
+              )}
+            </div>
+            {showTel && v.tel && (
+              <div className="text-[13px] text-knavy font-semibold mb-1">{v.tel}</div>
+            )}
+            <div className="text-[13px] text-kmuted font-medium">{v.t} · {v.c}P / {v.b}B</div>
+            {v.empresa && <div className="text-[12px] text-kmuted/70 mt-0.5">{v.empresa}</div>}
           </div>
-        )}
-        <div className={`absolute top-[9px] right-[9px] w-[19px] h-[19px] rounded-full border-[1.5px] flex items-center justify-center text-[10px]
-          ${v.on ? 'bg-kred border-kred text-white' : 'border-black/[0.09]'}`}>
-          {v.on ? '✓' : ''}
+
+          {/* Toggle activo */}
+          <div className={`w-[28px] h-[28px] rounded-full border-2 flex items-center justify-center text-[13px] flex-shrink-0 mt-0.5 transition-all
+            ${v.on ? 'bg-kred border-kred text-white' : 'border-black/[0.15] bg-white'}`}>
+            {v.on ? '✓' : ''}
+          </div>
         </div>
-        <div className={`font-mono text-[13px] font-bold mb-0.5 flex items-center flex-wrap pr-6 ${v.on ? 'text-kred' : 'text-ktext'}`}>
-          {v.p}{portonBadge}{refrBadge}
-          {v.tel && (
-            <button
-              onClick={e => { e.stopPropagation(); setShowTel(s => !s); }}
-              className="ml-1 text-[10px] text-kmuted hover:text-knavy transition-colors"
-              title={showTel ? 'Ocultar teléfono' : 'Ver teléfono'}
-            >📞</button>
-          )}
+
+        {/* Badges */}
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
+          {v.porton === true  && <span className="text-[11px] font-semibold text-[#1A7D3A] bg-[#E8F5EC] border border-[#1A7D3A]/[0.3] rounded-[5px] px-2 py-0.5">PORTÓN</span>}
+          {v.porton === false && <span className="text-[11px] font-semibold text-kmuted bg-kbg border border-black/[0.09] rounded-[5px] px-2 py-0.5">Sin portón</span>}
+          {v.refrigerado      && <span className="text-[11px] font-semibold text-[#4B48C8] bg-[#ECEAFF] border border-[#4B48C8]/[0.3] rounded-[5px] px-2 py-0.5">FRÍO</span>}
         </div>
-        {showTel && v.tel && (
-          <div className="text-[10px] text-knavy font-semibold mb-0.5 tracking-wide">{v.tel}</div>
-        )}
-        <div className="text-[11px] text-kmuted">{v.c}P máx · {v.t}</div>
       </div>
 
-      <div className="px-3 pb-[10px]" onClick={e => e.stopPropagation()}>
-        <button
-          onClick={() => onToggleTlbd(idx)}
-          className={`w-full h-[24px] rounded-[5px] text-[10px] font-bold mb-1.5 border transition-all
-            ${v.tlbd
-              ? 'bg-knavy text-white border-knavy'
-              : 'bg-transparent text-kmuted border-black/[0.09] hover:border-knavy/[0.35] hover:text-knavy'}`}
-        >
-          {v.tlbd ? '✓ 2ª Vuelta' : '2ª Vuelta'}
-        </button>
-        {modoNuevo ? (
-          <div className="flex gap-1">
-            <input
-              ref={inputRef} type="text" value={nuevoNombre}
-              onChange={e => setNuevoNombre(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') confirmarNuevo(); if (e.key === 'Escape') cancelarNuevo(); }}
-              placeholder="Nombre del conductor..."
-              className="flex-1 min-w-0 text-[12px] px-2 h-[28px] rounded-[6px] border border-knavy/[0.4] text-ktext focus:outline-none focus:border-knavy bg-white"
-            />
-            <button onClick={confirmarNuevo} className="w-[28px] h-[28px] rounded-[6px] bg-knavy text-white text-[13px] flex items-center justify-center flex-shrink-0">✓</button>
-            <button onClick={cancelarNuevo} className="w-[28px] h-[28px] rounded-[6px] bg-kbg border border-black/[0.09] text-kmuted text-[13px] flex items-center justify-center flex-shrink-0">✕</button>
-          </div>
-        ) : (
-          <div className="relative">
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none">👤</span>
-            <select
-              value={v.ch || ''}
-              onChange={handleSelect}
-              className={`w-full text-[12px] pl-6 pr-2 h-[28px] rounded-[6px] border appearance-none cursor-pointer transition-colors focus:outline-none bg-white
-                ${v.ch ? 'border-knavy/[0.4] text-knavy font-semibold' : 'border-black/[0.09] text-kmuted'}`}
-            >
-              <option value="">— Asignar conductor —</option>
-              {conductores.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
-              <option disabled>──────────────</option>
-              <option value={NUEVO_KEY}>➕ Nuevo conductor...</option>
-            </select>
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-kmuted pointer-events-none">▼</span>
-          </div>
-        )}
-        {confirmDelete ? (
-          <div className="mt-1.5 flex gap-1">
-            <span className="flex-1 text-[10px] text-kred font-semibold flex items-center">¿Eliminar {v.p}?</span>
-            <button onClick={() => onEliminar(idx)} className="h-[24px] px-2 rounded-[5px] bg-kred text-white text-[10px] font-bold">Sí</button>
-            <button onClick={() => setConfirmDelete(false)} className="h-[24px] px-2 rounded-[5px] border border-black/[0.09] text-kmuted text-[10px]">No</button>
-          </div>
-        ) : (
+      {/* ── Bottom: conductor + acciones ── */}
+      <div className="px-4 pb-4 pt-3 border-t border-black/[0.06]" onClick={e => e.stopPropagation()}>
+
+        {/* Conductor */}
+        <div className="mb-2.5">
+          <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1.5">Conductor</div>
+          {modoNuevo ? (
+            <div className="flex gap-1.5">
+              <input
+                ref={inputRef} type="text" value={nuevoNombre}
+                onChange={e => setNuevoNombre(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') confirmarNuevo(); if (e.key === 'Escape') cancelarNuevo(); }}
+                placeholder="Nombre del conductor..."
+                className="flex-1 min-w-0 text-[13px] px-3 h-[36px] rounded-[8px] border border-knavy/[0.4] text-ktext focus:outline-none focus:border-knavy bg-white"
+              />
+              <button onClick={confirmarNuevo} className="w-[36px] h-[36px] rounded-[8px] bg-knavy text-white text-[15px] flex items-center justify-center flex-shrink-0">✓</button>
+              <button onClick={cancelarNuevo}  className="w-[36px] h-[36px] rounded-[8px] bg-kbg border border-black/[0.09] text-kmuted text-[15px] flex items-center justify-center flex-shrink-0">✕</button>
+            </div>
+          ) : (
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] pointer-events-none">👤</span>
+              <select
+                value={v.ch || ''}
+                onChange={handleSelect}
+                className={`w-full text-[13px] pl-8 pr-3 h-[36px] rounded-[8px] border appearance-none cursor-pointer focus:outline-none bg-white transition-colors
+                  ${v.ch ? 'border-knavy/[0.4] text-knavy font-semibold' : 'border-black/[0.12] text-kmuted'}`}
+              >
+                <option value="">— Asignar conductor —</option>
+                {conductores.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
+                <option disabled>──────────────</option>
+                <option value={NUEVO_KEY}>➕ Nuevo conductor...</option>
+              </select>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-kmuted pointer-events-none">▼</span>
+            </div>
+          )}
+        </div>
+
+        {/* Botones de acción */}
+        <div className="flex gap-2">
           <button
-            onClick={() => setConfirmDelete(true)}
-            className="mt-1.5 w-full h-[22px] rounded-[5px] text-[10px] text-kmuted border border-black/[0.07] bg-transparent hover:border-kred/[0.4] hover:text-kred transition-all"
+            onClick={() => onToggleTlbd(idx)}
+            className={`flex-1 h-[32px] rounded-[7px] text-[12px] font-bold border-2 transition-all
+              ${v.tlbd ? 'bg-knavy text-white border-knavy' : 'bg-transparent text-kmuted border-black/[0.10] hover:border-knavy/[0.4] hover:text-knavy'}`}
           >
-            🗑 Eliminar
+            {v.tlbd ? '✓ 2ª Vuelta' : '2ª Vuelta'}
           </button>
-        )}
+
+          {confirmDelete ? (
+            <div className="flex gap-1.5 flex-1">
+              <span className="flex-1 text-[12px] text-kred font-semibold flex items-center justify-center">¿Eliminar?</span>
+              <button onClick={() => onEliminar(idx)} className="h-[32px] px-3 rounded-[7px] bg-kred text-white text-[12px] font-bold">Sí</button>
+              <button onClick={() => setConfirmDelete(false)} className="h-[32px] px-3 rounded-[7px] border border-black/[0.10] text-kmuted text-[12px]">No</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="h-[32px] px-3 rounded-[7px] text-[12px] text-kmuted border border-black/[0.09] bg-transparent hover:border-kred/[0.4] hover:text-kred transition-all"
+            >
+              🗑
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
