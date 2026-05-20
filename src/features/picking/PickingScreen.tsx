@@ -588,7 +588,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted, colsPerRow }: {
+function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted, colsPerRow, onPrintSelected }: {
   group: PickerGroup; displayName: string; pallets: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
@@ -597,6 +597,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   totalStorePallets: number;
   isPrinted: boolean;
   colsPerRow: number;
+  onPrintSelected: (palletNums: Set<number>) => void;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -605,6 +606,22 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   // El nombre se incluye en el barcode. Si no se ingresó, usar el nombre Odoo (group.key)
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
+
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+
+  const toggleIndex = (i: number) => {
+    setSelectedIndices(prev => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const handlePrintSelected = () => {
+    const palletNums = new Set([...selectedIndices].map(i => palletOffset + i + 1));
+    onPrintSelected(palletNums);
+    setSelectedIndices(new Set());
+  };
 
   const borderColor = allDone || isPrinted
     ? 'rgba(22,163,74,0.45)'
@@ -765,31 +782,79 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
             </div>
           ) : (
             <div>
-              <div className="print:hidden flex items-center justify-between mb-3">
-                <div className="text-[13px] font-semibold text-text-2">{pallets} código{pallets !== 1 ? 's' : ''}</div>
-                <button onClick={onPrint}
-                  className="flex items-center gap-1.5 text-[14px] font-bold cursor-pointer px-4 py-2 rounded-xl transition-all active:scale-95"
-                  style={isPrinted
-                    ? { background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.4)' }
-                    : { background: 'linear-gradient(135deg, #78350F, #D97706)', color: '#fff' }}>
-                  {isPrinted ? '↺ Re-imprimir' : '🖨 Imprimir'}
-                </button>
+              <div className="print:hidden flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div className="text-[13px] font-semibold text-text-2">
+                  {pallets} código{pallets !== 1 ? 's' : ''}
+                  {selectedIndices.size > 0 && (
+                    <span className="ml-2 text-[12px] font-normal text-blue-600">
+                      · {selectedIndices.size} seleccionada{selectedIndices.size !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedIndices.size > 0 && (
+                    <>
+                      <button
+                        onClick={() => setSelectedIndices(new Set())}
+                        className="text-[12px] cursor-pointer px-3 py-1.5 rounded-xl border transition-all"
+                        style={{ borderColor: 'rgba(37,99,235,0.3)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                        ✕ Limpiar
+                      </button>
+                      <button
+                        onClick={handlePrintSelected}
+                        className="flex items-center gap-1.5 text-[13px] font-bold cursor-pointer px-3 py-1.5 rounded-xl transition-all active:scale-95"
+                        style={{ background: 'linear-gradient(135deg, #1E3A8A, #2563EB)', color: '#fff' }}>
+                        🖨 Imprimir {selectedIndices.size}
+                      </button>
+                    </>
+                  )}
+                  <button onClick={onPrint}
+                    className="flex items-center gap-1.5 text-[14px] font-bold cursor-pointer px-4 py-2 rounded-xl transition-all active:scale-95"
+                    style={isPrinted
+                      ? { background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.4)' }
+                      : { background: 'linear-gradient(135deg, #78350F, #D97706)', color: '#fff' }}>
+                    {isPrinted
+                      ? '↺ Re-imprimir todas'
+                      : selectedIndices.size > 0 ? '🖨 Todas' : '🖨 Imprimir'}
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colsPerRow}, minmax(0, 1fr))`, gap: 8 }}>
-                {Array.from({ length: pallets }, (_, i) => (
-                  <BarcodeCard
-                    key={i}
-                    value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
-                    palletNum={palletOffset + i + 1}
-                    total={totalStorePallets}
-                    storeCod={group.storeCod}
-                    pickerLabel={pickerLabel}
-                    responsibleKey={group.key}
-                    allCategories={allCategories}
-                    totalPickers={totalPickers}
-                    compact
-                  />
-                ))}
+                {Array.from({ length: pallets }, (_, i) => {
+                  const isSelected = selectedIndices.has(i);
+                  return (
+                    <div key={i} onClick={() => toggleIndex(i)}
+                      style={{
+                        position: 'relative', cursor: 'pointer', borderRadius: 10,
+                        outline: isSelected ? '2.5px solid #2563EB' : '2.5px solid transparent',
+                        transition: 'outline 0.15s',
+                      }}>
+                      <BarcodeCard
+                        value={`${group.storeCod}|${barcodePickerName}|${refs}|P${palletOffset + i + 1}|${cats}`}
+                        palletNum={palletOffset + i + 1}
+                        total={totalStorePallets}
+                        storeCod={group.storeCod}
+                        pickerLabel={pickerLabel}
+                        responsibleKey={group.key}
+                        allCategories={allCategories}
+                        totalPickers={totalPickers}
+                        compact
+                      />
+                      {isSelected && (
+                        <div style={{
+                          position: 'absolute', top: 6, right: 6,
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 6px rgba(37,99,235,0.4)',
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1035,8 +1100,9 @@ export function PickingScreen() {
   });
 
   const [errorCods, setErrorCods]         = useState<string[]>([]);
-  const [printOnlyStore, setPrintOnlyStore] = useState<string | null>(null);
-  const [doPrint, setDoPrint]             = useState(false);
+  const [printOnlyStore, setPrintOnlyStore]   = useState<string | null>(null);
+  const [doPrint, setDoPrint]                 = useState(false);
+  const [selectionPrint, setSelectionPrint]   = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
 
   // Cross-desktop print visibility — tracks which stateKeys were printed today
   const [printedKeys, setPrintedKeys] = useState<Set<string>>(new Set());
@@ -1079,6 +1145,7 @@ export function PickingScreen() {
     setDoPrint(false);
     const handleAfterPrint = () => {
       setPrintOnlyStore(null);
+      setSelectionPrint(null);
       window.removeEventListener('afterprint', handleAfterPrint);
     };
     window.addEventListener('afterprint', handleAfterPrint);
@@ -1237,10 +1304,17 @@ export function PickingScreen() {
   }, [pickerPallets, pickerDisplayNames]);
 
   const printStoreLabels = useCallback((cod: string) => {
+    setSelectionPrint(null);
     setPrintOnlyStore(cod);
     setDoPrint(true);
     recordPrints(allGroupedByStore[cod] ?? []);
   }, [allGroupedByStore, recordPrints]);
+
+  const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
+    setSelectionPrint({ stateKey, palletNums });
+    setPrintOnlyStore(null);
+    setDoPrint(true);
+  }, []);
 
   const printAll = useCallback(() => {
     setPrintOnlyStore(null);
@@ -1261,7 +1335,7 @@ export function PickingScreen() {
     type LabelData = {
       value: string; palletNum: number; total: number;
       storeCod: string; pickerLabel: string; responsibleKey: string;
-      allCategories: string[]; totalPickers: number;
+      allCategories: string[]; totalPickers: number; stateKey: string;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -1293,6 +1367,7 @@ export function PickingScreen() {
               responsibleKey: group.key,
               allCategories,
               totalPickers: storeGroups.length,
+              stateKey: group.stateKey,
             });
           }
         }
@@ -1322,9 +1397,11 @@ export function PickingScreen() {
 
     {/* Vista print-only: solo etiquetas, sin chrome */}
     <div className="picking-print-root" style={{ display: 'none' }}>
-      {(printOnlyStore
-        ? printableLabels.filter(l => l.storeCod === printOnlyStore)
-        : printableLabels
+      {(selectionPrint
+        ? printableLabels.filter(l => l.stateKey === selectionPrint.stateKey && selectionPrint.palletNums.has(l.palletNum))
+        : printOnlyStore
+          ? printableLabels.filter(l => l.storeCod === printOnlyStore)
+          : printableLabels
       ).map((label, idx) => (
         <BarcodeCard key={idx} {...label} />
       ))}
@@ -1608,6 +1685,7 @@ export function PickingScreen() {
                               totalStorePallets={totalStorePallets}
                               isPrinted={printedKeys.has(group.stateKey)}
                               colsPerRow={colsPerRow}
+                              onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
                             />
                           );
                         });
