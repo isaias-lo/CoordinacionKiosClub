@@ -7,6 +7,7 @@ import { ProfilePill } from '@/components/ProfilePill';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -541,8 +542,13 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
           <div style={{ width: '70%', margin: '0 auto' }}>
             <Barcode1D value={value} height={44} />
           </div>
-          <div style={{ textAlign: 'center', fontSize: 9, fontFamily: 'monospace', color: '#bbb', marginTop: 1, wordBreak: 'break-all', lineHeight: 1.2 }}>
-            {value}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+            <div style={{ fontSize: 9, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
+              {value}
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
+              {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </div>
           </div>
         </div>
 
@@ -553,13 +559,14 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets }: {
+function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, palletOffset, totalStorePallets, isPrinted }: {
   group: PickerGroup; displayName: string; pallets: number;
   onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
   totalPickers: number;
   palletOffset: number;
   totalStorePallets: number;
+  isPrinted: boolean;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -569,19 +576,36 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
 
-  const borderColor = allDone ? 'rgba(22,163,74,0.40)' : 'rgba(26,37,80,0.12)';
-  const shadow      = allDone ? '0 2px 16px rgba(22,163,74,0.12)' : '0 1px 8px rgba(26,37,80,0.07)';
+  const borderColor = allDone
+    ? 'rgba(22,163,74,0.40)'
+    : isPrinted
+      ? 'rgba(217,119,6,0.35)'
+      : 'rgba(26,37,80,0.12)';
+  const shadow = allDone
+    ? '0 2px 16px rgba(22,163,74,0.12)'
+    : isPrinted
+      ? '0 2px 16px rgba(217,119,6,0.10)'
+      : '0 1px 8px rgba(26,37,80,0.07)';
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
 
       {/* Card header */}
       <div className="px-5 py-3 border-b flex items-center justify-between"
-        style={{ background: allDone ? 'rgba(22,163,74,0.05)' : 'rgba(26,37,80,0.02)', borderColor: allDone ? 'rgba(22,163,74,0.15)' : '#F0F2F5' }}>
+        style={{
+          background:  allDone ? 'rgba(22,163,74,0.05)' : isPrinted ? 'rgba(217,119,6,0.04)' : 'rgba(26,37,80,0.02)',
+          borderColor: allDone ? 'rgba(22,163,74,0.15)' : isPrinted ? 'rgba(217,119,6,0.20)' : '#F0F2F5',
+        }}>
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-mono text-[14px] font-bold text-navy bg-[rgba(26,37,80,0.09)] px-3 py-1 rounded-lg shrink-0">{group.key}</span>
           {displayName && <span className="text-[16px] font-semibold text-text truncate">{displayName}</span>}
           {allDone && <span className="text-[13px] font-bold text-[#16A34A] shrink-0">✓ Realizado</span>}
+          {isPrinted && (
+            <span className="text-[12px] font-bold shrink-0 px-2.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(217,119,6,0.15)', color: '#D97706', border: '1px solid rgba(217,119,6,0.35)' }}>
+              🖨 Ya impreso
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {allCategories.map(c => (
@@ -719,8 +743,10 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                 <div className="text-[13px] font-semibold text-text-2">{pallets} código{pallets !== 1 ? 's' : ''}</div>
                 <button onClick={onPrint}
                   className="flex items-center gap-1.5 text-[14px] font-bold cursor-pointer px-4 py-2 rounded-xl transition-all active:scale-95"
-                  style={{ background: 'linear-gradient(135deg, #78350F, #D97706)', color: '#fff' }}>
-                  🖨 Imprimir
+                  style={isPrinted
+                    ? { background: 'rgba(217,119,6,0.12)', color: '#D97706', border: '1px solid rgba(217,119,6,0.4)' }
+                    : { background: 'linear-gradient(135deg, #78350F, #D97706)', color: '#fff' }}>
+                  {isPrinted ? '↺ Re-imprimir' : '🖨 Imprimir'}
                 </button>
               </div>
               {Array.from({ length: pallets }, (_, i) => (
@@ -978,6 +1004,21 @@ export function PickingScreen() {
   const [printOnlyStore, setPrintOnlyStore] = useState<string | null>(null);
   const [doPrint, setDoPrint]             = useState(false);
 
+  // Cross-desktop print visibility — tracks which stateKeys were printed today
+  const [printedKeys, setPrintedKeys] = useState<Set<string>>(new Set());
+
+  const loadPrintStatus = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/picking-prints?date=${todayISO()}`);
+      if (!res.ok) return;
+      const json = await res.json() as { data?: { state_key: string }[] };
+      setPrintedKeys(new Set((json.data ?? []).map(r => r.state_key)));
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { void loadPrintStatus(); }, [loadPrintStatus]);
+  useRealtimeRefresh('picking_prints', loadPrintStatus);
+
   // Persistir filtro de sección en localStorage
   useEffect(() => {
     localStorage.setItem(SECTION_FILTER_KEY, sectionFilter);
@@ -1036,14 +1077,16 @@ export function PickingScreen() {
     const result: PickerGroup[] = [];
     for (const cod of selectedCods) {
       const ops = opsMap[cod] ?? [];
-      const map: Record<string, PickingOperation[]> = {};
+      // Group by normalized (lowercase/trim) name → same picker regardless of casing entered on each desktop
+      const map: Record<string, { displayKey: string; ops: PickingOperation[] }> = {};
       for (const op of ops) {
-        const k = op.responsible || 'Sin asignar';
-        if (!map[k]) map[k] = [];
-        map[k].push(op);
+        const raw        = op.responsible || 'Sin asignar';
+        const normalized = raw.toLowerCase().trim();
+        if (!map[normalized]) map[normalized] = { displayKey: raw, ops: [] };
+        map[normalized].ops.push(op);
       }
-      for (const [key, gOps] of Object.entries(map).sort(([a], [b]) => a.localeCompare(b))) {
-        result.push({ key, storeCod: cod, stateKey: `${cod}__${key}`, operations: gOps });
+      for (const [normKey, { displayKey, ops: gOps }] of Object.entries(map).sort(([a], [b]) => a.localeCompare(b))) {
+        result.push({ key: displayKey, storeCod: cod, stateKey: `${cod}__${normKey}`, operations: gOps });
       }
     }
     return result;
@@ -1125,16 +1168,6 @@ export function PickingScreen() {
     setRefreshingId(null);
   }, [hasOdoo, odooConfig]);
 
-  const printStoreLabels = useCallback((cod: string) => {
-    setPrintOnlyStore(cod);
-    setDoPrint(true);
-  }, []);
-
-  const printAll = useCallback(() => {
-    setPrintOnlyStore(null);
-    setDoPrint(true);
-  }, []);
-
   const filteredGroups = useMemo(() => {
     if (sectionFilter === 'all') return allGroups;
     return allGroups.filter(g => {
@@ -1150,6 +1183,36 @@ export function PickingScreen() {
     for (const g of allGroups) { if (!map[g.storeCod]) map[g.storeCod] = []; map[g.storeCod].push(g); }
     return map;
   }, [allGroups]);
+
+  const recordPrints = useCallback((groups: PickerGroup[]) => {
+    const date = todayISO();
+    for (const group of groups) {
+      const pallets = pickerPallets[group.stateKey] ?? 0;
+      if (pallets === 0) continue;
+      void fetch('/api/picking-prints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stateKey:    group.stateKey,
+          pickerLabel: pickerDisplayNames[group.stateKey] || group.key,
+          pallets,
+          date,
+        }),
+      });
+    }
+  }, [pickerPallets, pickerDisplayNames]);
+
+  const printStoreLabels = useCallback((cod: string) => {
+    setPrintOnlyStore(cod);
+    setDoPrint(true);
+    recordPrints(allGroupedByStore[cod] ?? []);
+  }, [allGroupedByStore, recordPrints]);
+
+  const printAll = useCallback(() => {
+    setPrintOnlyStore(null);
+    setDoPrint(true);
+    for (const cod of selectedCods) recordPrints(allGroupedByStore[cod] ?? []);
+  }, [selectedCods, allGroupedByStore, recordPrints]);
 
   const hasBarcodes    = allGroups.some(g => (pickerPallets[g.stateKey] ?? 0) > 0);
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -1483,6 +1546,7 @@ export function PickingScreen() {
                               totalPickers={allStore.length}
                               palletOffset={offset}
                               totalStorePallets={totalStorePallets}
+                              isPrinted={printedKeys.has(group.stateKey)}
                             />
                           );
                         });

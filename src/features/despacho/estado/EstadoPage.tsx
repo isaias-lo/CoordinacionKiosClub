@@ -140,6 +140,12 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
             <span style={{ fontFamily: 'monospace', fontSize: '10pt', fontWeight: 700, color: '#222' }}>{item.guias.join(' · ')}</span>
           </div>
         )}
+        <div style={{ marginBottom: '2mm' }}>
+          <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Fecha:{' '}</span>
+          <span style={{ fontFamily: 'monospace', fontSize: '9pt', fontWeight: 700, color: '#444' }}>
+            {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+          </span>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Peso</div>
