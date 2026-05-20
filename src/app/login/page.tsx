@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -34,10 +34,19 @@ export default function LoginPage() {
   const [error,        setError]        = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // Al montar la página de login, limpia cualquier sesión local stale (cookies/localStorage
+  // del cliente Supabase) sin tocar el servidor. Previene que estado corrupto de sesiones
+  // anteriores (ej. ventana incógnita) bloquee un nuevo intento de login.
+  useEffect(() => {
+    supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    // Segunda limpieza justo antes del intento, por si el useEffect aún no completó
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
     const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
     if (authErr) {
       setError(mapError(authErr.message));

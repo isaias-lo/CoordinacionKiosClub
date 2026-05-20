@@ -64,7 +64,19 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user ?? null;
+  } catch {
+    // Cookies malformadas o token expirado sin posibilidad de refresh.
+    // Purga todas las cookies sb-* y redirige al login para empezar sesión limpia.
+    const cleanResp = NextResponse.redirect(new URL('/login', request.url));
+    request.cookies.getAll()
+      .filter(c => c.name.startsWith('sb-'))
+      .forEach(c => cleanResp.cookies.delete(c.name));
+    return cleanResp;
+  }
 
   if (!user) {
     if (PUBLIC_ROUTES.some(p => pathname === p)) return response;

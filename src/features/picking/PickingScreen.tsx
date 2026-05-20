@@ -1268,13 +1268,13 @@ export function PickingScreen() {
     <>
     <style dangerouslySetInnerHTML={{ __html:
       '@media print{' +
-      '@page{size:letter portrait;margin:8mm}' +
+      '@page{size:auto landscape;margin:0}' +
       'body>*{display:none!important}' +
       '.picking-print-root{display:block!important}' +
       '.picking-label{display:flex!important;flex-direction:column;' +
-      'width:200mm!important;height:263mm!important;max-width:200mm!important;' +
+      'width:100vw!important;height:100vh!important;max-width:100vw!important;' +
       'border-radius:0!important;margin:0!important;border:none!important;' +
-      'padding:10mm!important;box-sizing:border-box!important;' +
+      'padding:8mm!important;box-sizing:border-box!important;' +
       'break-after:page;page-break-after:always;overflow:hidden}' +
       '.picking-label:last-child{break-after:avoid;page-break-after:avoid}}'
     }} />
