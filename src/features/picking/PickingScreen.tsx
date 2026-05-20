@@ -477,76 +477,104 @@ function Barcode1D({ value, height = 72 }: { value: string; height?: number }) {
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
-function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers }: {
+function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, compact = false }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
-  totalPickers: number;
+  totalPickers: number; compact?: boolean;
 }) {
   const storeName = getStoreName(storeCod);
+
+  // compact=true → vista previa en pantalla (1/3 del tamaño)
+  // compact=false → tarjeta de impresión (tamaño real)
+  const s = compact ? {
+    outerMaxW: 340, outerMargin: '0 auto 6px',
+    innerPad: '8px 10px 6px', innerMinH: 155,
+    respSize: 9, pickerSize: 13, subSize: 11,
+    palletSize: 28, deSize: 10,
+    catSize: 9, catPad: '2px 6px', catGap: 4, catRadius: 4,
+    centerPad: '4px 0',
+    storeCodeSize: 'clamp(36px, 7vw, 52px)', storeCodeLS: '2px',
+    storeNameSize: 17, storeNameMT: 3,
+    barMT: 4, barW: '88%', barH: 36,
+    footerFS: 7, footerDateFS: 9,
+  } : {
+    outerMaxW: 720, outerMargin: '0 auto 20px',
+    innerPad: '20px 22px 14px', innerMinH: 480,
+    respSize: 12, pickerSize: 34, subSize: 15,
+    palletSize: 80, deSize: 13,
+    catSize: 22, catPad: '4px 14px', catGap: 8, catRadius: 8,
+    centerPad: '12px 0',
+    storeCodeSize: 'clamp(128px, 28vw, 200px)', storeCodeLS: '6px',
+    storeNameSize: 52, storeNameMT: 10,
+    barMT: 8, barW: '88%', barH: 113,
+    footerFS: 9, footerDateFS: 12,
+  };
+
   return (
     <div
       className="picking-label bg-white border-2 border-gray-200 rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border-0"
-      style={{ maxWidth: 720, margin: '0 auto 20px' }}
+      style={{ maxWidth: s.outerMaxW, margin: s.outerMargin }}
     >
-      <div className="flex flex-col" style={{ padding: '20px 22px 14px', minHeight: 480 }}>
+      <div className="flex flex-col" style={{ padding: s.innerPad, minHeight: s.innerMinH }}>
 
-        {/* Top row: picker (izquierda) + número de pallet (derecha) */}
-        <div className="flex items-start justify-between" style={{ marginBottom: 8 }}>
-          <div className="min-w-0 flex-1 pr-4">
-            {/* Responsable Odoo */}
-            <div style={{ fontSize: 12, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>
+        {/* Top row */}
+        <div className="flex items-start justify-between" style={{ marginBottom: compact ? 3 : 8 }}>
+          <div className="min-w-0 flex-1 pr-3">
+            <div style={{ fontSize: s.respSize, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 1 }}>
               {responsibleKey}
             </div>
-            {/* Nombre del picker — letra grande */}
-            <div style={{ fontSize: 34, fontWeight: 800, color: '#111', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: s.pickerSize, fontWeight: 800, color: '#111', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {pickerLabel}
             </div>
-            <div style={{ fontSize: 15, color: '#888', marginTop: 4, fontWeight: 500 }}>
-              {totalPickers} picker{totalPickers !== 1 ? 's' : ''} en tienda
-            </div>
+            {!compact && (
+              <div style={{ fontSize: s.subSize, color: '#888', marginTop: 4, fontWeight: 500 }}>
+                {totalPickers} picker{totalPickers !== 1 ? 's' : ''} en tienda
+              </div>
+            )}
           </div>
           <div className="shrink-0 text-right">
-            <div className="font-barlow-condensed font-black text-amber-600 leading-none" style={{ fontSize: 80 }}>
+            <div className="font-barlow-condensed font-black text-amber-600 leading-none" style={{ fontSize: s.palletSize }}>
               P-{palletNum}
             </div>
-            <div style={{ fontSize: 13, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
+            <div style={{ fontSize: s.deSize, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
           </div>
         </div>
 
-        {/* Categorías — prominentes */}
+        {/* Categorías */}
         {allCategories.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: s.catGap, marginBottom: compact ? 3 : 8, flexWrap: 'wrap' }}>
             {allCategories.map(c => (
               <span key={c} style={{
-                fontSize: 22, fontWeight: 800, color: '#1A2550',
-                background: 'rgba(26,37,80,0.09)', borderRadius: 8,
-                padding: '4px 14px', letterSpacing: '0.5px',
+                fontSize: s.catSize, fontWeight: 800, color: '#1A2550',
+                background: 'rgba(26,37,80,0.09)', borderRadius: s.catRadius,
+                padding: s.catPad, letterSpacing: '0.5px',
               }}>{c}</span>
             ))}
           </div>
         )}
 
-        {/* Centro: código de tienda + nombre */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: '12px 0' }}>
+        {/* Centro: código + nombre */}
+        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: s.centerPad }}>
           <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
-            style={{ fontSize: 'clamp(128px, 28vw, 200px)', letterSpacing: '6px' }}>
+            style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
             {storeCod}
           </div>
-          <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide" style={{ fontSize: 52, marginTop: 10 }}>
+          <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide"
+            style={{ fontSize: s.storeNameSize, marginTop: s.storeNameMT }}>
             {storeName}
           </div>
         </div>
 
-        {/* Código de barras en la parte inferior */}
-        <div style={{ marginTop: 8 }}>
-          <div style={{ width: '88%', margin: '0 auto' }}>
-            <Barcode1D value={value} height={113} />
+        {/* Código de barras */}
+        <div style={{ marginTop: s.barMT }}>
+          <div style={{ width: s.barW, margin: '0 auto' }}>
+            <Barcode1D value={value} height={s.barH} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
-            <div style={{ fontSize: 9, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+            <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
               {value}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 8 }}>
+            <div style={{ fontSize: s.footerDateFS, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
               {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             </div>
           </div>
@@ -756,6 +784,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                   responsibleKey={group.key}
                   allCategories={allCategories}
                   totalPickers={totalPickers}
+                  compact
                 />
               ))}
             </div>
