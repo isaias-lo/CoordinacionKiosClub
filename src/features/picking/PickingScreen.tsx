@@ -459,24 +459,27 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
     </div>
   );
 }
+// ─── 1D Barcode (Code128) ─────────────────────────────────────────────────────
 
-// ─── 1D Barcode ───────────────────────────────────────────────────────────────
-
-function Barcode1D({ value, height = 72 }: { value: string; height?: number }) {
+function Barcode1D({ value, height = 65 }: { value: string; height?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
   useEffect(() => {
     if (!svgRef.current || !value) return;
     import('jsbarcode').then(({ default: JsBarcode }) => {
       if (!svgRef.current) return;
       try {
-        JsBarcode(svgRef.current, value, { format: 'CODE128', width: 2, height, displayValue: false, margin: 6, background: '#ffffff', lineColor: '#000000' });
+        JsBarcode(svgRef.current, value, {
+          format: 'CODE128', width: 2, height,
+          displayValue: false, margin: 8,
+          background: '#ffffff', lineColor: '#000000',
+        });
       } catch {
         const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2, height, displayValue: false, margin: 6 }); } catch { /* ignore */ }
+        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2, height, displayValue: false, margin: 8 }); } catch { /* ignore */ }
       }
     });
   }, [value, height]);
-  return <svg ref={svgRef} className="w-full" />;
+  return <svg ref={svgRef} style={{ width: '100%', display: 'block' }} />;
 }
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
@@ -510,7 +513,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
     centerPad: '12px 0',
     storeCodeSize: 'clamp(128px, 28vw, 200px)', storeCodeLS: '6px',
     storeNameSize: 52, storeNameMT: 10,
-    barMT: 8, barW: '88%', barH: 113,
+    barMT: 8, barW: '85%', barH: 113,
     footerFS: 9, footerDateFS: 12,
   };
 
@@ -569,7 +572,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
           </div>
         </div>
 
-        {/* Código de barras */}
+        {/* Código de barras — barW 85% para barras más gruesas al imprimir */}
         <div style={{ marginTop: s.barMT }}>
           <div style={{ width: s.barW, margin: '0 auto' }}>
             <Barcode1D value={value} height={s.barH} />
@@ -862,7 +865,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                         transition: 'outline 0.15s',
                       }}>
                       <BarcodeCard
-                        value={`${group.storeCod}|${barcodePickerName}|${refs}|${pickerType}${palletOffset + i + 1}|${cats}`}
+                        value={`${group.storeCod};${barcodePickerName};${refs};${pickerType}${palletOffset + i + 1};${cats}`}
                         palletNum={palletOffset + i + 1}
                         total={totalStorePallets}
                         storeCod={group.storeCod}
@@ -1399,7 +1402,7 @@ export function PickingScreen() {
           const tipo = pickerTypes[group.stateKey] ?? 'P';
           for (let i = 0; i < groupPallets; i++) {
             labels.push({
-              value: `${group.storeCod}|${sanitizeForBarcode(label)}|${refs}|${tipo}${offset + i + 1}|${cats}`,
+              value: `${group.storeCod};${sanitizeForBarcode(label)};${refs};${tipo}${offset + i + 1};${cats}`,
               palletNum: offset + i + 1,
               total: totalStorePallets,
               storeCod: group.storeCod,
