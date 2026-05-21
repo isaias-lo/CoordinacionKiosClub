@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Store, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
@@ -40,28 +40,19 @@ const S = {
   header: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' } as React.CSSProperties,
   backBtn: { width: 36, height: 36, flexShrink: 0, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' } as React.CSSProperties,
   title: { color: '#fff', fontSize: 20, fontWeight: 700, flex: 1 } as React.CSSProperties,
-  card: { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: '14px 16px', marginBottom: 10 } as React.CSSProperties,
-  row: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },
-  codBadge: { fontFamily: 'monospace', fontSize: 13, fontWeight: 700, background: 'rgba(37,99,235,0.25)', color: '#93C5FD', borderRadius: 6, padding: '2px 8px' },
-  name: { color: '#fff', fontSize: 15, fontWeight: 600, flex: 1, minWidth: 120 },
-  sub: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
-  activeBadge: (a: boolean) => ({
-    fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '2px 10px',
-    background: a ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-    color: a ? '#34D399' : '#F87171', border: `1px solid ${a ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
-  }),
-  btn: (color: string) => ({
-    background: `rgba(${color},0.15)`, border: `1px solid rgba(${color},0.4)`, borderRadius: 8,
-    color: `rgb(${color})`, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600,
-  }),
-  syncBtn: { background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 10, color: '#FCD34D', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as React.CSSProperties,
-  addBtn: { background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.5)', borderRadius: 10, color: '#34D399', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as React.CSSProperties,
   overlay: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' as const },
   modal: { background: '#1A2550', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: '24px 20px', width: '100%', maxWidth: 520 } as React.CSSProperties,
   label: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, marginBottom: 4, display: 'block' } as React.CSSProperties,
   input: { width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, color: '#fff', padding: '9px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box' as const },
   grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } as React.CSSProperties,
+  syncBtn: { background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 10, color: '#FCD34D', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as React.CSSProperties,
+  addBtn: { background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.5)', borderRadius: 10, color: '#34D399', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as React.CSSProperties,
 };
+
+const TABS = [
+  { id: 'tiendas'    as const, label: 'GESTIONAR TIENDAS', Icon: Store,       color: '#6366F1', dark: '#4338CA', shadow: 'rgba(99,102,241,0.45)'  },
+  { id: 'calendario' as const, label: 'CALENDARIO',        Icon: CalendarDays, color: '#D42B2B', dark: '#991B1B', shadow: 'rgba(212,43,43,0.45)'  },
+];
 
 export default function TiendasAdminPage() {
   const router = useRouter();
@@ -76,6 +67,7 @@ export default function TiendasAdminPage() {
   const [form,       setForm]       = useState<Tienda>(EMPTY);
   const [saving,     setSaving]     = useState(false);
   const [skipped,    setSkipped]    = useState<{ row: number; raw: string; reason: string }[]>([]);
+  const [activeTab,  setActiveTab]  = useState<'tiendas' | 'calendario'>('tiendas');
 
   const isAdmin = profile?.role === 'admin';
 
@@ -93,9 +85,7 @@ export default function TiendasAdminPage() {
   useEffect(() => { load(); }, [load]);
 
   async function handleSync() {
-    setSyncing(true);
-    setMsg('');
-    setSkipped([]);
+    setSyncing(true); setMsg(''); setSkipped([]);
     try {
       const res  = await fetch('/api/tiendas/sync', { method: 'POST' });
       const data = await res.json() as { ok?: boolean; synced?: number; error?: string; skipped?: { row: number; raw: string; reason: string }[] };
@@ -103,14 +93,9 @@ export default function TiendasAdminPage() {
         setMsg(`✓ Sincronizado: ${data.synced} tiendas${data.skipped?.length ? ` · ${data.skipped.length} saltadas` : ''}`);
         setSkipped(data.skipped ?? []);
         await load();
-      } else {
-        setMsg(`Error: ${data.error}`);
-      }
-    } catch {
-      setMsg('Error de conexión');
-    } finally {
-      setSyncing(false);
-    }
+      } else { setMsg(`Error: ${data.error}`); }
+    } catch { setMsg('Error de conexión'); }
+    finally { setSyncing(false); }
   }
 
   function openAdd() { setForm(EMPTY); setModal('add'); }
@@ -123,30 +108,20 @@ export default function TiendasAdminPage() {
       const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const data = await res.json() as { tienda?: Tienda; error?: string };
       if (data.tienda) {
-        setModal(null);
-        await load();
+        setModal(null); await load();
         setMsg(modal === 'add' ? '✓ Tienda agregada' : '✓ Tienda actualizada');
-      } else {
-        setMsg(`Error: ${data.error}`);
-      }
-    } finally {
-      setSaving(false);
-    }
+      } else { setMsg(`Error: ${data.error}`); }
+    } finally { setSaving(false); }
   }
 
   async function handleToggleActivo(t: Tienda) {
-    await fetch('/api/tiendas', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...t, activo: !t.activo }),
-    });
+    await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, activo: !t.activo }) });
     await load();
   }
 
   function f(k: keyof Tienda) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      const v = e.target.type === 'checkbox'
-        ? (e.target as HTMLInputElement).checked
-        : e.target.value;
+      const v = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
       setForm(prev => ({ ...prev, [k]: v }));
     };
   }
@@ -157,10 +132,8 @@ export default function TiendasAdminPage() {
     t.region.toLowerCase().includes(search.toLowerCase())
   );
 
-  const activas  = filtered.filter(t => t.activo).length;
+  const activas   = filtered.filter(t =>  t.activo).length;
   const inactivas = filtered.filter(t => !t.activo).length;
-
-  const [activeTab, setActiveTab] = useState<'tiendas' | 'calendario'>('tiendas');
 
   if (!isAdmin) {
     return (
@@ -172,6 +145,20 @@ export default function TiendasAdminPage() {
 
   return (
     <div style={S.page}>
+      <style>{`
+        .tiendas-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        @media (min-width: 700px) {
+          .tiendas-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (min-width: 1080px) {
+          .tiendas-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+      `}</style>
+
       {/* Header */}
       <div style={S.header}>
         <button style={S.backBtn} onClick={() => router.push('/control-interno')}>
@@ -190,18 +177,39 @@ export default function TiendasAdminPage() {
       </div>
 
       {/* ── Tab switcher ── */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 4 }}>
-        {([['tiendas', '🏪 Gestionar Tiendas'], ['calendario', '📅 Calendario']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)}
-            style={{
-              flex: 1, height: 38, borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              border: 'none', transition: 'all 0.15s',
-              background: activeTab === id ? '#D42B2B' : 'transparent',
-              color: activeTab === id ? '#fff' : 'rgba(255,255,255,0.5)',
-            }}>
-            {label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: 'rgba(255,255,255,0.06)', borderRadius: 18, padding: 6 }}>
+        {TABS.map(({ id, label, Icon, color, dark, shadow }) => {
+          const active = activeTab === id;
+          return (
+            <button key={id} onClick={() => setActiveTab(id)}
+              style={{
+                flex: 1, height: 72, borderRadius: 13, cursor: 'pointer',
+                border: 'none', transition: 'all 0.18s ease',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 7,
+                background: active ? `linear-gradient(175deg, ${color} 0%, ${dark} 100%)` : 'transparent',
+                boxShadow: active ? `0 4px 20px ${shadow}, inset 0 1px 0 rgba(255,255,255,0.15)` : 'none',
+              }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 12,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: active
+                  ? 'rgba(255,255,255,0.22)'
+                  : `linear-gradient(145deg, ${color}, ${dark})`,
+                boxShadow: active
+                  ? 'inset 0 1px 0 rgba(255,255,255,0.3)'
+                  : `0 4px 12px ${shadow}, inset 0 1px 0 rgba(255,255,255,0.25)`,
+              }}>
+                <Icon size={20} color="#fff" strokeWidth={1.7} />
+              </div>
+              <span style={{
+                fontSize: 12, fontWeight: 800,
+                letterSpacing: '0.07em',
+                color: active ? '#fff' : 'rgba(255,255,255,0.5)',
+              }}>{label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Tab: Calendario ── */}
@@ -233,16 +241,18 @@ export default function TiendasAdminPage() {
       )}
 
       {/* Stats + Search */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 14, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
         <input
           value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por código, nombre o región…"
           style={{ ...S.input, flex: 1, minWidth: 200 }}
         />
-        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, whiteSpace: 'nowrap' }}>
-          <span style={{ color: '#34D399', fontWeight: 700 }}>{activas}</span> activas
-          {' · '}
-          <span style={{ color: '#F87171', fontWeight: 700 }}>{inactivas}</span> inactivas
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
+          <span style={{ color: '#34D399', fontWeight: 900, fontSize: 28, lineHeight: 1 }}>{activas}</span>
+          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>activas</span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, margin: '0 2px' }}>·</span>
+          <span style={{ color: '#F87171', fontWeight: 900, fontSize: 28, lineHeight: 1 }}>{inactivas}</span>
+          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>inactivas</span>
         </div>
       </div>
 
@@ -253,33 +263,118 @@ export default function TiendasAdminPage() {
           {tiendas.length === 0 ? 'No hay tiendas. Usa "Sincronizar Sheet" para importar.' : 'Sin resultados'}
         </div>
       ) : (
-        filtered.map(t => (
-          <div key={t.codigo} style={S.card}>
-            <div style={{ ...S.row, marginBottom: 4 }}>
-              <span style={S.codBadge}>{t.codigo}</span>
-              <span style={S.name}>{t.nombre}</span>
-              <span style={S.activeBadge(t.activo)}>{t.activo ? 'Activo' : 'Inactivo'}</span>
-            </div>
-            <div style={{ ...S.row, marginBottom: 8 }}>
-              {t.region && <span style={S.sub}>{t.region}</span>}
-              {t.corredor && <><span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>·</span><span style={S.sub}>{t.corredor}</span></>}
-              {t.ventana && <><span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>·</span><span style={{ ...S.sub, color: '#FCD34D' }}>{t.ventana}</span></>}
-              {t.supervisor && <><span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>·</span><span style={S.sub}>Sup: {t.supervisor}</span></>}
-            </div>
-            {t.direccion && <div style={{ ...S.sub, marginBottom: 8, fontSize: 11 }}>{t.direccion}</div>}
-            <div style={S.row}>
-              {t.correos && <span style={{ ...S.sub, fontSize: 11 }}>✉ {t.correos}</span>}
-              {t.tel_encargado && <span style={{ ...S.sub, fontSize: 11 }}>📞 {t.tel_encargado}</span>}
+        <div className="tiendas-grid">
+          {filtered.map(t => (
+            <div key={t.codigo} style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              borderRadius: 16,
+              padding: '18px 20px',
+              display: 'flex', flexDirection: 'column', gap: 0,
+            }}>
+              {/* Code + status row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span style={{
+                  fontFamily: 'monospace', fontSize: 18, fontWeight: 900,
+                  background: 'rgba(37,99,235,0.3)', color: '#93C5FD',
+                  borderRadius: 8, padding: '4px 12px',
+                  letterSpacing: '0.03em',
+                }}>
+                  {t.codigo}
+                </span>
+                <span style={{
+                  fontSize: 13, fontWeight: 800,
+                  borderRadius: 20, padding: '4px 12px',
+                  background: t.activo ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                  color: t.activo ? '#34D399' : '#F87171',
+                  border: `1px solid ${t.activo ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
+                  letterSpacing: '0.05em',
+                }}>
+                  {t.activo ? 'ACTIVO' : 'INACTIVO'}
+                </span>
+              </div>
+
+              {/* Name */}
+              <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, marginBottom: 8, lineHeight: 1.2 }}>
+                {t.nombre}
+              </div>
+
+              {/* Tags row */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {t.region && (
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '3px 9px' }}>
+                    {t.region}
+                  </span>
+                )}
+                {t.corredor && (
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '3px 9px' }}>
+                    {t.corredor}
+                  </span>
+                )}
+                {t.ventana && (
+                  <span style={{ fontSize: 13, color: '#FCD34D', background: 'rgba(252,211,77,0.12)', borderRadius: 6, padding: '3px 9px', fontWeight: 600 }}>
+                    {t.ventana}
+                  </span>
+                )}
+                {t.supervisor && (
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '3px 9px' }}>
+                    Sup: {t.supervisor}
+                  </span>
+                )}
+              </div>
+
+              {/* Address */}
+              {t.direccion && (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>
+                  {t.direccion}
+                </div>
+              )}
+
+              {/* Contact */}
+              {(t.correos || t.tel_encargado) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+                  {t.correos && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>✉ {t.correos}</span>}
+                  {t.tel_encargado && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>📞 {t.tel_encargado}</span>}
+                </div>
+              )}
+
+              {/* Spacer pushes buttons to bottom */}
               <div style={{ flex: 1 }} />
-              <button style={S.btn('255,255,255')} onClick={() => handleToggleActivo(t)}>
-                {t.activo ? 'Desactivar' : 'Activar'}
-              </button>
-              <button style={S.btn('96,165,250')} onClick={() => openEdit(t)}>
-                Editar
-              </button>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: t.correos || t.tel_encargado ? 0 : 14 }}>
+                <button
+                  onClick={() => handleToggleActivo(t)}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10, border: 'none',
+                    fontSize: 14, fontWeight: 800, cursor: 'pointer',
+                    letterSpacing: '0.04em',
+                    background: t.activo
+                      ? 'linear-gradient(175deg, #EF4444, #B91C1C)'
+                      : 'linear-gradient(175deg, #10B981, #059669)',
+                    color: '#fff',
+                    boxShadow: t.activo
+                      ? '0 3px 10px rgba(239,68,68,0.35)'
+                      : '0 3px 10px rgba(16,185,129,0.35)',
+                  }}>
+                  {t.activo ? 'DESACTIVAR' : 'ACTIVAR'}
+                </button>
+                <button
+                  onClick={() => openEdit(t)}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10, border: 'none',
+                    fontSize: 14, fontWeight: 800, cursor: 'pointer',
+                    letterSpacing: '0.04em',
+                    background: 'linear-gradient(175deg, #3B82F6, #1D4ED8)',
+                    color: '#fff',
+                    boxShadow: '0 3px 10px rgba(59,130,246,0.35)',
+                  }}>
+                  EDITAR
+                </button>
+              </div>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
 
       {/* Modal */}
@@ -378,13 +473,7 @@ export default function TiendasAdminPage() {
             </div>
 
             <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input
-                type="checkbox"
-                id="activo-check"
-                checked={form.activo}
-                onChange={f('activo')}
-                style={{ width: 16, height: 16, cursor: 'pointer' }}
-              />
+              <input type="checkbox" id="activo-check" checked={form.activo} onChange={f('activo')} style={{ width: 16, height: 16, cursor: 'pointer' }} />
               <label htmlFor="activo-check" style={{ ...S.label, margin: 0, cursor: 'pointer' }}>Tienda activa</label>
             </div>
 

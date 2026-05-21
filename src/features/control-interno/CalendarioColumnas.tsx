@@ -2,18 +2,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
-import { refreshCalendario } from '@/features/despacho/utils/useCalendario';
+import { refreshCalendario, writeCalendario } from '@/features/despacho/utils/useCalendario';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
 const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado' };
-const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF9500', JU: '#AF52DE', VI: '#FF2D55', SA: '#5AC8FA' };
+const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF9500', JU: '#AF52DE', VI: '#FF2D55', SA: '#00C7BE' };
+const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE' };
 
 const GRUPOS: [string, string, string][] = [
-  ['rm',    '📦 RM',       'Bodega Santiago (RM)'],
-  ['costa', '🌊 Costa',    'Bodega Santiago (V Región)'],
-  ['fal',   '🏢 Regiones', 'Bodega Regiones'],
+  ['rm',    '📦 RM',        'Bodega Santiago — RM'],
+  ['costa', '🌊 COSTA',     'Bodega Santiago — V Región'],
+  ['fal',   '🏢 REGIONES',  'Bodega Regiones'],
 ];
 
 const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
@@ -22,12 +23,11 @@ const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type StoreType = 'mall' | 'street' | 'costa' | 'region';
 
-// Color palette por tipo de tienda
-const TYPE_STYLE: Record<StoreType, { bg: string; text: string; border: string; label: string }> = {
-  mall:   { bg: '#EDE9FE', text: '#5B21B6', border: '#C4B5FD', label: 'Mall'         },
-  street: { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD', label: 'Street Center' },
-  costa:  { bg: '#CCFBF1', text: '#0F766E', border: '#5EEAD4', label: 'Costa'         },
-  region: { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', label: 'Región'        },
+const TYPE_STYLE: Record<StoreType, { bg: string; text: string; border: string; label: string; shadow: string }> = {
+  mall:   { bg: '#EDE9FE', text: '#5B21B6', border: '#C4B5FD', label: 'MALL',          shadow: 'rgba(91,33,182,0.16)'  },
+  street: { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD', label: 'STREET CENTER', shadow: 'rgba(29,78,216,0.16)'  },
+  costa:  { bg: '#CCFBF1', text: '#0F766E', border: '#5EEAD4', label: 'COSTA',         shadow: 'rgba(15,118,110,0.16)' },
+  region: { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', label: 'REGIÓN',        shadow: 'rgba(194,65,12,0.16)'  },
 };
 
 function storeGroup(cod: string): 'rm' | 'costa' | 'fal' {
@@ -37,14 +37,12 @@ function storeGroup(cod: string): 'rm' | 'costa' | 'fal' {
 }
 
 function getTipo(cod: string): StoreType {
-  // Try with and without Ñ
   const inf: TiendaInfo | undefined = TIENDAS_INICIAL[cod]
     ?? TIENDAS_INICIAL[cod.replace('PEN', 'PEÑ')]
     ?? TIENDAS_INICIAL[cod.replace('VIN', 'VIÑ')];
   if (!inf) return 'street';
   if (inf.z === 'Región') return 'region';
   if (inf.z === 'Costa')  return 'costa';
-  // RM: "Local" en dirección → Mall
   if (inf.d && /local/i.test(inf.d)) return 'mall';
   return 'street';
 }
@@ -54,6 +52,10 @@ function getNombre(cod: string): string {
     ?? TIENDAS_INICIAL[cod.replace('PEN', 'PEÑ')]?.n
     ?? TIENDAS_INICIAL[cod.replace('VIN', 'VIÑ')]?.n
     ?? cod;
+}
+
+function displayCode(cod: string): string {
+  return formatCod(cod.replace('PEN', 'PEÑ').replace('VIN', 'VIÑ'));
 }
 
 export default function CalendarioColumnas() {
@@ -68,7 +70,9 @@ export default function CalendarioColumnas() {
   const [showSug, setShowSug]       = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCod, setPickerCod]   = useState('');
-  const ddRef = useRef<{ dia: string | null; cod: string | null }>({ dia: null, cod: null });
+  const [dragOver, setDragOver]     = useState<{ dia: string; idx: number } | null>(null);
+
+  const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
 
   useEffect(() => {
     refreshCalendario()
@@ -76,14 +80,12 @@ export default function CalendarioColumnas() {
       .catch(() => setLoading(false));
   }, []);
 
-  // Sync local when cal changes after save
   useEffect(() => {
     if (cal) setLocal(JSON.parse(JSON.stringify(cal)));
   }, [cal]);
 
   const hasChanges = local && cal && JSON.stringify(local) !== JSON.stringify(cal);
 
-  /* ── Search ── */
   function handleSearch(q: string) {
     setSearch(q);
     const qup = q.trim().toUpperCase();
@@ -125,29 +127,73 @@ export default function CalendarioColumnas() {
     });
   }
 
-  /* ── Drag & drop between day columns ── */
-  function onDragStart(e: React.DragEvent, dia: string, cod: string) {
-    ddRef.current = { dia, cod };
+  function onDragStart(e: React.DragEvent, dia: string, cod: string, idx: number) {
+    ddRef.current = { dia, cod, idx };
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  function onDrop(e: React.DragEvent, targetDia: string) {
+  function onDragEnd() {
+    setDragOver(null);
+    ddRef.current = { dia: null, cod: null, idx: -1 };
+  }
+
+  // Drop on a specific chip → insert before that chip's position
+  function onDropOnChip(e: React.DragEvent, targetDia: string, targetIdx: number) {
     e.preventDefault();
+    e.stopPropagation();
+    setDragOver(null);
     const { dia: srcDia, cod } = ddRef.current;
-    if (!cod || srcDia === targetDia) return;
+    if (!cod || !srcDia) return;
+
     setLocal(prev => {
       if (!prev) return prev;
       const next: CalRecord = JSON.parse(JSON.stringify(prev));
-      const src = next[srcDia!]?.[grp as 'rm' | 'costa' | 'fal'];
-      const dst = next[targetDia]?.[grp as 'rm' | 'costa' | 'fal'];
-      if (!src || !dst) return prev;
-      const idx = src.indexOf(cod);
-      if (idx >= 0) { src.splice(idx, 1); if (!dst.includes(cod)) dst.push(cod); }
+      const g = grp as 'rm' | 'costa' | 'fal';
+      if (!next[srcDia!]) next[srcDia!] = { rm: [], costa: [], fal: [] };
+      if (!next[targetDia]) next[targetDia] = { rm: [], costa: [], fal: [] };
+      if (!next[srcDia!][g]) next[srcDia!][g] = [];
+      if (!next[targetDia][g]) next[targetDia][g] = [];
+
+      if (srcDia === targetDia) {
+        // Reorder within same column
+        const arr = next[srcDia!][g];
+        const from = arr.indexOf(cod);
+        if (from < 0) return prev;
+        arr.splice(from, 1);
+        const to = targetIdx > from ? targetIdx - 1 : targetIdx;
+        arr.splice(Math.max(0, to), 0, cod);
+      } else {
+        // Move cross-column at specific index
+        const src = next[srcDia!][g];
+        const dst = next[targetDia][g];
+        const from = src.indexOf(cod);
+        if (from >= 0) src.splice(from, 1);
+        if (!dst.includes(cod)) dst.splice(targetIdx, 0, cod);
+      }
       return next;
     });
   }
 
-  /* ── Save ── */
+  // Drop on td background → append to end (cross-column only)
+  function onDropOnTd(e: React.DragEvent, targetDia: string) {
+    e.preventDefault();
+    setDragOver(null);
+    const { dia: srcDia, cod } = ddRef.current;
+    if (!cod || !srcDia || srcDia === targetDia) return;
+    setLocal(prev => {
+      if (!prev) return prev;
+      const next: CalRecord = JSON.parse(JSON.stringify(prev));
+      const g = grp as 'rm' | 'costa' | 'fal';
+      const src = next[srcDia!]?.[g] || [];
+      const dst = next[targetDia]?.[g] || [];
+      const idx = src.indexOf(cod);
+      if (idx >= 0) { src.splice(idx, 1); if (!dst.includes(cod)) dst.push(cod); }
+      if (next[srcDia!]) next[srcDia!][g] = src;
+      if (next[targetDia]) next[targetDia][g] = dst;
+      return next;
+    });
+  }
+
   async function handleSave() {
     if (!local) return;
     setSaveStatus('saving');
@@ -158,7 +204,7 @@ export default function CalendarioColumnas() {
         body: JSON.stringify({ calendario: local }),
       });
       if (!res.ok) throw new Error('Error al guardar');
-      await refreshCalendario();
+      writeCalendario(local); // updates in-memory + localStorage → fires storage event on other tabs
       setCal(local);
       setSaveStatus('success');
       setLastSaved(new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
@@ -169,26 +215,40 @@ export default function CalendarioColumnas() {
     }
   }
 
-  /* ── UI ── */
   const saveLabel = saveStatus === 'saving'  ? '⏳ Guardando...'
-    : saveStatus === 'success' ? '✓ Guardado'
-    : saveStatus === 'error'   ? '⚠ Error'
-    : hasChanges               ? 'Guardar cambios'
+    : saveStatus === 'success' ? '✅ Guardado'
+    : saveStatus === 'error'   ? '⚠️ Error'
+    : hasChanges               ? '💾 Guardar cambios'
     : 'Sin cambios';
 
+  /* ─── Loading ─── */
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="w-8 h-8 border-2 border-kred border-t-transparent rounded-full animate-spin" />
-        <div className="text-[14px]" style={{ color: 'rgba(255,255,255,0.5)' }}>Cargando calendario...</div>
+      <div style={{
+        background: '#FFFFFF', borderRadius: 20, padding: '60px 20px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+        boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+      }}>
+        <div style={{
+          width: 38, height: 38, border: '3px solid #E5E5EA',
+          borderTopColor: '#007AFF', borderRadius: '50%',
+          animation: 'spin 0.75s linear infinite',
+        }} />
+        <div style={{ fontSize: 14, color: '#8E8E93', fontWeight: 500 }}>Cargando calendario...</div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   if (!local) {
     return (
-      <div className="text-center py-16">
-        <div className="text-[13px]" style={{ color: '#F87171' }}>No se pudo cargar el calendario. Revisa la conexión con Sheets.</div>
+      <div style={{
+        background: '#FFFFFF', borderRadius: 20, padding: '40px 20px',
+        textAlign: 'center', boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+      }}>
+        <div style={{ fontSize: 36, marginBottom: 10 }}>⚠️</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#FF3B30' }}>No se pudo cargar el calendario</div>
+        <div style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>Revisa la conexión con Google Sheets</div>
       </div>
     );
   }
@@ -196,26 +256,40 @@ export default function CalendarioColumnas() {
   const grpInfo = GRUPOS.find(g => g[0] === grp);
 
   return (
-    <div>
-      {/* ── Grupo + Guardar ── */}
-      <div className="flex flex-wrap gap-2 items-center mb-2">
-        {GRUPOS.map(([id, lb]) => (
-          <button key={id}
-            onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
-            style={{
-              height: 36, padding: '0 16px', borderRadius: 20, fontSize: 13, fontWeight: 700,
-              border: grp === id ? '2px solid #D42B2B' : '2px solid rgba(255,255,255,0.15)',
-              background: grp === id ? '#D42B2B' : 'rgba(255,255,255,0.07)',
-              color: grp === id ? '#fff' : 'rgba(255,255,255,0.7)',
-              cursor: 'pointer',
-            }}>
-            {lb}
-          </button>
-        ))}
+    <div style={{ background: '#F2F2F7', borderRadius: 20, padding: '20px 16px 24px' }}>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* ── Toolbar ── */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        {GRUPOS.map(([id, lb]) => {
+          const active = grp === id;
+          const parts = lb.split(' ');
+          const icon = parts[0];
+          const label = parts.slice(1).join(' ');
+          return (
+            <button key={id}
+              onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
+              style={{
+                height: 42, padding: '0 18px', borderRadius: 100,
+                fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: active
+                  ? 'linear-gradient(175deg, #E53535 0%, #C12828 100%)'
+                  : '#FFFFFF',
+                color: active ? '#FFFFFF' : '#1C1C1E',
+                boxShadow: active
+                  ? '0 4px 18px rgba(193,40,40,0.38), 0 1px 0 rgba(255,255,255,0.2) inset'
+                  : '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
+                transition: 'all 0.17s cubic-bezier(0.34,1.56,0.64,1)',
+              }}>
+              <span style={{ fontSize: 17, lineHeight: 1 }}>{icon}</span>
+              {label}
+            </button>
+          );
+        })}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {lastSaved && (
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 11, color: '#8E8E93', fontFamily: 'monospace' }}>
               Guardado {lastSaved}
             </span>
           )}
@@ -223,14 +297,23 @@ export default function CalendarioColumnas() {
             onClick={handleSave}
             disabled={saveStatus === 'saving' || !hasChanges}
             style={{
-              height: 36, padding: '0 18px', borderRadius: 20, fontSize: 13, fontWeight: 700,
-              border: 'none', cursor: hasChanges ? 'pointer' : 'default',
-              background: saveStatus === 'success' ? '#15803D'
-                : saveStatus === 'error'   ? '#B91C1C'
-                : hasChanges               ? '#D42B2B'
-                : 'rgba(255,255,255,0.08)',
-              color: hasChanges || saveStatus !== 'idle' ? '#fff' : 'rgba(255,255,255,0.35)',
-              opacity: saveStatus === 'saving' || !hasChanges && saveStatus === 'idle' ? 0.7 : 1,
+              height: 42, padding: '0 20px', borderRadius: 100,
+              fontSize: 14, fontWeight: 700, border: 'none',
+              cursor: hasChanges && saveStatus !== 'saving' ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: saveStatus === 'success'
+                ? 'linear-gradient(175deg, #30D158 0%, #25A244 100%)'
+                : saveStatus === 'error'
+                ? 'linear-gradient(175deg, #FF453A 0%, #CC2D22 100%)'
+                : hasChanges
+                ? 'linear-gradient(175deg, #0A84FF 0%, #0062CC 100%)'
+                : '#E5E5EA',
+              color: hasChanges || saveStatus !== 'idle' ? '#fff' : '#8E8E93',
+              boxShadow: hasChanges
+                ? '0 4px 18px rgba(0,98,204,0.36), inset 0 1px 0 rgba(255,255,255,0.2)'
+                : 'none',
+              opacity: saveStatus === 'saving' ? 0.7 : 1,
+              transition: 'all 0.17s ease',
             }}>
             {saveLabel}
           </button>
@@ -238,38 +321,49 @@ export default function CalendarioColumnas() {
       </div>
 
       {grpInfo && (
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>{grpInfo[2]}</div>
+        <div style={{ fontSize: 12, color: '#8E8E93', marginBottom: 10, paddingLeft: 2 }}>
+          {grpInfo[2]}
+        </div>
       )}
 
-      {/* ── Leyenda de colores ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+      {/* ── Legend ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
         {(Object.entries(TYPE_STYLE) as [StoreType, typeof TYPE_STYLE[StoreType]][]).map(([type, s]) => (
-          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: s.bg, border: `1px solid ${s.border}` }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: s.text }}>{s.label}</span>
+          <div key={type} style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '5px 13px', borderRadius: 100,
+            background: s.bg, border: `1.5px solid ${s.border}`,
+            boxShadow: `0 2px 6px ${s.shadow}, inset 0 1px 0 rgba(255,255,255,0.6)`,
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: s.text }}>{s.label}</span>
           </div>
         ))}
       </div>
 
-      {/* ── Buscador ── */}
+      {/* ── Search ── */}
       <div style={{ position: 'relative', marginBottom: 16 }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>🔍</span>
+        <span style={{
+          position: 'absolute', left: 14, top: '50%',
+          transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none',
+        }}>🔍</span>
         <input
           type="text" value={search}
           onChange={e => handleSearch(e.target.value)}
-          placeholder={`Buscar tienda para agregar (${grpInfo?.[1] || ''})...`}
+          placeholder={`Buscar tienda para agregar — ${grpInfo?.[1].replace(/\p{Emoji}/u, '').trim() || ''}...`}
           style={{
-            width: '100%', height: 42, paddingLeft: 38, paddingRight: 14,
-            borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)',
-            background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 13,
+            width: '100%', height: 46, paddingLeft: 42, paddingRight: 16,
+            borderRadius: 14, border: '1.5px solid rgba(0,0,0,0.09)',
+            background: '#FFFFFF', color: '#1C1C1E', fontSize: 14,
             outline: 'none', boxSizing: 'border-box',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
           }}
         />
         {showSug && (
           <div style={{
-            position: 'absolute', top: 46, left: 0, right: 0, background: '#1A2550',
-            border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 50,
-            maxHeight: 240, overflowY: 'auto',
+            position: 'absolute', top: 50, left: 0, right: 0,
+            background: '#FFFFFF', border: '1.5px solid rgba(0,0,0,0.08)',
+            borderRadius: 16, boxShadow: '0 12px 36px rgba(0,0,0,0.14)',
+            zIndex: 50, maxHeight: 260, overflowY: 'auto',
           }}>
             {suggest.map(c => {
               const tipo = getTipo(c);
@@ -278,25 +372,34 @@ export default function CalendarioColumnas() {
               return (
                 <div key={c} onClick={() => handleAgregar(c)}
                   style={{
-                    padding: '10px 14px', cursor: 'pointer', display: 'flex',
+                    padding: '11px 16px', cursor: 'pointer', display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between',
-                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    borderBottom: '1px solid rgba(0,0,0,0.05)', transition: 'background 0.12s',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#F2F2F7')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#F87171' }}>
-                      {formatCod(c)}
+                    <span style={{
+                      fontFamily: 'monospace', fontSize: 15, fontWeight: 800,
+                      color: ts.text, background: ts.bg,
+                      padding: '3px 9px', borderRadius: 9,
+                      border: `1.5px solid ${ts.border}`,
+                      boxShadow: `0 2px 6px ${ts.shadow}`,
+                    }}>
+                      {displayCode(c)}
                     </span>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{getNombre(c)}</span>
-                    <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 10, background: ts.bg, color: ts.text, border: `1px solid ${ts.border}`, fontWeight: 600 }}>
-                      {ts.label}
-                    </span>
+                    <span style={{ fontSize: 13, color: '#3C3C43' }}>{getNombre(c)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {yaEsta && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>ya existe</span>}
-                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#D42B2B', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700 }}>+</span>
+                    {yaEsta && <span style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic' }}>ya existe</span>}
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%',
+                      background: 'linear-gradient(175deg, #E53535 0%, #C12828 100%)',
+                      color: '#fff', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: 18, fontWeight: 700,
+                      boxShadow: '0 3px 10px rgba(193,40,40,0.38)',
+                    }}>+</div>
                   </div>
                 </div>
               );
@@ -305,21 +408,27 @@ export default function CalendarioColumnas() {
         )}
       </div>
 
-      {/* ── Tabla de columnas ── */}
-      <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid rgba(255,255,255,0.10)' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+      {/* ── Column table ── */}
+      <div style={{
+        overflowX: 'auto', borderRadius: 18,
+        background: '#FFFFFF',
+        boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)',
+      }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
           <thead>
             <tr>
               {DIAS.map(dia => (
                 <th key={dia} style={{
-                  background: DCOL[dia], color: '#fff',
-                  padding: '10px 12px', fontSize: 12, fontWeight: 800,
-                  letterSpacing: '0.06em', textAlign: 'center',
-                  borderRight: '1px solid rgba(255,255,255,0.15)',
-                  minWidth: 100,
+                  background: DLIGHT[dia],
+                  padding: '13px 10px 10px',
+                  borderBottom: `3px solid ${DCOL[dia]}`,
+                  borderRight: '1px solid rgba(0,0,0,0.05)',
+                  minWidth: 118, textAlign: 'center',
                 }}>
-                  {DNOM[dia].toUpperCase()}
-                  <div style={{ fontSize: 10, fontWeight: 500, opacity: 0.8, marginTop: 2 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: DCOL[dia], letterSpacing: '0.05em' }}>
+                    {DNOM[dia].toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: 13, color: DCOL[dia], opacity: 0.80, marginTop: 4, fontWeight: 700 }}>
                     {(local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || []).length} tiendas
                   </div>
                 </th>
@@ -332,50 +441,105 @@ export default function CalendarioColumnas() {
                 const tiendas = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
                 return (
                   <td key={dia}
-                    onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.background = 'rgba(212,43,43,0.08)'; }}
-                    onDragLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                    onDrop={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; onDrop(e, dia); }}
+                    onDragEnter={e => {
+                      e.preventDefault();
+                      setDragOver({ dia, idx: tiendas.length });
+                    }}
+                    onDragOver={e => e.preventDefault()}
+                    onDragLeave={e => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setDragOver(null);
+                      }
+                    }}
+                    onDrop={e => onDropOnTd(e, dia)}
                     style={{
-                      verticalAlign: 'top', padding: '8px 6px', minHeight: 120,
-                      borderRight: '1px solid rgba(255,255,255,0.07)',
-                      background: 'transparent', transition: 'background 0.15s',
+                      verticalAlign: 'top',
+                      padding: '8px 6px 10px',
+                      borderRight: '1px solid rgba(0,0,0,0.05)',
+                      background: '#FFFFFF',
+                      minWidth: 118,
                     }}
                   >
-                    {tiendas.map(cod => {
+                    {tiendas.map((cod, i) => {
                       const tipo = getTipo(cod);
                       const ts   = TYPE_STYLE[tipo];
                       const nombre = getNombre(cod);
+                      const showLineBefore = dragOver?.dia === dia && dragOver?.idx === i;
                       return (
-                        <div
-                          key={cod} draggable
-                          onDragStart={e => onDragStart(e, dia, cod)}
-                          title={nombre}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            background: ts.bg, color: ts.text,
-                            border: `1px solid ${ts.border}`,
-                            borderRadius: 6, padding: '4px 8px', marginBottom: 5,
-                            fontSize: 12, fontWeight: 700, fontFamily: 'monospace',
-                            cursor: 'grab', userSelect: 'none',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                          }}
-                        >
-                          <span>{formatCod(cod)}</span>
-                          <span
-                            onClick={() => remove(dia, cod)}
-                            style={{
-                              marginLeft: 6, fontSize: 10, opacity: 0.5, cursor: 'pointer',
-                              fontFamily: 'sans-serif', lineHeight: 1,
+                        <div key={cod}>
+                          {showLineBefore && (
+                            <div style={{
+                              height: 3, borderRadius: 2,
+                              background: '#007AFF',
+                              margin: '2px 2px 4px',
+                              boxShadow: '0 0 8px rgba(0,122,255,0.55)',
+                            }} />
+                          )}
+                          <div
+                            draggable
+                            onDragStart={e => onDragStart(e, dia, cod, i)}
+                            onDragEnd={onDragEnd}
+                            onDragEnter={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDragOver({ dia, idx: i });
                             }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0.5'; }}
-                          >✕</span>
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => onDropOnChip(e, dia, i)}
+                            title={nombre}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              background: ts.bg, color: ts.text,
+                              border: `1.5px solid ${ts.border}`,
+                              borderRadius: 12, padding: '8px 11px', marginBottom: 6,
+                              fontSize: 15, fontWeight: 800, fontFamily: 'monospace',
+                              cursor: 'grab', userSelect: 'none',
+                              boxShadow: `0 2px 8px ${ts.shadow}, inset 0 1px 0 rgba(255,255,255,0.55)`,
+                              transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+                            }}
+                            onMouseEnter={e => {
+                              (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+                              (e.currentTarget as HTMLElement).style.boxShadow = `0 5px 14px ${ts.shadow}, inset 0 1px 0 rgba(255,255,255,0.55)`;
+                            }}
+                            onMouseLeave={e => {
+                              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+                              (e.currentTarget as HTMLElement).style.boxShadow = `0 2px 8px ${ts.shadow}, inset 0 1px 0 rgba(255,255,255,0.55)`;
+                            }}
+                          >
+                            <span style={{ letterSpacing: '0.01em' }}>{displayCode(cod)}</span>
+                            <span
+                              onClick={e => { e.stopPropagation(); remove(dia, cod); }}
+                              style={{
+                                marginLeft: 8, fontSize: 11, opacity: 0.4,
+                                cursor: 'pointer', lineHeight: 1,
+                                fontFamily: 'sans-serif', transition: 'opacity 0.15s',
+                                padding: '1px 3px', borderRadius: 4,
+                              }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0.4'; }}
+                            >✕</span>
+                          </div>
                         </div>
                       );
                     })}
+
+                    {/* Insert indicator after last chip */}
+                    {dragOver?.dia === dia && dragOver?.idx === tiendas.length && (
+                      <div style={{
+                        height: 3, borderRadius: 2,
+                        background: '#007AFF',
+                        margin: '2px 2px 4px',
+                        boxShadow: '0 0 8px rgba(0,122,255,0.55)',
+                      }} />
+                    )}
+
                     {tiendas.length === 0 && (
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.15)', fontStyle: 'italic', padding: '4px 2px', textAlign: 'center' }}>
-                        —
+                      <div style={{
+                        fontSize: 12, color: 'rgba(0,0,0,0.18)', fontStyle: 'italic',
+                        textAlign: 'center', padding: '18px 6px',
+                        border: '2px dashed rgba(0,0,0,0.08)', borderRadius: 12, marginTop: 2,
+                      }}>
+                        Sin tiendas
                       </div>
                     )}
                   </td>
@@ -389,34 +553,54 @@ export default function CalendarioColumnas() {
       {/* ── Day picker modal ── */}
       {pickerOpen && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/[0.6] backdrop-blur-sm flex items-center justify-center"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(10px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
           onClick={e => { if (e.target === e.currentTarget) { setPickerOpen(false); setPickerCod(''); } }}
         >
-          <div className="bg-white rounded-[18px] p-[22px] w-[min(300px,88%)] shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
+          <div style={{
+            background: '#FFFFFF', borderRadius: 26,
+            padding: '26px 22px 22px', width: 'min(320px, 88vw)',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.08)',
+          }}>
             {(() => {
               const tipo = getTipo(pickerCod);
               const ts = TYPE_STYLE[tipo];
               return (
                 <>
-                  <div className="text-[13px] font-bold text-ktext mb-1">
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1C1C1E', marginBottom: 3 }}>
                     Agregar{' '}
-                    <span style={{ color: ts.text, background: ts.bg, padding: '1px 6px', borderRadius: 5, fontFamily: 'monospace' }}>
-                      {formatCod(pickerCod)}
+                    <span style={{
+                      color: ts.text, background: ts.bg,
+                      padding: '3px 9px', borderRadius: 9,
+                      fontFamily: 'monospace', fontWeight: 800,
+                      border: `1.5px solid ${ts.border}`,
+                      boxShadow: `0 2px 6px ${ts.shadow}`,
+                    }}>
+                      {displayCode(pickerCod)}
                     </span>
-                    <span className="text-kmuted font-normal ml-1">— {getNombre(pickerCod)}</span>
                   </div>
-                  <div className="text-[12px] text-kmuted mb-3.5">¿A qué día agregás esta tienda?</div>
-                  <div className="grid grid-cols-3 gap-2 mb-3.5">
+                  <div style={{ fontSize: 13, color: '#8E8E93', marginBottom: 3, fontWeight: 500 }}>
+                    {getNombre(pickerCod)}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#C7C7CC', marginBottom: 18 }}>
+                    ¿A qué día agregás esta tienda?
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                     {DIAS.map(d => {
                       const yaEsta = local?.[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(pickerCod);
                       return (
                         <button key={d} onClick={() => handlePickerConfirm(pickerCod, d)}
-                          className="h-[38px] rounded-[9px] text-[13px] font-semibold border-2 transition-all cursor-pointer"
                           style={{
-                            borderColor: yaEsta ? '#C7C7CC' : DCOL[d],
-                            color:       yaEsta ? '#8E8E93' : DCOL[d],
-                            background:  yaEsta ? '#F2F2F7' : 'transparent',
-                            opacity:     yaEsta ? 0.7 : 1,
+                            height: 44, borderRadius: 13, fontSize: 13, fontWeight: 600,
+                            border: `2px solid ${yaEsta ? '#E5E5EA' : DCOL[d]}`,
+                            color: yaEsta ? '#C7C7CC' : DCOL[d],
+                            background: yaEsta ? '#F9F9F9' : DLIGHT[d],
+                            cursor: 'pointer',
+                            boxShadow: yaEsta ? 'none' : `0 2px 8px rgba(0,0,0,0.07)`,
+                            transition: 'all 0.14s ease',
                           }}>
                           {DNOM[d]}{yaEsta ? ' ✓' : ''}
                         </button>
@@ -424,7 +608,14 @@ export default function CalendarioColumnas() {
                     })}
                   </div>
                   <button onClick={() => { setPickerOpen(false); setPickerCod(''); }}
-                    className="w-full h-[38px] rounded-[9px] bg-kbg text-kmuted text-[13px] font-semibold border-[1.5px] border-black/[0.09]">
+                    style={{
+                      width: '100%', height: 44, borderRadius: 13,
+                      fontSize: 14, fontWeight: 600,
+                      background: '#F2F2F7', color: '#8E8E93',
+                      border: '1.5px solid rgba(0,0,0,0.07)',
+                      cursor: 'pointer',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)',
+                    }}>
                     Cancelar
                   </button>
                 </>

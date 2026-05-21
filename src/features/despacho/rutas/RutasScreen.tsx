@@ -22,7 +22,7 @@ import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
-type CalData   = { on: boolean; p: number; b: number; g?: string };
+type CalData   = { on: boolean; p: number; b: number; c: number; g?: string };
 
 function mergeCalT(
   newCal: CalRecord,
@@ -32,20 +32,38 @@ function mergeCalT(
 ): Record<string, CalData> {
   const dia = getDia(fechaStr);
   const calDia = (newCal[dia] || newCal.LU || {}) as Record<string, string[]>;
-  const next: Record<string, CalData> = {};
+
+  // Build map cod → grp for all stores in newCal for this day
+  const newStoreMap = new Map<string, string>();
   ['rm', 'costa', 'fal'].forEach(grp => {
     (calDia[grp] || []).forEach(c => {
-      if (c && c.length >= 2) {
-        const ex = prevCalT[c];
-        next[c] = ex ? { ...ex, g: grp } : { on: activeGrps.has(grp), p: 0, b: 0, g: grp };
-      }
+      if (c && c.length >= 2) newStoreMap.set(c, grp);
     });
   });
+
+  const next: Record<string, CalData> = {};
+
+  // Phase 1: keep prevCalT stores still in newCal — preserves prevCalT insertion order
+  Object.keys(prevCalT).forEach(c => {
+    const grp = newStoreMap.get(c);
+    if (grp !== undefined) {
+      next[c] = { ...prevCalT[c], g: grp };
+      newStoreMap.delete(c);
+    }
+  });
+
+  // Phase 2: append brand-new stores from newCal not previously seen
+  newStoreMap.forEach((grp, c) => {
+    next[c] = { on: activeGrps.has(grp), p: 0, b: 0, c: 0, g: grp };
+  });
+
+  // Phase 3: preserve manual / non-empty stores removed from newCal
   Object.keys(prevCalT).forEach(c => {
     if (!next[c] && (prevCalT[c].g === 'manual' || prevCalT[c].p > 0 || prevCalT[c].b > 0)) {
       next[c] = prevCalT[c];
     }
   });
+
   return next;
 }
 
@@ -73,7 +91,19 @@ export default function RutasScreen() {
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
   const cdRef                 = useRef<number[]>([...CD_INICIAL]);
   const [flota,   setFlota]   = useState<Vehiculo[]>(() => FLOTA_INICIAL.map(v => ({ ...v })));
-  const [cal,     setCal]     = useState<CalRecord>(() => JSON.parse(JSON.stringify(CAL_INICIAL)));
+  const [cal,     setCal]     = useState<CalRecord>(() => {
+    // Fast-path: use localStorage cache written by CalendarioCentral (if fresh)
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem('_calCentral');
+        if (raw) {
+          const { cal: cached, ts } = JSON.parse(raw) as { cal: CalRecord; ts: number };
+          if (Date.now() - ts < 60 * 60 * 1000) return cached;
+        }
+      }
+    } catch {}
+    return JSON.parse(JSON.stringify(CAL_INICIAL));
+  });
   const [conductores, setConductores] = useState<string[]>(() =>
     [...new Set(FLOTA_INICIAL.map(v => v.ch).filter((c): c is string => Boolean(c)))]
   );
@@ -106,11 +136,29 @@ export default function RutasScreen() {
   const grpsRef = useRef(grps);
   useEffect(() => { grpsRef.current = grps; }, [grps]);
 
+  const fechaRef = useRef(fecha);
+  useEffect(() => { fechaRef.current = fecha; }, [fecha]);
+
   // Chips where the user has manually typed a P/B value — excluded from live sync
   const manuallyEditedRef = useRef<Set<string>>(new Set());
 
   const sessionRestoredRef = useRef(false);
   const restoringRef       = useRef(false);
+
+  // ── Sync cal from CalendarioCentral (cross-tab) ───────────────────
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key !== '_calCentral' || !e.newValue) return;
+      try {
+        const { cal: newCal } = JSON.parse(e.newValue) as { cal: CalRecord; ts: number };
+        setCal(newCal);
+        // Merge new calendar into calT, preserving manually-entered p/b counts
+        setCalT(prev => mergeCalT(newCal, fechaRef.current, prev, grpsRef.current));
+      } catch {}
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, []);
 
   // ── Pre-load from Santiago dispatch ──────────────────────────────
   useEffect(() => {
@@ -122,7 +170,7 @@ export default function RutasScreen() {
         if (items.length) {
           const newCalT: Record<string, CalData> = {};
           items.forEach(t => {
-            newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, g: 'rm' };
+            newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, g: 'rm' };
           });
           setCalT(newCalT);
           setGrps(new Set(['rm']));
@@ -145,7 +193,7 @@ export default function RutasScreen() {
           if (items.length) {
             const newCalT: Record<string, CalData> = {};
             items.forEach(t => {
-              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, g: 'rm' };
+              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, g: 'rm' };
             });
             setCalT(prev => {
               const merged = { ...prev };
@@ -166,7 +214,7 @@ export default function RutasScreen() {
       try {
         const rawCounts = localStorage.getItem('santiagoCounts');
         if (rawCounts) {
-          const sc: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(rawCounts);
+          const sc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number }> } = JSON.parse(rawCounts);
           const d = new Date();
           const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           const counts = (sc.date && sc.date === todayKey)
@@ -178,10 +226,11 @@ export default function RutasScreen() {
               let changed = false;
               Object.entries(counts).forEach(([cod, data]) => {
                 const c = norm(cod);
+                const newC = data.c ?? 0;
                 // Skip chips the user has manually edited in this session
                 if (merged[c] && !manuallyEditedRef.current.has(c)) {
-                  if (merged[c].p !== data.p || merged[c].b !== data.b) {
-                    merged[c] = { ...merged[c], p: data.p, b: data.b, on: data.p > 0 || data.b > 0 };
+                  if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC) {
+                    merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, on: data.p > 0 || data.b > 0 || newC > 0 };
                     changed = true;
                   }
                 }
@@ -196,7 +245,7 @@ export default function RutasScreen() {
       try {
         const rawRegiones = localStorage.getItem('regionesCounts');
         if (rawRegiones) {
-          const rc: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(rawRegiones);
+          const rc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number }> } = JSON.parse(rawRegiones);
           const d = new Date();
           const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           const counts = (rc.date && rc.date === todayKey) ? (rc.counts ?? null) : null;
@@ -206,14 +255,15 @@ export default function RutasScreen() {
               let changed = false;
               Object.entries(counts).forEach(([cod, data]) => {
                 const c = norm(cod);
+                const newC = data.c ?? 0;
                 if (manuallyEditedRef.current.has(c)) return;
                 if (merged[c]) {
-                  if (merged[c].p !== data.p || merged[c].b !== data.b) {
-                    merged[c] = { ...merged[c], p: data.p, b: data.b, on: data.p > 0 || data.b > 0 };
+                  if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC) {
+                    merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, on: data.p > 0 || data.b > 0 || newC > 0 };
                     changed = true;
                   }
-                } else if (data.p > 0 || data.b > 0) {
-                  merged[c] = { on: true, p: data.p, b: data.b, g: 'fal' };
+                } else if (data.p > 0 || data.b > 0 || newC > 0) {
+                  merged[c] = { on: true, p: data.p, b: data.b, c: newC, g: 'fal' };
                   changed = true;
                 }
               });
@@ -246,14 +296,14 @@ export default function RutasScreen() {
         if (!prev[c]) {
           // Inject Regiones stores arriving via Supabase that aren't in the calendar yet
           if (row.fuente === 'regiones' && (row.pallets > 0 || row.bultos > 0)) {
-            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, g: 'fal' } };
+            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, g: 'fal' } };
           }
           return prev;
         }
-        if (prev[c].p === row.pallets && prev[c].b === row.bultos) return prev;
+        if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === (row.contenedores ?? 0)) return prev;
         return {
           ...prev,
-          [c]: { ...prev[c], p: row.pallets, b: row.bultos, on: row.pallets > 0 || row.bultos > 0 },
+          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, on: row.pallets > 0 || row.bultos > 0 || (row.contenedores ?? 0) > 0 },
         };
       });
     }
@@ -281,12 +331,12 @@ export default function RutasScreen() {
     try {
       const saved = localStorage.getItem('despachoCounts');
       if (!saved) return;
-      const payload: { date?: string; counts?: Record<string, { p: number; b: number }> } = JSON.parse(saved);
+      const payload: { date?: string; counts?: Record<string, { p: number; b: number; c?: number }> } = JSON.parse(saved);
       const savedDate = payload.date;
-      const session   = payload.counts ?? (payload as Record<string, { p: number; b: number }>);
+      const session   = payload.counts ?? (payload as Record<string, { p: number; b: number; c?: number }>);
       // Reject if no date stamp (legacy) or if date doesn't match current session
       if (!savedDate || savedDate !== fecha) return;
-      const entries = Object.entries(session).filter(([, d]) => d.p > 0 || d.b > 0);
+      const entries = Object.entries(session).filter(([, d]) => d.p > 0 || d.b > 0 || (d.c ?? 0) > 0);
       if (!entries.length) return;
       restoringRef.current = true;
       setCalT(prev => {
@@ -295,7 +345,7 @@ export default function RutasScreen() {
           const c = norm(cod);
           // Only restore counts for stores already in today's calendar — never inject
           // stores from a different day's session into the current day's view.
-          if (merged[c]) merged[c] = { ...merged[c], p: data.p, b: data.b, on: true };
+          if (merged[c]) merged[c] = { ...merged[c], p: data.p, b: data.b, c: data.c ?? 0, on: true };
         });
         return merged;
       });
@@ -309,9 +359,9 @@ export default function RutasScreen() {
   useEffect(() => {
     if (typeof window === 'undefined' || !sessionRestoredRef.current) return;
     if (restoringRef.current) { restoringRef.current = false; return; }
-    const counts: Record<string, { p: number; b: number }> = {};
+    const counts: Record<string, { p: number; b: number; c: number }> = {};
     Object.entries(calT).forEach(([cod, data]) => {
-      if (data.p > 0 || data.b > 0) counts[cod] = { p: data.p, b: data.b };
+      if (data.p > 0 || data.b > 0 || data.c > 0) counts[cod] = { p: data.p, b: data.b, c: data.c };
     });
     localStorage.setItem('despachoCounts', JSON.stringify({ date: fecha, counts }));
   }, [calT, fecha]);
@@ -349,7 +399,7 @@ export default function RutasScreen() {
       const next = { ...prev };
       let changed = false;
       result.ts.forEach(t => {
-        if (!next[t.c]) { next[t.c] = { on: true, p: t.p, b: t.b, g: 'manual' }; changed = true; }
+        if (!next[t.c]) { next[t.c] = { on: true, p: t.p, b: t.b, c: 0, g: 'manual' }; changed = true; }
         else if (next[t.c].p !== t.p || next[t.c].b !== t.b) { next[t.c] = { ...next[t.c], on: true, p: t.p, b: t.b }; changed = true; }
       });
       return changed ? next : prev;
@@ -384,7 +434,7 @@ export default function RutasScreen() {
     const newCalT: Record<string, CalData> = {};
     ['rm','costa','fal'].forEach(grp => {
       ((calDia as Record<string, string[]>)[grp] || []).forEach(c => {
-        if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, g: grp };
+        if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, g: grp };
       });
     });
     setCalT(newCalT);
@@ -409,7 +459,7 @@ export default function RutasScreen() {
     setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], on: !prev[cod].on } }));
   }
 
-  function handleUpdateChip(cod: string, key: 'p' | 'b', val: string) {
+  function handleUpdateChip(cod: string, key: 'p' | 'b' | 'c', val: string) {
     manuallyEditedRef.current.add(cod);
     const v = parseInt(val) || 0;
     setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], [key]: v, on: v > 0 ? true : prev[cod].on } }));
@@ -644,8 +694,32 @@ export default function RutasScreen() {
       if (t1?.values) parseTSheetAuth(t1.values, newTiendas, newGps);
       if (t2?.values) parseFSheetAuth(t2.values, newFlota);
       if (t3?.values) {
-        const newCal = parseCalendarioAuth(t3.values);
-        if (newCal) {
+        const sheetsCal = parseCalendarioAuth(t3.values);
+        if (sheetsCal) {
+          // Re-order Sheets data to match CalendarioCentral order from localStorage
+          let newCal = sheetsCal;
+          try {
+            if (typeof window !== 'undefined') {
+              const lsRaw = localStorage.getItem('_calCentral');
+              if (lsRaw) {
+                const { cal: lsCal } = JSON.parse(lsRaw) as { cal: CalRecord; ts: number };
+                const ordered: CalRecord = {};
+                ['LU','MA','MI','JU','VI','SA'].forEach(dia => {
+                  ordered[dia] = { rm: [], costa: [], fal: [] };
+                  (['rm','costa','fal'] as const).forEach(grp => {
+                    const sheetsSet = new Set(sheetsCal[dia]?.[grp] || []);
+                    // First: stores in CalendarioCentral order (if also in Sheets)
+                    (lsCal[dia]?.[grp] || []).forEach(c => {
+                      if (sheetsSet.has(c)) { ordered[dia][grp].push(c); sheetsSet.delete(c); }
+                    });
+                    // Then: any remaining in Sheets not yet in CalendarioCentral
+                    sheetsSet.forEach(c => ordered[dia][grp].push(c));
+                  });
+                });
+                newCal = ordered;
+              }
+            }
+          } catch {}
           setCal(newCal);
           setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
         }

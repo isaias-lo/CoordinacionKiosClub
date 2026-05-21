@@ -41,7 +41,7 @@ export function parseTSheet(t: any, tiendas: Record<string, TiendaInfo>, gps: Re
   t.rows.forEach((r: any) => {
     if (!r.c || !r.c[0] || !r.c[0].v) return;
     const c = norm(String(r.c[0].v));
-    if (!c || !/^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(c)) return;
+    if (!c || !/^[0-9]{0,2}[A-ZÑ]{2,4}[0-9]?$/.test(c)) return;
     if (!tiendas[c]) tiendas[c] = { n: '', z: '', v: '' };
     if (r.c[1]?.v) tiendas[c].n = String(r.c[1].v);
     if (r.c[2]?.v) tiendas[c].d = String(r.c[2].v);
@@ -115,7 +115,7 @@ export function parseTSheetAuth(values: string[][], tiendas: Record<string, Tien
     if (!row || row.length < 3) continue;
 
     const cod = norm(row[0]);
-    if (!cod || !/^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(cod)) continue;
+    if (!cod || !/^[0-9]{0,2}[A-ZÑ]{2,4}[0-9]?$/.test(cod)) continue;
 
     if (!tiendas[cod]) tiendas[cod] = { n: '', z: '', v: '' };
     if (row[1]) tiendas[cod].n = row[1];
@@ -236,7 +236,7 @@ export function parseCalendarioAuth(values: string[][]): Record<string, {rm:stri
       // norm() normaliza acentos y mapea códigos cortos→numéricos vía ALIAS
       const partes = String(tiendasStr).split(/[\s,;]+/)
         .map(t => norm(t.trim()))
-        .filter(t => t && /^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(t));
+        .filter(t => t && /^[0-9]{0,2}[A-ZÑ]{2,4}[0-9]?$/.test(t));
 
       partes.forEach(t => {
         if (COSTA_CODES.has(t)) {
