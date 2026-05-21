@@ -1120,6 +1120,67 @@ function saveSession(data: PickingSession): void {
 
 // ─── Config Tab ───────────────────────────────────────────────────────────────
 
+function PickerNameRow({ pickerKey, savedValue, rowIndex, onSave }: {
+  pickerKey: string; savedValue: string; rowIndex: number;
+  onSave: (key: string, val: string) => void;
+}) {
+  const [draft, setDraft] = useState(savedValue);
+  const [status, setStatus] = useState<'idle' | 'saved'>('idle');
+  const isDirty = draft !== savedValue;
+
+  useEffect(() => { setDraft(savedValue); }, [savedValue]);
+
+  const save = () => {
+    if (!isDirty) return;
+    onSave(pickerKey, draft);
+    setStatus('saved');
+    setTimeout(() => setStatus('idle'), 2000);
+  };
+
+  return (
+    <tr style={{ borderBottom: '1px solid #F1F5F9', background: rowIndex % 2 === 0 ? '#fff' : '#FAFBFF' }}>
+      <td className="px-4 py-2.5 w-36">
+        <span className="font-mono text-[12px] font-bold text-navy">{pickerKey}</span>
+      </td>
+      <td className="px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={draft}
+            placeholder={`${pickerKey}…`}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
+            className="border rounded-lg px-3 py-1.5 text-[13px] bg-white outline-none transition-colors"
+            style={{
+              width: 176,
+              borderColor: isDirty ? '#D97706' : status === 'saved' ? '#16A34A' : '#E2E8F0',
+            }}
+          />
+          {isDirty ? (
+            <button
+              onClick={save}
+              className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shrink-0"
+              style={{ background: 'linear-gradient(135deg, #92400E, #D97706)', color: '#fff' }}>
+              Guardar
+            </button>
+          ) : status === 'saved' ? (
+            <span className="text-[13px] font-bold shrink-0" style={{ color: '#16A34A' }}>✓ Guardado</span>
+          ) : null}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+const CFG_SLIDER_CSS = `
+  .cfg-slider{-webkit-appearance:none;appearance:none;height:3px;border-radius:9999px;outline:none;cursor:pointer}
+  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 4px rgba(217,119,6,.35);cursor:pointer;transition:box-shadow .15s}
+  .cfg-slider::-webkit-slider-thumb:hover{box-shadow:0 1px 4px rgba(217,119,6,.35),0 0 0 4px rgba(217,119,6,.14)}
+  .cfg-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #D97706;cursor:pointer}
+  .cfg-num::-webkit-inner-spin-button,.cfg-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+  .cfg-num{-moz-appearance:textfield}
+`;
+
 function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange }: {
   labelConfig: LabelConfig;
   onLabelConfigChange: (cfg: LabelConfig) => void;
@@ -1128,145 +1189,218 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
   colsPerRow: number;
   onColsPerRowChange: (n: number) => void;
 }) {
-  const previewValue = '17MAI;JuanPerez;WH/PICK/1234;P1;Comida,Aseo';
-  const previewScale = 0.35;
+  const previewScale = 0.32;
   const previewW = Math.round(720 * previewScale);
-  const previewH = Math.round(520 * previewScale);
+  const previewH = Math.round(500 * previewScale);
 
-  function SliderRow({ label, field, min, max }: { label: string; field: keyof LabelConfig; min: number; max: number }) {
+  const upd = (field: keyof LabelConfig, val: number | boolean) =>
+    onLabelConfigChange({ ...labelConfig, [field]: val });
+
+  function PropRow({ label, field, min, max, unit = 'px' }: {
+    label: string; field: keyof LabelConfig; min: number; max: number; unit?: string;
+  }) {
     const val = labelConfig[field] as number;
+    const pct = ((val - min) / (max - min) * 100).toFixed(1);
     return (
-      <div className="flex items-center gap-3">
-        <span className="text-[13px] text-text-2 w-52 shrink-0">{label}</span>
-        <input type="range" min={min} max={max} value={val}
-          onChange={e => onLabelConfigChange({ ...labelConfig, [field]: Number(e.target.value) })}
-          className="flex-1 accent-amber-500" />
-        <span className="text-[13px] font-mono text-navy w-10 text-right shrink-0">{val}</span>
+      <div className="flex items-center gap-3 py-2.5 border-b border-[#F1F5F9] last:border-0">
+        <span className="text-[12px] font-medium text-[#64748B] w-32 shrink-0 leading-tight">{label}</span>
+        <input
+          type="range" min={min} max={max} value={val}
+          className="cfg-slider flex-1 min-w-0"
+          style={{ background: `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)` }}
+          onChange={e => upd(field, Number(e.target.value))}
+        />
+        <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
+          style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+          <button
+            onClick={() => val > min && upd(field, val - 1)}
+            className="w-7 h-7 flex items-center justify-center text-[15px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+            style={{ borderRight: '1px solid #E2E8F0' }}>−</button>
+          <input
+            type="number" min={min} max={max} value={val}
+            className="cfg-num w-10 text-center text-[13px] font-mono font-semibold text-[#0F172A] bg-transparent outline-none border-none py-0"
+            onChange={e => { const n = Math.min(max, Math.max(min, parseInt(e.target.value) || min)); upd(field, n); }}
+          />
+          <button
+            onClick={() => val < max && upd(field, val + 1)}
+            className="w-7 h-7 flex items-center justify-center text-[15px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+            style={{ borderLeft: '1px solid #E2E8F0' }}>+</button>
+        </div>
+        <span className="text-[11px] text-[#CBD5E1] w-5 shrink-0 font-medium">{unit}</span>
       </div>
     );
   }
 
-  function ToggleRow({ label, field }: { label: string; field: 'showResponsable' | 'showCategories' | 'showStoreName' }) {
+  function ToggleRow({ label, desc, field }: {
+    label: string; desc?: string; field: 'showResponsable' | 'showCategories' | 'showStoreName';
+  }) {
     const val = labelConfig[field];
     return (
-      <div className="flex items-center gap-3">
-        <span className="text-[13px] text-text-2 flex-1">{label}</span>
+      <div className="flex items-center justify-between py-2.5 border-b border-[#F1F5F9] last:border-0 gap-4">
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium text-[#334155]">{label}</div>
+          {desc && <div className="text-[11px] text-[#94A3B8] mt-0.5">{desc}</div>}
+        </div>
         <button
-          onClick={() => onLabelConfigChange({ ...labelConfig, [field]: !val })}
-          className="relative w-11 h-6 rounded-full cursor-pointer flex-shrink-0"
-          style={{ background: val ? '#D97706' : '#D1D5DB' }}>
-          <span className="absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all duration-150"
-            style={{ left: val ? '22px' : '2px' }} />
+          onClick={() => upd(field, !val)}
+          className="relative flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0"
+          style={{ width: 40, height: 22, background: val ? '#D97706' : '#CBD5E1' }}>
+          <span
+            className="absolute bg-white rounded-full shadow-sm transition-all duration-200"
+            style={{ width: 16, height: 16, left: val ? '21px' : '3px' }}
+          />
         </button>
       </div>
     );
   }
 
+  function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
+    return (
+      <div className="flex items-center gap-2 pt-4 pb-1 first:pt-0">
+        <span className="text-[#94A3B8] flex items-center">{icon}</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#94A3B8]">{label}</span>
+        <div className="flex-1 h-px bg-[#F1F5F9]" />
+      </div>
+    );
+  }
+
+  const handleNameSave = (key: string, val: string) => {
+    const next = { ...canonicalNames };
+    if (val.trim()) next[key] = val.trim(); else delete next[key];
+    onCanonicalNamesChange(next);
+  };
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 pb-10">
+    <>
+      <style dangerouslySetInnerHTML={{ __html: CFG_SLIDER_CSS }} />
+      <div className="flex-1 overflow-y-auto px-4 pb-10">
 
-      {/* ── Sección 1: Etiqueta de impresión ── */}
-      <div className="mt-5 mb-6">
-        <div className="text-[13px] font-bold text-text-3 uppercase tracking-widest mb-3">Etiqueta de impresión</div>
-        <div className="flex flex-col lg:flex-row gap-4">
-
-          {/* Controls */}
-          <div className="flex-1 bg-white rounded-2xl border border-border p-5 space-y-3.5">
-            <SliderRow label="Grosor del borde (px)" field="borderWidth" min={0} max={4} />
-            <SliderRow label="Tamaño letra picker (px)" field="pickerFontSize" min={20} max={50} />
-            <SliderRow label="Tamaño código tienda (px)" field="storeFontSize" min={80} max={200} />
-            <SliderRow label="Tamaño letra categoría (px)" field="catFontSize" min={12} max={30} />
-            <SliderRow label="Grosor barras código" field="barcodeBarWidth" min={1} max={4} />
-            <SliderRow label="Altura código barras (px)" field="barcodeHeight" min={40} max={130} />
-            <SliderRow label="Ancho código barras (%)" field="barcodeContainerWidth" min={60} max={100} />
-            <div className="border-t border-border pt-3.5 space-y-3">
-              <ToggleRow label="Mostrar responsable" field="showResponsable" />
-              <ToggleRow label="Mostrar categorías" field="showCategories" />
-              <ToggleRow label="Mostrar nombre de tienda" field="showStoreName" />
+        {/* ── Sección 1: Etiqueta de impresión ── */}
+        <div className="mt-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-[16px] font-bold text-navy leading-tight">Etiqueta de impresión</div>
+              <div className="text-[12px] text-[#94A3B8] mt-0.5">Personaliza el diseño de las etiquetas generadas</div>
             </div>
             <button
               onClick={() => onLabelConfigChange({ ...DEFAULT_LABEL_CONFIG })}
-              className="px-4 py-2 text-[13px] font-semibold rounded-xl cursor-pointer transition-all active:scale-95 border"
-              style={{ background: 'rgba(26,37,80,0.05)', color: '#6B7280', borderColor: 'rgba(26,37,80,0.12)' }}>
-              ↺ Restablecer predeterminados
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-xl cursor-pointer transition-all active:scale-95"
+              style={{ color: '#64748B', background: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+              <span>↺</span> Restablecer
             </button>
           </div>
 
-          {/* Live preview */}
-          <div className="lg:w-64 flex flex-col items-center gap-2 bg-white rounded-2xl border border-border p-4">
-            <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest">Vista previa</div>
-            <div style={{ width: previewW, height: previewH, overflow: 'hidden', flexShrink: 0 }}>
-              <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left', width: 720, pointerEvents: 'none' }}>
-                <BarcodeCard
-                  value={previewValue} palletNum={1} total={3}
-                  storeCod="17MAI" pickerLabel="Juan Pérez" responsibleKey="Pickers 1"
-                  allCategories={['Comida', 'Aseo']} totalPickers={4}
-                  compact={false} labelConfig={labelConfig}
-                />
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Controls panel */}
+            <div className="flex-1 bg-white rounded-2xl p-5 min-w-0" style={{ border: '1px solid #E2E8F0' }}>
+              <SectionLabel icon={
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2h3v8H2zM7 5h3v5H7z" fill="currentColor"/></svg>
+              } label="Tipografía" />
+              <PropRow label="Picker" field="pickerFontSize" min={20} max={50} />
+              <PropRow label="Código tienda" field="storeFontSize" min={80} max={200} />
+              <PropRow label="Categoría" field="catFontSize" min={12} max={30} />
+
+              <SectionLabel icon={
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+              } label="Borde" />
+              <PropRow label="Grosor" field="borderWidth" min={0} max={4} />
+
+              <SectionLabel icon={
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="0" y="1" width="1.5" height="10"/><rect x="2.5" y="1" width="1" height="10"/><rect x="4.5" y="1" width="2" height="10"/><rect x="7.5" y="1" width="1" height="10"/><rect x="9.5" y="1" width="1.5" height="10"/></svg>
+              } label="Código de barras" />
+              <PropRow label="Grosor barras" field="barcodeBarWidth" min={1} max={4} unit="" />
+              <PropRow label="Altura" field="barcodeHeight" min={40} max={130} />
+              <PropRow label="Ancho" field="barcodeContainerWidth" min={60} max={100} unit="%" />
+
+              <SectionLabel icon={
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><ellipse cx="6" cy="6" rx="5" ry="3.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
+              } label="Visibilidad" />
+              <ToggleRow label="Responsable" desc="Nombre del grupo (ej. Pickers 3)" field="showResponsable" />
+              <ToggleRow label="Categorías" desc="Badges Comida, Aseo, Hogar" field="showCategories" />
+              <ToggleRow label="Nombre de tienda" desc="Texto debajo del código" field="showStoreName" />
+            </div>
+
+            {/* Live preview */}
+            <div className="lg:w-[252px] flex-shrink-0">
+              <div className="bg-white rounded-2xl p-4 flex flex-col items-center gap-3 sticky top-4" style={{ border: '1px solid #E2E8F0' }}>
+                <div className="flex items-center gap-2 self-stretch">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#94A3B8]">Vista previa en vivo</span>
+                </div>
+                <div style={{ width: previewW, height: previewH, overflow: 'hidden' }}>
+                  <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left', width: 720, pointerEvents: 'none' }}>
+                    <BarcodeCard
+                      value="17MAI;JuanPerez;WH/PICK/1234;P1;Comida,Aseo"
+                      palletNum={1} total={3}
+                      storeCod="17MAI" pickerLabel="Juan Pérez" responsibleKey="Pickers 1"
+                      allCategories={['Comida', 'Aseo']} totalPickers={4}
+                      compact={false} labelConfig={labelConfig}
+                    />
+                  </div>
+                </div>
+                <div className="self-stretch text-[10px] text-[#CBD5E1] text-center leading-relaxed">
+                  Escala 32% · Los cambios se aplican en tiempo real
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ── Sección 2: Nombres de pickers ── */}
-      <div className="mb-6">
-        <div className="text-[13px] font-bold text-text-3 uppercase tracking-widest mb-3">Nombres de pickers</div>
-        <div className="bg-white rounded-2xl border border-border overflow-hidden">
-          <table className="w-full text-[13px] border-collapse">
-            <thead>
-              <tr style={{ background: 'rgba(26,37,80,0.04)', borderBottom: '1px solid #F0F2F5' }}>
-                <th className="px-4 py-2.5 text-left font-bold text-text-3 uppercase tracking-wider text-[11px] w-36">Código</th>
-                <th className="px-4 py-2.5 text-left font-bold text-text-3 uppercase tracking-wider text-[11px]">Nombre real</th>
-              </tr>
-            </thead>
-            <tbody>
-              {CANONICAL_PICKER_KEYS.map((key, i) => (
-                <tr key={key} style={{ borderBottom: '1px solid #F0F2F5', background: i % 2 === 0 ? '#fff' : '#FAFBFF' }}>
-                  <td className="px-4 py-2 font-mono font-bold text-navy">{key}</td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="text"
-                      defaultValue={canonicalNames[key] ?? ''}
-                      placeholder={`Nombre para ${key}…`}
-                      onBlur={e => {
-                        const val = e.target.value.trim();
-                        const next = { ...canonicalNames };
-                        if (val) next[key] = val; else delete next[key];
-                        onCanonicalNamesChange(next);
-                      }}
-                      className="w-full border border-border rounded-lg px-3 py-1.5 text-[13px] bg-white outline-none focus:border-amber-400 transition-colors"
-                    />
-                  </td>
+        {/* ── Sección 2: Nombres de pickers ── */}
+        <div className="mb-6">
+          <div className="mb-4">
+            <div className="text-[16px] font-bold text-navy leading-tight">Nombres de pickers</div>
+            <div className="text-[12px] text-[#94A3B8] mt-0.5">Se aplican automáticamente al asignar operaciones</div>
+          </div>
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8] w-36">Código</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8]">Nombre asignado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Sección 3: Vista en pantalla ── */}
-      <div className="mb-6">
-        <div className="text-[13px] font-bold text-text-3 uppercase tracking-widest mb-3">Vista en pantalla</div>
-        <div className="bg-white rounded-2xl border border-border p-5">
-          <div className="text-[12px] font-semibold text-text-2 mb-2">Etiquetas por fila en monitoreo</div>
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4, 5].map(n => (
-              <button key={n} onClick={() => onColsPerRowChange(n)}
-                className="w-10 h-10 rounded-xl text-[14px] font-bold cursor-pointer transition-all active:scale-95"
-                style={{
-                  background: colsPerRow === n ? 'linear-gradient(135deg, #1E3A8A, #2563EB)' : 'rgba(26,37,80,0.06)',
-                  color: colsPerRow === n ? '#fff' : '#6B7280',
-                  border: `1px solid ${colsPerRow === n ? 'rgba(37,99,235,0.5)' : 'rgba(26,37,80,0.12)'}`,
-                }}>
-                {n}
-              </button>
-            ))}
+              </thead>
+              <tbody>
+                {CANONICAL_PICKER_KEYS.map((key, i) => (
+                  <PickerNameRow
+                    key={key}
+                    pickerKey={key}
+                    savedValue={canonicalNames[key] ?? ''}
+                    rowIndex={i}
+                    onSave={handleNameSave}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
 
-    </div>
+        {/* ── Sección 3: Vista en pantalla ── */}
+        <div className="mb-6">
+          <div className="mb-4">
+            <div className="text-[16px] font-bold text-navy leading-tight">Vista en pantalla</div>
+            <div className="text-[12px] text-[#94A3B8] mt-0.5">Ajusta la densidad del monitoreo</div>
+          </div>
+          <div className="bg-white rounded-2xl p-5" style={{ border: '1px solid #E2E8F0' }}>
+            <div className="text-[12px] font-semibold text-[#64748B] mb-3">Etiquetas por fila en monitoreo</div>
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} onClick={() => onColsPerRowChange(n)}
+                  className="w-10 h-10 rounded-xl text-[14px] font-bold cursor-pointer transition-all active:scale-95"
+                  style={{
+                    background: colsPerRow === n ? 'linear-gradient(135deg,#1E3A8A,#2563EB)' : '#F1F5F9',
+                    color: colsPerRow === n ? '#fff' : '#94A3B8',
+                    border: `1.5px solid ${colsPerRow === n ? 'rgba(37,99,235,0.4)' : '#E2E8F0'}`,
+                  }}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </>
   );
 }
 
@@ -1378,6 +1512,14 @@ export function PickingScreen() {
     setColsPerRow(n);
     localStorage.setItem(COLS_PER_ROW_KEY, String(n));
   }, []);
+
+  // Case-insensitive lookup: Odoo may return "pickers 3" while canonical key is "Pickers 3"
+  const getCanonicalName = useCallback((key: string): string => {
+    if (canonicalNames[key]) return canonicalNames[key];
+    const lower = key.toLowerCase();
+    const match = CANONICAL_PICKER_KEYS.find(k => k.toLowerCase() === lower);
+    return match ? (canonicalNames[match] ?? '') : '';
+  }, [canonicalNames]);
 
   // Persistir nombres en localStorage (cross-session)
   useEffect(() => {
@@ -1919,7 +2061,7 @@ export function PickingScreen() {
                             <PickerGroupCard
                               key={group.stateKey}
                               group={group}
-                              displayName={pickerDisplayNames[group.stateKey] ?? canonicalNames[group.key] ?? ''}
+                              displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               pallets={groupPallets}
                               onNameChange={name => setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }))}
                               onPalletsChange={n => {
