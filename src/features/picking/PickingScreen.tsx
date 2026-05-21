@@ -1138,26 +1138,26 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-[#F1F5F9] last:border-b-0">
-      <span className="font-mono text-[11px] font-bold text-navy w-24 shrink-0 truncate">{pickerKey}</span>
+    <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#F1F5F9] last:border-b-0">
+      <span className="font-mono text-[13px] font-bold text-navy w-24 shrink-0 truncate">{pickerKey}</span>
       <input
         type="text"
         value={draft}
         placeholder="Nombre…"
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
-        className="flex-1 min-w-0 border rounded-lg px-2.5 py-1 text-[12px] bg-white outline-none transition-colors"
+        className="flex-1 min-w-0 border rounded-lg px-2.5 py-1.5 text-[13px] bg-white outline-none transition-colors"
         style={{ borderColor: isDirty ? '#D97706' : status === 'saved' ? '#16A34A' : '#E2E8F0' }}
       />
       {isDirty ? (
         <button
           onClick={save}
-          className="px-2.5 py-1 text-[11px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shrink-0"
+          className="px-2.5 py-1 text-[12px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shrink-0"
           style={{ background: 'linear-gradient(135deg,#92400E,#D97706)', color: '#fff' }}>
           ✓
         </button>
       ) : status === 'saved' ? (
-        <span className="text-[11px] font-bold shrink-0" style={{ color: '#16A34A' }}>✓</span>
+        <span className="text-[12px] font-bold shrink-0" style={{ color: '#16A34A' }}>✓</span>
       ) : <span className="w-8 shrink-0" />}
     </div>
   );
@@ -1344,20 +1344,20 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
             <div className="text-[12px] text-[#94A3B8] mt-0.5">Se aplican automáticamente al asignar operaciones</div>
           </div>
           <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
-            {/* Header */}
-            <div className="flex px-3 py-2 border-b" style={{ background: '#F8FAFC', borderColor: '#E2E8F0' }}>
-              <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8] w-24 shrink-0">Código</span>
-              <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8] flex-1">Nombre</span>
-            </div>
-            {/* Two-column grid */}
+            {/* Three-column grid */}
             <div className="flex flex-col sm:flex-row">
               <div className="flex-1 sm:border-r" style={{ borderColor: '#E2E8F0' }}>
-                {CANONICAL_PICKER_KEYS.slice(0, 10).map(key => (
+                {CANONICAL_PICKER_KEYS.slice(0, 7).map(key => (
+                  <PickerNameRow key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''} onSave={handleNameSave} />
+                ))}
+              </div>
+              <div className="flex-1 sm:border-r" style={{ borderColor: '#E2E8F0' }}>
+                {CANONICAL_PICKER_KEYS.slice(7, 14).map(key => (
                   <PickerNameRow key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''} onSave={handleNameSave} />
                 ))}
               </div>
               <div className="flex-1">
-                {CANONICAL_PICKER_KEYS.slice(10).map(key => (
+                {CANONICAL_PICKER_KEYS.slice(14).map(key => (
                   <PickerNameRow key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''} onSave={handleNameSave} />
                 ))}
               </div>
