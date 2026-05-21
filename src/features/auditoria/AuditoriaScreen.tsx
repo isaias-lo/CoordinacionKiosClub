@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, LayoutDashboard, Trophy, History, Users, UserCheck, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -386,41 +386,111 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
 }
 
 /* ── Barcode Scanner para autocompletar operación (pistola lectora) ── */
+// Usa input NO controlado + eventos nativos para máxima compatibilidad con
+// Android Chrome + IME. En ese entorno, onKeyDown siempre devuelve key="Unidentified"
+// (keyCode 229) porque el IME intercepta las teclas antes de React. La solución:
+// – native 'input' event para detectar \n/\r inyectados por el scanner
+// – native 'keyup' (menos afectado por IME) para Enter
+// – timer de 100 ms como último recurso si el scanner no manda Enter
 function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
-  const [value, setValue]       = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [focused,  setFocused]  = useState(false);
+  const inputRef  = useRef<HTMLInputElement>(null);
+  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // La pistola emite los caracteres del código muy rápido y luego un Enter automático
-  const tryParse = (raw: string) => {
-    const ok = onScan(raw.trim());
+  const refocus = () => setTimeout(() => inputRef.current?.focus(), 60);
+
+  const tryParse = useCallback((raw: string) => {
+    const clean = raw.replace(/[\n\r]/g, '').trim();
+    if (!clean) return;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    const ok = onScan(clean);
     setFeedback(ok
       ? { ok: true,  msg: '✓ Tienda, picker y contenido asignados' }
       : { ok: false, msg: '✗ Código no reconocido' }
     );
-    setValue('');
+    if (inputRef.current) inputRef.current.value = '';
     setTimeout(() => setFeedback(null), 3000);
-  };
+    refocus();
+  }, [onScan]);
+
+  // Eventos nativos: evitan el filtro IME de Android Chrome
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const onInput = () => {
+      const v = el.value;
+      // Algunos scanners Android inyectan \n/\r dentro del propio valor
+      if (v.includes('\n') || v.includes('\r')) { tryParse(v); return; }
+      // Timer fallback: si el escáner no manda Enter, procesar tras 100 ms de silencio
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        const cur = el.value.trim();
+        // Formato: COD;picker;refs;P#;cats  (o '|' legacy)
+        // Procesar si hay al menos 2 separadores del mismo tipo
+        const hasSemi = (cur.match(/;/g) ?? []).length >= 2;
+        const hasPipe = (cur.match(/\|/g) ?? []).length >= 2;
+        if (cur && (hasSemi || hasPipe)) tryParse(cur);
+      }, 100);
+    };
+
+    // keyup es menos bloqueado por IME que keydown; keyCode 13 = Enter
+    const onKeyUp = (e: KeyboardEvent) => {
+      if ((e.key === 'Enter' || e.keyCode === 13) && el.value.trim()) {
+        e.preventDefault();
+        tryParse(el.value);
+      }
+    };
+
+    el.addEventListener('input', onInput);
+    el.addEventListener('keyup', onKeyUp);
+    return () => {
+      el.removeEventListener('input', onInput);
+      el.removeEventListener('keyup', onKeyUp);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [tryParse]);
+
+  // Fallback global: si la pistola dispara fuera de cualquier input, enfocar aquí
+  useEffect(() => {
+    const handleGlobal = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key.length === 1 || e.key === 'Enter') inputRef.current?.focus();
+    };
+    document.addEventListener('keydown', handleGlobal);
+    return () => document.removeEventListener('keydown', handleGlobal);
+  }, []);
 
   return (
     <div className="mb-3 rounded-card overflow-hidden border-[1.5px]"
-      style={{ borderColor: 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)' }}>
+      style={{ borderColor: focused ? '#2563EB' : 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)', transition: 'border-color 0.15s' }}>
       <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
         <span style={{ fontSize: 15 }}>📷</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Pistola lectora — apunta al código del pallet
         </span>
+        <button
+          type="button"
+          onPointerDown={e => { e.preventDefault(); refocus(); }}
+          style={{ marginLeft: 'auto', fontSize: 11, color: focused ? '#16A34A' : '#2563EB',
+            fontWeight: 700, background: focused ? 'rgba(22,163,74,0.10)' : 'rgba(37,99,235,0.08)',
+            border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 6 } as React.CSSProperties}>
+          {focused ? '● Activo' : '○ Activar'}
+        </button>
       </div>
       <div className="px-3 pb-2.5">
         <input
           ref={inputRef}
           type="text"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) tryParse(value); }}
+          defaultValue=""
+          autoFocus
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder="Listo para escanear…"
           className="w-full bg-white border-[1.5px] rounded-btn px-3 py-2.5 font-mono text-[14px] outline-none"
-          style={{ borderColor: feedback?.ok ? '#16A34A' : feedback ? '#D32F2F' : 'rgba(37,99,235,0.40)', boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
+          style={{ borderColor: feedback?.ok ? '#16A34A' : feedback ? '#D32F2F' : focused ? '#2563EB' : 'rgba(37,99,235,0.40)', boxShadow: '0 1px 4px rgba(26,37,80,0.08)' }}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -431,8 +501,8 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
             {feedback.msg}
           </div>
         ) : (
-          <div className="mt-1 text-[11px]" style={{ color: 'rgba(37,99,235,0.55)' }}>
-            Asigna tienda, picker y contenido automáticamente
+          <div className="mt-1 text-[11px]" style={{ color: focused ? '#2563EB' : 'rgba(37,99,235,0.55)' }}>
+            {focused ? 'Esperando código…' : 'Toca "Activar" o el campo para iniciar escaneo'}
           </div>
         )}
       </div>
@@ -1722,7 +1792,9 @@ export function AuditoriaScreen() {
 
   // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
   const handleBarcodeScan = (raw: string): boolean => {
-    const parts = raw.split('|');
+    // Separador ';' (sin modificador de teclado). Fallback legacy con '|' para etiquetas antiguas.
+    const sep = raw.includes(';') ? ';' : '|';
+    const parts = raw.split(sep);
     if (parts.length < 3) return false;
     const [storeCod, pickerName, refs, , cats] = parts;
     const opCodes = (refs ?? '').split('+').filter(Boolean);
