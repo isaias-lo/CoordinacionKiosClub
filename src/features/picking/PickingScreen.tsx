@@ -33,15 +33,42 @@ interface PickingSession {
   pickerPalletOrder: string[];
 }
 
-const SAVED_NAMES_KEY    = 'picking_saved_picker_names';
-const SESSION_KEY        = 'picking_session_v1';
+const SAVED_NAMES_KEY     = 'picking_saved_picker_names';
+const SESSION_KEY         = 'picking_session_v1';
 const SECTION_FILTER_KEY  = 'picking_section_filter';
 const COLS_PER_ROW_KEY    = 'picking_cols_per_row';
-const STATS_CACHE_KEY    = 'picking_stats_cache_v1';
-const PALLETS_KEY        = 'picking_pallets_v1';
-const PICKER_TYPES_KEY   = 'picking_types_v1';
+const STATS_CACHE_KEY     = 'picking_stats_cache_v1';
+const PALLETS_KEY         = 'picking_pallets_v1';
+const PICKER_TYPES_KEY    = 'picking_types_v1';
+const LABEL_CONFIG_KEY    = 'picking_label_config_v1';
+const CANONICAL_NAMES_KEY = 'picking_canonical_names_v1';
 
 type PickerType = 'P' | 'C';
+
+interface LabelConfig {
+  borderWidth: number;           // 0–4
+  pickerFontSize: number;        // 20–50
+  storeFontSize: number;         // 80–200
+  catFontSize: number;           // 12–30
+  barcodeBarWidth: number;       // 1–4
+  barcodeHeight: number;         // 40–130
+  barcodeContainerWidth: number; // 60–100 (%)
+  showResponsable: boolean;
+  showCategories: boolean;
+  showStoreName: boolean;
+}
+const DEFAULT_LABEL_CONFIG: LabelConfig = {
+  borderWidth: 2, pickerFontSize: 34, storeFontSize: 128, catFontSize: 22,
+  barcodeBarWidth: 2, barcodeHeight: 113, barcodeContainerWidth: 85,
+  showResponsable: true, showCategories: true, showStoreName: true,
+};
+
+const CANONICAL_PICKER_KEYS = [
+  'Pickers 1','Pickers 2','Pickers 3','Pickers 4','Pickers 5',
+  'Pickers 6','Pickers 7','Pickers 8','Pickers 9','Pickers 10',
+  'Pickers 11','Pickers 12','Pickers 13','Pickers 14','Pickers 15',
+  'Pickers 16','Pickers 17','Pickers 18','Adquisiciones','Calidad',
+];
 const AUTO_REFRESH_MS    = 3 * 60 * 1000; // 3 min
 
 const STATS_DATE_FROM = '2026-05-01';
@@ -461,7 +488,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 }
 // ─── 1D Barcode (Code128) ─────────────────────────────────────────────────────
 
-function Barcode1D({ value, height = 65 }: { value: string; height?: number }) {
+function Barcode1D({ value, height = 65, barWidth = 2 }: { value: string; height?: number; barWidth?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
   useEffect(() => {
     if (!svgRef.current || !value) return;
@@ -469,30 +496,31 @@ function Barcode1D({ value, height = 65 }: { value: string; height?: number }) {
       if (!svgRef.current) return;
       try {
         JsBarcode(svgRef.current, value, {
-          format: 'CODE128', width: 2, height,
+          format: 'CODE128', width: barWidth, height,
           displayValue: false, margin: 8,
           background: '#ffffff', lineColor: '#000000',
         });
       } catch {
         const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: 2, height, displayValue: false, margin: 8 }); } catch { /* ignore */ }
+        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: barWidth, height, displayValue: false, margin: 8 }); } catch { /* ignore */ }
       }
     });
-  }, [value, height]);
+  }, [value, height, barWidth]);
   return <svg ref={svgRef} style={{ width: '100%', display: 'block' }} />;
 }
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
-function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, compact = false }: {
+function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, compact = false, labelConfig }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
-  totalPickers: number; compact?: boolean;
+  totalPickers: number; compact?: boolean; labelConfig?: LabelConfig;
 }) {
   const storeName = getStoreName(storeCod);
+  const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
 
-  // compact=true → vista previa en pantalla (1/3 del tamaño)
-  // compact=false → tarjeta de impresión (tamaño real)
+  // compact=true → vista previa en pantalla (valores fijos, no configurables)
+  // compact=false → tarjeta de impresión (usa labelConfig)
   const s = compact ? {
     outerMaxW: 340, outerMargin: '0 auto 6px',
     innerPad: '8px 10px 6px', innerMinH: 155,
@@ -502,34 +530,39 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
     centerPad: '4px 0',
     storeCodeSize: 'clamp(36px, 7vw, 52px)', storeCodeLS: '2px',
     storeNameSize: 17, storeNameMT: 3,
-    barMT: 4, barW: '88%', barH: 36,
+    barMT: 4, barW: '88%', barH: 36, barBW: 2,
     footerFS: 7, footerDateFS: 9,
   } : {
     outerMaxW: 720, outerMargin: '0 auto 20px',
     innerPad: '20px 22px 14px', innerMinH: 480,
-    respSize: 12, pickerSize: 34, subSize: 15,
+    respSize: 12, pickerSize: cfg.pickerFontSize, subSize: 15,
     palletSize: 80, deSize: 13,
-    catSize: 22, catPad: '4px 14px', catGap: 8, catRadius: 8,
+    catSize: cfg.catFontSize, catPad: '4px 14px', catGap: 8, catRadius: 8,
     centerPad: '12px 0',
-    storeCodeSize: 'clamp(128px, 28vw, 200px)', storeCodeLS: '6px',
+    storeCodeSize: `clamp(${Math.round(cfg.storeFontSize * 0.6)}px, 28vw, ${cfg.storeFontSize}px)`, storeCodeLS: '6px',
     storeNameSize: 52, storeNameMT: 10,
-    barMT: 8, barW: '85%', barH: 113,
+    barMT: 8, barW: `${cfg.barcodeContainerWidth}%`, barH: cfg.barcodeHeight, barBW: cfg.barcodeBarWidth,
     footerFS: 9, footerDateFS: 12,
   };
 
   return (
     <div
-      className="picking-label bg-white border-2 border-gray-200 rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border-0"
-      style={{ maxWidth: s.outerMaxW, margin: s.outerMargin }}
+      className="picking-label bg-white rounded-xl overflow-hidden print:break-after-page print:rounded-none print:border-0"
+      style={{
+        maxWidth: s.outerMaxW, margin: s.outerMargin,
+        border: `${compact ? 2 : cfg.borderWidth}px solid #E5E7EB`,
+      }}
     >
       <div className="flex flex-col" style={{ padding: s.innerPad, minHeight: s.innerMinH }}>
 
         {/* Top row */}
         <div className="flex items-start justify-between" style={{ marginBottom: compact ? 3 : 8 }}>
           <div className="min-w-0 flex-1 pr-3">
-            <div style={{ fontSize: s.respSize, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 1 }}>
-              {responsibleKey}
-            </div>
+            {(!compact && cfg.showResponsable || compact) && (
+              <div style={{ fontSize: s.respSize, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 1 }}>
+                {responsibleKey}
+              </div>
+            )}
             <div style={{ fontSize: s.pickerSize, fontWeight: 800, color: '#111', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {pickerLabel}
             </div>
@@ -548,7 +581,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
         </div>
 
         {/* Categorías */}
-        {allCategories.length > 0 && (
+        {allCategories.length > 0 && (cfg.showCategories || compact) && (
           <div style={{ display: 'flex', gap: s.catGap, marginBottom: compact ? 3 : 8, flexWrap: 'wrap' }}>
             {allCategories.map(c => (
               <span key={c} style={{
@@ -566,16 +599,18 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
             style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
             {storeCod}
           </div>
-          <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide"
-            style={{ fontSize: s.storeNameSize, marginTop: s.storeNameMT }}>
-            {storeName}
-          </div>
+          {(cfg.showStoreName || compact) && (
+            <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide"
+              style={{ fontSize: s.storeNameSize, marginTop: s.storeNameMT }}>
+              {storeName}
+            </div>
+          )}
         </div>
 
-        {/* Código de barras — barW 85% para barras más gruesas al imprimir */}
+        {/* Código de barras */}
         <div style={{ marginTop: s.barMT }}>
           <div style={{ width: s.barW, margin: '0 auto' }}>
-            <Barcode1D value={value} height={s.barH} />
+            <Barcode1D value={value} height={s.barH} barWidth={s.barBW} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
             <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
@@ -1083,6 +1118,158 @@ function saveSession(data: PickingSession): void {
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch { /* ignore */ }
 }
 
+// ─── Config Tab ───────────────────────────────────────────────────────────────
+
+function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange }: {
+  labelConfig: LabelConfig;
+  onLabelConfigChange: (cfg: LabelConfig) => void;
+  canonicalNames: Record<string, string>;
+  onCanonicalNamesChange: (names: Record<string, string>) => void;
+  colsPerRow: number;
+  onColsPerRowChange: (n: number) => void;
+}) {
+  const previewValue = '17MAI;JuanPerez;WH/PICK/1234;P1;Comida,Aseo';
+  const previewScale = 0.35;
+  const previewW = Math.round(720 * previewScale);
+  const previewH = Math.round(520 * previewScale);
+
+  function SliderRow({ label, field, min, max }: { label: string; field: keyof LabelConfig; min: number; max: number }) {
+    const val = labelConfig[field] as number;
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-[13px] text-text-2 w-52 shrink-0">{label}</span>
+        <input type="range" min={min} max={max} value={val}
+          onChange={e => onLabelConfigChange({ ...labelConfig, [field]: Number(e.target.value) })}
+          className="flex-1 accent-amber-500" />
+        <span className="text-[13px] font-mono text-navy w-10 text-right shrink-0">{val}</span>
+      </div>
+    );
+  }
+
+  function ToggleRow({ label, field }: { label: string; field: 'showResponsable' | 'showCategories' | 'showStoreName' }) {
+    const val = labelConfig[field];
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-[13px] text-text-2 flex-1">{label}</span>
+        <button
+          onClick={() => onLabelConfigChange({ ...labelConfig, [field]: !val })}
+          className="relative w-11 h-6 rounded-full cursor-pointer flex-shrink-0"
+          style={{ background: val ? '#D97706' : '#D1D5DB' }}>
+          <span className="absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all duration-150"
+            style={{ left: val ? '22px' : '2px' }} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pb-10">
+
+      {/* ── Sección 1: Etiqueta de impresión ── */}
+      <div className="mt-5 mb-6">
+        <div className="text-[13px] font-bold text-text-3 uppercase tracking-widest mb-3">Etiqueta de impresión</div>
+        <div className="flex flex-col lg:flex-row gap-4">
+
+          {/* Controls */}
+          <div className="flex-1 bg-white rounded-2xl border border-border p-5 space-y-3.5">
+            <SliderRow label="Grosor del borde (px)" field="borderWidth" min={0} max={4} />
+            <SliderRow label="Tamaño letra picker (px)" field="pickerFontSize" min={20} max={50} />
+            <SliderRow label="Tamaño código tienda (px)" field="storeFontSize" min={80} max={200} />
+            <SliderRow label="Tamaño letra categoría (px)" field="catFontSize" min={12} max={30} />
+            <SliderRow label="Grosor barras código" field="barcodeBarWidth" min={1} max={4} />
+            <SliderRow label="Altura código barras (px)" field="barcodeHeight" min={40} max={130} />
+            <SliderRow label="Ancho código barras (%)" field="barcodeContainerWidth" min={60} max={100} />
+            <div className="border-t border-border pt-3.5 space-y-3">
+              <ToggleRow label="Mostrar responsable" field="showResponsable" />
+              <ToggleRow label="Mostrar categorías" field="showCategories" />
+              <ToggleRow label="Mostrar nombre de tienda" field="showStoreName" />
+            </div>
+            <button
+              onClick={() => onLabelConfigChange({ ...DEFAULT_LABEL_CONFIG })}
+              className="px-4 py-2 text-[13px] font-semibold rounded-xl cursor-pointer transition-all active:scale-95 border"
+              style={{ background: 'rgba(26,37,80,0.05)', color: '#6B7280', borderColor: 'rgba(26,37,80,0.12)' }}>
+              ↺ Restablecer predeterminados
+            </button>
+          </div>
+
+          {/* Live preview */}
+          <div className="lg:w-64 flex flex-col items-center gap-2 bg-white rounded-2xl border border-border p-4">
+            <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest">Vista previa</div>
+            <div style={{ width: previewW, height: previewH, overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left', width: 720, pointerEvents: 'none' }}>
+                <BarcodeCard
+                  value={previewValue} palletNum={1} total={3}
+                  storeCod="17MAI" pickerLabel="Juan Pérez" responsibleKey="Pickers 1"
+                  allCategories={['Comida', 'Aseo']} totalPickers={4}
+                  compact={false} labelConfig={labelConfig}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Sección 2: Nombres de pickers ── */}
+      <div className="mb-6">
+        <div className="text-[13px] font-bold text-text-3 uppercase tracking-widest mb-3">Nombres de pickers</div>
+        <div className="bg-white rounded-2xl border border-border overflow-hidden">
+          <table className="w-full text-[13px] border-collapse">
+            <thead>
+              <tr style={{ background: 'rgba(26,37,80,0.04)', borderBottom: '1px solid #F0F2F5' }}>
+                <th className="px-4 py-2.5 text-left font-bold text-text-3 uppercase tracking-wider text-[11px] w-36">Código</th>
+                <th className="px-4 py-2.5 text-left font-bold text-text-3 uppercase tracking-wider text-[11px]">Nombre real</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CANONICAL_PICKER_KEYS.map((key, i) => (
+                <tr key={key} style={{ borderBottom: '1px solid #F0F2F5', background: i % 2 === 0 ? '#fff' : '#FAFBFF' }}>
+                  <td className="px-4 py-2 font-mono font-bold text-navy">{key}</td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      defaultValue={canonicalNames[key] ?? ''}
+                      placeholder={`Nombre para ${key}…`}
+                      onBlur={e => {
+                        const val = e.target.value.trim();
+                        const next = { ...canonicalNames };
+                        if (val) next[key] = val; else delete next[key];
+                        onCanonicalNamesChange(next);
+                      }}
+                      className="w-full border border-border rounded-lg px-3 py-1.5 text-[13px] bg-white outline-none focus:border-amber-400 transition-colors"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Sección 3: Vista en pantalla ── */}
+      <div className="mb-6">
+        <div className="text-[13px] font-bold text-text-3 uppercase tracking-widest mb-3">Vista en pantalla</div>
+        <div className="bg-white rounded-2xl border border-border p-5">
+          <div className="text-[12px] font-semibold text-text-2 mb-2">Etiquetas por fila en monitoreo</div>
+          <div className="flex items-center gap-2">
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} onClick={() => onColsPerRowChange(n)}
+                className="w-10 h-10 rounded-xl text-[14px] font-bold cursor-pointer transition-all active:scale-95"
+                style={{
+                  background: colsPerRow === n ? 'linear-gradient(135deg, #1E3A8A, #2563EB)' : 'rgba(26,37,80,0.06)',
+                  color: colsPerRow === n ? '#fff' : '#6B7280',
+                  border: `1px solid ${colsPerRow === n ? 'rgba(37,99,235,0.5)' : 'rgba(26,37,80,0.12)'}`,
+                }}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export function PickingScreen() {
@@ -1093,7 +1280,7 @@ export function PickingScreen() {
   const hasOdoo = !!odooConfig.url;
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'estadisticas'>('monitoreo');
+  const [rightTab, setRightTab]   = useState<'monitoreo' | 'estadisticas' | 'configuracion'>('monitoreo');
 
   // Restaurar sesión al montar
   const session = useMemo(() => loadSession(), []);
@@ -1141,6 +1328,18 @@ export function PickingScreen() {
   });
 
   const [errorCods, setErrorCods]         = useState<string[]>([]);
+
+  const [labelConfig, setLabelConfig] = useState<LabelConfig>(() => {
+    if (typeof window === 'undefined') return DEFAULT_LABEL_CONFIG;
+    try { return { ...DEFAULT_LABEL_CONFIG, ...JSON.parse(localStorage.getItem(LABEL_CONFIG_KEY) ?? '{}') }; }
+    catch { return DEFAULT_LABEL_CONFIG; }
+  });
+  const [canonicalNames, setCanonicalNames] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem(CANONICAL_NAMES_KEY) ?? '{}') as Record<string, string>; }
+    catch { return {}; }
+  });
+
   const [printOnlyStore, setPrintOnlyStore]   = useState<string | null>(null);
   const [doPrint, setDoPrint]                 = useState(false);
   const [selectionPrint, setSelectionPrint]   = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
@@ -1164,6 +1363,21 @@ export function PickingScreen() {
   useEffect(() => {
     localStorage.setItem(SECTION_FILTER_KEY, sectionFilter);
   }, [sectionFilter]);
+
+  // Persistir labelConfig en localStorage
+  useEffect(() => {
+    localStorage.setItem(LABEL_CONFIG_KEY, JSON.stringify(labelConfig));
+  }, [labelConfig]);
+
+  const handleCanonicalNamesChange = useCallback((names: Record<string, string>) => {
+    setCanonicalNames(names);
+    localStorage.setItem(CANONICAL_NAMES_KEY, JSON.stringify(names));
+  }, []);
+
+  const handleColsPerRowChange = useCallback((n: number) => {
+    setColsPerRow(n);
+    localStorage.setItem(COLS_PER_ROW_KEY, String(n));
+  }, []);
 
   // Persistir nombres en localStorage (cross-session)
   useEffect(() => {
@@ -1446,7 +1660,7 @@ export function PickingScreen() {
           ? printableLabels.filter(l => l.storeCod === printOnlyStore)
           : printableLabels
       ).map((label, idx) => (
-        <BarcodeCard key={idx} {...label} />
+        <BarcodeCard key={idx} {...label} labelConfig={labelConfig} />
       ))}
     </div>
 
@@ -1523,8 +1737,9 @@ export function PickingScreen() {
           <div className="flex items-end gap-1 px-4 pt-2 flex-shrink-0 print:hidden"
             style={{ background: '#fff', borderBottom: '2px solid #F0F2F5' }}>
             {([
-              { key: 'monitoreo',   label: 'Monitoreo de operaciones', icon: '📋' },
-              { key: 'estadisticas', label: 'Estadísticas',             icon: '📊' },
+              { key: 'monitoreo',     label: 'Monitoreo de operaciones', icon: '📋' },
+              { key: 'estadisticas',  label: 'Estadísticas',             icon: '📊' },
+              { key: 'configuracion', label: 'Configuración',            icon: '⚙️' },
             ] as { key: typeof rightTab; label: string; icon: string }[]).map(tab => {
               const active = rightTab === tab.key;
               return (
@@ -1546,6 +1761,18 @@ export function PickingScreen() {
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
             <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} />
+          )}
+
+          {/* ── Tab content: Configuración ── */}
+          {rightTab === 'configuracion' && (
+            <ConfigTab
+              labelConfig={labelConfig}
+              onLabelConfigChange={setLabelConfig}
+              canonicalNames={canonicalNames}
+              onCanonicalNamesChange={handleCanonicalNamesChange}
+              colsPerRow={colsPerRow}
+              onColsPerRowChange={handleColsPerRowChange}
+            />
           )}
 
           {/* ── Tab content: Monitoreo ── */}
@@ -1588,25 +1815,6 @@ export function PickingScreen() {
                   </div>
                 </div>
 
-                <div>
-                  <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest mb-2">Etiquetas por fila</div>
-                  <div className="flex items-center gap-1.5">
-                    {[1, 2, 3, 4, 5].map(n => (
-                      <button key={n} onClick={() => {
-                        setColsPerRow(n);
-                        localStorage.setItem(COLS_PER_ROW_KEY, String(n));
-                      }}
-                        className="w-8 h-8 rounded-lg text-[13px] font-bold cursor-pointer transition-all active:scale-95"
-                        style={{
-                          background: colsPerRow === n ? 'linear-gradient(135deg, #1E3A8A, #2563EB)' : 'rgba(26,37,80,0.06)',
-                          color: colsPerRow === n ? '#fff' : '#6B7280',
-                          border: `1px solid ${colsPerRow === n ? 'rgba(37,99,235,0.5)' : 'rgba(26,37,80,0.12)'}`,
-                        }}>
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               <div className="mb-4 flex items-center justify-between print:hidden">
@@ -1711,7 +1919,7 @@ export function PickingScreen() {
                             <PickerGroupCard
                               key={group.stateKey}
                               group={group}
-                              displayName={pickerDisplayNames[group.stateKey] ?? ''}
+                              displayName={pickerDisplayNames[group.stateKey] ?? canonicalNames[group.key] ?? ''}
                               pallets={groupPallets}
                               onNameChange={name => setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }))}
                               onPalletsChange={n => {
