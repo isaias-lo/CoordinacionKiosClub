@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
+import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 
 interface Tienda {
   codigo: string;
@@ -159,6 +160,8 @@ export default function TiendasAdminPage() {
   const activas  = filtered.filter(t => t.activo).length;
   const inactivas = filtered.filter(t => !t.activo).length;
 
+  const [activeTab, setActiveTab] = useState<'tiendas' | 'calendario'>('tiendas');
+
   if (!isAdmin) {
     return (
       <div style={S.page}>
@@ -174,13 +177,38 @@ export default function TiendasAdminPage() {
         <button style={S.backBtn} onClick={() => router.push('/control-interno')}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
-        <div style={S.title}>Gestión de Tiendas</div>
+        <div style={S.title}>
+          {activeTab === 'tiendas' ? 'Gestión de Tiendas' : 'Calendario Central'}
+        </div>
         <ProfilePill compact />
-        <button style={S.syncBtn} onClick={handleSync} disabled={syncing}>
-          {syncing ? 'Sincronizando…' : '↻ Sincronizar Sheet'}
-        </button>
-        <button style={S.addBtn} onClick={openAdd}>+ Nueva</button>
+        {activeTab === 'tiendas' && <>
+          <button style={S.syncBtn} onClick={handleSync} disabled={syncing}>
+            {syncing ? 'Sincronizando…' : '↻ Sincronizar Sheet'}
+          </button>
+          <button style={S.addBtn} onClick={openAdd}>+ Nueva</button>
+        </>}
       </div>
+
+      {/* ── Tab switcher ── */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 4 }}>
+        {([['tiendas', '🏪 Gestionar Tiendas'], ['calendario', '📅 Calendario']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            style={{
+              flex: 1, height: 38, borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              border: 'none', transition: 'all 0.15s',
+              background: activeTab === id ? '#D42B2B' : 'transparent',
+              color: activeTab === id ? '#fff' : 'rgba(255,255,255,0.5)',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab: Calendario ── */}
+      {activeTab === 'calendario' && <CalendarioColumnas />}
+
+      {/* ── Tab: Gestionar Tiendas ── */}
+      {activeTab === 'tiendas' && <>
 
       {msg && (
         <div style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: 10, color: '#34D399', padding: '10px 14px', marginBottom: skipped.length ? 8 : 14, fontSize: 13 }}>
@@ -373,6 +401,7 @@ export default function TiendasAdminPage() {
           </div>
         </div>
       )}
+      </> /* fin activeTab === 'tiendas' */}
     </div>
   );
 }
