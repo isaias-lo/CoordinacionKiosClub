@@ -215,7 +215,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const remItems   = remoteDispatch[tienda];
         const lastItems  = lastDispatch[tienda];
         const dirty      = JSON.stringify(localItems ?? []) !== JSON.stringify(lastItems ?? []);
-        mergedDispatch[tienda] = dirty ? (localItems ?? []) : (remItems ?? localItems ?? []);
+        // When not dirty, remote is authoritative: undefined in remote = intentionally cleared.
+        // Do NOT fall back to localItems — that's what caused cleared sessions to restore themselves
+        // when a second device opened the page and pushed old localStorage data back to Supabase.
+        mergedDispatch[tienda] = dirty ? (localItems ?? []) : (remItems ?? []);
       }
 
       // ── pdfData merge ───────────────────────────────────────────────
@@ -233,8 +236,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (dirty) {
           if (localEntry !== undefined) mergedPdf[tienda] = localEntry; // local upload or clear
         } else {
-          if      (remoteEntry !== undefined) mergedPdf[tienda] = remoteEntry; // remote upload wins
-          else if (localEntry  !== undefined) mergedPdf[tienda] = localEntry;
+          // When not dirty, remote is authoritative: if remoteEntry is absent it was cleared remotely.
+          if (remoteEntry !== undefined) mergedPdf[tienda] = remoteEntry;
+          // else: not in remote → treat as cleared, do not restore from local
         }
       }
 

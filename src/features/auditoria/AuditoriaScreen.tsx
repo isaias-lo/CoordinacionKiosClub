@@ -200,6 +200,10 @@ function initialsColor(name: string): string {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % palette.length;
   return palette[h];
 }
+function formatTimer(s: number): string {
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
 
 /* ── PDF Export ── */
 function exportarPDF(entries: AuditEntry[], fechaLabel: string) {
@@ -236,30 +240,6 @@ function SLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ── Accordion Section (mobile collapsible, always open on desktop) ── */
-function AccordionSection({ title, badge, open, onToggle, children }: {
-  title: string; badge?: string; open: boolean; onToggle: () => void; children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-1 md:mb-0">
-      <button
-        onClick={onToggle}
-        className="md:hidden w-full flex items-center gap-2 mt-4 mb-1 cursor-pointer border-none bg-transparent p-0"
-        type="button">
-        <div className="font-barlow-condensed text-[12px] font-bold uppercase tracking-[0.14em] text-text-3 flex items-center gap-2">
-          {title}
-          {badge && <span className="font-normal normal-case text-[10px] text-text-3">{badge}</span>}
-        </div>
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-text-3 text-[14px] font-bold ml-1">{open ? '▲' : '▼'}</span>
-      </button>
-      <div className="hidden md:block" />
-      <div className={`md:block ${open ? 'block' : 'hidden'}`}>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 /* ── Mini stat cell ── */
 function MiniStat({ label, value, color }: { label: string; value: string | number; color?: string }) {
@@ -1455,7 +1435,7 @@ function HistoryContent({ history, today, onReaudit, onExportPDF, onRefresh, pic
                     <div className="font-barlow-condensed text-base font-bold text-navy">{e.tiendaNombre}</div>
                     {e.reauditoriaDeId && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">↩ Re-auditoría</span>}
                   </div>
-                  <div className="text-[11px] text-text-3 mt-0.5">{e.hora} · {e.auditor}{e.picker ? ` · ${displayPicker(e.picker, pickerNames)}` : ''}</div>
+                  <div className="text-[11px] text-text-3 mt-0.5">{e.hora} · {e.auditor}{e.picker ? ` · ${displayPicker(e.picker, pickerNames)}` : ''}{e.durationSeconds ? ` · ⏱ ${formatTimer(e.durationSeconds)}` : ''}</div>
                 </div>
                 <span className={`font-barlow-condensed text-[11px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${e.resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.10)] border-success text-success' : 'bg-[rgba(211,47,47,0.10)] border-red text-red'}`}>
                   {e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}
@@ -1620,8 +1600,13 @@ export function AuditoriaScreen() {
   const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const palletsInputRef = useRef<HTMLInputElement>(null);
   const pendingScanRef  = useRef<string[] | null>(null);
-  const [sections, setSections] = useState({ id: true, contenido: true, resultado: true, evidencia: true });
-  const toggleSection = (k: keyof typeof sections) => setSections(s => ({ ...s, [k]: !s[k] }));
+  const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
+  const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
+  const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [auditStartTime, setAuditStartTime] = useState('');
+  const [auditDurationSeconds, setAuditDurationSeconds] = useState(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Set initial view once profile loads + kick off history load with correct user context
   useEffect(() => {
@@ -1765,6 +1750,8 @@ export function AuditoriaScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); }, []);
+
   const correccion = useMemo<CorreccionAuditoria>(() => {
     if (!tieneErrores) return 'correcto';
     const f = tiposError.includes('faltante'), s = tiposError.includes('sobrante');
@@ -1817,10 +1804,22 @@ export function AuditoriaScreen() {
     }
 
     showToast(`✓ ${storeCod} · ${pickerName?.trim() || 'sin nombre'}`, '#16A34A');
+    setFormPhase('setup');
     return true;
   };
 
   const toggleTipoError = (t: TipoError) => { setTiposError(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]); setProductos([]); };
+
+  const startTimer = () => {
+    const now = new Date().toISOString();
+    setAuditStartTime(now);
+    setTimerSeconds(0);
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = setInterval(() => setTimerSeconds(s => s + 1), 1000);
+  };
+  const stopTimer = () => {
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
+  };
 
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
@@ -1837,6 +1836,9 @@ export function AuditoriaScreen() {
   const handleSubmit = async () => {
     setConfirmSubmit(false);
     if (!tienda) return;
+    stopTimer();
+    const durSecs = timerSeconds;
+    const endNow = new Date().toISOString();
     setSubmitting(true);
     const now = new Date();
     const entryId = `AUD-${Date.now()}`;
@@ -1900,9 +1902,12 @@ export function AuditoriaScreen() {
       tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
-      fotoUrls:       uploadedFotoUrls.length      > 0 ? uploadedFotoUrls      : undefined,
-      errorFotoUrls:  uploadedErrorFotoUrls.length > 0 ? uploadedErrorFotoUrls : undefined,
-      palletFotos:    uploadedFotos.length         > 0 ? uploadedFotos         : undefined,
+      fotoUrls:        uploadedFotoUrls.length      > 0 ? uploadedFotoUrls      : undefined,
+      errorFotoUrls:   uploadedErrorFotoUrls.length > 0 ? uploadedErrorFotoUrls : undefined,
+      palletFotos:     uploadedFotos.length         > 0 ? uploadedFotos         : undefined,
+      startTime:       auditStartTime || undefined,
+      endTime:         auditStartTime ? endNow : undefined,
+      durationSeconds: auditStartTime ? durSecs : undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
@@ -1938,6 +1943,12 @@ export function AuditoriaScreen() {
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setErrorFotoFiles([]); setErrorFotoPreviews([]);
     setSubmitting(false);
+    setLastEntry(entry);
+    setLastDurationSeconds(durSecs);
+    setFormPhase('result');
+    setTimerSeconds(0);
+    setAuditStartTime('');
+    setAuditDurationSeconds(0);
   };
 
   const iniciarReauditoria = (entry: AuditEntry) => {
@@ -1946,6 +1957,7 @@ export function AuditoriaScreen() {
     setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === entry.tiendaCod) ?? null);
     setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || ''); setPickerNombre(''); setOdooAutoDetected(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones('');
+    setFormPhase('setup');
     setView('form');
   };
 
@@ -2217,231 +2229,371 @@ export function AuditoriaScreen() {
               </div>
             )}
 
-            {/* ── SECCIÓN 1: IDENTIFICACIÓN ── */}
-            <AccordionSection title="Identificación" open={sections.id} onToggle={() => toggleSection('id')}>
-              <SLabel>Auditor</SLabel>
-              <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
-
-              <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna automáticamente</span></SLabel>
-              <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { setPicker(''); setOdooAutoDetected(false); }} />
-
-              <SLabel>Picker (armador de pallet)</SLabel>
-              <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={setPickerNombre} />
-
-              <SLabel>Tienda</SLabel>
-              <div ref={tiendaRef} className="relative">
-                <div onClick={() => setTiendaOpen(o => !o)}
-                  className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${tiendaOpen ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`} style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-                  {tienda ? (
-                    <div className="flex-1 min-w-0"><span className="font-semibold text-text text-[15px]">{tienda.nombre}</span><span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span><span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span></div>
-                  ) : <span className="text-text-3 font-barlow text-[15px]">Seleccionar tienda…</span>}
-                  <span className="text-text-3 ml-2 flex-shrink-0">{tiendaOpen ? '▲' : '▼'}</span>
+            {/* ══ FASE 1: ESCÁNER ══ */}
+            {formPhase === 'scan' && (
+              <>
+                <SLabel>Auditor</SLabel>
+                <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
+                <div className="mt-5">
+                  <BarcodeInputScanner onScan={handleBarcodeScan} />
                 </div>
-                {tiendaOpen && (
-                  <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
-                    <div className="p-2 border-b border-border"><input autoFocus type="text" value={tiendaQuery} onChange={e => setTiendaQuery(e.target.value)} placeholder="Buscar…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" /></div>
-                    <div className="max-h-56 overflow-y-auto">
-                      {tiendaFiltered.length === 0 && <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>}
-                      {tiendaFiltered.map(t => (
-                        <div key={t.cod} onClick={() => { setTienda(t); setTiendaOpen(false); setTiendaQuery(''); }} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${tienda?.cod === t.cod ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
-                          <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded">{t.cod}</span>
-                          <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-text truncate">{t.nombre}</div><div className="text-[11px] text-text-3">{t.comuna || t.region}</div></div>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${t.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{t.area === 'santiago' ? 'STG' : 'REG'}</span>
-                        </div>
-                      ))}
-                    </div>
+                <button type="button" onClick={() => setFormPhase('setup')}
+                  className="w-full mt-2 py-3 border-2 border-dashed border-navy/20 rounded-card font-barlow-condensed text-[15px] font-bold text-navy/50 cursor-pointer bg-transparent transition-all active:bg-navy/5">
+                  Omitir escáner — ingresar datos manualmente
+                </button>
+              </>
+            )}
+
+            {/* ══ FASE 2: CONFIGURACIÓN ══ */}
+            {formPhase === 'setup' && (
+              <>
+                <SLabel>Auditor</SLabel>
+                <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
+
+                <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna automáticamente</span></SLabel>
+                <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { setPicker(''); setOdooAutoDetected(false); }} />
+
+                <SLabel>Picker (armador de pallet)</SLabel>
+                <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={setPickerNombre} />
+
+                <SLabel>Tienda</SLabel>
+                <div ref={tiendaRef} className="relative">
+                  <div onClick={() => setTiendaOpen(o => !o)}
+                    className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${tiendaOpen ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`} style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                    {tienda ? (
+                      <div className="flex-1 min-w-0"><span className="font-semibold text-text text-[15px]">{tienda.nombre}</span><span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span><span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span></div>
+                    ) : <span className="text-text-3 font-barlow text-[15px]">Seleccionar tienda…</span>}
+                    <span className="text-text-3 ml-2 flex-shrink-0">{tiendaOpen ? '▲' : '▼'}</span>
                   </div>
-                )}
-              </div>
-            </AccordionSection>
-
-            {/* ── SECCIÓN 2: CONTENIDO ── */}
-            <AccordionSection title="Contenido" open={sections.contenido} onToggle={() => toggleSection('contenido')}>
-              <SLabel>Tipo de contenido</SLabel>
-              <div className="grid grid-cols-3 gap-1.5">
-                {TIPOS.map(({ value, label }) => (
-                  <button key={value} onClick={() => handleTipoChange(value)} className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all ${tipo === value ? TIPO_COLOR[value] : 'border-border bg-white text-text-2'}`}>{label}</button>
-                ))}
-              </div>
-
-              <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
-              <BarcodeInputScanner onScan={handleBarcodeScan} />
-              {operaciones.map((op, i) => (
-                <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
-                  onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
-                  odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
-              ))}
-
-              <SLabel>Pallets auditados</SLabel>
-              <input ref={palletsInputRef} type="number" inputMode="numeric" min="1" max="99" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0"
-                onFocus={() => setTimeout(() => palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)}
-                className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
-              {parseInt(pallets) > 0 && (
-                <div className="mt-2 flex flex-col gap-2">
-                  <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional</span></div>
-                  {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
-                    const key = String(n);
-                    const preview = palletPreviews[key];
-                    return (
-                      <div key={key}>
-                        {preview ? (
-                          <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                            <img src={preview} alt={`Pallet ${n}`} className="w-full object-cover" style={{ maxHeight: 140 }} />
-                            <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">Pallet {n}</div>
-                            <button
-                              onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
-                              className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                              style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+                  {tiendaOpen && (
+                    <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+                      <div className="p-2 border-b border-border"><input autoFocus type="text" value={tiendaQuery} onChange={e => setTiendaQuery(e.target.value)} placeholder="Buscar…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" /></div>
+                      <div className="max-h-56 overflow-y-auto">
+                        {tiendaFiltered.length === 0 && <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>}
+                        {tiendaFiltered.map(t => (
+                          <div key={t.cod} onClick={() => { setTienda(t); setTiendaOpen(false); setTiendaQuery(''); }} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${tienda?.cod === t.cod ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
+                            <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded">{t.cod}</span>
+                            <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-text truncate">{t.nombre}</div><div className="text-[11px] text-text-3">{t.comuna || t.region}</div></div>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${t.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{t.area === 'santiago' ? 'STG' : 'REG'}</span>
                           </div>
-                        ) : (
-                          <label className="flex items-center gap-3 px-4 py-2.5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                            <span className="text-[22px]">📷</span>
-                            <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
-                            <input type="file" accept="image/*" className="hidden"
-                              onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
-                          </label>
-                        )}
+                        ))}
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </AccordionSection>
 
-            {/* ── SECCIÓN 3: RESULTADO ── */}
-            <AccordionSection title="Resultado" open={sections.resultado} onToggle={() => toggleSection('resultado')}>
-              <SLabel>¿Tuvo errores?</SLabel>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => setTieneErrores(false)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
-                <button onClick={() => setTieneErrores(true)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
-              </div>
-
-              {tieneErrores === true && (
-                <>
-                  <SLabel>Tipo de error</SLabel>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['faltante', 'sobrante'] as TipoError[]).map(t => (
-                      <button key={t} onClick={() => toggleTipoError(t)} className={`rounded-btn border-[1.5px] font-barlow-condensed text-[17px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 ${tiposError.includes(t) ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}
-                        style={{ minHeight: 52 }}>{t === 'faltante' ? '↓ Faltante' : '↑ Sobrante'}</button>
-                    ))}
-                  </div>
-                  {tiposError.length === 2 && <div className="text-[11px] text-info text-center mt-1 font-semibold">Ambos → Cruce</div>}
-                  {tiposError.length > 0 && (
-                    <div className="mt-3">
-                      {productos.length > 0 && (
-                        <div className="mb-2">{productos.map((p, i) => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return <div key={i} className="flex items-center gap-2 bg-white border border-border rounded-btn px-3 py-2 mb-1.5" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.05)' }}><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${p.tipo === 'faltante' ? 'bg-[rgba(211,47,47,0.10)] text-red' : 'bg-[rgba(217,119,6,0.10)] text-warn'}`}>{p.tipo}</span><span className="font-mono text-[11px] text-text-3 flex-shrink-0">[{p.codigo}]</span><span className="text-[12px] text-text flex-1 truncate">{p.nombre}</span><span className={`font-bold text-[13px] flex-shrink-0 ${p.tipo === 'faltante' ? 'text-red' : 'text-warn'}`}>{r}</span><button onClick={() => setProductos(prev => prev.filter((_, j) => j !== i))} className="text-red/50 hover:text-red border-none bg-transparent cursor-pointer text-[18px] leading-none flex-shrink-0 px-1">×</button></div>; })}
-                        </div>
-                      )}
-                      <ProductSearch odooConfig={odooConfig} tiposError={tiposError} operacionCodes={operaciones.map(op => op.codigo)} onAdd={p => setProductos(prev => [...prev, p])} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
-                    </div>
-                  )}
-                </>
-              )}
-
-              {tieneErrores !== null && !(tieneErrores && tiposError.length === 0) && (
-                <>
-                  <SLabel>Corrección <span className="text-[9px] font-normal ml-1 normal-case">automática</span></SLabel>
-                  <div className={`py-3.5 px-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold text-center ${CORR_COLOR[correccion]}`}>{CORR_LABEL[correccion]}</div>
-                  <SLabel>Resultado <span className="text-[9px] font-normal ml-1 normal-case">automático</span></SLabel>
-                  <div className={`py-5 rounded-card border-2 font-barlow-condensed text-[26px] font-extrabold text-center ${resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-[rgba(211,47,47,0.12)] border-red text-red'}`}
-                    style={resultado === 'bueno' ? { boxShadow: '0 4px 16px rgba(22,163,74,0.18)' } : { boxShadow: '0 4px 16px rgba(211,47,47,0.18)' }}>
-                    {resultado === 'bueno' ? '✓ BUENO' : '✗ MALO'}
-                  </div>
-                </>
-              )}
-            </AccordionSection>
-
-            {/* ── SECCIÓN 4: EVIDENCIA ── */}
-            <AccordionSection title="Evidencia" badge="opcional" open={sections.evidencia} onToggle={() => toggleSection('evidencia')}>
-              <SLabel>Observaciones <span className="text-[9px] font-normal ml-1 normal-case">opcional</span></SLabel>
-              <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
-                className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
-
-              {/* Fotos de errores — solo si hubo errores */}
-              {tieneErrores === true && (
-                <>
-                  <SLabel>Fotos de errores <span className="text-[9px] font-normal ml-1 normal-case">evidencia del error detectado · múltiples</span></SLabel>
-                  {errorFotoPreviews.length > 0 && (
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      {errorFotoPreviews.map((preview, idx) => (
-                        <div key={idx} className="relative rounded-card overflow-hidden border-2 border-red/30" style={{ boxShadow: '0 2px 8px rgba(211,47,47,0.10)' }}>
-                          <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                          <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-red/80 rounded px-1.5 py-0.5">Error #{idx + 1}</div>
-                          <button
-                            onClick={() => {
-                              URL.revokeObjectURL(preview);
-                              setErrorFotoPreviews(p => p.filter((_, i) => i !== idx));
-                              setErrorFotoFiles(f => f.filter((_, i) => i !== idx));
-                            }}
-                            className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                            style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer hover:border-red/50 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
-                    <span className="text-[28px]">🚨</span>
-                    <div>
-                      <div className="text-[13px] text-red font-barlow font-semibold">
-                        {errorFotoPreviews.length > 0 ? `+ Agregar más (${errorFotoPreviews.length} foto${errorFotoPreviews.length !== 1 ? 's' : ''} de error)` : 'Fotografiar el error'}
-                      </div>
-                      <div className="text-[11px] text-text-3">Selecciona una o varias fotos del error</div>
-                    </div>
-                    <input type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => {
-                        const files = Array.from(e.target.files ?? []);
-                        if (!files.length) return;
-                        setErrorFotoFiles(prev => [...prev, ...files]);
-                        setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
-                        e.target.value = '';
-                      }} />
-                  </label>
-                </>
-              )}
-
-              <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · múltiples permitidas</span></SLabel>
-              {fotoPreviews.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  {fotoPreviews.map((preview, idx) => (
-                    <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                      <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                      <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
-                      <button
-                        onClick={() => {
-                          URL.revokeObjectURL(preview);
-                          setFotoPreviews(p => p.filter((_, i) => i !== idx));
-                          setFotoFiles(f => f.filter((_, i) => i !== idx));
-                        }}
-                        className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                        style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
-                    </div>
+                <SLabel>Tipo de contenido</SLabel>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {TIPOS.map(({ value, label }) => (
+                    <button key={value} onClick={() => handleTipoChange(value)} className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all ${tipo === value ? TIPO_COLOR[value] : 'border-border bg-white text-text-2'}`}>{label}</button>
                   ))}
                 </div>
-              )}
-              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                <span className="text-[28px]">📷</span>
-                <div>
-                  <div className="text-[13px] text-text-2 font-barlow font-semibold">
-                    {fotoPreviews.length > 0 ? `+ Agregar más (${fotoPreviews.length} foto${fotoPreviews.length !== 1 ? 's' : ''} de producto)` : 'Adjuntar fotos de productos'}
-                  </div>
-                  <div className="text-[11px] text-text-3">Selecciona una o varias fotos a la vez</div>
-                </div>
-                <input type="file" accept="image/*" multiple className="hidden"
-                  onChange={e => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (!files.length) return;
-                    setFotoFiles(prev => [...prev, ...files]);
-                    setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
-                    e.target.value = '';
-                  }} />
-              </label>
-            </AccordionSection>
 
-            <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
-              className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
-              style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
-              {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
-            </button>
+                <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
+                <BarcodeInputScanner onScan={handleBarcodeScan} />
+                {operaciones.map((op, i) => (
+                  <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
+                    onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
+                    odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+                ))}
+
+                <div className="mt-6 grid grid-cols-2 gap-2 mb-2">
+                  <button type="button" onClick={() => setFormPhase('scan')}
+                    className="py-3.5 border border-border bg-white rounded-card font-barlow-condensed text-[16px] font-bold text-text-2 cursor-pointer transition-all active:scale-[0.98]">
+                    ← Volver
+                  </button>
+                  <button type="button"
+                    disabled={!auditor.trim() || !tienda || operaciones.some(op => !op.codigo.trim())}
+                    onClick={() => { startTimer(); setFormPhase('execution'); }}
+                    className="py-3.5 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98]"
+                    style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)', boxShadow: '0 6px 24px rgba(22,163,74,0.35)' }}>
+                    Iniciar Auditoría ▶
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ══ FASE 4: RESULTADO ══ */}
+            {formPhase === 'result' && lastEntry && (
+              <>
+                {/* Banner resultado */}
+                <div className="mt-4 rounded-2xl overflow-hidden"
+                  style={{
+                    background: lastEntry.resultado === 'bueno' ? 'linear-gradient(135deg,rgba(22,163,74,0.14),rgba(22,163,74,0.06))' : 'linear-gradient(135deg,rgba(211,47,47,0.14),rgba(211,47,47,0.06))',
+                    border: `2px solid ${lastEntry.resultado === 'bueno' ? 'rgba(22,163,74,0.45)' : 'rgba(211,47,47,0.45)'}`,
+                    boxShadow: lastEntry.resultado === 'bueno' ? '0 8px 32px rgba(22,163,74,0.22)' : '0 8px 32px rgba(211,47,47,0.22)',
+                  }}>
+                  <div className="text-center py-7 px-4">
+                    <div className="font-barlow-condensed font-black leading-none" style={{ fontSize: 56, color: lastEntry.resultado === 'bueno' ? '#16A34A' : '#D32F2F' }}>
+                      {lastEntry.resultado === 'bueno' ? '✓ BUENO' : '✗ MALO'}
+                    </div>
+                    <div className="text-[14px] font-bold mt-1" style={{ color: lastEntry.resultado === 'bueno' ? '#16A34A' : '#D32F2F' }}>
+                      {CORR_LABEL[lastEntry.correccion]}
+                    </div>
+                  </div>
+                  {/* Duración */}
+                  <div className="border-t px-4 py-4 text-center" style={{ borderColor: lastEntry.resultado === 'bueno' ? 'rgba(22,163,74,0.20)' : 'rgba(211,47,47,0.20)' }}>
+                    <div className="text-[10px] font-bold text-text-3 uppercase tracking-[0.2em] mb-1">Duración de la auditoría</div>
+                    <div className="font-barlow-condensed font-black text-navy leading-none" style={{ fontSize: 48 }}>
+                      ⏱ {formatTimer(lastDurationSeconds)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Resumen info */}
+                <div className="mt-3 bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 10px rgba(26,37,80,0.07)' }}>
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="text-center">
+                      <div className="font-barlow-condensed text-[34px] font-extrabold text-navy leading-tight">{lastEntry.pallets}</div>
+                      <div className="text-[10px] text-text-3 uppercase tracking-wide">Pallets</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-barlow-condensed text-[34px] font-extrabold leading-tight" style={{ color: lastEntry.tieneErrores ? '#D32F2F' : '#16A34A' }}>
+                        {lastEntry.tieneErrores ? lastEntry.productos.length || '!' : '0'}
+                      </div>
+                      <div className="text-[10px] text-text-3 uppercase tracking-wide">Prod. error</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-barlow-condensed text-[34px] font-extrabold leading-tight" style={{ color: lastEntry.tieneErrores ? '#D97706' : '#16A34A' }}>
+                        {lastEntry.tieneErrores
+                          ? lastEntry.productos.reduce((s, p) => s + p.unidades, 0)
+                          : '✓'}
+                      </div>
+                      <div className="text-[10px] text-text-3 uppercase tracking-wide">Unid. error</div>
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t border-border/50 text-[12px] text-text-3 space-y-0.5">
+                    <div><strong className="text-text">{lastEntry.tiendaNombre}</strong><span className="font-mono ml-1.5 text-[10px]">{lastEntry.tiendaCod}</span></div>
+                    {(lastEntry.pickerNombre || lastEntry.picker) && (
+                      <div>Picker: <strong className="text-text">{lastEntry.pickerNombre || lastEntry.picker}</strong></div>
+                    )}
+                    <div>{lastEntry.hora} · {lastEntry.auditor}</div>
+                  </div>
+                </div>
+
+                {/* Detalle faltantes / sobrantes */}
+                {lastEntry.productos.length > 0 && (
+                  <div className="mt-3 bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 10px rgba(26,37,80,0.07)' }}>
+                    <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
+                      <span className="font-barlow-condensed text-[14px] font-bold text-navy">Productos con error</span>
+                      <span className="font-barlow-condensed text-[13px] font-bold text-text-3">· {lastEntry.productos.length}</span>
+                    </div>
+                    {lastEntry.productos.map((p, i) => {
+                      const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`;
+                      return (
+                        <div key={i} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border/40 last:border-0">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${p.tipo === 'faltante' ? 'bg-[rgba(211,47,47,0.10)] text-red' : 'bg-[rgba(217,119,6,0.10)] text-warn'}`}>
+                            {p.tipo === 'faltante' ? '↓ Faltante' : '↑ Sobrante'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-mono text-[10px] text-text-3">[{p.codigo}]</div>
+                            <div className="text-[12px] text-text truncate">{p.nombre}</div>
+                          </div>
+                          <span className={`font-barlow-condensed font-bold text-[16px] flex-shrink-0 ${p.tipo === 'faltante' ? 'text-red' : 'text-warn'}`}>{r}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Observaciones */}
+                {lastEntry.observaciones && (
+                  <div className="mt-3 px-3 py-2.5 bg-white border border-border rounded-card text-[12px] text-text-2 italic border-l-4 border-l-navy/30" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.05)' }}>
+                    {lastEntry.observaciones}
+                  </div>
+                )}
+
+                {/* Nueva auditoría */}
+                <button
+                  type="button"
+                  onClick={() => { setLastEntry(null); setLastDurationSeconds(0); setFormPhase('scan'); }}
+                  className="w-full mt-5 py-4 text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer transition-all active:scale-[0.99]"
+                  style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 6px 24px rgba(26,37,80,0.40)' }}>
+                  ▶ Nueva Auditoría
+                </button>
+              </>
+            )}
+
+            {/* ══ FASE 3: EJECUCIÓN ══ */}
+            {formPhase === 'execution' && (
+              <>
+                {/* Timer */}
+                <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4"
+                  style={{ background: 'linear-gradient(135deg,rgba(26,37,80,0.06),rgba(26,37,80,0.02))', border: '2px solid rgba(26,37,80,0.14)', boxShadow: '0 4px 20px rgba(26,37,80,0.10)' }}>
+                  <div className="text-[10px] font-bold text-text-3 uppercase tracking-[0.2em] mb-1">Tiempo en curso</div>
+                  <div className="font-barlow-condensed font-black text-navy leading-none tracking-wider" style={{ fontSize: 60 }}>{formatTimer(timerSeconds)}</div>
+                  <div className="text-[12px] text-text-3 mt-2 truncate">
+                    {tienda?.nombre}{pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
+                  </div>
+                </div>
+
+                {/* Pallets auditados */}
+                <SLabel>Pallets auditados</SLabel>
+                <input ref={palletsInputRef} type="number" inputMode="numeric" min="1" max="99" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0"
+                  onFocus={() => setTimeout(() => palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)}
+                  className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+                {parseInt(pallets) > 0 && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional</span></div>
+                    {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
+                      const key = String(n);
+                      const preview = palletPreviews[key];
+                      return (
+                        <div key={key}>
+                          {preview ? (
+                            <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                              <img src={preview} alt={`Pallet ${n}`} className="w-full object-cover" style={{ maxHeight: 140 }} />
+                              <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">Pallet {n}</div>
+                              <button
+                                onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
+                                className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                                style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
+                            </div>
+                          ) : (
+                            <label className="flex items-center gap-3 px-4 py-2.5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                              <span className="text-[22px]">📷</span>
+                              <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
+                              <input type="file" accept="image/*" className="hidden"
+                                onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ¿Tuvo errores? */}
+                <SLabel>¿Tuvo errores?</SLabel>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setTieneErrores(false)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
+                  <button onClick={() => setTieneErrores(true)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
+                </div>
+
+                {tieneErrores === true && (
+                  <>
+                    <SLabel>Tipo de error</SLabel>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['faltante', 'sobrante'] as TipoError[]).map(t => (
+                        <button key={t} onClick={() => toggleTipoError(t)} className={`rounded-btn border-[1.5px] font-barlow-condensed text-[17px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 ${tiposError.includes(t) ? t === 'faltante' ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-[rgba(217,119,6,0.12)] border-warn text-warn' : 'border-border bg-white text-text-2'}`}
+                          style={{ minHeight: 52 }}>{t === 'faltante' ? '↓ Faltante' : '↑ Sobrante'}</button>
+                      ))}
+                    </div>
+                    {tiposError.length === 2 && <div className="text-[11px] text-info text-center mt-1 font-semibold">Ambos → Cruce</div>}
+                    {tiposError.length > 0 && (
+                      <div className="mt-3">
+                        {productos.length > 0 && (
+                          <div className="mb-2">{productos.map((p, i) => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return <div key={i} className="flex items-center gap-2 bg-white border border-border rounded-btn px-3 py-2 mb-1.5" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.05)' }}><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${p.tipo === 'faltante' ? 'bg-[rgba(211,47,47,0.10)] text-red' : 'bg-[rgba(217,119,6,0.10)] text-warn'}`}>{p.tipo}</span><span className="font-mono text-[11px] text-text-3 flex-shrink-0">[{p.codigo}]</span><span className="text-[12px] text-text flex-1 truncate">{p.nombre}</span><span className={`font-bold text-[13px] flex-shrink-0 ${p.tipo === 'faltante' ? 'text-red' : 'text-warn'}`}>{r}</span><button onClick={() => setProductos(prev => prev.filter((_, j) => j !== i))} className="text-red/50 hover:text-red border-none bg-transparent cursor-pointer text-[18px] leading-none flex-shrink-0 px-1">×</button></div>; })}
+                          </div>
+                        )}
+                        <ProductSearch odooConfig={odooConfig} tiposError={tiposError} operacionCodes={operaciones.map(op => op.codigo)} onAdd={p => setProductos(prev => [...prev, p])} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {tieneErrores !== null && !(tieneErrores && tiposError.length === 0) && (
+                  <>
+                    <SLabel>Corrección <span className="text-[9px] font-normal ml-1 normal-case">automática</span></SLabel>
+                    <div className={`py-3.5 px-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold text-center ${CORR_COLOR[correccion]}`}>{CORR_LABEL[correccion]}</div>
+                    <SLabel>Resultado <span className="text-[9px] font-normal ml-1 normal-case">automático</span></SLabel>
+                    <div className={`py-5 rounded-card border-2 font-barlow-condensed text-[26px] font-extrabold text-center ${resultado === 'bueno' ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-[rgba(211,47,47,0.12)] border-red text-red'}`}
+                      style={resultado === 'bueno' ? { boxShadow: '0 4px 16px rgba(22,163,74,0.18)' } : { boxShadow: '0 4px 16px rgba(211,47,47,0.18)' }}>
+                      {resultado === 'bueno' ? '✓ BUENO' : '✗ MALO'}
+                    </div>
+                  </>
+                )}
+
+                {/* Observaciones */}
+                <SLabel>Observaciones <span className="text-[9px] font-normal ml-1 normal-case">opcional</span></SLabel>
+                <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: pallet mal rotulado, caja dañada, producto húmedo…" rows={3}
+                  className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[14px] outline-none focus:border-navy resize-none [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
+
+                {tieneErrores === true && (
+                  <>
+                    <SLabel>Fotos de errores <span className="text-[9px] font-normal ml-1 normal-case">evidencia del error detectado · múltiples</span></SLabel>
+                    {errorFotoPreviews.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        {errorFotoPreviews.map((preview, idx) => (
+                          <div key={idx} className="relative rounded-card overflow-hidden border-2 border-red/30" style={{ boxShadow: '0 2px 8px rgba(211,47,47,0.10)' }}>
+                            <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                            <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-red/80 rounded px-1.5 py-0.5">Error #{idx + 1}</div>
+                            <button
+                              onClick={() => {
+                                URL.revokeObjectURL(preview);
+                                setErrorFotoPreviews(p => p.filter((_, i) => i !== idx));
+                                setErrorFotoFiles(f => f.filter((_, i) => i !== idx));
+                              }}
+                              className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer hover:border-red/50 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
+                      <span className="text-[28px]">🚨</span>
+                      <div>
+                        <div className="text-[13px] text-red font-barlow font-semibold">
+                          {errorFotoPreviews.length > 0 ? `+ Agregar más (${errorFotoPreviews.length} foto${errorFotoPreviews.length !== 1 ? 's' : ''} de error)` : 'Fotografiar el error'}
+                        </div>
+                        <div className="text-[11px] text-text-3">Selecciona una o varias fotos del error</div>
+                      </div>
+                      <input type="file" accept="image/*" multiple className="hidden"
+                        onChange={e => {
+                          const files = Array.from(e.target.files ?? []);
+                          if (!files.length) return;
+                          setErrorFotoFiles(prev => [...prev, ...files]);
+                          setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                          e.target.value = '';
+                        }} />
+                    </label>
+                  </>
+                )}
+
+                <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · múltiples permitidas</span></SLabel>
+                {fotoPreviews.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    {fotoPreviews.map((preview, idx) => (
+                      <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
+                        <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                        <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
+                        <button
+                          onClick={() => {
+                            URL.revokeObjectURL(preview);
+                            setFotoPreviews(p => p.filter((_, i) => i !== idx));
+                            setFotoFiles(f => f.filter((_, i) => i !== idx));
+                          }}
+                          className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                          style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                  <span className="text-[28px]">📷</span>
+                  <div>
+                    <div className="text-[13px] text-text-2 font-barlow font-semibold">
+                      {fotoPreviews.length > 0 ? `+ Agregar más (${fotoPreviews.length} foto${fotoPreviews.length !== 1 ? 's' : ''} de producto)` : 'Adjuntar fotos de productos'}
+                    </div>
+                    <div className="text-[11px] text-text-3">Selecciona una o varias fotos a la vez</div>
+                  </div>
+                  <input type="file" accept="image/*" multiple className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files ?? []);
+                      if (!files.length) return;
+                      setFotoFiles(prev => [...prev, ...files]);
+                      setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                      e.target.value = '';
+                    }} />
+                </label>
+
+                <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
+                  className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
+                  style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
+                  {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
+                </button>
+              </>
+            )}
           </div>}
         </div>
 
@@ -2559,10 +2711,16 @@ export function AuditoriaScreen() {
                 <span className="text-text-3 text-[12px]">Pallets</span>
                 <span className="font-semibold text-text text-[13px]">{pallets}</span>
               </div>
-              <div className="flex justify-between items-center py-1.5">
+              <div className="flex justify-between items-center py-1.5 border-b border-border">
                 <span className="text-text-3 text-[12px]">Resultado</span>
                 <span className={`font-barlow-condensed font-bold text-[20px] ${resultado === 'bueno' ? 'text-success' : 'text-red'}`}>{resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}</span>
               </div>
+              {auditStartTime && (
+                <div className="flex justify-between items-center py-1.5">
+                  <span className="text-text-3 text-[12px]">Duración auditoría</span>
+                  <span className="font-barlow-condensed font-bold text-navy text-[22px]">⏱ {formatTimer(auditDurationSeconds)}</span>
+                </div>
+              )}
               {tieneErrores && productos.length > 0 && (
                 <div className="text-[11px] text-text-3 italic">{productos.length} producto{productos.length !== 1 ? 's' : ''} con error · {tiposError.join(', ')}</div>
               )}

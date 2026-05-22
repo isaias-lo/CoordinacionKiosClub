@@ -73,4 +73,7 @@ export interface AuditEntry {
   fotoUrls?: string[];
   errorFotoUrls?: string[];
   palletFotos?: { label: string; url: string }[];
+  startTime?: string;
+  endTime?: string;
+  durationSeconds?: number;
 }

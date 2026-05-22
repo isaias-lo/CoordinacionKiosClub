@@ -15,10 +15,13 @@ export function entryToRow(entry: AuditEntry, userId: string) {
     correccion: entry.correccion, resultado: entry.resultado,
     observaciones: entry.observaciones, reauditoria_de_id: entry.reauditoriaDeId ?? null,
     productos: entry.productos,
-    foto_url:        entry.fotoUrl ?? null,
-    foto_urls:       entry.fotoUrls ?? [],
-    error_foto_urls: entry.errorFotoUrls ?? [],
-    pallet_fotos:    entry.palletFotos ?? [],
+    foto_url:         entry.fotoUrl ?? null,
+    foto_urls:        entry.fotoUrls ?? [],
+    error_foto_urls:  entry.errorFotoUrls ?? [],
+    pallet_fotos:     entry.palletFotos ?? [],
+    start_time:       entry.startTime ?? null,
+    end_time:         entry.endTime ?? null,
+    duration_seconds: entry.durationSeconds ?? null,
   };
 }
 
@@ -36,9 +39,12 @@ export function rowToEntry(r: Record<string, unknown>): AuditEntry {
     observaciones: r.observaciones as string,
     reauditoriaDeId: r.reauditoria_de_id as string | undefined,
     productos: (r.productos as ProductoError[]) ?? [],
-    fotoUrl:       (r.foto_url as string) || undefined,
-    fotoUrls:      (r.foto_urls as string[]) || undefined,
-    errorFotoUrls: (r.error_foto_urls as string[]) || undefined,
-    palletFotos:   (r.pallet_fotos as AuditEntry['palletFotos']) || undefined,
+    fotoUrl:         (r.foto_url as string) || undefined,
+    fotoUrls:        (r.foto_urls as string[]) || undefined,
+    errorFotoUrls:   (r.error_foto_urls as string[]) || undefined,
+    palletFotos:     (r.pallet_fotos as AuditEntry['palletFotos']) || undefined,
+    startTime:       (r.start_time as string) || undefined,
+    endTime:         (r.end_time as string) || undefined,
+    durationSeconds: (r.duration_seconds as number) || undefined,
   };
 }
