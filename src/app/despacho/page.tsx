@@ -81,7 +81,7 @@ function SyncManager() {
 }
 
 function DespachoContent() {
-  const router = useRouter();
+  const router  = useRouter();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ function DespachoContent() {
       <div
         className="flex items-center justify-between px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-        <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub" 
+        <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub"
              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         <div className="font-barlow-condensed text-[13px] text-white/60 tracking-wide flex-1 text-center">
           🗺️ Sistema de Despacho

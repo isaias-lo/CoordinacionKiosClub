@@ -2,7 +2,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
-import { refreshCalendario, writeCalendario } from '@/features/despacho/utils/useCalendario';
+import { fetchCalendarioCompleto, writeCalendario } from '@/features/despacho/utils/useCalendario';
+import { saveCalendario } from '@/lib/calendarioSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 
@@ -17,8 +18,10 @@ const GRUPOS: [string, string, string][] = [
   ['fal',   '🏢 REGIONES',  'Bodega Regiones'],
 ];
 
-const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
-const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
+const COSTA_CODES    = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
+const FAL_CODES      = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
+const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']); // Antofagasta + La Serena
+const RM_MALLS       = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST','49PTA']);
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type StoreType = 'mall' | 'street' | 'costa' | 'region';
@@ -75,7 +78,7 @@ export default function CalendarioColumnas() {
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
 
   useEffect(() => {
-    refreshCalendario()
+    fetchCalendarioCompleto()
       .then(c => { setCal(c); setLocal(JSON.parse(JSON.stringify(c))); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
@@ -198,17 +201,19 @@ export default function CalendarioColumnas() {
     if (!local) return;
     setSaveStatus('saving');
     try {
-      const res = await fetch('/api/calendario-write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ calendario: local }),
-      });
-      if (!res.ok) throw new Error('Error al guardar');
-      writeCalendario(local); // updates in-memory + localStorage → fires storage event on other tabs
+      // Primary: Supabase (must succeed — source of truth)
+      await saveCalendario(local);
+      writeCalendario(local);
       setCal(local);
       setSaveStatus('success');
       setLastSaved(new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
       setTimeout(() => setSaveStatus('idle'), 3500);
+      // Secondary: Sheets copy (fire-and-forget — no bloquea el guardado)
+      fetch('/api/calendario-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calendario: local }),
+      }).catch(e => console.error('[CalendarioColumnas:sheets]', e));
     } catch {
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 4000);
@@ -220,6 +225,113 @@ export default function CalendarioColumnas() {
     : saveStatus === 'error'   ? '⚠️ Error'
     : hasChanges               ? '💾 Guardar cambios'
     : 'Sin cambios';
+
+  /* ── Print ── */
+  function handlePrint() {
+    if (!local) return;
+
+    type Zone = 'norte' | 'sur' | 'costa' | 'rm' | 'mall';
+    const ZONE_COLOR: Record<Zone, { bg: string; text: string; border: string }> = {
+      norte: { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC' },
+      sur:   { bg: '#FEF08A', text: '#713F12', border: '#FDE047' },
+      costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4' },
+      rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1' },
+      mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF' },
+    };
+
+    // For each day build ordered array: Norte → Sur → Costa → RM → Malls
+    const dayOrdered: Array<Array<{ cod: string; zone: Zone }>> = DIAS.map(dia => {
+      const fal   = local![dia]?.fal   || [];
+      const costa = local![dia]?.costa || [];
+      const rm    = local![dia]?.rm    || [];
+      return [
+        ...fal.filter(c =>  ZONA_NORTE_FAL.has(c)).map(c => ({ cod: c, zone: 'norte' as Zone })),
+        ...fal.filter(c => !ZONA_NORTE_FAL.has(c)).map(c => ({ cod: c, zone: 'sur'   as Zone })),
+        ...costa.map(c =>                                        ({ cod: c, zone: 'costa' as Zone })),
+        ...rm.filter(c => !RM_MALLS.has(c))       .map(c => ({ cod: c, zone: 'rm'    as Zone })),
+        ...rm.filter(c =>  RM_MALLS.has(c))        .map(c => ({ cod: c, zone: 'mall'  as Zone })),
+      ];
+    });
+
+    const maxRows = Math.max(...dayOrdered.map(d => d.length), 1);
+
+    let bodyRows = '';
+    for (let i = 0; i < maxRows; i++) {
+      bodyRows += '<tr>';
+      for (let j = 0; j < DIAS.length; j++) {
+        const store = dayOrdered[j][i];
+        if (store) {
+          const c = ZONE_COLOR[store.zone];
+          bodyRows += `<td style="background:${c.bg};color:${c.text};border:1px solid ${c.border};font-weight:bold;font-family:monospace;text-align:center;padding:5px 3px;font-size:12px;white-space:nowrap">${displayCode(store.cod)}</td>`;
+        } else {
+          bodyRows += `<td style="border:1px solid #E2E8F0;background:#FAFAFA"></td>`;
+        }
+      }
+      bodyRows += '</tr>';
+    }
+
+    const today = new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Calendario de Despacho</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; margin: 16px; }
+    h1 { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 4px; }
+    .subtitle { text-align: center; font-size: 10px; color: #777; margin-bottom: 10px; }
+    .legend { display: flex; gap: 16px; justify-content: center; margin-bottom: 14px; flex-wrap: wrap; }
+    .leg-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #444; }
+    .leg-dot { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    th { background: #111A3E; color: #fff; font-weight: 800; padding: 8px 4px; border: 1px solid #333; text-align: center; font-size: 13px; letter-spacing: 0.05em; }
+    td { border: 1px solid #E2E8F0; padding: 4px 3px; height: 26px; }
+    @media print {
+      @page { size: A4 portrait; margin: 0.7cm; }
+      body { margin: 0; font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Calendario de Despacho — KiosClub</h1>
+  <p class="subtitle">Impreso el ${today} &nbsp;·&nbsp; Orden por columna: Zona Norte → Zona Sur → Costa → RM → Malls</p>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#BAE6FD;border-color:#7DD3FC"></div>Zona Norte (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#FEF08A;border-color:#FDE047"></div>Zona Sur (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#99F6E4;border-color:#5EEAD4"></div>Costa Valparaíso</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#F1F5F9;border-color:#CBD5E1"></div>RM</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#FECDD3;border-color:#FDA4AF"></div>Malls RM</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>LUNES</th>
+        <th>MARTES</th>
+        <th>MIÉRCOLES</th>
+        <th>JUEVES</th>
+        <th>VIERNES</th>
+        <th>SÁBADO</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=1100,height=750');
+    if (!win) {
+      alert('El navegador bloqueó la ventana emergente. Permite las ventanas emergentes para esta página e intenta de nuevo.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 600);
+  }
 
   /* ─── Loading ─── */
   if (loading) {
@@ -293,6 +405,18 @@ export default function CalendarioColumnas() {
               Guardado {lastSaved}
             </span>
           )}
+          <button
+            onClick={handlePrint}
+            style={{
+              height: 42, padding: '0 18px', borderRadius: 100,
+              fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#FFFFFF',
+              color: '#1C1C1E',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
+            }}>
+            🖨 Imprimir
+          </button>
           <button
             onClick={handleSave}
             disabled={saveStatus === 'saving' || !hasChanges}

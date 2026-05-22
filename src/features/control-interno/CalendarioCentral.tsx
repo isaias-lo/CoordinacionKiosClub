@@ -18,6 +18,10 @@ const GRUPOS: [string, string, string][] = [
 const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
 const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
 
+// Print zone classification
+const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']); // Antofagasta + La Serena
+const RM_MALLS = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST','49PTA']);
+
 function storeGroup(cod: string): 'rm' | 'costa' | 'fal' {
   if (COSTA_CODES.has(cod)) return 'costa';
   if (FAL_CODES.has(cod))   return 'fal';
@@ -49,6 +53,139 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
   }, [cal]);
 
   const hasChanges = JSON.stringify(local) !== JSON.stringify(cal);
+
+  /* ── Print ── */
+  function handlePrint() {
+    const falSet = new Set<string>();
+    const costaSet = new Set<string>();
+    const rmSet = new Set<string>();
+    for (const dia of DIAS) {
+      (local[dia]?.fal   || []).forEach(c => falSet.add(c));
+      (local[dia]?.costa || []).forEach(c => costaSet.add(c));
+      (local[dia]?.rm    || []).forEach(c => rmSet.add(c));
+    }
+
+    const sortByName = (a: string, b: string) =>
+      (tiendas[a]?.n || a).localeCompare(tiendas[b]?.n || b, 'es');
+
+    const falNorte  = [...falSet].filter(c =>  ZONA_NORTE_FAL.has(c)).sort(sortByName);
+    const falSur    = [...falSet].filter(c => !ZONA_NORTE_FAL.has(c)).sort(sortByName);
+    const costaList = [...costaSet].sort(sortByName);
+    const rmMalls   = [...rmSet].filter(c =>  RM_MALLS.has(c)).sort(sortByName);
+    const rmRegular = [...rmSet].filter(c => !RM_MALLS.has(c)).sort(sortByName);
+
+    function daysFor(cod: string, grp: 'fal' | 'costa' | 'rm'): boolean[] {
+      return DIAS.map(d => !!(local[d]?.[grp] || []).includes(cod));
+    }
+
+    function storeRow(cod: string, grp: 'fal' | 'costa' | 'rm', bg: string, accent: string): string {
+      const days = daysFor(cod, grp);
+      const name = tiendas[cod]?.n || cod;
+      const shortCod = formatCod(cod);
+      const cells = DIAS.map((_, i) =>
+        days[i]
+          ? `<td style="background:${accent};color:#fff;font-weight:bold;text-align:center;font-size:13px">✓</td>`
+          : `<td style="background:#fff"></td>`
+      ).join('');
+      return `<tr>
+        <td style="background:${bg};text-align:left;padding:3px 8px">
+          <strong style="font-size:11px;color:#222">${shortCod}</strong>
+          <span style="font-size:9px;color:#555;margin-left:4px">${name}</span>
+        </td>${cells}
+      </tr>`;
+    }
+
+    function sectionRow(title: string, color: string): string {
+      return `<tr><td colspan="7" style="background:${color};color:#fff;font-weight:bold;font-size:12px;padding:6px 10px;letter-spacing:0.5px">${title}</td></tr>`;
+    }
+
+    function subRow(title: string, color: string): string {
+      return `<tr><td colspan="7" style="background:${color};color:#fff;font-size:10px;padding:3px 10px">${title}</td></tr>`;
+    }
+
+    function emptyRow(): string {
+      return `<tr><td colspan="7" style="color:#aaa;font-style:italic;font-size:10px;text-align:center;padding:4px">— sin tiendas asignadas —</td></tr>`;
+    }
+
+    const today = new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const rows = [
+      sectionRow('🏢 REGIONES — Bodega Regiones', '#1e3a5f'),
+      subRow('Zona Norte · Antofagasta · La Serena', '#2563EB'),
+      ...(falNorte.length ? falNorte.map(c => storeRow(c, 'fal', '#DBEAFE', '#2563EB')) : [emptyRow()]),
+      subRow('Zona Sur · Macrozona Sur', '#B45309'),
+      ...(falSur.length ? falSur.map(c => storeRow(c, 'fal', '#FEF9C3', '#D97706')) : [emptyRow()]),
+      sectionRow('🌊 COSTA VALPARAÍSO — Bodega Santiago', '#065f46'),
+      ...(costaList.length ? costaList.map(c => storeRow(c, 'costa', '#D1FAE5', '#059669')) : [emptyRow()]),
+      sectionRow('📦 RM — Bodega Santiago', '#1f2937'),
+      subRow('Tiendas RM', '#4B5563'),
+      ...(rmRegular.length ? rmRegular.map(c => storeRow(c, 'rm', '#F3F4F6', '#4B5563')) : [emptyRow()]),
+      ...(rmMalls.length ? [subRow('Malls RM', '#9D174D'), ...rmMalls.map(c => storeRow(c, 'rm', '#FCE7F3', '#DB2777'))] : []),
+    ].join('\n');
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Calendario de Despacho</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; margin: 16px; }
+    h1 { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 4px; }
+    .subtitle { text-align: center; font-size: 10px; color: #777; margin-bottom: 10px; }
+    .legend { display: flex; gap: 14px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .leg-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #444; }
+    .leg-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th { background: #111A3E; color: #fff; font-weight: bold; padding: 6px 8px; border: 1px solid #bbb; text-align: center; }
+    th.store-col { text-align: left; min-width: 200px; }
+    th.day-col { min-width: 72px; }
+    td { border: 1px solid #ddd; padding: 3px 4px; }
+    @media print {
+      @page { size: A4 landscape; margin: 0.8cm; }
+      body { margin: 0; font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Calendario de Despacho — KiosClub</h1>
+  <p class="subtitle">Impreso el ${today}</p>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#2563EB"></div>Zona Norte (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#D97706"></div>Zona Sur (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#059669"></div>Costa Valparaíso</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#4B5563"></div>RM</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#DB2777"></div>Malls RM</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="store-col">Tienda</th>
+        <th class="day-col">Lunes</th>
+        <th class="day-col">Martes</th>
+        <th class="day-col">Miércoles</th>
+        <th class="day-col">Jueves</th>
+        <th class="day-col">Viernes</th>
+        <th class="day-col">Sábado</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=1100,height=750');
+    if (!win) {
+      alert('El navegador bloqueó la ventana emergente. Permite las ventanas emergentes para esta página e intenta de nuevo.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 600);
+  }
 
   /* ── Store search ── */
   function handleSearch(q: string) {
@@ -147,16 +284,23 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
           </button>
         ))}
 
-        <button
-          onClick={() => onSave(local)}
-          disabled={saveStatus === 'saving' || !hasChanges}
-          className={`ml-auto h-[40px] px-5 rounded-full text-[14px] font-bold border-2 transition-all
-            ${saveStatus === 'success' ? 'bg-[#25A244] border-[#25A244] text-white'
-            : saveStatus === 'error'   ? 'bg-kred border-kred text-white'
-            : hasChanges               ? 'bg-kred border-kred text-white shadow-md shadow-red-200'
-            : 'bg-kbg border-black/[0.10] text-kmuted cursor-not-allowed opacity-60'}`}>
-          {saveLabel}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handlePrint}
+            className="h-[40px] px-4 rounded-full text-[14px] font-bold border-2 transition-all bg-white border-black/[0.12] text-knavy hover:border-knavy/[0.4] flex items-center gap-1.5">
+            🖨 Imprimir
+          </button>
+          <button
+            onClick={() => onSave(local)}
+            disabled={saveStatus === 'saving' || !hasChanges}
+            className={`h-[40px] px-5 rounded-full text-[14px] font-bold border-2 transition-all
+              ${saveStatus === 'success' ? 'bg-[#25A244] border-[#25A244] text-white'
+              : saveStatus === 'error'   ? 'bg-kred border-kred text-white'
+              : hasChanges               ? 'bg-kred border-kred text-white shadow-md shadow-red-200'
+              : 'bg-kbg border-black/[0.10] text-kmuted cursor-not-allowed opacity-60'}`}>
+            {saveLabel}
+          </button>
+        </div>
       </div>
 
       {grpInfo && (
