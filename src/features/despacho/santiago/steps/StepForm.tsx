@@ -7,13 +7,15 @@ import { useApp } from '../../../../context/AppContext';
 import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
+import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 
 /* ── Calendar localStorage ── */
-const todayKey    = new Date().toISOString().split('T')[0];
+const _d = new Date();
+const todayKey = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
 const EXTRA_KEY   = `calExtraSANT_${todayKey}`;
 const REMOVED_KEY = `calRemovedSANT_${todayKey}`;
 function loadExtra():   string[] { try { return JSON.parse(localStorage.getItem(EXTRA_KEY)   || '[]'); } catch { return []; } }
@@ -62,22 +64,23 @@ interface ResumenEditState {
    STORE GRID CARD
 ═══════════════════════════════════════ */
 function TiendaGridCard({
-  t, isActive, isToday, itemCount, palletCount,
-  despachoP, despachoB,
+  t, isActive, isToday, itemCount, palletCount, contenedorCount,
+  despachoP, despachoB, despachoC,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
-  itemCount: number; palletCount: number;
-  despachoP?: number; despachoB?: number;
+  itemCount: number; palletCount: number; contenedorCount: number;
+  despachoP?: number; despachoB?: number; despachoC?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }) {
-  const boxCount     = itemCount - palletCount;
+  const boxCount     = itemCount - palletCount - contenedorCount;
   const hasItems     = itemCount > 0;
   const expP         = despachoP ?? 0;
   const expB         = despachoB ?? 0;
-  const showExpected = !hasItems && (expP > 0 || expB > 0);
+  const expC         = despachoC ?? 0;
+  const showExpected = !hasItems && (expP > 0 || expB > 0 || expC > 0);
   return (
     <div
       onClick={onSelect}
@@ -107,13 +110,15 @@ function TiendaGridCard({
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {hasItems ? (
           <>
-            {palletCount > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
-            {boxCount    > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
+            {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
+            {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
+            {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
           </>
         ) : showExpected ? (
           <>
             {expP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/20">{expP}P</span>}
             {expB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/20">{expB}B</span>}
+            {expC > 0 && <span className="text-[11px] font-bold text-[#6B21A8]/40 bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.20)]">{expC}C</span>}
           </>
         ) : null}
       </div>
@@ -244,11 +249,28 @@ export function StepForm() {
   const [selectedGrps, setSelectedGrps] = useState<Set<'rm' | 'costa'>>(new Set(['rm']));
 
   useEffect(() => {
+    const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
+    const todayCode = DAY_CODES[new Date().getDay()];
+    const RM_MAP: Record<string, string>    = { PEN: '23PEÑ', '23PEN': '23PEÑ' };
+    const COSTA_MAP: Record<string, string> = { VIN: '37VIÑ', '37VIN': '37VIÑ' };
+
+    // Initial fetch (checks localStorage cache first, then Sheets)
     getTiendasSantiagoHoyGrouped()
-      .then(grouped => {
-        setSheetsTodayGrouped(grouped);
-      })
+      .then(grouped => { setSheetsTodayGrouped(grouped); })
       .catch(() => {});
+
+    // Real-time sync when CalendarioCentral saves from another tab
+    return subscribeToCalendarChanges(cal => {
+      const day = cal[todayCode];
+      if (!day) return;
+      const grouped = {
+        rm:    (day.rm    || []).map(c => RM_MAP[c]    ?? c),
+        costa: (day.costa || []).map(c => COSTA_MAP[c] ?? c),
+      };
+      if (grouped.rm.length > 0 || grouped.costa.length > 0) {
+        setSheetsTodayGrouped(grouped);
+      }
+    });
   }, []);
 
   /* Despacho ↔ Santiago bidirectional sync */
@@ -651,7 +673,8 @@ export function StepForm() {
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
-                  despachoP={dc?.p} despachoB={dc?.b}
+                  contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
+                  despachoP={dc?.p} despachoB={dc?.b} despachoC={dc?.c}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -673,7 +696,8 @@ export function StepForm() {
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
-                  despachoP={dc?.p} despachoB={dc?.b}
+                  contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
+                  despachoP={dc?.p} despachoB={dc?.b} despachoC={dc?.c}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );

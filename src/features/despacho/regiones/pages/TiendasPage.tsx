@@ -7,15 +7,17 @@ import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
-import { getTiendasDelDia } from '../../utils/useCalendario';
+import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 
 /* ── Per-day calendar overrides ── */
-const todayDateKey   = `calendarExtra_${new Date().toISOString().split('T')[0]}`;
-const todayRemoveKey = `calendarRemoved_${new Date().toISOString().split('T')[0]}`;
+const _today = new Date();
+const _localDate = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
+const todayDateKey   = `calendarExtra_${_localDate}`;
+const todayRemoveKey = `calendarRemoved_${_localDate}`;
 function loadExtraCods(): string[]  { try { return JSON.parse(localStorage.getItem(todayDateKey)   || '[]'); } catch { return []; } }
 function saveExtraCods(cods: string[])  { localStorage.setItem(todayDateKey,   JSON.stringify(cods)); }
 function loadRemovedCods(): string[] { try { return JSON.parse(localStorage.getItem(todayRemoveKey) || '[]'); } catch { return []; } }
@@ -74,14 +76,15 @@ interface GridCardProps {
   isToday: boolean;
   itemCount: number;
   palletCount: number;
+  contenedorCount: number;
   preset?: { pallets: number; bultos: number };
   hasPdf?: boolean;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
-  const boxCount = itemCount - palletCount;
+  const boxCount = itemCount - palletCount - contenedorCount;
   return (
     <div
       draggable={!!onDragStart}
@@ -108,6 +111,9 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, prese
         )}
         {boxCount > 0 && (
           <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>
+        )}
+        {contenedorCount > 0 && (
+          <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>
         )}
         {preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
           <span className="text-[11px] text-text-3/50 leading-none">
@@ -169,16 +175,22 @@ export function TiendasPage() {
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
 
-  /* Calendar from Google Sheets */
+  /* Calendar from Calendario Central (Sheets + localStorage cross-tab sync) */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
   useEffect(() => {
+    const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
+    const todayCode = DAY_CODES[new Date().getDay()];
+
+    // Initial fetch (checks localStorage cache first, then Sheets)
     getTiendasDelDia('fal')
-      .then(cods => {
-        if (cods && cods.length > 0) {
-          setSheetsTodayCods(cods);
-        }
-      })
+      .then(cods => { if (cods.length > 0) setSheetsTodayCods(cods); })
       .catch(() => {});
+
+    // Real-time sync when CalendarioCentral saves from another tab
+    return subscribeToCalendarChanges(cal => {
+      const cods = cal[todayCode]?.fal || [];
+      if (cods.length > 0) setSheetsTodayCods(cods);
+    });
   }, []);
 
 
@@ -1029,6 +1041,7 @@ export function TiendasPage() {
                       isActive={selectedTienda === t.name} isToday
                       itemCount={cardItems.length}
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
+                      contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
                       onSelect={() => select(t.name)}
@@ -1069,6 +1082,7 @@ export function TiendasPage() {
                         isActive={selectedTienda === t.name} isToday={false}
                         itemCount={cardItems.length}
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
+                        contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                         hasPdf={!!state.pdfData[t.name]}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />

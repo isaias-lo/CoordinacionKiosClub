@@ -7,7 +7,7 @@ import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
 
-interface CalData { on: boolean; p: number; b: number; g?: string; }
+interface CalData { on: boolean; p: number; b: number; c: number; g?: string; }
 interface StoreAssign { c: string; p: number; b: number; }
 
 interface Props {
@@ -30,7 +30,7 @@ interface Props {
   onModo: (m: string) => void;
   onToggleGroup: (gid: string) => void;
   onToggleChip: (cod: string) => void;
-  onUpdateChip: (cod: string, key: 'p' | 'b', val: string) => void;
+  onUpdateChip: (cod: string, key: 'p' | 'b' | 'c', val: string) => void;
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
   onSupervisor: (s: string) => void;

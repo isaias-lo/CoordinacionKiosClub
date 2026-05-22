@@ -25,7 +25,7 @@ export default function ControlInternoPage() {
       Icon: Search, iconColor: 'rgba(167,139,250,0.9)',
     },
     {
-      label: 'Config. Tiendas', sub: 'Administración de tiendas',
+      label: 'Config. Tiendas', sub: 'Gestión de tiendas · Calendario central',
       border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.28)',
       onClick: () => router.push('/admin/tiendas'), adminOnly: true,
       Icon: Settings, iconColor: 'rgba(252,165,165,0.9)',

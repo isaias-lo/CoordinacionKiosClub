@@ -116,7 +116,7 @@ export function ProfilePill({ compact = false }: ProfilePillProps) {
       {/* Actions */}
       <div className="py-3 flex flex-col gap-0.5">
         <MenuItem onClick={() => { setShowMenu(false); router.push('/perfil'); }}
-          Icon={Settings} from="#6B7280" to="#4B5563" shadow="rgba(107,114,128,0.4)" label="Gestionar cuenta" />
+          Icon={Settings} from="#7C3AED" to="#5B21B6" shadow="rgba(124,58,237,0.45)" label="Gestionar cuenta" />
 
         {isAdmin && <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 16px' }} />}
         {isAdmin && (

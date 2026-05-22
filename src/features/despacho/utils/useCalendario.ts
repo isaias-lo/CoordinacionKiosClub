@@ -10,6 +10,58 @@ let cachedCalendario: CalendarioCompleto | null = null;
 let lastFetch: number = 0;
 const CACHE_MS = 60000;
 
+// ── Cross-tab localStorage cache ────────────────────────────────────────────
+export const CAL_LS_KEY = '_calCentral';
+const LS_TTL = 60 * 60 * 1000; // 1 hour
+
+function readLsCache(): CalendarioCompleto | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(CAL_LS_KEY);
+    if (!raw) return null;
+    const { cal, ts } = JSON.parse(raw) as { cal: CalendarioCompleto; ts: number };
+    if (Date.now() - ts > LS_TTL) return null;
+    return cal;
+  } catch { return null; }
+}
+
+function writeLsCache(cal: CalendarioCompleto): void {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(CAL_LS_KEY, JSON.stringify({ cal, ts: Date.now() })); } catch {}
+}
+
+/**
+ * Called by CalendarioColumnas after a successful save.
+ * Updates both the in-memory cache and localStorage immediately,
+ * which fires a `storage` event in all other open tabs.
+ */
+export function writeCalendario(cal: CalendarioCompleto): void {
+  const copy = JSON.parse(JSON.stringify(cal)) as CalendarioCompleto;
+  cachedCalendario = copy;
+  lastFetch = Date.now();
+  writeLsCache(copy);
+}
+
+/**
+ * Subscribe to cross-tab calendar updates from CalendarioCentral.
+ * Returns an unsubscribe function for use in useEffect cleanup.
+ */
+export function subscribeToCalendarChanges(cb: (cal: CalendarioCompleto) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const handler = (e: StorageEvent) => {
+    if (e.key !== CAL_LS_KEY || !e.newValue) return;
+    try {
+      const { cal } = JSON.parse(e.newValue) as { cal: CalendarioCompleto; ts: number };
+      cachedCalendario = cal;
+      lastFetch = Date.now();
+      cb(cal);
+    } catch {}
+  };
+  window.addEventListener('storage', handler);
+  return () => window.removeEventListener('storage', handler);
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 // Codes that identify Costa (V Región) stores
 const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
 // Codes that identify Falcón/Región stores
@@ -19,7 +71,7 @@ const FAL_CODES = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PS
 const CODIGO_NUMERICO_MAP: Record<string, string> = {
   // RM
   BNV:'32BNV', BN2:'35BN2', MAI:'17MAI', SCL:'02SCL', LAS:'12LAS',
-  EST:'45EST', PQA:'16PQA', CTC:'20CTC', PEN:'23PEÑ', SMB:'34SMB',
+  EST:'45EST', PQA:'16PQA', CTC:'20CTC', PEN:'23PEÑ', '23PEN':'23PEÑ', SMB:'34SMB',
   LEO:'09LEO', LIL:'40LIL', MQH:'06MQH', LGN:'22LGN', CCR:'07CCR',
   FLO:'18FLO', CFL:'29CFL', LP: '05LP',  TPS:'01TPS', PIE:'13PIE',
   TRQ:'10TRQ', PTA:'49PTA', PHU:'30PHU', NUC:'21NUC', PDG:'04PDG',
@@ -44,7 +96,6 @@ export const CODIGO_COMPLETO_REGIONES: Record<string, string> = {
 
 function normalize(s: string): string {
   return s.toUpperCase()
-    .replace(/Ñ/g, 'N')
     .replace(/[ÁÉÍÓÚÜ]/g, c => ({ Á: 'A', É: 'E', Í: 'I', Ó: 'O', Ú: 'U', Ü: 'U' }[c] ?? c));
 }
 
@@ -61,8 +112,16 @@ function calInicialToCompleto(): CalendarioCompleto {
 }
 
 export async function fetchCalendarioCompleto(): Promise<CalendarioCompleto> {
+  // 1. In-memory cache (fastest)
   if (cachedCalendario && Date.now() - lastFetch < CACHE_MS) {
     return cachedCalendario;
+  }
+  // 2. localStorage cache (cross-tab, survives navigation within same browser)
+  const lsCached = readLsCache();
+  if (lsCached) {
+    cachedCalendario = lsCached;
+    lastFetch = Date.now();
+    return lsCached;
   }
 
   try {
@@ -111,7 +170,7 @@ export async function fetchCalendarioCompleto(): Promise<CalendarioCompleto> {
 
             const partes = String(tiendasStr).split(/[\s,;]+/)
               .map(t => normalize(t.trim()))
-              .filter(t => t && /^[0-9]{0,2}[A-Z]{2,4}[0-9]?$/.test(t));
+              .filter(t => t && /^[0-9]{0,2}[A-ZÑ]{2,4}[0-9]?$/.test(t));
 
             partes.forEach(rawT => {
               // Map old short codes → numeric; numeric codes pass through unchanged
@@ -137,6 +196,7 @@ export async function fetchCalendarioCompleto(): Promise<CalendarioCompleto> {
 
     cachedCalendario = cal;
     lastFetch = Date.now();
+    writeLsCache(cal); // persist for cross-tab reads
     return cal;
   } catch (err) {
     console.error('Error fetching calendar:', err);
@@ -165,5 +225,8 @@ export async function getAllTiendasSantiago(): Promise<string[]> {
 export async function refreshCalendario(): Promise<CalendarioCompleto> {
   cachedCalendario = null;
   lastFetch = 0;
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(CAL_LS_KEY); } catch {}
+  }
   return fetchCalendarioCompleto();
 }
