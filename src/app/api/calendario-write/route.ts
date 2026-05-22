@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
     const reqs: sheets_v4.Schema$Request[] = [];
 
     const mergeRow = (i: number) => {
-      reqs.push({ unMergeCells: { range: rng(sid, i, i + 1, 0, TOTAL_COLS) } });
+      reqs.push({ unmergeCells: { range: rng(sid, i, i + 1, 0, TOTAL_COLS) } });
       reqs.push({ mergeCells:   { range: rng(sid, i, i + 1, 0, TOTAL_COLS), mergeType: 'MERGE_ALL' } });
     };
 
