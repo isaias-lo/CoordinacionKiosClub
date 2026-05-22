@@ -268,7 +268,7 @@ export async function POST(req: NextRequest) {
         method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
           fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
-                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'move_ids'],
+                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
           limit: 50,
           order: 'scheduled_date asc',
         }],
@@ -279,8 +279,30 @@ export async function POST(req: NextRequest) {
         state: string; scheduled_date: string | false; date_done: string | false;
         picking_type_id: [number, string];
         user_id: [number, string] | false;
-        move_ids: number[];
       }>;
+
+      // Batch-fetch stock.move records — only count moves with actual stock reserved
+      // state 'confirmed' = demanded but nothing reserved (reserved = 0, not pickeable)
+      // state 'assigned' | 'partially_available' | 'done' = has reserved qty (pickeable)
+      const pickingIds = pickings.map(p => p.id);
+      const moves = pickingIds.length
+        ? (await odooRpc(url, {
+            service: 'object',
+            method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.move', 'search_read',
+              [[['picking_id', 'in', pickingIds],
+                ['state', 'in', ['assigned', 'partially_available', 'done']]]],
+              { fields: ['picking_id'], limit: 5000 },
+            ],
+          })) as Array<{ picking_id: [number, string] | false }>
+        : [];
+
+      const linesByPicking: Record<number, number> = {};
+      for (const mv of moves) {
+        if (!Array.isArray(mv.picking_id)) continue;
+        const pid = mv.picking_id[0];
+        linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
+      }
 
       return NextResponse.json({
         pickings: pickings.map(p => ({
@@ -296,7 +318,7 @@ export async function POST(req: NextRequest) {
           pickingType: Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
           responsible: Array.isArray(p.user_id) ? p.user_id[1] : '',
           responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
-          lineCount: Array.isArray(p.move_ids) ? p.move_ids.length : 0,
+          lineCount: linesByPicking[p.id] ?? 0,
         })),
       });
     }
