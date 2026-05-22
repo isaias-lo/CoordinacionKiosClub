@@ -6,7 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
-import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
+import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ const SESSION_KEY         = 'picking_session_v2';
 const SECTION_FILTER_KEY  = 'picking_section_filter';
 const COLS_PER_ROW_KEY    = 'picking_cols_per_row';
 const STATS_CACHE_KEY     = 'picking_stats_cache_v1';
-const PICKER_TYPES_KEY    = 'picking_types_v1';
+const PICKER_TYPES_KEY    = `picking_types_v1_${new Date().toISOString().slice(0, 10)}`;
 const LABEL_CONFIG_KEY    = 'picking_label_config_v1';
 const CANONICAL_NAMES_KEY = 'picking_canonical_names_v1';
 
@@ -538,10 +538,10 @@ function Barcode1D({ value, height = 65, barWidth = 2 }: { value: string; height
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
-function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, compact = false, labelConfig }: {
+function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, tipo = 'P', compact = false, labelConfig }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
-  totalPickers: number; compact?: boolean; labelConfig?: LabelConfig;
+  totalPickers: number; tipo?: string; compact?: boolean; labelConfig?: LabelConfig;
 }) {
   const storeName = getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -602,7 +602,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
           </div>
           <div className="shrink-0 text-right">
             <div className="font-barlow-condensed font-black text-amber-600 leading-none" style={{ fontSize: s.palletSize }}>
-              P-{palletNum}
+              {tipo}-{palletNum}
             </div>
             <div style={{ fontSize: s.deSize, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
           </div>
@@ -939,6 +939,7 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                         responsibleKey={group.key}
                         allCategories={allCategories}
                         totalPickers={totalPickers}
+                        tipo={pickerType}
                         compact
                       />
                       {isSelected && (
@@ -1878,18 +1879,13 @@ export function PickingScreen() {
   useRealtimeRefresh('picking_session_state', loadSessionState);
 
   // Merge server state into local — skip keys actively being edited by this client
+  // Only names are synced cross-client; tipos are managed locally per client (date-scoped localStorage)
   useEffect(() => {
     if (!sessionStateRows.length) return;
     setPickerDisplayNames(prev => {
       const next = { ...prev };
       for (const r of sessionStateRows)
         if (!dirtyStateKeys.current.has(r.state_key) && r.picker_label) next[r.state_key] = r.picker_label;
-      return next;
-    });
-    setPickerTypes(prev => {
-      const next = { ...prev };
-      for (const r of sessionStateRows)
-        if (!dirtyStateKeys.current.has(r.state_key)) next[r.state_key] = r.tipo as PickerType;
       return next;
     });
   }, [sessionStateRows]);
@@ -1946,10 +1942,16 @@ export function PickingScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
+        return;
+      }
       const json = await res.json() as { data?: PalletSlot };
       if (json.data) setPalletSlots(prev => [...prev, json.data!]);
-    } catch { /* silent */ }
+    } catch (e) {
+      console.error('[picking] addPalletSlot network error', e);
+    }
   }, []);
 
   const removePalletSlot = useCallback(async (stateKey: string) => {
@@ -2051,26 +2053,36 @@ export function PickingScreen() {
     window.print();
   }, [doPrint]);
 
-  // Cargar tiendas del calendario
-  useEffect(() => {
+  // Cargar tiendas del calendario (bust caché para evitar datos viejos del merge)
+  const applyCalendar = useCallback((cal: Record<string, { rm: string[]; costa: string[]; fal: string[] }>) => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
-    setStoresLoading(true);
-    fetchCalendarioCompleto().then(cal => {
-      const today = DAY_CODES[new Date().getDay()];
-      const day = cal[today];
-      if (!day) { setStoresLoading(false); return; }
-      setTodayStores([
-        ...day.fal.map(cod   => ({ cod, name: getStoreName(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
-        ...day.costa.map(cod => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
-        ...day.rm.map(cod    => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
-      ]);
-      setStoresLoading(false);
-    }).catch(() => setStoresLoading(false));
+    const today = DAY_CODES[new Date().getDay()];
+    const day = cal[today];
+    if (!day) return;
+    setTodayStores([
+      ...day.fal.map(cod   => ({ cod, name: getStoreName(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
+      ...day.costa.map(cod => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+      ...day.rm.map(cod    => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+    ]);
   }, []);
 
-  // Si hay tiendas seleccionadas al restaurar sesión, mostrar planilla
   useEffect(() => {
-    if (selectedCods.length > 0) setPanelView('planilla');
+    setStoresLoading(true);
+    // refreshCalendario busts both in-memory and localStorage cache → always gets live Sheets data
+    refreshCalendario()
+      .then(cal => { applyCalendar(cal); setStoresLoading(false); })
+      .catch(() => setStoresLoading(false));
+    // Re-apply when admin updates calendar from another tab
+    return subscribeToCalendarChanges(applyCalendar);
+  }, [applyCalendar]);
+
+  // Si hay tiendas seleccionadas al restaurar sesión, mostrar planilla y re-cargar ops faltantes
+  useEffect(() => {
+    if (selectedCods.length > 0) {
+      setPanelView('planilla');
+      // Re-fetch ops for stores that are selected but have no opsMap data (SESSION_KEY bump)
+      selectedCods.forEach(cod => { if (!opsMap[cod]) void fetchOpsForStore(cod); });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allGroups = useMemo((): PickerGroup[] => {
@@ -2234,7 +2246,7 @@ export function PickingScreen() {
     type LabelData = {
       value: string; palletNum: number; total: number;
       storeCod: string; pickerLabel: string; responsibleKey: string;
-      allCategories: string[]; totalPickers: number; stateKey: string;
+      allCategories: string[]; totalPickers: number; stateKey: string; tipo: string;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -2275,6 +2287,7 @@ export function PickingScreen() {
             allCategories,
             totalPickers: allStoreGroups.length,
             stateKey: group.stateKey,
+            tipo,
           });
         }
       }
@@ -2594,9 +2607,11 @@ export function PickingScreen() {
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
                               pickerType={pickerTypes[group.stateKey] ?? 'P'}
                               onTypeChange={t => {
-                                const next = { ...pickerTypes, [group.stateKey]: t };
-                                setPickerTypes(next);
-                                localStorage.setItem(PICKER_TYPES_KEY, JSON.stringify(next));
+                                setPickerTypes(prev => {
+                                  const next = { ...prev, [group.stateKey]: t };
+                                  localStorage.setItem(PICKER_TYPES_KEY, JSON.stringify(next));
+                                  return next;
+                                });
                                 upsertSessionState(group.stateKey, pickerDisplayNames[group.stateKey] ?? '', t);
                               }}
                             />
