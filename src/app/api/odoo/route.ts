@@ -281,12 +281,15 @@ export async function POST(req: NextRequest) {
         user_id: [number, string] | false;
       }>;
 
-      // Batch-fetch stock.move records — only count moves with actual stock reserved
-      // state 'confirmed' = demanded but nothing reserved (reserved = 0, not pickeable)
-      // state 'assigned' | 'partially_available' | 'done' = has reserved qty (pickeable)
+      // Batch-fetch stock.move records — only count moves with actual stock reserved.
+      // state 'confirmed' = demanded but nothing reserved (reserved = 0, not pickeable).
+      // state 'assigned' | 'partially_available' | 'done' = has reserved qty (pickeable).
+      // This query is best-effort: if it fails the pickings still load with lineCount = 0.
       const pickingIds = pickings.map(p => p.id);
-      const moves = pickingIds.length
-        ? (await odooRpc(url, {
+      let linesByPicking: Record<number, number> = {};
+      try {
+        if (pickingIds.length) {
+          const moves = (await odooRpc(url, {
             service: 'object',
             method: 'execute_kw',
             args: [db, uid, apiKey, 'stock.move', 'search_read',
@@ -294,15 +297,14 @@ export async function POST(req: NextRequest) {
                 ['state', 'in', ['assigned', 'partially_available', 'done']]]],
               { fields: ['picking_id'], limit: 5000 },
             ],
-          })) as Array<{ picking_id: [number, string] | false }>
-        : [];
-
-      const linesByPicking: Record<number, number> = {};
-      for (const mv of moves) {
-        if (!Array.isArray(mv.picking_id)) continue;
-        const pid = mv.picking_id[0];
-        linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
-      }
+          })) as Array<{ picking_id: [number, string] | false }>;
+          for (const mv of moves) {
+            if (!Array.isArray(mv.picking_id)) continue;
+            const pid = mv.picking_id[0];
+            linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
+          }
+        }
+      } catch { /* lineCount stays 0 for all pickings — non-critical */ }
 
       return NextResponse.json({
         pickings: pickings.map(p => ({
