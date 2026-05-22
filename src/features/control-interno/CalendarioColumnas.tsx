@@ -360,7 +360,7 @@ export default function CalendarioColumnas() {
       }}>
         <div style={{ fontSize: 36, marginBottom: 10 }}>⚠️</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#FF3B30' }}>No se pudo cargar el calendario</div>
-        <div style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>Revisa la conexión con Google Sheets</div>
+        <div style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>Revisa la conexión con Supabase</div>
       </div>
     );
   }

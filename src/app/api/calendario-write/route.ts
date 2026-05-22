@@ -15,12 +15,23 @@ type StoreDayEntry = { code: string; type: StoreType };
 const ZONA_NORTE_FAL = new Set(['41ANA', '42ANP', '39PSB', '51SER']);
 const RM_MALLS       = new Set(['16PQA', '20CTC', '29CFL', '52MUT', '19SUB', '45EST', '49PTA']);
 
-const TITLE         = '⚡ CALENDARIO DE DESPACHO — Flota Luis (sale día siguiente del armado) | Falabella (retira mismo día 12:00-14:00) | Sábado → despacha Lunes';
-const RM_LABEL      = 'RM';
-const FAL_LABEL     = '🏠 FALABELLA — Retira mismo día del armado (aprox 12:00-14:00)';
+const TITLE          = '⚡ CALENDARIO DE DESPACHO — Flota Luis (sale día siguiente del armado) | Falabella (retira mismo día 12:00-14:00) | Sábado → despacha Lunes';
+const RM_LABEL       = 'RM';
+const FAL_LABEL      = '🏠 FALABELLA — Retira mismo día del armado (aprox 12:00-14:00)';
+const ARMADO_LABEL   = '✅ ARMADO SECO (vista CD) — Guía se arma cada día | Verde = para Flota Luis (sale día siguiente) | Rosa = para Falabella (retira mismo día)';
 
-// Row 37+ is owned by ARMADO SECO — never clear beyond this index (0-based = 36)
-const ARMADO_SECO_START = 36;
+// Fixed section sizes — row positions must be stable regardless of daily store count:
+//   Row 1       = Title             (index 0)
+//   Row 2       = Column headers    (index 1)
+//   Row 3       = RM section hdr   (index 2)
+//   Rows 4–26   = RM data          (23 fixed rows)
+//   Row 27      = FAL section hdr  (index 26)
+//   Rows 28–36  = FAL data         (9 fixed rows)
+//   Row 37      = ARMADO SECO hdr  (index 36)
+//   Row 38      = ARMADO totals    (index 37)
+//   Rows 39+    = ARMADO data      (dynamic)
+const RM_FIXED_ROWS  = 23;
+const FAL_FIXED_ROWS = 9;
 
 function hex(h: string): sheets_v4.Schema$Color {
   return {
@@ -30,14 +41,15 @@ function hex(h: string): sheets_v4.Schema$Color {
   };
 }
 
-const HDR_BG      = hex('#111A3E'); // dark navy  — title + column header
-const RM_HDR_BG   = hex('#1F2937'); // dark gray  — RM section label
-const FAL_HDR_BG  = hex('#9D174D'); // dark rose  — FAL section label
-const WHITE       = hex('#FFFFFF');
-const WHT_TXT     = hex('#FFFFFF');
-const DRK_TXT     = hex('#1C1C1E');
+const HDR_BG        = hex('#111A3E'); // dark navy   — title + column headers
+const RM_HDR_BG     = hex('#1F2937'); // dark gray   — RM section label
+const FAL_HDR_BG    = hex('#9D174D'); // dark rose   — FAL section label
+const ARMADO_HDR_BG = hex('#14532D'); // dark green  — ARMADO SECO label
+const WHITE         = hex('#FFFFFF');
+const WHT_TXT       = hex('#FFFFFF');
+const DRK_TXT       = hex('#1C1C1E');
 
-// Data cell backgrounds per store type
+// Calendar section cell colors per store type
 const BG: Record<StoreType, sheets_v4.Schema$Color> = {
   rm:    hex('#D1FAE5'), // light green  — Flota Luis regular RM
   mall:  hex('#FECDD3'), // light rose   — Malls RM
@@ -45,6 +57,10 @@ const BG: Record<StoreType, sheets_v4.Schema$Color> = {
   norte: hex('#BAE6FD'), // light blue   — Zona Norte (FAL)
   sur:   hex('#FEF08A'), // light yellow — Zona Sur (FAL)
 };
+
+// ARMADO SECO cell colors (simplified: Flota Luis = green, Falabella = pink)
+const ARMADO_GREEN = hex('#D1FAE5');
+const ARMADO_PINK  = hex('#FECDD3');
 
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -102,72 +118,86 @@ export async function POST(request: NextRequest) {
     const sid = sheetMeta?.properties?.sheetId ?? 0;
 
     // ── 1. Build per-day store lists ─────────────────────────────────────────
-    // RM section: rm stores (regular + malls) then costa stores per day
     const rmDays: StoreDayEntry[][] = DIAS.map(dia => [
       ...(calendario[dia]?.rm    || []).map(c => ({ code: c, type: (RM_MALLS.has(c) ? 'mall' : 'rm') as StoreType })),
       ...(calendario[dia]?.costa || []).map(c => ({ code: c, type: 'costa' as StoreType })),
     ]);
 
-    // FAL section: fal stores (Norte vs Sur) per day
     const falDays: StoreDayEntry[][] = DIAS.map(dia =>
       (calendario[dia]?.fal || []).map(c => ({ code: c, type: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as StoreType }))
     );
 
-    const maxRmRows  = Math.max(0, ...rmDays.map(d => d.length));
-    const maxFalRows = Math.max(0, ...falDays.map(d => d.length));
+    // ARMADO SECO: all stores combined (rm + costa then fal), per day
+    type ArmadoEntry = { code: string; isFal: boolean };
+    const armadoDays: ArmadoEntry[][] = DIAS.map(dia => [
+      ...(calendario[dia]?.rm    || []).map(c => ({ code: c, isFal: false })),
+      ...(calendario[dia]?.costa || []).map(c => ({ code: c, isFal: false })),
+      ...(calendario[dia]?.fal   || []).map(c => ({ code: c, isFal: true  })),
+    ]);
+    const maxArmadoRows = Math.max(0, ...armadoDays.map(d => d.length));
 
     // ── 2. Build value grid and row metadata ──────────────────────────────────
     type RowMeta =
       | { type: 'title' }
       | { type: 'header' }
       | { type: 'rm-hdr' }
-      | { type: 'rm-data';  slot: number }
+      | { type: 'rm-data';      slot: number }
       | { type: 'fal-hdr' }
-      | { type: 'fal-data'; slot: number };
+      | { type: 'fal-data';     slot: number }
+      | { type: 'armado-hdr' }
+      | { type: 'armado-totals' }
+      | { type: 'armado-data';  slot: number };
 
     const values: string[][] = [];
     const meta:   RowMeta[]  = [];
 
-    // Row 0: title (merged A:H)
+    // ── Calendar section (rows 1–36) ────────────────────────────────────────
     values.push([TITLE, '', '', '', '', '', '', '']);
     meta.push({ type: 'title' });
 
-    // Row 1: column headers
     values.push(['GRUPO', 'TIPO', ...DNOM]);
     meta.push({ type: 'header' });
 
-    // Row 2: RM section header (merged A:H)
     values.push([RM_LABEL, '', '', '', '', '', '', '']);
     meta.push({ type: 'rm-hdr' });
 
-    // RM data rows — A and B blank, C–H = day store codes (stacked by slot)
-    for (let slot = 0; slot < maxRmRows; slot++) {
+    for (let slot = 0; slot < RM_FIXED_ROWS; slot++) {
       const row: string[] = ['', ''];
       for (let d = 0; d < 6; d++) row.push(rmDays[d][slot]?.code ?? '');
       values.push(row);
       meta.push({ type: 'rm-data', slot });
     }
 
-    // FAL section header (merged A:H)
     values.push([FAL_LABEL, '', '', '', '', '', '', '']);
     meta.push({ type: 'fal-hdr' });
 
-    // FAL data rows
-    for (let slot = 0; slot < maxFalRows; slot++) {
+    for (let slot = 0; slot < FAL_FIXED_ROWS; slot++) {
       const row: string[] = ['', ''];
       for (let d = 0; d < 6; d++) row.push(falDays[d][slot]?.code ?? '');
       values.push(row);
       meta.push({ type: 'fal-data', slot });
     }
 
+    // ── ARMADO SECO section (row 37+) ───────────────────────────────────────
+    values.push([ARMADO_LABEL, '', '', '', '', '', '', '']);
+    meta.push({ type: 'armado-hdr' });
+
+    values.push(['TIPO', 'DESTINO', ...armadoDays.map(d => `Total armado: ${d.length}`)]);
+    meta.push({ type: 'armado-totals' });
+
+    for (let slot = 0; slot < maxArmadoRows; slot++) {
+      const row: string[] = ['', ''];
+      for (let d = 0; d < 6; d++) row.push(armadoDays[d][slot]?.code ?? '');
+      values.push(row);
+      meta.push({ type: 'armado-data', slot });
+    }
+
     const totalRows = values.length;
 
-    // ── 3. Clear + write values ───────────────────────────────────────────────
-    // Protect ARMADO SECO (row 37+, 1-indexed) — clear at most up to row 36
-    const clearRows = Math.min(totalRows + 3, ARMADO_SECO_START);
+    // ── 3. Clear + write ─────────────────────────────────────────────────────
     await gs.spreadsheets.values.clear({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A1:H${clearRows}`,
+      range: `${SHEET_NAME}!A1:H${totalRows + 3}`,
     });
 
     await gs.spreadsheets.values.batchUpdate({
@@ -204,8 +234,16 @@ export async function POST(request: NextRequest) {
         mergeRow(i);
         reqs.push(cellFmt(sid, i, i + 1, 0, TOTAL_COLS, FAL_HDR_BG, { bold: true, fs: 10, color: WHT_TXT, ha: 'LEFT' }));
       }
+      else if (m.type === 'armado-hdr') {
+        mergeRow(i);
+        reqs.push(cellFmt(sid, i, i + 1, 0, TOTAL_COLS, ARMADO_HDR_BG, { bold: true, fs: 10, color: WHT_TXT, ha: 'LEFT' }));
+      }
+      else if (m.type === 'armado-totals') {
+        // A–B: labels TIPO/DESTINO; C–H: "Total armado: N" bold
+        reqs.push(cellFmt(sid, i, i + 1, 0, 2, HDR_BG, { bold: true, fs: 10, color: WHT_TXT }));
+        reqs.push(cellFmt(sid, i, i + 1, 2, TOTAL_COLS, HDR_BG, { bold: true, fs: 10, color: WHT_TXT }));
+      }
       else if (m.type === 'rm-data') {
-        // A, B always white/blank
         reqs.push(cellFmt(sid, i, i + 1, 0, 2, WHITE, { bold: false, fs: 10 }));
         for (let d = 0; d < 6; d++) {
           const entry = rmDays[d][m.slot];
@@ -225,17 +263,31 @@ export async function POST(request: NextRequest) {
           ));
         }
       }
+      else if (m.type === 'armado-data') {
+        reqs.push(cellFmt(sid, i, i + 1, 0, 2, WHITE, { bold: false, fs: 10 }));
+        for (let d = 0; d < 6; d++) {
+          const entry = armadoDays[d][m.slot];
+          reqs.push(cellFmt(sid, i, i + 1, 2 + d, 3 + d,
+            entry ? (entry.isFal ? ARMADO_PINK : ARMADO_GREEN) : WHITE,
+            { bold: !!entry, fs: 10 }
+          ));
+        }
+      }
     }
 
-    // Column widths: A=80, B=60, C–H=90
-    reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 80 }, fields: 'pixelSize' } });
-    reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 60 }, fields: 'pixelSize' } });
+    // Column widths: A=80, B=100 (DESTINO label fits), C–H=90
+    reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 80  }, fields: 'pixelSize' } });
+    reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 100 }, fields: 'pixelSize' } });
     reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: 2, endIndex: TOTAL_COLS }, properties: { pixelSize: 90 }, fields: 'pixelSize' } });
 
     // Row heights
     for (let i = 0; i < meta.length; i++) {
       const t = meta[i].type;
-      const px = t === 'title' ? 40 : t === 'header' ? 26 : (t === 'rm-hdr' || t === 'fal-hdr') ? 24 : 22;
+      const px = t === 'title' ? 40
+               : t === 'header' ? 26
+               : (t === 'rm-hdr' || t === 'fal-hdr' || t === 'armado-hdr') ? 24
+               : t === 'armado-totals' ? 26
+               : 22;
       reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } });
     }
 
