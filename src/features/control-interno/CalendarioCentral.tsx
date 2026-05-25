@@ -65,14 +65,11 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
       (local[dia]?.rm    || []).forEach(c => rmSet.add(c));
     }
 
-    const sortByName = (a: string, b: string) =>
-      (tiendas[a]?.n || a).localeCompare(tiendas[b]?.n || b, 'es');
-
-    const falNorte  = [...falSet].filter(c =>  ZONA_NORTE_FAL.has(c)).sort(sortByName);
-    const falSur    = [...falSet].filter(c => !ZONA_NORTE_FAL.has(c)).sort(sortByName);
-    const costaList = [...costaSet].sort(sortByName);
-    const rmMalls   = [...rmSet].filter(c =>  RM_MALLS.has(c)).sort(sortByName);
-    const rmRegular = [...rmSet].filter(c => !RM_MALLS.has(c)).sort(sortByName);
+    // Preserve insertion order (= screen order) — no alphabetical sort
+    const falSur    = [...falSet].filter(c => !ZONA_NORTE_FAL.has(c));
+    const falNorte  = [...falSet].filter(c =>  ZONA_NORTE_FAL.has(c));
+    const costaList = [...costaSet];
+    const rmAll     = [...rmSet]; // malls and regular combined, as shown on screen
 
     function daysFor(cod: string, grp: 'fal' | 'costa' | 'rm'): boolean[] {
       return DIAS.map(d => !!(local[d]?.[grp] || []).includes(cod));
@@ -99,10 +96,6 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
       return `<tr><td colspan="7" style="background:${color};color:#fff;font-weight:bold;font-size:12px;padding:6px 10px;letter-spacing:0.5px">${title}</td></tr>`;
     }
 
-    function subRow(title: string, color: string): string {
-      return `<tr><td colspan="7" style="background:${color};color:#fff;font-size:10px;padding:3px 10px">${title}</td></tr>`;
-    }
-
     function emptyRow(): string {
       return `<tr><td colspan="7" style="color:#aaa;font-style:italic;font-size:10px;text-align:center;padding:4px">— sin tiendas asignadas —</td></tr>`;
     }
@@ -110,17 +103,17 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
     const today = new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
 
     const rows = [
-      sectionRow('🏢 REGIONES — Bodega Regiones', '#1e3a5f'),
-      subRow('Zona Norte · Antofagasta · La Serena', '#2563EB'),
-      ...(falNorte.length ? falNorte.map(c => storeRow(c, 'fal', '#DBEAFE', '#2563EB')) : [emptyRow()]),
-      subRow('Zona Sur · Macrozona Sur', '#B45309'),
-      ...(falSur.length ? falSur.map(c => storeRow(c, 'fal', '#FEF9C3', '#D97706')) : [emptyRow()]),
-      sectionRow('🌊 COSTA VALPARAÍSO — Bodega Santiago', '#065f46'),
-      ...(costaList.length ? costaList.map(c => storeRow(c, 'costa', '#D1FAE5', '#059669')) : [emptyRow()]),
+      sectionRow('🏢 REGIONES (SUR) — Bodega Regiones', '#7B4F00'),
+      ...(falSur.length   ? falSur.map(c   => storeRow(c, 'fal',   '#FFF3CD', '#D4A017')) : [emptyRow()]),
+      sectionRow('🏢 REGIONES (NORTE) — Bodega Regiones', '#1e3a5f'),
+      ...(falNorte.length ? falNorte.map(c => storeRow(c, 'fal',   '#FFFDE7', '#F59E0B')) : [emptyRow()]),
+      sectionRow('🌊 RUTA V REGIÓN — Bodega Santiago', '#0369A1'),
+      ...(costaList.length ? costaList.map(c => storeRow(c, 'costa', '#DBEAFE', '#0284C7')) : [emptyRow()]),
       sectionRow('📦 RM — Bodega Santiago', '#1f2937'),
-      subRow('Tiendas RM', '#4B5563'),
-      ...(rmRegular.length ? rmRegular.map(c => storeRow(c, 'rm', '#F3F4F6', '#4B5563')) : [emptyRow()]),
-      ...(rmMalls.length ? [subRow('Malls RM', '#9D174D'), ...rmMalls.map(c => storeRow(c, 'rm', '#FCE7F3', '#DB2777'))] : []),
+      ...(rmAll.length ? rmAll.map(c => storeRow(c, 'rm',
+        RM_MALLS.has(c) ? '#FFE4EC' : '#F9FAFB',
+        RM_MALLS.has(c) ? '#DB2777' : '#6B7280',
+      )) : [emptyRow()]),
     ].join('\n');
 
     const html = `<!DOCTYPE html>
@@ -149,12 +142,12 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
 </head>
 <body>
   <h1>Calendario de Despacho — KiosClub</h1>
-  <p class="subtitle">Impreso el ${today}</p>
+  <p class="subtitle">Impreso el ${today} · Orden: Regiones Sur → Regiones Norte → V Región → RM · Malls</p>
   <div class="legend">
-    <div class="leg-item"><div class="leg-dot" style="background:#2563EB"></div>Zona Norte (Regiones)</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#D97706"></div>Zona Sur (Regiones)</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#059669"></div>Costa Valparaíso</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#4B5563"></div>RM</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#D4A017"></div>Regiones (Sur)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#F59E0B"></div>Regiones (Norte)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#0284C7"></div>Ruta V Región (Costa)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#6B7280"></div>RM</div>
     <div class="leg-item"><div class="leg-dot" style="background:#DB2777"></div>Malls RM</div>
   </div>
   <table>
@@ -356,18 +349,35 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
                 onDrop={e => { e.currentTarget.classList.remove('border-kred', 'bg-kred/[0.04]'); onDrop(e, dia); }}
                 className="min-h-[56px] bg-white rounded-[12px] border-2 border-dashed border-black/[0.10] p-2.5 flex flex-wrap gap-1.5 transition-all shadow-sm"
               >
-                {ts.map(cod => (
-                  <div
-                    key={cod} draggable
-                    onDragStart={e => onDragStart(e, dia, cod)}
-                    title={tiendas[cod]?.n || cod}
-                    className="h-8 px-2.5 rounded-[7px] bg-kbg border-[1.5px] border-black/[0.10] font-mono text-[13px] font-bold text-ktext cursor-grab flex items-center gap-1.5 shadow-sm select-none hover:border-kred/[0.4] transition-colors"
-                  >
-                    {formatCod(cod)}
-                    <span onClick={() => cfgRm(dia, cod)}
-                      className="text-kmuted text-[12px] cursor-pointer hover:text-kred transition-colors">✕</span>
-                  </div>
-                ))}
+                {ts.map(cod => {
+                  const chipBg =
+                    grp === 'costa'              ? '#DBEAFE' :
+                    grp === 'fal' && !ZONA_NORTE_FAL.has(cod) ? '#FFF3CD' :
+                    grp === 'fal' &&  ZONA_NORTE_FAL.has(cod) ? '#FFFDE7' :
+                    RM_MALLS.has(cod)            ? '#FFE4EC' : '#F3F4F6';
+                  const chipBorder =
+                    grp === 'costa'              ? '#93C5FD' :
+                    grp === 'fal' && !ZONA_NORTE_FAL.has(cod) ? '#D4A017' :
+                    grp === 'fal' &&  ZONA_NORTE_FAL.has(cod) ? '#F59E0B' :
+                    RM_MALLS.has(cod)            ? '#F9A8D4' : '#D1D5DB';
+                  const chipText =
+                    grp === 'costa'              ? '#1E40AF' :
+                    grp === 'fal'                ? '#78350F' :
+                    RM_MALLS.has(cod)            ? '#9D174D' : '#374151';
+                  return (
+                    <div
+                      key={cod} draggable
+                      onDragStart={e => onDragStart(e, dia, cod)}
+                      title={tiendas[cod]?.n || cod}
+                      style={{ background: chipBg, borderColor: chipBorder, color: chipText }}
+                      className="h-8 px-2.5 rounded-[7px] border-[1.5px] font-mono text-[13px] font-bold cursor-grab flex items-center gap-1.5 shadow-sm select-none transition-colors"
+                    >
+                      {formatCod(cod)}
+                      <span onClick={() => cfgRm(dia, cod)}
+                        className="text-[12px] cursor-pointer opacity-50 hover:opacity-100 transition-opacity">✕</span>
+                    </div>
+                  );
+                })}
                 {ts.length === 0 && (
                   <span className="text-[12px] text-black/[0.20] italic self-center px-1">Sin tiendas asignadas</span>
                 )}
