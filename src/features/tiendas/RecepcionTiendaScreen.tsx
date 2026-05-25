@@ -26,7 +26,7 @@ export interface FotoRegistro {
 }
 
 type SessionPhase = 'foto-cd' | 'entregas';
-type DeliveryStep = 'sello-llegada' | 'scanner' | 'form' | 'done';
+type DeliveryStep = 'sello-llegada' | 'scanner' | 'otp' | 'form' | 'done';
 
 const SELLO_OPTS: { value: SelloEstado; label: string; color: string; bg: string; icon: string }[] = [
   { value: 'intacto', label: 'Intacto', color: '#10B981', bg: 'rgba(16,185,129,0.12)', icon: '✅' },
@@ -86,6 +86,12 @@ export function RecepcionTiendaScreen() {
   const [qrData,       setQrData]       = useState<QRData | null>(null);
   const [qrError,      setQrError]      = useState('');
 
+  // OTP
+  const [otpInput,     setOtpInput]     = useState('');
+  const [otpLoading,   setOtpLoading]   = useState(false);
+  const [otpError,     setOtpError]     = useState('');
+  const [otpSentTo,    setOtpSentTo]    = useState('');
+
   // CD photo
   function handleCdFotoCaptura(e: React.ChangeEvent<HTMLInputElement>) {
     capturarFoto(e, setCdFoto);
@@ -100,11 +106,54 @@ export function RecepcionTiendaScreen() {
     if (selloLlegada && selloEstado) setStep('scanner');
   }
 
-  // QR scanner
+  // QR scanner — tras detectar el QR envía OTP y va al paso de validación
   function handleQRDetected(raw: string) {
     const data = parseQRData(raw);
     if (!data) { setQrError('QR inválido. Intenta de nuevo.'); return; }
-    setQrData(data); setQrError(''); setStep('form');
+    setQrData(data); setQrError('');
+    setOtpInput(''); setOtpError(''); setOtpSentTo('');
+    setStep('otp');
+    // Dispara el envío del OTP (no bloquea la navegación al paso)
+    void enviarOTP(data.cod);
+  }
+
+  async function enviarOTP(store_cod: string) {
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const res = await fetch('/api/recepcion-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod }),
+      });
+      const json = await res.json() as { ok?: boolean; email_sent_to?: string; error?: string };
+      if (!res.ok) { setOtpError(json.error ?? 'Error enviando código'); }
+      else { setOtpSentTo(json.email_sent_to ?? ''); }
+    } catch {
+      setOtpError('Sin conexión. Reintenta.');
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function handleValidarOTP() {
+    if (!qrData || otpInput.length !== 6) return;
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const res = await fetch('/api/recepcion-otp', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod: qrData.cod, otp: otpInput }),
+      });
+      const json = await res.json() as { valid?: boolean; error?: string };
+      if (json.valid) { setStep('form'); }
+      else { setOtpError(json.error ?? 'Código incorrecto'); }
+    } catch {
+      setOtpError('Sin conexión. Reintenta.');
+    } finally {
+      setOtpLoading(false);
+    }
   }
 
   // After form completes
@@ -114,6 +163,7 @@ export function RecepcionTiendaScreen() {
   function handleSiguienteEntrega() {
     setSelloLlegada(null); setSelloEstado(null);
     setQrData(null); setQrError('');
+    setOtpInput(''); setOtpError(''); setOtpSentTo('');
     setStep('sello-llegada');
   }
 
@@ -306,6 +356,100 @@ export function RecepcionTiendaScreen() {
                 )}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <QRScanner onDetect={handleQRDetected} />
+                </div>
+              </div>
+            )}
+
+            {/* ── PASO 2b: Código OTP ────────────────────────────────────── */}
+            {step === 'otp' && qrData && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px 48px' }}>
+
+                {/* Progress bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 22 }}>
+                  {['Sello llegada', 'QR', 'Código', 'Formulario'].map((label, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < 3 ? 1 : 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: i <= 2 ? '#1B2A6B' : '#E5E7EB', color: i <= 2 ? '#fff' : '#9CA3AF', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</div>
+                        <span style={{ fontSize: 10, fontWeight: i === 2 ? 700 : 400, color: i === 2 ? '#1B2A6B' : '#9CA3AF', whiteSpace: 'nowrap' }}>{label}</span>
+                      </div>
+                      {i < 3 && <div style={{ flex: 1, height: 2, background: i < 2 ? '#1B2A6B' : '#E5E7EB', margin: '0 6px' }} />}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
+                  <div style={{ background: 'linear-gradient(135deg, #1B2A6B, #2D3F8C)', padding: '20px 18px', textAlign: 'center' }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Confirmación de recepción</p>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#fff' }}>{qrData.cod}</p>
+                  </div>
+
+                  <div style={{ padding: '22px 18px 26px' }}>
+                    {/* Estado del envío */}
+                    {otpLoading && !otpSentTo && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#EFF6FF', borderRadius: 12, padding: '12px 16px', marginBottom: 20 }}>
+                        <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+                        <span style={{ fontSize: 13, color: '#1D4ED8' }}>Enviando código al correo de la tienda…</span>
+                      </div>
+                    )}
+
+                    {otpSentTo && !otpError && (
+                      <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', marginBottom: 20 }}>
+                        <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 700, color: '#166534' }}>✅ Código enviado</p>
+                        <p style={{ margin: 0, fontSize: 12, color: '#166534' }}>Correo enviado a <strong>{otpSentTo}</strong></p>
+                      </div>
+                    )}
+
+                    {otpError && (
+                      <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', marginBottom: 20 }}>
+                        <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#B91C1C' }}>⚠️ {otpError}</p>
+                        <button onClick={() => void enviarOTP(qrData.cod)}
+                          style={{ fontSize: 12, color: '#1D4ED8', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+                          Reenviar código
+                        </button>
+                      </div>
+                    )}
+
+                    <p style={{ margin: '0 0 16px', fontSize: 14, color: '#374151', lineHeight: 1.6 }}>
+                      Pide al encargado de la tienda el código de 6 dígitos que llegó a su correo.
+                    </p>
+
+                    {/* Input OTP */}
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      value={otpInput}
+                      onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onKeyDown={e => e.key === 'Enter' && void handleValidarOTP()}
+                      placeholder="000000"
+                      style={{
+                        width: '100%', height: 64, textAlign: 'center', fontSize: 34, fontWeight: 900,
+                        letterSpacing: 10, borderRadius: 14, outline: 'none', marginBottom: 14,
+                        background: '#F8FAFF', border: '2px solid #E5E7EB', color: '#111827',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+
+                    <button
+                      onClick={() => void handleValidarOTP()}
+                      disabled={otpInput.length !== 6 || otpLoading}
+                      style={{
+                        width: '100%', padding: '16px 0', border: 'none', borderRadius: 14,
+                        background: otpInput.length === 6 && !otpLoading ? '#1B2A6B' : '#E5E7EB',
+                        color: otpInput.length === 6 && !otpLoading ? '#fff' : '#9CA3AF',
+                        fontSize: 16, fontWeight: 700, cursor: otpInput.length === 6 && !otpLoading ? 'pointer' : 'not-allowed',
+                        boxShadow: otpInput.length === 6 && !otpLoading ? '0 4px 20px rgba(27,42,107,0.4)' : 'none',
+                        transition: 'all 0.2s', marginBottom: 10,
+                      }}>
+                      {otpLoading ? 'Verificando…' : 'Confirmar código →'}
+                    </button>
+
+                    <button onClick={() => setStep('scanner')}
+                      style={{ width: '100%', background: 'none', border: 'none', color: '#9CA3AF', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: '6px 0' }}>
+                      ← Volver a escanear QR
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

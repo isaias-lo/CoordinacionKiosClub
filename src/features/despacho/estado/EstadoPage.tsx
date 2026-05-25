@@ -386,6 +386,18 @@ export function EstadoPage() {
           body: JSON.stringify({ cod: storeCod, estado: 'Pendiente' }),
         }).catch(() => {});
 
+        // Link guide folios to ruta manifest (fire-and-forget)
+        void fetch('/api/ruta-guias', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            store_cod: storeCod,
+            fecha: new Date().toISOString().split('T')[0],
+            folios: data.guias.map(g => g.num),
+            drive_url: driveFileId,
+          }),
+        });
+
         assigned++;
       } catch { skipped++; }
     }

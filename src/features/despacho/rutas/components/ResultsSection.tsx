@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
-import RouteCard  from './RouteCard';
-import MapSection from './MapSection';
+import RouteCard       from './RouteCard';
+import MapSection      from './MapSection';
+import ManifiestoPanel from './ManifiestoPanel';
 import { fechaTxt, fechaLargaTxt } from '../utils/helpers';
 import type { Ruta, StoreItem } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -43,6 +44,7 @@ export default function ResultsSection({
 
   const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
   const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
+  const [manifiestoOpen, setManifiestoOpen] = useState(false);
 
   function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
     setKmPorRuta(kmMap);
@@ -151,6 +153,29 @@ export default function ResultsSection({
           </div>
         )}
       </div>
+
+      {/* Manifiesto de Ruta */}
+      <div className="mt-[9px] no-print">
+        <button
+          onClick={() => setManifiestoOpen(true)}
+          className="w-full h-[46px] rounded-kios2 text-white text-[14px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+          style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', boxShadow: '0 4px 14px rgba(26,37,80,0.3)' }}
+        >
+          📋 Generar Manifiestos de Ruta
+        </button>
+        <div className="mt-[5px] text-[10px] text-kmuted text-center">
+          Genera el documento único por ruta · incluye QR maestro · reemplaza guías físicas
+        </div>
+      </div>
+
+      <ManifiestoPanel
+        rutas={rutas}
+        fecha={fecha}
+        supervisor={supervisor}
+        tiendas={tiendas}
+        isOpen={manifiestoOpen}
+        onClose={() => setManifiestoOpen(false)}
+      />
     </div>
   );
 }

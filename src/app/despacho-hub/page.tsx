@@ -29,9 +29,9 @@ export default function DespachoHubPage() {
       Icon: Route, iconColor: 'rgba(110,231,183,0.9)',
     },
     {
-      id: 'conductores', label: 'Conductores', sub: 'Recepción de despacho',
+      id: 'panel-choferes', label: 'Panel Choferes', sub: 'Hub Conductor · Recepción',
       border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
-      onClick: () => router.push('/tiendas'),
+      onClick: () => router.push('/panel-choferes'),
       Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
     },
     {
