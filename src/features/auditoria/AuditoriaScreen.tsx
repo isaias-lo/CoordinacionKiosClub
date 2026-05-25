@@ -56,8 +56,18 @@ const CORR_COLOR: Record<CorreccionAuditoria, string> = {
 const CORR_LABEL: Record<CorreccionAuditoria, string> = { correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante' };
 const CORR_COLORS: Record<CorreccionAuditoria, string> = { correcto: '#16A34A', faltante: '#D32F2F', sobrante: '#D97706', cruce: '#2563EB' };
 const LINE_COLORS = ['#1a2550', '#16A34A', '#D97706', '#2563EB', '#9333EA', '#D32F2F'];
-const DRAFT_KEY        = 'audit_form_draft';
+const AUDIT_SESSION_KEY = 'audit_active_session_v1';
 const OFFLINE_QUEUE_KEY = 'audit_offline_queue';
+
+// BarcodeDetector Web API — available in Chrome 83+ / Safari 17.4+
+declare global {
+  interface BarcodeDetectorOptions { formats?: string[] }
+  interface DetectedBarcode { rawValue: string; format: string }
+  class BarcodeDetector {
+    constructor(options?: BarcodeDetectorOptions);
+    detect(image: ImageBitmapSource | HTMLVideoElement): Promise<DetectedBarcode[]>;
+  }
+}
 
 interface OfflineQueueItem { row: Record<string, unknown>; userId: string; entryId: string; }
 
@@ -486,6 +496,117 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── Camera Barcode Scanner ── */
+function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => boolean; onClose: () => void }) {
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const animRef   = useRef<number>(0);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [status, setStatus] = useState<'loading' | 'scanning' | 'found' | 'error'>('loading');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('BarcodeDetector' in window)) {
+      setStatus('error');
+      setErrorMsg('Tu navegador no soporta escaneo por cámara. Usa la pistola lectora o actualiza Chrome.');
+      return;
+    }
+
+    let stopped = false;
+    const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'data_matrix', 'code_93'] });
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } })
+      .then(stream => {
+        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        video.play().then(() => {
+          setStatus('scanning');
+          const tick = async () => {
+            if (stopped || !videoRef.current) return;
+            try {
+              const codes = await detector.detect(videoRef.current);
+              if (codes.length > 0) {
+                stopped = true;
+                setStatus('found');
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                setTimeout(() => { onScan(codes[0].rawValue); onClose(); }, 350);
+                return;
+              }
+            } catch { /* frame decode error, skip */ }
+            animRef.current = requestAnimationFrame(tick);
+          };
+          animRef.current = requestAnimationFrame(tick);
+        });
+      })
+      .catch(err => {
+        if (!stopped) { setStatus('error'); setErrorMsg(err instanceof Error ? err.message : 'Sin acceso a cámara'); }
+      });
+
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(animRef.current);
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#000' }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: 'rgba(0,0,0,0.75)' }}>
+        <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full border border-white/20 text-white text-[20px] leading-none bg-transparent cursor-pointer">‹</button>
+        <span className="text-white font-bold text-[15px] flex-1">Escanear código del pallet</span>
+        {status === 'scanning' && <span className="text-[11px] text-green-400 font-semibold animate-pulse">● Buscando…</span>}
+      </div>
+
+      {/* Body */}
+      {status === 'error' ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8 text-center">
+          <div className="text-[52px]">📷</div>
+          <div className="text-white/80 text-[15px] leading-relaxed">{errorMsg}</div>
+          <button onClick={onClose} className="px-6 py-3 rounded-card font-bold text-white border border-white/30 bg-white/10 cursor-pointer">Cerrar</button>
+        </div>
+      ) : status === 'found' ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="text-[64px]">✅</div>
+          <div className="text-white font-bold text-[20px]">¡Código detectado!</div>
+        </div>
+      ) : (
+        <div className="flex-1 relative overflow-hidden">
+          <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+
+          {/* Viewfinder overlay */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ background: 'rgba(0,0,0,0.45)' }}>
+            {/* Transparent scanning window */}
+            <div className="relative bg-transparent" style={{ width: 280, height: 130, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}>
+              {/* Corners */}
+              {[['top-0 left-0','border-t-2 border-l-2'],['top-0 right-0','border-t-2 border-r-2'],['bottom-0 left-0','border-b-2 border-l-2'],['bottom-0 right-0','border-b-2 border-r-2']].map(([pos, borders]) => (
+                <div key={pos} className={`absolute w-5 h-5 border-white ${pos} ${borders}`} />
+              ))}
+              {/* Scan line */}
+              {status === 'scanning' && (
+                <div className="absolute inset-x-0 h-0.5 bg-red-400/90" style={{ animation: 'scanline 2s linear infinite', top: '50%' }} />
+              )}
+            </div>
+            <div className="mt-5 text-white/70 text-[13px] font-medium">Centra el código de barras del pallet</div>
+          </div>
+
+          {/* Loading state */}
+          {status === 'loading' && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+              <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
+      )}
+
+      <style>{`@keyframes scanline { 0%,100%{top:15%} 50%{top:85%} }`}</style>
     </div>
   );
 }
@@ -1598,6 +1719,9 @@ export function AuditoriaScreen() {
   const [confirmSubmit,    setConfirmSubmit]    = useState(false);
   const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
   const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [cameraOpen,       setCameraOpen]       = useState(false);
+  const [sessionRestored,  setSessionRestored]  = useState(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const palletsInputRef = useRef<HTMLInputElement>(null);
   const pendingScanRef  = useRef<string[] | null>(null);
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
@@ -1722,31 +1846,104 @@ export function AuditoriaScreen() {
     document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Autosave draft to sessionStorage (picker excluded — Odoo assigns it fresh per operation)
-  useEffect(() => {
-    if (!auditor && !tienda) return;
-    const handle = setTimeout(() => {
-      try {
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ auditor, pickerNombre, tiendaCod: tienda?.cod, tipo, pallets, tieneErrores, tiposError }));
-      } catch { /* empty */ }
-    }, 1500);
-    return () => clearTimeout(handle);
-  }, [auditor, pickerNombre, tienda, tipo, pallets, tieneErrores, tiposError]);
+  // ── Persistent session: save to localStorage (survives app switch + page refresh) ──
+  const saveSession = useCallback(() => {
+    if (formPhase === 'scan' || formPhase === 'result') {
+      try { localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* */ }
+      return;
+    }
+    try {
+      localStorage.setItem(AUDIT_SESSION_KEY, JSON.stringify({
+        formPhase, auditStartTime, auditor, pickerNombre, picker,
+        tiendaCod: tienda?.cod ?? null, tipo, operaciones, pallets,
+        tieneErrores, tiposError, productos, observaciones,
+        savedAt: new Date().toISOString(),
+      }));
+    } catch { /* storage full */ }
+  }, [formPhase, auditStartTime, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones]);
 
-  // Restore draft on mount
+  // Autosave every second when setup/execution is active
+  useEffect(() => {
+    if (formPhase !== 'execution' && formPhase !== 'setup') return;
+    const handle = setTimeout(saveSession, 1000);
+    return () => clearTimeout(handle);
+  }, [formPhase, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
+
+  // Save immediately when tab is hidden (user switches app)
+  useEffect(() => {
+    const onHide = () => saveSession();
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, [saveSession]);
+
+  // Warn before navigating away while audit is in progress
+  useEffect(() => {
+    if (formPhase !== 'execution') return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [formPhase]);
+
+  // Wake Lock: prevent screen from turning off during execution
+  useEffect(() => {
+    if (formPhase !== 'execution' || typeof navigator === 'undefined' || !navigator.wakeLock) return;
+    let cancelled = false;
+    navigator.wakeLock.request('screen').then(lock => {
+      if (!cancelled) wakeLockRef.current = lock;
+    }).catch(() => { /* optional feature */ });
+    return () => {
+      cancelled = true;
+      wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [formPhase]);
+
+  // Re-acquire wake lock when page becomes visible again (OS releases it on hide)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.wakeLock) return;
+    const reacquire = () => {
+      if (document.visibilityState === 'visible' && formPhase === 'execution') {
+        navigator.wakeLock!.request('screen').then(lock => { wakeLockRef.current = lock; }).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', reacquire);
+    return () => document.removeEventListener('visibilitychange', reacquire);
+  }, [formPhase]);
+
+  // Restore session on mount (before auth-fill effects)
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(DRAFT_KEY);
+      const raw = localStorage.getItem(AUDIT_SESSION_KEY);
       if (!raw) return;
-      const draft = JSON.parse(raw) as { auditor?: string; pickerNombre?: string; tiendaCod?: string; tipo?: TipoAuditoria; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[] };
-      if (draft.auditor) setAuditor(draft.auditor);
-      if (draft.pickerNombre) setPickerNombre(draft.pickerNombre);
-      if (draft.tiendaCod) setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === draft.tiendaCod) ?? null);
-      if (draft.tipo) setTipo(draft.tipo);
-      if (draft.pallets) setPallets(draft.pallets);
-      if (draft.tieneErrores !== undefined) setTieneErrores(draft.tieneErrores ?? null);
-      if (draft.tiposError?.length) setTiposError(draft.tiposError);
-    } catch { /* empty */ }
+      type Sess = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; };
+      const s = JSON.parse(raw) as Sess;
+      if (!s.savedAt) return;
+      // Discard sessions older than 10 hours
+      if (Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) { localStorage.removeItem(AUDIT_SESSION_KEY); return; }
+      if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
+      if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
+      if (s.picker)         setPicker(s.picker);
+      if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
+      if (s.tipo)           setTipo(s.tipo);
+      if (s.operaciones?.length) setOperaciones(s.operaciones);
+      if (s.pallets)        setPallets(s.pallets);
+      if (s.tieneErrores !== undefined) setTieneErrores(s.tieneErrores ?? null);
+      if (s.tiposError?.length) setTiposError(s.tiposError);
+      if (s.productos?.length)  setProductos(s.productos);
+      if (s.observaciones)  setObservaciones(s.observaciones);
+      if (s.formPhase === 'execution' || s.formPhase === 'setup') {
+        setFormPhase(s.formPhase as 'execution' | 'setup');
+        if (s.formPhase === 'execution' && s.auditStartTime) {
+          setAuditStartTime(s.auditStartTime);
+          const elapsed = Math.floor((Date.now() - new Date(s.auditStartTime).getTime()) / 1000);
+          setTimerSeconds(Math.max(0, elapsed));
+          // Restart the interval from current elapsed time
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = setInterval(() => setTimerSeconds(prev => prev + 1), 1000);
+          setSessionRestored(true);
+        }
+      }
+    } catch { /* corrupt data */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1933,7 +2130,8 @@ export function AuditoriaScreen() {
     try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
     sheetsAuditoriaWrite(entry, state.sheetsUrl);
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
-    try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* empty */ }
+    try { localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
+    setSessionRestored(false);
     setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
@@ -2236,6 +2434,12 @@ export function AuditoriaScreen() {
                 <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
                 <div className="mt-5">
                   <BarcodeInputScanner onScan={handleBarcodeScan} />
+                  <button type="button" onClick={() => setCameraOpen(true)}
+                    className="w-full mt-2 flex items-center justify-center gap-2.5 py-3 rounded-card border-2 cursor-pointer transition-all active:scale-[0.99]"
+                    style={{ background: 'rgba(37,99,235,0.06)', borderColor: 'rgba(37,99,235,0.30)', color: '#2563EB' }}>
+                    <span className="text-[22px]">📷</span>
+                    <span className="font-barlow-condensed text-[16px] font-bold">Escanear con cámara</span>
+                  </button>
                 </div>
                 <button type="button" onClick={() => setFormPhase('setup')}
                   className="w-full mt-2 py-3 border-2 border-dashed border-navy/20 rounded-card font-barlow-condensed text-[15px] font-bold text-navy/50 cursor-pointer bg-transparent transition-all active:bg-navy/5">
@@ -2417,6 +2621,15 @@ export function AuditoriaScreen() {
             {/* ══ FASE 3: EJECUCIÓN ══ */}
             {formPhase === 'execution' && (
               <>
+                {/* Session restored banner */}
+                {sessionRestored && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-card border border-info/30 text-info text-[12px] font-semibold"
+                    style={{ background: 'rgba(37,99,235,0.06)' }}>
+                    <span className="text-[16px]">🔄</span>
+                    <span className="flex-1">Sesión restaurada — el cronómetro continúa desde donde lo dejaste</span>
+                    <button onClick={() => setSessionRestored(false)} className="text-info/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
+                  </div>
+                )}
                 {/* Timer */}
                 <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4"
                   style={{ background: 'linear-gradient(135deg,rgba(26,37,80,0.06),rgba(26,37,80,0.02))', border: '2px solid rgba(26,37,80,0.14)', boxShadow: '0 4px 20px rgba(26,37,80,0.10)' }}>
@@ -2674,6 +2887,15 @@ export function AuditoriaScreen() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── CONFIRM SUBMIT MODAL (#6) ── */}
+      {/* ── CAMERA BARCODE SCANNER OVERLAY ── */}
+      {cameraOpen && (
+        <CameraBarcodeScanner
+          onScan={(raw) => { const ok = handleBarcodeScan(raw); setCameraOpen(false); return ok; }}
+          onClose={() => setCameraOpen(false)}
+        />
       )}
 
       {/* ── CONFIRM SUBMIT MODAL (#6) ── */}
