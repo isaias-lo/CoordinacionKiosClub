@@ -16,7 +16,7 @@ const ZONA_NORTE_FAL = new Set(['41ANA', '42ANP', '39PSB', '51SER']);
 const RM_MALLS       = new Set(['16PQA', '20CTC', '29CFL', '52MUT', '19SUB', '45EST', '49PTA']);
 
 const TITLE          = '⚡ CALENDARIO DE DESPACHO — Flota Luis (sale día siguiente del armado) | Falabella (retira mismo día 12:00-14:00) | Sábado → despacha Lunes';
-const RM_LABEL       = 'RM';
+const RM_LABEL       = 'RM/COSTA';
 const FAL_LABEL      = '🏠 FALABELLA — Retira mismo día del armado (aprox 12:00-14:00)';
 const ARMADO_LABEL   = '✅ ARMADO SECO (vista CD) — Guía se arma cada día | Verde = para Flota Luis (sale día siguiente) | Rosa = para Falabella (retira mismo día)';
 
@@ -119,8 +119,8 @@ export async function POST(request: NextRequest) {
 
     // ── 1. Build per-day store lists ─────────────────────────────────────────
     const rmDays: StoreDayEntry[][] = DIAS.map(dia => [
-      ...(calendario[dia]?.rm    || []).map(c => ({ code: c, type: (RM_MALLS.has(c) ? 'mall' : 'rm') as StoreType })),
       ...(calendario[dia]?.costa || []).map(c => ({ code: c, type: 'costa' as StoreType })),
+      ...(calendario[dia]?.rm    || []).map(c => ({ code: c, type: (RM_MALLS.has(c) ? 'mall' : 'rm') as StoreType })),
     ]);
 
     const falDays: StoreDayEntry[][] = DIAS.map(dia =>
@@ -130,8 +130,8 @@ export async function POST(request: NextRequest) {
     // ARMADO SECO: all stores combined (rm + costa then fal), per day
     type ArmadoEntry = { code: string; isFal: boolean };
     const armadoDays: ArmadoEntry[][] = DIAS.map(dia => [
-      ...(calendario[dia]?.rm    || []).map(c => ({ code: c, isFal: false })),
       ...(calendario[dia]?.costa || []).map(c => ({ code: c, isFal: false })),
+      ...(calendario[dia]?.rm    || []).map(c => ({ code: c, isFal: false })),
       ...(calendario[dia]?.fal   || []).map(c => ({ code: c, isFal: true  })),
     ]);
     const maxArmadoRows = Math.max(0, ...armadoDays.map(d => d.length));

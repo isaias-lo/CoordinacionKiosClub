@@ -12,6 +12,12 @@ import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
+import { supabase } from '../../../../lib/supabase';
+
+/* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
+const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
+  Object.entries(TIENDAS).map(([name, t]) => [t.cod, name])
+);
 
 /* ── Per-day calendar overrides ── */
 const _today = new Date();
@@ -170,7 +176,8 @@ export function TiendasPage() {
   const [addDropActive,     setAddDropActive]      = useState(false);
   const [removeDropActive,  setRemoveDropActive]   = useState(false);
   const [multiDragOver,     setMultiDragOver]      = useState(false);
-  const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number }>>({});
+  const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number }>>({});
+  const [pickingSlots,     setPickingSlots]       = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [formRows,          setFormRows]           = useState<FormRow[]>([]);
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
@@ -244,6 +251,37 @@ export function TiendasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ── Load picking slots from picking_pallets (today) ── */
+  useEffect(() => {
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+    const load = async () => {
+      const { data } = await supabase
+        .from('picking_pallets')
+        .select('store_cod,tipo,contenido')
+        .eq('date', dateStr);
+      if (!data) return;
+      const slots: Record<string, { tipo: string; contenido: string }[]> = {};
+      for (const row of data) {
+        const name = COD_TO_TIENDA_NAME[row.store_cod];
+        if (!name) continue;
+        if (!slots[name]) slots[name] = [];
+        slots[name].push({ tipo: row.tipo || 'P', contenido: row.contenido || 'hogar' });
+      }
+      setPickingSlots(slots);
+    };
+
+    load();
+
+    const channel = supabase
+      .channel('picking-pallets-nacional')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets' }, () => load())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   const baseTodayCods = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
@@ -267,23 +305,58 @@ export function TiendasPage() {
     setGuia(''); setValor('');
   };
 
-  /* Initialize formRows when tienda changes */
+  const PICKING_PKG: Record<string, TipoPaquete>    = { P: 'pallet', C: 'contenedor', B: 'box' };
+  const PICKING_TIPO: Record<string, TipoContenido> = { comida: 'comida', hogar: 'hogar', mixto: 'comida-hogar' };
+
+  /* Initialize formRows when tienda changes — auto-fill from picking with contenido */
   useEffect(() => {
     resetForm();
     setEditingIdx(null);
     if (selectedTienda) {
       setTimeout(() => formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 60);
-      const preset = presets[selectedTienda];
-      if (preset) {
-        const existing = dispatchData[selectedTienda] || [];
-        const exP = existing.filter(i => i.pkg === 'pallet').length;
-        const exB = existing.filter(i => i.pkg === 'box').length;
-        const remP = Math.max(0, preset.pallets - exP);
-        const remB = Math.max(0, preset.bultos - exB);
-        const rows: FormRow[] = [];
-        for (let i = 0; i < remP; i++) rows.push({ id: `p${i}-${Date.now()}`, pkg: 'pallet', tipo: 'hogar', peso: '', alto: '', ancho: '100', largo: '120', guia: '', valor: '' });
-        for (let i = 0; i < remB; i++) rows.push({ id: `b${i}-${Date.now()}`, pkg: 'box',    tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
+
+      const existingItems  = dispatchData[selectedTienda] || [];
+      const slots          = pickingSlots[selectedTienda] ?? [];
+      const pickingP       = slots.filter(s => s.tipo === 'P').length;
+      const pickingC       = slots.filter(s => s.tipo === 'C').length;
+      const pickingB       = slots.filter(s => s.tipo === 'B').length;
+      const hasPickingData = pickingP > 0 || pickingC > 0 || pickingB > 0;
+
+      // Auto-fill preset counters from picking (only if no manual preset and no existing items)
+      const hasManualPreset = presets[selectedTienda] &&
+        (presets[selectedTienda].pallets > 0 || presets[selectedTienda].bultos > 0 || (presets[selectedTienda].contenedores ?? 0) > 0);
+      if (!hasManualPreset && existingItems.length === 0 && hasPickingData) {
+        setPresets(prev => ({ ...prev, [selectedTienda]: { pallets: pickingP, bultos: pickingB, contenedores: pickingC } }));
+      }
+
+      if (existingItems.length === 0 && hasPickingData) {
+        // Build form rows from picking slots — one row per slot with its contenido
+        const rows: FormRow[] = slots.map((s, i) => {
+          const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
+          const tipo = PICKING_TIPO[s.contenido] ?? 'hogar';
+          return {
+            id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '', alto: '',
+            ancho: pkg === 'pallet' ? '100' : '',
+            largo: pkg === 'pallet' ? '120' : '',
+            guia: '', valor: '',
+          };
+        });
         setFormRows(rows);
+      } else if (existingItems.length === 0) {
+        // No picking data — fall back to manual preset if set
+        const preset = presets[selectedTienda];
+        if (preset) {
+          const rows: FormRow[] = [];
+          for (let i = 0; i < preset.pallets; i++)
+            rows.push({ id: `p${i}-${Date.now()}`, pkg: 'pallet',     tipo: 'hogar', peso: '', alto: '', ancho: '100', largo: '120', guia: '', valor: '' });
+          for (let i = 0; i < preset.bultos; i++)
+            rows.push({ id: `b${i}-${Date.now()}`, pkg: 'box',        tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
+          for (let i = 0; i < (preset.contenedores ?? 0); i++)
+            rows.push({ id: `c${i}-${Date.now()}`, pkg: 'contenedor', tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
+          setFormRows(rows);
+        } else {
+          setFormRows([]);
+        }
       } else {
         setFormRows([]);
       }
@@ -291,7 +364,7 @@ export function TiendasPage() {
       setFormRows([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTienda]);
+  }, [selectedTienda, pickingSlots]);
 
   useEffect(() => {
     if (editingIdx !== null) return;
@@ -438,12 +511,12 @@ export function TiendasPage() {
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
 
-  const updateInlinePreset = (field: 'pallets' | 'bultos', value: string) => {
+  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores', value: string) => {
     if (!selectedTienda) return;
     const n = Math.max(0, parseInt(value) || 0);
-    const current = presets[selectedTienda] || { pallets: 0, bultos: 0 };
+    const current = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0 };
     setPresets(prev => ({ ...prev, [selectedTienda]: { ...current, [field]: n } }));
-    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : 'box';
+    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : field === 'contenedores' ? 'contenedor' : 'box';
     const existing = (dispatchData[selectedTienda] || []).filter(i => i.pkg === pkg).length;
     const savedRowCount = formRows.filter(r => r.pkg === pkg && r.saved).length;
     const needed = Math.max(0, n - existing - savedRowCount);
@@ -590,19 +663,37 @@ export function TiendasPage() {
       </div>
     );
 
-    const currentPreset = presets[selectedTienda] || { pallets: 0, bultos: 0 };
+    const currentPreset  = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const pkSlots        = pickingSlots[selectedTienda] ?? [];
+    const pickingRef     = { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length };
+    const hasPickingRef  = pickingRef.p > 0 || pickingRef.c > 0 || pickingRef.b > 0;
 
-    /* Inline P/B quantity setter — shown in both modes */
+    /* Inline P/B/C quantity setter — shown in both modes */
     const presetBar = (
-      <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2">
-        <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Cant.</span>
-        <div className="flex items-center gap-1.5">
+      <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
+        <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cant.</span>
+        {hasPickingRef && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
+            picking {pickingRef.p}P {pickingRef.c > 0 ? `${pickingRef.c}C ` : ''}{pickingRef.b > 0 ? `${pickingRef.b}B` : ''}
+          </span>
+        )}
+        <div className="flex items-center gap-1.5 ml-auto">
           <span className="font-barlow-condensed text-[12px] font-bold text-info">P</span>
           <input type="number" min="0" max="20"
             value={currentPreset.pallets || ''}
             placeholder="0" inputMode="numeric"
             onChange={e => updateInlinePreset('pallets', e.target.value)}
             className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none focus:border-info [-webkit-appearance:none]" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-barlow-condensed text-[12px] font-bold" style={{ color: '#6B21A8' }}>C</span>
+          <input type="number" min="0" max="20"
+            value={currentPreset.contenedores || ''}
+            placeholder="0" inputMode="numeric"
+            onChange={e => updateInlinePreset('contenedores', e.target.value)}
+            className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none [-webkit-appearance:none]"
+            style={{ outlineColor: '#6B21A8' }} />
         </div>
         <div className="flex items-center gap-1.5">
           <span className="font-barlow-condensed text-[12px] font-bold text-warn">B</span>

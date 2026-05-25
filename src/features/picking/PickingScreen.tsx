@@ -37,7 +37,17 @@ interface PalletSlot {
   state_key: string;
   picker_label: string;
   tipo: string;
+  contenido: string;
   created_at: string;
+}
+
+function categoriesToContenido(cats: string[]): string {
+  const low = cats.map(c => c.toLowerCase());
+  const hasComida = low.some(c => c.includes('comida') || c.includes('food') || c.includes('aliment'));
+  const hasHogar  = low.some(c => c.includes('hogar') || c.includes('home') || c.includes('bazar'));
+  if (hasComida && hasHogar) return 'mixto';
+  if (hasComida) return 'comida';
+  return 'hogar';
 }
 
 interface PrintRecord {
@@ -659,18 +669,16 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, totalStorePallets, isPrinted, colsPerRow, onPrintSelected, pickerType, onTypeChange }: {
-  group: PickerGroup; displayName: string; pallets: number;
-  onNameChange: (v: string) => void; onPalletsChange: (n: number) => void;
+function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots }: {
+  group: PickerGroup; displayName: string; palletsByTipo: Record<string, number>;
+  onNameChange: (v: string) => void; onTipoPalletsChange: (tipo: PickerType, n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
   totalPickers: number;
   assignedNums: number[];
-  totalStorePallets: number;
   isPrinted: boolean;
   colsPerRow: number;
   onPrintSelected: (palletNums: Set<number>) => void;
-  pickerType: PickerType;
-  onTypeChange: (t: PickerType) => void;
+  slots: PalletSlot[];
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -793,44 +801,41 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
             )}
           </div>
 
-          {/* Tipo de unidad: Pallet (P), Contenedor (C), Bulto (B) */}
+          {/* 3 independent counters: P, C, B */}
           <div>
-            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">Tipo de unidad</label>
+            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-2">Unidades</label>
             <div className="flex gap-2">
               {([
-                { key: 'P' as PickerType, label: 'Pallet',      desc: '120×100 cm',   color: '#1E3A8A' },
-                { key: 'C' as PickerType, label: 'Contenedor',  desc: '110×80×150 cm', color: '#6B21A8' },
-                { key: 'B' as PickerType, label: 'Bulto',       desc: 'Caja / Bolsa',  color: '#065F46' },
-              ]).map(({ key, label, desc, color }) => (
-                <button key={key} onClick={() => onTypeChange(key)}
-                  className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-xl border-2 cursor-pointer transition-all"
-                  style={{
-                    borderColor: pickerType === key ? color : 'rgba(26,37,80,0.12)',
-                    background: pickerType === key ? `${color}18` : 'transparent',
-                    color: pickerType === key ? color : '#6B7280',
-                  }}>
-                  <span className="text-[16px] font-black">{key}</span>
-                  <span className="text-[11px] font-semibold">{label}</span>
-                  <span className="text-[10px] opacity-70">{desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Cantidad */}
-          <div>
-            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">
-              Cantidad de {pickerType === 'C' ? 'contenedores' : pickerType === 'B' ? 'bultos' : 'pallets'}
-            </label>
-            <div className="flex items-center gap-3">
-              <button onClick={() => onPalletsChange(Math.max(0, pallets - 1))}
-                className="w-12 h-12 rounded-full border border-border font-bold text-[22px] text-text-2 cursor-pointer bg-bg hover:bg-border flex items-center justify-center transition-colors">−</button>
-              <input type="number" min={0} max={10} value={pallets === 0 ? '' : pallets}
-                onChange={e => onPalletsChange(Math.min(10, Math.max(0, parseInt(e.target.value) || 0)))}
-                placeholder="0"
-                className="flex-1 border border-border rounded-xl px-3 py-3 text-[28px] font-barlow-condensed font-bold text-center text-navy bg-white outline-none focus:border-amber-400 transition-colors" />
-              <button onClick={() => onPalletsChange(Math.min(10, pallets + 1))}
-                className="w-12 h-12 rounded-full border border-border font-bold text-[22px] text-text-2 cursor-pointer bg-bg hover:bg-border flex items-center justify-center transition-colors">+</button>
+                { tipo: 'P' as PickerType, label: 'Pallets',       color: '#1E3A8A' },
+                { tipo: 'C' as PickerType, label: 'Contenedores',  color: '#6B21A8' },
+                { tipo: 'B' as PickerType, label: 'Bultos',        color: '#065F46' },
+              ]).map(({ tipo, label, color }) => {
+                const count = palletsByTipo[tipo] ?? 0;
+                return (
+                  <div key={tipo} className="flex-1 flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl border transition-all"
+                    style={{
+                      borderColor: count > 0 ? color : 'rgba(26,37,80,0.12)',
+                      background: count > 0 ? `${color}0D` : 'transparent',
+                    }}>
+                    <div className="text-[10px] font-bold uppercase tracking-wide leading-tight text-center"
+                      style={{ color: count > 0 ? color : '#9CA3AF' }}>
+                      {tipo}<br/><span className="text-[9px] font-semibold normal-case tracking-normal">{label}</span>
+                    </div>
+                    <div className="flex items-center gap-1 w-full justify-center">
+                      <button
+                        onClick={() => onTipoPalletsChange(tipo, Math.max(0, count - 1))}
+                        className="w-7 h-7 rounded-full border font-bold text-[16px] flex items-center justify-center cursor-pointer transition-colors hover:bg-gray-100"
+                        style={{ borderColor: 'rgba(26,37,80,0.15)', color: '#6B7280' }}>−</button>
+                      <span className="w-7 text-center text-[22px] font-barlow-condensed font-bold leading-none"
+                        style={{ color: count > 0 ? color : '#D1D5DB' }}>{count}</span>
+                      <button
+                        onClick={() => onTipoPalletsChange(tipo, count + 1)}
+                        className="w-7 h-7 rounded-full border font-bold text-[16px] flex items-center justify-center cursor-pointer transition-colors"
+                        style={{ borderColor: color, color: color, background: `${color}15` }}>+</button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -874,16 +879,16 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
                 );
               })}
             </div>
-          ) : pallets === 0 ? (
+          ) : assignedNums.length === 0 ? (
             <div className="h-full min-h-[180px] flex flex-col items-center justify-center gap-3 text-text-3">
               <div className="text-[40px] opacity-30">▊▊▊▊</div>
-              <div className="text-[14px] text-center">Ingresa la cantidad de pallets<br/>para generar los códigos</div>
+              <div className="text-[14px] text-center">Ingresa la cantidad de unidades<br/>para generar los códigos</div>
             </div>
           ) : (
             <div>
               <div className="print:hidden flex items-center justify-between mb-3 gap-2 flex-wrap">
                 <div className="text-[13px] font-semibold text-text-2">
-                  {pallets} código{pallets !== 1 ? 's' : ''}
+                  {assignedNums.length} código{assignedNums.length !== 1 ? 's' : ''}
                   {selectedIndices.size > 0 && (
                     <span className="ml-2 text-[12px] font-normal text-blue-600">
                       · {selectedIndices.size} seleccionada{selectedIndices.size !== 1 ? 's' : ''}
@@ -921,39 +926,45 @@ function PickerGroupCard({ group, displayName, pallets, onNameChange, onPalletsC
               <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
                 {assignedNums.map((pNum, i) => {
                   const isSelected = selectedIndices.has(i);
-                  const itemWidth = `calc((100% - ${(colsPerRow - 1) * 8}px) / ${colsPerRow})`;
+                  const slot       = slots[i];
+                  const slotTipo   = (slot?.tipo as PickerType | undefined) ?? 'P';
+                  const tipoTotal  = slots.filter(s => ((s.tipo as PickerType | undefined) ?? 'P') === slotTipo).length;
+                  const itemWidth  = `calc((100% - ${(colsPerRow - 1) * 8}px) / ${colsPerRow})`;
                   return (
-                    <div key={pNum} onClick={() => toggleIndex(i)}
-                      style={{
-                        position: 'relative', cursor: 'pointer', borderRadius: 10,
-                        width: itemWidth, flexShrink: 0,
-                        outline: isSelected ? '2.5px solid #2563EB' : '2.5px solid transparent',
-                        transition: 'outline 0.15s',
-                      }}>
-                      <BarcodeCard
-                        value={`${group.storeCod};${barcodePickerName};${refs};${pickerType}${pNum};${cats}`}
-                        palletNum={pNum}
-                        total={totalStorePallets}
-                        storeCod={group.storeCod}
-                        pickerLabel={pickerLabel}
-                        responsibleKey={group.key}
-                        allCategories={allCategories}
-                        totalPickers={totalPickers}
-                        tipo={pickerType}
-                        compact
-                      />
-                      {isSelected && (
-                        <div style={{
-                          position: 'absolute', top: 6, right: 6,
-                          width: 22, height: 22, borderRadius: '50%',
-                          background: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          boxShadow: '0 2px 6px rgba(37,99,235,0.4)',
+                    <div key={slot?.id ?? i}
+                      style={{ width: itemWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {/* Barcode card — click to select */}
+                      <div onClick={() => toggleIndex(i)}
+                        style={{
+                          position: 'relative', cursor: 'pointer', borderRadius: 10,
+                          outline: isSelected ? '2.5px solid #2563EB' : '2.5px solid transparent',
+                          transition: 'outline 0.15s',
                         }}>
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                      )}
+                        <BarcodeCard
+                          value={`${group.storeCod};${barcodePickerName};${refs};${slotTipo}${pNum};${cats}`}
+                          palletNum={pNum}
+                          total={tipoTotal}
+                          storeCod={group.storeCod}
+                          pickerLabel={pickerLabel}
+                          responsibleKey={group.key}
+                          allCategories={allCategories}
+                          totalPickers={totalPickers}
+                          tipo={slotTipo}
+                          compact
+                        />
+                        {isSelected && (
+                          <div style={{
+                            position: 'absolute', top: 6, right: 6,
+                            width: 22, height: 22, borderRadius: '50%',
+                            background: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 6px rgba(37,99,235,0.4)',
+                          }}>
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -1001,7 +1012,6 @@ function StoreListPanel({ selectedCods, loadingCods, errorCods, opsMap, todaySto
 
     const groups: Record<StoreGroupKey, TodayStore[]> = { region: [], costa: [], santiago: [] };
     for (const store of source) groups[getStoreGroup(store)].push(store);
-    for (const key of Object.keys(groups) as StoreGroupKey[]) groups[key].sort((a, b) => a.cod.localeCompare(b.cod));
     return { grouped: groups, isFallback: fallback };
   }, [q, todayStores]);
 
@@ -1798,7 +1808,7 @@ export function PickingScreen() {
     return Number(localStorage.getItem(COLS_PER_ROW_KEY) ?? '3');
   });
 
-  const [pickerTypes, setPickerTypes] = useState<Record<string, PickerType>>(() => {
+  const [pickerTypes] = useState<Record<string, PickerType>>(() => {
     if (typeof window === 'undefined') return {};
     try { return JSON.parse(localStorage.getItem(PICKER_TYPES_KEY) ?? '{}') as Record<string, PickerType>; }
     catch { return {}; }
@@ -1820,15 +1830,28 @@ export function PickingScreen() {
     return map;
   }, [palletSlots]);
 
-  // Derived: pallet_num for each slot = its rank (1-based) within (store_cod) ordered by created_at, id
+  // Derived: count per (state_key, tipo) — feeds the 3 independent counters
+  const palletsByTipoAndStateKey = useMemo(() => {
+    const result: Record<string, Record<string, number>> = {};
+    for (const s of palletSlots) {
+      const t = s.tipo || 'P';
+      if (!result[s.state_key]) result[s.state_key] = {};
+      result[s.state_key][t] = (result[s.state_key][t] ?? 0) + 1;
+    }
+    return result;
+  }, [palletSlots]);
+
+  // Derived: pallet_num for each slot = its rank (1-based) within (store_cod, tipo) independently.
+  // P slots count P-1, P-2...; C slots count C-1, C-2...; B slots count B-1, B-2...
   const palletNumsBySlotId = useMemo(() => {
     const result: Record<number, number> = {};
-    const byStore: Record<string, PalletSlot[]> = {};
+    const byStoreTipo: Record<string, PalletSlot[]> = {};
     for (const s of palletSlots) {
-      if (!byStore[s.store_cod]) byStore[s.store_cod] = [];
-      byStore[s.store_cod].push(s);
+      const key = `${s.store_cod}::${s.tipo || 'P'}`;
+      if (!byStoreTipo[key]) byStoreTipo[key] = [];
+      byStoreTipo[key].push(s);
     }
-    for (const slots of Object.values(byStore)) {
+    for (const slots of Object.values(byStoreTipo)) {
       slots.forEach((s, idx) => { result[s.id] = idx + 1; });
     }
     return result;
@@ -1845,6 +1868,19 @@ export function PickingScreen() {
       }
     }
     for (const key of Object.keys(result)) result[key].sort((a, b) => a - b);
+    return result;
+  }, [palletSlots, palletNumsBySlotId]);
+
+  // Slots per state_key sorted by pallet number (same order as assignedNumsByStateKey)
+  const slotsByStateKey = useMemo(() => {
+    const result: Record<string, PalletSlot[]> = {};
+    for (const s of palletSlots) {
+      if (!result[s.state_key]) result[s.state_key] = [];
+      result[s.state_key].push(s);
+    }
+    for (const key of Object.keys(result)) {
+      result[key].sort((a, b) => (palletNumsBySlotId[a.id] ?? 0) - (palletNumsBySlotId[b.id] ?? 0));
+    }
     return result;
   }, [palletSlots, palletNumsBySlotId]);
 
@@ -1935,12 +1971,12 @@ export function PickingScreen() {
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
   useRealtimeRefresh('picking_pallets', loadPalletSlots);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string) => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar') => {
     try {
       const res = await fetch('/api/picking-pallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo }),
+        body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
@@ -1954,11 +1990,11 @@ export function PickingScreen() {
     }
   }, []);
 
-  const removePalletSlot = useCallback(async (stateKey: string) => {
-    // Atomic read+remove using functional setState — fixes race condition on rapid clicks
+  const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
+    // Atomic read+remove — only removes the last slot of the specified tipo
     let removed: PalletSlot | undefined;
     setPalletSlots(prev => {
-      const slots = prev.filter(s => s.state_key === stateKey);
+      const slots = prev.filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo);
       if (!slots.length) return prev;
       removed = slots[slots.length - 1];
       return prev.filter(s => s.id !== removed!.id);
@@ -2253,8 +2289,10 @@ export function PickingScreen() {
       const storeGroups    = groupedByStore[cod] ?? [];       // respects section filter
       const allStoreGroups = allGroupedByStore[cod] ?? [];    // for totalPickers count
       const storeSlots     = palletSlots.filter(s => s.store_cod === cod);
-      const totalPallets   = storeSlots.length;
-      if (totalPallets === 0 || storeGroups.length === 0) continue;
+      if (storeSlots.length === 0 || storeGroups.length === 0) continue;
+      // Pre-compute total per tipo for this store (P count, C count, B count independently)
+      const totalByTipo: Record<string, number> = {};
+      for (const s of storeSlots) totalByTipo[s.tipo || 'P'] = (totalByTipo[s.tipo || 'P'] ?? 0) + 1;
 
       const firstSlotTime: Record<string, number> = {};
       for (const s of storeSlots) {
@@ -2274,13 +2312,14 @@ export function PickingScreen() {
         const cats  = allCategories.join(',');
         // Prefer name stored in the slot (shared across supervisors), fall back to local state
         const label = groupSlots[0].picker_label || pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-        const tipo  = pickerTypes[group.stateKey] ?? 'P';
         for (const slot of groupSlots) {
-          const pNum = palletNumsBySlotId[slot.id];
+          const pNum  = palletNumsBySlotId[slot.id];
+          const tipo  = (slot.tipo as PickerType) ?? pickerTypes[group.stateKey] ?? 'P';
+          const total = totalByTipo[tipo] ?? 1;
           labels.push({
             value: `${group.storeCod};${sanitizeForBarcode(label)};${refs};${tipo}${pNum};${cats}`,
             palletNum: pNum,
-            total: totalPallets,
+            total,
             storeCod: group.storeCod,
             pickerLabel: label,
             responsibleKey: group.key,
@@ -2293,7 +2332,7 @@ export function PickingScreen() {
       }
     }
     return labels;
-  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, pickerTypes, getCanonicalName]);
+  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, pickerTypes, getCanonicalName]); // pickerTypes kept for fallback
 
   const hasBarcodes = printableLabels.length > 0;
 
@@ -2571,29 +2610,28 @@ export function PickingScreen() {
                     <div className="space-y-4">
                       {(() => {
                         const allStore = allGroupedByStore[cod] ?? [];
-                        const totalStorePallets = palletSlots.filter(s => s.store_cod === cod).length;
                         return storeGroups.map(group => {
-                          const groupPallets = pickerPallets[group.stateKey] ?? 0;
                           const nums = assignedNumsByStateKey[group.stateKey] ?? [];
                           return (
                             <PickerGroupCard
                               key={group.stateKey}
                               group={group}
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
-                              pallets={groupPallets}
+                              palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
-                                upsertSessionState(group.stateKey, name, pickerTypes[group.stateKey] ?? 'P');
+                                upsertSessionState(group.stateKey, name, 'P');
                               }}
-                              onPalletsChange={n => {
-                                const current = pickerPallets[group.stateKey] ?? 0;
+                              onTipoPalletsChange={(tipo, n) => {
+                                const current = palletsByTipoAndStateKey[group.stateKey]?.[tipo] ?? 0;
                                 const delta = n - current;
                                 const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-                                const tipo  = pickerTypes[group.stateKey] ?? 'P';
+                                const groupCats = [...new Set(group.operations.flatMap(o => o.categories))];
+                                const contenido = categoriesToContenido(groupCats);
                                 if (delta > 0) {
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo);
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido);
                                 } else if (delta < 0) {
-                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey);
+                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo);
                                 }
                               }}
                               onRefreshOp={(op) => void refreshOp(op, cod)}
@@ -2601,19 +2639,10 @@ export function PickingScreen() {
                               refreshingId={refreshingId}
                               totalPickers={allStore.length}
                               assignedNums={nums}
-                              totalStorePallets={totalStorePallets}
                               isPrinted={printedKeys.has(group.stateKey)}
                               colsPerRow={colsPerRow}
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
-                              pickerType={pickerTypes[group.stateKey] ?? 'P'}
-                              onTypeChange={t => {
-                                setPickerTypes(prev => {
-                                  const next = { ...prev, [group.stateKey]: t };
-                                  localStorage.setItem(PICKER_TYPES_KEY, JSON.stringify(next));
-                                  return next;
-                                });
-                                upsertSessionState(group.stateKey, pickerDisplayNames[group.stateKey] ?? '', t);
-                              }}
+                              slots={slotsByStateKey[group.stateKey] ?? []}
                             />
                           );
                         });

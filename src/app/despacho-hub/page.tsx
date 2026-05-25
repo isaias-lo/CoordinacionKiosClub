@@ -2,33 +2,25 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, MapPin, Building2, Route, Activity, Clock, Database, Users, Settings, ClipboardList } from 'lucide-react';
+import { ChevronLeft, Route, Activity, Clock, Database, Users, Settings, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
 import { ProfilePill } from '../../components/ProfilePill';
 
 export default function DespachoHubPage() {
   const router = useRouter();
-  const { dispatch } = useApp();
-
-  const goToRegiones = () => {
-    dispatch({ type: 'SET_TIENDA', payload: null });
-    dispatch({ type: 'SET_TAB', payload: 0 });
-    router.push('/despacho/regiones');
-  };
 
   const tabs: { id: string; label: React.ReactNode; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string }[] = [
     {
-      id: 'nacional', label: 'Nacional', sub: 'Despacho nacional',
-      border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.30)',
-      onClick: goToRegiones,
-      Icon: MapPin, iconColor: 'rgba(252,165,165,0.9)',
+      id: 'conteo', label: <>Conteo/<br />Consolidación</>, sub: 'Nacional · RM/Costa',
+      border: 'rgba(6,182,212,0.50)', bg: 'rgba(6,182,212,0.15)', shadow: 'rgba(6,182,212,0.20)',
+      onClick: () => router.push('/despacho/conteo'),
+      Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
     },
     {
-      id: 'rm-costa', label: 'RM/Costa', sub: 'Despacho local RM',
-      border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.18)', shadow: 'rgba(37,99,235,0.25)',
-      onClick: () => router.push('/despacho/santiago'),
-      Icon: Building2, iconColor: 'rgba(147,197,253,0.9)',
+      id: 'estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
+      border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
+      onClick: () => router.push('/despacho/estado'),
+      Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
     },
     {
       id: 'enrutador', label: 'Enrutador', sub: 'Sistema de enrutamiento',
@@ -37,10 +29,10 @@ export default function DespachoHubPage() {
       Icon: Route, iconColor: 'rgba(110,231,183,0.9)',
     },
     {
-      id: 'estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
-      border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
-      onClick: () => router.push('/despacho/estado'),
-      Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
+      id: 'conductores', label: 'Conductores', sub: 'Recepción de despacho',
+      border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
+      onClick: () => router.push('/tiendas'),
+      Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
     },
     {
       id: 'historial', label: 'Historial', sub: 'Registros de despacho',
@@ -55,22 +47,10 @@ export default function DespachoHubPage() {
       Icon: Database, iconColor: 'rgba(52,211,153,0.9)',
     },
     {
-      id: 'conductores', label: 'Conductores', sub: 'Recepción de despacho',
-      border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
-      onClick: () => router.push('/tiendas'),
-      Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
-    },
-    {
       id: 'config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',
       border: 'rgba(99,102,241,0.50)', bg: 'rgba(99,102,241,0.15)', shadow: 'rgba(99,102,241,0.20)',
       onClick: () => router.push('/despacho/config-tiendas'),
       Icon: Settings, iconColor: 'rgba(165,180,252,0.9)',
-    },
-    {
-      id: 'conteo', label: <>Conteo/<br />Consolidación</>, sub: 'Conteo y consolidación de bultos',
-      border: 'rgba(6,182,212,0.50)', bg: 'rgba(6,182,212,0.15)', shadow: 'rgba(6,182,212,0.20)',
-      onClick: () => router.push('/despacho/conteo'),
-      Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
     },
   ];
 

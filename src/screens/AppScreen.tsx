@@ -10,7 +10,7 @@ export function AppScreen() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <AppHeader onFinish={() => setFinishOpen(true)} />
+      <AppHeader onFinish={() => setFinishOpen(true)} backTo="/despacho/conteo" />
 
       <div className="flex-1 overflow-hidden flex flex-col">
         <TiendasPage />

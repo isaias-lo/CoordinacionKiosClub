@@ -12,6 +12,7 @@ import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
+import { supabase } from '../../../../lib/supabase';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -237,8 +238,9 @@ export function StepForm() {
   const rLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Preset / multi-form */
-  const [presets,  setPresets]  = useState<Record<string, { pallets: number; bultos: number }>>({});
-  const [formRows, setFormRows] = useState<FormRow[]>([]);
+  const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number }>>({});
+  const [formRows,      setFormRows]     = useState<FormRow[]>([]);
+  const [pickingSlots,  setPickingSlots]  = useState<Record<string, { tipo: string; contenido: string }[]>>({});
 
   /* Resumen inline state */
   const [resumenExpanded, setResumenExpanded] = useState<string | null>(null);
@@ -317,6 +319,36 @@ export function StepForm() {
     window.addEventListener('storage', sync);
     const interval = setInterval(sync, 2000);
     return () => { window.removeEventListener('storage', sync); clearInterval(interval); };
+  }, []);
+
+  // Load picking slots from picking_pallets (today) — feeds P/C/B + contenido in RM/Costa
+  useEffect(() => {
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+    const load = async () => {
+      const { data } = await supabase
+        .from('picking_pallets')
+        .select('store_cod,tipo,contenido')
+        .eq('date', dateStr);
+      if (!data) return;
+      const slots: Record<string, { tipo: string; contenido: string }[]> = {};
+      for (const row of data) {
+        const cod = row.store_cod;
+        if (!slots[cod]) slots[cod] = [];
+        slots[cod].push({ tipo: row.tipo || 'P', contenido: row.contenido || 'hogar' });
+      }
+      setPickingSlots(slots);
+    };
+
+    load();
+
+    const channel = supabase
+      .channel('picking-pallets-santiago')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets' }, () => load())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const prevContenidoRef = useRef<ContenidoSantiago>('Hogar');
@@ -412,12 +444,19 @@ export function StepForm() {
 
   const selectTienda = (t: TiendaSantiago) => {
     dispatch({ type: 'SELECT_TIENDA', payload: t });
-    // Auto-populate form rows from despachoCounts when no items registered yet
     const existing = items[t.cod] || [];
-    if (!presets[t.cod] && existing.length === 0) {
-      const dc = despachoCounts[t.cod];
-      if (dc && (dc.p > 0 || dc.b > 0)) {
-        setPresets(prev => ({ ...prev, [t.cod]: { pallets: dc.p, bultos: dc.b } }));
+    const hasManualPreset = presets[t.cod] &&
+      (presets[t.cod].pallets > 0 || presets[t.cod].bultos > 0 || (presets[t.cod].contenedores ?? 0) > 0);
+    if (!hasManualPreset && existing.length === 0) {
+      const slots = pickingSlots[t.cod] ?? [];
+      const pkP   = slots.filter(s => s.tipo === 'P').length;
+      const pkC   = slots.filter(s => s.tipo === 'C').length;
+      const pkB   = slots.filter(s => s.tipo === 'B').length;
+      const dc    = despachoCounts[t.cod];
+      if (pkP > 0 || pkC > 0 || pkB > 0) {
+        setPresets(prev => ({ ...prev, [t.cod]: { pallets: pkP, bultos: pkB, contenedores: pkC } }));
+      } else if (dc && (dc.p > 0 || dc.b > 0)) {
+        setPresets(prev => ({ ...prev, [t.cod]: { pallets: dc.p, bultos: dc.b, contenedores: dc.c ?? 0 } }));
       }
     }
     setView('form');
@@ -431,15 +470,35 @@ export function StepForm() {
     prevContenidoRef.current = 'Hogar';
     if (currentTienda) {
       setTimeout(() => formScrollRef.current?.scrollTo({ top: 0 }), 60);
-      const preset = presets[currentTienda.cod];
-      if (preset) {
-        const existing = items[currentTienda.cod] || [];
-        const rows: FormRow[] = [];
-        for (let i = 0; i < Math.max(0, preset.pallets - existing.filter(x => x.tipo === 'Pallet').length); i++)
-          rows.push({ id: `p${i}-${Date.now()}`, tipo: 'Pallet', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
-        for (let i = 0; i < Math.max(0, preset.bultos - existing.filter(x => x.tipo === 'Bulto').length); i++)
-          rows.push({ id: `b${i}-${Date.now()}`, tipo: 'Bulto', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+      const existing = items[currentTienda.cod] || [];
+      const slots    = pickingSlots[currentTienda.cod] ?? [];
+
+      const SANT_TIPO: Record<string, TipoCargamento>    = { P: 'Pallet', C: 'Contenedor', B: 'Bulto' };
+      const SANT_CONT: Record<string, ContenidoSantiago> = { comida: 'Comida', hogar: 'Hogar', mixto: 'Mixto' };
+
+      if (existing.length === 0 && slots.length > 0) {
+        // Build rows from picking slots with contenido pre-filled
+        const rows: FormRow[] = slots.map((s, i) => ({
+          id:       `pick-${s.tipo}-${i}-${Date.now()}`,
+          tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
+          contenido: SANT_CONT[s.contenido] ?? 'Hogar',
+          peso: '', alto: '', largo: '', ancho: '',
+        }));
         setFormRows(rows);
+      } else if (existing.length === 0) {
+        const preset = presets[currentTienda.cod];
+        if (preset) {
+          const rows: FormRow[] = [];
+          for (let i = 0; i < Math.max(0, preset.pallets - existing.filter(x => x.tipo === 'Pallet').length); i++)
+            rows.push({ id: `p${i}-${Date.now()}`, tipo: 'Pallet',     contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+          for (let i = 0; i < Math.max(0, preset.bultos - existing.filter(x => x.tipo === 'Bulto').length); i++)
+            rows.push({ id: `b${i}-${Date.now()}`, tipo: 'Bulto',      contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+          for (let i = 0; i < Math.max(0, (preset.contenedores ?? 0) - existing.filter(x => x.tipo === 'Contenedor').length); i++)
+            rows.push({ id: `c${i}-${Date.now()}`, tipo: 'Contenedor', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+          setFormRows(rows);
+        } else {
+          setFormRows([]);
+        }
       } else {
         setFormRows([]);
       }
@@ -447,7 +506,7 @@ export function StepForm() {
       setFormRows([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTienda?.cod]);
+  }, [currentTienda?.cod, pickingSlots]);
 
   useEffect(() => { setContenido('Hogar'); prevContenidoRef.current = 'Hogar'; }, [tipo]);
 
@@ -537,13 +596,13 @@ export function StepForm() {
   };
 
   /* ── Preset bar ── */
-  const updateInlinePreset = (field: 'pallets' | 'bultos', value: string) => {
+  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores', value: string) => {
     if (!currentTienda) return;
     const cod = currentTienda.cod;
     const n   = Math.max(0, parseInt(value) || 0);
-    const curr = presets[cod] || { pallets: 0, bultos: 0 };
+    const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0 };
     setPresets(prev => ({ ...prev, [cod]: { ...curr, [field]: n } }));
-    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : 'Bulto';
+    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
     const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
     const savedRows = formRows.filter(r => r.tipo === tipo2 && r.saved).length;
     const delta = (Math.max(0, n - existing - savedRows)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
@@ -669,12 +728,14 @@ export function StepForm() {
             {todayList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
+              const pkSlots = pickingSlots[t.cod] ?? [];
+              const pk = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : undefined;
               return (
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
-                  despachoP={dc?.p} despachoB={dc?.b} despachoC={dc?.c}
+                  despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -692,12 +753,14 @@ export function StepForm() {
             {othersList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
+              const pkSlots = pickingSlots[t.cod] ?? [];
+              const pk = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : undefined;
               return (
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
-                  despachoP={dc?.p} despachoB={dc?.b} despachoC={dc?.c}
+                  despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
@@ -1096,22 +1159,46 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderMultiForm = () => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0 };
+    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const pkSlots = pickingSlots[currentTienda.cod] ?? [];
+    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : null;
+    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0);
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} />
 
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-3">
-          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Cantidad</span>
-          {(['pallets', 'bultos'] as const).map(field => (
-            <div key={field} className="flex items-center gap-1.5">
-              <span className={`font-barlow-condensed text-[13px] font-bold ${field === 'pallets' ? 'text-info' : 'text-warn'}`}>{field === 'pallets' ? 'P' : 'B'}</span>
+        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
+          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
+          {hasPickingRef && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
+              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B` : ''}
+            </span>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
               <input type="number" min="0" max="30"
-                value={currentPreset[field] || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset(field, e.target.value)}
+                value={currentPreset.pallets || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('pallets', e.target.value)}
                 className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-info [-webkit-appearance:none]" />
             </div>
-          ))}
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#6B21A8' }}>C</span>
+              <input type="number" min="0" max="30"
+                value={currentPreset.contenedores || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('contenedores', e.target.value)}
+                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
+                style={{ outlineColor: '#6B21A8' }} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold text-warn">B</span>
+              <input type="number" min="0" max="30"
+                value={currentPreset.bultos || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('bultos', e.target.value)}
+                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
+            </div>
+          </div>
         </div>
 
         <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2 py-2">
@@ -1231,22 +1318,46 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderSingleForm = () => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0 };
+    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const pkSlots = pickingSlots[currentTienda.cod] ?? [];
+    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : null;
+    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0);
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} />
 
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-3">
-          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Cantidad</span>
-          {(['pallets', 'bultos'] as const).map(field => (
-            <div key={field} className="flex items-center gap-1.5">
-              <span className={`font-barlow-condensed text-[13px] font-bold ${field === 'pallets' ? 'text-info' : 'text-warn'}`}>{field === 'pallets' ? 'P' : 'B'}</span>
+        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
+          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
+          {hasPickingRef && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
+              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B` : ''}
+            </span>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
               <input type="number" min="0" max="30"
-                value={currentPreset[field] || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset(field, e.target.value)}
+                value={currentPreset.pallets || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('pallets', e.target.value)}
                 className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-info [-webkit-appearance:none]" />
             </div>
-          ))}
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#6B21A8' }}>C</span>
+              <input type="number" min="0" max="30"
+                value={currentPreset.contenedores || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('contenedores', e.target.value)}
+                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
+                style={{ outlineColor: '#6B21A8' }} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold text-warn">B</span>
+              <input type="number" min="0" max="30"
+                value={currentPreset.bultos || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('bultos', e.target.value)}
+                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
+            </div>
+          </div>
         </div>
 
         <div ref={formScrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">

@@ -39,8 +39,9 @@ export default function TiendasAdminContent() {
   const [modal,     setModal]     = useState<'add' | 'edit' | null>(null);
   const [form,      setForm]      = useState<Tienda>(EMPTY);
   const [saving,    setSaving]    = useState(false);
-  const [skipped,   setSkipped]   = useState<{ row: number; raw: string; reason: string }[]>([]);
-  const [activeTab, setActiveTab] = useState<'tiendas' | 'calendario'>('tiendas');
+  const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
+  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario'>('tiendas');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,13 +105,16 @@ export default function TiendasAdminContent() {
     };
   }
 
-  const filtered  = tiendas.filter(t =>
+  const searchFiltered = tiendas.filter(t =>
     t.codigo.toLowerCase().includes(search.toLowerCase()) ||
     t.nombre.toLowerCase().includes(search.toLowerCase()) ||
     t.region.toLowerCase().includes(search.toLowerCase())
   );
-  const activas   = filtered.filter(t =>  t.activo).length;
-  const inactivas = filtered.filter(t => !t.activo).length;
+  const activas   = searchFiltered.filter(t =>  t.activo).length;
+  const inactivas = searchFiltered.filter(t => !t.activo).length;
+  const filtered  = activeFilter === 'activas'   ? searchFiltered.filter(t =>  t.activo)
+                  : activeFilter === 'inactivas' ? searchFiltered.filter(t => !t.activo)
+                  : searchFiltered;
 
   return (
     <>
@@ -191,11 +195,19 @@ export default function TiendasAdminContent() {
             placeholder="Buscar por código, nombre o región…"
             style={{ ...S.input, flex: 1, minWidth: 200 }} />
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
-            <span style={{ color: '#34D399', fontWeight: 900, fontSize: 28, lineHeight: 1 }}>{activas}</span>
-            <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>activas</span>
+            <button
+              onClick={() => setActiveFilter(f => f === 'activas' ? 'all' : 'activas')}
+              style={{ display: 'flex', alignItems: 'baseline', gap: 4, background: activeFilter === 'activas' ? 'rgba(16,185,129,0.2)' : 'transparent', border: activeFilter === 'activas' ? '1px solid rgba(16,185,129,0.5)' : '1px solid transparent', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', transition: 'all 0.15s' }}>
+              <span style={{ color: '#34D399', fontWeight: 900, fontSize: 28, lineHeight: 1 }}>{activas}</span>
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>activas</span>
+            </button>
             <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, margin: '0 2px' }}>·</span>
-            <span style={{ color: '#F87171', fontWeight: 900, fontSize: 28, lineHeight: 1 }}>{inactivas}</span>
-            <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>inactivas</span>
+            <button
+              onClick={() => setActiveFilter(f => f === 'inactivas' ? 'all' : 'inactivas')}
+              style={{ display: 'flex', alignItems: 'baseline', gap: 4, background: activeFilter === 'inactivas' ? 'rgba(239,68,68,0.15)' : 'transparent', border: activeFilter === 'inactivas' ? '1px solid rgba(239,68,68,0.4)' : '1px solid transparent', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', transition: 'all 0.15s' }}>
+              <span style={{ color: '#F87171', fontWeight: 900, fontSize: 28, lineHeight: 1 }}>{inactivas}</span>
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>inactivas</span>
+            </button>
           </div>
         </div>
 

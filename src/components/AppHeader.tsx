@@ -9,9 +9,10 @@ import { REGIONES_TERMINADO_KEY } from './modals/FinishModal';
 
 interface AppHeaderProps {
   onFinish: () => void;
+  backTo?: string;
 }
 
-export function AppHeader({ onFinish }: AppHeaderProps) {
+export function AppHeader({ onFinish, backTo = '/despacho-hub' }: AppHeaderProps) {
   const { state, flushPending } = useApp();
   const router = useRouter();
   const [terminated, setTerminated] = useState(false);
@@ -38,7 +39,7 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
     <div className="flex items-center px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
          style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
       <button
-        onClick={() => confirmBack('/despacho-hub')}
+        onClick={() => confirmBack(backTo)}
         className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
         style={{
           width: 36, height: 36,
