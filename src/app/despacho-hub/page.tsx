@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, MapPin, Building2, Route, Activity, Clock, Database, Users, Settings, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -16,57 +17,57 @@ export default function DespachoHubPage() {
     router.push('/despacho/regiones');
   };
 
-  const tabs: { label: string; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string }[] = [
+  const tabs: { id: string; label: React.ReactNode; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string }[] = [
     {
-      label: 'Nacional', sub: 'Despacho nacional',
+      id: 'nacional', label: 'Nacional', sub: 'Despacho nacional',
       border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.30)',
       onClick: goToRegiones,
       Icon: MapPin, iconColor: 'rgba(252,165,165,0.9)',
     },
     {
-      label: 'RM/Costa', sub: 'Despacho local RM',
+      id: 'rm-costa', label: 'RM/Costa', sub: 'Despacho local RM',
       border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.18)', shadow: 'rgba(37,99,235,0.25)',
       onClick: () => router.push('/despacho/santiago'),
       Icon: Building2, iconColor: 'rgba(147,197,253,0.9)',
     },
     {
-      label: 'Enrutador', sub: 'Sistema de enrutamiento',
+      id: 'enrutador', label: 'Enrutador', sub: 'Sistema de enrutamiento',
       border: 'rgba(34,197,94,0.50)', bg: 'rgba(34,197,94,0.16)', shadow: 'rgba(34,197,94,0.20)',
       onClick: () => { sessionStorage.setItem('despacho_from', '/despacho-hub'); router.push('/despacho'); },
       Icon: Route, iconColor: 'rgba(110,231,183,0.9)',
     },
     {
-      label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
+      id: 'estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
       border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
       onClick: () => router.push('/despacho/estado'),
       Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
     },
     {
-      label: 'Historial', sub: 'Registros de despacho',
+      id: 'historial', label: 'Historial', sub: 'Registros de despacho',
       border: 'rgba(255,255,255,0.22)', bg: 'rgba(255,255,255,0.08)', shadow: 'rgba(255,255,255,0.10)',
       onClick: () => router.push('/historial'),
       Icon: Clock, iconColor: 'rgba(255,255,255,0.7)',
     },
     {
-      label: 'Registros', sub: 'Base de datos de despachos',
+      id: 'registros', label: 'Registros', sub: 'Base de datos de despachos',
       border: 'rgba(16,185,129,0.50)', bg: 'rgba(16,185,129,0.16)', shadow: 'rgba(16,185,129,0.20)',
       onClick: () => router.push('/registros'),
       Icon: Database, iconColor: 'rgba(52,211,153,0.9)',
     },
     {
-      label: 'Conductores', sub: 'Recepción de despacho',
+      id: 'conductores', label: 'Conductores', sub: 'Recepción de despacho',
       border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
       onClick: () => router.push('/tiendas'),
       Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
     },
     {
-      label: 'Config. Tiendas', sub: 'Gestión y calendario',
+      id: 'config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',
       border: 'rgba(99,102,241,0.50)', bg: 'rgba(99,102,241,0.15)', shadow: 'rgba(99,102,241,0.20)',
       onClick: () => router.push('/despacho/config-tiendas'),
       Icon: Settings, iconColor: 'rgba(165,180,252,0.9)',
     },
     {
-      label: 'Conteo/Consolidación', sub: 'Conteo y consolidación de bultos',
+      id: 'conteo', label: <>Conteo/<br />Consolidación</>, sub: 'Conteo y consolidación de bultos',
       border: 'rgba(6,182,212,0.50)', bg: 'rgba(6,182,212,0.15)', shadow: 'rgba(6,182,212,0.20)',
       onClick: () => router.push('/despacho/conteo'),
       Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
@@ -132,7 +133,7 @@ export default function DespachoHubPage() {
         <div className="px-6">
           <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-sm md:mx-auto" style={{ gridAutoRows: '130px' }}>
             {tabs.map(t => (
-              <button key={t.label} onClick={t.onClick}
+              <button key={t.id} onClick={t.onClick}
                 className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
                 style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
                 <t.Icon size={24} color={t.iconColor} strokeWidth={1.6} style={{ marginBottom: 10 }} />
@@ -146,7 +147,7 @@ export default function DespachoHubPage() {
         {/* Mobile list */}
         <div className="dh-mobile-cards flex md:hidden flex-col gap-3 px-6">
           {tabs.map(t => (
-            <button key={t.label} onClick={t.onClick}
+            <button key={t.id} onClick={t.onClick}
               className="dh-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer transition-all active:scale-95 border-2 text-left"
               style={{
                 height: 88,
