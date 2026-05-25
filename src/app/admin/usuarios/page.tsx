@@ -47,7 +47,7 @@ const PERMISSION_GROUPS: PermGroup[] = [
     sections: [
       { path: '/despacho-hub',      label: 'Hub de Despacho'      },
       { path: '/despacho/regiones', label: 'Nacional'                      },
-      { path: '/despacho/santiago', label: 'Región Metropolitana/Costa'   },
+      { path: '/despacho/santiago', label: 'RM/Costa'                      },
       { path: '/despacho/conteo',   label: 'Conteo/Consolidación'         },
       { path: '/despacho',          label: 'Enrutador'             },
       { path: '/despacho/estado',   label: 'Estado / Seguimiento'  },

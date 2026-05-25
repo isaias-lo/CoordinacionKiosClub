@@ -24,7 +24,7 @@ export default function DespachoHubPage() {
       Icon: MapPin, iconColor: 'rgba(252,165,165,0.9)',
     },
     {
-      label: 'Región Metropolitana/Costa', sub: 'Despacho local RM',
+      label: 'RM/Costa', sub: 'Despacho local RM',
       border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.18)', shadow: 'rgba(37,99,235,0.25)',
       onClick: () => router.push('/despacho/santiago'),
       Icon: Building2, iconColor: 'rgba(147,197,253,0.9)',
