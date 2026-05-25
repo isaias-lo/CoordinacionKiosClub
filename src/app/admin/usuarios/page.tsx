@@ -46,8 +46,9 @@ const PERMISSION_GROUPS: PermGroup[] = [
     id: 'despacho', label: 'Despacho', color: '#2563EB',
     sections: [
       { path: '/despacho-hub',      label: 'Hub de Despacho'      },
-      { path: '/despacho/regiones', label: 'Bodega Regiones'       },
-      { path: '/despacho/santiago', label: 'Bodega Santiago'       },
+      { path: '/despacho/regiones', label: 'Nacional'                      },
+      { path: '/despacho/santiago', label: 'Región Metropolitana/Costa'   },
+      { path: '/despacho/conteo',   label: 'Conteo/Consolidación'         },
       { path: '/despacho',          label: 'Enrutador'             },
       { path: '/despacho/estado',   label: 'Estado / Seguimiento'  },
       { path: '/historial',         label: 'Historial'             },

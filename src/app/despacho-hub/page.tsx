@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, MapPin, Building2, Route, Activity, Clock, Database, Users, Settings } from 'lucide-react';
+import { ChevronLeft, MapPin, Building2, Route, Activity, Clock, Database, Users, Settings, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -18,13 +18,13 @@ export default function DespachoHubPage() {
 
   const tabs: { label: string; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string }[] = [
     {
-      label: 'Bodega Regiones', sub: 'Despacho nacional',
+      label: 'Nacional', sub: 'Despacho nacional',
       border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.30)',
       onClick: goToRegiones,
       Icon: MapPin, iconColor: 'rgba(252,165,165,0.9)',
     },
     {
-      label: 'Bodega Santiago', sub: 'Despacho local RM',
+      label: 'Región Metropolitana/Costa', sub: 'Despacho local RM',
       border: 'rgba(37,99,235,0.45)', bg: 'rgba(37,99,235,0.18)', shadow: 'rgba(37,99,235,0.25)',
       onClick: () => router.push('/despacho/santiago'),
       Icon: Building2, iconColor: 'rgba(147,197,253,0.9)',
@@ -64,6 +64,12 @@ export default function DespachoHubPage() {
       border: 'rgba(99,102,241,0.50)', bg: 'rgba(99,102,241,0.15)', shadow: 'rgba(99,102,241,0.20)',
       onClick: () => router.push('/despacho/config-tiendas'),
       Icon: Settings, iconColor: 'rgba(165,180,252,0.9)',
+    },
+    {
+      label: 'Conteo/Consolidación', sub: 'Conteo y consolidación de bultos',
+      border: 'rgba(6,182,212,0.50)', bg: 'rgba(6,182,212,0.15)', shadow: 'rgba(6,182,212,0.20)',
+      onClick: () => router.push('/despacho/conteo'),
+      Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
     },
   ];
 
