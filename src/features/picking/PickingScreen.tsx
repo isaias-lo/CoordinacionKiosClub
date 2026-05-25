@@ -1812,6 +1812,9 @@ export function PickingScreen() {
     catch { return {}; }
   });
   const [palletSlots, setPalletSlots] = useState<PalletSlot[]>([]);
+  const palletSlotsRef = useRef<PalletSlot[]>([]);
+  palletSlotsRef.current = palletSlots;
+  const pendingDeleteIds = useRef<Set<number>>(new Set());
 
   // Derived: count per state_key
   const pickerPallets = useMemo(() => {
@@ -1955,16 +1958,13 @@ export function PickingScreen() {
   }, []);
 
   const removePalletSlot = useCallback(async (stateKey: string) => {
-    // Atomic read+remove using functional setState — fixes race condition on rapid clicks
-    let removed: PalletSlot | undefined;
-    setPalletSlots(prev => {
-      const slots = prev.filter(s => s.state_key === stateKey);
-      if (!slots.length) return prev;
-      removed = slots[slots.length - 1];
-      return prev.filter(s => s.id !== removed!.id);
-    });
-    if (!removed) return;
-    const slot = removed;
+    // Read slot from ref (not stale closure) and skip any already pending delete
+    const slot = palletSlotsRef.current
+      .filter(s => s.state_key === stateKey && !pendingDeleteIds.current.has(s.id))
+      .at(-1);
+    if (!slot) return;
+    pendingDeleteIds.current.add(slot.id);
+    setPalletSlots(prev => prev.filter(s => s.id !== slot.id));
     try {
       const res = await fetch('/api/picking-pallets', {
         method: 'DELETE',
@@ -1974,6 +1974,8 @@ export function PickingScreen() {
       if (!res.ok) setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
     } catch {
       setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
+    } finally {
+      pendingDeleteIds.current.delete(slot.id);
     }
   }, []);
 
@@ -2272,8 +2274,8 @@ export function PickingScreen() {
         const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
         const refs  = group.operations.map(o => o.name).join('+');
         const cats  = allCategories.join(',');
-        // Prefer name stored in the slot (shared across supervisors), fall back to local state
-        const label = groupSlots[0].picker_label || pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+        // Prefer name typed by supervisor (local state), fall back to slot label stored in DB
+        const label = pickerDisplayNames[group.stateKey] || groupSlots[0]?.picker_label || getCanonicalName(group.key) || group.key;
         const tipo  = pickerTypes[group.stateKey] ?? 'P';
         for (const slot of groupSlots) {
           const pNum = palletNumsBySlotId[slot.id];
