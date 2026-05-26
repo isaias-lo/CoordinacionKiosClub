@@ -8,7 +8,7 @@ import { TIENDAS } from '../regiones/data/tiendas';
 import { processPdf } from '../regiones/utils/pdfUtils';
 import { formatCod } from '../rutas/utils/helpers';
 import { useApp } from '../../../context/AppContext';
-import { fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
+import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import type { SantiagoState, SantiagoItem } from '../santiago/types';
 import type { DispatchItem } from '../../../types';
 
@@ -366,6 +366,31 @@ export function EstadoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch, rebuild]);
 
+  // Sincroniza guías PDF desde Supabase (cross-device).
+  // Las guías se guardan en localStorage del dispositivo que sube el PDF.
+  // Este efecto las carga al montar y escucha cambios en tiempo real para que
+  // móvil y desktop siempre estén en sincronía.
+  useEffect(() => {
+    function applyRemoteGuides(remote: unknown) {
+      try {
+        const remoteGuides = remote as Record<string, GuideEntry>;
+        if (!remoteGuides || typeof remoteGuides !== 'object' || Array.isArray(remoteGuides)) return;
+        setGuides(prev => {
+          // Fusión: remoto como base, local como override (lo subido en este dispositivo tiene prioridad)
+          const merged = { ...remoteGuides, ...prev };
+          saveGuides(merged);
+          rebuild(merged, appState.dispatch);
+          return merged;
+        });
+      } catch {}
+    }
+
+    fetchSessionState('guides').then(applyRemoteGuides).catch(() => {});
+    const unsub = subscribeToSessionState('guides', '', applyRemoteGuides);
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.dispatch, rebuild]);
+
   // Poll Santiago localStorage every 3 s — SantiagoContext isn't in this tree
   useEffect(() => {
     let lastSantiago = JSON.stringify(loadSantiagoItems());
@@ -445,6 +470,8 @@ export function EstadoPage() {
     saveGuides(newGuides);
     setGuides(newGuides);
     rebuild(newGuides, appState.dispatch);
+    // Sync guides across devices (fire-and-forget)
+    pushSessionState('guides', newGuides).catch(() => {});
     if (assigned > 0)
       showToast(`✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`);
     else
@@ -457,6 +484,7 @@ export function EstadoPage() {
     saveGuides(next);
     setGuides(next);
     rebuild(next, appState.dispatch);
+    pushSessionState('guides', next).catch(() => {});
   };
 
   /* Print only the currently-previewed store */

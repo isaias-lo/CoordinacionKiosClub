@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-type Fuente = 'regiones' | 'santiago';
+type Fuente = 'regiones' | 'santiago' | 'guides';
 
 function todayISO(): string {
   const d = new Date();
