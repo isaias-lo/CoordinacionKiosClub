@@ -248,6 +248,9 @@ export function EstadoPage() {
   const [dragOver,      setDragOver]      = useState(false);
   const [toast,         setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Registra tiendas que el usuario desmarcó explícitamente.
+  // rebuild las respeta y no las vuelve a marcar automáticamente.
+  const userUncheckedRef = useRef<Set<string>>(new Set());
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -310,10 +313,13 @@ export function EstadoPage() {
 
     result.sort((a, b) => a.cod.localeCompare(b.cod));
     setStores(result);
-    // Preserve existing selections; add new stores as selected by default
+    // Auto-selecciona solo tiendas NUEVAS (no vistas antes).
+    // Las que el usuario desmarcó explícitamente (userUncheckedRef) se respetan.
     setPrintCods(prev => {
       const next = new Set(prev);
-      result.forEach(s => { if (!next.has(s.cod)) next.add(s.cod); });
+      result.forEach(s => {
+        if (!next.has(s.cod) && !userUncheckedRef.current.has(s.cod)) next.add(s.cod);
+      });
       for (const cod of [...next]) { if (!result.find(s => s.cod === cod)) next.delete(cod); }
       return next;
     });
@@ -635,7 +641,17 @@ export function EstadoPage() {
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-text-3 uppercase tracking-widest">Selección para imprimir</span>
               <button
-                onClick={() => setPrintCods(allChecked ? new Set() : new Set(stores.map(s => s.cod)))}
+                onClick={() => {
+                  if (allChecked) {
+                    // El usuario desmarca todas explícitamente → registrar todas
+                    stores.forEach(s => userUncheckedRef.current.add(s.cod));
+                    setPrintCods(new Set());
+                  } else {
+                    // El usuario marca todas → limpiar exclusiones
+                    userUncheckedRef.current.clear();
+                    setPrintCods(new Set(stores.map(s => s.cod)));
+                  }
+                }}
                 disabled={stores.length === 0}
                 className="text-[12px] font-bold text-info hover:underline cursor-pointer border-none bg-transparent disabled:opacity-30">
                 {allChecked ? 'Desmarcar todas' : 'Marcar todas'}
@@ -668,11 +684,16 @@ export function EstadoPage() {
                   isSelected={selected === s.cod}
                   onClick={() => setSelected(s.cod)}
                   checked={printCods.has(s.cod)}
-                  onCheck={v => setPrintCods(prev => {
-                    const next = new Set(prev);
-                    v ? next.add(s.cod) : next.delete(s.cod);
-                    return next;
-                  })}
+                  onCheck={v => {
+                    // Registrar intención del usuario antes de actualizar el set
+                    if (!v) userUncheckedRef.current.add(s.cod);
+                    else userUncheckedRef.current.delete(s.cod);
+                    setPrintCods(prev => {
+                      const next = new Set(prev);
+                      v ? next.add(s.cod) : next.delete(s.cod);
+                      return next;
+                    });
+                  }}
                 />
               ))
             )}
