@@ -4,12 +4,13 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-export type UserRole = 'auditor' | 'admin-auditoria' | 'despachador' | 'admin' | 'recepcion-tienda' | 'supervisor-picking' | 'asistente-despacho' | 'coordinador-flota';
+export type UserRole = 'auditor' | 'admin-auditoria' | 'despachador' | 'admin' | 'recepcion-tienda' | 'supervisor-picking' | 'asistente-despacho' | 'coordinador-flota' | 'supervisor' | (string & {});
 
 export interface Profile {
   id: string;
   full_name: string | null;
   role: UserRole;
+  allowedPaths: string[];
 }
 
 interface AuthContextValue {
@@ -37,6 +38,7 @@ function profileFromUser(user: User): Profile {
     id: user.id,
     full_name: (meta.full_name as string) ?? user.email ?? null,
     role: ((meta.role as string) ?? 'auditor') as UserRole,
+    allowedPaths: (meta.allowed_paths as string[] | undefined) ?? [],
   };
 }
 

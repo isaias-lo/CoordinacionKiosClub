@@ -9,40 +9,45 @@ import { ProfilePill } from '../../components/ProfilePill';
 export default function ControlInternoPage() {
   const router = useRouter();
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
 
-  const tabs: { label: string; sub: string; border: string; bg: string; shadow: string; onClick: () => void; adminOnly: boolean; Icon: LucideIcon; iconColor: string }[] = [
+  function canSee(path: string): boolean {
+    const paths = profile?.allowedPaths ?? [];
+    if (paths.includes('*')) return true;
+    return paths.some(p => p === path || path.startsWith(p + '/'));
+  }
+
+  const tabs: { label: string; sub: string; border: string; bg: string; shadow: string; onClick: () => void; path: string; Icon: LucideIcon; iconColor: string }[] = [
     {
       label: 'Auditoría', sub: 'Control de calidad pallets',
       border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.20)',
-      onClick: () => router.push('/auditoria'), adminOnly: true,
+      onClick: () => router.push('/auditoria'), path: '/auditoria',
       Icon: ClipboardCheck, iconColor: 'rgba(251,191,36,0.9)',
     },
     {
       label: 'Revisión Auditoría', sub: 'Revisión y seguimiento',
       border: 'rgba(124,58,237,0.5)', bg: 'rgba(124,58,237,0.15)', shadow: 'rgba(124,58,237,0.22)',
-      onClick: () => router.push('/auditoria-admin'), adminOnly: true,
+      onClick: () => router.push('/auditoria-admin'), path: '/auditoria-admin',
       Icon: Search, iconColor: 'rgba(167,139,250,0.9)',
     },
     {
       label: 'Config. Tiendas', sub: 'Gestión de tiendas · Calendario central',
       border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.28)',
-      onClick: () => router.push('/admin/tiendas'), adminOnly: true,
+      onClick: () => router.push('/admin/tiendas'), path: '/admin/tiendas',
       Icon: Settings, iconColor: 'rgba(252,165,165,0.9)',
     },
     {
       label: 'Recepción/Tienda', sub: 'Registro de entrega en tienda',
       border: 'rgba(16,185,129,0.55)', bg: 'rgba(16,185,129,0.13)', shadow: 'rgba(16,185,129,0.20)',
-      onClick: () => router.push('/recepcion-tienda'), adminOnly: false,
+      onClick: () => router.push('/recepcion-tienda'), path: '/recepcion-tienda',
       Icon: PackageCheck, iconColor: 'rgba(52,211,153,0.9)',
     },
     {
       label: 'Validación Tienda', sub: 'Confirmar entregas recibidas',
       border: 'rgba(99,102,241,0.55)', bg: 'rgba(99,102,241,0.13)', shadow: 'rgba(99,102,241,0.20)',
-      onClick: () => router.push('/validacion-tienda'), adminOnly: false,
+      onClick: () => router.push('/validacion-tienda'), path: '/validacion-tienda',
       Icon: CheckSquare, iconColor: 'rgba(129,140,248,0.9)',
     },
-  ].filter(t => !t.adminOnly || isAdmin);
+  ].filter(t => canSee(t.path));
 
   return (
     <>
