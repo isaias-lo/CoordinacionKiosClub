@@ -12,10 +12,10 @@ const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF950
 const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE' };
 
 const GRUPOS: [string, string, string][] = [
-  ['general', '🗂 General',  'Vista completa — todos los grupos'],
-  ['rm',    '📦 RM',        'Bodega Santiago — RM'],
-  ['costa', '🌊 COSTA',     'Bodega Santiago — V Región'],
-  ['fal',   '🏢 REGIONES',  'Bodega Regiones'],
+  ['rm',      '📦 RM',        'Bodega Santiago — RM'],
+  ['costa',   '🌊 COSTA',     'Bodega Santiago — V Región'],
+  ['fal',     '🏢 REGIONES',  'Bodega Regiones'],
+  ['general', '📋 GENERAL',   'Vista completa — todos los grupos'],
 ];
 
 const COSTA_CODES    = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
@@ -263,17 +263,15 @@ export default function CalendarioColumnas() {
       mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF' },
     };
 
-    // For each day build ordered array: Norte → Sur → Costa → RM → Malls
+    // RM calendar order → Costa calendar order → Regiones calendar order
     const dayOrdered: Array<Array<{ cod: string; zone: Zone }>> = DIAS.map(dia => {
-      const fal   = local![dia]?.fal   || [];
-      const costa = local![dia]?.costa || [];
       const rm    = local![dia]?.rm    || [];
+      const costa = local![dia]?.costa || [];
+      const fal   = local![dia]?.fal   || [];
       return [
-        ...fal.filter(c =>  ZONA_NORTE_FAL.has(c)).map(c => ({ cod: c, zone: 'norte' as Zone })),
-        ...fal.filter(c => !ZONA_NORTE_FAL.has(c)).map(c => ({ cod: c, zone: 'sur'   as Zone })),
-        ...costa.map(c =>                                        ({ cod: c, zone: 'costa' as Zone })),
-        ...rm.filter(c => !RM_MALLS.has(c))       .map(c => ({ cod: c, zone: 'rm'    as Zone })),
-        ...rm.filter(c =>  RM_MALLS.has(c))        .map(c => ({ cod: c, zone: 'mall'  as Zone })),
+        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as Zone })),
+        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as Zone })),
+        ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as Zone })),
       ];
     });
 
@@ -320,13 +318,13 @@ export default function CalendarioColumnas() {
 </head>
 <body>
   <h1>Calendario de Despacho — KiosClub</h1>
-  <p class="subtitle">Impreso el ${today} &nbsp;·&nbsp; Orden por columna: Zona Norte → Zona Sur → Costa → RM → Malls</p>
+  <p class="subtitle">Impreso el ${today} &nbsp;·&nbsp; Orden por columna: RM → Costa → Regiones</p>
   <div class="legend">
-    <div class="leg-item"><div class="leg-dot" style="background:#BAE6FD;border-color:#7DD3FC"></div>Zona Norte (Regiones)</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#FEF08A;border-color:#FDE047"></div>Zona Sur (Regiones)</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#99F6E4;border-color:#5EEAD4"></div>Costa Valparaíso</div>
     <div class="leg-item"><div class="leg-dot" style="background:#F1F5F9;border-color:#CBD5E1"></div>RM</div>
     <div class="leg-item"><div class="leg-dot" style="background:#FECDD3;border-color:#FDA4AF"></div>Malls RM</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#99F6E4;border-color:#5EEAD4"></div>Costa Valparaíso</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#BAE6FD;border-color:#7DD3FC"></div>Zona Norte (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#FEF08A;border-color:#FDE047"></div>Zona Sur (Regiones)</div>
   </div>
   <table>
     <thead>
@@ -558,72 +556,72 @@ export default function CalendarioColumnas() {
         )}
       </div>}
 
-      {/* ── Column table / General view ── */}
+      {/* ── General view: days as columns, stores as chips (PDF-style) ── */}
       {grp === 'general' && (() => {
-        const allFor = (g: 'rm' | 'costa' | 'fal') => {
-          const seen = new Set<string>(); const out: string[] = [];
-          for (const d of DIAS) for (const c of (local[d]?.[g] ?? [])) if (!seen.has(c)) { seen.add(c); out.push(c); }
-          return out;
+        type GZone = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
+        const GZONE: Record<GZone, { bg: string; text: string; border: string; shadow: string; label: string }> = {
+          rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1', shadow: 'rgba(51,65,85,0.14)',    label: 'RM'             },
+          mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF', shadow: 'rgba(136,19,55,0.14)',   label: 'Mall RM'        },
+          costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4', shadow: 'rgba(19,78,74,0.14)',    label: 'Costa'          },
+          norte: { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC', shadow: 'rgba(12,74,110,0.14)',   label: 'Regiones Norte' },
+          sur:   { bg: '#FEF08A', text: '#713F12', border: '#FDE047', shadow: 'rgba(113,63,18,0.14)',   label: 'Regiones Sur'   },
         };
-        const falAll = allFor('fal'); const costaAll = allFor('costa'); const rmAll = allFor('rm');
-        type Sec = { label: string; g: 'fal'|'costa'|'rm'; stores: string[]; hdrBg: string; accent: string; evenBg: string; oddBg: string };
-        const sections: Sec[] = [
-          { label:'🏢 Regiones — Zona Sur',   g:'fal',   stores:falAll.filter(c=>!ZONA_NORTE_FAL.has(c)), hdrBg:'#7B4F00', accent:'#B45309', evenBg:'#FFFBF0', oddBg:'#FFF3CD' },
-          { label:'🏢 Regiones — Zona Norte', g:'fal',   stores:falAll.filter(c=> ZONA_NORTE_FAL.has(c)), hdrBg:'#1e3a5f', accent:'#0C4A6E', evenBg:'#EFF8FF', oddBg:'#BAE6FD' },
-          { label:'🌊 Costa — V Región',      g:'costa', stores:costaAll,                                  hdrBg:'#0369A1', accent:'#0F766E', evenBg:'#F0FFF4', oddBg:'#CCFBF1' },
-          { label:'📦 RM — Street Center',    g:'rm',    stores:rmAll.filter(c=>!RM_MALLS.has(c)),         hdrBg:'#374151', accent:'#1D4ED8', evenBg:'#F8FAFF', oddBg:'#DBEAFE' },
-          { label:'📦 RM — Malls',            g:'rm',    stores:rmAll.filter(c=> RM_MALLS.has(c)),         hdrBg:'#881337', accent:'#881337', evenBg:'#FFF0F6', oddBg:'#FECDD3' },
-        ];
-        const hasAny = falAll.length + costaAll.length + rmAll.length > 0;
         return (
-          <div style={{ overflowX: 'auto', borderRadius: 18, background: '#FFFFFF', boxShadow: '0 2px 16px rgba(0,0,0,0.07)' }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
-              <thead>
-                <tr>
-                  <th style={{ background: '#111A3E', color: 'rgba(255,255,255,0.5)', fontWeight: 700, padding: '13px 16px', borderRight: '1px solid rgba(0,0,0,0.07)', fontSize: 11, letterSpacing: '0.08em', textAlign: 'left', textTransform: 'uppercase', minWidth: 190 }}>Tienda</th>
-                  {DIAS.map(d => (
-                    <th key={d} style={{ background: DLIGHT[d], padding: '13px 8px', borderBottom: `3px solid ${DCOL[d]}`, borderRight: '1px solid rgba(0,0,0,0.05)', textAlign: 'center', minWidth: 68 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: DCOL[d], letterSpacing: '0.05em' }}>{DNOM[d].slice(0,2)}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {!hasAny && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#8E8E93', fontStyle: 'italic', padding: '40px 16px', fontSize: 13 }}>Sin tiendas asignadas</td></tr>
-                )}
-                {sections.flatMap(sec => [
-                  sec.stores.length === 0 ? null : (
-                    <tr key={sec.label + '-hdr'}>
-                      <td colSpan={7} style={{ background: sec.hdrBg, color: '#fff', fontWeight: 700, fontSize: 12, padding: '7px 16px', letterSpacing: '0.03em' }}>
-                        {sec.label} <span style={{ opacity: 0.6, fontSize: 10 }}>— {sec.stores.length} tienda{sec.stores.length !== 1 ? 's' : ''}</span>
-                      </td>
-                    </tr>
-                  ),
-                  ...sec.stores.map((cod, i) => (
-                    <tr key={sec.label + '-' + cod} style={{ background: i % 2 === 0 ? sec.evenBg : sec.oddBg }}>
-                      <td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(0,0,0,0.05)', borderRight: '1px solid rgba(0,0,0,0.05)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: sec.accent, flexShrink: 0 }}>{displayCode(cod)}</span>
-                          <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getNombre(cod)}</span>
-                        </div>
-                      </td>
-                      {DIAS.map(d => {
-                        const on = !!(local[d]?.[sec.g]?.includes(cod));
-                        return (
-                          <td key={d} style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid rgba(0,0,0,0.05)', borderRight: '1px solid rgba(0,0,0,0.05)' }}>
-                            {on
-                              ? <div style={{ width: 24, height: 24, borderRadius: '50%', background: DCOL[d], color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>✓</div>
-                              : <div style={{ width: 18, height: 18, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,0.10)', margin: '0 auto' }} />
-                            }
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  )),
-                ])}
-              </tbody>
-            </table>
+          <div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {(Object.entries(GZONE) as [GZone, typeof GZONE[GZone]][]).map(([z, zc]) => (
+                <div key={z} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 100, background: zc.bg, border: `1.5px solid ${zc.border}`, boxShadow: `0 2px 6px ${zc.shadow}` }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: zc.text }}>{zc.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ overflowX: 'auto', borderRadius: 18, background: '#FFFFFF', boxShadow: '0 2px 16px rgba(0,0,0,0.07)' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+                <thead>
+                  <tr>
+                    {DIAS.map(dia => {
+                      const count = (local![dia]?.rm?.length || 0) + (local![dia]?.costa?.length || 0) + (local![dia]?.fal?.length || 0);
+                      return (
+                        <th key={dia} style={{ background: DLIGHT[dia], padding: '13px 10px 10px', borderBottom: `3px solid ${DCOL[dia]}`, borderRight: '1px solid rgba(0,0,0,0.05)', minWidth: 118, textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: DCOL[dia], letterSpacing: '0.05em' }}>{DNOM[dia].toUpperCase()}</div>
+                          <div style={{ fontSize: 12, color: DCOL[dia], opacity: 0.75, marginTop: 3, fontWeight: 600 }}>{count} tiendas</div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {DIAS.map(dia => {
+                      const rm    = local![dia]?.rm    || [];
+                      const costa = local![dia]?.costa || [];
+                      const fal   = local![dia]?.fal   || [];
+                      const stores: { cod: string; zone: GZone }[] = [
+                        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as GZone })),
+                        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
+                        ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as GZone })),
+                      ];
+                      return (
+                        <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid rgba(0,0,0,0.05)', background: '#FFFFFF', minWidth: 118 }}>
+                          {stores.length === 0 ? (
+                            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.18)', fontStyle: 'italic', textAlign: 'center', padding: '18px 6px', border: '2px dashed rgba(0,0,0,0.08)', borderRadius: 12, marginTop: 2 }}>
+                              Sin tiendas
+                            </div>
+                          ) : stores.map(({ cod, zone }) => {
+                            const zc = GZONE[zone];
+                            return (
+                              <div key={cod} style={{ background: zc.bg, color: zc.text, border: `1.5px solid ${zc.border}`, borderRadius: 10, padding: '6px 10px', marginBottom: 5, fontSize: 13, fontWeight: 800, fontFamily: 'monospace', textAlign: 'center', boxShadow: `0 2px 6px ${zc.shadow}` }}>
+                                {displayCode(cod)}
+                              </div>
+                            );
+                          })}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         );
       })()}

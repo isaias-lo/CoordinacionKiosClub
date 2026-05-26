@@ -34,11 +34,16 @@ export function useAuth() {
 // Builds profile from JWT metadata — no DB call, no RLS issues.
 function profileFromUser(user: User): Profile {
   const meta = user.user_metadata ?? {};
+  const role = ((meta.role as string) ?? 'auditor') as UserRole;
+  // admin always gets full access regardless of whether allowed_paths is set
+  const allowedPaths = role === 'admin'
+    ? ['*']
+    : (meta.allowed_paths as string[] | undefined) ?? [];
   return {
     id: user.id,
     full_name: (meta.full_name as string) ?? user.email ?? null,
-    role: ((meta.role as string) ?? 'auditor') as UserRole,
-    allowedPaths: (meta.allowed_paths as string[] | undefined) ?? [],
+    role,
+    allowedPaths,
   };
 }
 
