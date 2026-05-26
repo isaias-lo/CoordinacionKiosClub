@@ -542,6 +542,7 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
   const [errorMsg,  setErrorMsg]  = useState('');
   const [hasTorch,  setHasTorch]  = useState(false);
   const [torchOn,   setTorchOn]   = useState(false);
+  const [wideMode,  setWideMode]  = useState(false);
 
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -663,6 +664,12 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
         <span className="text-white font-bold text-[15px] flex-1">Escanear código del pallet</span>
         {status === 'scanning' && (
           <div className="flex items-center gap-2">
+            <button onClick={() => setWideMode(w => !w)}
+              className="w-9 h-9 rounded-full border flex items-center justify-center text-[14px] cursor-pointer"
+              style={{ borderColor: wideMode ? '#60A5FA' : 'rgba(255,255,255,0.25)', background: wideMode ? 'rgba(96,165,250,0.2)' : 'transparent' }}
+              title={wideMode ? 'Modo normal' : 'Modo amplio (código grande)'}>
+              {wideMode ? '⊡' : '⊞'}
+            </button>
             {hasTorch && (
               <button onClick={() => void toggleTorch()}
                 className="w-9 h-9 rounded-full border flex items-center justify-center text-[18px] cursor-pointer"
@@ -704,13 +711,18 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
         <div className="flex-1 relative overflow-hidden">
           <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
 
-          {/* Viewfinder — wide for CODE128 (full A4-width barcodes) */}
+          {/* Viewfinder — adjusts between normal and wide mode for large CODE128 barcodes */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
-            style={{ background: 'rgba(0,0,0,0.45)' }}>
+            style={{ background: `rgba(0,0,0,${wideMode ? '0.2' : '0.45'})` }}>
             <div className="relative bg-transparent"
-              style={{ width: '88%', maxWidth: 440, height: 200, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}>
+              style={{
+                width: wideMode ? '96%' : '88%',
+                maxWidth: wideMode ? 640 : 440,
+                height: wideMode ? 320 : 200,
+                boxShadow: `0 0 0 9999px rgba(0,0,0,${wideMode ? '0.2' : '0.45'})`,
+              }}>
               {[['top-0 left-0','border-t-[3px] border-l-[3px]'],['top-0 right-0','border-t-[3px] border-r-[3px]'],['bottom-0 left-0','border-b-[3px] border-l-[3px]'],['bottom-0 right-0','border-b-[3px] border-r-[3px]']].map(([pos, borders]) => (
-                <div key={pos} className={`absolute w-8 h-8 border-white ${pos} ${borders}`} />
+                <div key={pos} className={`absolute w-8 h-8 ${wideMode ? 'border-blue-400' : 'border-white'} ${pos} ${borders}`} />
               ))}
               {status === 'scanning' && (
                 <div className="absolute inset-x-0 h-0.5 bg-red-400/90"
@@ -718,11 +730,16 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
               )}
             </div>
             <div className="mt-4 text-white/80 text-[13px] font-medium px-6 text-center">
-              Centra el código dentro del marco
+              {wideMode ? 'Modo amplio — código grande (70% hoja)' : 'Centra el código dentro del marco'}
             </div>
             <div className="mt-1 text-white/50 text-[11px] px-6 text-center">
-              Si el código es muy grande, aleja el celular ~25–35 cm
+              {wideMode ? 'Aleja el celular ~30–40 cm del código' : 'Si el código es muy grande, aleja el celular ~25–35 cm'}
             </div>
+            {wideMode && (
+              <div className="mt-2 px-3 py-1 rounded-full text-[10px] font-semibold text-blue-300 border border-blue-400/40 bg-blue-400/10">
+                ⊞ Modo amplio activo
+              </div>
+            )}
           </div>
 
           {/* Photo fallback button — always visible at bottom */}
@@ -1808,6 +1825,23 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
   );
 }
 
+/* ── Photo quality check: warn if image is too small/blurry to be useful ── */
+async function checkPhotoQuality(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const minDim = Math.min(img.width, img.height);
+      if (minDim < 400) resolve('Foto muy pequeña — puede ser ilegible');
+      else if (minDim < 700) resolve('Resolución baja — intenta acercarte');
+      else resolve('');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.src = url;
+  });
+}
+
 /* ── Image compression (client-side, before upload) ── */
 async function compressImage(file: File, maxDim = 1280, quality = 0.80): Promise<File> {
   return new Promise(resolve => {
@@ -1868,10 +1902,13 @@ export function AuditoriaScreen() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [palletFiles,      setPalletFiles]      = useState<Record<string, File>>({});
   const [palletPreviews,   setPalletPreviews]   = useState<Record<string, string>>({});
+  const [palletWarnings,   setPalletWarnings]   = useState<Record<string, string>>({});
   const [fotoFiles,        setFotoFiles]        = useState<File[]>([]);
   const [fotoPreviews,     setFotoPreviews]     = useState<string[]>([]);
+  const [fotoWarnings,     setFotoWarnings]     = useState<string[]>([]);
   const [errorFotoFiles,   setErrorFotoFiles]   = useState<File[]>([]);
   const [errorFotoPreviews,setErrorFotoPreviews]= useState<string[]>([]);
+  const [errorFotoWarnings,setErrorFotoWarnings]= useState<string[]>([]);
   const [submitting,       setSubmitting]       = useState(false);
   const [uploadProgress,   setUploadProgress]   = useState('');
   const [pickerNombre,   setPickerNombre]   = useState('');
@@ -1989,14 +2026,11 @@ export function AuditoriaScreen() {
     pendingScanRef.current = null;
     setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => ({ subTipo: st, codigo: codes?.[i] ?? '' })));
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
-    setPalletFiles({});
-    setPalletPreviews({});
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setFotoFiles([]);
-    setFotoPreviews([]);
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]);
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setErrorFotoFiles([]);
-    setErrorFotoPreviews([]);
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
@@ -2385,11 +2419,11 @@ export function AuditoriaScreen() {
     setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
-    setPalletFiles({}); setPalletPreviews({});
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setFotoFiles([]); setFotoPreviews([]);
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]);
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setErrorFotoFiles([]); setErrorFotoPreviews([]);
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]);
     setSubmitting(false); setUploadProgress('');
     setLastEntry(entry);
     setLastDurationSeconds(durSecs);
@@ -2911,14 +2945,20 @@ export function AuditoriaScreen() {
                       {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
                         const key = String(n);
                         const preview = palletPreviews[key];
+                        const warn = palletWarnings[key];
                         return preview ? (
                           <div key={key} className="relative rounded-card overflow-hidden border border-border" style={{ aspectRatio: '1', boxShadow: '0 2px 6px rgba(26,37,80,0.10)' }}>
                             <img src={preview} alt={`P${n}`} className="w-full h-full object-cover" />
                             <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-black/60 rounded px-1">P{n}</div>
                             <button
-                              onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
+                              onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); setPalletWarnings(w => { const nw = { ...w }; delete nw[key]; return nw; }); }}
                               className="absolute top-0.5 right-0.5 bg-red text-white border-none rounded-full w-5 h-5 text-[12px] leading-none cursor-pointer flex items-center justify-center font-bold"
                               style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.35)' }}>×</button>
+                            {warn && (
+                              <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/90 text-[8px] font-bold text-white text-center px-0.5 py-0.5 leading-tight">
+                                ⚠ {warn}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div key={key} className="relative rounded-card overflow-hidden bg-white border-2 border-dashed border-border" style={{ aspectRatio: '1', boxShadow: '0 1px 3px rgba(26,37,80,0.04)' }}>
@@ -2927,13 +2967,13 @@ export function AuditoriaScreen() {
                               <span className="text-[22px]">📷</span>
                               <span className="text-[10px] text-text-3 font-bold">P{n}</span>
                               <input type="file" accept="image/*" capture="environment" className="hidden"
-                                onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                                onChange={async e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; const w = await checkPhotoQuality(f); setPalletWarnings(p => ({ ...p, [key]: w })); } }} />
                             </label>
                             {/* Gallery — small corner button */}
                             <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
                               <span className="text-[11px]">🖼️</span>
                               <input type="file" accept="image/*" className="hidden"
-                                onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                                onChange={async e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; const w = await checkPhotoQuality(f); setPalletWarnings(p => ({ ...p, [key]: w })); } }} />
                             </label>
                           </div>
                         );
@@ -3003,9 +3043,15 @@ export function AuditoriaScreen() {
                                 URL.revokeObjectURL(preview);
                                 setErrorFotoPreviews(p => p.filter((_, i) => i !== idx));
                                 setErrorFotoFiles(f => f.filter((_, i) => i !== idx));
+                                setErrorFotoWarnings(w => w.filter((_, i) => i !== idx));
                               }}
                               className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
                               style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                            {errorFotoWarnings[idx] && (
+                              <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/90 text-[8px] font-bold text-white text-center px-0.5 py-0.5 leading-tight">
+                                ⚠ {errorFotoWarnings[idx]}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -3016,12 +3062,14 @@ export function AuditoriaScreen() {
                         <span className="text-[12px] text-red font-semibold">Cámara</span>
                         <span className="text-[10px] text-text-3">1 foto directa</span>
                         <input type="file" accept="image/*" capture="environment" className="hidden"
-                          onChange={e => {
+                          onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
                             setErrorFotoFiles(prev => [...prev, ...files]);
                             setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                             e.target.value = '';
+                            const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
+                            setErrorFotoWarnings(prev => [...prev, ...warns]);
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
@@ -3029,12 +3077,14 @@ export function AuditoriaScreen() {
                         <span className="text-[12px] text-red font-semibold">Galería</span>
                         <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                         <input type="file" accept="image/*" multiple className="hidden"
-                          onChange={e => {
+                          onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
                             setErrorFotoFiles(prev => [...prev, ...files]);
                             setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                             e.target.value = '';
+                            const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
+                            setErrorFotoWarnings(prev => [...prev, ...warns]);
                           }} />
                       </label>
                     </div>
@@ -3053,9 +3103,15 @@ export function AuditoriaScreen() {
                             URL.revokeObjectURL(preview);
                             setFotoPreviews(p => p.filter((_, i) => i !== idx));
                             setFotoFiles(f => f.filter((_, i) => i !== idx));
+                            setFotoWarnings(w => w.filter((_, i) => i !== idx));
                           }}
                           className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
                           style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                        {fotoWarnings[idx] && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/90 text-[8px] font-bold text-white text-center px-0.5 py-0.5 leading-tight">
+                            ⚠ {fotoWarnings[idx]}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3066,12 +3122,14 @@ export function AuditoriaScreen() {
                     <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
                     <span className="text-[10px] text-text-3">1 foto directa</span>
                     <input type="file" accept="image/*" capture="environment" className="hidden"
-                      onChange={e => {
+                      onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
                         setFotoFiles(prev => [...prev, ...files]);
                         setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                         e.target.value = '';
+                        const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
+                        setFotoWarnings(prev => [...prev, ...warns]);
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
@@ -3079,12 +3137,14 @@ export function AuditoriaScreen() {
                     <span className="text-[12px] text-text-2 font-semibold">Galería</span>
                     <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                     <input type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => {
+                      onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
                         setFotoFiles(prev => [...prev, ...files]);
                         setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                         e.target.value = '';
+                        const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
+                        setFotoWarnings(prev => [...prev, ...warns]);
                       }} />
                   </label>
                 </div>
