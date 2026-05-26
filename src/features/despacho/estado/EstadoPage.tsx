@@ -477,8 +477,10 @@ export function EstadoPage() {
 
         {/* ══════════════════════════════
             LEFT — Subida + Lista + Imprimir
+            En móvil: flex-1 para que quede acotado y la lista interna
+            pueda hacer scroll. En desktop: flex-none + 440px fijo.
         ══════════════════════════════ */}
-        <div className="w-full lg:w-[440px] flex-shrink-0 flex flex-col border-r border-border overflow-hidden">
+        <div className="flex-1 lg:flex-none w-full lg:w-[440px] flex flex-col border-r border-border overflow-hidden">
 
           {/* Stats header */}
           <div className="px-5 py-4 bg-navy flex-shrink-0">
@@ -598,8 +600,10 @@ export function EstadoPage() {
 
         {/* ══════════════════════════════
             RIGHT — Previsualización de etiquetas
+            Oculto en móvil: en pantalla pequeña sólo se usa la lista
+            izquierda; la previsualización requiere espacio horizontal.
         ══════════════════════════════ */}
-        <div className="flex-1 overflow-y-auto bg-[#ECEEF3] p-6">
+        <div className="hidden lg:block lg:flex-1 overflow-y-auto bg-[#ECEEF3] p-6">
           {!selectedStore ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
