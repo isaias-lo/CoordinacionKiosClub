@@ -12,6 +12,7 @@ const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF950
 const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE' };
 
 const GRUPOS: [string, string, string][] = [
+  ['general', '🗂 General',  'Vista completa — todos los grupos'],
   ['rm',    '📦 RM',        'Bodega Santiago — RM'],
   ['costa', '🌊 COSTA',     'Bodega Santiago — V Región'],
   ['fal',   '🏢 REGIONES',  'Bodega Regiones'],
@@ -135,10 +136,12 @@ export default function CalendarioColumnas() {
       if (!next[dia]) next[dia] = { rm: [], costa: [], fal: [] };
       const g = grp as 'rm' | 'costa' | 'fal';
       if (!next[dia][g]) next[dia][g] = [];
-      if (!next[dia][g].includes(cod)) next[dia][g].push(cod);
+      const idx = next[dia][g].indexOf(cod);
+      if (idx >= 0) next[dia][g].splice(idx, 1);
+      else next[dia][g].push(cod);
       return next;
     });
-    setPickerOpen(false); setPickerCod('');
+    // keep modal open for multi-day selection
   }
 
   function remove(dia: string, cod: string) {
@@ -471,22 +474,24 @@ export default function CalendarioColumnas() {
         </div>
       )}
 
-      {/* ── Legend ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-        {(Object.entries(TYPE_STYLE) as [StoreType, typeof TYPE_STYLE[StoreType]][]).map(([type, s]) => (
-          <div key={type} style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            padding: '5px 13px', borderRadius: 100,
-            background: s.bg, border: `1.5px solid ${s.border}`,
-            boxShadow: `0 2px 6px ${s.shadow}, inset 0 1px 0 rgba(255,255,255,0.6)`,
-          }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: s.text }}>{s.label}</span>
-          </div>
-        ))}
-      </div>
+      {/* ── Legend (oculta en General) ── */}
+      {grp !== 'general' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+          {(Object.entries(TYPE_STYLE) as [StoreType, typeof TYPE_STYLE[StoreType]][]).map(([type, s]) => (
+            <div key={type} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 13px', borderRadius: 100,
+              background: s.bg, border: `1.5px solid ${s.border}`,
+              boxShadow: `0 2px 6px ${s.shadow}, inset 0 1px 0 rgba(255,255,255,0.6)`,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: s.text }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* ── Search ── */}
-      <div style={{ position: 'relative', marginBottom: 16 }}>
+      {/* ── Search (oculta en General) ── */}
+      {grp !== 'general' && <div style={{ position: 'relative', marginBottom: 16 }}>
         <span style={{
           position: 'absolute', left: 14, top: '50%',
           transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none',
@@ -551,10 +556,79 @@ export default function CalendarioColumnas() {
             })}
           </div>
         )}
-      </div>
+      </div>}
 
-      {/* ── Column table ── */}
-      <div style={{
+      {/* ── Column table / General view ── */}
+      {grp === 'general' && (() => {
+        const allFor = (g: 'rm' | 'costa' | 'fal') => {
+          const seen = new Set<string>(); const out: string[] = [];
+          for (const d of DIAS) for (const c of (local[d]?.[g] ?? [])) if (!seen.has(c)) { seen.add(c); out.push(c); }
+          return out;
+        };
+        const falAll = allFor('fal'); const costaAll = allFor('costa'); const rmAll = allFor('rm');
+        type Sec = { label: string; g: 'fal'|'costa'|'rm'; stores: string[]; hdrBg: string; accent: string; evenBg: string; oddBg: string };
+        const sections: Sec[] = [
+          { label:'🏢 Regiones — Zona Sur',   g:'fal',   stores:falAll.filter(c=>!ZONA_NORTE_FAL.has(c)), hdrBg:'#7B4F00', accent:'#B45309', evenBg:'#FFFBF0', oddBg:'#FFF3CD' },
+          { label:'🏢 Regiones — Zona Norte', g:'fal',   stores:falAll.filter(c=> ZONA_NORTE_FAL.has(c)), hdrBg:'#1e3a5f', accent:'#0C4A6E', evenBg:'#EFF8FF', oddBg:'#BAE6FD' },
+          { label:'🌊 Costa — V Región',      g:'costa', stores:costaAll,                                  hdrBg:'#0369A1', accent:'#0F766E', evenBg:'#F0FFF4', oddBg:'#CCFBF1' },
+          { label:'📦 RM — Street Center',    g:'rm',    stores:rmAll.filter(c=>!RM_MALLS.has(c)),         hdrBg:'#374151', accent:'#1D4ED8', evenBg:'#F8FAFF', oddBg:'#DBEAFE' },
+          { label:'📦 RM — Malls',            g:'rm',    stores:rmAll.filter(c=> RM_MALLS.has(c)),         hdrBg:'#881337', accent:'#881337', evenBg:'#FFF0F6', oddBg:'#FECDD3' },
+        ];
+        const hasAny = falAll.length + costaAll.length + rmAll.length > 0;
+        return (
+          <div style={{ overflowX: 'auto', borderRadius: 18, background: '#FFFFFF', boxShadow: '0 2px 16px rgba(0,0,0,0.07)' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+              <thead>
+                <tr>
+                  <th style={{ background: '#111A3E', color: 'rgba(255,255,255,0.5)', fontWeight: 700, padding: '13px 16px', borderRight: '1px solid rgba(0,0,0,0.07)', fontSize: 11, letterSpacing: '0.08em', textAlign: 'left', textTransform: 'uppercase', minWidth: 190 }}>Tienda</th>
+                  {DIAS.map(d => (
+                    <th key={d} style={{ background: DLIGHT[d], padding: '13px 8px', borderBottom: `3px solid ${DCOL[d]}`, borderRight: '1px solid rgba(0,0,0,0.05)', textAlign: 'center', minWidth: 68 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: DCOL[d], letterSpacing: '0.05em' }}>{DNOM[d].slice(0,2)}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {!hasAny && (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#8E8E93', fontStyle: 'italic', padding: '40px 16px', fontSize: 13 }}>Sin tiendas asignadas</td></tr>
+                )}
+                {sections.flatMap(sec => [
+                  sec.stores.length === 0 ? null : (
+                    <tr key={sec.label + '-hdr'}>
+                      <td colSpan={7} style={{ background: sec.hdrBg, color: '#fff', fontWeight: 700, fontSize: 12, padding: '7px 16px', letterSpacing: '0.03em' }}>
+                        {sec.label} <span style={{ opacity: 0.6, fontSize: 10 }}>— {sec.stores.length} tienda{sec.stores.length !== 1 ? 's' : ''}</span>
+                      </td>
+                    </tr>
+                  ),
+                  ...sec.stores.map((cod, i) => (
+                    <tr key={sec.label + '-' + cod} style={{ background: i % 2 === 0 ? sec.evenBg : sec.oddBg }}>
+                      <td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(0,0,0,0.05)', borderRight: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: sec.accent, flexShrink: 0 }}>{displayCode(cod)}</span>
+                          <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getNombre(cod)}</span>
+                        </div>
+                      </td>
+                      {DIAS.map(d => {
+                        const on = !!(local[d]?.[sec.g]?.includes(cod));
+                        return (
+                          <td key={d} style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid rgba(0,0,0,0.05)', borderRight: '1px solid rgba(0,0,0,0.05)' }}>
+                            {on
+                              ? <div style={{ width: 24, height: 24, borderRadius: '50%', background: DCOL[d], color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>✓</div>
+                              : <div style={{ width: 18, height: 18, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,0.10)', margin: '0 auto' }} />
+                            }
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )),
+                ])}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {grp !== 'general' && <div style={{
         overflowX: 'auto', borderRadius: 18,
         background: '#FFFFFF',
         boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)',
@@ -693,7 +767,7 @@ export default function CalendarioColumnas() {
             </tr>
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {/* ── Day picker modal ── */}
       {pickerOpen && createPortal(
@@ -731,7 +805,7 @@ export default function CalendarioColumnas() {
                     {getNombre(pickerCod)}
                   </div>
                   <div style={{ fontSize: 12, color: '#C7C7CC', marginBottom: 18 }}>
-                    ¿A qué día agregás esta tienda?
+                    Elige uno o más días · toca de nuevo para quitar
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                     {DIAS.map(d => {
@@ -740,11 +814,11 @@ export default function CalendarioColumnas() {
                         <button key={d} onClick={() => handlePickerConfirm(pickerCod, d)}
                           style={{
                             height: 44, borderRadius: 13, fontSize: 13, fontWeight: 600,
-                            border: `2px solid ${yaEsta ? '#E5E5EA' : DCOL[d]}`,
-                            color: yaEsta ? '#C7C7CC' : DCOL[d],
-                            background: yaEsta ? '#F9F9F9' : DLIGHT[d],
+                            border: `2px solid ${DCOL[d]}`,
+                            color: yaEsta ? '#fff' : DCOL[d],
+                            background: yaEsta ? DCOL[d] : DLIGHT[d],
                             cursor: 'pointer',
-                            boxShadow: yaEsta ? 'none' : `0 2px 8px rgba(0,0,0,0.07)`,
+                            boxShadow: yaEsta ? `0 2px 8px ${DCOL[d]}55` : `0 2px 8px rgba(0,0,0,0.07)`,
                             transition: 'all 0.14s ease',
                           }}>
                           {DNOM[d]}{yaEsta ? ' ✓' : ''}
@@ -755,13 +829,13 @@ export default function CalendarioColumnas() {
                   <button onClick={() => { setPickerOpen(false); setPickerCod(''); }}
                     style={{
                       width: '100%', height: 44, borderRadius: 13,
-                      fontSize: 14, fontWeight: 600,
-                      background: '#F2F2F7', color: '#8E8E93',
-                      border: '1.5px solid rgba(0,0,0,0.07)',
+                      fontSize: 14, fontWeight: 700,
+                      background: 'linear-gradient(175deg, #E53535 0%, #C12828 100%)',
+                      color: '#fff', border: 'none',
                       cursor: 'pointer',
-                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)',
+                      boxShadow: '0 4px 14px rgba(193,40,40,0.35)',
                     }}>
-                    Cancelar
+                    Listo
                   </button>
                 </>
               );
