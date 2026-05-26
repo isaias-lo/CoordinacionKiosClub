@@ -3112,7 +3112,8 @@ export function AuditoriaScreen() {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
                             e.target.value = '';
-                            const results = await Promise.all(files.map(f => processPhoto(f)));
+                            const results: ProcessedPhoto[] = [];
+                            for (const f of files) results.push(await processPhoto(f));
                             setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                             setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                             setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
@@ -3137,7 +3138,8 @@ export function AuditoriaScreen() {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
                             e.target.value = '';
-                            const results = await Promise.all(files.map(f => processPhoto(f)));
+                            const results: ProcessedPhoto[] = [];
+                            for (const f of files) results.push(await processPhoto(f));
                             setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                             setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                             setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
@@ -3195,7 +3197,8 @@ export function AuditoriaScreen() {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
                         e.target.value = '';
-                        const results = await Promise.all(files.map(f => processPhoto(f)));
+                        const results: ProcessedPhoto[] = [];
+                        for (const f of files) results.push(await processPhoto(f));
                         setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                         setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                         setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
@@ -3220,7 +3223,8 @@ export function AuditoriaScreen() {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
                         e.target.value = '';
-                        const results = await Promise.all(files.map(f => processPhoto(f)));
+                        const results: ProcessedPhoto[] = [];
+                        for (const f of files) results.push(await processPhoto(f));
                         setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                         setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                         setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
