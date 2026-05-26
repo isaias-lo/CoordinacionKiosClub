@@ -39,6 +39,7 @@ function loadState(): SantiagoState {
 
 type SantiagoAction =
   | { type: 'SET_REGIMEN'; payload: RegimenCarga }
+  | { type: 'BACK_TO_REGIMEN' }
   | { type: 'SELECT_TIENDA'; payload: TiendaSantiago }
   | { type: 'CLEAR_TIENDA' }
   | { type: 'ADD_ITEM'; item: SantiagoItem }
@@ -52,6 +53,9 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
   switch (action.type) {
     case 'SET_REGIMEN':
       return { ...state, regimen: action.payload, step: 'form' };
+
+    case 'BACK_TO_REGIMEN':
+      return { ...state, step: 'regimen', currentTienda: null };
 
     case 'SELECT_TIENDA':
       return { ...state, currentTienda: action.payload };
