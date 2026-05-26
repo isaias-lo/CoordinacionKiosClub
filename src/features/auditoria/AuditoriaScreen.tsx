@@ -341,6 +341,7 @@ function LineChart({ trends, selectedPickers }: { trends: Map<string, WeekTrend[
 }
 
 /* ── Operacion Input ── */
+const OP_PREFIX = '99REC/DT/';
 interface OpSearch { loading: boolean; results: OperacionOdoo[]; open: boolean; error: string }
 function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNeedConfig }: {
   subTipo: SubTipo; codigo: string; onChange: (v: string) => void;
@@ -348,10 +349,14 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
   odooConfig: OdooConfig; onNeedConfig: () => void;
 }) {
   const [s, setS] = useState<OpSearch>({ loading: false, results: [], open: false, error: '' });
+  // Show only the 5-digit suffix; the prefix is fixed
+  const digits = codigo.startsWith(OP_PREFIX) ? codigo.slice(OP_PREFIX.length) : codigo;
+  const fullCodigo = digits ? `${OP_PREFIX}${digits}` : '';
   const buscar = async () => {
     if (!odooConfig.url) { onNeedConfig(); return; }
+    if (!fullCodigo) return;
     setS({ loading: true, results: [], open: false, error: '' });
-    try { const ops = await buscarOperaciones(odooConfig, codigo); setS({ loading: false, results: ops, open: ops.length > 0, error: ops.length ? '' : 'Sin resultados' }); }
+    try { const ops = await buscarOperaciones(odooConfig, fullCodigo); setS({ loading: false, results: ops, open: ops.length > 0, error: ops.length ? '' : 'Sin resultados' }); }
     catch (e) { setS({ loading: false, results: [], open: false, error: e instanceof Error ? e.message : 'Error' }); }
   };
   const select = (op: OperacionOdoo) => { onChange(op.name); onSelect?.(op.name, op.responsable); setS({ loading: false, results: [], open: false, error: '' }); };
@@ -359,9 +364,19 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
     <div className="mb-2.5">
       <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1.5">Op. {SUBTIPO_LABEL[subTipo]}</div>
       <div className="flex gap-2">
-        <input type="text" value={codigo} onChange={e => { onChange(e.target.value.toUpperCase()); setS(p => ({ ...p, open: false })); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="WH/OUT/00000"
-          className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 font-mono text-[14px] outline-none focus:border-navy uppercase placeholder:normal-case placeholder:font-barlow placeholder:text-text-3 [-webkit-appearance:none]" />
-        <button onClick={buscar} disabled={s.loading} className="px-3 py-2.5 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.25)' }}>
+        {/* Prefix shown as static badge + only 5-digit input */}
+        <div className="flex-1 flex items-center bg-white border-[1.5px] border-border rounded-btn overflow-hidden focus-within:border-navy" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.06)' }}>
+          <span className="px-2.5 py-2.5 font-mono text-[13px] text-text-3 bg-bg border-r border-border select-none flex-shrink-0">{OP_PREFIX}</span>
+          <input
+            type="text" inputMode="numeric" maxLength={5}
+            value={digits}
+            onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 5); onChange(v ? `${OP_PREFIX}${v}` : ''); setS(p => ({ ...p, open: false })); }}
+            onKeyDown={e => e.key === 'Enter' && buscar()}
+            placeholder="12345"
+            className="flex-1 bg-transparent px-2 py-2.5 font-mono text-[15px] font-bold outline-none [-webkit-appearance:none] placeholder:text-text-3 placeholder:font-normal placeholder:text-[13px]"
+          />
+        </div>
+        <button onClick={buscar} disabled={s.loading || !fullCodigo} className="px-3 py-2.5 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.25)' }}>
           {s.loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
         </button>
       </div>
@@ -1793,6 +1808,29 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
   );
 }
 
+/* ── Image compression (client-side, before upload) ── */
+async function compressImage(file: File, maxDim = 1280, quality = 0.80): Promise<File> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (!blob) { resolve(file); return; }
+        resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 /* ════════════════════════════════════════
    MAIN SCREEN
 ════════════════════════════════════════ */
@@ -1835,6 +1873,7 @@ export function AuditoriaScreen() {
   const [errorFotoFiles,   setErrorFotoFiles]   = useState<File[]>([]);
   const [errorFotoPreviews,setErrorFotoPreviews]= useState<string[]>([]);
   const [submitting,       setSubmitting]       = useState(false);
+  const [uploadProgress,   setUploadProgress]   = useState('');
   const [pickerNombre,   setPickerNombre]   = useState('');
   const [pickerNombresList, setPickerNombresList] = useState<string[]>([]);
   const [auditorList,       setAuditorList]       = useState<string[]>([]);
@@ -2244,60 +2283,65 @@ export function AuditoriaScreen() {
     setSubmitting(true);
     const now = new Date();
     const entryId = `AUD-${Date.now()}`;
-    const uploadedFotos: { label: string; url: string }[] = [];
     const palletCount = parseInt(pallets) || 0;
     const canUploadPhotos = user && navigator.onLine;
-    if (canUploadPhotos) {
-      for (let n = 1; n <= palletCount; n++) {
-        const file = palletFiles[String(n)];
-        if (!file) continue;
-        const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_pallet${n}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('audit-photos')
-          .upload(path, file, { contentType: file.type, upsert: true });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedFotos.push({ label: `Pallet ${n}`, url: publicUrl });
-        } else {
-          showToast(`⚠ Error al subir foto pallet ${n}`, '#D97706');
-        }
-      }
-    }
+
+    // Collect all files to upload
+    const allPalletEntries = Array.from({ length: palletCount }, (_, i) => i + 1)
+      .map(n => ({ n, file: palletFiles[String(n)] ?? null }))
+      .filter(x => x.file !== null) as { n: number; file: File }[];
+    const totalFiles = allPalletEntries.length + fotoFiles.length + errorFotoFiles.length;
+
+    // Compress + upload all in parallel
+    const uploadedFotos: { label: string; url: string }[] = [];
     const uploadedFotoUrls: string[] = [];
-    if (canUploadPhotos && fotoFiles.length > 0) {
-      for (let fi = 0; fi < fotoFiles.length; fi++) {
-        const fotoFile = fotoFiles[fi];
-        const ext = fotoFile.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_foto${fi + 1}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('audit-photos')
-          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedFotoUrls.push(publicUrl);
-        } else {
-          showToast(`⚠ Error al subir foto de productos ${fi + 1}`, '#D97706');
-        }
-      }
-    }
     const uploadedErrorFotoUrls: string[] = [];
-    if (canUploadPhotos && errorFotoFiles.length > 0) {
-      for (let fi = 0; fi < errorFotoFiles.length; fi++) {
-        const fotoFile = errorFotoFiles[fi];
-        const ext = fotoFile.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_error${fi + 1}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('audit-photos')
-          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedErrorFotoUrls.push(publicUrl);
-        } else {
-          showToast(`⚠ Error al subir foto de error ${fi + 1}`, '#D97706');
-        }
-      }
+
+    if (canUploadPhotos && totalFiles > 0) {
+      setUploadProgress(`Comprimiendo ${totalFiles} foto${totalFiles !== 1 ? 's' : ''}…`);
+
+      // Compress all files in parallel first
+      const [compressedPallets, compressedFotos, compressedErrors] = await Promise.all([
+        Promise.all(allPalletEntries.map(x => compressImage(x.file))),
+        Promise.all(fotoFiles.map(f => compressImage(f))),
+        Promise.all(errorFotoFiles.map(f => compressImage(f))),
+      ]);
+
+      setUploadProgress(`Subiendo fotos (0/${totalFiles})…`);
+      let uploaded = 0;
+
+      // Upload all three groups in parallel
+      const [palletResults, fotoResults, errorResults] = await Promise.all([
+        Promise.all(compressedPallets.map(async (compressed, idx) => {
+          const { n } = allPalletEntries[idx];
+          const path = `${user.id}/${entryId}_pallet${n}.jpg`;
+          const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+          uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalFiles})…`);
+          if (error) { showToast(`⚠ Error foto pallet ${n}`, '#D97706'); return null; }
+          return { label: `Pallet ${n}`, url: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl };
+        })),
+        Promise.all(compressedFotos.map(async (compressed, fi) => {
+          const path = `${user.id}/${entryId}_foto${fi + 1}.jpg`;
+          const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+          uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalFiles})…`);
+          if (error) { showToast(`⚠ Error foto productos ${fi + 1}`, '#D97706'); return null; }
+          return supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl;
+        })),
+        Promise.all(compressedErrors.map(async (compressed, fi) => {
+          const path = `${user.id}/${entryId}_error${fi + 1}.jpg`;
+          const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+          uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalFiles})…`);
+          if (error) { showToast(`⚠ Error foto error ${fi + 1}`, '#D97706'); return null; }
+          return supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl;
+        })),
+      ]);
+
+      palletResults.forEach(r => { if (r) uploadedFotos.push(r); });
+      fotoResults.forEach(r => { if (r) uploadedFotoUrls.push(r); });
+      errorResults.forEach(r => { if (r) uploadedErrorFotoUrls.push(r); });
     }
+
+    setUploadProgress('Guardando…');
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
       auditor: auditor.trim(), picker: picker.trim(), pickerNombre: pickerNombre.trim() || undefined,
@@ -2346,7 +2390,7 @@ export function AuditoriaScreen() {
     setFotoFiles([]); setFotoPreviews([]);
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setErrorFotoFiles([]); setErrorFotoPreviews([]);
-    setSubmitting(false);
+    setSubmitting(false); setUploadProgress('');
     setLastEntry(entry);
     setLastDurationSeconds(durSecs);
     setFormPhase('result');
@@ -2861,46 +2905,41 @@ export function AuditoriaScreen() {
                   onFocus={() => setTimeout(() => palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)}
                   className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
                 {parseInt(pallets) > 0 && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional</span></div>
-                    {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
-                      const key = String(n);
-                      const preview = palletPreviews[key];
-                      return (
-                        <div key={key}>
-                          {preview ? (
-                            <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                              <img src={preview} alt={`Pallet ${n}`} className="w-full object-cover" style={{ maxHeight: 140 }} />
-                              <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">Pallet {n}</div>
-                              <button
-                                onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
-                                className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                                style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="text-[10px] font-bold text-text-3 uppercase tracking-wide mb-1.5">Pallet {n}</div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                                  <span className="text-[26px]">📷</span>
-                                  <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
-                                  <span className="text-[10px] text-text-3">1 foto directa</span>
-                                  <input type="file" accept="image/*" capture="environment" className="hidden"
-                                    onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
-                                </label>
-                                <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                                  <span className="text-[26px]">🖼️</span>
-                                  <span className="text-[12px] text-text-2 font-semibold">Galería</span>
-                                  <span className="text-[10px] text-text-3">Desde archivo</span>
-                                  <input type="file" accept="image/*" className="hidden"
-                                    onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
-                                </label>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div className="mt-2">
+                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1 mb-2">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional · toca cada celda</span></div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
+                        const key = String(n);
+                        const preview = palletPreviews[key];
+                        return preview ? (
+                          <div key={key} className="relative rounded-card overflow-hidden border border-border" style={{ aspectRatio: '1', boxShadow: '0 2px 6px rgba(26,37,80,0.10)' }}>
+                            <img src={preview} alt={`P${n}`} className="w-full h-full object-cover" />
+                            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-black/60 rounded px-1">P{n}</div>
+                            <button
+                              onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
+                              className="absolute top-0.5 right-0.5 bg-red text-white border-none rounded-full w-5 h-5 text-[12px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.35)' }}>×</button>
+                          </div>
+                        ) : (
+                          <div key={key} className="relative rounded-card overflow-hidden bg-white border-2 border-dashed border-border" style={{ aspectRatio: '1', boxShadow: '0 1px 3px rgba(26,37,80,0.04)' }}>
+                            {/* Camera — fills the cell */}
+                            <label className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:bg-bg">
+                              <span className="text-[22px]">📷</span>
+                              <span className="text-[10px] text-text-3 font-bold">P{n}</span>
+                              <input type="file" accept="image/*" capture="environment" className="hidden"
+                                onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                            </label>
+                            {/* Gallery — small corner button */}
+                            <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
+                              <span className="text-[11px]">🖼️</span>
+                              <input type="file" accept="image/*" className="hidden"
+                                onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[10px] text-text-3 mt-1.5 text-center">Toca 📷 para cámara · mantén presionado para galería</div>
                   </div>
                 )}
 
@@ -3053,7 +3092,7 @@ export function AuditoriaScreen() {
                 <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
                   className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
                   style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
-                  {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
+                  {submitting ? `⏳ ${uploadProgress || 'Guardando…'}` : '✓ Registrar auditoría'}
                 </button>
               </>
             )}
