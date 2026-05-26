@@ -317,8 +317,11 @@ export function EstadoPage() {
       return next;
     });
     setSelected(prev => {
+      // Mantener selección si la tienda sigue existiendo.
+      // NO auto-seleccionar: en móvil causaría navegar al detalle sin que
+      // el usuario lo pidiera. En desktop el usuario puede tocar cualquier tienda.
       if (prev && result.find(s => s.cod === prev)) return prev;
-      return result.length > 0 ? result[0].cod : null;
+      return null;
     });
   }, []);
 
@@ -477,10 +480,11 @@ export function EstadoPage() {
 
         {/* ══════════════════════════════
             LEFT — Subida + Lista + Imprimir
-            En móvil: flex-1 para que quede acotado y la lista interna
-            pueda hacer scroll. En desktop: flex-none + 440px fijo.
+            Móvil sin selección: visible (flex-1 acotado → scroll funciona).
+            Móvil con tienda seleccionada: oculto (el panel derecho ocupa toda la pantalla).
+            Desktop: siempre visible, ancho fijo 440px.
         ══════════════════════════════ */}
-        <div className="flex-1 lg:flex-none w-full lg:w-[440px] flex flex-col border-r border-border overflow-hidden">
+        <div className={`${selected ? 'hidden lg:flex' : 'flex'} flex-col flex-1 lg:flex-none w-full lg:w-[440px] border-r border-border overflow-hidden`}>
 
           {/* Stats header */}
           <div className="px-5 py-4 bg-navy flex-shrink-0">
@@ -600,16 +604,28 @@ export function EstadoPage() {
 
         {/* ══════════════════════════════
             RIGHT — Previsualización de etiquetas
-            Oculto en móvil: en pantalla pequeña sólo se usa la lista
-            izquierda; la previsualización requiere espacio horizontal.
+            Móvil sin selección: oculto (solo se ve la lista).
+            Móvil con tienda seleccionada: full-screen con botón "← Volver".
+            Desktop: siempre visible al lado de la lista.
         ══════════════════════════════ */}
-        <div className="hidden lg:block lg:flex-1 overflow-y-auto bg-[#ECEEF3] p-6">
+        <div className={`${selected ? 'flex' : 'hidden lg:flex'} flex-col flex-1 overflow-y-auto bg-[#ECEEF3] p-4 lg:p-6`}>
+
+          {/* Botón Volver — solo en móvil cuando hay tienda seleccionada */}
+          {selected && (
+            <button
+              onClick={() => setSelected(null)}
+              className="lg:hidden flex-shrink-0 flex items-center gap-2 mb-4 px-3 py-2 rounded-xl border border-border bg-white text-navy font-bold text-[13px] cursor-pointer active:opacity-70 self-start"
+              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+              ← Volver a lista
+            </button>
+          )}
+
           {!selectedStore ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <div className="text-5xl mb-4 opacity-10">🏷️</div>
                 <p className="text-[16px] text-text-3 font-semibold opacity-60">
-                  {stores.length === 0 ? 'Sin datos — registra despacho primero' : 'Selecciona una tienda para ver las etiquetas'}
+                  {stores.length === 0 ? 'Sin datos — registra despacho primero' : 'Toca una tienda para ver sus etiquetas'}
                 </p>
               </div>
             </div>
@@ -636,9 +652,10 @@ export function EstadoPage() {
               </div>
 
               {/* Scale labels for preview only — 100mm≈378px, 150mm≈567px at 96dpi */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', gap: 16 }}>
+              {/* auto-fill: 1 col en móvil (~360px), 3 cols en desktop (≥800px) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 238px)', gap: 16 }}>
                 {(() => {
-                  const SCALE    = 0.63;
+                  const SCALE = 0.63;
                   const W = 378 * SCALE; // ≈238px
                   const H = 567 * SCALE; // ≈357px
                   const qrUrl    = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
