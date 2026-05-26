@@ -58,6 +58,8 @@ const CORR_COLORS: Record<CorreccionAuditoria, string> = { correcto: '#16A34A', 
 const LINE_COLORS = ['#1a2550', '#16A34A', '#D97706', '#2563EB', '#9333EA', '#D32F2F'];
 const AUDIT_SESSION_KEY = 'audit_active_session_v1';
 const OFFLINE_QUEUE_KEY = 'audit_offline_queue';
+// Per-user localStorage key: keeps sessions isolated between accounts on the same browser
+const sessionKey = (userId?: string) => userId ? `${AUDIT_SESSION_KEY}_${userId}` : AUDIT_SESSION_KEY;
 
 // BarcodeDetector Web API — available in Chrome 83+ / Safari 17.4+
 declare global {
@@ -106,6 +108,8 @@ interface PickerStats {
   sobranteItems: number;
   faltanteUnidades: number;
   sobranteUnidades: number;
+  totalDurationSeconds: number;
+  durationCount: number;
 }
 interface WeekTrend { key: string; label: string; pct: number | null }
 
@@ -149,9 +153,11 @@ function computeRanking(entries: AuditEntry[]): PickerStats[] {
       tieneUnidadData: false, totalPallets: 0,
       totalUnidadesError: 0, totalUnidadesEsperadas: 0,
       faltanteItems: 0, sobranteItems: 0, faltanteUnidades: 0, sobranteUnidades: 0,
+      totalDurationSeconds: 0, durationCount: 0,
     });
     const s = map.get(p)!;
     s.total++; s.totalPallets += e.pallets;
+    if (e.durationSeconds) { s.totalDurationSeconds += e.durationSeconds; s.durationCount++; }
     if (e.resultado === 'bueno') s.bueno++; else s.malo++;
     for (const prod of e.productos ?? []) {
       s.totalUnidadesError += prod.unidades;
@@ -211,6 +217,11 @@ function initialsColor(name: string): string {
   return palette[h];
 }
 function formatTimer(s: number): string {
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
@@ -502,52 +513,119 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
 
 /* ── Camera Barcode Scanner ── */
 function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => boolean; onClose: () => void }) {
-  const videoRef  = useRef<HTMLVideoElement>(null);
-  const animRef   = useRef<number>(0);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [status, setStatus] = useState<'loading' | 'scanning' | 'found' | 'error'>('loading');
-  const [errorMsg, setErrorMsg] = useState('');
+  const videoRef      = useRef<HTMLVideoElement>(null);
+  const animRef       = useRef<number>(0);
+  const streamRef     = useRef<MediaStream | null>(null);
+  const lastScanRef   = useRef<number>(0);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  type ScanStatus = 'loading' | 'scanning' | 'found' | 'error';
+  type ErrorType  = 'no-api' | 'no-permission' | 'camera';
+
+  const [status,    setStatus]    = useState<ScanStatus>('loading');
+  const [errorType, setErrorType] = useState<ErrorType | null>(null);
+  const [errorMsg,  setErrorMsg]  = useState('');
+  const [hasTorch,  setHasTorch]  = useState(false);
+  const [torchOn,   setTorchOn]   = useState(false);
+
+  const toggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (track as any).applyConstraints({ advanced: [{ torch: !torchOn }] });
+      setTorchOn(t => !t);
+    } catch { /* torch not supported on this device */ }
+  };
+
+  // Photo fallback: decode a captured still image (works when live video isn't available)
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (photoInputRef.current) photoInputRef.current.value = '';
+    if (!('BarcodeDetector' in window)) return;
+    try {
+      const bitmap   = await createImageBitmap(file);
+      const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'data_matrix', 'code_93'] });
+      const codes    = await detector.detect(bitmap);
+      if (codes.length > 0) {
+        setStatus('found');
+        setTimeout(() => { onScan(codes[0].rawValue); onClose(); }, 350);
+      } else {
+        setErrorMsg('No se detectó código en la foto. Asegúrate de que el código esté bien iluminado y centrado.');
+        setErrorType('camera');
+        setStatus('error');
+      }
+    } catch {
+      setErrorMsg('Error al procesar la imagen.');
+      setErrorType('camera');
+      setStatus('error');
+    }
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
     if (!('BarcodeDetector' in window)) {
       setStatus('error');
-      setErrorMsg('Tu navegador no soporta escaneo por cámara. Usa la pistola lectora o actualiza Chrome.');
+      setErrorType('no-api');
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      setErrorMsg(isIOS
+        ? 'Requiere iOS 17.4+ con Safari actualizado. Actualiza iOS o usa la pistola lectora.'
+        : 'Tu navegador no soporta escaneo por cámara. Actualiza Chrome o usa la pistola lectora.');
       return;
     }
 
     let stopped = false;
     const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'data_matrix', 'code_93'] });
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } })
-      .then(stream => {
-        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
-        video.play().then(() => {
-          setStatus('scanning');
-          const tick = async () => {
-            if (stopped || !videoRef.current) return;
-            try {
-              const codes = await detector.detect(videoRef.current);
-              if (codes.length > 0) {
-                stopped = true;
-                setStatus('found');
-                streamRef.current?.getTracks().forEach(t => t.stop());
-                setTimeout(() => { onScan(codes[0].rawValue); onClose(); }, 350);
-                return;
-              }
-            } catch { /* frame decode error, skip */ }
-            animRef.current = requestAnimationFrame(tick);
-          };
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    }).then(stream => {
+      if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+      streamRef.current = stream;
+
+      // Detect torch support
+      const track = stream.getVideoTracks()[0];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((track.getCapabilities() as any)?.torch) setHasTorch(true);
+
+      const video = videoRef.current;
+      if (!video) return;
+      video.srcObject = stream;
+      video.play().then(() => {
+        setStatus('scanning');
+        const tick = async () => {
+          if (stopped || !videoRef.current) return;
+          // Throttle: decode at most every 250 ms to avoid frame-spam
+          const now = Date.now();
+          if (now - lastScanRef.current < 250) { animRef.current = requestAnimationFrame(tick); return; }
+          lastScanRef.current = now;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            if (codes.length > 0) {
+              stopped = true;
+              setStatus('found');
+              streamRef.current?.getTracks().forEach(t => t.stop());
+              setTimeout(() => { onScan(codes[0].rawValue); onClose(); }, 350);
+              return;
+            }
+          } catch { /* frame decode error — skip */ }
           animRef.current = requestAnimationFrame(tick);
-        });
-      })
-      .catch(err => {
-        if (!stopped) { setStatus('error'); setErrorMsg(err instanceof Error ? err.message : 'Sin acceso a cámara'); }
+        };
+        animRef.current = requestAnimationFrame(tick);
       });
+    }).catch(err => {
+      if (stopped) return;
+      setStatus('error');
+      if ((err as Error).name === 'NotAllowedError' || (err as Error).name === 'PermissionDeniedError') {
+        setErrorType('no-permission');
+        setErrorMsg('Permiso de cámara denegado. Permite el acceso en la configuración del navegador y recarga la página.');
+      } else {
+        setErrorType('camera');
+        setErrorMsg(err instanceof Error ? err.message : 'Sin acceso a cámara');
+      }
+    });
 
     return () => {
       stopped = true;
@@ -556,48 +634,92 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const apiAvailable = 'BarcodeDetector' in (typeof window !== 'undefined' ? window : {});
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#000' }}>
+      {/* Hidden photo input for still-image fallback */}
+      <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: 'rgba(0,0,0,0.75)' }}>
-        <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full border border-white/20 text-white text-[20px] leading-none bg-transparent cursor-pointer">‹</button>
+        <button onClick={onClose}
+          className="w-9 h-9 flex items-center justify-center rounded-full border border-white/20 text-white text-[20px] leading-none bg-transparent cursor-pointer">‹</button>
         <span className="text-white font-bold text-[15px] flex-1">Escanear código del pallet</span>
-        {status === 'scanning' && <span className="text-[11px] text-green-400 font-semibold animate-pulse">● Buscando…</span>}
+        {status === 'scanning' && (
+          <div className="flex items-center gap-2">
+            {hasTorch && (
+              <button onClick={() => void toggleTorch()}
+                className="w-9 h-9 rounded-full border flex items-center justify-center text-[18px] cursor-pointer"
+                style={{ borderColor: torchOn ? '#FCD34D' : 'rgba(255,255,255,0.25)', background: torchOn ? 'rgba(252,211,77,0.2)' : 'transparent' }}
+                title={torchOn ? 'Apagar linterna' : 'Encender linterna'}>
+                🔦
+              </button>
+            )}
+            <span className="text-[11px] text-green-400 font-semibold animate-pulse">● Buscando…</span>
+          </div>
+        )}
       </div>
 
       {/* Body */}
-      {status === 'error' ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8 text-center">
-          <div className="text-[52px]">📷</div>
-          <div className="text-white/80 text-[15px] leading-relaxed">{errorMsg}</div>
-          <button onClick={onClose} className="px-6 py-3 rounded-card font-bold text-white border border-white/30 bg-white/10 cursor-pointer">Cerrar</button>
-        </div>
-      ) : status === 'found' ? (
+      {status === 'found' ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <div className="text-[64px]">✅</div>
           <div className="text-white font-bold text-[20px]">¡Código detectado!</div>
         </div>
+      ) : status === 'error' ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8 text-center">
+          <div className="text-[52px]">{errorType === 'no-permission' ? '🔒' : '📷'}</div>
+          <div className="text-white/80 text-[15px] leading-relaxed">{errorMsg}</div>
+          {/* Photo fallback: available when BarcodeDetector exists but camera stream failed */}
+          {apiAvailable && errorType !== 'no-api' && (
+            <button onClick={() => photoInputRef.current?.click()}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-white cursor-pointer"
+              style={{ background: 'rgba(37,99,235,0.7)', border: '1px solid rgba(37,99,235,0.5)' }}>
+              📸 Tomar foto del código
+            </button>
+          )}
+          <button onClick={onClose}
+            className="px-6 py-3 rounded-2xl font-bold text-white border border-white/30 bg-white/10 cursor-pointer">
+            Cerrar
+          </button>
+        </div>
       ) : (
+        /* Live scanning view */
         <div className="flex-1 relative overflow-hidden">
           <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
 
-          {/* Viewfinder overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ background: 'rgba(0,0,0,0.45)' }}>
-            {/* Transparent scanning window */}
-            <div className="relative bg-transparent" style={{ width: 280, height: 130, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}>
-              {/* Corners */}
-              {[['top-0 left-0','border-t-2 border-l-2'],['top-0 right-0','border-t-2 border-r-2'],['bottom-0 left-0','border-b-2 border-l-2'],['bottom-0 right-0','border-b-2 border-r-2']].map(([pos, borders]) => (
-                <div key={pos} className={`absolute w-5 h-5 border-white ${pos} ${borders}`} />
+          {/* Viewfinder — wide for CODE128 (full A4-width barcodes) */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
+            style={{ background: 'rgba(0,0,0,0.45)' }}>
+            <div className="relative bg-transparent"
+              style={{ width: '88%', maxWidth: 440, height: 200, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}>
+              {[['top-0 left-0','border-t-[3px] border-l-[3px]'],['top-0 right-0','border-t-[3px] border-r-[3px]'],['bottom-0 left-0','border-b-[3px] border-l-[3px]'],['bottom-0 right-0','border-b-[3px] border-r-[3px]']].map(([pos, borders]) => (
+                <div key={pos} className={`absolute w-8 h-8 border-white ${pos} ${borders}`} />
               ))}
-              {/* Scan line */}
               {status === 'scanning' && (
-                <div className="absolute inset-x-0 h-0.5 bg-red-400/90" style={{ animation: 'scanline 2s linear infinite', top: '50%' }} />
+                <div className="absolute inset-x-0 h-0.5 bg-red-400/90"
+                  style={{ animation: 'scanline 2s linear infinite', top: '50%' }} />
               )}
             </div>
-            <div className="mt-5 text-white/70 text-[13px] font-medium">Centra el código de barras del pallet</div>
+            <div className="mt-4 text-white/80 text-[13px] font-medium px-6 text-center">
+              Centra el código dentro del marco
+            </div>
+            <div className="mt-1 text-white/50 text-[11px] px-6 text-center">
+              Si el código es muy grande, aleja el celular ~25–35 cm
+            </div>
           </div>
 
-          {/* Loading state */}
+          {/* Photo fallback button — always visible at bottom */}
+          <div className="absolute bottom-5 left-0 right-0 flex justify-center" style={{ pointerEvents: 'auto' }}>
+            <button onClick={() => photoInputRef.current?.click()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-[13px] text-white cursor-pointer"
+              style={{ background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.25)' }}>
+              📸 Usar foto en su lugar
+            </button>
+          </div>
+
+          {/* Loading spinner */}
           {status === 'loading' && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
               <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -606,7 +728,7 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
         </div>
       )}
 
-      <style>{`@keyframes scanline { 0%,100%{top:15%} 50%{top:85%} }`}</style>
+      <style>{`@keyframes scanline { 0%,100%{top:12%} 50%{top:88%} }`}</style>
     </div>
   );
 }
@@ -913,7 +1035,7 @@ function PickerCard({ stats, rank, trend, odooConfig, compact = false, pickerNam
               )}
             </div>
             {realName && <div className="text-[11px] text-text-3">{stats.picker}</div>}
-            <div className="text-[12px] text-text-3 mt-0.5">{stats.bueno} buenos · {stats.malo} malos · {stats.total} total · {stats.totalPallets} pal.</div>
+            <div className="text-[12px] text-text-3 mt-0.5">{stats.bueno} buenos · {stats.malo} malos · {stats.total} total · {stats.totalPallets} pal.{stats.durationCount > 0 ? ` · ⏱ ${formatTimer(Math.round(stats.totalDurationSeconds / stats.durationCount))} prom.` : ''}</div>
             {metrica && metrica.auditados_mes > 0 && (
               <div className="text-[11px] text-text-3 mt-0.5">Mes: {metrica.auditados_mes} aud. · déficit: {metrica.deficit > 0 ? <span style={{ color: '#D32F2F', fontWeight: 700 }}>{metrica.deficit}</span> : <span style={{ color: '#16A34A' }}>✓</span>}</div>
             )}
@@ -934,10 +1056,11 @@ function PickerCard({ stats, rank, trend, odooConfig, compact = false, pickerNam
 
         {/* Stats grid */}
         {!compact && (
-          <div className="grid grid-cols-3 gap-2 py-3 border-t border-b border-border/50 mb-3">
+          <div className={`grid gap-2 py-3 border-t border-b border-border/50 mb-3 ${stats.durationCount > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <MiniStat label="Auditorías" value={stats.total} />
             <MiniStat label="Pallets" value={stats.totalPallets} />
             <MiniStat label="Unid. error" value={stats.totalUnidadesError} color={stats.totalUnidadesError > 0 ? '#D32F2F' : '#16A34A'} />
+            {stats.durationCount > 0 && <MiniStat label="⏱ Prom." value={formatTimer(Math.round(stats.totalDurationSeconds / stats.durationCount))} color="#1a2550" />}
           </div>
         )}
 
@@ -1719,8 +1842,9 @@ export function AuditoriaScreen() {
   const [confirmSubmit,    setConfirmSubmit]    = useState(false);
   const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
   const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [cameraOpen,       setCameraOpen]       = useState(false);
-  const [sessionRestored,  setSessionRestored]  = useState(false);
+  const [cameraOpen,          setCameraOpen]          = useState(false);
+  const [sessionRestored,     setSessionRestored]     = useState(false);
+  const [crossDeviceRestored, setCrossDeviceRestored] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const palletsInputRef = useRef<HTMLInputElement>(null);
   const pendingScanRef  = useRef<string[] | null>(null);
@@ -1730,7 +1854,9 @@ export function AuditoriaScreen() {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [auditStartTime, setAuditStartTime] = useState('');
   const [auditDurationSeconds, setAuditDurationSeconds] = useState(0);
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const auditStartTimeRef  = useRef('');
+  auditStartTimeRef.current = auditStartTime;
 
   // Set initial view once profile loads + kick off history load with correct user context
   useEffect(() => {
@@ -1846,26 +1972,33 @@ export function AuditoriaScreen() {
     document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ── Persistent session: save to localStorage (survives app switch + page refresh) ──
+  // ── Persistent session: save to localStorage + Supabase (cross-device sync) ──
   const saveSession = useCallback(() => {
+    const uid = user?.id;
     if (formPhase === 'scan' || formPhase === 'result') {
-      try { localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* */ }
+      try { localStorage.removeItem(sessionKey(uid)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* */ }
+      if (uid) void supabase.from('audit_active_sessions').delete().eq('user_id', uid).then(() => {}, () => {});
       return;
     }
-    try {
-      localStorage.setItem(AUDIT_SESSION_KEY, JSON.stringify({
-        formPhase, auditStartTime, auditor, pickerNombre, picker,
-        tiendaCod: tienda?.cod ?? null, tipo, operaciones, pallets,
-        tieneErrores, tiposError, productos, observaciones,
-        savedAt: new Date().toISOString(),
-      }));
-    } catch { /* storage full */ }
-  }, [formPhase, auditStartTime, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones]);
+    const data = {
+      formPhase, auditStartTime, auditor, pickerNombre, picker,
+      tiendaCod: tienda?.cod ?? null, tipo, operaciones, pallets,
+      tieneErrores, tiposError, productos, observaciones,
+      savedAt: new Date().toISOString(),
+    };
+    try { localStorage.setItem(sessionKey(uid), JSON.stringify(data)); } catch { /* storage full */ }
+    // Sync to Supabase so other devices with the same account can restore this session
+    if (uid && navigator.onLine) {
+      supabase.from('audit_active_sessions')
+        .upsert({ user_id: uid, session_data: data, updated_at: new Date().toISOString() })
+        .then(() => {}, () => {});
+    }
+  }, [formPhase, auditStartTime, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, user?.id]);
 
-  // Autosave every second when setup/execution is active
+  // Autosave every 2 s when setup/execution is active (localStorage + Supabase)
   useEffect(() => {
     if (formPhase !== 'execution' && formPhase !== 'setup') return;
-    const handle = setTimeout(saveSession, 1000);
+    const handle = setTimeout(saveSession, 2000);
     return () => clearTimeout(handle);
   }, [formPhase, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
 
@@ -1910,7 +2043,7 @@ export function AuditoriaScreen() {
     return () => document.removeEventListener('visibilitychange', reacquire);
   }, [formPhase]);
 
-  // Restore session on mount (before auth-fill effects)
+  // Restore session on mount (before auth-fill effects) — reads legacy global key
   useEffect(() => {
     try {
       const raw = localStorage.getItem(AUDIT_SESSION_KEY);
@@ -1918,7 +2051,6 @@ export function AuditoriaScreen() {
       type Sess = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; };
       const s = JSON.parse(raw) as Sess;
       if (!s.savedAt) return;
-      // Discard sessions older than 10 hours
       if (Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) { localStorage.removeItem(AUDIT_SESSION_KEY); return; }
       if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
       if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
@@ -1934,18 +2066,87 @@ export function AuditoriaScreen() {
       if (s.formPhase === 'execution' || s.formPhase === 'setup') {
         setFormPhase(s.formPhase as 'execution' | 'setup');
         if (s.formPhase === 'execution' && s.auditStartTime) {
+          auditStartTimeRef.current = s.auditStartTime;
           setAuditStartTime(s.auditStartTime);
           const elapsed = Math.floor((Date.now() - new Date(s.auditStartTime).getTime()) / 1000);
           setTimerSeconds(Math.max(0, elapsed));
-          // Restart the interval from current elapsed time
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          timerIntervalRef.current = setInterval(() => setTimerSeconds(prev => prev + 1), 1000);
+          timerIntervalRef.current = setInterval(() => {
+            const e = Math.floor((Date.now() - new Date(auditStartTimeRef.current).getTime()) / 1000);
+            setTimerSeconds(Math.max(0, e));
+          }, 1000);
           setSessionRestored(true);
         }
       }
     } catch { /* corrupt data */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Cross-device session restore: runs after auth loads, only when no local session was found
+  useEffect(() => {
+    if (!user?.id || authLoading) return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (formPhase !== 'scan') return; // don't override an already-active session
+
+    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; };
+
+    const applySD = (s: SD, isCrossDevice: boolean) => {
+      if (!s.savedAt || Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) return false;
+      if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
+      if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
+      if (s.picker)         setPicker(s.picker);
+      if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
+      if (s.tipo)           setTipo(s.tipo);
+      if (s.operaciones?.length) setOperaciones(s.operaciones);
+      if (s.pallets)        setPallets(s.pallets);
+      if (s.tieneErrores !== undefined) setTieneErrores(s.tieneErrores ?? null);
+      if (s.tiposError?.length)  setTiposError(s.tiposError);
+      if (s.productos?.length)   setProductos(s.productos);
+      if (s.observaciones)  setObservaciones(s.observaciones);
+      if (s.formPhase === 'execution' || s.formPhase === 'setup') {
+        setFormPhase(s.formPhase as 'execution' | 'setup');
+        if (s.formPhase === 'execution' && s.auditStartTime) {
+          auditStartTimeRef.current = s.auditStartTime;
+          setAuditStartTime(s.auditStartTime);
+          const elapsed = Math.floor((Date.now() - new Date(s.auditStartTime).getTime()) / 1000);
+          setTimerSeconds(Math.max(0, elapsed));
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = setInterval(() => {
+            const e = Math.floor((Date.now() - new Date(auditStartTimeRef.current).getTime()) / 1000);
+            setTimerSeconds(Math.max(0, e));
+          }, 1000);
+          if (isCrossDevice) setCrossDeviceRestored(true); else setSessionRestored(true);
+        }
+      }
+      return true;
+    };
+
+    // 1. Try per-user localStorage key (same device, same account, new key format)
+    try {
+      const localRaw = localStorage.getItem(sessionKey(user.id));
+      if (localRaw) {
+        const s = JSON.parse(localRaw) as SD;
+        if (applySD(s, false)) return;
+        localStorage.removeItem(sessionKey(user.id));
+      }
+    } catch { /* corrupt */ }
+
+    // 2. Fallback to Supabase (different device with same account)
+    supabase.from('audit_active_sessions')
+      .select('session_data')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data?.session_data) return;
+        const s = data.session_data as SD;
+        if (!s.savedAt || Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) {
+          void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
+          return;
+        }
+        applySD(s, true);
+      }, () => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, authLoading]);
 
   useEffect(() => () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); }, []);
 
@@ -2009,10 +2210,14 @@ export function AuditoriaScreen() {
 
   const startTimer = () => {
     const now = new Date().toISOString();
+    auditStartTimeRef.current = now;  // sync ref immediately so interval reads correct value
     setAuditStartTime(now);
     setTimerSeconds(0);
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    timerIntervalRef.current = setInterval(() => setTimerSeconds(s => s + 1), 1000);
+    timerIntervalRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - new Date(auditStartTimeRef.current).getTime()) / 1000);
+      setTimerSeconds(Math.max(0, elapsed));
+    }, 1000);
   };
   const stopTimer = () => {
     if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
@@ -2130,8 +2335,9 @@ export function AuditoriaScreen() {
     try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
     sheetsAuditoriaWrite(entry, state.sheetsUrl);
     showToast(`✓ Auditoría — ${resultado === 'bueno' ? 'BUENO' : 'MALO'}`, resultado === 'bueno' ? '#16A34A' : '#D32F2F');
-    try { localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
-    setSessionRestored(false);
+    try { localStorage.removeItem(sessionKey(user?.id)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
+    if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
+    setSessionRestored(false); setCrossDeviceRestored(false);
     setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
@@ -2630,6 +2836,15 @@ export function AuditoriaScreen() {
                     <button onClick={() => setSessionRestored(false)} className="text-info/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
                   </div>
                 )}
+                {/* Cross-device session restored banner */}
+                {crossDeviceRestored && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-card border border-success/30 text-success text-[12px] font-semibold"
+                    style={{ background: 'rgba(22,163,74,0.06)' }}>
+                    <span className="text-[16px]">📱</span>
+                    <span className="flex-1">Sesión sincronizada desde otro dispositivo — el cronómetro sigue corriendo</span>
+                    <button onClick={() => setCrossDeviceRestored(false)} className="text-success/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
+                  </div>
+                )}
                 {/* Timer */}
                 <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4"
                   style={{ background: 'linear-gradient(135deg,rgba(26,37,80,0.06),rgba(26,37,80,0.02))', border: '2px solid rgba(26,37,80,0.14)', boxShadow: '0 4px 20px rgba(26,37,80,0.10)' }}>
@@ -2663,12 +2878,25 @@ export function AuditoriaScreen() {
                                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
                             </div>
                           ) : (
-                            <label className="flex items-center gap-3 px-4 py-2.5 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                              <span className="text-[22px]">📷</span>
-                              <span className="text-[12px] text-text-3 font-barlow">Foto exterior — Pallet {n}</span>
-                              <input type="file" accept="image/*" className="hidden"
-                                onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
-                            </label>
+                            <div>
+                              <div className="text-[10px] font-bold text-text-3 uppercase tracking-wide mb-1.5">Pallet {n}</div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                                  <span className="text-[26px]">📷</span>
+                                  <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
+                                  <span className="text-[10px] text-text-3">1 foto directa</span>
+                                  <input type="file" accept="image/*" capture="environment" className="hidden"
+                                    onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                                </label>
+                                <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                                  <span className="text-[26px]">🖼️</span>
+                                  <span className="text-[12px] text-text-2 font-semibold">Galería</span>
+                                  <span className="text-[10px] text-text-3">Desde archivo</span>
+                                  <input type="file" accept="image/*" className="hidden"
+                                    onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
+                                </label>
+                              </div>
+                            </div>
                           )}
                         </div>
                       );
@@ -2743,23 +2971,34 @@ export function AuditoriaScreen() {
                         ))}
                       </div>
                     )}
-                    <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer hover:border-red/50 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
-                      <span className="text-[28px]">🚨</span>
-                      <div>
-                        <div className="text-[13px] text-red font-barlow font-semibold">
-                          {errorFotoPreviews.length > 0 ? `+ Agregar más (${errorFotoPreviews.length} foto${errorFotoPreviews.length !== 1 ? 's' : ''} de error)` : 'Fotografiar el error'}
-                        </div>
-                        <div className="text-[11px] text-text-3">Selecciona una o varias fotos del error</div>
-                      </div>
-                      <input type="file" accept="image/*" multiple className="hidden"
-                        onChange={e => {
-                          const files = Array.from(e.target.files ?? []);
-                          if (!files.length) return;
-                          setErrorFotoFiles(prev => [...prev, ...files]);
-                          setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
-                          e.target.value = '';
-                        }} />
-                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
+                        <span className="text-[26px]">📷</span>
+                        <span className="text-[12px] text-red font-semibold">Cámara</span>
+                        <span className="text-[10px] text-text-3">1 foto directa</span>
+                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                          onChange={e => {
+                            const files = Array.from(e.target.files ?? []);
+                            if (!files.length) return;
+                            setErrorFotoFiles(prev => [...prev, ...files]);
+                            setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                            e.target.value = '';
+                          }} />
+                      </label>
+                      <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
+                        <span className="text-[26px]">🖼️</span>
+                        <span className="text-[12px] text-red font-semibold">Galería</span>
+                        <span className="text-[10px] text-text-3">Múltiples a la vez</span>
+                        <input type="file" accept="image/*" multiple className="hidden"
+                          onChange={e => {
+                            const files = Array.from(e.target.files ?? []);
+                            if (!files.length) return;
+                            setErrorFotoFiles(prev => [...prev, ...files]);
+                            setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                            e.target.value = '';
+                          }} />
+                      </label>
+                    </div>
                   </>
                 )}
 
@@ -2782,23 +3021,34 @@ export function AuditoriaScreen() {
                     ))}
                   </div>
                 )}
-                <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-border rounded-card cursor-pointer hover:border-navy/40 transition-colors active:bg-bg" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                  <span className="text-[28px]">📷</span>
-                  <div>
-                    <div className="text-[13px] text-text-2 font-barlow font-semibold">
-                      {fotoPreviews.length > 0 ? `+ Agregar más (${fotoPreviews.length} foto${fotoPreviews.length !== 1 ? 's' : ''} de producto)` : 'Adjuntar fotos de productos'}
-                    </div>
-                    <div className="text-[11px] text-text-3">Selecciona una o varias fotos a la vez</div>
-                  </div>
-                  <input type="file" accept="image/*" multiple className="hidden"
-                    onChange={e => {
-                      const files = Array.from(e.target.files ?? []);
-                      if (!files.length) return;
-                      setFotoFiles(prev => [...prev, ...files]);
-                      setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
-                      e.target.value = '';
-                    }} />
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                    <span className="text-[26px]">📷</span>
+                    <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
+                    <span className="text-[10px] text-text-3">1 foto directa</span>
+                    <input type="file" accept="image/*" capture="environment" className="hidden"
+                      onChange={e => {
+                        const files = Array.from(e.target.files ?? []);
+                        if (!files.length) return;
+                        setFotoFiles(prev => [...prev, ...files]);
+                        setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                        e.target.value = '';
+                      }} />
+                  </label>
+                  <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
+                    <span className="text-[26px]">🖼️</span>
+                    <span className="text-[12px] text-text-2 font-semibold">Galería</span>
+                    <span className="text-[10px] text-text-3">Múltiples a la vez</span>
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => {
+                        const files = Array.from(e.target.files ?? []);
+                        if (!files.length) return;
+                        setFotoFiles(prev => [...prev, ...files]);
+                        setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+                        e.target.value = '';
+                      }} />
+                  </label>
+                </div>
 
                 <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
                   className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
