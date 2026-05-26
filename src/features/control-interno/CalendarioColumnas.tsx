@@ -201,22 +201,33 @@ export default function CalendarioColumnas() {
     });
   }
 
-  // Drop on td background → append to end (cross-column only)
+  // Drop on td background → append to end (same column or cross-column)
   function onDropOnTd(e: React.DragEvent, targetDia: string) {
     e.preventDefault();
     setDragOver(null);
     const { dia: srcDia, cod } = ddRef.current;
-    if (!cod || !srcDia || srcDia === targetDia) return;
+    if (!cod || !srcDia) return;
     setLocal(prev => {
       if (!prev) return prev;
       const next: CalRecord = JSON.parse(JSON.stringify(prev));
       const g = grp as 'rm' | 'costa' | 'fal';
-      const src = next[srcDia!]?.[g] || [];
-      const dst = next[targetDia]?.[g] || [];
+      if (!next[srcDia!]) next[srcDia!] = { rm: [], costa: [], fal: [] };
+      if (!next[targetDia]) next[targetDia] = { rm: [], costa: [], fal: [] };
+      const src = next[srcDia!][g] || [];
       const idx = src.indexOf(cod);
-      if (idx >= 0) { src.splice(idx, 1); if (!dst.includes(cod)) dst.push(cod); }
-      if (next[srcDia!]) next[srcDia!][g] = src;
-      if (next[targetDia]) next[targetDia][g] = dst;
+      if (idx < 0) return prev;
+      src.splice(idx, 1);
+      if (srcDia === targetDia) {
+        // Misma columna: mover al final
+        src.push(cod);
+        next[srcDia!][g] = src;
+      } else {
+        // Cross-column: agregar al final de la columna destino
+        const dst = next[targetDia][g] || [];
+        if (!dst.includes(cod)) dst.push(cod);
+        next[srcDia!][g] = src;
+        next[targetDia][g] = dst;
+      }
       return next;
     });
   }
