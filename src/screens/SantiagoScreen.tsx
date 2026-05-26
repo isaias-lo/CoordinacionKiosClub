@@ -2,12 +2,24 @@
 
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
-import { SantiagoProvider } from '../features/despacho/santiago/context/SantiagoContext';
+import { SantiagoProvider, useSantiago } from '../features/despacho/santiago/context/SantiagoContext';
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { ProfilePill } from '../components/ProfilePill';
 
 function SantiagoContent() {
   const router = useRouter();
+  const { state, dispatch } = useSantiago();
+
+  // Navegación contextual:
+  //   step='regimen' (SECO/CONGELADO) → volver a /despacho/conteo
+  //   step='form'    (grilla de tiendas) → volver a step='regimen'
+  const handleBack = () => {
+    if (state.step === 'form') {
+      dispatch({ type: 'BACK_TO_REGIMEN' });
+    } else {
+      router.push('/despacho/conteo');
+    }
+  };
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
@@ -15,7 +27,7 @@ function SantiagoContent() {
         className="flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <button
-          onClick={() => router.push('/despacho/conteo')}
+          onClick={handleBack}
           className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
           style={{
             width: 36, height: 36,
