@@ -20,6 +20,7 @@ import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
+import { buildDespachoRMRecords } from './utils/sheets';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type CalData   = { on: boolean; p: number; b: number; c: number; g?: string };
@@ -759,17 +760,25 @@ export default function RutasScreen() {
       onWarn:    msg => { setHistorialMsg(msg); setHistorialStatus('warn'); },
       onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
     });
+    // Escribe en Google Sheets (historial/auditoría)
     guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
 
-    // Mark all dispatched stores as En camino in Supabase
-    const cods = [...new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)))];
-    cods.forEach(cod => {
-      fetch('/api/seguimiento', {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ cod, estado: 'En camino' }),
-      }).catch(() => {});
+    // Escribe DIRECTAMENTE en Supabase con seguimiento = 'En camino'.
+    // Evita la race condition anterior donde el PATCH se disparaba antes de
+    // que el sync Sheets→Supabase terminara (dejando los registros como
+    // 'Registrado'). Ahora llegan a Supabase de inmediato con el estado
+    // correcto; si ya existen en estado final (Entregado/Recibido/Diferencia)
+    // el endpoint los protege y no los sobreescribe.
+    const rmRecords = buildDespachoRMRecords({
+      fecha, supervisor, rutas: results.rutas, tiendas, seguimiento: 'En camino',
     });
+    if (rmRecords.length > 0) {
+      fetch('/api/despacho-records', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ table: 'despacho_rm', records: rmRecords }),
+      }).catch(() => {});
+    }
   }
 
   // ── Driver change ─────────────────────────────────────────────────
