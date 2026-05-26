@@ -63,7 +63,8 @@ const PERMISSION_GROUPS: PermGroup[] = [
       { path: '/auditoria',        label: 'Auditoría'          },
       { path: '/auditoria-admin',  label: 'Revisión Auditoría' },
       { path: '/admin/tiendas',    label: 'Config. Tiendas'    },
-      { path: '/recepcion-tienda', label: 'Recepción/Tienda'   },
+      { path: '/recepcion-tienda',  label: 'Recepción/Tienda'   },
+      { path: '/validacion-tienda', label: 'Validación Tienda'  },
     ],
   },
   {

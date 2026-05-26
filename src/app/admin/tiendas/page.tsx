@@ -10,7 +10,10 @@ export default function TiendasAdminPage() {
   const router   = useRouter();
   const { profile } = useAuth();
 
-  if (profile?.role !== 'admin') {
+  const paths = profile?.allowedPaths ?? [];
+  const hasAccess = paths.includes('*') || paths.some(p => '/admin/tiendas' === p || '/admin/tiendas'.startsWith(p + '/'));
+
+  if (profile && !hasAccess) {
     return (
       <div style={{ position: 'fixed', inset: 0, overflowY: 'auto', background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', padding: '20px 16px 40px' }}>
         <p style={{ color: '#F87171', textAlign: 'center', paddingTop: 80 }}>Acceso restringido</p>
