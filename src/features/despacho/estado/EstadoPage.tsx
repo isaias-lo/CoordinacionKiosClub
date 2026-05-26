@@ -8,6 +8,7 @@ import { TIENDAS } from '../regiones/data/tiendas';
 import { processPdf } from '../regiones/utils/pdfUtils';
 import { formatCod } from '../rutas/utils/helpers';
 import { useApp } from '../../../context/AppContext';
+import { fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
 import type { SantiagoState, SantiagoItem } from '../santiago/types';
 import type { DispatchItem } from '../../../types';
 
@@ -331,6 +332,39 @@ export function EstadoPage() {
     rebuild(g, appState.dispatch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch]);
+
+  // Sincroniza el estado Santiago desde Supabase (cross-device).
+  // SantiagoContext escribe en shared_session_state al registrar en cualquier
+  // dispositivo. EstadoPage lee de localStorage, que es local al dispositivo.
+  // Este efecto carga los datos remotos y los fusiona con el localStorage para
+  // que el celular vea las tiendas registradas en Desktop (y viceversa).
+  useEffect(() => {
+    const LOCAL_KEY = `santiagoState_${TODAY_KEY}`;
+
+    function applyRemote(remote: unknown) {
+      try {
+        const rs = remote as SantiagoState;
+        if (!rs?.items || Object.keys(rs.items).length === 0) return;
+        // Fusión: items locales tienen prioridad (registros del dispositivo actual)
+        const localRaw   = localStorage.getItem(LOCAL_KEY) || localStorage.getItem('santiagoState');
+        const localItems = localRaw
+          ? ((JSON.parse(localRaw) as SantiagoState).items ?? {})
+          : {} as Record<string, SantiagoItem[]>;
+        const merged: SantiagoState = { ...rs, items: { ...rs.items, ...localItems } };
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(merged));
+        // Rebuild para que la UI refleje los datos recién llegados
+        setGuides(prev => { rebuild(prev, appState.dispatch); return prev; });
+      } catch {}
+    }
+
+    // Carga inicial desde Supabase
+    fetchSessionState('santiago').then(applyRemote).catch(() => {});
+
+    // Suscripción realtime: si Desktop registra más tiendas, el celular se actualiza
+    const unsub = subscribeToSessionState('santiago', '', applyRemote);
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.dispatch, rebuild]);
 
   // Poll Santiago localStorage every 3 s — SantiagoContext isn't in this tree
   useEffect(() => {
