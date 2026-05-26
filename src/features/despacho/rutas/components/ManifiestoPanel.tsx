@@ -120,17 +120,18 @@ tr:nth-child(even) td{background:#f8f8f8}
 .tc{background:#1a2550;color:#fff;padding:8px;border-radius:5px;text-align:center}
 .tc .n{font-size:26px;font-weight:900;line-height:1}
 .tc .l{font-size:9px;text-transform:uppercase;opacity:.8;margin-top:2px}
-.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:28px}
+.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:18px}
 .qr-info h3{font-size:13px;font-weight:700;color:#1a2550;margin-bottom:3px}
 .qr-info p{font-size:10px;color:#444;line-height:1.5}
 .qr-url{font-size:8px;color:#888;font-family:monospace;margin-top:5px;word-break:break-all}
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:#FF9500;color:#fff;margin-bottom:4px}
-.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:18px}
-.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:32px}
-.firma{text-align:center}
-.firma-line{border-top:1.5px solid #999;margin-bottom:5px;height:36px}
-.firma-label{font-size:9px;color:#333;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-.firma-sub{font-size:8px;color:#666;margin-top:2px}
+.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:14px}
+.firma-section{margin-top:18px}
+.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.firma{border:1.5px solid #bbb;border-radius:4px;overflow:hidden}
+.firma-hdr{background:#1a2550;color:#fff;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:5px 8px;text-align:center}
+.firma-space{height:72px;border-bottom:1px solid #bbb}
+.firma-foot{font-size:7.5px;color:#555;padding:4px 8px;line-height:1.4}
 @media print{body{padding:8px 10px}}
 </style>
 </head><body>
@@ -184,21 +185,24 @@ tr:nth-child(even) td{background:#f8f8f8}
   </div>
 </div>
 
-<div class="firma-box">
-  <div class="firma">
-    <div class="firma-line"></div>
-    <div class="firma-label">Supervisor</div>
-    <div class="firma-sub">${supervisor || 'KiosClub'}</div>
-  </div>
-  <div class="firma">
-    <div class="firma-line"></div>
-    <div class="firma-label">Chofer</div>
-    <div class="firma-sub">${m.chofer} · ${m.patente}</div>
-  </div>
-  <div class="firma">
-    <div class="firma-line"></div>
-    <div class="firma-label">Tienda / Recepción</div>
-    <div class="firma-sub">Nombre y RUT</div>
+<div class="firma-section">
+  <div class="sec" style="margin-bottom:10px">Firmas y Conformidad</div>
+  <div class="firma-box">
+    <div class="firma">
+      <div class="firma-hdr">Supervisor</div>
+      <div class="firma-space"></div>
+      <div class="firma-foot">${supervisor || 'KiosClub'}<br/>Nombre, RUT y Fecha</div>
+    </div>
+    <div class="firma">
+      <div class="firma-hdr">Chofer</div>
+      <div class="firma-space"></div>
+      <div class="firma-foot">${m.chofer} · ${m.patente}<br/>Nombre, RUT y Firma</div>
+    </div>
+    <div class="firma">
+      <div class="firma-hdr">Tienda / Recepción</div>
+      <div class="firma-space"></div>
+      <div class="firma-foot">Nombre y RUT<br/>Fecha de recepción</div>
+    </div>
   </div>
 </div>
 
@@ -302,7 +306,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-[300] flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0"
