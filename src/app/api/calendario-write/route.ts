@@ -33,6 +33,11 @@ const ARMADO_LABEL   = '✅ ARMADO SECO (vista CD) — Guía se arma cada día |
 const RM_FIXED_ROWS  = 23;
 const FAL_FIXED_ROWS = 9;
 
+function fmtCod(raw: string): string {
+  const m = raw.match(/^(\d+)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9]*)$/i);
+  return m ? `${m[1]} ${m[2].toUpperCase().replace('PEN', 'PEÑ').replace('VIN', 'VIÑ')}` : raw;
+}
+
 function hex(h: string): sheets_v4.Schema$Color {
   return {
     red:   parseInt(h.slice(1, 3), 16) / 255,
@@ -127,12 +132,12 @@ export async function POST(request: NextRequest) {
       (calendario[dia]?.fal || []).map(c => ({ code: c, type: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as StoreType }))
     );
 
-    // ARMADO SECO: all stores combined (rm + costa then fal), per day
+    // ARMADO SECO: orden FAL → Costa → RM (igual que vista General)
     type ArmadoEntry = { code: string; isFal: boolean };
     const armadoDays: ArmadoEntry[][] = DIAS.map(dia => [
+      ...(calendario[dia]?.fal   || []).map(c => ({ code: c, isFal: true  })),
       ...(calendario[dia]?.costa || []).map(c => ({ code: c, isFal: false })),
       ...(calendario[dia]?.rm    || []).map(c => ({ code: c, isFal: false })),
-      ...(calendario[dia]?.fal   || []).map(c => ({ code: c, isFal: true  })),
     ]);
     const maxArmadoRows = Math.max(0, ...armadoDays.map(d => d.length));
 
@@ -163,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     for (let slot = 0; slot < RM_FIXED_ROWS; slot++) {
       const row: string[] = ['', ''];
-      for (let d = 0; d < 6; d++) row.push(rmDays[d][slot]?.code ?? '');
+      for (let d = 0; d < 6; d++) row.push(rmDays[d][slot] ? fmtCod(rmDays[d][slot]!.code) : '');
       values.push(row);
       meta.push({ type: 'rm-data', slot });
     }
@@ -173,7 +178,7 @@ export async function POST(request: NextRequest) {
 
     for (let slot = 0; slot < FAL_FIXED_ROWS; slot++) {
       const row: string[] = ['', ''];
-      for (let d = 0; d < 6; d++) row.push(falDays[d][slot]?.code ?? '');
+      for (let d = 0; d < 6; d++) row.push(falDays[d][slot] ? fmtCod(falDays[d][slot]!.code) : '');
       values.push(row);
       meta.push({ type: 'fal-data', slot });
     }
@@ -187,7 +192,7 @@ export async function POST(request: NextRequest) {
 
     for (let slot = 0; slot < maxArmadoRows; slot++) {
       const row: string[] = ['', ''];
-      for (let d = 0; d < 6; d++) row.push(armadoDays[d][slot]?.code ?? '');
+      for (let d = 0; d < 6; d++) row.push(armadoDays[d][slot] ? fmtCod(armadoDays[d][slot]!.code) : '');
       values.push(row);
       meta.push({ type: 'armado-data', slot });
     }
