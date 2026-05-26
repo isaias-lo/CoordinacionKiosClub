@@ -44,10 +44,11 @@ type Action =
   | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } };
 
 function renumber(items: DispatchItem[]): DispatchItem[] {
-  let pc = 1, bc = 1, cc = 1;
+  let pc = 1, bc = 1, cc = 1, chc = 1;
   return items.map(i =>
     i.pkg === 'pallet'     ? { ...i, orden: `pallet${pc++}` }
     : i.pkg === 'contenedor' ? { ...i, orden: `contenedor${cc++}` }
+    : i.pkg === 'chocolate'  ? { ...i, orden: `chocolate${chc++}` }
     : { ...i, orden: `bulto${bc++}` }
   );
 }
@@ -136,7 +137,7 @@ interface AppContextValue {
   state: AppState;
   dispatch: React.Dispatch<Action>;
   showToast: (msg: string, color?: string) => void;
-  getStats: () => { pallets: number; bultos: number; contenedores: number; tiendas: number };
+  getStats: () => { pallets: number; bultos: number; contenedores: number; chocolates: number; tiendas: number };
   flushPending: () => void;
 }
 
@@ -305,16 +306,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getStats = useCallback(() => {
-    let pallets = 0, bultos = 0, contenedores = 0, tiendas = 0;
+    let pallets = 0, bultos = 0, contenedores = 0, chocolates = 0, tiendas = 0;
     for (const items of Object.values(state.dispatch)) {
       if (items.length > 0) tiendas++;
       for (const item of items) {
         if (item.pkg === 'pallet') pallets++;
         else if (item.pkg === 'contenedor') contenedores++;
+        else if (item.pkg === 'chocolate') chocolates++;
         else bultos++;
       }
     }
-    return { pallets, bultos, contenedores, tiendas };
+    return { pallets, bultos, contenedores, chocolates, tiendas };
   }, [state.dispatch]);
 
   // Flush any pending debounced push immediately — call before navigating away so data is never lost.

@@ -83,14 +83,15 @@ interface GridCardProps {
   itemCount: number;
   palletCount: number;
   contenedorCount: number;
+  chocolateCount: number;
   preset?: { pallets: number; bultos: number };
   hasPdf?: boolean;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
-  const boxCount = itemCount - palletCount - contenedorCount;
+  const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   return (
     <div
       draggable={!!onDragStart}
@@ -120,6 +121,9 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         )}
         {contenedorCount > 0 && (
           <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>
+        )}
+        {chocolateCount > 0 && (
+          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>
         )}
         {preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
           <span className="text-[11px] text-text-3/50 leading-none">
@@ -176,7 +180,7 @@ export function TiendasPage() {
   const [addDropActive,     setAddDropActive]      = useState(false);
   const [removeDropActive,  setRemoveDropActive]   = useState(false);
   const [multiDragOver,     setMultiDragOver]      = useState(false);
-  const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number }>>({});
+  const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
   const [pickingSlots,     setPickingSlots]       = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [formRows,          setFormRows]           = useState<FormRow[]>([]);
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
@@ -305,7 +309,7 @@ export function TiendasPage() {
     setGuia(''); setValor('');
   };
 
-  const PICKING_PKG: Record<string, TipoPaquete>    = { P: 'pallet', C: 'contenedor', B: 'box' };
+  const PICKING_PKG: Record<string, TipoPaquete>    = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
   const PICKING_TIPO: Record<string, TipoContenido> = { comida: 'comida', hogar: 'hogar', mixto: 'comida-hogar' };
 
   /* Initialize formRows when tienda changes — auto-fill from picking with contenido */
@@ -320,13 +324,14 @@ export function TiendasPage() {
       const pickingP       = slots.filter(s => s.tipo === 'P').length;
       const pickingC       = slots.filter(s => s.tipo === 'C').length;
       const pickingB       = slots.filter(s => s.tipo === 'B').length;
-      const hasPickingData = pickingP > 0 || pickingC > 0 || pickingB > 0;
+      const pickingCH      = slots.filter(s => s.tipo === 'CH').length;
+      const hasPickingData = pickingP > 0 || pickingC > 0 || pickingB > 0 || pickingCH > 0;
 
       // Auto-fill preset counters from picking (only if no manual preset and no existing items)
       const hasManualPreset = presets[selectedTienda] &&
-        (presets[selectedTienda].pallets > 0 || presets[selectedTienda].bultos > 0 || (presets[selectedTienda].contenedores ?? 0) > 0);
+        (presets[selectedTienda].pallets > 0 || presets[selectedTienda].bultos > 0 || (presets[selectedTienda].contenedores ?? 0) > 0 || (presets[selectedTienda].chocolates ?? 0) > 0);
       if (!hasManualPreset && existingItems.length === 0 && hasPickingData) {
-        setPresets(prev => ({ ...prev, [selectedTienda]: { pallets: pickingP, bultos: pickingB, contenedores: pickingC } }));
+        setPresets(prev => ({ ...prev, [selectedTienda]: { pallets: pickingP, bultos: pickingB, contenedores: pickingC, chocolates: pickingCH } }));
       }
 
       if (existingItems.length === 0 && hasPickingData) {
@@ -335,9 +340,10 @@ export function TiendasPage() {
           const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
           const tipo = PICKING_TIPO[s.contenido] ?? 'hogar';
           return {
-            id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '', alto: '',
-            ancho: pkg === 'pallet' ? '100' : '',
-            largo: pkg === 'pallet' ? '120' : '',
+            id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '',
+            alto:  pkg === 'pallet' ? '' : pkg === 'chocolate' ? '42' : '',
+            ancho: pkg === 'pallet' ? '100' : pkg === 'chocolate' ? '56' : '',
+            largo: pkg === 'pallet' ? '120' : pkg === 'chocolate' ? '80' : '',
             guia: '', valor: '',
           };
         });
@@ -348,11 +354,13 @@ export function TiendasPage() {
         if (preset) {
           const rows: FormRow[] = [];
           for (let i = 0; i < preset.pallets; i++)
-            rows.push({ id: `p${i}-${Date.now()}`, pkg: 'pallet',     tipo: 'hogar', peso: '', alto: '', ancho: '100', largo: '120', guia: '', valor: '' });
+            rows.push({ id: `p${i}-${Date.now()}`,  pkg: 'pallet',    tipo: 'hogar', peso: '', alto: '', ancho: '100', largo: '120', guia: '', valor: '' });
           for (let i = 0; i < preset.bultos; i++)
-            rows.push({ id: `b${i}-${Date.now()}`, pkg: 'box',        tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
+            rows.push({ id: `b${i}-${Date.now()}`,  pkg: 'box',       tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
           for (let i = 0; i < (preset.contenedores ?? 0); i++)
-            rows.push({ id: `c${i}-${Date.now()}`, pkg: 'contenedor', tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
+            rows.push({ id: `c${i}-${Date.now()}`,  pkg: 'contenedor',tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
+          for (let i = 0; i < (preset.chocolates ?? 0); i++)
+            rows.push({ id: `ch${i}-${Date.now()}`, pkg: 'chocolate', tipo: 'hogar', peso: '', alto: '42', ancho: '56', largo: '80', guia: '', valor: '' });
           setFormRows(rows);
         } else {
           setFormRows([]);
@@ -385,7 +393,7 @@ export function TiendasPage() {
   const setTipo = (t: TipoContenido) => { if (currentPkg === 'box') return; dispatch({ type: 'SET_TIPO', payload: t }); };
   const setPkg  = (p: TipoPaquete) => {
     dispatch({ type: 'SET_PKG', payload: p });
-    if (p === 'box') dispatch({ type: 'SET_TIPO', payload: 'hogar' });
+    if (p === 'box' || p === 'chocolate') dispatch({ type: 'SET_TIPO', payload: 'hogar' });
   };
 
   /* Calendar add/remove */
@@ -480,7 +488,13 @@ export function TiendasPage() {
 
   /* Multi-form row helpers */
   const addFormRow = (pkg: TipoPaquete) => {
-    setFormRows(prev => [...prev, { id: `row-${Date.now()}`, pkg, tipo: 'hogar', peso: '', alto: '', ancho: pkg === 'pallet' ? '100' : '', largo: pkg === 'pallet' ? '120' : '', guia: '', valor: '' }]);
+    setFormRows(prev => [...prev, {
+      id: `row-${Date.now()}`, pkg, tipo: 'hogar', peso: '',
+      alto:  pkg === 'chocolate' ? '42'  : '',
+      ancho: pkg === 'pallet'   ? '100' : pkg === 'chocolate' ? '56' : '',
+      largo: pkg === 'pallet'   ? '120' : pkg === 'chocolate' ? '80' : '',
+      guia: '', valor: '',
+    }]);
   };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
@@ -489,15 +503,18 @@ export function TiendasPage() {
     if (!selectedTienda) return;
     const p = parseFloat(row.peso);
     if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-    const a  = parseFloat(row.alto) || 0;
-    const aw = row.pkg === 'pallet' ? 100 : (parseFloat(row.ancho) || 0);
-    const l  = row.pkg === 'pallet' ? 120 : (parseFloat(row.largo) || 0);
-    const errores = validarDimensiones(row.pkg, p, a, aw, l);
+    const isChoc = row.pkg === 'chocolate';
+    if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
+    const a  = isChoc ? 42 : (parseFloat(row.alto) || 0);
+    const aw = row.pkg === 'pallet' ? 100 : isChoc ? 56 : (parseFloat(row.ancho) || 0);
+    const l  = row.pkg === 'pallet' ? 120 : isChoc ? 80 : (parseFloat(row.largo) || 0);
+    const errores = isChoc ? [] : validarDimensiones(row.pkg, p, a, aw, l);
     if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
     const currentItems = dispatchData[selectedTienda] || [];
-    const pc = currentItems.filter(i => i.pkg === 'pallet').length + 1;
-    const bc = currentItems.filter(i => i.pkg === 'box').length + 1;
-    const orden = row.pkg === 'pallet' ? `pallet${pc}` : `bulto${bc}`;
+    const pc  = currentItems.filter(i => i.pkg === 'pallet').length + 1;
+    const bc  = currentItems.filter(i => i.pkg === 'box').length + 1;
+    const chc = currentItems.filter(i => i.pkg === 'chocolate').length + 1;
+    const orden = row.pkg === 'pallet' ? `pallet${pc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[currentItems.length]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor } });
@@ -511,12 +528,12 @@ export function TiendasPage() {
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
 
-  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores', value: string) => {
+  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores' | 'chocolates', value: string) => {
     if (!selectedTienda) return;
     const n = Math.max(0, parseInt(value) || 0);
-    const current = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const current = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     setPresets(prev => ({ ...prev, [selectedTienda]: { ...current, [field]: n } }));
-    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : field === 'contenedores' ? 'contenedor' : 'box';
+    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : field === 'contenedores' ? 'contenedor' : field === 'chocolates' ? 'chocolate' : 'box';
     const existing = (dispatchData[selectedTienda] || []).filter(i => i.pkg === pkg).length;
     const savedRowCount = formRows.filter(r => r.pkg === pkg && r.saved).length;
     const needed = Math.max(0, n - existing - savedRowCount);
@@ -525,7 +542,11 @@ export function TiendasPage() {
     if (delta > 0) {
       const newRows: FormRow[] = [];
       for (let i = 0; i < delta; i++)
-        newRows.push({ id: `row-${Date.now()}-${i}`, pkg, tipo: 'hogar', peso: '', alto: '', ancho: pkg === 'pallet' ? '100' : '', largo: pkg === 'pallet' ? '120' : '', guia: '', valor: '', saved: false });
+        newRows.push({ id: `row-${Date.now()}-${i}`, pkg, tipo: 'hogar', peso: '',
+          alto:  pkg === 'chocolate' ? '42'  : '',
+          ancho: pkg === 'pallet'   ? '100' : pkg === 'chocolate' ? '56' : '',
+          largo: pkg === 'pallet'   ? '120' : pkg === 'chocolate' ? '80' : '',
+          guia: '', valor: '', saved: false });
       setFormRows(prev => [...prev, ...newRows]);
     } else if (delta < 0) {
       let toRemove = Math.abs(delta);
@@ -573,10 +594,11 @@ export function TiendasPage() {
   };
   const cancelEdit = () => { setEditingIdx(null); resetForm(); };
   const renumberItems = (list: DispatchItem[]) => {
-    let pc = 1, bc = 1, cc = 1;
+    let pc = 1, bc = 1, cc = 1, chc = 1;
     return list.map(it => {
       if (it.pkg === 'pallet')     return { ...it, orden: `pallet${pc++}` };
       if (it.pkg === 'contenedor') return { ...it, orden: `contenedor${cc++}` };
+      if (it.pkg === 'chocolate')  return { ...it, orden: `chocolate${chc++}` };
       return { ...it, orden: `bulto${bc++}` };
     });
   };
@@ -584,21 +606,23 @@ export function TiendasPage() {
     if (!selectedTienda) return;
     const p = parseFloat(peso);
     if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-    const isCont = currentPkg === 'contenedor';
-    const a  = isCont ? 150 : (parseFloat(alto)  || 0);
-    const aw = isCont ? 80  : (parseFloat(ancho) || 0);
-    const l  = isCont ? 110 : (parseFloat(largo) || 0);
-    const errores = isCont ? [] : validarDimensiones(currentPkg, p, a, aw, l);
+    const isCont  = currentPkg === 'contenedor';
+    const isChoc  = currentPkg === 'chocolate';
+    const a  = isCont ? 150 : isChoc ? 42  : (parseFloat(alto)  || 0);
+    const aw = isCont ? 80  : isChoc ? 56  : (parseFloat(ancho) || 0);
+    const l  = isCont ? 110 : isChoc ? 80  : (parseFloat(largo) || 0);
+    const errores = (isCont || isChoc) ? [] : validarDimensiones(currentPkg, p, a, aw, l);
     if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
+    if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
     // guia y valor son opcionales — se asignan retroactivamente al cargar el PDF
     if (editingIdx !== null) {
       const updated = items.map((it, i) => i !== editingIdx ? it : { ...it, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: hasPdf ? it.guia : guia.trim(), valor: hasPdf ? it.valor : (parseFloat(valor) || 0) });
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(updated) });
       setEditingIdx(null); resetForm(); showToast('✓ Item actualizado', '#16A34A'); return;
     }
-    let pc = 1, bc = 1, cc = 1;
-    items.forEach(i => { if (i.pkg === 'pallet') pc++; else if (i.pkg === 'contenedor') cc++; else bc++; });
-    const orden = currentPkg === 'pallet' ? `pallet${pc}` : currentPkg === 'contenedor' ? `contenedor${cc}` : `bulto${bc}`;
+    let pc = 1, bc = 1, cc = 1, chc = 1;
+    items.forEach(i => { if (i.pkg === 'pallet') pc++; else if (i.pkg === 'contenedor') cc++; else if (i.pkg === 'chocolate') chc++; else bc++; });
+    const orden = currentPkg === 'pallet' ? `pallet${pc}` : currentPkg === 'contenedor' ? `contenedor${cc}` : currentPkg === 'chocolate' ? `chocolate${chc}` : `bulto${bc}`;
     const itemGuia  = hasPdf ? nextGuiaAuto : guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(valor) || 0);
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor } });
@@ -659,14 +683,20 @@ export function TiendasPage() {
             <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{items.filter(i => i.pkg === 'box').length}</div>
             <div className="text-[10px] text-white/50 uppercase tracking-widest">B</div>
           </div>
+          {items.filter(i => i.pkg === 'chocolate').length > 0 && (
+            <div className="text-center">
+              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{items.filter(i => i.pkg === 'chocolate').length}</div>
+              <div className="text-[10px] text-white/50 uppercase tracking-widest">CH</div>
+            </div>
+          )}
         </div>
       </div>
     );
 
-    const currentPreset  = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const currentPreset  = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots        = pickingSlots[selectedTienda] ?? [];
-    const pickingRef     = { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length };
-    const hasPickingRef  = pickingRef.p > 0 || pickingRef.c > 0 || pickingRef.b > 0;
+    const pickingRef     = { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length };
+    const hasPickingRef  = pickingRef.p > 0 || pickingRef.c > 0 || pickingRef.b > 0 || pickingRef.ch > 0;
 
     /* Inline P/B/C quantity setter — shown in both modes */
     const presetBar = (
@@ -675,7 +705,7 @@ export function TiendasPage() {
         {hasPickingRef && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-            picking {pickingRef.p}P {pickingRef.c > 0 ? `${pickingRef.c}C ` : ''}{pickingRef.b > 0 ? `${pickingRef.b}B` : ''}
+            picking {pickingRef.p}P {pickingRef.c > 0 ? `${pickingRef.c}C ` : ''}{pickingRef.b > 0 ? `${pickingRef.b}B ` : ''}{pickingRef.ch > 0 ? `${pickingRef.ch}CH` : ''}
           </span>
         )}
         <div className="flex items-center gap-1.5 ml-auto">
@@ -702,6 +732,15 @@ export function TiendasPage() {
             placeholder="0" inputMode="numeric"
             onChange={e => updateInlinePreset('bultos', e.target.value)}
             className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none focus:border-warn [-webkit-appearance:none]" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-barlow-condensed text-[12px] font-bold" style={{ color: '#92400E' }}>CH</span>
+          <input type="number" min="0" max="20"
+            value={currentPreset.chocolates || ''}
+            placeholder="0" inputMode="numeric"
+            onChange={e => updateInlinePreset('chocolates', e.target.value)}
+            className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none [-webkit-appearance:none]"
+            style={{ outlineColor: '#92400E' }} />
         </div>
       </div>
     );
@@ -746,11 +785,12 @@ export function TiendasPage() {
             <div className="grid grid-cols-2 gap-2 mb-2">
               {formRows.map((row) => {
                 /* Locked / saved card */
+                const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
                 if (row.saved && row.savedItem) {
                   return (
-                    <div key={row.id} className={`bg-white rounded-lg border-2 p-2 ${row.pkg === 'pallet' ? 'border-[rgba(37,99,235,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
+                    <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className={`font-barlow-condensed text-[14px] font-extrabold ${row.pkg === 'pallet' ? 'text-info' : 'text-warn'}`}>
+                        <span className="font-barlow-condensed text-[14px] font-extrabold" style={{ color: rowColor.text }}>
                           {row.savedItem.orden}
                         </span>
                         <div className="flex gap-0.5">
@@ -763,6 +803,7 @@ export function TiendasPage() {
                       <div className="text-[11px] text-text-2 space-y-0.5 mb-1.5">
                         <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
                         {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
+                        {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
                         {row.savedItem.pkg === 'pallet' && <div className="text-text-3 capitalize">{row.savedItem.tipo}</div>}
                       </div>
                       <div className="flex items-center gap-1">
@@ -773,13 +814,14 @@ export function TiendasPage() {
                   );
                 }
                 /* Active / unsaved card */
-                const canSave = parseFloat(row.peso) > 0 && parseFloat(row.alto) > 0 &&
-                  (row.pkg === 'pallet' || (parseFloat(row.ancho) > 0 && parseFloat(row.largo) > 0));
+                const isChocRow = row.pkg === 'chocolate';
+                const canSave = parseFloat(row.peso) > 0 && (isChocRow || (parseFloat(row.alto) > 0 &&
+                  (row.pkg === 'pallet' || (parseFloat(row.ancho) > 0 && parseFloat(row.largo) > 0))));
                 return (
-                  <div key={row.id} className={`bg-white rounded-lg border px-2 py-2 ${row.pkg === 'pallet' ? 'border-[rgba(37,99,235,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                  <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className={`font-barlow-condensed text-[13px] font-bold ${row.pkg === 'pallet' ? 'text-info' : 'text-warn'}`}>
-                        {row.pkg === 'pallet' ? 'Pallet' : 'Bulto'}
+                      <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: rowColor.text }}>
+                        {row.pkg === 'pallet' ? 'Pallet' : isChocRow ? 'Choc. CH' : 'Bulto'}
                       </span>
                       <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))}
                         className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
@@ -796,15 +838,17 @@ export function TiendasPage() {
                     )}
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       <div>
-                        <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Peso</label>
+                        <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
                         <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
                           className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
                       </div>
-                      <div>
-                        <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
-                        <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
-                      </div>
+                      {!isChocRow && (
+                        <div>
+                          <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
+                          <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
+                            className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        </div>
+                      )}
                     </div>
                     {row.pkg === 'box' ? (
                       <div className="grid grid-cols-2 gap-1 mb-1.5">
@@ -818,6 +862,10 @@ export function TiendasPage() {
                           <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
                             className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
+                      </div>
+                    ) : isChocRow ? (
+                      <div className="mb-1.5 text-[9px] rounded px-1.5 py-1" style={{ color: '#92400E', background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.15)' }}>
+                        56 × 80 cm · alto 42 cm — fijo
                       </div>
                     ) : (
                       <div className="mb-1.5 text-[9px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">
@@ -844,14 +892,15 @@ export function TiendasPage() {
                       </div>
                     )}
                     <button onClick={() => saveRow(row)} disabled={!canSave}
-                      className={`w-full py-1.5 text-white border-none rounded font-barlow-condensed text-[12px] font-bold cursor-pointer disabled:opacity-30 transition-all ${row.pkg === 'pallet' ? 'bg-info' : 'bg-warn'}`}>
+                      className="w-full py-1.5 text-white border-none rounded font-barlow-condensed text-[12px] font-bold cursor-pointer disabled:opacity-30 transition-all"
+                      style={{ background: row.pkg === 'pallet' ? '#2563EB' : isChocRow ? '#92400E' : '#D97706' }}>
                       + Agregar
                     </button>
                   </div>
                 );
               })}
             </div>
-            <div className="flex gap-2 pb-1">
+            <div className="flex gap-2 pb-1 flex-wrap">
               <button onClick={() => addFormRow('pallet')}
                 className="flex-1 py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[12px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
                 + Pallet
@@ -859,6 +908,13 @@ export function TiendasPage() {
               <button onClick={() => addFormRow('box')}
                 className="flex-1 py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[12px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
                 + Bulto
+              </button>
+              <button onClick={() => addFormRow('chocolate')}
+                className="flex-1 py-2 border border-dashed rounded-btn font-barlow-condensed text-[12px] font-bold cursor-pointer transition-all"
+                style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                + Choc.
               </button>
             </div>
           </div>
@@ -906,26 +962,27 @@ export function TiendasPage() {
               </button>
             ))}
           </div>
-          {currentPkg === 'box' && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">Bulto siempre es Hogar</div>}
+          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">{currentPkg === 'chocolate' ? 'Chocolate siempre es Hogar' : 'Bulto siempre es Hogar'}</div>}
           <SLabel>Tipo</SLabel>
-          <div className="flex gap-1.5">
-            {(['pallet', 'box', 'contenedor'] as TipoPaquete[]).map(p => (
+          <div className="flex gap-1.5 flex-wrap">
+            {(['pallet', 'box', 'contenedor', 'chocolate'] as TipoPaquete[]).map(p => (
               <button key={p} onClick={() => setPkg(p)}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all ${
+                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[13px] font-medium cursor-pointer transition-all min-w-[60px] ${
                   currentPkg === p
                     ? p === 'pallet'     ? 'bg-[rgba(37,99,235,0.08)] border-info text-info'
                     : p === 'contenedor' ? 'bg-[rgba(107,33,168,0.08)] border-[#6B21A8] text-[#6B21A8]'
+                    : p === 'chocolate'  ? 'bg-[rgba(120,53,15,0.08)] border-[#92400E] text-[#92400E]'
                     : 'bg-[rgba(217,119,6,0.08)] border-warn text-warn'
                     : 'border-border bg-white text-text-2'
                 }`}>
-                {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Contenedor' : 'Bulto'}
+                {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Contened.' : p === 'chocolate' ? 'Choc. CH' : 'Bulto'}
               </button>
             ))}
           </div>
           <SLabel>Peso y dimensiones</SLabel>
           <div className="grid grid-cols-2 gap-1.5">
-            <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder="500" inputMode="decimal" className={inputCls} /></Field>
-            {currentPkg !== 'contenedor' && (
+            <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder={currentPkg === 'chocolate' ? 'máx 25' : '500'} inputMode="decimal" className={inputCls} /></Field>
+            {currentPkg !== 'contenedor' && currentPkg !== 'chocolate' && (
               <Field label="Alto cm"><input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal" className={inputCls} /></Field>
             )}
             {currentPkg === 'pallet' ? (
@@ -940,6 +997,14 @@ export function TiendasPage() {
                 <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
                 <div className="bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-[#6B21A8] text-center">
                   80 × 110 cm · alto 150 cm — fijo
+                </div>
+              </div>
+            ) : currentPkg === 'chocolate' ? (
+              <div className="col-span-2 flex flex-col gap-1">
+                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
+                <div className="rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-center"
+                  style={{ background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.20)', color: '#92400E' }}>
+                  56 × 80 cm · alto 42 cm — fijo · máx 25 kg
                 </div>
               </div>
             ) : (
@@ -1133,6 +1198,7 @@ export function TiendasPage() {
                       itemCount={cardItems.length}
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                       contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
+                      chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
                       onSelect={() => select(t.name)}
@@ -1174,6 +1240,7 @@ export function TiendasPage() {
                         itemCount={cardItems.length}
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                         contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
+                        chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
                         hasPdf={!!state.pdfData[t.name]}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />

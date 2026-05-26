@@ -28,9 +28,12 @@ export const CALENDARIO: Record<number, string[]> = {
 };
 
 export const LIMITES = {
-  pallet: { pesoMax: 1000, altoMax: 175, anchoMax: 130, largoMax: 130 },
-  box:    { pesoMax: 500,  altoMax: 200, anchoMax: 250, largoMax: 250 },
+  pallet:    { pesoMax: 1000, altoMax: 175, anchoMax: 130, largoMax: 130 },
+  box:       { pesoMax: 500,  altoMax: 200, anchoMax: 250, largoMax: 250 },
+  chocolate: { pesoMax: 25,   altoMax: 42,  anchoMax: 56,  largoMax: 80  },
 };
+
+export const CHOCOLATE_DIMS = { largo: 80, ancho: 56, alto: 42, pesoMax: 25 };
 
 export function getTodayCods(): string[] {
   const dow = new Date().getDay();
@@ -47,7 +50,7 @@ export function getTodayTiendas(): string[] {
 }
 
 export function validarDimensiones(pkg: string, peso: number, alto: number, ancho: number, largo: number): string[] {
-  const lim = LIMITES[pkg as 'pallet' | 'box'];
+  const lim = LIMITES[pkg as 'pallet' | 'box' | 'chocolate'];
   if (!lim) return [];
   const errores: string[] = [];
   if (peso > lim.pesoMax) errores.push(`Peso máximo ${lim.pesoMax} kg para ${pkg}`);

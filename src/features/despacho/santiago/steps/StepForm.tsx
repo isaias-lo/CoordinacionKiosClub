@@ -30,7 +30,8 @@ const ESTADO_DEFAULT: EstadoItem = 'Listo para despachar';
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar', 'Despachado', 'Carga recibida', 'Carga No recibida por tienda',
 ];
-const CHOCOLATE_DIMS   = { alto: 38, largo: 78, ancho: 52, peso: 5 };
+const CHOCOLATE_BULTO_DIMS = { alto: 38, largo: 78, ancho: 52, peso: 5 }; // Bulto con contenido Chocolate (legado)
+const CHOCOLATE_DIMS       = { alto: 42, largo: 80, ancho: 56, pesoMax: 25 }; // Tipo Chocolate CH (oficial)
 const CONTENEDOR_LARGO = 110;
 const CONTENEDOR_ANCHO = 80;
 const CONTENEDOR_ALTO  = 150;
@@ -65,18 +66,18 @@ interface ResumenEditState {
    STORE GRID CARD
 ═══════════════════════════════════════ */
 function TiendaGridCard({
-  t, isActive, isToday, itemCount, palletCount, contenedorCount,
+  t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   despachoP, despachoB, despachoC,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
-  itemCount: number; palletCount: number; contenedorCount: number;
+  itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }) {
-  const boxCount     = itemCount - palletCount - contenedorCount;
+  const boxCount     = itemCount - palletCount - contenedorCount - chocolateCount;
   const hasItems     = itemCount > 0;
   const expP         = despachoP ?? 0;
   const expB         = despachoB ?? 0;
@@ -114,6 +115,7 @@ function TiendaGridCard({
             {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
             {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
             {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
+            {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
           </>
         ) : showExpected ? (
           <>
@@ -238,7 +240,7 @@ export function StepForm() {
   const rLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Preset / multi-form */
-  const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number }>>({});
+  const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
   const [formRows,      setFormRows]     = useState<FormRow[]>([]);
   const [pickingSlots,  setPickingSlots]  = useState<Record<string, { tipo: string; contenido: string }[]>>({});
 
@@ -383,13 +385,14 @@ export function StepForm() {
   const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;
 
   const isChocolateBulto  = tipo === 'Bulto' && contenido === 'Chocolate';
+  const isChocolateTipo   = tipo === 'Chocolate';
   const isContenedor      = tipo === 'Contenedor';
-  const finalLargo = tipo === 'Pallet' ? 120 : isContenedor ? CONTENEDOR_LARGO : isChocolateBulto ? CHOCOLATE_DIMS.largo : (parseFloat(largo) || 0);
-  const finalAncho = tipo === 'Pallet' ? 100 : isContenedor ? CONTENEDOR_ANCHO : isChocolateBulto ? CHOCOLATE_DIMS.ancho : (parseFloat(ancho) || 0);
-  const finalAlto  = isContenedor ? CONTENEDOR_ALTO : isChocolateBulto ? CHOCOLATE_DIMS.alto : (parseFloat(alto) || 0);
+  const finalLargo = tipo === 'Pallet' ? 120 : isContenedor ? CONTENEDOR_LARGO : isChocolateTipo ? CHOCOLATE_DIMS.largo : isChocolateBulto ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(largo) || 0);
+  const finalAncho = tipo === 'Pallet' ? 100 : isContenedor ? CONTENEDOR_ANCHO : isChocolateTipo ? CHOCOLATE_DIMS.ancho : isChocolateBulto ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(ancho) || 0);
+  const finalAlto  = isContenedor ? CONTENEDOR_ALTO : isChocolateTipo ? CHOCOLATE_DIMS.alto : isChocolateBulto ? CHOCOLATE_BULTO_DIMS.alto : (parseFloat(alto) || 0);
   const pesoV      = (finalAlto * finalLargo * finalAncho) / 6000;
   const canAdd     = !!peso && parseFloat(peso) > 0 &&
-    (isChocolateBulto || isContenedor || (
+    (isChocolateBulto || isChocolateTipo || isContenedor || (
       !!alto && parseFloat(alto) > 0 &&
       (tipo === 'Pallet' || (!!largo && parseFloat(largo) > 0 && !!ancho && parseFloat(ancho) > 0))
     ));
@@ -397,10 +400,11 @@ export function StepForm() {
   /* ── Resumen helpers ── */
   const buildSummaryString = () =>
     activeTiendas.map(([cod, it]) => {
-      const p = it.filter(i => i.tipo === 'Pallet').length;
-      const b = it.filter(i => i.tipo === 'Bulto').length;
-      const c = it.filter(i => i.tipo === 'Contenedor').length;
-      return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : '', c > 0 ? `${c}C` : ''].filter(Boolean).join('+')}`;
+      const p  = it.filter(i => i.tipo === 'Pallet').length;
+      const b  = it.filter(i => i.tipo === 'Bulto').length;
+      const c  = it.filter(i => i.tipo === 'Contenedor').length;
+      const ch = it.filter(i => i.tipo === 'Chocolate').length;
+      return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : '', c > 0 ? `${c}C` : '', ch > 0 ? `${ch}CH` : ''].filter(Boolean).join('+')}`;
     }).join(', ');
 
   const registrar = () => {
@@ -446,17 +450,18 @@ export function StepForm() {
     dispatch({ type: 'SELECT_TIENDA', payload: t });
     const existing = items[t.cod] || [];
     const hasManualPreset = presets[t.cod] &&
-      (presets[t.cod].pallets > 0 || presets[t.cod].bultos > 0 || (presets[t.cod].contenedores ?? 0) > 0);
+      (presets[t.cod].pallets > 0 || presets[t.cod].bultos > 0 || (presets[t.cod].contenedores ?? 0) > 0 || (presets[t.cod].chocolates ?? 0) > 0);
     if (!hasManualPreset && existing.length === 0) {
       const slots = pickingSlots[t.cod] ?? [];
       const pkP   = slots.filter(s => s.tipo === 'P').length;
       const pkC   = slots.filter(s => s.tipo === 'C').length;
       const pkB   = slots.filter(s => s.tipo === 'B').length;
+      const pkCH  = slots.filter(s => s.tipo === 'CH').length;
       const dc    = despachoCounts[t.cod];
-      if (pkP > 0 || pkC > 0 || pkB > 0) {
-        setPresets(prev => ({ ...prev, [t.cod]: { pallets: pkP, bultos: pkB, contenedores: pkC } }));
+      if (pkP > 0 || pkC > 0 || pkB > 0 || pkCH > 0) {
+        setPresets(prev => ({ ...prev, [t.cod]: { pallets: pkP, bultos: pkB, contenedores: pkC, chocolates: pkCH } }));
       } else if (dc && (dc.p > 0 || dc.b > 0)) {
-        setPresets(prev => ({ ...prev, [t.cod]: { pallets: dc.p, bultos: dc.b, contenedores: dc.c ?? 0 } }));
+        setPresets(prev => ({ ...prev, [t.cod]: { pallets: dc.p, bultos: dc.b, contenedores: dc.c ?? 0, chocolates: 0 } }));
       }
     }
     setView('form');
@@ -473,7 +478,7 @@ export function StepForm() {
       const existing = items[currentTienda.cod] || [];
       const slots    = pickingSlots[currentTienda.cod] ?? [];
 
-      const SANT_TIPO: Record<string, TipoCargamento>    = { P: 'Pallet', C: 'Contenedor', B: 'Bulto' };
+      const SANT_TIPO: Record<string, TipoCargamento>    = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
       const SANT_CONT: Record<string, ContenidoSantiago> = { comida: 'Comida', hogar: 'Hogar', mixto: 'Mixto' };
 
       if (existing.length === 0 && slots.length > 0) {
@@ -490,11 +495,13 @@ export function StepForm() {
         if (preset) {
           const rows: FormRow[] = [];
           for (let i = 0; i < Math.max(0, preset.pallets - existing.filter(x => x.tipo === 'Pallet').length); i++)
-            rows.push({ id: `p${i}-${Date.now()}`, tipo: 'Pallet',     contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+            rows.push({ id: `p${i}-${Date.now()}`,  tipo: 'Pallet',    contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
           for (let i = 0; i < Math.max(0, preset.bultos - existing.filter(x => x.tipo === 'Bulto').length); i++)
-            rows.push({ id: `b${i}-${Date.now()}`, tipo: 'Bulto',      contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+            rows.push({ id: `b${i}-${Date.now()}`,  tipo: 'Bulto',     contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
           for (let i = 0; i < Math.max(0, (preset.contenedores ?? 0) - existing.filter(x => x.tipo === 'Contenedor').length); i++)
-            rows.push({ id: `c${i}-${Date.now()}`, tipo: 'Contenedor', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+            rows.push({ id: `c${i}-${Date.now()}`,  tipo: 'Contenedor',contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+          for (let i = 0; i < Math.max(0, (preset.chocolates ?? 0) - existing.filter(x => x.tipo === 'Chocolate').length); i++)
+            rows.push({ id: `ch${i}-${Date.now()}`, tipo: 'Chocolate', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
           setFormRows(rows);
         } else {
           setFormRows([]);
@@ -514,8 +521,8 @@ export function StepForm() {
     const prev = prevContenidoRef.current;
     prevContenidoRef.current = contenido;
     if (contenido === 'Chocolate') {
-      setPeso(String(CHOCOLATE_DIMS.peso)); setAlto(String(CHOCOLATE_DIMS.alto));
-      setAncho(String(CHOCOLATE_DIMS.ancho)); setLargo(String(CHOCOLATE_DIMS.largo));
+      setPeso(String(CHOCOLATE_BULTO_DIMS.peso)); setAlto(String(CHOCOLATE_BULTO_DIMS.alto));
+      setAncho(String(CHOCOLATE_BULTO_DIMS.ancho)); setLargo(String(CHOCOLATE_BULTO_DIMS.largo));
     } else if (prev === 'Chocolate') {
       setPeso(''); setAlto(''); setAncho(''); setLargo('');
     }
@@ -542,10 +549,11 @@ export function StepForm() {
       setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho('');
       showToast('✓ Item actualizado', '#16A34A'); return;
     }
-    const pc = existing.filter(i => i.tipo === 'Pallet').length;
-    const bc = existing.filter(i => i.tipo === 'Bulto').length;
-    const cc = existing.filter(i => i.tipo === 'Contenedor').length;
-    const orden = tipo === 'Pallet' ? `P${pc + 1}` : tipo === 'Contenedor' ? `C${cc + 1}` : `${bc + 1}B`;
+    const pc  = existing.filter(i => i.tipo === 'Pallet').length;
+    const bc  = existing.filter(i => i.tipo === 'Bulto').length;
+    const cc  = existing.filter(i => i.tipo === 'Contenedor').length;
+    const chc = existing.filter(i => i.tipo === 'Chocolate').length;
+    const orden = tipo === 'Pallet' ? `P${pc + 1}` : tipo === 'Contenedor' ? `C${cc + 1}` : tipo === 'Chocolate' ? `CH${chc + 1}` : `${bc + 1}B`;
     dispatch({
       type: 'ADD_ITEM',
       item: {
@@ -557,7 +565,7 @@ export function StepForm() {
       },
     });
     setPeso(''); setAlto('');
-    if (tipo === 'Bulto' && !isChocolateBulto) { setLargo(''); setAncho(''); }
+    if (tipo === 'Bulto' && !isChocolateBulto || tipo === 'Chocolate') { setLargo(''); setAncho(''); }
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
 
@@ -586,23 +594,23 @@ export function StepForm() {
     const lower  = Math.min(srcIdx, tgtIdx);
     const newList = allItems.filter((_, i) => i !== higher && i !== lower);
     newList.splice(lower, 0, merged);
-    let pc = 0, bc = 0, cc = 0;
+    let pc = 0, bc = 0, cc = 0, chc = 0;
     const renumbered = newList.map(i => ({
       ...i,
-      orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : `${++bc}B`,
+      orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
     }));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
     setCombineModal(null);
   };
 
   /* ── Preset bar ── */
-  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores', value: string) => {
+  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores' | 'chocolates', value: string) => {
     if (!currentTienda) return;
     const cod = currentTienda.cod;
     const n   = Math.max(0, parseInt(value) || 0);
-    const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     setPresets(prev => ({ ...prev, [cod]: { ...curr, [field]: n } }));
-    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
+    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : field === 'chocolates' ? 'Chocolate' : 'Bulto';
     const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
     const savedRows = formRows.filter(r => r.tipo === tipo2 && r.saved).length;
     const delta = (Math.max(0, n - existing - savedRows)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
@@ -627,9 +635,9 @@ export function StepForm() {
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
       if (field === 'contenido' && value === 'Chocolate') {
-        updated.alto = String(CHOCOLATE_DIMS.alto);
-        updated.largo = String(CHOCOLATE_DIMS.largo);
-        updated.ancho = String(CHOCOLATE_DIMS.ancho);
+        updated.alto = String(CHOCOLATE_BULTO_DIMS.alto);
+        updated.largo = String(CHOCOLATE_BULTO_DIMS.largo);
+        updated.ancho = String(CHOCOLATE_BULTO_DIMS.ancho);
       } else if (field === 'contenido' && r.contenido === 'Chocolate') {
         updated.alto = ''; updated.largo = ''; updated.ancho = '';
       }
@@ -639,23 +647,26 @@ export function StepForm() {
   const saveRow = (row: FormRow) => {
     if (!currentTienda || !regimen) return;
     const p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-    const isChoc = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
-    const isCont = row.tipo === 'Contenedor';
-    const a  = isCont ? CONTENEDOR_ALTO  : isChoc ? CHOCOLATE_DIMS.alto  : (parseFloat(row.alto)  || 0);
-    const fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : (isChoc ? CHOCOLATE_DIMS.largo : (parseFloat(row.largo) || 0));
-    const fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : (isChoc ? CHOCOLATE_DIMS.ancho : (parseFloat(row.ancho) || 0));
-    if (!isCont && !a) { showToast('Ingresa el alto', '#D97706'); return; }
+    const isChoc     = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
+    const isChocTipo = row.tipo === 'Chocolate';
+    const isCont     = row.tipo === 'Contenedor';
+    if (isChocTipo && p > CHOCOLATE_DIMS.pesoMax) { showToast(`⚠ Chocolate máx ${CHOCOLATE_DIMS.pesoMax} kg`, '#D32F2F'); return; }
+    const a  = isCont ? CONTENEDOR_ALTO  : isChocTipo ? CHOCOLATE_DIMS.alto  : isChoc ? CHOCOLATE_BULTO_DIMS.alto  : (parseFloat(row.alto)  || 0);
+    const fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : isChocTipo ? CHOCOLATE_DIMS.largo : (isChoc ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(row.largo) || 0));
+    const fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : isChocTipo ? CHOCOLATE_DIMS.ancho : (isChoc ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(row.ancho) || 0));
+    if (!isCont && !isChocTipo && !a) { showToast('Ingresa el alto', '#D97706'); return; }
     if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
     const cod = currentTienda.cod;
     const existing = items[cod] || [];
-    const pc = existing.filter(i => i.tipo === 'Pallet').length + 1;
-    const bc = existing.filter(i => i.tipo === 'Bulto').length + 1;
-    const cc = existing.filter(i => i.tipo === 'Contenedor').length + 1;
+    const pc  = existing.filter(i => i.tipo === 'Pallet').length + 1;
+    const bc  = existing.filter(i => i.tipo === 'Bulto').length + 1;
+    const cc  = existing.filter(i => i.tipo === 'Contenedor').length + 1;
+    const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
     const savedItem: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
-      orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : `${bc}B`,
+      orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : row.tipo === 'Chocolate' ? `CH${chc}` : `${bc}B`,
       estado: ESTADO_DEFAULT,
     };
     dispatch({ type: 'ADD_ITEM', item: savedItem });
@@ -735,6 +746,7 @@ export function StepForm() {
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
+                  chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
@@ -760,6 +772,7 @@ export function StepForm() {
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
+                  chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
@@ -1159,10 +1172,10 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderMultiForm = () => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
-    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : null;
-    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0);
+    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
+    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} />
@@ -1172,10 +1185,10 @@ export function StepForm() {
           {hasPickingRef && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B` : ''}
+              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B ` : ''}{pkRef.ch > 0 ? `${pkRef.ch}CH` : ''}
             </span>
           )}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
               <input type="number" min="0" max="30"
@@ -1198,6 +1211,14 @@ export function StepForm() {
                 onChange={e => updateInlinePreset('bultos', e.target.value)}
                 className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#92400E' }}>CH</span>
+              <input type="number" min="0" max="30"
+                value={currentPreset.chocolates || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('chocolates', e.target.value)}
+                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
+                style={{ outlineColor: '#92400E' }} />
+            </div>
           </div>
         </div>
 
@@ -1206,9 +1227,9 @@ export function StepForm() {
             {formRows.map(row => {
               if (row.saved && row.savedItem) {
                 return (
-                  <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
+                  <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : 'text-warn'}`}>{row.savedItem.orden}</span>
+                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{row.savedItem.orden}</span>
                       <div className="flex gap-1">
                         <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
                         <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
@@ -1226,17 +1247,18 @@ export function StepForm() {
                 );
               }
               const isChocRow  = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
+              const isChocTipo = row.tipo === 'Chocolate';
               const isContRow  = row.tipo === 'Contenedor';
               const canSaveRow = parseFloat(row.peso) > 0 &&
-                (isChocRow || isContRow || (parseFloat(row.alto) > 0 &&
+                (isChocRow || isChocTipo || isContRow || (parseFloat(row.alto) > 0 &&
                   (row.tipo === 'Pallet' || (parseFloat(row.largo) > 0 && parseFloat(row.ancho) > 0))));
               return (
-                <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : 'text-warn'}`}>{row.tipo}</span>
+                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{isChocTipo ? 'CH' : row.tipo}</span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
-                  {!isContRow && (
+                  {!isContRow && !isChocTipo && (
                   <div className="flex gap-0.5 mb-2">
                     {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
                       <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
@@ -1253,7 +1275,7 @@ export function StepForm() {
                         placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
                     </div>
-                    {!isChocRow && !isContRow && (
+                    {!isChocRow && !isContRow && !isChocTipo && (
                       <div>
                         <label className="text-[9px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
@@ -1287,8 +1309,13 @@ export function StepForm() {
                       110×80×150 cm · fijas
                     </div>
                   )}
+                  {isChocTipo && (
+                    <div className="mb-1.5 text-[9px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
+                      {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas · máx {CHOCOLATE_DIMS.pesoMax} kg
+                    </div>
+                  )}
                   <button onClick={() => saveRow(row)} disabled={!canSaveRow}
-                    className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : 'bg-warn'}`}>
+                    className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     + Agregar
                   </button>
                 </div>
@@ -1299,6 +1326,7 @@ export function StepForm() {
             <button onClick={() => addFormRow('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
             <button onClick={() => addFormRow('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
             <button onClick={() => addFormRow('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
+            <button onClick={() => addFormRow('Chocolate')}  className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(146,64,14,0.50)', color: '#92400E' }}>+ Choc.</button>
           </div>
           {activeTiendasCount > 0 && (
             <button onClick={goToResumen}
@@ -1318,10 +1346,10 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderSingleForm = () => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0 };
+    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
-    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : null;
-    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0);
+    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
+    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} />
@@ -1331,10 +1359,10 @@ export function StepForm() {
           {hasPickingRef && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B` : ''}
+              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B ` : ''}{pkRef.ch > 0 ? `${pkRef.ch}CH` : ''}
             </span>
           )}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
               <input type="number" min="0" max="30"
@@ -1357,6 +1385,14 @@ export function StepForm() {
                 onChange={e => updateInlinePreset('bultos', e.target.value)}
                 className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#92400E' }}>CH</span>
+              <input type="number" min="0" max="30"
+                value={currentPreset.chocolates || ''} placeholder="0" inputMode="numeric"
+                onChange={e => updateInlinePreset('chocolates', e.target.value)}
+                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
+                style={{ outlineColor: '#92400E' }} />
+            </div>
           </div>
         </div>
 
@@ -1369,17 +1405,18 @@ export function StepForm() {
           )}
 
           {/* Tipo */}
-          <div className="flex gap-2">
-            {(['Pallet', 'Bulto', 'Contenedor'] as TipoCargamento[]).map(t => (
+          <div className="flex gap-2 flex-wrap">
+            {(['Pallet', 'Bulto', 'Contenedor', 'Chocolate'] as TipoCargamento[]).map(t => (
               <button key={t} onClick={() => setTipo(t)}
                 className={`flex-1 py-3 lg:py-2.5 rounded-btn font-barlow-condensed text-[17px] lg:text-[15px] font-bold cursor-pointer border-2 transition-all ${
                   tipo === t
                     ? t === 'Pallet'     ? 'bg-[rgba(37,99,235,0.10)] border-info text-info'
                     : t === 'Contenedor' ? 'bg-[rgba(107,33,168,0.10)] border-[#6B21A8] text-[#6B21A8]'
+                    : t === 'Chocolate'  ? 'bg-[rgba(146,64,14,0.10)] border-[#92400E] text-[#92400E]'
                     :                     'bg-[rgba(217,119,6,0.10)] border-warn text-warn'
                     : 'bg-white border-border text-text-2'
                 }`}>
-                {t === 'Contenedor' ? 'Cont.' : t}
+                {t === 'Contenedor' ? 'Cont.' : t === 'Chocolate' ? 'Choc. CH' : t}
               </button>
             ))}
           </div>
@@ -1409,9 +1446,9 @@ export function StepForm() {
           </div>
 
           {/* Dimensiones */}
-          {isChocolateBulto ? (
-            <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded-btn px-3 py-2.5 text-[13px] text-navy/70">
-              Dimensiones fijas: {CHOCOLATE_DIMS.alto} × {CHOCOLATE_DIMS.largo} × {CHOCOLATE_DIMS.ancho} cm
+          {isChocolateBulto || isChocolateTipo ? (
+            <div className="bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded-btn px-3 py-2.5 text-[13px]" style={{ color: '#92400E' }}>
+              Dimensiones fijas: {CHOCOLATE_DIMS.largo} × {CHOCOLATE_DIMS.ancho} × {CHOCOLATE_DIMS.alto} cm (largo×ancho×alto) · máx {CHOCOLATE_DIMS.pesoMax} kg
             </div>
           ) : tipo === 'Pallet' ? (
             <>

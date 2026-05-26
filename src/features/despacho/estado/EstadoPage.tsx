@@ -23,7 +23,7 @@ interface StoreLabel {
 
 interface LabelItem {
   orden: string;
-  tipo: 'Pallet' | 'Bulto' | 'Contenedor';
+  tipo: 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate';
   itemNum: number;
   totalItems: number;
   peso: number;
