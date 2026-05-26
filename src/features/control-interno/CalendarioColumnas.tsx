@@ -256,8 +256,8 @@ export default function CalendarioColumnas() {
 
     type Zone = 'norte' | 'sur' | 'costa' | 'rm' | 'mall';
     const ZONE_COLOR: Record<Zone, { bg: string; text: string; border: string }> = {
-      norte: { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC' },
-      sur:   { bg: '#FEF08A', text: '#713F12', border: '#FDE047' },
+      norte: { bg: '#FEF08A', text: '#713F12', border: '#FDE047' },
+      sur:   { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC' },
       costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4' },
       rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1' },
       mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF' },
@@ -323,8 +323,8 @@ export default function CalendarioColumnas() {
     <div class="leg-item"><div class="leg-dot" style="background:#F1F5F9;border-color:#CBD5E1"></div>RM</div>
     <div class="leg-item"><div class="leg-dot" style="background:#FECDD3;border-color:#FDA4AF"></div>Malls RM</div>
     <div class="leg-item"><div class="leg-dot" style="background:#99F6E4;border-color:#5EEAD4"></div>Costa Valparaíso</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#BAE6FD;border-color:#7DD3FC"></div>Zona Norte (Regiones)</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#FEF08A;border-color:#FDE047"></div>Zona Sur (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#FEF08A;border-color:#FDE047"></div>Zona Norte (Regiones)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#BAE6FD;border-color:#7DD3FC"></div>Zona Sur (Regiones)</div>
   </div>
   <table>
     <thead>
@@ -563,8 +563,8 @@ export default function CalendarioColumnas() {
           rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1', shadow: 'rgba(51,65,85,0.14)',    label: 'RM'             },
           mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF', shadow: 'rgba(136,19,55,0.14)',   label: 'Mall RM'        },
           costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4', shadow: 'rgba(19,78,74,0.14)',    label: 'Costa'          },
-          norte: { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC', shadow: 'rgba(12,74,110,0.14)',   label: 'Regiones Norte' },
-          sur:   { bg: '#FEF08A', text: '#713F12', border: '#FDE047', shadow: 'rgba(113,63,18,0.14)',   label: 'Regiones Sur'   },
+          norte: { bg: '#FEF08A', text: '#713F12', border: '#FDE047', shadow: 'rgba(113,63,18,0.14)',   label: 'Regiones Norte' },
+          sur:   { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC', shadow: 'rgba(12,74,110,0.14)',   label: 'Regiones Sur'   },
         };
         return (
           <div>
