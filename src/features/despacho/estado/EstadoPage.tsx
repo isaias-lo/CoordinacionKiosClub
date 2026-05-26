@@ -118,17 +118,17 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
 
       <div style={{ borderTop: '1.5px solid #d0d0d0', marginBottom: '3mm' }} />
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '2mm' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '1mm' }}>
         {hasGuide ? (
           <>
-            <QRCodeSVG value={qrUrl} size={200} level="M" />
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '1mm' }}>
+            <QRCodeSVG value={qrUrl} size={155} level="M" />
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7pt', color: '#aaa', letterSpacing: '0.3pt', marginTop: '0.5mm' }}>
               Escanear para confirmar recepción
             </div>
           </>
         ) : (
-          <div style={{ width: 200, height: 200, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4mm' }}>
-            <div style={{ fontSize: '24pt', opacity: 0.25 }}>📄</div>
+          <div style={{ width: 155, height: 155, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3mm' }}>
+            <div style={{ fontSize: '20pt', opacity: 0.25 }}>📄</div>
             <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#bbb', textAlign: 'center', padding: '0 8px', lineHeight: 1.4 }}>
               Sube guía de despacho<br />para activar el QR
             </div>
@@ -136,14 +136,14 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
         )}
       </div>
 
-      <div style={{ borderTop: '1.5px solid #d0d0d0', marginTop: '3mm', paddingTop: '3mm' }}>
+      <div style={{ borderTop: '1.5px solid #d0d0d0', marginTop: '2mm', paddingTop: '2mm' }}>
         {item.guias.length > 0 && (
-          <div style={{ marginBottom: '2mm' }}>
+          <div style={{ marginBottom: '1.5mm' }}>
             <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Guía:{' '}</span>
             <span style={{ fontFamily: 'monospace', fontSize: '10pt', fontWeight: 700, color: '#222' }}>{item.guias.join(' · ')}</span>
           </div>
         )}
-        <div style={{ marginBottom: '2mm' }}>
+        <div style={{ marginBottom: '1.5mm' }}>
           <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Fecha:{' '}</span>
           <span style={{ fontFamily: 'monospace', fontSize: '9pt', fontWeight: 700, color: '#444' }}>
             {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
