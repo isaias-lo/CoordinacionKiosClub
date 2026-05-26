@@ -6,7 +6,20 @@ export default function PanelChoferesPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)' }}>
+      style={{ background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)', position: 'relative' }}>
+
+      {/* Back button */}
+      <button
+        onClick={() => router.push('/despacho-hub')}
+        style={{
+          position: 'absolute', top: 20, left: 20,
+          width: 38, height: 38, borderRadius: 12,
+          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+          color: 'rgba(255,255,255,0.7)', fontSize: 20, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+        ‹
+      </button>
 
       {/* Branding */}
       <div style={{ textAlign: 'center', marginBottom: 36 }}>

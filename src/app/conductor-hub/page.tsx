@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
 
@@ -37,6 +38,7 @@ function todayISO() {
 
 /* ── Page ───────────────────────────────────────────────── */
 export default function ConductorHubPage() {
+  const router = useRouter();
   const [patente,  setPatente]  = useState('');
   const [input,    setInput]    = useState('');
   const [rutas,    setRutas]    = useState<RutaData[]>([]);
@@ -98,7 +100,19 @@ export default function ConductorHubPage() {
   /* ── Login ──────────────────────────────────────────── */
   if (!patente) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)' }}>
+      style={{ background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)', position: 'relative' }}>
+
+      <button
+        onClick={() => router.push('/panel-choferes')}
+        style={{
+          position: 'absolute', top: 20, left: 20,
+          width: 38, height: 38, borderRadius: 12,
+          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+          color: 'rgba(255,255,255,0.7)', fontSize: 20, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+        ‹
+      </button>
 
       <div className="text-center mb-10">
         <div style={{ fontSize: 36, fontWeight: 900, color: '#C62828', letterSpacing: -1 }}>
@@ -151,9 +165,21 @@ export default function ConductorHubPage() {
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '18px 18px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Hub Conductor</div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: 2, marginTop: 2 }}>{patente}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={() => router.push('/panel-choferes')}
+              style={{
+                width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+                color: 'rgba(255,255,255,0.7)', fontSize: 20, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+              ‹
+            </button>
+            <div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Hub Conductor</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: 2, marginTop: 2 }}>{patente}</div>
+            </div>
           </div>
           <button onClick={handleSalir}
             style={{ padding: '6px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer' }}>
