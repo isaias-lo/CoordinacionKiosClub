@@ -28,5 +28,21 @@
   body { overflow: visible !important; height: auto !important; }
   @page { size: A4; margin: 15mm; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* Despacho page: reset fixed/overflow for print */
+  .despacho-root {
+    position: static !important;
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  .despacho-content {
+    overflow: visible !important;
+    height: auto !important;
+    flex: none !important;
+  }
+  .despacho-inner {
+    height: auto !important;
+    overflow: visible !important;
+  }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
