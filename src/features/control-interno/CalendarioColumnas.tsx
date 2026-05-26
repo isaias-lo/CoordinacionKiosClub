@@ -263,15 +263,15 @@ export default function CalendarioColumnas() {
       mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF' },
     };
 
-    // RM calendar order → Costa calendar order → Regiones calendar order
+    // Regiones → Costa → RM (igual que la vista General)
     const dayOrdered: Array<Array<{ cod: string; zone: Zone }>> = DIAS.map(dia => {
       const rm    = local![dia]?.rm    || [];
       const costa = local![dia]?.costa || [];
       const fal   = local![dia]?.fal   || [];
       return [
-        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as Zone })),
-        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as Zone })),
         ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as Zone })),
+        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as Zone })),
+        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as Zone })),
       ];
     });
 
@@ -318,7 +318,7 @@ export default function CalendarioColumnas() {
 </head>
 <body>
   <h1>Calendario de Despacho — KiosClub</h1>
-  <p class="subtitle">Impreso el ${today} &nbsp;·&nbsp; Orden por columna: RM → Costa → Regiones</p>
+  <p class="subtitle">Impreso el ${today} &nbsp;·&nbsp; Orden por columna: Regiones → Costa → RM</p>
   <div class="legend">
     <div class="leg-item"><div class="leg-dot" style="background:#F1F5F9;border-color:#CBD5E1"></div>RM</div>
     <div class="leg-item"><div class="leg-dot" style="background:#FECDD3;border-color:#FDA4AF"></div>Malls RM</div>
