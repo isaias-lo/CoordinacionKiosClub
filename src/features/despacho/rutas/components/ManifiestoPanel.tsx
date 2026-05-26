@@ -128,10 +128,15 @@ tr:nth-child(even) td{background:#f8f8f8}
 .footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:14px}
 .firma-section{margin-top:18px}
 .firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-.firma{border:1.5px solid #bbb;border-radius:4px;overflow:hidden}
-.firma-hdr{background:#1a2550;color:#fff;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:5px 8px;text-align:center}
-.firma-space{height:72px;border-bottom:1px solid #bbb}
-.firma-foot{font-size:7.5px;color:#555;padding:4px 8px;line-height:1.4}
+.firma{border:1.5px solid #bbb;border-radius:6px;overflow:hidden}
+.firma-hdr{background:#1a2550;color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:7px 10px;text-align:center}
+.firma-space{height:88px;background:#fafafa}
+.firma-fields{border-top:1.5px solid #ccc;padding:10px 12px 12px}
+.firma-field{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dotted #bbb}
+.firma-field:last-child{border-bottom:none}
+.firma-field-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;min-width:46px;flex-shrink:0}
+.firma-field-val{font-size:12px;font-weight:800;color:#1a2550;letter-spacing:.4px}
+.firma-field-blank{flex:1;min-height:16px}
 @media print{body{padding:8px 10px}}
 </style>
 </head><body>
@@ -191,17 +196,29 @@ tr:nth-child(even) td{background:#f8f8f8}
     <div class="firma">
       <div class="firma-hdr">Supervisor</div>
       <div class="firma-space"></div>
-      <div class="firma-foot">${supervisor || 'KiosClub'}<br/>Nombre, RUT y Fecha</div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Fecha</span><span class="firma-field-blank"></span></div>
+      </div>
     </div>
     <div class="firma">
       <div class="firma-hdr">Chofer</div>
       <div class="firma-space"></div>
-      <div class="firma-foot">${m.chofer} · ${m.patente}<br/>Nombre, RUT y Firma</div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Patente</span><span class="firma-field-val">${m.patente}</span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+      </div>
     </div>
     <div class="firma">
       <div class="firma-hdr">Tienda / Recepción</div>
       <div class="firma-space"></div>
-      <div class="firma-foot">Nombre y RUT<br/>Fecha de recepción</div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Fecha</span><span class="firma-field-blank"></span></div>
+      </div>
     </div>
   </div>
 </div>
