@@ -385,7 +385,22 @@ export function EstadoPage() {
       } catch {}
     }
 
-    fetchSessionState('guides').then(applyRemoteGuides).catch(() => {});
+    // Carga inicial: fusiona local + remoto y, si local tiene guías que
+    // Supabase aún no conoce, las sube automáticamente (migración de sesión anterior).
+    fetchSessionState('guides').then(remote => {
+      const localGuides = loadGuides();
+      const remoteGuides =
+        remote && typeof remote === 'object' && !Array.isArray(remote)
+          ? (remote as Record<string, GuideEntry>)
+          : {};
+      const merged = { ...remoteGuides, ...localGuides };
+      // Si el local tiene guías no en Supabase → push automático (sync primera vez)
+      if (Object.keys(localGuides).length > 0) {
+        pushSessionState('guides', merged).catch(() => {});
+      }
+      applyRemoteGuides(merged);
+    }).catch(() => {});
+
     const unsub = subscribeToSessionState('guides', '', applyRemoteGuides);
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
