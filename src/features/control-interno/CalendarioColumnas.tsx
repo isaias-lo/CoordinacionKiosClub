@@ -621,7 +621,7 @@ export default function CalendarioColumnas() {
                           ) : stores.map(({ cod, zone }) => {
                             const zc = GZONE[zone];
                             return (
-                              <div key={cod} style={{ background: zc.bg, color: zc.text, border: `1.5px solid ${zc.border}`, borderRadius: 10, padding: '6px 10px', marginBottom: 5, fontSize: 13, fontWeight: 800, fontFamily: 'monospace', textAlign: 'center', boxShadow: `0 2px 6px ${zc.shadow}` }}>
+                              <div key={cod} style={{ background: zc.bg, color: zc.text, border: `1.5px solid ${zc.border}`, borderRadius: 10, padding: '6px 10px', marginBottom: 5, fontSize: 15, fontWeight: 800, fontFamily: 'monospace', textAlign: 'center', boxShadow: `0 2px 6px ${zc.shadow}` }}>
                                 {displayCode(cod)}
                               </div>
                             );
