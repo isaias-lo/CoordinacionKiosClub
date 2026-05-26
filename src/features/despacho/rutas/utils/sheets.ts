@@ -262,10 +262,111 @@ export function parseCalendarioAuth(values: string[][]): Record<string, {rm:stri
 
 // ── Despacho RM → Base de Datos ──────────────────────────────────────────────
 
-const URBAN_RM = new Set([
-  'Santiago','Providencia','Las Condes','Vitacura','Ñuñoa','Maipú',
-  'La Florida','Quilicura','Huechuraba','La Reina','Lo Barnechea','Puente Alto',
-]);
+/** Convierte YYYY-MM-DD → DD/MM/YYYY (formato que usa el panel de seguimiento) */
+function toDisplayFecha(fecha: string): string {
+  const parts = fecha.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return fecha; // ya viene en otro formato, devolver tal cual
+}
+
+export interface RMRecord {
+  id: string;
+  fecha: string;
+  cod: string;
+  tienda: string;
+  tipo: string;
+  regimen: string;
+  transporte: string;
+  carga: string;
+  region: string;
+  comuna: string;
+  tipo_comuna: string;
+  peso_kg: null;
+  alto: null;
+  largo: null;
+  ancho: null;
+  peso_v: null;
+  ventana: string;
+  estado: string;
+  n_pallet_bulto: string;
+  fecha_llegada: string;
+  conductor: string;
+  ruta: string;
+  supervisor: string;
+  seguimiento: string;
+}
+
+/**
+ * Construye los registros RM en formato objeto (para Supabase o Sheets).
+ * La fecha se escribe siempre en DD/MM/YYYY para coincidir con el filtro
+ * del panel de seguimiento.
+ */
+export function buildDespachoRMRecords(params: {
+  fecha: string;
+  supervisor: string;
+  rutas: Ruta[];
+  tiendas: Record<string, TiendaInfo>;
+  seguimiento: string;
+}): RMRecord[] {
+  const { fecha, supervisor, rutas, tiendas, seguimiento } = params;
+  if (!rutas?.length) return [];
+
+  const fechaFmt = toDisplayFecha(fecha); // siempre DD/MM/YYYY
+
+  const now   = new Date();
+  const dd    = String(now.getDate()).padStart(2, '0');
+  const mm    = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy  = String(now.getFullYear());
+  const stamp = `${dd}${mm}${yyyy}`;
+
+  const records: RMRecord[] = [];
+
+  rutas.forEach((ruta, ri) => {
+    const conductor = ruta._choferAsignado || ruta.v.ch || '';
+    const vehiculo  = ruta.v.p;
+    const rutaNum   = ri + 1;
+
+    ruta.ts.forEach(ts => {
+      const info    = tiendas[ts.c];
+      const nombre  = info?.n ?? ts.c;
+      const zona    = info?.z ?? '';
+      const tipoCom = 'Urbano'; // Santiago siempre urbano
+
+      const base = {
+        fecha:         fechaFmt,
+        cod:           ts.c,
+        tienda:        nombre,
+        regimen:       'Carga',
+        transporte:    vehiculo,
+        carga:         '',
+        region:        'REGIÓN METROPOLITANA',
+        comuna:        zona,
+        tipo_comuna:   tipoCom,
+        peso_kg:       null as null,
+        alto:          null as null,
+        largo:         null as null,
+        ancho:         null as null,
+        peso_v:        null as null,
+        ventana:       '',
+        estado:        'Listo para despachar',
+        fecha_llegada: '',
+        conductor,
+        ruta:          String(rutaNum),
+        supervisor,
+        seguimiento,
+      };
+
+      if (ts.p > 0) {
+        records.push({ ...base, id: `${rutaNum}${ts.c}${stamp}P`, tipo: 'Pallet', n_pallet_bulto: String(ts.p) });
+      }
+      if (ts.b > 0) {
+        records.push({ ...base, id: `${rutaNum}${ts.c}${stamp}B`, tipo: 'Bulto',  n_pallet_bulto: String(ts.b) });
+      }
+    });
+  });
+
+  return records;
+}
 
 // Columnas: ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
 //           TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
@@ -276,81 +377,17 @@ export function guardarDespachoRMFn(params: {
   rutas: Ruta[];
   tiendas: Record<string, TiendaInfo>;
 }): void {
-  const { fecha, supervisor, rutas, tiendas } = params;
-  if (!rutas?.length) return;
+  const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
+  if (!records.length) return;
 
-  const now   = new Date();
-  const dd    = String(now.getDate()).padStart(2, '0');
-  const mm    = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy  = String(now.getFullYear());
-  const stamp = `${dd}${mm}${yyyy}`;
-
-  const rows: (string | number)[][] = [];
-
-  rutas.forEach((ruta, ri) => {
-    const conductor  = ruta._choferAsignado || ruta.v.ch || '';
-    const vehiculo   = ruta.v.p;
-    const rutaNum    = ri + 1;
-
-    ruta.ts.forEach(ts => {
-      const info   = tiendas[ts.c];
-      const nombre = info?.n ?? ts.c;
-      const zona   = info?.z ?? '';
-      const tipoCom = URBAN_RM.has(zona) ? 'Urbano' : 'Urbano'; // Santiago siempre urbano
-
-      // Fila pallets
-      if (ts.p > 0) {
-        rows.push([
-          `${rutaNum}${ts.c}${stamp}P`,   // ID
-          fecha,                           // FECHA
-          ts.c,                            // COD
-          nombre,                          // TIENDA
-          'Pallet',                        // TIPO
-          'Carga',                         // REGIMEN
-          vehiculo,                        // TRANSPORTE
-          '',                              // CARGA
-          'REGIÓN METROPOLITANA',          // REGION
-          zona,                            // COMUNA
-          tipoCom,                         // TIPO_COMUNA
-          '', '', '', '', '',              // PESO_KG, ALTO, LARGO, ANCHO, PESO_V
-          '',                              // VENTANA
-          'Listo para despachar',          // ESTADO
-          ts.p,                            // N_PALLET_BULTO
-          '',                              // FECHA_LLEGADA
-          conductor,                       // CONDUCTOR
-          rutaNum,                         // RUTA
-          supervisor,                      // SUPERVISOR
-        ]);
-      }
-
-      // Fila bultos
-      if (ts.b > 0) {
-        rows.push([
-          `${rutaNum}${ts.c}${stamp}B`,
-          fecha,
-          ts.c,
-          nombre,
-          'Bulto',
-          'Carga',
-          vehiculo,
-          '',
-          'REGIÓN METROPOLITANA',
-          zona,
-          tipoCom,
-          '', '', '', '', '',
-          '',
-          'Listo para despachar',
-          ts.b,
-          '',
-          conductor,
-          rutaNum,
-          supervisor,
-        ]);
-      }
-    });
-  });
-
-  if (!rows.length) return;
+  // Convertir objetos a filas para Google Sheets (mismo orden que antes)
+  const rows = records.map(r => [
+    r.id, r.fecha, r.cod, r.tienda, r.tipo, r.regimen, r.transporte, r.carga,
+    r.region, r.comuna, r.tipo_comuna,
+    '', '', '', '', '',   // PESO_KG, ALTO, LARGO, ANCHO, PESO_V
+    r.ventana, r.estado, r.n_pallet_bulto, r.fecha_llegada,
+    r.conductor, r.ruta, r.supervisor,
+  ]);
 
   fetch('/api/sheets-write', {
     method:  'POST',

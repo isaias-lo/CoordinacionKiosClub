@@ -8,6 +8,7 @@ import { TIENDAS } from '../regiones/data/tiendas';
 import { processPdf } from '../regiones/utils/pdfUtils';
 import { formatCod } from '../rutas/utils/helpers';
 import { useApp } from '../../../context/AppContext';
+import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import type { SantiagoState, SantiagoItem } from '../santiago/types';
 import type { DispatchItem } from '../../../types';
 
@@ -317,8 +318,11 @@ export function EstadoPage() {
       return next;
     });
     setSelected(prev => {
+      // Mantener selección si la tienda sigue existiendo.
+      // NO auto-seleccionar: en móvil causaría navegar al detalle sin que
+      // el usuario lo pidiera. En desktop el usuario puede tocar cualquier tienda.
       if (prev && result.find(s => s.cod === prev)) return prev;
-      return result.length > 0 ? result[0].cod : null;
+      return null;
     });
   }, []);
 
@@ -328,6 +332,64 @@ export function EstadoPage() {
     rebuild(g, appState.dispatch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch]);
+
+  // Sincroniza el estado Santiago desde Supabase (cross-device).
+  // SantiagoContext escribe en shared_session_state al registrar en cualquier
+  // dispositivo. EstadoPage lee de localStorage, que es local al dispositivo.
+  // Este efecto carga los datos remotos y los fusiona con el localStorage para
+  // que el celular vea las tiendas registradas en Desktop (y viceversa).
+  useEffect(() => {
+    const LOCAL_KEY = `santiagoState_${TODAY_KEY}`;
+
+    function applyRemote(remote: unknown) {
+      try {
+        const rs = remote as SantiagoState;
+        if (!rs?.items || Object.keys(rs.items).length === 0) return;
+        // Fusión: items locales tienen prioridad (registros del dispositivo actual)
+        const localRaw   = localStorage.getItem(LOCAL_KEY) || localStorage.getItem('santiagoState');
+        const localItems = localRaw
+          ? ((JSON.parse(localRaw) as SantiagoState).items ?? {})
+          : {} as Record<string, SantiagoItem[]>;
+        const merged: SantiagoState = { ...rs, items: { ...rs.items, ...localItems } };
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(merged));
+        // Rebuild para que la UI refleje los datos recién llegados
+        setGuides(prev => { rebuild(prev, appState.dispatch); return prev; });
+      } catch {}
+    }
+
+    // Carga inicial desde Supabase
+    fetchSessionState('santiago').then(applyRemote).catch(() => {});
+
+    // Suscripción realtime: si Desktop registra más tiendas, el celular se actualiza
+    const unsub = subscribeToSessionState('santiago', '', applyRemote);
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.dispatch, rebuild]);
+
+  // Sincroniza guías PDF desde Supabase (cross-device).
+  // Las guías se guardan en localStorage del dispositivo que sube el PDF.
+  // Este efecto las carga al montar y escucha cambios en tiempo real para que
+  // móvil y desktop siempre estén en sincronía.
+  useEffect(() => {
+    function applyRemoteGuides(remote: unknown) {
+      try {
+        const remoteGuides = remote as Record<string, GuideEntry>;
+        if (!remoteGuides || typeof remoteGuides !== 'object' || Array.isArray(remoteGuides)) return;
+        setGuides(prev => {
+          // Fusión: remoto como base, local como override (lo subido en este dispositivo tiene prioridad)
+          const merged = { ...remoteGuides, ...prev };
+          saveGuides(merged);
+          rebuild(merged, appState.dispatch);
+          return merged;
+        });
+      } catch {}
+    }
+
+    fetchSessionState('guides').then(applyRemoteGuides).catch(() => {});
+    const unsub = subscribeToSessionState('guides', '', applyRemoteGuides);
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.dispatch, rebuild]);
 
   // Poll Santiago localStorage every 3 s — SantiagoContext isn't in this tree
   useEffect(() => {
@@ -408,6 +470,8 @@ export function EstadoPage() {
     saveGuides(newGuides);
     setGuides(newGuides);
     rebuild(newGuides, appState.dispatch);
+    // Sync guides across devices (fire-and-forget)
+    pushSessionState('guides', newGuides).catch(() => {});
     if (assigned > 0)
       showToast(`✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`);
     else
@@ -420,6 +484,7 @@ export function EstadoPage() {
     saveGuides(next);
     setGuides(next);
     rebuild(next, appState.dispatch);
+    pushSessionState('guides', next).catch(() => {});
   };
 
   /* Print only the currently-previewed store */
@@ -477,8 +542,11 @@ export function EstadoPage() {
 
         {/* ══════════════════════════════
             LEFT — Subida + Lista + Imprimir
+            Móvil sin selección: visible (flex-1 acotado → scroll funciona).
+            Móvil con tienda seleccionada: oculto (el panel derecho ocupa toda la pantalla).
+            Desktop: siempre visible, ancho fijo 440px.
         ══════════════════════════════ */}
-        <div className="w-full lg:w-[440px] flex-shrink-0 flex flex-col border-r border-border overflow-hidden">
+        <div className={`${selected ? 'hidden lg:flex' : 'flex'} flex-col flex-1 lg:flex-none w-full lg:w-[440px] border-r border-border overflow-hidden`}>
 
           {/* Stats header */}
           <div className="px-5 py-4 bg-navy flex-shrink-0">
@@ -598,14 +666,28 @@ export function EstadoPage() {
 
         {/* ══════════════════════════════
             RIGHT — Previsualización de etiquetas
+            Móvil sin selección: oculto (solo se ve la lista).
+            Móvil con tienda seleccionada: full-screen con botón "← Volver".
+            Desktop: siempre visible al lado de la lista.
         ══════════════════════════════ */}
-        <div className="flex-1 overflow-y-auto bg-[#ECEEF3] p-6">
+        <div className={`${selected ? 'flex' : 'hidden lg:flex'} flex-col flex-1 overflow-y-auto bg-[#ECEEF3] p-4 lg:p-6`}>
+
+          {/* Botón Volver — solo en móvil cuando hay tienda seleccionada */}
+          {selected && (
+            <button
+              onClick={() => setSelected(null)}
+              className="lg:hidden flex-shrink-0 flex items-center gap-2 mb-4 px-3 py-2 rounded-xl border border-border bg-white text-navy font-bold text-[13px] cursor-pointer active:opacity-70 self-start"
+              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+              ← Volver a lista
+            </button>
+          )}
+
           {!selectedStore ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <div className="text-5xl mb-4 opacity-10">🏷️</div>
                 <p className="text-[16px] text-text-3 font-semibold opacity-60">
-                  {stores.length === 0 ? 'Sin datos — registra despacho primero' : 'Selecciona una tienda para ver las etiquetas'}
+                  {stores.length === 0 ? 'Sin datos — registra despacho primero' : 'Toca una tienda para ver sus etiquetas'}
                 </p>
               </div>
             </div>
@@ -632,9 +714,10 @@ export function EstadoPage() {
               </div>
 
               {/* Scale labels for preview only — 100mm≈378px, 150mm≈567px at 96dpi */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', gap: 16 }}>
+              {/* auto-fill: 1 col en móvil (~360px), 3 cols en desktop (≥800px) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 238px)', gap: 16 }}>
                 {(() => {
-                  const SCALE    = 0.63;
+                  const SCALE = 0.63;
                   const W = 378 * SCALE; // ≈238px
                   const H = 567 * SCALE; // ≈357px
                   const qrUrl    = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
