@@ -68,29 +68,52 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'store_cod y otp requeridos' }, { status: 400 });
   }
 
-  const { data, error } = await supabaseServer()
+  // Busca el OTP activo más reciente sin filtrar por código aún (para poder contar intentos)
+  const { data: record } = await supabaseServer()
     .from('otp_recepcion')
-    .select('id, expires_at, used')
+    .select('id, otp, expires_at, attempts')
     .eq('store_cod', store_cod)
-    .eq('otp', otp.trim())
     .eq('used', false)
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
 
-  if (error || !data) {
+  if (!record) {
     return NextResponse.json({ valid: false, error: 'Código incorrecto' }, { status: 400 });
   }
 
-  if (new Date(data.expires_at as string) < new Date()) {
+  // Rate limiting: máximo 5 intentos por OTP
+  const attempts = (record.attempts as number) ?? 0;
+  if (attempts >= 5) {
+    return NextResponse.json(
+      { valid: false, error: 'Demasiados intentos. Solicita un nuevo código.' },
+      { status: 429 }
+    );
+  }
+
+  // Verifica expiración
+  if (new Date(record.expires_at as string) < new Date()) {
     return NextResponse.json({ valid: false, error: 'El código ha expirado' }, { status: 400 });
   }
 
-  // Marca como usado
+  // Verifica el código
+  if (record.otp !== otp.trim()) {
+    await supabaseServer()
+      .from('otp_recepcion')
+      .update({ attempts: attempts + 1 })
+      .eq('id', record.id);
+    const remaining = 4 - attempts;
+    return NextResponse.json(
+      { valid: false, error: `Código incorrecto. ${remaining} intento${remaining !== 1 ? 's' : ''} restante${remaining !== 1 ? 's' : ''}.` },
+      { status: 400 }
+    );
+  }
+
+  // Código correcto — marca como usado
   await supabaseServer()
     .from('otp_recepcion')
     .update({ used: true })
-    .eq('id', data.id);
+    .eq('id', record.id);
 
   return NextResponse.json({ valid: true });
 }
