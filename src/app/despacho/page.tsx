@@ -117,9 +117,9 @@ function DespachoContent() {
   }
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+    <div className="despacho-root fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div
-        className="flex items-center justify-between px-4 py-3 bg-navy gap-2 flex-shrink-0"
+        className="no-print flex items-center justify-between px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub"
              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -134,7 +134,7 @@ function DespachoContent() {
         </button>
         <ProfilePill />
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="despacho-content flex-1 overflow-hidden">
         <RutasScreenWrapper onBack={handleBack} />
       </div>
     </div>

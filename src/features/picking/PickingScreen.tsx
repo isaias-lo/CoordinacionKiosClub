@@ -73,7 +73,7 @@ const PICKER_TYPES_KEY    = `picking_types_v1_${new Date().toISOString().slice(0
 const LABEL_CONFIG_KEY    = 'picking_label_config_v1';
 const CANONICAL_NAMES_KEY = 'picking_canonical_names_v1';
 
-type PickerType = 'P' | 'C' | 'B';
+type PickerType = 'P' | 'C' | 'B' | 'CH';
 
 interface LabelConfig {
   borderWidth: number;           // 0–4
@@ -806,9 +806,10 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
             <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-2">Unidades</label>
             <div className="flex gap-2">
               {([
-                { tipo: 'P' as PickerType, label: 'Pallets',       color: '#1E3A8A' },
-                { tipo: 'C' as PickerType, label: 'Contenedores',  color: '#6B21A8' },
-                { tipo: 'B' as PickerType, label: 'Bultos',        color: '#065F46' },
+                { tipo: 'P'  as PickerType, label: 'Pallets',       color: '#1E3A8A' },
+                { tipo: 'C'  as PickerType, label: 'Contenedores',  color: '#6B21A8' },
+                { tipo: 'B'  as PickerType, label: 'Bultos',        color: '#065F46' },
+                { tipo: 'CH' as PickerType, label: 'Chocolates',    color: '#92400E' },
               ]).map(({ tipo, label, color }) => {
                 const count = palletsByTipo[tipo] ?? 0;
                 return (
@@ -1347,7 +1348,7 @@ function HistorialTab({ allGroups }: { allGroups: PickerGroup[] }) {
     const rows = records.map((r, i) => {
       const hora    = new Date(r.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
       const tienda  = r.state_key.split('__')[0];
-      const tipo    = r.tipo === 'C' ? 'Contenedor' : r.tipo === 'B' ? 'Bulto' : 'Pallet';
+      const tipo    = r.tipo === 'C' ? 'Contenedor' : r.tipo === 'B' ? 'Bulto' : r.tipo === 'CH' ? 'Chocolate' : 'Pallet';
       const cats    = (catsByKey[r.state_key] ?? []).join(', ') || '—';
       return `<tr class="${i % 2 === 0 ? '' : 'alt'}">
 <td class="mono">${hora}</td><td>${r.picker_label}</td>
@@ -1483,11 +1484,11 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                     <td className="px-4 py-2.5 text-center">
                       <span className="px-2 py-0.5 rounded-full text-[11px] font-bold"
                         style={{
-                          background: r.tipo === 'C' ? 'rgba(107,33,168,0.1)' : r.tipo === 'B' ? 'rgba(6,95,70,0.1)' : 'rgba(30,58,138,0.1)',
-                          color: r.tipo === 'C' ? '#6B21A8' : r.tipo === 'B' ? '#065F46' : '#1E3A8A',
-                          border: `1px solid ${r.tipo === 'C' ? 'rgba(107,33,168,0.25)' : r.tipo === 'B' ? 'rgba(6,95,70,0.25)' : 'rgba(30,58,138,0.2)'}`,
+                          background: r.tipo === 'C' ? 'rgba(107,33,168,0.1)' : r.tipo === 'B' ? 'rgba(6,95,70,0.1)' : r.tipo === 'CH' ? 'rgba(120,53,15,0.1)' : 'rgba(30,58,138,0.1)',
+                          color: r.tipo === 'C' ? '#6B21A8' : r.tipo === 'B' ? '#065F46' : r.tipo === 'CH' ? '#92400E' : '#1E3A8A',
+                          border: `1px solid ${r.tipo === 'C' ? 'rgba(107,33,168,0.25)' : r.tipo === 'B' ? 'rgba(6,95,70,0.25)' : r.tipo === 'CH' ? 'rgba(120,53,15,0.25)' : 'rgba(30,58,138,0.2)'}`,
                         }}>
-                        {r.tipo === 'C' ? 'Cont.' : r.tipo === 'B' ? 'Bulto' : 'Pallet'}
+                        {r.tipo === 'C' ? 'Cont.' : r.tipo === 'B' ? 'Bulto' : r.tipo === 'CH' ? 'Choc.' : 'Pallet'}
                       </span>
                     </td>
                   </tr>

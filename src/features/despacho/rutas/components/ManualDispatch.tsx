@@ -53,7 +53,21 @@ export default function ManualDispatch({
   const scrollRaf    = useRef<number | null>(null);
   const touchState   = useRef<{ active: boolean; item: StoreTag | null; from: string | null; ghost: HTMLElement | null }>({ active: false, item: null, from: null, ghost: null });
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollerRef  = useRef<HTMLElement | null>(null);
   const ejecutarDropRef = useRef<((target: string, item: DraggingState) => void) | null>(null);
+
+  // Find nearest scrollable ancestor (may not be window when inside fixed layouts)
+  useEffect(() => {
+    let el = containerRef.current?.parentElement ?? null;
+    while (el) {
+      const { overflowY } = window.getComputedStyle(el);
+      if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+        scrollerRef.current = el;
+        break;
+      }
+      el = el.parentElement;
+    }
+  }, []);
 
   const tiendasActivas = Object.keys(calT)
     .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
@@ -162,8 +176,9 @@ export default function ManualDispatch({
       setDragOver(zone ? zone.dataset.dropzone! : null);
 
       const ZONE = 80, SPEED = 7;
-      if (touch.clientY < ZONE) window.scrollBy(0, -SPEED);
-      else if (touch.clientY > window.innerHeight - ZONE) window.scrollBy(0, SPEED);
+      const scroller = scrollerRef.current ?? window;
+      if (touch.clientY < ZONE) scroller.scrollBy(0, -SPEED);
+      else if (touch.clientY > window.innerHeight - ZONE) scroller.scrollBy(0, SPEED);
     }
 
     function onTouchEnd(e: TouchEvent) {
@@ -198,14 +213,15 @@ export default function ManualDispatch({
     function onDragOver(e: DragEvent) {
       const ZONE = 80, SPEED = 8;
       cancelAnimationFrame(scrollRaf.current!);
+      const scroller = scrollerRef.current ?? window;
       if (e.clientY < ZONE) {
         scrollRaf.current = requestAnimationFrame(function scroll() {
-          window.scrollBy(0, -SPEED);
+          scroller.scrollBy(0, -SPEED);
           scrollRaf.current = requestAnimationFrame(scroll);
         });
       } else if (e.clientY > window.innerHeight - ZONE) {
         scrollRaf.current = requestAnimationFrame(function scroll() {
-          window.scrollBy(0, SPEED);
+          scroller.scrollBy(0, SPEED);
           scrollRaf.current = requestAnimationFrame(scroll);
         });
       }

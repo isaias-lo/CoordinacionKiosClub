@@ -15,16 +15,18 @@ const TAG: Record<string, string> = {
   'comida-hogar':'bg-[rgba(8,145,178,0.15)] text-mixto',
   pallet:        'bg-[rgba(37,99,235,0.15)] text-info',
   box:           'bg-[rgba(217,119,6,0.15)] text-warn',
+  chocolate:     'bg-[rgba(120,53,15,0.12)] text-[#92400E]',
 };
 const LABEL: Record<TipoContenido | TipoPaquete, string> = {
-  comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor',
+  comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate',
 };
 
 function renumber(list: DispatchItem[]): DispatchItem[] {
-  let pc = 1, bc = 1, cc = 1;
+  let pc = 1, bc = 1, cc = 1, chc = 1;
   return list.map(it =>
     it.pkg === 'pallet'     ? { ...it, orden: `pallet${pc++}` }
     : it.pkg === 'contenedor' ? { ...it, orden: `contenedor${cc++}` }
+    : it.pkg === 'chocolate'  ? { ...it, orden: `chocolate${chc++}` }
     : { ...it, orden: `bulto${bc++}` }
   );
 }
@@ -61,11 +63,13 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
   const names = Object.keys(dispatchData).filter(n => dispatchData[n].length > 0);
   const stats = names.reduce((a, n) => {
     (dispatchData[n] || []).forEach(i => {
-      i.pkg === 'pallet' ? a.pallets++ : a.bultos++;
+      if (i.pkg === 'pallet') a.pallets++;
+      else if (i.pkg === 'chocolate') a.chocolates++;
+      else a.bultos++;
       a.monto += i.valor || 0;
     });
     return a;
-  }, { pallets: 0, bultos: 0, monto: 0 });
+  }, { pallets: 0, bultos: 0, chocolates: 0, monto: 0 });
 
   const date = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
 
@@ -161,6 +165,12 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         <span className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{stats.bultos}</span>
         <span className="text-[10px] text-white/50 uppercase tracking-wide">B</span>
       </div>
+      {stats.chocolates > 0 && (
+        <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
+          <span className="font-barlow-condensed text-[22px] font-extrabold text-[#FBB6A0] leading-none">{stats.chocolates}</span>
+          <span className="text-[10px] text-white/50 uppercase tracking-wide">CH</span>
+        </div>
+      )}
       <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
         <span className="font-barlow-condensed text-[22px] font-extrabold text-[#86EFAC] leading-none">{names.length}</span>
         <span className="text-[10px] text-white/50 uppercase tracking-wide">T</span>
@@ -218,8 +228,9 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         const isOpen = expanded === name;
         let pesoT = 0, valorT = 0;
         items.forEach(i => { pesoT += i.peso; valorT += i.valor || 0; });
-        const pallets = items.filter(i => i.pkg === 'pallet').length;
-        const bultos  = items.filter(i => i.pkg === 'box').length;
+        const pallets     = items.filter(i => i.pkg === 'pallet').length;
+        const bultos      = items.filter(i => i.pkg === 'box').length;
+        const chocolates  = items.filter(i => i.pkg === 'chocolate').length;
 
         return (
           <div key={name} className={`border-b border-border ${isOpen ? 'bg-white' : ''}`}>
@@ -247,6 +258,11 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
                 {bultos > 0 && (
                   <span className="font-barlow-condensed text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-1.5 py-0.5 rounded-full">
                     {bultos}B
+                  </span>
+                )}
+                {chocolates > 0 && (
+                  <span className="font-barlow-condensed text-[11px] font-bold text-[#92400E] bg-[rgba(120,53,15,0.10)] border border-[rgba(120,53,15,0.20)] px-1.5 py-0.5 rounded-full">
+                    {chocolates}CH
                   </span>
                 )}
                 {sel.size > 0 && (

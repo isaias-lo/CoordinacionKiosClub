@@ -120,17 +120,23 @@ tr:nth-child(even) td{background:#f8f8f8}
 .tc{background:#1a2550;color:#fff;padding:8px;border-radius:5px;text-align:center}
 .tc .n{font-size:26px;font-weight:900;line-height:1}
 .tc .l{font-size:9px;text-transform:uppercase;opacity:.8;margin-top:2px}
-.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:28px}
+.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:18px}
 .qr-info h3{font-size:13px;font-weight:700;color:#1a2550;margin-bottom:3px}
 .qr-info p{font-size:10px;color:#444;line-height:1.5}
 .qr-url{font-size:8px;color:#888;font-family:monospace;margin-top:5px;word-break:break-all}
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:#FF9500;color:#fff;margin-bottom:4px}
-.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:18px}
-.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:32px}
-.firma{text-align:center}
-.firma-line{border-top:1.5px solid #999;margin-bottom:5px;height:36px}
-.firma-label{font-size:9px;color:#333;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-.firma-sub{font-size:8px;color:#666;margin-top:2px}
+.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:14px}
+.firma-section{margin-top:18px}
+.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.firma{border:1.5px solid #bbb;border-radius:6px;overflow:hidden}
+.firma-hdr{background:#1a2550;color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:7px 10px;text-align:center}
+.firma-space{height:88px;background:#fafafa}
+.firma-fields{border-top:1.5px solid #ccc;padding:10px 12px 12px}
+.firma-field{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dotted #bbb}
+.firma-field:last-child{border-bottom:none}
+.firma-field-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;min-width:46px;flex-shrink:0}
+.firma-field-val{font-size:12px;font-weight:800;color:#1a2550;letter-spacing:.4px}
+.firma-field-blank{flex:1;min-height:16px}
 @media print{body{padding:8px 10px}}
 </style>
 </head><body>
@@ -184,21 +190,36 @@ tr:nth-child(even) td{background:#f8f8f8}
   </div>
 </div>
 
-<div class="firma-box">
-  <div class="firma">
-    <div class="firma-line"></div>
-    <div class="firma-label">Supervisor</div>
-    <div class="firma-sub">${supervisor || 'KiosClub'}</div>
-  </div>
-  <div class="firma">
-    <div class="firma-line"></div>
-    <div class="firma-label">Chofer</div>
-    <div class="firma-sub">${m.chofer} · ${m.patente}</div>
-  </div>
-  <div class="firma">
-    <div class="firma-line"></div>
-    <div class="firma-label">Tienda / Recepción</div>
-    <div class="firma-sub">Nombre y RUT</div>
+<div class="firma-section">
+  <div class="sec" style="margin-bottom:10px">Firmas y Conformidad</div>
+  <div class="firma-box">
+    <div class="firma">
+      <div class="firma-hdr">Supervisor</div>
+      <div class="firma-space"></div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Fecha</span><span class="firma-field-blank"></span></div>
+      </div>
+    </div>
+    <div class="firma">
+      <div class="firma-hdr">Chofer</div>
+      <div class="firma-space"></div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Patente</span><span class="firma-field-val">${m.patente}</span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+      </div>
+    </div>
+    <div class="firma">
+      <div class="firma-hdr">Tienda / Recepción</div>
+      <div class="firma-space"></div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Fecha</span><span class="firma-field-blank"></span></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -302,7 +323,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-[300] flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0"

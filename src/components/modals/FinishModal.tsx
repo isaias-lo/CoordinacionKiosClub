@@ -31,16 +31,17 @@ export function FinishModal({ open, onClose }: Props) {
     return null;
   }
 
-  let tp = 0, tb = 0, tc = 0;
+  let tp = 0, tb = 0, tc = 0, tch = 0;
   const tiendaStats = withItems.map(([name, items]) => {
-    let p = 0, b = 0, c = 0, pesoT = 0, monto = 0;
+    let p = 0, b = 0, c = 0, ch = 0, pesoT = 0, monto = 0;
     items.forEach(i => {
       if (i.pkg === 'pallet') { p++; tp++; }
       else if (i.pkg === 'contenedor') { c++; tc++; }
+      else if (i.pkg === 'chocolate') { ch++; tch++; }
       else { b++; tb++; }
       pesoT += i.peso; monto += i.valor || 0;
     });
-    return { name, pallets: p, bultos: b, contenedores: c, pesoTotal: pesoT.toLocaleString('es-CL'), monto };
+    return { name, pallets: p, bultos: b, contenedores: c, chocolates: ch, pesoTotal: pesoT.toLocaleString('es-CL'), monto };
   });
 
   const finish = async () => {
@@ -54,6 +55,7 @@ export function FinishModal({ open, onClose }: Props) {
       totalPallets: tp,
       totalBultos: tb,
       totalContenedores: tc,
+      totalChocolates: tch,
       tiendas: tiendaStats,
       rows,
     };

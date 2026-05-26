@@ -1,5 +1,5 @@
 export type TipoContenido = 'comida' | 'hogar' | 'comida-hogar';
-export type TipoPaquete = 'pallet' | 'box' | 'contenedor';
+export type TipoPaquete = 'pallet' | 'box' | 'contenedor' | 'chocolate';
 
 export interface Tienda {
   cod: string;
@@ -45,11 +45,13 @@ export interface HistoryEntry {
   totalPallets: number;
   totalBultos: number;
   totalContenedores: number;
+  totalChocolates: number;
   tiendas: {
     name: string;
     pallets: number;
     bultos: number;
     contenedores: number;
+    chocolates: number;
     pesoTotal: string;
     monto: number;
   }[];

@@ -789,7 +789,7 @@ export default function RutasScreen() {
   }
 
   return (
-    <div className="h-screen overflow-y-auto bg-kbg font-sans text-ktext" style={{ paddingBottom: '60px' }}>
+    <div className="despacho-inner h-screen overflow-y-auto bg-kbg font-sans text-ktext" style={{ paddingBottom: '60px' }}>
       <Header
         updateStatus={updateStatus}
         tiendas={tiendas}

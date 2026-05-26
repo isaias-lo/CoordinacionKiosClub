@@ -1,5 +1,5 @@
 export type RegimenCarga = 'Seco' | 'Congelado';
-export type TipoCargamento = 'Pallet' | 'Bulto' | 'Contenedor';
+export type TipoCargamento = 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate';
 export type ContenidoSantiago = 'Comida' | 'Hogar' | 'Mixto' | 'Chocolate';
 export type EstadoItem =
   | 'Listo para despachar'
