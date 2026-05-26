@@ -206,11 +206,12 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
       if (!next[dia]) next[dia] = { rm: [], costa: [], fal: [] };
       const g = grp as 'rm' | 'costa' | 'fal';
       if (!next[dia][g]) next[dia][g] = [];
-      if (!next[dia][g].includes(cod)) next[dia][g].push(cod);
+      const idx = next[dia][g].indexOf(cod);
+      if (idx >= 0) next[dia][g].splice(idx, 1);
+      else next[dia][g].push(cod);
       return next;
     });
-    setPickerOpen(false);
-    setPickerCod('');
+    // keep modal open for multi-day selection
   }
 
   /* ── Remove store ── */
@@ -398,7 +399,7 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
               Agregar <span className="text-kred">{formatCod(pickerCod)}</span>
               {tiendas[pickerCod] ? ' — ' + tiendas[pickerCod].n : ''}
             </div>
-            <div className="text-[12px] text-kmuted mb-3.5">Selecciona el día:</div>
+            <div className="text-[12px] text-kmuted mb-3.5">Elige uno o más días · toca de nuevo para quitar:</div>
             <div className="grid grid-cols-3 gap-2 mb-3.5">
               {DIAS.map(d => {
                 const yaEsta = local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(pickerCod);
@@ -406,10 +407,9 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
                   <button key={d} onClick={() => handlePickerConfirm(pickerCod, d)}
                     className="h-[38px] rounded-[9px] text-[13px] font-semibold border-2 transition-all cursor-pointer"
                     style={{
-                      borderColor: yaEsta ? '#C7C7CC' : DCOL[d],
-                      color:       yaEsta ? '#8E8E93' : DCOL[d],
-                      background:  yaEsta ? '#F2F2F7' : 'transparent',
-                      opacity:     yaEsta ? 0.7 : 1,
+                      borderColor: DCOL[d],
+                      color:       yaEsta ? '#fff' : DCOL[d],
+                      background:  yaEsta ? DCOL[d] : 'transparent',
                     }}>
                     {DNOM[d]}{yaEsta ? ' ✓' : ''}
                   </button>
@@ -418,8 +418,8 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
             </div>
             <button
               onClick={() => { setPickerOpen(false); setPickerCod(''); }}
-              className="w-full h-[38px] rounded-[9px] bg-kbg text-kmuted text-[13px] font-semibold border-[1.5px] border-black/[0.09]">
-              Cancelar
+              className="w-full h-[38px] rounded-[9px] text-[13px] font-bold border-[1.5px] border-kred text-kred transition-all">
+              Listo
             </button>
           </div>
         </div>,
