@@ -210,6 +210,16 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     setSaved({});
   }, [rutas, fecha, tiendas]);
 
+  // Lock body scroll while panel is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
