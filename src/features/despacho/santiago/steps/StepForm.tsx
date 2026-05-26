@@ -409,6 +409,7 @@ export function StepForm() {
 
   const registrar = () => {
     if (!activeTiendas.length) { showToast('No hay items para registrar', '#D97706'); return; }
+    flushPending(); // persist data before writing to Sheets
     sheetsSantiagoWrite(items, regimen!);
     showToast(`✓ Registrado · ${buildSummaryString()}`, '#16A34A');
   };

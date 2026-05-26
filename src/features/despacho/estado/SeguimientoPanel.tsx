@@ -121,7 +121,9 @@ export function SeguimientoPanel() {
   const didAutoSync = useRef(false);
   useEffect(() => {
     load().then((loadedRows) => {
-      if (loadedRows.length === 0 && !didAutoSync.current) {
+      const todayDisplay = toDisplayDate(todayStr());
+      const hasTodayRows = loadedRows.some(r => r.fecha === todayDisplay);
+      if (!hasTodayRows && !didAutoSync.current) {
         didAutoSync.current = true;
         syncFromSheets();
       }

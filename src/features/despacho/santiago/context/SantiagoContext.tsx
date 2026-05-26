@@ -200,7 +200,14 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
     }, 800);
 
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+        // Flush synchronously on unmount so navigating away doesn't lose data
+        try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(stateRef.current)); } catch {}
+      }
+    };
   }, [state.step, state.regimen, state.items, state]);
 
   // Flush any pending debounced push immediately — call before navigating away
