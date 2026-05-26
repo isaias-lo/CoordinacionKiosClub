@@ -1825,30 +1825,29 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
   );
 }
 
-/* ── Photo quality check: warn if image is too small/blurry to be useful ── */
-async function checkPhotoQuality(file: File): Promise<string> {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const minDim = Math.min(img.width, img.height);
-      if (minDim < 400) resolve('Foto muy pequeña — puede ser ilegible');
-      else if (minDim < 700) resolve('Resolución baja — intenta acercarte');
-      else resolve('');
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
-    img.src = url;
-  });
+/* ── Single-pass photo processor: compress + quality-check + preview in one image load ──
+   Loads the original file only once into memory, derives quality warning from original
+   dimensions (before scaling), compresses to JPEG 1280px/80%, and returns a preview URL
+   from the compressed blob. This avoids the 3x memory spike that crashes low-RAM devices. ── */
+interface ProcessedPhoto {
+  compressed: File;
+  previewUrl: string;
+  warning: string;
 }
-
-/* ── Image compression (client-side, before upload) ── */
-async function compressImage(file: File, maxDim = 1280, quality = 0.80): Promise<File> {
+function processPhoto(file: File, maxDim = 1280, quality = 0.80): Promise<ProcessedPhoto> {
   return new Promise(resolve => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(url); // free original blob URL immediately after decode
+
+      // Quality warning based on original (pre-scale) dimensions
+      const minDim = Math.min(img.width, img.height);
+      const warning =
+        minDim < 400 ? 'Foto muy pequeña — puede ser ilegible' :
+        minDim < 700 ? 'Resolución baja — intenta acercarte' : '';
+
+      // Compress: scale down to maxDim keeping aspect ratio
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
@@ -1856,11 +1855,19 @@ async function compressImage(file: File, maxDim = 1280, quality = 0.80): Promise
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       canvas.toBlob(blob => {
-        if (!blob) { resolve(file); return; }
-        resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+        if (!blob) {
+          // Fallback: use original unchanged
+          resolve({ compressed: file, previewUrl: URL.createObjectURL(file), warning });
+          return;
+        }
+        const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+        resolve({ compressed, previewUrl: URL.createObjectURL(blob), warning });
       }, 'image/jpeg', quality);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ compressed: file, previewUrl: URL.createObjectURL(file), warning: '' });
+    };
     img.src = url;
   });
 }
@@ -2332,38 +2339,29 @@ export function AuditoriaScreen() {
     const uploadedErrorFotoUrls: string[] = [];
 
     if (canUploadPhotos && totalFiles > 0) {
-      setUploadProgress(`Comprimiendo ${totalFiles} foto${totalFiles !== 1 ? 's' : ''}…`);
-
-      // Compress all files in parallel first
-      const [compressedPallets, compressedFotos, compressedErrors] = await Promise.all([
-        Promise.all(allPalletEntries.map(x => compressImage(x.file))),
-        Promise.all(fotoFiles.map(f => compressImage(f))),
-        Promise.all(errorFotoFiles.map(f => compressImage(f))),
-      ]);
-
+      // Files are already compressed by processPhoto() at selection time — upload directly
       setUploadProgress(`Subiendo fotos (0/${totalFiles})…`);
       let uploaded = 0;
 
       // Upload all three groups in parallel
       const [palletResults, fotoResults, errorResults] = await Promise.all([
-        Promise.all(compressedPallets.map(async (compressed, idx) => {
-          const { n } = allPalletEntries[idx];
+        Promise.all(allPalletEntries.map(async ({ n, file }) => {
           const path = `${user.id}/${entryId}_pallet${n}.jpg`;
-          const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+          const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
           uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalFiles})…`);
           if (error) { showToast(`⚠ Error foto pallet ${n}`, '#D97706'); return null; }
           return { label: `Pallet ${n}`, url: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl };
         })),
-        Promise.all(compressedFotos.map(async (compressed, fi) => {
+        Promise.all(fotoFiles.map(async (file, fi) => {
           const path = `${user.id}/${entryId}_foto${fi + 1}.jpg`;
-          const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+          const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
           uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalFiles})…`);
           if (error) { showToast(`⚠ Error foto productos ${fi + 1}`, '#D97706'); return null; }
           return supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl;
         })),
-        Promise.all(compressedErrors.map(async (compressed, fi) => {
+        Promise.all(errorFotoFiles.map(async (file, fi) => {
           const path = `${user.id}/${entryId}_error${fi + 1}.jpg`;
-          const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+          const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
           uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalFiles})…`);
           if (error) { showToast(`⚠ Error foto error ${fi + 1}`, '#D97706'); return null; }
           return supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl;
@@ -2967,13 +2965,13 @@ export function AuditoriaScreen() {
                               <span className="text-[22px]">📷</span>
                               <span className="text-[10px] text-text-3 font-bold">P{n}</span>
                               <input type="file" accept="image/*" capture="environment" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; const w = await checkPhotoQuality(f); setPalletWarnings(p => ({ ...p, [key]: w })); } }} />
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); }} />
                             </label>
                             {/* Gallery — small corner button */}
                             <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
                               <span className="text-[11px]">🖼️</span>
                               <input type="file" accept="image/*" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; const w = await checkPhotoQuality(f); setPalletWarnings(p => ({ ...p, [key]: w })); } }} />
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); }} />
                             </label>
                           </div>
                         );
@@ -3065,11 +3063,11 @@ export function AuditoriaScreen() {
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            setErrorFotoFiles(prev => [...prev, ...files]);
-                            setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                             e.target.value = '';
-                            const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
-                            setErrorFotoWarnings(prev => [...prev, ...warns]);
+                            const results = await Promise.all(files.map(f => processPhoto(f)));
+                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
@@ -3080,11 +3078,11 @@ export function AuditoriaScreen() {
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            setErrorFotoFiles(prev => [...prev, ...files]);
-                            setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                             e.target.value = '';
-                            const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
-                            setErrorFotoWarnings(prev => [...prev, ...warns]);
+                            const results = await Promise.all(files.map(f => processPhoto(f)));
+                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                           }} />
                       </label>
                     </div>
@@ -3125,11 +3123,11 @@ export function AuditoriaScreen() {
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        setFotoFiles(prev => [...prev, ...files]);
-                        setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                         e.target.value = '';
-                        const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
-                        setFotoWarnings(prev => [...prev, ...warns]);
+                        const results = await Promise.all(files.map(f => processPhoto(f)));
+                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
@@ -3140,11 +3138,11 @@ export function AuditoriaScreen() {
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        setFotoFiles(prev => [...prev, ...files]);
-                        setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                         e.target.value = '';
-                        const warns = await Promise.all(files.map(f => checkPhotoQuality(f)));
-                        setFotoWarnings(prev => [...prev, ...warns]);
+                        const results = await Promise.all(files.map(f => processPhoto(f)));
+                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                       }} />
                   </label>
                 </div>
