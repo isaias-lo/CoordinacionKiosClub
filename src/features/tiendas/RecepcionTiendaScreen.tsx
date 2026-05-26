@@ -71,7 +71,7 @@ function capturarFoto(
   e.target.value = '';
 }
 
-export function RecepcionTiendaScreen() {
+export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath?: string } = {}) {
   const router      = useRouter();
   const { profile } = useAuth();
 
@@ -180,7 +180,7 @@ export function RecepcionTiendaScreen() {
 
       {/* Header */}
       <div style={{ background: '#1B2A6B', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
-        <button onClick={() => router.push('/despacho-hub')} style={hdrBtn}>
+        <button onClick={() => router.push(backPath)} style={hdrBtn}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div style={{ flex: 1 }}>

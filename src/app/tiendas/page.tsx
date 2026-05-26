@@ -4,7 +4,7 @@ import { RecepcionTiendaScreen } from '../../features/tiendas/RecepcionTiendaScr
 export default function TiendasPage() {
   return (
     <Suspense>
-      <RecepcionTiendaScreen />
+      <RecepcionTiendaScreen backPath="/panel-choferes" />
     </Suspense>
   );
 }
