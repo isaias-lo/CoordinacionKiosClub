@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { sendOTPEmail } from '@/lib/gmail';
-import { TIENDA_EMAILS } from '@/lib/tiendaEmails';
 
 function generateOTP(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -18,7 +17,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'store_cod requerido' }, { status: 400 });
   }
 
-  const email = TIENDA_EMAILS[store_cod];
+  // Busca email en Supabase (fuente única de verdad)
+  const { data: tienda } = await supabaseServer()
+    .from('tiendas')
+    .select('correos')
+    .eq('codigo', store_cod)
+    .single();
+
+  const email = tienda?.correos as string | null;
   if (!email) {
     return NextResponse.json({ error: `No hay correo registrado para ${store_cod}` }, { status: 404 });
   }
