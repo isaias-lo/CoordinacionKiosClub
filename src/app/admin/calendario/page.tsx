@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, Calendar } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { refreshCalendario } from '@/features/despacho/utils/useCalendario';
-import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import type { TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 import CalendarioCentral from '@/features/control-interno/CalendarioCentral';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
@@ -13,15 +13,48 @@ export default function CalendarioAdminPage() {
   const router = useRouter();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
-  const [cal, setCal]             = useState<CalRecord | null>(null);
-  const [loading, setLoading]     = useState(true);
+  const [cal, setCal]               = useState<CalRecord | null>(null);
+  const [tiendas, setTiendas]       = useState<Record<string, TiendaInfo>>({});
+  const [loading, setLoading]       = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [lastSaved, setLastSaved]   = useState<string | null>(null);
 
   useEffect(() => {
-    refreshCalendario()
-      .then(c => { setCal(c); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      refreshCalendario(),
+      fetch('/api/tiendas').then(r => r.json()),
+    ]).then(([cal, json]) => {
+      setCal(cal);
+      // Convertir array → Record<codigo, TiendaInfo>, solo tiendas activas
+      const map: Record<string, TiendaInfo> = {};
+      const rows = (json.tiendas ?? []) as Array<{
+        codigo: string; nombre: string; sector_comuna?: string;
+        ventana?: string; activo?: boolean; corredor?: string;
+        region?: string; tipo?: string; frecuencia?: string;
+        correos?: string; tel_encargado?: string;
+        supervisor?: string; tel_supervisor?: string; transportista?: string;
+      }>;
+      for (const t of rows) {
+        if (t.activo === false) continue; // excluir inactivas
+        map[t.codigo] = {
+          n:            t.nombre,
+          z:            t.sector_comuna ?? '',
+          v:            t.ventana       ?? '',
+          corredor:     t.corredor,
+          region:       t.region,
+          tipo:         t.tipo,
+          frecuencia:   t.frecuencia,
+          correos:      t.correos,
+          tel_encargado: t.tel_encargado,
+          supervisor:   t.supervisor,
+          tel_supervisor: t.tel_supervisor,
+          transportista: t.transportista,
+          activo:       true,
+        };
+      }
+      setTiendas(map);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   const handleSave = useCallback(async (newCal: CalRecord) => {
@@ -99,7 +132,7 @@ export default function CalendarioAdminPage() {
       ) : cal ? (
         <CalendarioCentral
           cal={cal}
-          tiendas={TIENDAS_INICIAL}
+          tiendas={tiendas}
           saveStatus={saveStatus}
           onSave={handleSave}
         />

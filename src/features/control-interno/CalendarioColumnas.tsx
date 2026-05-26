@@ -1,11 +1,10 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
 import { fetchCalendarioCompleto, writeCalendario } from '@/features/despacho/utils/useCalendario';
 import { saveCalendario } from '@/lib/calendarioSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
-import type { TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
 const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado' };
@@ -39,24 +38,6 @@ function storeGroup(cod: string): 'rm' | 'costa' | 'fal' {
   return 'rm';
 }
 
-function getTipo(cod: string): StoreType {
-  const inf: TiendaInfo | undefined = TIENDAS_INICIAL[cod]
-    ?? TIENDAS_INICIAL[cod.replace('PEN', 'PEÑ')]
-    ?? TIENDAS_INICIAL[cod.replace('VIN', 'VIÑ')];
-  if (!inf) return 'street';
-  if (inf.z === 'Región') return 'region';
-  if (inf.z === 'Costa')  return 'costa';
-  if (inf.d && /local/i.test(inf.d)) return 'mall';
-  return 'street';
-}
-
-function getNombre(cod: string): string {
-  return TIENDAS_INICIAL[cod]?.n
-    ?? TIENDAS_INICIAL[cod.replace('PEN', 'PEÑ')]?.n
-    ?? TIENDAS_INICIAL[cod.replace('VIN', 'VIÑ')]?.n
-    ?? cod;
-}
-
 function displayCode(cod: string): string {
   return formatCod(cod.replace('PEN', 'PEÑ').replace('VIN', 'VIÑ'));
 }
@@ -76,6 +57,46 @@ export default function CalendarioColumnas() {
   const [dragOver, setDragOver]     = useState<{ dia: string; idx: number } | null>(null);
 
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
+  const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string }>>({});
+
+  useEffect(() => {
+    fetch('/api/tiendas')
+      .then(r => r.json())
+      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; activo?: boolean }> }) => {
+        const db: Record<string, { n: string; z: string; d: string }> = {};
+        for (const t of (json.tiendas ?? [])) {
+          if (t.activo === false) continue;
+          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '' };
+        }
+        setTiendasDB(db);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Merged lookup: TIENDAS_INICIAL as base, overridden by active DB stores
+  const tiendasAll = useMemo<Record<string, { n: string; z: string; d: string }>>(() => {
+    const base: Record<string, { n: string; z: string; d: string }> = {};
+    for (const [k, v] of Object.entries(TIENDAS_INICIAL)) {
+      base[k] = { n: v.n, z: v.z, d: v.d ?? '' };
+    }
+    return { ...base, ...tiendasDB };
+  }, [tiendasDB]);
+
+  function getTipo(cod: string): StoreType {
+    const inf = tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
+    if (!inf) return 'street';
+    if (inf.z === 'Región') return 'region';
+    if (inf.z === 'Costa')  return 'costa';
+    if (inf.d && /local/i.test(inf.d)) return 'mall';
+    return 'street';
+  }
+
+  function getNombre(cod: string): string {
+    return tiendasAll[cod]?.n
+      ?? tiendasAll[cod.replace('PEN', 'PEÑ')]?.n
+      ?? tiendasAll[cod.replace('VIN', 'VIÑ')]?.n
+      ?? cod;
+  }
 
   useEffect(() => {
     fetchCalendarioCompleto()
@@ -93,9 +114,9 @@ export default function CalendarioColumnas() {
     setSearch(q);
     const qup = q.trim().toUpperCase();
     if (!qup) { setSuggest([]); setShowSug(false); return; }
-    const res = Object.keys(TIENDAS_INICIAL).filter(c => {
+    const res = Object.keys(tiendasAll).filter(c => {
       if (storeGroup(c) !== grp) return false;
-      const nombre = (TIENDAS_INICIAL[c].n || '').toUpperCase();
+      const nombre = (tiendasAll[c].n || '').toUpperCase();
       return c.indexOf(qup) >= 0 || nombre.indexOf(qup) >= 0;
     }).slice(0, 8);
     setSuggest(res);
