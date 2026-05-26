@@ -597,9 +597,9 @@ export default function CalendarioColumnas() {
                       const costa = local![dia]?.costa || [];
                       const fal   = local![dia]?.fal   || [];
                       const stores: { cod: string; zone: GZone }[] = [
-                        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as GZone })),
-                        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
                         ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as GZone })),
+                        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
+                        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as GZone })),
                       ];
                       return (
                         <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid rgba(0,0,0,0.05)', background: '#FFFFFF', minWidth: 118 }}>
