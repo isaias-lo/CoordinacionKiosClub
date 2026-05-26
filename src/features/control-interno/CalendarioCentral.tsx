@@ -9,6 +9,7 @@ const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércole
 const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF9500', JU: '#AF52DE', VI: '#FF2D55', SA: '#5AC8FA' };
 
 const GRUPOS: [string, string, string][] = [
+  ['general', '🗂 General', 'Vista completa — Regiones → Costa → RM'],
   ['rm',    '📦 RM',       'Bodega Santiago (RM)'],
   ['costa', '🌊 Costa',    'Bodega Santiago (Costa V Región)'],
   ['fal',   '🏢 Regiones', 'Bodega Regiones'],
@@ -301,40 +302,107 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
         <div className="text-[12px] text-kmuted mb-5 pl-1">{grpInfo[2]}</div>
       )}
 
-      {/* ── Buscador ── */}
-      <div className="relative mb-6">
-        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] pointer-events-none">🔍</span>
-        <input
-          type="text" value={search}
-          onChange={e => handleSearch(e.target.value)}
-          placeholder={`Buscar tienda para agregar al grupo ${grpInfo?.[1] || ''}...`}
-          className="w-full h-[44px] pl-10 pr-4 rounded-[12px] border-[1.5px] border-black/[0.10] bg-white text-[14px] text-ktext focus:border-kred focus:outline-none shadow-sm"
-        />
-        {showSug && (
-          <div className="absolute top-[48px] left-0 right-0 bg-white border-[1.5px] border-black/[0.09] rounded-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.14)] z-[50] max-h-[260px] overflow-y-auto">
-            {suggest.map(c => {
-              const inf = tiendas[c];
-              const yaEsta = DIAS.some(d => local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(c));
-              return (
-                <div key={c} onClick={() => handleAgregar(c)}
-                  className="px-4 py-3 cursor-pointer border-b border-black/[0.07] last:border-0 flex items-center justify-between hover:bg-kbg transition-colors">
-                  <div>
-                    <span className="font-mono font-bold text-kred text-[15px]">{formatCod(c)}</span>
-                    <span className="text-[13px] text-ktext ml-2">{inf?.n || ''}</span>
-                    <span className="text-[11px] text-kmuted ml-2">{inf?.z || ''}</span>
+      {/* ── Buscador (oculto en General) ── */}
+      {grp !== 'general' && (
+        <div className="relative mb-6">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] pointer-events-none">🔍</span>
+          <input
+            type="text" value={search}
+            onChange={e => handleSearch(e.target.value)}
+            placeholder={`Buscar tienda para agregar al grupo ${grpInfo?.[1] || ''}...`}
+            className="w-full h-[44px] pl-10 pr-4 rounded-[12px] border-[1.5px] border-black/[0.10] bg-white text-[14px] text-ktext focus:border-kred focus:outline-none shadow-sm"
+          />
+          {showSug && (
+            <div className="absolute top-[48px] left-0 right-0 bg-white border-[1.5px] border-black/[0.09] rounded-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.14)] z-[50] max-h-[260px] overflow-y-auto">
+              {suggest.map(c => {
+                const inf = tiendas[c];
+                const yaEsta = DIAS.some(d => local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(c));
+                return (
+                  <div key={c} onClick={() => handleAgregar(c)}
+                    className="px-4 py-3 cursor-pointer border-b border-black/[0.07] last:border-0 flex items-center justify-between hover:bg-kbg transition-colors">
+                    <div>
+                      <span className="font-mono font-bold text-kred text-[15px]">{formatCod(c)}</span>
+                      <span className="text-[13px] text-ktext ml-2">{inf?.n || ''}</span>
+                      <span className="text-[11px] text-kmuted ml-2">{inf?.z || ''}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {yaEsta && <span className="text-[12px] text-kmuted italic">ya existe</span>}
+                      <span className="w-[26px] h-[26px] rounded-full bg-kred text-white text-[16px] font-bold flex items-center justify-center">+</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {yaEsta && <span className="text-[12px] text-kmuted italic">ya existe</span>}
-                    <span className="w-[26px] h-[26px] rounded-full bg-kred text-white text-[16px] font-bold flex items-center justify-center">+</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* ── Grid de días ── */}
+      {/* ── Vista General ── */}
+      {grp === 'general' ? (() => {
+        const allFor = (g: 'rm' | 'costa' | 'fal') => {
+          const seen = new Set<string>(); const out: string[] = [];
+          for (const d of DIAS) for (const c of (local[d]?.[g] ?? [])) if (!seen.has(c)) { seen.add(c); out.push(c); }
+          return out;
+        };
+        const falAll = allFor('fal'); const costaAll = allFor('costa'); const rmAll = allFor('rm');
+        const sections: { label: string; g: 'fal'|'costa'|'rm'; stores: string[]; hdrBg: string; accent: string; evenBg: string; oddBg: string }[] = [
+          { label:'🏢 Regiones — Sur',      g:'fal',   stores:falAll.filter(c=>!ZONA_NORTE_FAL.has(c)), hdrBg:'#7B4F00', accent:'#D4A017', evenBg:'#FFFBF0', oddBg:'#FFF3CD' },
+          { label:'🏢 Regiones — Norte',    g:'fal',   stores:falAll.filter(c=> ZONA_NORTE_FAL.has(c)), hdrBg:'#1e3a5f', accent:'#F59E0B', evenBg:'#FFFDE7', oddBg:'#FEF9C3' },
+          { label:'🌊 Costa — V Región',    g:'costa', stores:costaAll,                                  hdrBg:'#0369A1', accent:'#0284C7', evenBg:'#F0F9FF', oddBg:'#DBEAFE' },
+          { label:'📦 RM — Malls',          g:'rm',    stores:rmAll.filter(c=> RM_MALLS.has(c)),         hdrBg:'#881337', accent:'#DB2777', evenBg:'#FFF0F6', oddBg:'#FFE4EC' },
+          { label:'📦 RM — Street Center',  g:'rm',    stores:rmAll.filter(c=>!RM_MALLS.has(c)),         hdrBg:'#374151', accent:'#6B7280', evenBg:'#F9FAFB', oddBg:'#F3F4F6' },
+        ];
+        const hasAny = falAll.length + costaAll.length + rmAll.length > 0;
+        return (
+          <div className="overflow-x-auto -mx-4 px-4">
+            <div style={{ minWidth: 540 }}>
+              <div className="rounded-[12px] overflow-hidden border border-black/[0.09] shadow-sm">
+                {/* Header de días */}
+                <div className="grid" style={{ gridTemplateColumns: 'minmax(170px,1fr) repeat(6,54px)', background: '#111A3E' }}>
+                  <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-white/50">Tienda</div>
+                  {DIAS.map(d => (
+                    <div key={d} className="py-3 text-center text-[12px] font-bold" style={{ color: DCOL[d] }}>
+                      {DNOM[d].slice(0, 2)}
+                    </div>
+                  ))}
+                </div>
+                {!hasAny && (
+                  <div className="py-16 text-center text-[13px] italic text-kmuted bg-white">Sin tiendas asignadas</div>
+                )}
+                {sections.map(sec => sec.stores.length === 0 ? null : (
+                  <div key={sec.label}>
+                    <div className="flex items-center px-4 py-2 text-white text-[12px] font-bold" style={{ background: sec.hdrBg }}>
+                      <span>{sec.label}</span>
+                      <span className="ml-auto text-[10px] opacity-60">{sec.stores.length} tienda{sec.stores.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {sec.stores.map((cod, i) => (
+                      <div key={cod} className="grid items-center border-b border-black/[0.06]"
+                           style={{ gridTemplateColumns: 'minmax(170px,1fr) repeat(6,54px)', background: i % 2 === 0 ? sec.evenBg : sec.oddBg }}>
+                        <div className="px-4 py-2.5 flex items-center gap-2 min-w-0">
+                          <span className="font-mono font-bold text-[13px] flex-shrink-0" style={{ color: sec.accent }}>{formatCod(cod)}</span>
+                          <span className="text-[11px] text-kmuted truncate">{tiendas[cod]?.n || ''}</span>
+                        </div>
+                        {DIAS.map(d => {
+                          const on = !!(local[d]?.[sec.g]?.includes(cod));
+                          return (
+                            <div key={d} className="flex items-center justify-center py-2.5">
+                              {on
+                                ? <div className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: DCOL[d] }}>✓</div>
+                                : <div className="w-[18px] h-[18px] rounded-full border border-black/[0.12]" />
+                              }
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })() : (
+      /* ── Grid de días ── */
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {DIAS.map(dia => {
           const ts = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
@@ -387,6 +455,7 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
           );
         })}
       </div>
+      )}
 
       {/* ── Day picker modal ── */}
       {pickerOpen && createPortal(
