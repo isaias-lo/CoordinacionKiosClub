@@ -89,9 +89,9 @@ function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: strin
 
   const filas = m.tiendas.map(t =>
     `<tr>
-      <td style="width:28px;text-align:center;color:#888;">${t.orden}</td>
-      <td><strong>${t.nombre}</strong> <span style="color:#aaa;font-size:10px;">(${t.store_cod})</span></td>
-      <td style="text-align:center;color:#555;">${t.ventana}</td>
+      <td style="width:28px;text-align:center;color:#444;">${t.orden}</td>
+      <td><strong>${t.nombre}</strong> <span style="color:#555;font-size:10px;">(${t.store_cod})</span></td>
+      <td style="text-align:center;color:#333;">${t.ventana}</td>
       <td style="text-align:center;font-weight:700;">${t.pallets}</td>
       <td style="text-align:center;font-weight:700;">${t.bultos}</td>
     </tr>`
@@ -105,29 +105,32 @@ function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: strin
 body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18px 20px;max-width:780px;margin:auto}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
 .logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
-.logo-sub{font-size:9px;color:#999;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.logo-sub{font-size:9px;color:#555;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
 .title{font-size:20px;font-weight:900;color:#1a2550;text-align:right}
 .code{font-size:13px;font-weight:700;color:#C62828;text-align:right;margin-top:2px}
-.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#f7f7f7;padding:10px 14px;border-radius:6px;margin-bottom:14px}
-.mi label{font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.4px;display:block}
+.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#f0f2f5;padding:10px 14px;border-radius:6px;margin-bottom:14px}
+.mi label{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.4px;display:block;font-weight:600}
 .mi span{font-size:13px;font-weight:700;color:#111}
-.sec{font-size:9px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #eee;padding-bottom:3px;margin-bottom:7px}
+.sec{font-size:9px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:7px}
 table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px}
 th{background:#1a2550;color:#fff;padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
-td{padding:5px 8px;border-bottom:1px solid #f0f0f0}
-tr:nth-child(even) td{background:#fafafa}
+td{padding:5px 8px;border-bottom:1px solid #eee;color:#222}
+tr:nth-child(even) td{background:#f8f8f8}
 .totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .tc{background:#1a2550;color:#fff;padding:8px;border-radius:5px;text-align:center}
 .tc .n{font-size:26px;font-weight:900;line-height:1}
-.tc .l{font-size:9px;text-transform:uppercase;opacity:.7;margin-top:2px}
-.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:14px}
+.tc .l{font-size:9px;text-transform:uppercase;opacity:.8;margin-top:2px}
+.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:28px}
 .qr-info h3{font-size:13px;font-weight:700;color:#1a2550;margin-bottom:3px}
-.qr-info p{font-size:10px;color:#666;line-height:1.5}
-.qr-url{font-size:8px;color:#bbb;font-family:monospace;margin-top:5px;word-break:break-all}
+.qr-info p{font-size:10px;color:#444;line-height:1.5}
+.qr-url{font-size:8px;color:#888;font-family:monospace;margin-top:5px;word-break:break-all}
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:#FF9500;color:#fff;margin-bottom:4px}
-.footer{font-size:9px;color:#bbb;text-align:center;border-top:1px solid #eee;padding-top:8px;margin-top:6px}
-.firma-box{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px}
-.firma{border-top:1px solid #ccc;padding-top:4px;font-size:9px;color:#aaa;text-align:center}
+.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:18px}
+.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:32px}
+.firma{text-align:center}
+.firma-line{border-top:1.5px solid #999;margin-bottom:5px;height:36px}
+.firma-label{font-size:9px;color:#333;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.firma-sub{font-size:8px;color:#666;margin-top:2px}
 @media print{body{padding:8px 10px}}
 </style>
 </head><body>
@@ -165,7 +168,7 @@ tr:nth-child(even) td{background:#fafafa}
 </div>
 
 <div class="sec">Guías DTE asociadas</div>
-<div style="padding:8px 12px;background:#fafafa;border-radius:5px;font-size:11px;color:#888;margin-bottom:14px;border:1px solid #eee;">
+<div style="padding:8px 12px;background:#f5f5f5;border-radius:5px;font-size:11px;color:#444;margin-bottom:14px;border:1px solid #ddd;">
   Las guías se vinculan desde Estado/Seguimiento. Escanee el QR para acceso digital completo.
 </div>
 
@@ -182,8 +185,21 @@ tr:nth-child(even) td{background:#fafafa}
 </div>
 
 <div class="firma-box">
-  <div class="firma">Firma Chofer</div>
-  <div class="firma">Firma Supervisor / Recepción</div>
+  <div class="firma">
+    <div class="firma-line"></div>
+    <div class="firma-label">Supervisor</div>
+    <div class="firma-sub">${supervisor || 'KiosClub'}</div>
+  </div>
+  <div class="firma">
+    <div class="firma-line"></div>
+    <div class="firma-label">Chofer</div>
+    <div class="firma-sub">${m.chofer} · ${m.patente}</div>
+  </div>
+  <div class="firma">
+    <div class="firma-line"></div>
+    <div class="firma-label">Tienda / Recepción</div>
+    <div class="firma-sub">Nombre y RUT</div>
+  </div>
 </div>
 
 <div class="footer">
@@ -315,7 +331,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
         {manifiestos.map((m, idx) => {
           const qrUrl     = m.token_qr ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${m.token_qr}` : '';
           const estadoCol = ESTADO_COLOR[m.estado] ?? '#8E8E93';
