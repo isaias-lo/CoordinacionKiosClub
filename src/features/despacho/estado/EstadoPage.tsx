@@ -412,6 +412,29 @@ export function EstadoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch, rebuild]);
 
+  // Bridge: PDFs subidos en NACIONAL (AppContext.pdfData) → guides → activa QR.
+  // Manual uploads in EstadoPage take priority (not overwritten).
+  useEffect(() => {
+    const pdfData = appState.pdfData;
+    if (!pdfData || Object.keys(pdfData).length === 0) return;
+    setGuides(prev => {
+      const next = { ...prev };
+      let changed = false;
+      Object.entries(pdfData).forEach(([tiendaName, pdf]) => {
+        const t = TIENDAS[tiendaName];
+        if (!t || next[t.cod]) return;
+        next[t.cod] = { fileName: pdf.fileName, guias: pdf.guias.map(g => g.num), totalSum: pdf.totalSum };
+        changed = true;
+      });
+      if (!changed) return prev;
+      saveGuides(next);
+      pushSessionState('guides', next).catch(() => {});
+      rebuild(next, appState.dispatch);
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.pdfData]);
+
   // Poll Santiago localStorage every 3 s — SantiagoContext isn't in this tree
   useEffect(() => {
     let lastSantiago = JSON.stringify(loadSantiagoItems());
