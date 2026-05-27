@@ -947,12 +947,17 @@ function PickerOdooDisplay({ picker, odooDetected, onClear }: {
       </div>
     );
   }
+  const parts = picker.split(' + ');
   return (
     <div className="w-full bg-white border border-border rounded-btn px-3 py-3 flex items-center gap-3"
       style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-      <span className="font-mono text-[13px] font-bold text-navy bg-[rgba(26,37,80,0.07)] px-2.5 py-1 rounded">
-        {picker.replace('Pickers ', 'P.')}
-      </span>
+      <div className="flex flex-wrap gap-1.5 flex-shrink-0">
+        {parts.map((p, i) => (
+          <span key={i} className="font-mono text-[13px] font-bold text-navy bg-[rgba(26,37,80,0.07)] px-2.5 py-1 rounded">
+            {p.replace(/Pickers\s+/gi, 'P.')}
+          </span>
+        ))}
+      </div>
       {odooDetected && (
         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">
           Odoo ✓
@@ -2300,13 +2305,16 @@ export function AuditoriaScreen() {
 
   // Obtiene datos de un pallet por ID: picker, tienda, mapa subtipo→código
   const fetchPalletCodeMap = async (idStr: string): Promise<{
-    store_cod: string; picker_label: string;
+    store_cod: string; picker_label: string; picker_key: string;
     codeBySubtipo: Partial<Record<SubTipo, string>>;
   } | null> => {
     const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`);
     const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; contenido: string; refs: string }; error?: string };
     if (!res.ok || !json.data) return null;
     const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
+    // picker_key: parte de state_key después de '__', capitalizada → coincide con picker (Id. pistola)
+    const rawKey = (state_key.split('__')[1] ?? '').trim();
+    const picker_key = rawKey ? rawKey.replace(/\b\w/g, c => c.toUpperCase()) : '';
 
     const codeBySubtipo: Partial<Record<SubTipo, string>> = {};
 
@@ -2343,7 +2351,7 @@ export function AuditoriaScreen() {
       });
     }
 
-    return { store_cod, picker_label, codeBySubtipo };
+    return { store_cod, picker_label, picker_key, codeBySubtipo };
   };
 
   const handlePalletIdLookup = async (id1: string, id2?: string) => {
@@ -2366,6 +2374,7 @@ export function AuditoriaScreen() {
       }
 
       const involvedPickers: string[] = p1.picker_label.trim() ? [p1.picker_label.trim()] : [];
+      const involvedPickerKeys: string[] = p1.picker_key ? [p1.picker_key] : [];
 
       if (trimId2) {
         const p2 = await fetchPalletCodeMap(trimId2);
@@ -2388,6 +2397,9 @@ export function AuditoriaScreen() {
         if (p2.picker_label.trim() && p2.picker_label.trim() !== p1.picker_label.trim()) {
           involvedPickers.push(p2.picker_label.trim());
         }
+        if (p2.picker_key && p2.picker_key !== p1.picker_key) {
+          involvedPickerKeys.push(p2.picker_key);
+        }
       }
 
       // Tipo desde el mapa combinado
@@ -2403,9 +2415,13 @@ export function AuditoriaScreen() {
           : {}),
       }));
 
-      // Picker principal = primer picker; si hay dos, ambos se guardan en pickerNombres
       if (p1.picker_label.trim()) setPickerNombre(p1.picker_label.trim());
       setPickerNombres(involvedPickers);
+      // Id. pistola: combinar todos los grupos Odoo involucrados
+      if (involvedPickerKeys.length > 0) {
+        setPicker(involvedPickerKeys.join(' + '));
+        setOdooAutoDetected(true);
+      }
 
       const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === p1.store_cod);
       if (matchedTienda) setTienda(matchedTienda);
