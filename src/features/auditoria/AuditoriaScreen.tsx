@@ -1946,6 +1946,7 @@ export function AuditoriaScreen() {
   const [auditorList,       setAuditorList]       = useState<string[]>([]);
   const [odooAutoDetected, setOdooAutoDetected] = useState(false);
   const [confirmSubmit,    setConfirmSubmit]    = useState(false);
+  const [confirmCancel,    setConfirmCancel]    = useState(false);
   const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
   const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [cameraOpen,          setCameraOpen]          = useState(false);
@@ -2411,6 +2412,49 @@ export function AuditoriaScreen() {
   };
   const stopTimer = () => {
     if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
+  };
+
+  // Limpia el formulario al volver desde setup → scan (sin fotos que borrar en setup)
+  const handleBackFromSetup = () => {
+    try { localStorage.removeItem(sessionKey(user?.id)); } catch { /* */ }
+    if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
+    setFormPhase('scan');
+    setTienda(null); setTiendaQuery('');
+    setPicker(''); setPickerNombre(''); setOdooAutoDetected(false);
+    setTipo('comida');
+    setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
+    setPalletIdInput(''); setPalletIdError('');
+  };
+
+  // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
+  const handleCancelAudit = () => {
+    setConfirmCancel(false);
+    stopTimer();
+    const pathsToDelete = [...fotoStoragePaths, ...errorFotoStoragePaths].filter(Boolean);
+    const draftId = draftEntryIdRef.current;
+    if (draftId) {
+      Object.keys(palletStorageUrls).forEach(k => pathsToDelete.push(`${user?.id}/${draftId}_pallet${k}.jpg`));
+    }
+    if (pathsToDelete.length > 0 && user)
+      void supabase.storage.from('audit-photos').remove(pathsToDelete).then(() => {}, () => {});
+    try { localStorage.removeItem(sessionKey(user?.id)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* */ }
+    if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
+    setSessionRestored(false); setCrossDeviceRestored(false);
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false);
+    setTipo('comida'); setPallets('');
+    setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
+    setPalletIdInput(''); setPalletIdError('');
+    setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]); setFotoStorageUrls([]); setFotoStoragePaths([]);
+    errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
+    draftEntryIdRef.current = '';
+    setTimerSeconds(0); setAuditStartTime(''); auditStartTimeRef.current = '';
+    setSubmitting(false); setUploadProgress('');
+    setFormPhase('scan');
   };
 
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
@@ -2918,7 +2962,7 @@ export function AuditoriaScreen() {
                 ))}
 
                 <div className="mt-6 grid grid-cols-2 gap-2 mb-2">
-                  <button type="button" onClick={() => setFormPhase('scan')}
+                  <button type="button" onClick={handleBackFromSetup}
                     className="py-3.5 border border-border bg-white rounded-card font-barlow-condensed text-[16px] font-bold text-text-2 cursor-pointer transition-all active:scale-[0.98]">
                     ← Volver
                   </button>
@@ -2930,6 +2974,13 @@ export function AuditoriaScreen() {
                     Iniciar Auditoría ▶
                   </button>
                 </div>
+                {(!auditor.trim() || !tienda || operaciones.some(op => !op.codigo.trim())) && (
+                  <div className="mt-1 text-center text-[11px] text-text-3 font-semibold">
+                    {!auditor.trim() ? 'Selecciona el auditor'
+                    : !tienda ? 'Selecciona la tienda'
+                    : 'Completa los códigos de operación'}
+                  </div>
+                )}
               </>
             )}
 
@@ -3055,9 +3106,16 @@ export function AuditoriaScreen() {
                     <button onClick={() => setCrossDeviceRestored(false)} className="text-success/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
                   </div>
                 )}
-                {/* Timer */}
-                <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4"
+                {/* Timer + cancel */}
+                <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4 relative"
                   style={{ background: 'linear-gradient(135deg,rgba(26,37,80,0.06),rgba(26,37,80,0.02))', border: '2px solid rgba(26,37,80,0.14)', boxShadow: '0 4px 20px rgba(26,37,80,0.10)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancel(true)}
+                    className="absolute top-2 right-2 border-none cursor-pointer rounded-btn font-barlow-condensed text-[11px] font-bold tracking-wide transition-all active:scale-95"
+                    style={{ background: 'rgba(211,47,47,0.08)', color: '#B91C1C', padding: '4px 10px', border: '1px solid rgba(211,47,47,0.20)' }}>
+                    × Cancelar
+                  </button>
                   <div className="text-[10px] font-bold text-text-3 uppercase tracking-[0.2em] mb-1">Tiempo en curso</div>
                   <div className="font-barlow-condensed font-black text-navy leading-none tracking-wider" style={{ fontSize: 60 }}>{formatTimer(timerSeconds)}</div>
                   <div className="text-[12px] text-text-3 mt-2 truncate">
@@ -3336,6 +3394,16 @@ export function AuditoriaScreen() {
                   style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
                   {submitting ? `⏳ ${uploadProgress || 'Guardando…'}` : '✓ Registrar auditoría'}
                 </button>
+                {!canSubmit && !submitting && (
+                  <div className="mt-2 text-center text-[11px] text-text-3 font-semibold">
+                    {(!pallets || parseInt(pallets) <= 0) ? '↑ Ingresa el número de pallets auditados'
+                    : tieneErrores === null ? '↑ Indica si el pallet tuvo errores'
+                    : (tieneErrores && tiposError.length === 0) ? '↑ Selecciona el tipo de error'
+                    : !auditor.trim() ? '↑ Selecciona el auditor'
+                    : !tienda ? '↑ Selecciona la tienda'
+                    : '↑ Completa todos los códigos de operación'}
+                  </div>
+                )}
               </>
             )}
           </div>}
@@ -3427,6 +3495,45 @@ export function AuditoriaScreen() {
           onScan={(raw) => { const ok = handleBarcodeScan(raw); setCameraOpen(false); return ok; }}
           onClose={() => setCameraOpen(false)}
         />
+      )}
+
+      {/* ── CANCEL AUDIT MODAL ── */}
+      {confirmCancel && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmCancel(false)} />
+          <div className="relative bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(211,47,47,0.12)' }}>
+                <span className="text-[20px]">⚠</span>
+              </div>
+              <div className="font-barlow-condensed text-[21px] font-bold text-red leading-tight">Cancelar auditoría</div>
+            </div>
+            <div className="text-[13px] text-text-2 leading-relaxed mb-2">
+              Se perderán <strong>todos los datos</strong> de esta auditoría en curso:
+            </div>
+            <ul className="text-[12px] text-text-3 mb-5 space-y-1 ml-4 list-disc">
+              <li>Tienda, picker y tipo configurados</li>
+              <li>Fotos subidas (se eliminarán del servidor)</li>
+              <li>Errores y productos registrados</li>
+              <li>Tiempo transcurrido: <strong className="text-navy font-barlow-condensed text-[14px]">{formatTimer(timerSeconds)}</strong></li>
+            </ul>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(false)}
+                className="flex-1 py-3 border border-border rounded-card font-barlow-condensed text-[15px] font-bold text-text-2 cursor-pointer bg-white transition-all active:bg-bg">
+                Continuar
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelAudit}
+                className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                style={{ background: 'linear-gradient(135deg,#DC2626,#B91C1C)', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}>
+                Cancelar y salir
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── CONFIRM SUBMIT MODAL (#6) ── */}
