@@ -222,8 +222,9 @@ export function TiendasPage() {
   const fileRef         = useRef<HTMLInputElement>(null);
   const multiFileRef    = useRef<HTMLInputElement>(null);
   const rightPanelRef   = useRef<HTMLDivElement>(null);
-  const formScrollRef   = useRef<HTMLDivElement>(null);
-  const pickingSlotsRef = useRef(pickingSlots);
+  const formScrollRef        = useRef<HTMLDivElement>(null);
+  const formScrollDesktopRef = useRef<HTMLDivElement>(null);
+  const pickingSlotsRef      = useRef(pickingSlots);
 
   /* Combine items (drag-to-merge) */
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
@@ -327,7 +328,10 @@ export function TiendasPage() {
     resetForm();
     setEditingIdx(null);
     if (selectedTienda) {
-      setTimeout(() => formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 60);
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        formScrollDesktopRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 60);
 
       const existingItems  = dispatchData[selectedTienda] || [];
       const slots          = pickingSlotsRef.current[selectedTienda] ?? [];
@@ -673,7 +677,7 @@ export function TiendasPage() {
   };
 
   /* ── Right panel ── */
-  const renderForm = () => {
+  const renderForm = (isMobile = false) => {
     if (!selectedTienda) return null;
     const tienda = TIENDAS[selectedTienda];
 
@@ -791,7 +795,7 @@ export function TiendasPage() {
           {header}
           {presetBar}
           {pdfStrip}
-          <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2 py-2">
+          <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
             <div className="grid grid-cols-2 gap-2 mb-2">
               {formRows.map((row) => {
                 /* Locked / saved card */
@@ -937,7 +941,7 @@ export function TiendasPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
         {presetBar}
-        <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
           <SLabel>Guía PDF</SLabel>
           <div
             className={`border-2 rounded-card p-3 mb-1.5 text-center cursor-pointer bg-white transition-all text-[13px] ${hasPdf ? 'border-solid border-success bg-[rgba(22,163,74,0.04)]' : 'border-dashed border-border-2 hover:border-red hover:bg-[rgba(211,47,47,0.03)]'}`}
@@ -1284,7 +1288,7 @@ export function TiendasPage() {
         {/* Ver Resumen — mobile only */}
         <div className="lg:hidden px-2 py-2 border-t border-border flex-shrink-0">
           <button
-            onClick={() => setShowMobileResumen(true)}
+            onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
             className="w-full py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:opacity-80"
             style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
             Ver Resumen →
@@ -1313,7 +1317,7 @@ export function TiendasPage() {
       <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
-            ? renderForm()
+            ? renderForm(false)
             : (
               <div className="flex-1 flex flex-col items-center justify-center bg-navy" style={{ minHeight: 0 }}>
                 <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
@@ -1343,7 +1347,7 @@ export function TiendasPage() {
       <div
         className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
         style={{
-          maxHeight: '92dvh',
+          maxHeight: '92vh',
           transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
@@ -1355,7 +1359,7 @@ export function TiendasPage() {
         </div>
         {/* Form content (reuses renderForm logic) */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {selectedTienda && renderForm()}
+          {selectedTienda && renderForm(true)}
         </div>
       </div>
 

@@ -475,9 +475,10 @@ export function StepForm() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const prevContenidoRef = useRef<ContenidoSantiago>('Hogar');
-  const formScrollRef    = useRef<HTMLDivElement>(null);
-  const pickingSlotsRef  = useRef(pickingSlots);
+  const prevContenidoRef     = useRef<ContenidoSantiago>('Hogar');
+  const formScrollRef        = useRef<HTMLDivElement>(null);
+  const formScrollDesktopRef = useRef<HTMLDivElement>(null);
+  const pickingSlotsRef      = useRef(pickingSlots);
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
   useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
@@ -606,7 +607,10 @@ export function StepForm() {
     setEditingIdx(null);
     prevContenidoRef.current = 'Hogar';
     if (currentTienda) {
-      setTimeout(() => formScrollRef.current?.scrollTo({ top: 0 }), 60);
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({ top: 0 });
+        formScrollDesktopRef.current?.scrollTo({ top: 0 });
+      }, 60);
       const existing = items[currentTienda.cod] || [];
       const slots    = pickingSlotsRef.current[currentTienda.cod] ?? [];
 
@@ -707,6 +711,7 @@ export function StepForm() {
     setPeso(String(item.peso)); setAlto(String(item.alto));
     if (item.tipo === 'Bulto') { setLargo(String(item.largo)); setAncho(String(item.ancho)); }
     formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    formScrollDesktopRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const cancelEdit = () => { setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho(''); };
 
@@ -1314,7 +1319,7 @@ export function StepForm() {
   /* ════════════════════════════════════
      RIGHT PANEL — MULTI-FORM
   ════════════════════════════════════ */
-  const renderMultiForm = () => {
+  const renderMultiForm = (isMobile = false) => {
     if (!currentTienda) return null;
     const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
@@ -1366,7 +1371,7 @@ export function StepForm() {
           </div>
         </div>
 
-        <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2 py-2">
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           <div className="grid grid-cols-2 gap-2 mb-2">
             {formRows.map(row => {
               if (row.saved && row.savedItem) {
@@ -1488,7 +1493,7 @@ export function StepForm() {
   /* ════════════════════════════════════
      RIGHT PANEL — SINGLE ITEM FORM
   ════════════════════════════════════ */
-  const renderSingleForm = () => {
+  const renderSingleForm = (isMobile = false) => {
     if (!currentTienda) return null;
     const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
@@ -1540,7 +1545,7 @@ export function StepForm() {
           </div>
         </div>
 
-        <div ref={formScrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
           {editingIdx !== null && (
             <div className="bg-[rgba(37,99,235,0.07)] border border-[rgba(37,99,235,0.25)] rounded-xl px-3 py-2.5 flex items-center justify-between">
               <span className="text-[14px] font-semibold text-info">Editando item #{editingIdx + 1}</span>
@@ -1844,8 +1849,8 @@ export function StepForm() {
           {!currentTienda
             ? renderResumenPanel()
             : formRows.length > 0
-              ? renderMultiForm()
-              : renderSingleForm()
+              ? renderMultiForm(false)
+              : renderSingleForm(false)
           }
         </div>
       </div>
@@ -1867,7 +1872,7 @@ export function StepForm() {
       <div
         className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
         style={{
-          maxHeight: '92dvh',
+          maxHeight: '92vh',
           transform: currentTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
@@ -1881,7 +1886,7 @@ export function StepForm() {
         {/* Form content */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {currentTienda && (
-            formRows.length > 0 ? renderMultiForm() : renderSingleForm()
+            formRows.length > 0 ? renderMultiForm(true) : renderSingleForm(true)
           )}
         </div>
       </div>
