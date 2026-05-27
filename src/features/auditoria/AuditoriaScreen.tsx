@@ -1922,6 +1922,7 @@ export function AuditoriaScreen() {
   const [errorFotoWarnings,setErrorFotoWarnings]= useState<string[]>([]);
   const [errorFotoStorageUrls, setErrorFotoStorageUrls] = useState<string[]>([]);
   const [errorFotoStoragePaths,setErrorFotoStoragePaths]= useState<string[]>([]);
+  const [lightboxUrl,      setLightboxUrl]      = useState<string | null>(null);
   const [submitting,       setSubmitting]       = useState(false);
   const [uploadProgress,   setUploadProgress]   = useState('');
   const [pickerNombre,   setPickerNombre]   = useState('');
@@ -1937,12 +1938,14 @@ export function AuditoriaScreen() {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const palletsInputRef = useRef<HTMLInputElement>(null);
   const pendingScanRef  = useRef<string[] | null>(null);
+  const [palletIdInput,   setPalletIdInput]   = useState('');
+  const [palletIdLoading, setPalletIdLoading] = useState(false);
+  const [palletIdError,   setPalletIdError]   = useState('');
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
   const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [auditStartTime, setAuditStartTime] = useState('');
-  const [auditDurationSeconds, setAuditDurationSeconds] = useState(0);
   const timerIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const auditStartTimeRef  = useRef('');
   auditStartTimeRef.current = auditStartTime;
@@ -2303,6 +2306,41 @@ export function AuditoriaScreen() {
     }
   };
 
+  // Carga un pallet por ID numérico desde picking_pallets y auto-rellena el formulario
+  const handlePalletIdLookup = async (idStr: string) => {
+    const id = idStr.trim();
+    if (!id || !/^\d+$/.test(id)) { setPalletIdError('Ingresa un número válido'); return; }
+    setPalletIdLoading(true); setPalletIdError('');
+    try {
+      const res  = await fetch(`/api/picking-pallets?id=${id}`);
+      const json = await res.json() as { data?: { store_cod: string; picker_label: string; tipo: string; contenido: string; refs: string }; error?: string };
+      if (!res.ok || !json.data) { setPalletIdError('ID no encontrado'); return; }
+      const { store_cod, picker_label, contenido, refs } = json.data;
+      const opCodes = refs.split('+').filter(Boolean);
+      const newTipo: TipoAuditoria = contenido === 'mixto' ? 'comida-aseo' : (['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'].includes(contenido) ? contenido as TipoAuditoria : 'comida');
+      if (picker_label.trim()) setPickerNombre(picker_label.trim());
+      const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === store_cod);
+      if (matchedTienda) setTienda(matchedTienda);
+      if (opCodes.length > 0) {
+        if (newTipo !== tipo) {
+          pendingScanRef.current = opCodes;
+          setTipo(newTipo);
+        } else {
+          setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
+        }
+      } else {
+        setTipo(newTipo);
+      }
+      showToast(`✓ #${id} · ${store_cod} · ${picker_label.trim() || 'sin nombre'}`, '#16A34A');
+      setPalletIdInput('');
+      setFormPhase('setup');
+    } catch {
+      setPalletIdError('Error de conexión');
+    } finally {
+      setPalletIdLoading(false);
+    }
+  };
+
   // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
   const handleBarcodeScan = (raw: string): boolean => {
     // Separador ';' (sin modificador de teclado). Fallback legacy con '|' para etiquetas antiguas.
@@ -2459,6 +2497,8 @@ export function AuditoriaScreen() {
     if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
     setSessionRestored(false); setCrossDeviceRestored(false);
     setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
+    setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
+    setPalletIdInput(''); setPalletIdError('');
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -2473,7 +2513,6 @@ export function AuditoriaScreen() {
     setFormPhase('result');
     setTimerSeconds(0);
     setAuditStartTime('');
-    setAuditDurationSeconds(0);
   };
 
   const iniciarReauditoria = (entry: AuditEntry) => {
@@ -2767,6 +2806,32 @@ export function AuditoriaScreen() {
                     <span className="text-[22px]">📷</span>
                     <span className="font-barlow-condensed text-[16px] font-bold">Escanear con cámara</span>
                   </button>
+                </div>
+                {/* ID numérico de pallet */}
+                <div className="mt-3 bg-white border border-border rounded-card px-4 py-3" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                  <div className="font-barlow-condensed text-[13px] font-bold text-text-2 uppercase tracking-wide mb-2">Ingresar ID de pallet</div>
+                  <div className="flex gap-2">
+                    <input
+                      type="number" inputMode="numeric" pattern="[0-9]*"
+                      value={palletIdInput}
+                      onChange={e => { setPalletIdInput(e.target.value); setPalletIdError(''); }}
+                      onKeyDown={e => { if (e.key === 'Enter') void handlePalletIdLookup(palletIdInput); }}
+                      placeholder="Ej: 1247"
+                      className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
+                      style={{ letterSpacing: '2px' }}
+                      disabled={palletIdLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handlePalletIdLookup(palletIdInput)}
+                      disabled={palletIdLoading || !palletIdInput.trim()}
+                      className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
+                      style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                      {palletIdLoading ? '…' : 'Buscar'}
+                    </button>
+                  </div>
+                  {palletIdError && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError}</div>}
+                  <div className="mt-1.5 text-[10px] text-text-3">El número aparece en la etiqueta del pallet junto al código de tienda</div>
                 </div>
                 <button type="button" onClick={() => setFormPhase('setup')}
                   className="w-full mt-2 py-3 border-2 border-dashed border-navy/20 rounded-card font-barlow-condensed text-[15px] font-bold text-navy/50 cursor-pointer bg-transparent transition-all active:bg-navy/5">
@@ -3076,11 +3141,11 @@ export function AuditoriaScreen() {
                   <>
                     <SLabel>Fotos de errores <span className="text-[9px] font-normal ml-1 normal-case">evidencia del error detectado · múltiples</span></SLabel>
                     {errorFotoPreviews.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div className="grid grid-cols-3 gap-1.5 mb-2">
                         {errorFotoPreviews.map((preview, idx) => (
                           <div key={idx} className="relative rounded-card overflow-hidden border-2 border-red/30" style={{ boxShadow: '0 2px 8px rgba(211,47,47,0.10)' }}>
-                            <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                            <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-red/80 rounded px-1.5 py-0.5">Error #{idx + 1}</div>
+                            <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover cursor-pointer active:opacity-80" style={{ aspectRatio: '1', objectFit: 'cover' }} onClick={() => setLightboxUrl(preview)} />
+                            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-red/80 rounded px-1 py-0.5">{idx + 1}</div>
                             <button
                               onClick={() => {
                                 URL.revokeObjectURL(preview);
@@ -3161,11 +3226,11 @@ export function AuditoriaScreen() {
 
                 <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · múltiples permitidas</span></SLabel>
                 {fotoPreviews.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className="grid grid-cols-3 gap-1.5 mb-2">
                     {fotoPreviews.map((preview, idx) => (
                       <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                        <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                        <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
+                        <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover cursor-pointer active:opacity-80" style={{ aspectRatio: '1', objectFit: 'cover' }} onClick={() => setLightboxUrl(preview)} />
+                        <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-black/50 rounded px-1 py-0.5">#{idx + 1}</div>
                         <button
                           onClick={() => {
                             URL.revokeObjectURL(preview);
@@ -3341,6 +3406,12 @@ export function AuditoriaScreen() {
       )}
 
       {/* ── CONFIRM SUBMIT MODAL (#6) ── */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="Vista ampliada" className="max-w-full max-h-full object-contain" style={{ maxHeight: '90dvh', maxWidth: '95vw' }} />
+          <button onClick={() => setLightboxUrl(null)} className="absolute top-4 right-4 text-white text-[28px] font-bold leading-none bg-black/40 rounded-full w-10 h-10 flex items-center justify-center cursor-pointer border-none">×</button>
+        </div>
+      )}
       {confirmSubmit && tienda && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmSubmit(false)} />
@@ -3382,7 +3453,7 @@ export function AuditoriaScreen() {
               {auditStartTime && (
                 <div className="flex justify-between items-center py-1.5">
                   <span className="text-text-3 text-[12px]">Duración auditoría</span>
-                  <span className="font-barlow-condensed font-bold text-navy text-[22px]">⏱ {formatTimer(auditDurationSeconds)}</span>
+                  <span className="font-barlow-condensed font-bold text-navy text-[22px]">⏱ {formatTimer(timerSeconds)}</span>
                 </div>
               )}
               {tieneErrores && productos.length > 0 && (
