@@ -323,8 +323,16 @@ export function TiendasPage() {
     setGuia(''); setValor('');
   };
 
-  const PICKING_PKG: Record<string, TipoPaquete>    = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
-  const PICKING_TIPO: Record<string, TipoContenido> = { comida: 'comida', hogar: 'hogar', mixto: 'comida-hogar' };
+  const PICKING_PKG: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
+  const mapearContenido = (raw: string): TipoContenido => {
+    const c = (raw ?? '').toLowerCase();
+    if (c === 'mixto' || c === 'comida-hogar') return 'comida-hogar';
+    const esComida = c.includes('comida') || c.includes('alimento');
+    const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
+    if (esComida && esHogar) return 'comida-hogar';
+    if (esComida) return 'comida';
+    return 'hogar';
+  };
 
   /* Initialize formRows only when the selected tienda changes.
      Uses pickingSlotsRef (always current) so picking real-time updates
@@ -357,7 +365,7 @@ export function TiendasPage() {
         // Build form rows from picking slots — one row per slot with its contenido
         const rows: FormRow[] = slots.map((s, i) => {
           const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
-          const tipo = PICKING_TIPO[s.contenido] ?? 'hogar';
+          const tipo = mapearContenido(s.contenido);
           return {
             id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '',
             alto:  pkg === 'pallet' ? '' : pkg === 'chocolate' ? '42' : '',
@@ -802,15 +810,17 @@ export function TiendasPage() {
           {pdfStrip}
           <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
             <div className="grid grid-cols-2 gap-2 mb-2">
-              {formRows.map((row) => {
+              {formRows.map((row, rowIdx) => {
                 /* Locked / saved card */
                 const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
+                const pkgIdx   = formRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
+                const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
                 if (row.saved && row.savedItem) {
                   return (
                     <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-barlow-condensed text-[14px] font-extrabold" style={{ color: rowColor.text }}>
-                          {row.savedItem.orden}
+                          {rowLabel}
                         </span>
                         <div className="flex gap-0.5">
                           <button onClick={() => editSavedRow(row.id)} title="Editar"
@@ -823,7 +833,7 @@ export function TiendasPage() {
                         <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
                         {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
                         {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
-                        {row.savedItem.pkg === 'pallet' && <div className="text-text-3 capitalize">{row.savedItem.tipo}</div>}
+                        {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
@@ -840,7 +850,7 @@ export function TiendasPage() {
                   <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: rowColor.text }}>
-                        {row.pkg === 'pallet' ? 'Pallet' : isChocRow ? 'Choc. CH' : 'Bulto'}
+                        {rowLabel}
                       </span>
                       <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))}
                         className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>

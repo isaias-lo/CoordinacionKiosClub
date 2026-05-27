@@ -618,15 +618,23 @@ export function StepForm() {
       const existing = items[currentTienda.cod] || [];
       const slots    = pickingSlotsRef.current[currentTienda.cod] ?? [];
 
-      const SANT_TIPO: Record<string, TipoCargamento>    = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
-      const SANT_CONT: Record<string, ContenidoSantiago> = { comida: 'Comida', hogar: 'Hogar', mixto: 'Mixto' };
+      const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
+      const mapearCont = (raw: string): ContenidoSantiago => {
+        const c = (raw ?? '').toLowerCase();
+        if (c === 'mixto' || c === 'comida-hogar') return 'Mixto';
+        const esComida = c.includes('comida') || c.includes('alimento');
+        const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
+        if (esComida && esHogar) return 'Mixto';
+        if (esComida) return 'Comida';
+        return 'Hogar';
+      };
 
       if (existing.length === 0 && slots.length > 0) {
         // Build rows from picking slots with contenido pre-filled
         const rows: FormRow[] = slots.map((s, i) => ({
           id:       `pick-${s.tipo}-${i}-${Date.now()}`,
           tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
-          contenido: SANT_CONT[s.contenido] ?? 'Hogar',
+          contenido: mapearCont(s.contenido),
           peso: '', alto: '', largo: '', ancho: '',
         }));
         setFormRows(rows);
@@ -1377,12 +1385,14 @@ export function StepForm() {
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           <div className="grid grid-cols-2 gap-2 mb-2">
-            {formRows.map(row => {
+            {formRows.map((row, rowIdx) => {
+              const tipoIdx  = formRows.slice(0, rowIdx + 1).filter(r => r.tipo === row.tipo).length;
+              const rowLabel = row.tipo === 'Pallet' ? `P${tipoIdx}` : row.tipo === 'Contenedor' ? `C${tipoIdx}` : row.tipo === 'Chocolate' ? `CH${tipoIdx}` : `B${tipoIdx}`;
               if (row.saved && row.savedItem) {
                 return (
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{row.savedItem.orden}</span>
+                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
                       <div className="flex gap-1">
                         <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
                         <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
@@ -1408,7 +1418,7 @@ export function StepForm() {
               return (
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{isChocTipo ? 'CH' : row.tipo}</span>
+                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
                   {!isContRow && !isChocTipo && (
