@@ -2290,10 +2290,19 @@ export function AuditoriaScreen() {
       const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; tipo: string; contenido: string; refs: string }; error?: string };
       if (!res.ok || !json.data) { setPalletIdError('ID no encontrado'); return; }
       const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
-      let refs = rawRefs;
 
-      // Fallback: si refs vacío, buscar operaciones en Odoo por tienda+picker
-      if (!refs && odooConfig.url) {
+      // Mapeo de keyword de origen Odoo → subtipo de auditoría
+      const ORIGIN_CATS: { kw: string; st: SubTipo }[] = [
+        { kw: 'Abastecimiento Comida', st: 'comida' },
+        { kw: 'Abastecimiento Aseo',   st: 'aseo' },
+        { kw: 'Abastecimiento Hogar',  st: 'hogar' },
+      ];
+
+      // Mapa subtipo → código de operación (construido desde Odoo o desde DB)
+      const codeBySubtipo: Partial<Record<SubTipo, string>> = {};
+
+      // Buscar operaciones en Odoo para detectar tipo real + asignar código por categoría
+      if (odooConfig.url) {
         try {
           const pickerKey = (state_key.split('__')[1] ?? '').toLowerCase().trim();
           const odooRes = await fetch('/api/odoo', {
@@ -2301,33 +2310,52 @@ export function AuditoriaScreen() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'picking_today_operations', config: odooConfig, query: store_cod }),
           });
-          const odooData = await odooRes.json() as { pickings?: Array<{ name: string; responsible: string }> };
+          const odooData = await odooRes.json() as { pickings?: Array<{ name: string; responsible: string; origin: string }> };
           if (odooRes.ok && odooData.pickings?.length) {
             const matching = odooData.pickings.filter(p =>
               (p.responsible ?? '').toLowerCase().trim() === pickerKey
             );
-            if (matching.length > 0) refs = matching.map(p => p.name).join('+');
+            for (const op of matching) {
+              for (const { kw, st } of ORIGIN_CATS) {
+                if ((op.origin ?? '').includes(kw)) { codeBySubtipo[st] = op.name; break; }
+              }
+            }
           }
-        } catch { /* refs queda vacío — no bloquea el flujo */ }
+        } catch { /* sigue con fallback */ }
       }
 
-      const opCodes = refs.split('+').filter(Boolean);
-      const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
-      const newTipo: TipoAuditoria = contenido === 'mixto' ? 'comida-aseo' :
-        (VALID_TIPOS.includes(contenido as TipoAuditoria) ? contenido as TipoAuditoria : 'comida');
+      // Detectar tipo: desde categorías Odoo (fuente de verdad) o desde DB contenido
+      const foundSts = Object.keys(codeBySubtipo) as SubTipo[];
+      let newTipo: TipoAuditoria;
+      if (foundSts.length > 0) {
+        newTipo = catsToTipo(foundSts.join(','));
+      } else {
+        // Fallback: contenido del DB + refs posicionales
+        const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
+        newTipo = contenido === 'mixto' ? 'comida-aseo' :
+          (VALID_TIPOS.includes(contenido as TipoAuditoria) ? contenido as TipoAuditoria : 'comida');
+        rawRefs.split('+').filter(Boolean).forEach((code, i) => {
+          const st = TIPO_TO_SUBTIPOS[newTipo][i];
+          if (st) codeBySubtipo[st] = code;
+        });
+      }
+
+      // Códigos en el orden correcto para TIPO_TO_SUBTIPOS[newTipo]
+      const orderedCodes = TIPO_TO_SUBTIPOS[newTipo].map(st => codeBySubtipo[st] ?? '');
+      const newOperaciones: OperacionEntry[] = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: orderedCodes[i] }));
+
       if (picker_label.trim()) setPickerNombre(picker_label.trim());
       const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === store_cod);
       if (matchedTienda) setTienda(matchedTienda);
-      // Always apply tipo + operaciones.
-      // If tipo changes: useEffect([tipo]) handles operaciones via pendingScanRef.
-      // If tipo is unchanged: set operaciones directly (setTipo no-op skips the effect).
+
       if (newTipo !== tipo) {
-        pendingScanRef.current = opCodes.length > 0 ? opCodes : null;
+        // useEffect([tipo]) aplicará las operaciones al cambiar el tipo
+        pendingScanRef.current = orderedCodes;
         setTipo(newTipo);
       } else {
-        setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
+        setOperaciones(newOperaciones);
       }
-      showToast(`✓ #${id} · ${store_cod} · ${picker_label.trim() || 'sin nombre'}`, '#16A34A');
+      showToast(`✓ #${id} · ${store_cod} · ${newTipo.toUpperCase()}`, '#16A34A');
       setPalletIdInput('');
       setFormPhase('setup');
     } catch {
