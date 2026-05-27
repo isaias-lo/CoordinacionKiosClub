@@ -344,10 +344,11 @@ function LineChart({ trends, selectedPickers }: { trends: Map<string, WeekTrend[
 /* ── Operacion Input ── */
 const OP_PREFIX = '99REC/DT/';
 interface OpSearch { loading: boolean; results: OperacionOdoo[]; open: boolean; error: string }
-function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNeedConfig }: {
+function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNeedConfig, pickerLabel }: {
   subTipo: SubTipo; codigo: string; onChange: (v: string) => void;
   onSelect?: (codigo: string, responsable: string | undefined) => void;
   odooConfig: OdooConfig; onNeedConfig: () => void;
+  pickerLabel?: string;
 }) {
   const [s, setS] = useState<OpSearch>({ loading: false, results: [], open: false, error: '' });
   // Show only the 5-digit suffix; the prefix is fixed
@@ -363,7 +364,10 @@ function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNee
   const select = (op: OperacionOdoo) => { onChange(op.name); onSelect?.(op.name, op.responsable); setS({ loading: false, results: [], open: false, error: '' }); };
   return (
     <div className="mb-2.5">
-      <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1.5">Op. {SUBTIPO_LABEL[subTipo]}</div>
+      <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1.5 flex items-center gap-2">
+        Op. {SUBTIPO_LABEL[subTipo]}
+        {pickerLabel && <span className="normal-case tracking-normal text-[10px] font-semibold text-info bg-[rgba(37,99,235,0.08)] px-1.5 py-0.5 rounded-full">{pickerLabel}</span>}
+      </div>
       <div className="flex gap-2">
         {/* Prefix shown as static badge + only 5-digit input */}
         <div className="flex-1 flex items-center bg-white border-[1.5px] border-border rounded-btn overflow-hidden focus-within:border-navy" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.06)' }}>
@@ -1955,13 +1959,14 @@ export function AuditoriaScreen() {
   const [crossDeviceRestored, setCrossDeviceRestored] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const palletsInputRef = useRef<HTMLInputElement>(null);
-  const pendingScanRef  = useRef<string[] | null>(null);
+  const pendingScanRef  = useRef<OperacionEntry[] | null>(null);
   const [palletIdInput,   setPalletIdInput]   = useState('');
   const [palletIdLoading, setPalletIdLoading] = useState(false);
   const [palletIdError,   setPalletIdError]   = useState('');
   const [showPalletId2,   setShowPalletId2]   = useState(false);
   const [palletIdInput2,  setPalletIdInput2]  = useState('');
   const [palletIdError2,  setPalletIdError2]  = useState('');
+  const [pickerNombres,   setPickerNombres]   = useState<string[]>([]);
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
   const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
@@ -2065,9 +2070,9 @@ export function AuditoriaScreen() {
   }, [authLoading, profile?.full_name]);
 
   useEffect(() => {
-    const codes = pendingScanRef.current;
+    const pending = pendingScanRef.current;
     pendingScanRef.current = null;
-    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => ({ subTipo: st, codigo: codes?.[i] ?? '' })));
+    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => pending?.[i] ?? { subTipo: st, codigo: '' }));
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
@@ -2106,7 +2111,7 @@ export function AuditoriaScreen() {
       return;
     }
     const data = {
-      formPhase, auditStartTime, auditor, pickerNombre, picker,
+      formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker,
       tiendaCod: tienda?.cod ?? null, tipo, operaciones, pallets,
       tieneErrores, tiposError, productos, observaciones,
       draftEntryId: draftEntryIdRef.current,
@@ -2121,14 +2126,14 @@ export function AuditoriaScreen() {
         .upsert({ user_id: uid, session_data: data, updated_at: new Date().toISOString() })
         .then(() => {}, () => {});
     }
-  }, [formPhase, auditStartTime, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, palletStorageUrls, fotoStorageUrls, fotoStoragePaths, errorFotoStorageUrls, errorFotoStoragePaths, user?.id]);
+  }, [formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, palletStorageUrls, fotoStorageUrls, fotoStoragePaths, errorFotoStorageUrls, errorFotoStoragePaths, user?.id]);
 
   // Autosave every 2 s when setup/execution is active (localStorage + Supabase)
   useEffect(() => {
     if (formPhase !== 'execution' && formPhase !== 'setup') return;
     const handle = setTimeout(saveSession, 2000);
     return () => clearTimeout(handle);
-  }, [formPhase, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
+  }, [formPhase, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
 
   // Save immediately when tab is hidden (user switches app)
   useEffect(() => {
@@ -2183,12 +2188,13 @@ export function AuditoriaScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     if (formPhase !== 'scan') return; // don't override an already-active session
 
-    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; draftEntryId?: string; palletStorageUrls?: Record<string, string>; fotoStorageUrls?: string[]; fotoStoragePaths?: string[]; errorFotoStorageUrls?: string[]; errorFotoStoragePaths?: string[]; };
+    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; pickerNombres?: string[]; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; draftEntryId?: string; palletStorageUrls?: Record<string, string>; fotoStorageUrls?: string[]; fotoStoragePaths?: string[]; errorFotoStorageUrls?: string[]; errorFotoStoragePaths?: string[]; };
 
     const applySD = (s: SD, isCrossDevice: boolean) => {
       if (!s.savedAt || Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) return false;
       if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
       if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
+      if (s.pickerNombres?.length) setPickerNombres(s.pickerNombres);
       if (s.picker)         setPicker(s.picker);
       if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
       if (s.tipo)           setTipo(s.tipo);
@@ -2348,41 +2354,72 @@ export function AuditoriaScreen() {
 
     setPalletIdLoading(true); setPalletIdError(''); setPalletIdError2('');
     try {
-      // Buscar primer pallet (obligatorio)
+      // Pallet 1 (obligatorio)
       const p1 = await fetchPalletCodeMap(trimId1);
       if (!p1) { setPalletIdError('ID no encontrado'); return; }
 
-      // Mapa combinado: empezar con pallet 1, luego agregar categorías del pallet 2 (sin pisar)
+      // Mapa combinado con atribución por picker
       const combined: Partial<Record<SubTipo, string>> = { ...p1.codeBySubtipo };
+      const pickerNombreBySubtipo: Partial<Record<SubTipo, string>> = {};
+      for (const st of Object.keys(p1.codeBySubtipo) as SubTipo[]) {
+        pickerNombreBySubtipo[st] = p1.picker_label;
+      }
+
+      const involvedPickers: string[] = p1.picker_label.trim() ? [p1.picker_label.trim()] : [];
 
       if (trimId2) {
         const p2 = await fetchPalletCodeMap(trimId2);
         if (!p2) { setPalletIdError2('ID no encontrado'); return; }
+
+        // Validar misma tienda
+        if (p2.store_cod !== p1.store_cod) {
+          setPalletIdError2(`Tienda diferente — el pallet #${trimId2} pertenece a ${p2.store_cod}`);
+          return;
+        }
+
+        // Agregar operaciones del pallet 2 que no estaban en el 1
         for (const [st, code] of Object.entries(p2.codeBySubtipo) as [SubTipo, string][]) {
-          if (!combined[st]) combined[st] = code; // solo agrega lo que no estaba
+          if (!combined[st]) {
+            combined[st] = code;
+            pickerNombreBySubtipo[st] = p2.picker_label;
+          }
+        }
+
+        if (p2.picker_label.trim() && p2.picker_label.trim() !== p1.picker_label.trim()) {
+          involvedPickers.push(p2.picker_label.trim());
         }
       }
 
-      // Detectar tipo desde el mapa combinado
+      // Tipo desde el mapa combinado
       const foundSts = Object.keys(combined) as SubTipo[];
       const newTipo: TipoAuditoria = foundSts.length > 0 ? catsToTipo(foundSts.join(',')) : 'comida';
 
       const orderedCodes = TIPO_TO_SUBTIPOS[newTipo].map(st => combined[st] ?? '');
-      const newOperaciones: OperacionEntry[] = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: orderedCodes[i] }));
+      const newOperaciones: OperacionEntry[] = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({
+        subTipo: st,
+        codigo: orderedCodes[i],
+        ...(involvedPickers.length > 1 && pickerNombreBySubtipo[st]
+          ? { pickerNombre: pickerNombreBySubtipo[st] }
+          : {}),
+      }));
 
+      // Picker principal = primer picker; si hay dos, ambos se guardan en pickerNombres
       if (p1.picker_label.trim()) setPickerNombre(p1.picker_label.trim());
+      setPickerNombres(involvedPickers);
+
       const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === p1.store_cod);
       if (matchedTienda) setTienda(matchedTienda);
 
       if (newTipo !== tipo) {
-        pendingScanRef.current = orderedCodes;
+        pendingScanRef.current = newOperaciones;
         setTipo(newTipo);
       } else {
         setOperaciones(newOperaciones);
       }
 
       const idLabel = trimId2 ? `#${trimId1}+${trimId2}` : `#${trimId1}`;
-      showToast(`✓ ${idLabel} · ${p1.store_cod} · ${newTipo.toUpperCase()}`, '#16A34A');
+      const pickerLabel = involvedPickers.length > 1 ? involvedPickers.join(' + ') : (involvedPickers[0] ?? '');
+      showToast(`✓ ${idLabel} · ${p1.store_cod} · ${pickerLabel} · ${newTipo.toUpperCase()}`, '#16A34A');
       setPalletIdInput(''); setPalletIdInput2(''); setShowPalletId2(false);
       setFormPhase('setup');
     } catch {
@@ -2410,11 +2447,9 @@ export function AuditoriaScreen() {
     if (matchedTienda) setTienda(matchedTienda);
 
     if (newTipo !== tipo) {
-      // El useEffect de tipo se encargará de setOperaciones usando pendingScanRef
-      pendingScanRef.current = opCodes;
+      pendingScanRef.current = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' }));
       setTipo(newTipo);
     } else {
-      // Tipo igual: set operaciones directamente
       setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
     }
 
@@ -2446,7 +2481,7 @@ export function AuditoriaScreen() {
     if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
     setFormPhase('scan');
     setTienda(null); setTiendaQuery('');
-    setPicker(''); setPickerNombre(''); setOdooAutoDetected(false);
+    setPicker(''); setPickerNombre(''); setPickerNombres([]); setOdooAutoDetected(false);
     setTipo('comida');
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
@@ -2467,7 +2502,7 @@ export function AuditoriaScreen() {
     try { localStorage.removeItem(sessionKey(user?.id)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* */ }
     if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
     setSessionRestored(false); setCrossDeviceRestored(false);
-    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false);
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setPickerNombres([]); setOdooAutoDetected(false);
     setTipo('comida'); setPallets('');
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
@@ -2554,7 +2589,8 @@ export function AuditoriaScreen() {
     setUploadProgress('Guardando…');
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-      auditor: auditor.trim(), picker: picker.trim(), pickerNombre: pickerNombre.trim() || undefined,
+      auditor: auditor.trim(), picker: picker.trim(),
+      pickerNombre: (pickerNombres.length > 1 ? pickerNombres.join(' + ') : pickerNombre.trim()) || undefined,
       tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
@@ -2592,7 +2628,7 @@ export function AuditoriaScreen() {
     try { localStorage.removeItem(sessionKey(user?.id)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
     if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
     setSessionRestored(false); setCrossDeviceRestored(false);
-    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setPickerNombres([]); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
@@ -2991,8 +3027,18 @@ export function AuditoriaScreen() {
                 <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna automáticamente</span></SLabel>
                 <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { setPicker(''); setOdooAutoDetected(false); }} />
 
-                <SLabel>Picker (armador de pallet)</SLabel>
-                <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={setPickerNombre} />
+                <SLabel>Picker{pickerNombres.length > 1 ? 's' : ''} (armador{pickerNombres.length > 1 ? 'es' : ''} de pallet)</SLabel>
+                {pickerNombres.length > 1 ? (
+                  <div className="flex flex-wrap gap-2 py-1">
+                    {pickerNombres.map((n, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[rgba(37,99,235,0.08)] border border-[rgba(37,99,235,0.25)] rounded-full font-barlow-condensed text-[14px] font-bold text-info">
+                        <span className="text-[11px] font-normal text-text-3">P{i + 1}</span> {n}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={v => { setPickerNombre(v); setPickerNombres(v ? [v] : []); }} />
+                )}
 
                 <SLabel>Tienda</SLabel>
                 <div ref={tiendaRef} className="relative">
@@ -3032,7 +3078,8 @@ export function AuditoriaScreen() {
                 {operaciones.map((op, i) => (
                   <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
                     onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
-                    odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+                    odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')}
+                    pickerLabel={pickerNombres.length > 1 ? op.pickerNombre : undefined} />
                 ))}
 
                 <div className="mt-6 grid grid-cols-2 gap-2 mb-2">
@@ -3110,7 +3157,7 @@ export function AuditoriaScreen() {
                   <div className="pt-3 border-t border-border/50 text-[12px] text-text-3 space-y-0.5">
                     <div><strong className="text-text">{lastEntry.tiendaNombre}</strong><span className="font-mono ml-1.5 text-[10px]">{lastEntry.tiendaCod}</span></div>
                     {(lastEntry.pickerNombre || lastEntry.picker) && (
-                      <div>Picker: <strong className="text-text">{lastEntry.pickerNombre || lastEntry.picker}</strong></div>
+                      <div>Picker{(lastEntry.pickerNombre ?? '').includes(' + ') ? 's' : ''}: <strong className="text-text">{lastEntry.pickerNombre || lastEntry.picker}</strong></div>
                     )}
                     <div>{lastEntry.hora} · {lastEntry.auditor}</div>
                   </div>
@@ -3193,7 +3240,7 @@ export function AuditoriaScreen() {
                   <div className="text-[10px] font-bold text-text-3 uppercase tracking-[0.2em] mb-1">Tiempo en curso</div>
                   <div className="font-barlow-condensed font-black text-navy leading-none tracking-wider" style={{ fontSize: 60 }}>{formatTimer(timerSeconds)}</div>
                   <div className="text-[12px] text-text-3 mt-2 truncate">
-                    {tienda?.nombre}{pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
+                    {tienda?.nombre}{pickerNombres.length > 1 ? ` · ${pickerNombres.join(' + ')}` : pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
                   </div>
                 </div>
 
@@ -3631,10 +3678,12 @@ export function AuditoriaScreen() {
                 <span className="text-text-3 text-[12px]">Tienda</span>
                 <span className="font-semibold text-text text-[13px] text-right ml-4">{tienda.nombre}</span>
               </div>
-              {pickerNombre && (
+              {(pickerNombres.length > 0 || pickerNombre) && (
                 <div className="flex justify-between items-center py-1.5 border-b border-border">
-                  <span className="text-text-3 text-[12px]">Picker</span>
-                  <span className="font-semibold text-text text-[13px]">{pickerNombre}</span>
+                  <span className="text-text-3 text-[12px]">{pickerNombres.length > 1 ? 'Pickers' : 'Picker'}</span>
+                  <span className="font-semibold text-text text-[13px] text-right max-w-[60%] truncate">
+                    {pickerNombres.length > 1 ? pickerNombres.join(' + ') : (pickerNombre || '')}
+                  </span>
                 </div>
               )}
               {picker && (
