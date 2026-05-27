@@ -93,14 +93,18 @@ function TiendaGridCard({
   const expP     = despachoP ?? 0;
   const expB     = despachoB ?? 0;
   const expC     = despachoC ?? 0;
+  // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
+  const remP = Math.max(0, expP - palletCount);
+  const remB = Math.max(0, expB - boxCount);
+  const remC = Math.max(0, expC - contenedorCount);
   return (
     <div
       onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[58px] relative
+      className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red'
+          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
           : hasGuide
-          ? 'bg-[rgba(22,163,74,0.07)] border border-success active:bg-[rgba(22,163,74,0.12)]'
+          ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success active:bg-[rgba(22,163,74,0.12)]'
           : isToday
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border active:bg-bg'
@@ -115,17 +119,17 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[17px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasGuide ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasGuide ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5">
+      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
         {t.tienda}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking (siempre visibles si existen) */}
-        {expP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{expP}P</span>}
-        {expB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{expB}B</span>}
-        {expC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{expC}C</span>}
+        {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
+        {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
+        {remB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
+        {remC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
         {/* Solid badges: items ingresados en despacho */}
         {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
         {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
@@ -475,9 +479,10 @@ export function StepForm() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const prevContenidoRef = useRef<ContenidoSantiago>('Hogar');
-  const formScrollRef    = useRef<HTMLDivElement>(null);
-  const pickingSlotsRef  = useRef(pickingSlots);
+  const prevContenidoRef     = useRef<ContenidoSantiago>('Hogar');
+  const formScrollRef        = useRef<HTMLDivElement>(null);
+  const formScrollDesktopRef = useRef<HTMLDivElement>(null);
+  const pickingSlotsRef      = useRef(pickingSlots);
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
   useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
@@ -606,19 +611,30 @@ export function StepForm() {
     setEditingIdx(null);
     prevContenidoRef.current = 'Hogar';
     if (currentTienda) {
-      setTimeout(() => formScrollRef.current?.scrollTo({ top: 0 }), 60);
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({ top: 0 });
+        formScrollDesktopRef.current?.scrollTo({ top: 0 });
+      }, 60);
       const existing = items[currentTienda.cod] || [];
       const slots    = pickingSlotsRef.current[currentTienda.cod] ?? [];
 
-      const SANT_TIPO: Record<string, TipoCargamento>    = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
-      const SANT_CONT: Record<string, ContenidoSantiago> = { comida: 'Comida', hogar: 'Hogar', mixto: 'Mixto' };
+      const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
+      const mapearCont = (raw: string): ContenidoSantiago => {
+        const c = (raw ?? '').toLowerCase();
+        if (c === 'mixto' || c === 'comida-hogar') return 'Mixto';
+        const esComida = c.includes('comida') || c.includes('alimento');
+        const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
+        if (esComida && esHogar) return 'Mixto';
+        if (esComida) return 'Comida';
+        return 'Hogar';
+      };
 
       if (existing.length === 0 && slots.length > 0) {
         // Build rows from picking slots with contenido pre-filled
         const rows: FormRow[] = slots.map((s, i) => ({
           id:       `pick-${s.tipo}-${i}-${Date.now()}`,
           tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
-          contenido: SANT_CONT[s.contenido] ?? 'Hogar',
+          contenido: mapearCont(s.contenido),
           peso: '', alto: '', largo: '', ancho: '',
         }));
         setFormRows(rows);
@@ -707,6 +723,7 @@ export function StepForm() {
     setPeso(String(item.peso)); setAlto(String(item.alto));
     if (item.tipo === 'Bulto') { setLargo(String(item.largo)); setAncho(String(item.ancho)); }
     formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    formScrollDesktopRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const cancelEdit = () => { setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho(''); };
 
@@ -867,7 +884,7 @@ export function StepForm() {
             <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">HOY</span>
             <span className="font-barlow-condensed text-[10px] text-red/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 p-1.5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {todayList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
@@ -894,7 +911,7 @@ export function StepForm() {
             <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3">Todas</span>
             <span className="font-barlow-condensed text-[10px] text-text-3/50 uppercase tracking-wide hidden sm:inline">toca + para agregar a hoy</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 p-1.5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {othersList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
@@ -1314,7 +1331,7 @@ export function StepForm() {
   /* ════════════════════════════════════
      RIGHT PANEL — MULTI-FORM
   ════════════════════════════════════ */
-  const renderMultiForm = () => {
+  const renderMultiForm = (isMobile = false) => {
     if (!currentTienda) return null;
     const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
@@ -1366,14 +1383,16 @@ export function StepForm() {
           </div>
         </div>
 
-        <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2 py-2">
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           <div className="grid grid-cols-2 gap-2 mb-2">
-            {formRows.map(row => {
+            {formRows.map((row, rowIdx) => {
+              const tipoIdx  = formRows.slice(0, rowIdx + 1).filter(r => r.tipo === row.tipo).length;
+              const rowLabel = row.tipo === 'Pallet' ? `P${tipoIdx}` : row.tipo === 'Contenedor' ? `C${tipoIdx}` : row.tipo === 'Chocolate' ? `CH${tipoIdx}` : `B${tipoIdx}`;
               if (row.saved && row.savedItem) {
                 return (
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{row.savedItem.orden}</span>
+                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
                       <div className="flex gap-1">
                         <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
                         <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
@@ -1399,7 +1418,7 @@ export function StepForm() {
               return (
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{isChocTipo ? 'CH' : row.tipo}</span>
+                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
                   {!isContRow && !isChocTipo && (
@@ -1488,7 +1507,7 @@ export function StepForm() {
   /* ════════════════════════════════════
      RIGHT PANEL — SINGLE ITEM FORM
   ════════════════════════════════════ */
-  const renderSingleForm = () => {
+  const renderSingleForm = (isMobile = false) => {
     if (!currentTienda) return null;
     const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
@@ -1540,7 +1559,7 @@ export function StepForm() {
           </div>
         </div>
 
-        <div ref={formScrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
           {editingIdx !== null && (
             <div className="bg-[rgba(37,99,235,0.07)] border border-[rgba(37,99,235,0.25)] rounded-xl px-3 py-2.5 flex items-center justify-between">
               <span className="text-[14px] font-semibold text-info">Editando item #{editingIdx + 1}</span>
@@ -1623,11 +1642,14 @@ export function StepForm() {
             </div>
           )}
 
-          <button onClick={saveItem} disabled={!canAdd}
-            className="w-full py-4 lg:py-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[21px] lg:text-[18px] font-bold cursor-pointer disabled:opacity-30 active:bg-red-dark"
-            style={{ boxShadow: canAdd ? '0 4px 14px rgba(211,47,47,0.28)' : 'none' }}>
-            {editingIdx !== null ? '✓ Guardar cambios' : '+ Agregar'}
-          </button>
+          <div className="sticky bottom-0 z-10 pb-4 pt-2"
+            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
+            <button onClick={saveItem} disabled={!canAdd}
+              className="w-full py-4 lg:py-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[21px] lg:text-[18px] font-bold cursor-pointer disabled:opacity-30 active:bg-red-dark"
+              style={{ boxShadow: canAdd ? '0 4px 14px rgba(211,47,47,0.28)' : 'none' }}>
+              {editingIdx !== null ? '✓ Guardar cambios' : '+ Agregar'}
+            </button>
+          </div>
 
           {/* Items list */}
           {tiendaItems.length > 0 && (
@@ -1750,8 +1772,8 @@ export function StepForm() {
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
-      {/* ─── LEFT PANEL ─── */}
-      <div className={`${view === 'list' ? 'flex' : 'hidden'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
+      {/* ─── LEFT PANEL ─── always visible on mobile; hidden only in resumen view */}
+      <div className={`${view === 'resumen' ? 'hidden' : 'flex'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -1836,14 +1858,50 @@ export function StepForm() {
           </div>
         )}
 
-        {/* Desktop resumen (no tienda selected) + mobile form view */}
-        <div className={`${view === 'form' ? 'flex' : 'hidden'} lg:flex flex-1 flex-col overflow-hidden`}>
+        {/* Form panel — desktop only (mobile uses bottom sheet below) */}
+        <div className={`hidden lg:flex flex-1 flex-col overflow-hidden`}>
           {!currentTienda
             ? renderResumenPanel()
             : formRows.length > 0
-              ? renderMultiForm()
-              : renderSingleForm()
+              ? renderMultiForm(false)
+              : renderSingleForm(false)
           }
+        </div>
+      </div>
+
+      {/* ── MOBILE BOTTOM SHEET ── (lg:hidden) */}
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 lg:hidden"
+        style={{
+          background: 'rgba(15,23,42,0.55)',
+          backdropFilter: 'blur(3px)',
+          opacity: currentTienda ? 1 : 0,
+          pointerEvents: currentTienda ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease',
+        }}
+        onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}
+      />
+      {/* Sheet */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
+        style={{
+          maxHeight: '92vh',
+          transform: currentTienda ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
+          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer"
+          onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}>
+          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+        </div>
+        {/* Form content */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {currentTienda && (
+            formRows.length > 0 ? renderMultiForm(true) : renderSingleForm(true)
+          )}
         </div>
       </div>
 

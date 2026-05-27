@@ -96,33 +96,38 @@ interface GridCardProps {
 function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
-  const hasGhost = pickingP > 0 || pickingB > 0 || pickingC > 0 || pickingCH > 0;
+  // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
+  const remP  = Math.max(0, pickingP  - palletCount);
+  const remB  = Math.max(0, pickingB  - boxCount);
+  const remC  = Math.max(0, pickingC  - contenedorCount);
+  const remCH = Math.max(0, pickingCH - chocolateCount);
+  const hasGhost = remP > 0 || remB > 0 || remC > 0 || remCH > 0;
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[64px] relative
+      className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red'
+          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
           : hasPdf
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
           : isToday
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      <div className={`font-barlow-condensed text-[13px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5 uppercase">
+      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
         {t.name}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking data (siempre visibles si existen) */}
-        {pickingP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{pickingP}P</span>}
-        {pickingB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{pickingB}B</span>}
-        {pickingC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{pickingC}C</span>}
-        {pickingCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{pickingCH}CH</span>}
+        {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
+        {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
+        {remB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
+        {remC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
+        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
         {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
         {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
@@ -222,8 +227,9 @@ export function TiendasPage() {
   const fileRef         = useRef<HTMLInputElement>(null);
   const multiFileRef    = useRef<HTMLInputElement>(null);
   const rightPanelRef   = useRef<HTMLDivElement>(null);
-  const formScrollRef   = useRef<HTMLDivElement>(null);
-  const pickingSlotsRef = useRef(pickingSlots);
+  const formScrollRef        = useRef<HTMLDivElement>(null);
+  const formScrollDesktopRef = useRef<HTMLDivElement>(null);
+  const pickingSlotsRef      = useRef(pickingSlots);
 
   /* Combine items (drag-to-merge) */
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
@@ -317,8 +323,16 @@ export function TiendasPage() {
     setGuia(''); setValor('');
   };
 
-  const PICKING_PKG: Record<string, TipoPaquete>    = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
-  const PICKING_TIPO: Record<string, TipoContenido> = { comida: 'comida', hogar: 'hogar', mixto: 'comida-hogar' };
+  const PICKING_PKG: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
+  const mapearContenido = (raw: string): TipoContenido => {
+    const c = (raw ?? '').toLowerCase();
+    if (c === 'mixto' || c === 'comida-hogar') return 'comida-hogar';
+    const esComida = c.includes('comida') || c.includes('alimento');
+    const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
+    if (esComida && esHogar) return 'comida-hogar';
+    if (esComida) return 'comida';
+    return 'hogar';
+  };
 
   /* Initialize formRows only when the selected tienda changes.
      Uses pickingSlotsRef (always current) so picking real-time updates
@@ -327,7 +341,10 @@ export function TiendasPage() {
     resetForm();
     setEditingIdx(null);
     if (selectedTienda) {
-      setTimeout(() => formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 60);
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        formScrollDesktopRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 60);
 
       const existingItems  = dispatchData[selectedTienda] || [];
       const slots          = pickingSlotsRef.current[selectedTienda] ?? [];
@@ -348,7 +365,7 @@ export function TiendasPage() {
         // Build form rows from picking slots — one row per slot with its contenido
         const rows: FormRow[] = slots.map((s, i) => {
           const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
-          const tipo = PICKING_TIPO[s.contenido] ?? 'hogar';
+          const tipo = mapearContenido(s.contenido);
           return {
             id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '',
             alto:  pkg === 'pallet' ? '' : pkg === 'chocolate' ? '42' : '',
@@ -673,7 +690,7 @@ export function TiendasPage() {
   };
 
   /* ── Right panel ── */
-  const renderForm = () => {
+  const renderForm = (isMobile = false) => {
     if (!selectedTienda) return null;
     const tienda = TIENDAS[selectedTienda];
 
@@ -791,17 +808,19 @@ export function TiendasPage() {
           {header}
           {presetBar}
           {pdfStrip}
-          <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2 py-2">
+          <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
             <div className="grid grid-cols-2 gap-2 mb-2">
-              {formRows.map((row) => {
+              {formRows.map((row, rowIdx) => {
                 /* Locked / saved card */
                 const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
+                const pkgIdx   = formRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
+                const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
                 if (row.saved && row.savedItem) {
                   return (
                     <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-barlow-condensed text-[14px] font-extrabold" style={{ color: rowColor.text }}>
-                          {row.savedItem.orden}
+                          {rowLabel}
                         </span>
                         <div className="flex gap-0.5">
                           <button onClick={() => editSavedRow(row.id)} title="Editar"
@@ -814,7 +833,7 @@ export function TiendasPage() {
                         <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
                         {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
                         {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
-                        {row.savedItem.pkg === 'pallet' && <div className="text-text-3 capitalize">{row.savedItem.tipo}</div>}
+                        {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
@@ -831,7 +850,7 @@ export function TiendasPage() {
                   <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: rowColor.text }}>
-                        {row.pkg === 'pallet' ? 'Pallet' : isChocRow ? 'Choc. CH' : 'Bulto'}
+                        {rowLabel}
                       </span>
                       <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))}
                         className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
@@ -937,7 +956,7 @@ export function TiendasPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
         {presetBar}
-        <div ref={formScrollRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
           <SLabel>Guía PDF</SLabel>
           <div
             className={`border-2 rounded-card p-3 mb-1.5 text-center cursor-pointer bg-white transition-all text-[13px] ${hasPdf ? 'border-solid border-success bg-[rgba(22,163,74,0.04)]' : 'border-dashed border-border-2 hover:border-red hover:bg-[rgba(211,47,47,0.03)]'}`}
@@ -1045,16 +1064,19 @@ export function TiendasPage() {
               </div>
             </>
           )}
-          <button onClick={saveItem}
-            className="w-full py-4 mt-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[20px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]"
-            style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.28)' }}>
-            {editingIdx !== null ? 'Guardar' : '+ Agregar'}
-          </button>
-          {items.length > 0 && editingIdx === null && (
-            <button onClick={copyLast} className="w-full py-2.5 mt-1 bg-white text-text-2 border border-dashed border-border-2 rounded-btn text-[13px] cursor-pointer font-barlow hover:border-text-3">
-              ↻ Copiar último
+          <div className="sticky bottom-0 z-10 mt-3 pb-4 pt-2"
+            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
+            <button onClick={saveItem}
+              className="w-full py-4 bg-red text-white border-none rounded-card font-barlow-condensed text-[20px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]"
+              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.28)' }}>
+              {editingIdx !== null ? 'Guardar' : '+ Agregar'}
             </button>
-          )}
+            {items.length > 0 && editingIdx === null && (
+              <button onClick={copyLast} className="w-full py-2.5 mt-1.5 bg-white text-text-2 border border-dashed border-border-2 rounded-btn text-[13px] cursor-pointer font-barlow hover:border-text-3">
+                ↻ Copiar último
+              </button>
+            )}
+          </div>
           {items.length > 0 && (
             <div className="mt-3">
               <SLabel>Items ({items.length})</SLabel>
@@ -1142,8 +1164,8 @@ export function TiendasPage() {
       {/* Wrapper: on mobile = top/bottom stack, on desktop = transparent via contents */}
       <div className="flex flex-col lg:contents flex-1 min-h-0 overflow-hidden">
 
-      {/* LEFT PANEL — lista de tiendas */}
-      <div className="w-full h-[42vh] lg:w-[28%] lg:h-auto lg:min-w-[160px] flex flex-col border-b-2 lg:border-b-0 lg:border-r-2 border-border overflow-hidden flex-shrink-0">
+      {/* LEFT PANEL — lista de tiendas (full height on mobile) */}
+      <div className="w-full flex-1 lg:w-[28%] lg:h-auto lg:min-w-[160px] flex flex-col lg:border-r-2 border-border overflow-hidden flex-shrink-0">
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
@@ -1199,7 +1221,7 @@ export function TiendasPage() {
                 </span>
                 {!addDropActive && <span className="font-barlow-condensed text-[11px] text-red/50 ml-2 uppercase tracking-wide">arrastra aquí</span>}
               </div>
-              <div className="grid grid-cols-3 gap-1 p-1.5">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                 {today.map(t => {
                   const cardItems = dispatchData[t.name] || [];
                   const pkSlots   = pickingSlots[t.name] ?? [];
@@ -1246,7 +1268,7 @@ export function TiendasPage() {
                 </div>
               )}
               {(showTodas || today.length === 0) && (
-                <div className="grid grid-cols-3 gap-1 p-1.5">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                   {others.map(t => {
                     const cardItems = dispatchData[t.name] || [];
                     const pkSlots   = pickingSlots[t.name] ?? [];
@@ -1281,7 +1303,7 @@ export function TiendasPage() {
         {/* Ver Resumen — mobile only */}
         <div className="lg:hidden px-2 py-2 border-t border-border flex-shrink-0">
           <button
-            onClick={() => setShowMobileResumen(true)}
+            onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
             className="w-full py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:opacity-80"
             style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
             Ver Resumen →
@@ -1306,11 +1328,11 @@ export function TiendasPage() {
         </div>
       </div>
 
-      {/* CENTER PANEL — formulario */}
-      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
+      {/* CENTER PANEL — formulario (desktop only) */}
+      <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
-            ? renderForm()
+            ? renderForm(false)
             : (
               <div className="flex-1 flex flex-col items-center justify-center bg-navy" style={{ minHeight: 0 }}>
                 <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
@@ -1319,21 +1341,54 @@ export function TiendasPage() {
             )
           }
         </div>
-
-        {/* Calendar modals */}
-        {confirmAddName && (
-          <ConfirmCalendarModal name={confirmAddName} mode="add"
-            onConfirm={() => { addToToday(confirmAddName); setConfirmAddName(null); }}
-            onCancel={() => setConfirmAddName(null)} />
-        )}
-        {confirmRemoveName && (
-          <ConfirmCalendarModal name={confirmRemoveName} mode="remove"
-            onConfirm={() => { removeFromToday(confirmRemoveName); setConfirmRemoveName(null); }}
-            onCancel={() => setConfirmRemoveName(null)} />
-        )}
       </div>
 
       </div>{/* end top-row wrapper */}
+
+      {/* ── MOBILE BOTTOM SHEET ── (lg:hidden) */}
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 lg:hidden"
+        style={{
+          background: 'rgba(15,23,42,0.55)',
+          backdropFilter: 'blur(3px)',
+          opacity: selectedTienda ? 1 : 0,
+          pointerEvents: selectedTienda ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease',
+        }}
+        onClick={() => select(selectedTienda!)}
+      />
+      {/* Sheet */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
+        style={{
+          maxHeight: '92vh',
+          transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
+          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer" onClick={() => select(selectedTienda!)}>
+          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+        </div>
+        {/* Form content (reuses renderForm logic) */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {selectedTienda && renderForm(true)}
+        </div>
+      </div>
+
+      {/* Calendar modals — top level so they work from both desktop form and mobile sheet */}
+      {confirmAddName && (
+        <ConfirmCalendarModal name={confirmAddName} mode="add"
+          onConfirm={() => { addToToday(confirmAddName); setConfirmAddName(null); }}
+          onCancel={() => setConfirmAddName(null)} />
+      )}
+      {confirmRemoveName && (
+        <ConfirmCalendarModal name={confirmRemoveName} mode="remove"
+          onConfirm={() => { removeFromToday(confirmRemoveName); setConfirmRemoveName(null); }}
+          onCancel={() => setConfirmRemoveName(null)} />
+      )}
 
       {/* RIGHT PANEL — resumen (right column on desktop only) */}
       <div className="hidden lg:flex lg:flex-col lg:h-auto lg:border-t-0 lg:w-[28%] lg:min-w-[200px] overflow-hidden flex-shrink-0">

@@ -36,7 +36,8 @@ function fechaLabel(iso: string) {
 
 /* ── Page ─────────────────────────────────────────────── */
 export default function RutaPublicaPage() {
-  const { token } = useParams<{ token: string }>();
+  const params = useParams<{ token: string }>();
+  const token = params?.token ?? '';
   const [ruta,    setRuta]    = useState<RutaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
