@@ -29,7 +29,13 @@ const S = {
   addBtn:  { background: 'rgba(16,185,129,0.2)',  border: '1px solid rgba(16,185,129,0.5)',  borderRadius: 10, color: '#34D399', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as React.CSSProperties,
 };
 
-export default function TiendasAdminContent() {
+export default function TiendasAdminContent({
+  canEditTiendas   = true,
+  canEditCalendario = true,
+}: {
+  canEditTiendas?:    boolean;
+  canEditCalendario?: boolean;
+}) {
   const [tiendas,   setTiendas]   = useState<Tienda[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [syncing,   setSyncing]   = useState(false);
@@ -120,8 +126,8 @@ export default function TiendasAdminContent() {
     <>
       <style>{`.tiendas-grid{display:grid;grid-template-columns:1fr;gap:14px}@media(min-width:700px){.tiendas-grid{grid-template-columns:repeat(2,1fr)}}@media(min-width:1080px){.tiendas-grid{grid-template-columns:repeat(3,1fr)}}`}</style>
 
-      {/* Action buttons row */}
-      {activeTab === 'tiendas' && (
+      {/* Action buttons row — solo visibles con permiso de edición */}
+      {activeTab === 'tiendas' && canEditTiendas && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           <button style={S.syncBtn} onClick={handleSync} disabled={syncing}>
             {syncing ? 'Sincronizando…' : '↻ Sheets → Supabase'}
@@ -164,7 +170,7 @@ export default function TiendasAdminContent() {
       </div>
 
       {/* Calendario tab */}
-      {activeTab === 'calendario' && <CalendarioColumnas />}
+      {activeTab === 'calendario' && <CalendarioColumnas readOnly={!canEditCalendario} />}
 
       {/* Tiendas tab */}
       {activeTab === 'tiendas' && <>
@@ -244,14 +250,16 @@ export default function TiendasAdminContent() {
                   </div>
                 )}
                 <div style={{ flex: 1 }} />
-                <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: t.correos || t.tel_encargado ? 0 : 14 }}>
-                  <button onClick={() => handleToggleActivo(t)} style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: t.activo ? 'linear-gradient(175deg,#EF4444,#B91C1C)' : 'linear-gradient(175deg,#10B981,#059669)', color: '#fff', boxShadow: t.activo ? '0 3px 10px rgba(239,68,68,0.35)' : '0 3px 10px rgba(16,185,129,0.35)' }}>
-                    {t.activo ? 'DESACTIVAR' : 'ACTIVAR'}
-                  </button>
-                  <button onClick={() => openEdit(t)} style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: 'linear-gradient(175deg,#3B82F6,#1D4ED8)', color: '#fff', boxShadow: '0 3px 10px rgba(59,130,246,0.35)' }}>
-                    EDITAR
-                  </button>
-                </div>
+                {canEditTiendas && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: t.correos || t.tel_encargado ? 0 : 14 }}>
+                    <button onClick={() => handleToggleActivo(t)} style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: t.activo ? 'linear-gradient(175deg,#EF4444,#B91C1C)' : 'linear-gradient(175deg,#10B981,#059669)', color: '#fff', boxShadow: t.activo ? '0 3px 10px rgba(239,68,68,0.35)' : '0 3px 10px rgba(16,185,129,0.35)' }}>
+                      {t.activo ? 'DESACTIVAR' : 'ACTIVAR'}
+                    </button>
+                    <button onClick={() => openEdit(t)} style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: 'linear-gradient(175deg,#3B82F6,#1D4ED8)', color: '#fff', boxShadow: '0 3px 10px rgba(59,130,246,0.35)' }}>
+                      EDITAR
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -8,11 +8,13 @@ import { ProfilePill } from '../components/ProfilePill';
 import { EstadoPage } from '../features/despacho/estado/EstadoPage';
 import { SeguimientoPanel } from '../features/despacho/estado/SeguimientoPanel';
 import { ScannerPanel } from '../features/despacho/estado/ScannerPanel';
+import { useAuth } from '../components/AuthProvider';
 
 type View = 'etiquetas' | 'escaneo' | 'estado';
 
 function EstadoContent() {
   const router = useRouter();
+  const { can } = useAuth();
   const [view, setView] = useState<View>('etiquetas');
 
   const tabs: { id: View; label: string; Icon: typeof Tag }[] = [
@@ -67,7 +69,7 @@ function EstadoContent() {
       <div className="flex-1 overflow-hidden flex flex-col">
         {view === 'etiquetas' && <EstadoPage />}
         {view === 'escaneo'   && <ScannerPanel />}
-        {view === 'estado'    && <SeguimientoPanel />}
+        {view === 'estado'    && <SeguimientoPanel canSync={can('estado/seguimiento', 'edit')} />}
       </div>
     </div>
   );

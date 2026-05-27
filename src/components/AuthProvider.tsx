@@ -11,6 +11,7 @@ export interface Profile {
   full_name: string | null;
   role: UserRole;
   allowedPaths: string[];
+  permissions: Record<string, 'edit' | 'read'>;
 }
 
 interface AuthContextValue {
@@ -18,6 +19,8 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  /** Returns true if the current user can perform `action` on `section`. */
+  can: (section: string, action: 'edit' | 'read') => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -25,6 +28,7 @@ const AuthContext = createContext<AuthContextValue>({
   profile: null,
   loading: true,
   signOut: async () => {},
+  can: () => true,
 });
 
 export function useAuth() {
@@ -35,15 +39,18 @@ export function useAuth() {
 function profileFromUser(user: User): Profile {
   const meta = user.user_metadata ?? {};
   const role = ((meta.role as string) ?? 'auditor') as UserRole;
-  // admin always gets full access regardless of whether allowed_paths is set
   const allowedPaths = role === 'admin'
     ? ['*']
     : (meta.allowed_paths as string[] | undefined) ?? [];
+  const permissions = role === 'admin'
+    ? {}
+    : ((meta.permissions as Record<string, 'edit' | 'read'>) ?? {});
   return {
     id: user.id,
     full_name: (meta.full_name as string) ?? user.email ?? null,
     role,
     allowedPaths,
+    permissions,
   };
 }
 
@@ -73,8 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const can = (section: string, action: 'edit' | 'read'): boolean => {
+    if (!profile) return false;
+    if (profile.role === 'admin') return true;
+    if (action === 'read') return true;
+    return profile.permissions[section] !== 'read';
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut, can }}>
       {children}
     </AuthContext.Provider>
   );

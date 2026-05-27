@@ -81,10 +81,11 @@ export async function PATCH(request: NextRequest) {
   if (full_name) meta.full_name = full_name;
 
   if (role) {
-    const { data: roleData } = await sb.from('roles').select('allowed_paths,home_path').eq('id', role).single();
+    const { data: roleData } = await sb.from('roles').select('allowed_paths,home_path,permissions').eq('id', role).single();
     if (roleData) {
       meta.allowed_paths = roleData.allowed_paths;
       meta.home_path     = roleData.home_path;
+      meta.permissions   = roleData.permissions ?? {};
     }
   }
 

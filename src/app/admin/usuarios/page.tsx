@@ -24,6 +24,7 @@ interface AppRole {
   home_path: string;
   allowed_paths: string[];
   is_system: boolean;
+  permissions?: Record<string, 'edit' | 'read'>;
 }
 
 interface PermSection { path: string; label: string; }
@@ -76,6 +77,13 @@ const PERMISSION_GROUPS: PermGroup[] = [
 ];
 
 const ALL_SECTION_PATHS = PERMISSION_GROUPS.flatMap(g => g.sections.map(s => s.path));
+
+interface SectionPerm { id: string; label: string; desc: string; group: string; }
+const SECTION_PERMISSIONS: SectionPerm[] = [
+  { id: 'config-tiendas/tiendas',    label: 'Gestionar Tiendas',  desc: 'Agregar, editar y desactivar tiendas',       group: 'Config. Tiendas' },
+  { id: 'config-tiendas/calendario', label: 'Calendario Central', desc: 'Modificar el orden del calendario de rutas', group: 'Config. Tiendas' },
+  { id: 'estado/seguimiento',        label: 'Sync desde Sheets',  desc: 'Importar registros desde Google Sheets',     group: 'Estado'          },
+];
 
 function groupState(group: PermGroup, paths: string[]): 'all' | 'some' | 'none' {
   const n = group.sections.filter(s => paths.includes(s.path)).length;
@@ -158,8 +166,9 @@ export default function UsuariosPage() {
   const [roles,       setRoles]       = useState<AppRole[]>(FALLBACK_ROLES);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
-  const [pendingPerms, setPendingPerms] = useState<Record<string, string[]>>({});
-  const [savingRole,   setSavingRole]   = useState<string | null>(null);
+  const [pendingPerms,        setPendingPerms]        = useState<Record<string, string[]>>({});
+  const [pendingSectionPerms, setPendingSectionPerms] = useState<Record<string, Record<string, 'edit' | 'read'>>>({});
+  const [savingRole,          setSavingRole]          = useState<string | null>(null);
   const [deleteRoleTarget, setDeleteRoleTarget] = useState<AppRole | null>(null);
   const [deletingRole, setDeletingRole] = useState(false);
 
@@ -260,24 +269,45 @@ export default function UsuariosPage() {
   }
 
   function hasUnsavedPerms(roleId: string) {
-    return roleId in pendingPerms;
+    return roleId in pendingPerms || roleId in pendingSectionPerms;
+  }
+
+  function getEditingSectionPerms(roleId: string, originalPerms: Record<string, 'edit' | 'read'> = {}) {
+    return pendingSectionPerms[roleId] ?? originalPerms;
+  }
+
+  function setSectionPerm(roleId: string, sectionId: string, value: 'edit' | 'read', originalPerms: Record<string, 'edit' | 'read'> = {}) {
+    const current = getEditingSectionPerms(roleId, originalPerms);
+    setPendingSectionPerms(prev => ({
+      ...prev,
+      [roleId]: { ...current, [sectionId]: value },
+    }));
   }
 
   async function handleSaveRolePerms(role: AppRole) {
     const newPaths = pendingPerms[role.id];
-    if (!newPaths) return;
+    const newPerms = pendingSectionPerms[role.id];
+    if (!newPaths && !newPerms) return;
     setSavingRole(role.id);
     try {
       const headers = await authHeaders();
+      const body: Record<string, unknown> = { id: role.id };
+      if (newPaths) body.allowed_paths = newPaths;
+      if (newPerms) body.permissions   = newPerms;
       const res = await fetch('/api/admin/roles', {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ id: role.id, allowed_paths: newPaths }),
+        body: JSON.stringify(body),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
       setPendingPerms(prev => { const n = { ...prev }; delete n[role.id]; return n; });
-      setRoles(prev => prev.map(r => r.id === role.id ? { ...r, allowed_paths: newPaths } : r));
+      setPendingSectionPerms(prev => { const n = { ...prev }; delete n[role.id]; return n; });
+      setRoles(prev => prev.map(r => r.id === role.id ? {
+        ...r,
+        ...(newPaths ? { allowed_paths: newPaths } : {}),
+        ...(newPerms ? { permissions: newPerms } : {}),
+      } : r));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar permisos');
     } finally {
@@ -738,6 +768,7 @@ export default function UsuariosPage() {
             {roles.map(role => {
               const isExpanded = expandedRole === role.id;
               const editingPaths = getEditingPaths(role.id, role.allowed_paths);
+              const editingSecPerms = getEditingSectionPerms(role.id, role.permissions);
               const isFullAccess = role.allowed_paths.includes('*');
               const count = userCountForRole(role.id);
               const unsaved = hasUnsavedPerms(role.id);
@@ -915,6 +946,40 @@ export default function UsuariosPage() {
                               </div>
                               <span className="text-[12px] text-white/30">Perfil — siempre activo</span>
                             </div>
+                          </div>
+
+                          {/* Section-level edit/read permissions */}
+                          <div className="flex flex-col gap-2">
+                            <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-widest text-white/40">
+                              Permisos de sección
+                            </span>
+                            {SECTION_PERMISSIONS.map(sec => {
+                              const current = editingSecPerms[sec.id] ?? 'edit';
+                              return (
+                                <div key={sec.id}
+                                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-white/85 text-[12px] font-semibold">{sec.label}</div>
+                                    <div className="text-white/30 text-[10px] mt-0.5">{sec.desc}</div>
+                                    <div className="text-white/20 text-[9px] uppercase tracking-wider mt-0.5">{sec.group}</div>
+                                  </div>
+                                  <div className="flex rounded-lg overflow-hidden flex-shrink-0"
+                                       style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+                                    {(['edit', 'read'] as const).map(v => (
+                                      <button key={v}
+                                        onClick={() => setSectionPerm(role.id, sec.id, v, role.permissions)}
+                                        className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-all"
+                                        style={current === v
+                                          ? { background: v === 'edit' ? role.color : 'rgba(148,163,184,0.25)', color: '#fff' }
+                                          : { background: 'transparent', color: 'rgba(255,255,255,0.28)' }}>
+                                        {v === 'edit' ? 'Editor' : 'Lectura'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </>
                       )}

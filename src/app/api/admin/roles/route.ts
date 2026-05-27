@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   const { id, label, color, home_path, allowed_paths } = await request.json() as {
-    id: string; label: string; color?: string; home_path?: string; allowed_paths?: string[];
+    id: string; label: string; color?: string; home_path?: string; allowed_paths?: string[]; permissions?: Record<string, string>;
   };
   if (!id || !label)
     return NextResponse.json({ error: 'ID y etiqueta son requeridos' }, { status: 400 });
@@ -57,7 +57,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   const body = await request.json() as {
-    id: string; label?: string; color?: string; home_path?: string; allowed_paths?: string[];
+    id: string; label?: string; color?: string; home_path?: string; allowed_paths?: string[]; permissions?: Record<string, string>;
   };
   if (!body.id)
     return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
@@ -67,6 +67,7 @@ export async function PATCH(request: NextRequest) {
   if (body.color         !== undefined) updates.color         = body.color;
   if (body.home_path     !== undefined) updates.home_path     = body.home_path;
   if (body.allowed_paths !== undefined) updates.allowed_paths = body.allowed_paths;
+  if (body.permissions   !== undefined) updates.permissions   = body.permissions;
 
   const sb = adminSb();
   const { error } = await sb.from('roles').update(updates).eq('id', body.id);

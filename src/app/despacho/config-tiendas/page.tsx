@@ -4,6 +4,7 @@ import { useRouter }          from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ChevronLeft }        from 'lucide-react';
 import { ProfilePill }        from '@/components/ProfilePill';
+import { useAuth }            from '@/components/AuthProvider';
 import TiendasAdminContent    from '@/features/control-interno/TiendasAdminContent';
 
 type Params = Record<string, string>;
@@ -90,6 +91,7 @@ function ConfigImpresion() {
 
 export default function DespachoConfigTiendasPage() {
   const router = useRouter();
+  const { can } = useAuth();
 
   return (
     <div style={{
@@ -114,7 +116,10 @@ export default function DespachoConfigTiendasPage() {
         <ProfilePill compact />
       </div>
 
-      <TiendasAdminContent />
+      <TiendasAdminContent
+        canEditTiendas={can('config-tiendas/tiendas', 'edit')}
+        canEditCalendario={can('config-tiendas/calendario', 'edit')}
+      />
       <ConfigImpresion />
     </div>
   );

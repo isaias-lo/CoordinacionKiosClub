@@ -43,7 +43,7 @@ function displayCode(cod: string): string {
   return formatCod(cod.replace('PEN', 'PEÑ').replace('VIN', 'VIÑ'));
 }
 
-export default function CalendarioColumnas() {
+export default function CalendarioColumnas({ readOnly = false }: { readOnly?: boolean }) {
   const [cal, setCal]               = useState<CalRecord | null>(null);
   const [local, setLocal]           = useState<CalRecord | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -450,7 +450,7 @@ export default function CalendarioColumnas() {
             }}>
             🖨 Imprimir
           </button>
-          <button
+          {!readOnly && <button
             onClick={handleSave}
             disabled={saveStatus === 'saving' || !hasChanges}
             style={{
@@ -473,7 +473,7 @@ export default function CalendarioColumnas() {
               transition: 'all 0.17s ease',
             }}>
             {saveLabel}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -499,8 +499,8 @@ export default function CalendarioColumnas() {
         </div>
       )}
 
-      {/* ── Search (oculta en General) ── */}
-      {grp !== 'general' && <div style={{ position: 'relative', marginBottom: 16 }}>
+      {/* ── Search (oculta en General y en readOnly) ── */}
+      {grp !== 'general' && !readOnly && <div style={{ position: 'relative', marginBottom: 16 }}>
         <span style={{
           position: 'absolute', left: 14, top: '50%',
           transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none',
@@ -669,17 +669,17 @@ export default function CalendarioColumnas() {
                 const tiendas = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
                 return (
                   <td key={dia}
-                    onDragEnter={e => {
+                    onDragEnter={readOnly ? undefined : e => {
                       e.preventDefault();
                       setDragOver({ dia, idx: tiendas.length });
                     }}
-                    onDragOver={e => e.preventDefault()}
-                    onDragLeave={e => {
+                    onDragOver={readOnly ? undefined : e => e.preventDefault()}
+                    onDragLeave={readOnly ? undefined : e => {
                       if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                         setDragOver(null);
                       }
                     }}
-                    onDrop={e => onDropOnTd(e, dia)}
+                    onDrop={readOnly ? undefined : e => onDropOnTd(e, dia)}
                     style={{
                       verticalAlign: 'top',
                       padding: '8px 6px 10px',
@@ -704,16 +704,16 @@ export default function CalendarioColumnas() {
                             }} />
                           )}
                           <div
-                            draggable
-                            onDragStart={e => onDragStart(e, dia, cod, i)}
-                            onDragEnd={onDragEnd}
-                            onDragEnter={e => {
+                            draggable={!readOnly}
+                            onDragStart={readOnly ? undefined : e => onDragStart(e, dia, cod, i)}
+                            onDragEnd={readOnly ? undefined : onDragEnd}
+                            onDragEnter={readOnly ? undefined : e => {
                               e.preventDefault();
                               e.stopPropagation();
                               setDragOver({ dia, idx: i });
                             }}
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={e => onDropOnChip(e, dia, i)}
+                            onDragOver={readOnly ? undefined : e => e.preventDefault()}
+                            onDrop={readOnly ? undefined : e => onDropOnChip(e, dia, i)}
                             title={nombre}
                             style={{
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -735,7 +735,7 @@ export default function CalendarioColumnas() {
                             }}
                           >
                             <span style={{ letterSpacing: '0.01em' }}>{displayCode(cod)}</span>
-                            <span
+                            {!readOnly && <span
                               onClick={e => { e.stopPropagation(); remove(dia, cod); }}
                               style={{
                                 marginLeft: 8, fontSize: 11, opacity: 0.4,
@@ -745,7 +745,7 @@ export default function CalendarioColumnas() {
                               }}
                               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0.4'; }}
-                            >✕</span>
+                            >✕</span>}
                           </div>
                         </div>
                       );

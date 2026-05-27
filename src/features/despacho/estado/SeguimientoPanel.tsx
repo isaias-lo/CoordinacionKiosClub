@@ -48,7 +48,7 @@ function toDisplayDate(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
-export function SeguimientoPanel() {
+export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
   const [rows,    setRows]    = useState<DespachoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -207,12 +207,14 @@ export function SeguimientoPanel() {
           className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-navy border border-navy/30 cursor-pointer hover:bg-[rgba(27,42,107,0.06)] transition-colors">
           ↺ Actualizar
         </button>
-        <button onClick={syncFromSheets} disabled={syncing}
-          className="px-3 py-1.5 rounded-lg text-[12px] font-bold border cursor-pointer transition-colors disabled:opacity-50"
-          style={{ color: '#10B981', borderColor: 'rgba(16,185,129,0.3)' }}
-          title="Importar registros desde Google Sheets a Supabase">
-          {syncing ? 'Sincronizando…' : '⇅ Sheets'}
-        </button>
+        {canSync && (
+          <button onClick={syncFromSheets} disabled={syncing}
+            className="px-3 py-1.5 rounded-lg text-[12px] font-bold border cursor-pointer transition-colors disabled:opacity-50"
+            style={{ color: '#10B981', borderColor: 'rgba(16,185,129,0.3)' }}
+            title="Importar registros desde Google Sheets a Supabase">
+            {syncing ? 'Sincronizando…' : '⇅ Sheets'}
+          </button>
+        )}
       </div>
 
       {/* Summary cards */}
