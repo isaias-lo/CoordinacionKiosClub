@@ -219,10 +219,11 @@ export function TiendasPage() {
   const [multiPdfLoading, setMultiPdfLoading] = useState(false);
   const [editingIdx,      setEditingIdx]      = useState<number | null>(null);
 
-  const fileRef       = useRef<HTMLInputElement>(null);
-  const multiFileRef  = useRef<HTMLInputElement>(null);
-  const rightPanelRef = useRef<HTMLDivElement>(null);
-  const formScrollRef = useRef<HTMLDivElement>(null);
+  const fileRef         = useRef<HTMLInputElement>(null);
+  const multiFileRef    = useRef<HTMLInputElement>(null);
+  const rightPanelRef   = useRef<HTMLDivElement>(null);
+  const formScrollRef   = useRef<HTMLDivElement>(null);
+  const pickingSlotsRef = useRef(pickingSlots);
 
   /* Combine items (drag-to-merge) */
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
@@ -290,6 +291,9 @@ export function TiendasPage() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  /* Keep ref in sync so form-init effect always reads latest picking without re-running */
+  useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
+
   const baseTodayCods = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
@@ -316,7 +320,9 @@ export function TiendasPage() {
   const PICKING_PKG: Record<string, TipoPaquete>    = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
   const PICKING_TIPO: Record<string, TipoContenido> = { comida: 'comida', hogar: 'hogar', mixto: 'comida-hogar' };
 
-  /* Initialize formRows when tienda changes — auto-fill from picking with contenido */
+  /* Initialize formRows only when the selected tienda changes.
+     Uses pickingSlotsRef (always current) so picking real-time updates
+     do NOT retrigger this effect and wipe the user's in-progress form. */
   useEffect(() => {
     resetForm();
     setEditingIdx(null);
@@ -324,7 +330,7 @@ export function TiendasPage() {
       setTimeout(() => formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 60);
 
       const existingItems  = dispatchData[selectedTienda] || [];
-      const slots          = pickingSlots[selectedTienda] ?? [];
+      const slots          = pickingSlotsRef.current[selectedTienda] ?? [];
       const pickingP       = slots.filter(s => s.tipo === 'P').length;
       const pickingC       = slots.filter(s => s.tipo === 'C').length;
       const pickingB       = slots.filter(s => s.tipo === 'B').length;
@@ -376,7 +382,7 @@ export function TiendasPage() {
       setFormRows([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTienda, pickingSlots]);
+  }, [selectedTienda]);
 
   useEffect(() => {
     if (editingIdx !== null) return;

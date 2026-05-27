@@ -477,6 +477,10 @@ export function StepForm() {
 
   const prevContenidoRef = useRef<ContenidoSantiago>('Hogar');
   const formScrollRef    = useRef<HTMLDivElement>(null);
+  const pickingSlotsRef  = useRef(pickingSlots);
+
+  /* Keep ref in sync so form-init effect always reads latest picking without re-running */
+  useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
 
   /* ── Derived ── */
   const localTodayCods  = getTiendasSantiagoHoy().map(t => t.cod);
@@ -593,7 +597,9 @@ export function StepForm() {
     setView('form');
   };
 
-  /* ── Form effects ── */
+  /* ── Form effects ──
+     Only re-runs when the selected tienda changes. Uses pickingSlotsRef (always current)
+     so picking real-time updates do NOT retrigger this and wipe the user's in-progress form. */
   useEffect(() => {
     setTipo('Pallet'); setContenido('Hogar');
     setPeso(''); setAlto(''); setLargo(''); setAncho('');
@@ -602,7 +608,7 @@ export function StepForm() {
     if (currentTienda) {
       setTimeout(() => formScrollRef.current?.scrollTo({ top: 0 }), 60);
       const existing = items[currentTienda.cod] || [];
-      const slots    = pickingSlots[currentTienda.cod] ?? [];
+      const slots    = pickingSlotsRef.current[currentTienda.cod] ?? [];
 
       const SANT_TIPO: Record<string, TipoCargamento>    = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
       const SANT_CONT: Record<string, ContenidoSantiago> = { comida: 'Comida', hogar: 'Hogar', mixto: 'Mixto' };
@@ -639,7 +645,7 @@ export function StepForm() {
       setFormRows([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTienda?.cod, pickingSlots]);
+  }, [currentTienda?.cod]);
 
   useEffect(() => { setContenido('Hogar'); prevContenidoRef.current = 'Hogar'; }, [tipo]);
 
