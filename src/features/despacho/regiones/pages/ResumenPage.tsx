@@ -45,6 +45,11 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
 
   const [editingItem, setEditingItem] = useState<{ tienda: string; idx: number } | null>(null);
 
+  /* Copy to tiendas */
+  const [copyModal,   setCopyModal]   = useState<{ tienda: string; item: DispatchItem } | null>(null);
+  const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
+  const [copySearch,  setCopySearch]  = useState('');
+
   /* Combine drag & drop */
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
   const [dropIdx,      setDropIdx]      = useState<number | null>(null);
@@ -130,6 +135,19 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(newList) });
     setCombineModal(null);
     showToast('✓ Items combinados', '#16A34A');
+  };
+
+  const handleCopyConfirm = () => {
+    if (!copyModal || copyTargets.size === 0) return;
+    const { item } = copyModal;
+    const itemCopy: DispatchItem = { ...item, guia: '', orden: '' };
+    copyTargets.forEach(tienda => {
+      dispatch({ type: 'ADD_ITEM', tienda, item: { ...itemCopy } });
+    });
+    showToast(`✓ Copiado a ${copyTargets.size} tienda${copyTargets.size > 1 ? 's' : ''}`, '#16A34A');
+    setCopyModal(null);
+    setCopyTargets(new Set());
+    setCopySearch('');
   };
 
   const cancelEdit = () => setEditingItem(null);
@@ -453,8 +471,15 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
                       </div>
                       <button
                         onClick={e => { e.stopPropagation(); startEdit(name, idx); }}
-                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-info flex-shrink-0">
+                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-info flex-shrink-0"
+                        title="Editar">
                         ✎
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setCopyModal({ tienda: name, item }); setCopyTargets(new Set()); setCopySearch(''); }}
+                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-success flex-shrink-0"
+                        title="Copiar a otras tiendas">
+                        ⧉
                       </button>
                       <button
                         onClick={e => {
@@ -462,7 +487,8 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
                           dispatch({ type: 'DELETE_ITEM', tienda: name, idx });
                           showToast(`${item.orden} eliminado`, '#D97706');
                         }}
-                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-red flex-shrink-0">
+                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-red flex-shrink-0"
+                        title="Eliminar">
                         ✕
                       </button>
                     </div>
@@ -507,6 +533,130 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     );
   })();
 
+  /* ── Copy to tiendas modal ── */
+  const copyModalEl = copyModal && (() => {
+    const { tienda: srcTienda, item } = copyModal;
+    const allNames = Object.keys(TIENDAS).filter(n => n !== srcTienda);
+    const todayNames = allNames.filter(n => (dispatchData[n]?.length ?? 0) > 0);
+    const filtered = copySearch
+      ? allNames.filter(n =>
+          n.toLowerCase().includes(copySearch.toLowerCase()) ||
+          TIENDAS[n].cod.toLowerCase().includes(copySearch.toLowerCase())
+        )
+      : allNames;
+    const dims = [item.alto, item.ancho, item.largo].filter(Boolean);
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+        <div className="absolute inset-0 bg-black/60" onClick={() => setCopyModal(null)} />
+        <div className="relative w-full max-w-sm bg-white rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col"
+             style={{ maxHeight: '88vh' }}>
+
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-navy text-white flex-shrink-0">
+            <div className="flex-1 min-w-0">
+              <div className="font-barlow-condensed text-[15px] font-bold uppercase tracking-wider">Copiar a tiendas</div>
+              <div className="text-[11px] text-white/55 mt-0.5 truncate">
+                {item.orden} · {LABEL[item.pkg]} · {LABEL[item.tipo]} · {item.peso}kg{dims.length ? ` · ${dims.join('×')}cm` : ''}
+              </div>
+            </div>
+            <button onClick={() => setCopyModal(null)}
+              className="text-white/50 hover:text-white cursor-pointer text-xl leading-none flex-shrink-0">✕</button>
+          </div>
+
+          {/* Search */}
+          <div className="px-3 py-2 border-b border-border flex-shrink-0">
+            <input
+              type="text"
+              value={copySearch}
+              onChange={e => setCopySearch(e.target.value)}
+              placeholder="Buscar tienda o código…"
+              autoFocus
+              className="w-full px-3 py-1.5 border border-border rounded-lg text-[13px] text-navy focus:outline-none focus:border-navy"
+            />
+          </div>
+
+          {/* Quick selectors */}
+          {todayNames.length > 0 && !copySearch && (
+            <div className="px-3 py-2 bg-bg border-b border-border flex items-center gap-2 flex-shrink-0 flex-wrap">
+              <span className="text-[10px] text-text-3 uppercase tracking-wide">Sel. rápida</span>
+              <button
+                onClick={() => {
+                  const next = new Set(copyTargets);
+                  todayNames.forEach(n => next.add(n));
+                  setCopyTargets(next);
+                }}
+                className="text-[11px] font-bold text-success bg-[rgba(22,163,74,0.10)] border border-[rgba(22,163,74,0.25)] px-2 py-0.5 rounded-full cursor-pointer">
+                ✓ HOY ({todayNames.length})
+              </button>
+              {copyTargets.size > 0 && (
+                <button
+                  onClick={() => setCopyTargets(new Set())}
+                  className="text-[11px] font-bold text-text-3 bg-bg-2 border border-border px-2 py-0.5 rounded-full cursor-pointer">
+                  Limpiar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Tienda list */}
+          <div className="flex-1 overflow-y-auto">
+            {filtered.map(name => {
+              const t = TIENDAS[name];
+              const checked  = copyTargets.has(name);
+              const hasItems = (dispatchData[name]?.length ?? 0) > 0;
+              return (
+                <div key={name}
+                  onClick={() => {
+                    const next = new Set(copyTargets);
+                    checked ? next.delete(name) : next.add(name);
+                    setCopyTargets(next);
+                  }}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-border cursor-pointer transition-all ${
+                    checked ? 'bg-[rgba(22,163,74,0.06)]' : 'bg-white hover:bg-bg'
+                  }`}>
+                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold flex-shrink-0 transition-all ${
+                    checked ? 'bg-success border-success text-white' : 'border-border-2 bg-white'
+                  }`}>
+                    {checked && '✓'}
+                  </div>
+                  <div className="font-mono text-[10px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded flex-shrink-0">
+                    {formatCod(t.cod)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-navy truncate leading-tight">{name}</div>
+                    <div className="text-[10px] text-text-3">{t.region}</div>
+                  </div>
+                  {hasItems && (
+                    <span className="text-[9px] font-bold text-success bg-[rgba(22,163,74,0.10)] border border-[rgba(22,163,74,0.20)] px-1.5 py-0.5 rounded-full flex-shrink-0">
+                      HOY
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-2 px-3 py-3 border-t border-border flex-shrink-0">
+            <button onClick={() => setCopyModal(null)}
+              className="flex-1 py-2.5 bg-bg-2 text-text-2 border border-border rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer">
+              Cancelar
+            </button>
+            <button
+              onClick={handleCopyConfirm}
+              disabled={copyTargets.size === 0}
+              className="flex-1 py-2.5 bg-success text-white border-none rounded-btn font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98]"
+              style={{ boxShadow: copyTargets.size > 0 ? '0 4px 14px rgba(22,163,74,0.35)' : 'none' }}>
+              {copyTargets.size > 0
+                ? `Copiar a ${copyTargets.size} tienda${copyTargets.size > 1 ? 's' : ''}`
+                : 'Selecciona destinos'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
   if (panel) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-border">
@@ -520,6 +670,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         </div>
         {actionBar}
         {combineModalEl}
+        {copyModalEl}
       </div>
     );
   }
@@ -530,6 +681,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
       {acordeon}
       {actionBar}
       {combineModalEl}
+      {copyModalEl}
     </div>
   );
 }
