@@ -416,6 +416,11 @@ export function TiendasPage() {
     .sort((a, b) => allTodayCods.indexOf(a.cod) - allTodayCods.indexOf(b.cod));
   const others = filtered.filter(t => !allTodayCods.includes(t.cod));
 
+  const allDispatchItems = Object.values(dispatchData).flat();
+  const statP = allDispatchItems.filter(i => i.pkg === 'pallet').length;
+  const statB = allDispatchItems.filter(i => i.pkg === 'box').length;
+  const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
+
   const select  = (name: string) => dispatch({ type: 'SET_TIENDA', payload: selectedTienda === name ? null : name });
   const setTipo = (t: TipoContenido) => { if (currentPkg === 'box') return; dispatch({ type: 'SET_TIPO', payload: t }); };
   const setPkg  = (p: TipoPaquete) => {
@@ -530,18 +535,20 @@ export function TiendasPage() {
     if (!selectedTienda) return;
     const p = parseFloat(row.peso);
     if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
+    const isCont = row.pkg === 'contenedor';
     const isChoc = row.pkg === 'chocolate';
     if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
-    const a  = isChoc ? 42 : (parseFloat(row.alto) || 0);
-    const aw = row.pkg === 'pallet' ? 100 : isChoc ? 56 : (parseFloat(row.ancho) || 0);
-    const l  = row.pkg === 'pallet' ? 120 : isChoc ? 80 : (parseFloat(row.largo) || 0);
-    const errores = isChoc ? [] : validarDimensiones(row.pkg, p, a, aw, l);
+    const a  = isCont ? 150 : isChoc ? 42  : (parseFloat(row.alto)  || 0);
+    const aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? 56 : (parseFloat(row.ancho) || 0);
+    const l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? 80 : (parseFloat(row.largo) || 0);
+    const errores = (isCont || isChoc) ? [] : validarDimensiones(row.pkg, p, a, aw, l);
     if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
     const currentItems = dispatchData[selectedTienda] || [];
     const pc  = currentItems.filter(i => i.pkg === 'pallet').length + 1;
     const bc  = currentItems.filter(i => i.pkg === 'box').length + 1;
+    const cc  = currentItems.filter(i => i.pkg === 'contenedor').length + 1;
     const chc = currentItems.filter(i => i.pkg === 'chocolate').length + 1;
-    const orden = row.pkg === 'pallet' ? `pallet${pc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
+    const orden = row.pkg === 'pallet' ? `pallet${pc}` : isCont ? `contenedor${cc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[currentItems.length]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor } });
@@ -812,7 +819,7 @@ export function TiendasPage() {
             <div className="grid grid-cols-2 gap-2 mb-2">
               {formRows.map((row, rowIdx) => {
                 /* Locked / saved card */
-                const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
+                const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
                 const pkgIdx   = formRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
                 const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
                 if (row.saved && row.savedItem) {
@@ -830,8 +837,9 @@ export function TiendasPage() {
                         </div>
                       </div>
                       <div className="text-[11px] text-text-2 space-y-0.5 mb-1.5">
-                        <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
+                        <div className="font-semibold">{row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}</div>
                         {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
+                        {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
                         {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
                         {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
                       </div>
@@ -844,10 +852,11 @@ export function TiendasPage() {
                 }
                 /* Active / unsaved card */
                 const isChocRow = row.pkg === 'chocolate';
-                const canSave = parseFloat(row.peso) > 0 && (isChocRow || (parseFloat(row.alto) > 0 &&
+                const isContRow = row.pkg === 'contenedor';
+                const canSave = parseFloat(row.peso) > 0 && (isChocRow || isContRow || (parseFloat(row.alto) > 0 &&
                   (row.pkg === 'pallet' || (parseFloat(row.ancho) > 0 && parseFloat(row.largo) > 0))));
                 return (
-                  <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                  <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: rowColor.text }}>
                         {rowLabel}
@@ -871,7 +880,7 @@ export function TiendasPage() {
                         <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
                           className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
                       </div>
-                      {!isChocRow && (
+                      {!isChocRow && !isContRow && (
                         <div>
                           <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
                           <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
@@ -891,6 +900,10 @@ export function TiendasPage() {
                           <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
                             className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
+                      </div>
+                    ) : isContRow ? (
+                      <div className="mb-1.5 text-[9px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>
+                        80 × 110 cm · alto 150 cm — fijo
                       </div>
                     ) : isChocRow ? (
                       <div className="mb-1.5 text-[9px] rounded px-1.5 py-1" style={{ color: '#92400E', background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.15)' }}>
@@ -922,28 +935,35 @@ export function TiendasPage() {
                     )}
                     <button onClick={() => saveRow(row)} disabled={!canSave}
                       className="w-full py-1.5 text-white border-none rounded font-barlow-condensed text-[12px] font-bold cursor-pointer disabled:opacity-30 transition-all"
-                      style={{ background: row.pkg === 'pallet' ? '#2563EB' : isChocRow ? '#92400E' : '#D97706' }}>
+                      style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
                       + Agregar
                     </button>
                   </div>
                 );
               })}
             </div>
-            <div className="flex gap-2 pb-1 flex-wrap">
+            <div className="grid grid-cols-4 gap-1.5 pb-1">
               <button onClick={() => addFormRow('pallet')}
-                className="flex-1 py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[12px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
+                className="py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
                 + Pallet
               </button>
               <button onClick={() => addFormRow('box')}
-                className="flex-1 py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[12px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
+                className="py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
                 + Bulto
               </button>
+              <button onClick={() => addFormRow('contenedor')}
+                className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
+                style={{ borderColor: 'rgba(107,33,168,0.4)', color: '#6B21A8', background: 'transparent' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(107,33,168,0.05)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                + Cont.
+              </button>
               <button onClick={() => addFormRow('chocolate')}
-                className="flex-1 py-2 border border-dashed rounded-btn font-barlow-condensed text-[12px] font-bold cursor-pointer transition-all"
+                className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
                 style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                + Choc.
+                + Choc. CH
               </button>
             </div>
           </div>
@@ -956,42 +976,34 @@ export function TiendasPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
         {presetBar}
+        {/* PDF compact strip — outside scroll */}
+        <div className="flex-shrink-0 px-2.5 py-1.5 border-b border-border flex items-center gap-2 bg-bg"
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type === 'application/pdf') handlePdfFile(f); }}>
+          <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
+          {pdfLoading
+            ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
+            : hasPdf
+              ? <>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[11px] text-success font-semibold truncate block">✓ {pdfInfo!.guias.length} guías · ${pdfInfo!.totalSum.toLocaleString('es-CL')} · {items.length + 1} items: ${Math.round(pdfInfo!.totalSum / (items.length + 1)).toLocaleString('es-CL')} c/u</span>
+                    <span className="text-[10px] text-success/60 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
+                  </div>
+                  <button onClick={clearPdf} className="text-[11px] text-text-3 hover:text-red cursor-pointer border border-border rounded px-1.5 py-0.5 flex-shrink-0 bg-white">✕ Quitar</button>
+                </>
+              : <button onClick={() => fileRef.current?.click()}
+                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-red hover:border-red cursor-pointer transition-all">
+                  Subir PDF guías
+                </button>
+          }
+        </div>
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
-          <SLabel>Guía PDF</SLabel>
-          <div
-            className={`border-2 rounded-card p-3 mb-1.5 text-center cursor-pointer bg-white transition-all text-[13px] ${hasPdf ? 'border-solid border-success bg-[rgba(22,163,74,0.04)]' : 'border-dashed border-border-2 hover:border-red hover:bg-[rgba(211,47,47,0.03)]'}`}
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type === 'application/pdf') handlePdfFile(f); }}
-            onClick={() => fileRef.current?.click()}>
-            <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
-            {hasPdf
-              ? <div className="text-success truncate">✓ <strong>{pdfInfo!.fileName}</strong></div>
-              : <div className="text-text-3"><strong className="text-red">Subir PDF</strong></div>}
-          </div>
-          {pdfLoading && <div className="flex items-center gap-2 text-info text-[13px] py-1"><div className="w-3 h-3 border-2 border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</div>}
-          {hasPdf && (
-            <div className="bg-white border border-success rounded-card px-2.5 py-2 mb-1.5 text-[12px]">
-              <div className="flex justify-between items-center"><span className="font-semibold text-success">{pdfInfo!.guias.length} guías · ${pdfInfo!.totalSum.toLocaleString('es-CL')}</span><button onClick={clearPdf} className="text-text-3 cursor-pointer bg-none border-none px-1">✕</button></div>
-              <div className="text-text-3 mt-0.5 font-mono truncate">{pdfInfo!.guias.map(g => g.num).join(', ')}</div>
-              <div className="text-text-3 mt-0.5">Con {items.length + 1} items: ${Math.round(pdfInfo!.totalSum / (items.length + 1)).toLocaleString('es-CL')} c/u</div>
-            </div>
-          )}
           {editingIdx !== null && (
             <div className="mt-2 bg-[rgba(37,99,235,0.07)] border border-[rgba(37,99,235,0.25)] rounded-card px-2.5 py-2 flex items-center justify-between">
               <span className="text-[13px] font-semibold text-info">Editando #{editingIdx + 1}</span>
               <button onClick={cancelEdit} className="text-[12px] text-text-3 cursor-pointer border-none bg-none hover:text-red">✕ Cancelar</button>
             </div>
           )}
-          <SLabel>Contenido</SLabel>
-          <div className="flex gap-1.5">
-            {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
-              <button key={t} onClick={() => setTipo(t)} disabled={currentPkg === 'box' && t !== 'hogar'}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed ${currentTipo === t ? TIPO_CLS[t] : 'border-border bg-white text-text-2'}`}>
-                {t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto'}
-              </button>
-            ))}
-          </div>
-          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">{currentPkg === 'chocolate' ? 'Chocolate siempre es Hogar' : 'Bulto siempre es Hogar'}</div>}
           <SLabel>Tipo</SLabel>
           <div className="flex gap-1.5 flex-wrap">
             {(['pallet', 'box', 'contenedor', 'chocolate'] as TipoPaquete[]).map(p => (
@@ -1008,6 +1020,16 @@ export function TiendasPage() {
               </button>
             ))}
           </div>
+          <SLabel>Contenido</SLabel>
+          <div className="flex gap-1.5">
+            {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
+              <button key={t} onClick={() => setTipo(t)} disabled={currentPkg === 'box' && t !== 'hogar'}
+                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed ${currentTipo === t ? TIPO_CLS[t] : 'border-border bg-white text-text-2'}`}>
+                {t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto'}
+              </button>
+            ))}
+          </div>
+          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">{currentPkg === 'chocolate' ? 'Chocolate siempre es Hogar' : 'Bulto siempre es Hogar'}</div>}
           <SLabel>Peso y dimensiones</SLabel>
           <div className="grid grid-cols-2 gap-1.5">
             <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder={currentPkg === 'chocolate' ? 'máx 25' : '500'} inputMode="decimal" className={inputCls} /></Field>
@@ -1043,27 +1065,6 @@ export function TiendasPage() {
               </>
             )}
           </div>
-          {!hasPdf ? (
-            <><SLabel>Guía y valor <span className="text-[10px] font-normal normal-case tracking-normal text-text-3/70 ml-1">(opcional — se asigna con PDF)</span></SLabel>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Field label="N° Guía"><input type="text" value={guia} onChange={e => setGuia(e.target.value)} placeholder="Cargar PDF →" inputMode="numeric" className={inputCls} /></Field>
-                <Field label="Total $"><input type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="Cargar PDF →" inputMode="decimal" className={inputCls} /></Field>
-              </div>
-            </>
-          ) : (
-            <><SLabel>Desde PDF (auto)</SLabel>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Field label="N° Guía">
-                  <input type="text" value={editingIdx !== null ? (items[editingIdx]?.guia || '—') : (nextGuiaAuto || '—')} readOnly className="bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.35)] rounded-btn px-2.5 py-2.5 text-success font-barlow text-[16px] outline-none w-full" />
-                  <div className="text-[11px] text-success mt-0.5">{editingIdx !== null ? 'Del PDF' : (nextGuiaAuto ? `${items.length + 1}/${pdfInfo!.guias.length}` : 'Sin guía')}</div>
-                </Field>
-                <Field label="Valor $">
-                  <input type="number" value={editingIdx !== null ? (items[editingIdx]?.valor || 0) : valorAuto} readOnly className="bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.35)] rounded-btn px-2.5 py-2.5 text-success font-barlow text-[16px] outline-none w-full" />
-                  <div className="text-[11px] text-success mt-0.5">Total ÷ items</div>
-                </Field>
-              </div>
-            </>
-          )}
           <div className="sticky bottom-0 z-10 mt-3 pb-4 pt-2"
             style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
             <button onClick={saveItem}
@@ -1077,6 +1078,25 @@ export function TiendasPage() {
               </button>
             )}
           </div>
+          {!hasPdf ? (
+            <><SLabel>Guía y valor <span className="text-[10px] font-normal normal-case tracking-normal text-text-3/70 ml-1">(opcional)</span></SLabel>
+              <div className="grid grid-cols-2 gap-1.5 mb-3">
+                <Field label="N° Guía"><input type="text" value={guia} onChange={e => setGuia(e.target.value)} placeholder="Manual" inputMode="numeric" className={inputCls} /></Field>
+                <Field label="Total $"><input type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="0" inputMode="decimal" className={inputCls} /></Field>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5 mb-3">
+              <Field label="N° Guía">
+                <input type="text" value={editingIdx !== null ? (items[editingIdx]?.guia || '—') : (nextGuiaAuto || '—')} readOnly className="bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.35)] rounded-btn px-2.5 py-2.5 text-success font-barlow text-[16px] outline-none w-full" />
+                <div className="text-[11px] text-success mt-0.5">{editingIdx !== null ? 'Del PDF' : (nextGuiaAuto ? `${items.length + 1}/${pdfInfo!.guias.length}` : 'Sin guía')}</div>
+              </Field>
+              <Field label="Valor $">
+                <input type="number" value={editingIdx !== null ? (items[editingIdx]?.valor || 0) : valorAuto} readOnly className="bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.35)] rounded-btn px-2.5 py-2.5 text-success font-barlow text-[16px] outline-none w-full" />
+                <div className="text-[11px] text-success mt-0.5">Total ÷ items</div>
+              </Field>
+            </div>
+          )}
           {items.length > 0 && (
             <div className="mt-3">
               <SLabel>Items ({items.length})</SLabel>
@@ -1300,31 +1320,44 @@ export function TiendasPage() {
           )}
         </div>
 
-        {/* Ver Resumen — mobile only */}
-        <div className="lg:hidden px-2 py-2 border-t border-border flex-shrink-0">
-          <button
-            onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
-            className="w-full py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:opacity-80"
-            style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
-            Ver Resumen →
-          </button>
-        </div>
-
-        {/* ENRUTADOR — desktop only */}
-        <div className="hidden lg:block px-2 py-2 border-t border-border flex-shrink-0">
-          <button
-            onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-full cursor-pointer transition-all active:opacity-70"
-            style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}>
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                 style={{
-                   background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
-                   boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
-                 }}>
-              <Navigation size={14} color="#fff" strokeWidth={2} />
-            </div>
-            <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>ENRUTADOR</span>
-          </button>
+        {/* Stats bar + actions */}
+        <div className="flex-shrink-0 bg-navy border-t-4 border-red">
+          <div className="flex">
+            {[
+              { v: statP, l: 'Pallets', color: '#93C5FD' },
+              { v: statB, l: 'Bultos',  color: '#FCD34D' },
+              { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
+            ].map(({ v, l, color }, i) => (
+              <div key={l} className={`flex-1 py-2.5 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
+                <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
+                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
+              </div>
+            ))}
+          </div>
+          <div className="px-3 pb-3 pt-1 flex gap-2">
+            {activeTiendasCount > 0 && (
+              <button
+                onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
+                className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
+                style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+                Ver resumen ({activeTiendasCount}) →
+              </button>
+            )}
+            <button
+              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
+              style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
+              title="Ir al Enrutador">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                   style={{
+                     background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
+                     boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
+                   }}>
+                <Navigation size={14} color="#fff" strokeWidth={2} />
+              </div>
+              <span className="hidden lg:inline font-barlow-condensed text-[15px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>Enrutador</span>
+            </button>
+          </div>
         </div>
       </div>
 
