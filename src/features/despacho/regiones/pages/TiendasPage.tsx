@@ -84,14 +84,19 @@ interface GridCardProps {
   palletCount: number;
   contenedorCount: number;
   chocolateCount: number;
+  pickingP?: number;
+  pickingB?: number;
+  pickingC?: number;
+  pickingCH?: number;
   preset?: { pallets: number; bultos: number };
   hasPdf?: boolean;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
+  const hasGhost = pickingP > 0 || pickingB > 0 || pickingC > 0 || pickingCH > 0;
   return (
     <div
       draggable={!!onDragStart}
@@ -113,19 +118,18 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         {t.name}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {palletCount > 0 && (
-          <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>
-        )}
-        {boxCount > 0 && (
-          <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>
-        )}
-        {contenedorCount > 0 && (
-          <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>
-        )}
-        {chocolateCount > 0 && (
-          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>
-        )}
-        {preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
+        {/* Ghost badges: picking data (siempre visibles si existen) */}
+        {pickingP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{pickingP}P</span>}
+        {pickingB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{pickingB}B</span>}
+        {pickingC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{pickingC}C</span>}
+        {pickingCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{pickingCH}CH</span>}
+        {/* Solid badges: items ingresados en despacho */}
+        {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
+        {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
+        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
+        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>}
+        {/* Preset fallback (solo cuando no hay picking ni items) */}
+        {!hasGhost && preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
           <span className="text-[11px] text-text-3/50 leading-none">
             {[preset.pallets > 0 ? `${preset.pallets}P` : '', preset.bultos > 0 ? `${preset.bultos}B` : ''].filter(Boolean).join(' ')}
           </span>
@@ -1192,6 +1196,7 @@ export function TiendasPage() {
               <div className="grid grid-cols-3 gap-1 p-1.5">
                 {today.map(t => {
                   const cardItems = dispatchData[t.name] || [];
+                  const pkSlots   = pickingSlots[t.name] ?? [];
                   return (
                     <TiendaGridCard key={t.name} name={t.name}
                       isActive={selectedTienda === t.name} isToday
@@ -1199,6 +1204,10 @@ export function TiendasPage() {
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                       contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                       chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
+                      pickingP={pkSlots.filter(s => s.tipo === 'P').length}
+                      pickingB={pkSlots.filter(s => s.tipo === 'B').length}
+                      pickingC={pkSlots.filter(s => s.tipo === 'C').length}
+                      pickingCH={pkSlots.filter(s => s.tipo === 'CH').length}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
                       onSelect={() => select(t.name)}
@@ -1234,6 +1243,7 @@ export function TiendasPage() {
                 <div className="grid grid-cols-3 gap-1 p-1.5">
                   {others.map(t => {
                     const cardItems = dispatchData[t.name] || [];
+                    const pkSlots   = pickingSlots[t.name] ?? [];
                     return (
                       <TiendaGridCard key={t.name} name={t.name}
                         isActive={selectedTienda === t.name} isToday={false}
@@ -1241,6 +1251,10 @@ export function TiendasPage() {
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                         contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                         chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
+                        pickingP={pkSlots.filter(s => s.tipo === 'P').length}
+                        pickingB={pkSlots.filter(s => s.tipo === 'B').length}
+                        pickingC={pkSlots.filter(s => s.tipo === 'C').length}
+                        pickingCH={pkSlots.filter(s => s.tipo === 'CH').length}
                         hasPdf={!!state.pdfData[t.name]}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />

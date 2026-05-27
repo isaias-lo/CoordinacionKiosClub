@@ -89,12 +89,10 @@ function TiendaGridCard({
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }) {
-  const boxCount     = itemCount - palletCount - contenedorCount - chocolateCount;
-  const hasItems     = itemCount > 0;
-  const expP         = despachoP ?? 0;
-  const expB         = despachoB ?? 0;
-  const expC         = despachoC ?? 0;
-  const showExpected = !hasItems && (expP > 0 || expB > 0 || expC > 0);
+  const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
+  const expP     = despachoP ?? 0;
+  const expB     = despachoB ?? 0;
+  const expC     = despachoC ?? 0;
   return (
     <div
       onClick={onSelect}
@@ -124,20 +122,15 @@ function TiendaGridCard({
         {t.tienda}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {hasItems ? (
-          <>
-            {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
-            {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
-            {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
-            {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
-          </>
-        ) : showExpected ? (
-          <>
-            {expP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/20">{expP}P</span>}
-            {expB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/20">{expB}B</span>}
-            {expC > 0 && <span className="text-[11px] font-bold text-[#6B21A8]/40 bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.20)]">{expC}C</span>}
-          </>
-        ) : null}
+        {/* Ghost badges: picking (siempre visibles si existen) */}
+        {expP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{expP}P</span>}
+        {expB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{expB}B</span>}
+        {expC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{expC}C</span>}
+        {/* Solid badges: items ingresados en despacho */}
+        {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
+        {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
+        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
+        {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
       </div>
     </div>
   );
@@ -500,7 +493,10 @@ export function StepForm() {
   const statP              = allItems.filter(i => i.tipo === 'Pallet').length;
   const statB              = allItems.filter(i => i.tipo === 'Bulto').length;
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
-  const activeTiendas      = Object.entries(items).filter(([, it]) => it.length > 0);
+  const activeTiendas      = [
+    ...allTodayCods.filter(c => (items[c] || []).length > 0).map(c => [c, items[c]] as [string, typeof items[string]]),
+    ...Object.entries(items).filter(([c, it]) => it.length > 0 && !allTodayCods.includes(c)),
+  ];
   const tiendaItems        = currentTienda ? (items[currentTienda.cod] || []) : [];
   const tiendaPallets      = tiendaItems.filter(i => i.tipo === 'Pallet').length;
   const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;

@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import { GripVertical } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { buildRows, exportToTemplate } from '../utils/exportUtils';
-import { TIENDAS } from '../data/tiendas';
+import { TIENDAS, getTodayTiendas } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
@@ -65,7 +65,11 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
   const [editGuia,  setEditGuia]  = useState('');
   const [editValor, setEditValor] = useState('');
 
-  const names = Object.keys(dispatchData).filter(n => dispatchData[n].length > 0);
+  const todayOrder = getTodayTiendas();
+  const names = [
+    ...todayOrder.filter(n => dispatchData[n]?.length > 0),
+    ...Object.keys(dispatchData).filter(n => dispatchData[n].length > 0 && !todayOrder.includes(n)),
+  ];
   const stats = names.reduce((a, n) => {
     (dispatchData[n] || []).forEach(i => {
       if (i.pkg === 'pallet') a.pallets++;
