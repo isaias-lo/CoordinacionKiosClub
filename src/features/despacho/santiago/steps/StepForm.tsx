@@ -271,6 +271,9 @@ export function StepForm() {
   const [sheetsTodayGrouped, setSheetsTodayGrouped] = useState<{ rm: string[]; costa: string[] }>(getCalendarioSantiagoInicialHoy);
   const [selectedGrps, setSelectedGrps] = useState<Set<'rm' | 'costa'>>(new Set(['rm']));
 
+  /* Dynamic tiendas from Supabase (merged with static at runtime) */
+  const [supabaseTiendasMap, setSupabaseTiendasMap] = useState<Record<string, TiendaSantiago>>({});
+
   /* ── Sincronización de guías PDF con Supabase ── */
   useEffect(() => {
     function applyRemoteGuides(remote: unknown) {
@@ -304,7 +307,7 @@ export function StepForm() {
     if (!files.length) return;
     setGuideUploading(true);
     const codMap: Record<string, string> = {};
-    TIENDAS_SANTIAGO.forEach(t => { codMap[t.cod] = t.cod; });
+    Object.values(tiendaByCod).forEach(t => { codMap[t.cod] = t.cod; });
     const newGuides = { ...guides };
     let assigned = 0, skipped = 0;
     for (const file of Array.from(files)) {
@@ -361,6 +364,38 @@ export function StepForm() {
         setSheetsTodayGrouped(grouped);
       }
     });
+  }, []);
+
+  /* Load dynamic tiendas from Supabase (once on mount) */
+  useEffect(() => {
+    fetch('/api/tiendas')
+      .then(r => r.json())
+      .then(({ tiendas: data }: { tiendas: Array<Record<string, unknown>> }) => {
+        if (!Array.isArray(data)) return;
+        const map: Record<string, TiendaSantiago> = {};
+        for (const t of data) {
+          const cod = String(t.codigo ?? '');
+          if (!cod || t.activo === false) continue;
+          const corredor = String(t.corredor ?? '').toLowerCase();
+          const region   = String(t.region   ?? '').toLowerCase();
+          const isVR     = corredor.includes('costa') || region.includes('valparaíso') || region === 'vr';
+          const raw      = String(t.frecuencia ?? '');
+          const dias     = raw ? raw.split(/[,;\s]+/).map(d => d.trim().toUpperCase()).filter(Boolean) : [];
+          const tipoVal  = String(t.tipo ?? '');
+          map[cod] = {
+            cod,
+            tienda:         String(t.nombre       ?? ''),
+            region:         isVR ? 'VR' : 'RM',
+            direccion:      String(t.direccion    ?? ''),
+            comuna:         String(t.sector_comuna ?? ''),
+            tipo:           (tipoVal === 'MALL' ? 'MALL' : 'STRIPCENTER') as 'MALL' | 'STRIPCENTER',
+            ventanaHoraria: String(t.ventana      ?? ''),
+            diasDespacho:   dias,
+          };
+        }
+        setSupabaseTiendasMap(map);
+      })
+      .catch(() => {});
   }, []);
 
   /* Despacho ↔ Santiago bidirectional sync */
@@ -448,10 +483,10 @@ export function StepForm() {
   const baseTodayCods   = sheetsAllCods.length > 0 ? sheetsAllCods : localTodayCods;
   const allTodayCods    = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
-  // Orden determinado por allTodayCods (CAL_INICIAL / Despacho) — no por TIENDAS_SANTIAGO
-  const tiendaByCod     = Object.fromEntries(TIENDAS_SANTIAGO.map(t => [t.cod, t]));
+  // Static takes priority over Supabase (more carefully maintained)
+  const tiendaByCod     = { ...supabaseTiendasMap, ...Object.fromEntries(TIENDAS_SANTIAGO.map(t => [t.cod, t])) };
   const todayTiendas    = allTodayCods.map(c => tiendaByCod[c]).filter((t): t is TiendaSantiago => !!t);
-  const filtered        = TIENDAS_SANTIAGO.filter(t => {
+  const filtered        = Object.values(tiendaByCod).filter(t => {
     const inGrp = t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm');
     if (!inGrp) return false;
     const q = search.toLowerCase();
@@ -519,13 +554,13 @@ export function StepForm() {
 
   /* ── Calendar actions ── */
   const addToToday = (name: string) => {
-    const t = TIENDAS_SANTIAGO.find(t => t.tienda === name); if (!t) return;
+    const t = Object.values(tiendaByCod).find(t => t.tienda === name); if (!t) return;
     const next = [...extraCods, t.cod];
     setExtraCods(next); localStorage.setItem(EXTRA_KEY, JSON.stringify(next));
     showToast(`✓ ${t.tienda} agregada a hoy`, '#16A34A');
   };
   const removeFromToday = (name: string) => {
-    const t = TIENDAS_SANTIAGO.find(t => t.tienda === name); if (!t) return;
+    const t = Object.values(tiendaByCod).find(t => t.tienda === name); if (!t) return;
     const newExtra   = extraCods.filter(c => c !== t.cod);
     const newRemoved = [...removedCods, t.cod];
     setExtraCods(newExtra);     localStorage.setItem(EXTRA_KEY,   JSON.stringify(newExtra));
@@ -1750,10 +1785,10 @@ export function StepForm() {
             )}
           </div>
           {/* Chips de guías cargadas (solo tiendas Santiago) */}
-          {Object.keys(guides).filter(cod => TIENDAS_SANTIAGO.some(t => t.cod === cod)).length > 0 && (
+          {Object.keys(guides).filter(cod => cod in tiendaByCod).length > 0 && (
             <div className="px-3 py-2 flex gap-1.5 flex-wrap">
               {Object.entries(guides)
-                .filter(([cod]) => TIENDAS_SANTIAGO.some(t => t.cod === cod))
+                .filter(([cod]) => cod in tiendaByCod)
                 .map(([cod, g]) => (
                   <span key={cod} className="flex items-center gap-1.5 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.25)] rounded-full px-2.5 py-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
@@ -1763,7 +1798,7 @@ export function StepForm() {
                 ))}
             </div>
           )}
-          {Object.keys(guides).filter(cod => TIENDAS_SANTIAGO.some(t => t.cod === cod)).length === 0 && <div className="pb-2" />}
+          {Object.keys(guides).filter(cod => cod in tiendaByCod).length === 0 && <div className="pb-2" />}
         </div>
 
         {renderStoreGrid()}

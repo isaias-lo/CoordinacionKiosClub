@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../components/AuthProvider';
 import Header         from './components/Header';
@@ -442,6 +442,25 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, cal]);
 
+  // ── Sorted calT — preserves CALENDARIO group order (rm → costa → fal) ──
+  const sortedCalT = useMemo(() => {
+    const dia    = getDia(fecha);
+    const calDia = cal[dia] || cal.LU || {};
+    const canonical: string[] = [
+      ...((calDia as Record<string, string[]>).rm    || []),
+      ...((calDia as Record<string, string[]>).costa || []),
+      ...((calDia as Record<string, string[]>).fal   || []),
+    ];
+    const result: Record<string, CalData> = {};
+    canonical.forEach(c => { if (calT[c]) result[c] = calT[c]; });
+    const groupOrder: Record<string, number> = { rm: 0, costa: 1, fal: 2 };
+    const extras = Object.keys(calT)
+      .filter(c => !result[c])
+      .sort((a, b) => (groupOrder[calT[a].g || 'rm'] ?? 0) - (groupOrder[calT[b].g || 'rm'] ?? 0));
+    extras.forEach(c => { result[c] = calT[c]; });
+    return result;
+  }, [calT, cal, fecha]);
+
   // ── Calendar handlers ─────────────────────────────────────────────
   function handleToggleGroup(gid: string) {
     setGrps(prev => {
@@ -836,7 +855,7 @@ export default function RutasScreen() {
           ) : (
             <InputSection
               flota={flota} conductores={conductores}
-              modo={modo} grps={grps} calT={calT}
+              modo={modo} grps={grps} calT={sortedCalT}
               supervisor={supervisor} fecha={fecha}
               manualText={manualText} errors={errors}
               dnom={DNOM}
