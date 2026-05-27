@@ -122,6 +122,7 @@ function catsToTipo(cats: string): TipoAuditoria {
   if (c && a && h) return 'completo';
   if (c && a) return 'comida-aseo';
   if (a && h) return 'aseo-hogar';
+  if (c && h) return 'completo'; // no existe 'comida-hogar', se trata como completo
   if (c) return 'comida';
   if (a) return 'aseo';
   if (h) return 'hogar';
@@ -341,27 +342,46 @@ function LineChart({ trends, selectedPickers }: { trends: Map<string, WeekTrend[
 }
 
 /* ── Operacion Input ── */
+const OP_PREFIX = '99REC/DT/';
 interface OpSearch { loading: boolean; results: OperacionOdoo[]; open: boolean; error: string }
-function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNeedConfig }: {
+function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig, onNeedConfig, pickerLabel }: {
   subTipo: SubTipo; codigo: string; onChange: (v: string) => void;
   onSelect?: (codigo: string, responsable: string | undefined) => void;
   odooConfig: OdooConfig; onNeedConfig: () => void;
+  pickerLabel?: string;
 }) {
   const [s, setS] = useState<OpSearch>({ loading: false, results: [], open: false, error: '' });
+  // Show only the 5-digit suffix; the prefix is fixed
+  const digits = codigo.startsWith(OP_PREFIX) ? codigo.slice(OP_PREFIX.length) : codigo;
+  const fullCodigo = digits ? `${OP_PREFIX}${digits}` : '';
   const buscar = async () => {
     if (!odooConfig.url) { onNeedConfig(); return; }
+    if (!fullCodigo) return;
     setS({ loading: true, results: [], open: false, error: '' });
-    try { const ops = await buscarOperaciones(odooConfig, codigo); setS({ loading: false, results: ops, open: ops.length > 0, error: ops.length ? '' : 'Sin resultados' }); }
+    try { const ops = await buscarOperaciones(odooConfig, fullCodigo); setS({ loading: false, results: ops, open: ops.length > 0, error: ops.length ? '' : 'Sin resultados' }); }
     catch (e) { setS({ loading: false, results: [], open: false, error: e instanceof Error ? e.message : 'Error' }); }
   };
   const select = (op: OperacionOdoo) => { onChange(op.name); onSelect?.(op.name, op.responsable); setS({ loading: false, results: [], open: false, error: '' }); };
   return (
     <div className="mb-2.5">
-      <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1.5">Op. {SUBTIPO_LABEL[subTipo]}</div>
+      <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1.5 flex items-center gap-2">
+        Op. {SUBTIPO_LABEL[subTipo]}
+        {pickerLabel && <span className="normal-case tracking-normal text-[10px] font-semibold text-info bg-[rgba(37,99,235,0.08)] px-1.5 py-0.5 rounded-full">{pickerLabel}</span>}
+      </div>
       <div className="flex gap-2">
-        <input type="text" value={codigo} onChange={e => { onChange(e.target.value.toUpperCase()); setS(p => ({ ...p, open: false })); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="WH/OUT/00000"
-          className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2.5 font-mono text-[14px] outline-none focus:border-navy uppercase placeholder:normal-case placeholder:font-barlow placeholder:text-text-3 [-webkit-appearance:none]" />
-        <button onClick={buscar} disabled={s.loading} className="px-3 py-2.5 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.25)' }}>
+        {/* Prefix shown as static badge + only 5-digit input */}
+        <div className="flex-1 flex items-center bg-white border-[1.5px] border-border rounded-btn overflow-hidden focus-within:border-navy" style={{ boxShadow: '0 1px 3px rgba(26,37,80,0.06)' }}>
+          <span className="px-2.5 py-2.5 font-mono text-[13px] text-text-3 bg-bg border-r border-border select-none flex-shrink-0">{OP_PREFIX}</span>
+          <input
+            type="text" inputMode="numeric" maxLength={5}
+            value={digits}
+            onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 5); onChange(v ? `${OP_PREFIX}${v}` : ''); setS(p => ({ ...p, open: false })); }}
+            onKeyDown={e => e.key === 'Enter' && buscar()}
+            placeholder="12345"
+            className="flex-1 bg-transparent px-2 py-2.5 font-mono text-[15px] font-bold outline-none [-webkit-appearance:none] placeholder:text-text-3 placeholder:font-normal placeholder:text-[13px]"
+          />
+        </div>
+        <button onClick={buscar} disabled={s.loading || !fullCodigo} className="px-3 py-2.5 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.25)' }}>
           {s.loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
         </button>
       </div>
@@ -527,6 +547,7 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
   const [errorMsg,  setErrorMsg]  = useState('');
   const [hasTorch,  setHasTorch]  = useState(false);
   const [torchOn,   setTorchOn]   = useState(false);
+  const [wideMode,  setWideMode]  = useState(false);
 
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -648,6 +669,12 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
         <span className="text-white font-bold text-[15px] flex-1">Escanear código del pallet</span>
         {status === 'scanning' && (
           <div className="flex items-center gap-2">
+            <button onClick={() => setWideMode(w => !w)}
+              className="w-9 h-9 rounded-full border flex items-center justify-center text-[14px] cursor-pointer"
+              style={{ borderColor: wideMode ? '#60A5FA' : 'rgba(255,255,255,0.25)', background: wideMode ? 'rgba(96,165,250,0.2)' : 'transparent' }}
+              title={wideMode ? 'Modo normal' : 'Modo amplio (código grande)'}>
+              {wideMode ? '⊡' : '⊞'}
+            </button>
             {hasTorch && (
               <button onClick={() => void toggleTorch()}
                 className="w-9 h-9 rounded-full border flex items-center justify-center text-[18px] cursor-pointer"
@@ -689,13 +716,18 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
         <div className="flex-1 relative overflow-hidden">
           <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
 
-          {/* Viewfinder — wide for CODE128 (full A4-width barcodes) */}
+          {/* Viewfinder — adjusts between normal and wide mode for large CODE128 barcodes */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
-            style={{ background: 'rgba(0,0,0,0.45)' }}>
+            style={{ background: `rgba(0,0,0,${wideMode ? '0.2' : '0.45'})` }}>
             <div className="relative bg-transparent"
-              style={{ width: '88%', maxWidth: 440, height: 200, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}>
+              style={{
+                width: wideMode ? '96%' : '88%',
+                maxWidth: wideMode ? 640 : 440,
+                height: wideMode ? 320 : 200,
+                boxShadow: `0 0 0 9999px rgba(0,0,0,${wideMode ? '0.2' : '0.45'})`,
+              }}>
               {[['top-0 left-0','border-t-[3px] border-l-[3px]'],['top-0 right-0','border-t-[3px] border-r-[3px]'],['bottom-0 left-0','border-b-[3px] border-l-[3px]'],['bottom-0 right-0','border-b-[3px] border-r-[3px]']].map(([pos, borders]) => (
-                <div key={pos} className={`absolute w-8 h-8 border-white ${pos} ${borders}`} />
+                <div key={pos} className={`absolute w-8 h-8 ${wideMode ? 'border-blue-400' : 'border-white'} ${pos} ${borders}`} />
               ))}
               {status === 'scanning' && (
                 <div className="absolute inset-x-0 h-0.5 bg-red-400/90"
@@ -703,11 +735,16 @@ function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => bo
               )}
             </div>
             <div className="mt-4 text-white/80 text-[13px] font-medium px-6 text-center">
-              Centra el código dentro del marco
+              {wideMode ? 'Modo amplio — código grande (70% hoja)' : 'Centra el código dentro del marco'}
             </div>
             <div className="mt-1 text-white/50 text-[11px] px-6 text-center">
-              Si el código es muy grande, aleja el celular ~25–35 cm
+              {wideMode ? 'Aleja el celular ~30–40 cm del código' : 'Si el código es muy grande, aleja el celular ~25–35 cm'}
             </div>
+            {wideMode && (
+              <div className="mt-2 px-3 py-1 rounded-full text-[10px] font-semibold text-blue-300 border border-blue-400/40 bg-blue-400/10">
+                ⊞ Modo amplio activo
+              </div>
+            )}
           </div>
 
           {/* Photo fallback button — always visible at bottom */}
@@ -910,12 +947,17 @@ function PickerOdooDisplay({ picker, odooDetected, onClear }: {
       </div>
     );
   }
+  const parts = picker.split(' + ');
   return (
     <div className="w-full bg-white border border-border rounded-btn px-3 py-3 flex items-center gap-3"
       style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-      <span className="font-mono text-[13px] font-bold text-navy bg-[rgba(26,37,80,0.07)] px-2.5 py-1 rounded">
-        {picker.replace('Pickers ', 'P.')}
-      </span>
+      <div className="flex flex-wrap gap-1.5 flex-shrink-0">
+        {parts.map((p, i) => (
+          <span key={i} className="font-mono text-[13px] font-bold text-navy bg-[rgba(26,37,80,0.07)] px-2.5 py-1 rounded">
+            {p.replace(/Pickers\s+/gi, 'P.')}
+          </span>
+        ))}
+      </div>
       {odooDetected && (
         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">
           Odoo ✓
@@ -1793,6 +1835,69 @@ function MobileMenu({ onClose, onNavigate, onlyHistory = false }: {
   );
 }
 
+/* ── Single-pass photo processor: compress + quality-check + preview in one image load ──
+   Loads the original file only once into memory, derives quality warning from original
+   dimensions (before scaling), compresses to JPEG 1280px/80%, and returns a preview URL
+   from the compressed blob. This avoids the 3x memory spike that crashes low-RAM devices. ── */
+interface ProcessedPhoto {
+  compressed: File;
+  previewUrl: string;
+  warning: string;
+}
+async function processPhoto(file: File, maxDim = 1280, quality = 0.80): Promise<ProcessedPhoto> {
+  // createImageBitmap respects EXIF orientation (iOS Safari 15+, Chrome 83+, Firefox 90+).
+  // Fallback to <img> decode for older browsers that don't support it.
+  let bitmapSource: ImageBitmap | null = null;
+  let nativeW = 0, nativeH = 0;
+  try {
+    bitmapSource = await createImageBitmap(file);
+    nativeW = bitmapSource.width; nativeH = bitmapSource.height;
+  } catch {
+    // Fallback: decode via <img> (no EXIF correction on very old Safari)
+    await new Promise<void>(res => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => { nativeW = img.naturalWidth; nativeH = img.naturalHeight; URL.revokeObjectURL(url); res(); };
+      img.onerror = () => { URL.revokeObjectURL(url); res(); };
+      img.src = url;
+    });
+    if (!nativeW) return { compressed: file, previewUrl: URL.createObjectURL(file), warning: '' };
+  }
+
+  const minDim = Math.min(nativeW, nativeH);
+  const warning =
+    minDim < 400 ? 'Foto muy pequeña — puede ser ilegible' :
+    minDim < 700 ? 'Resolución baja — intenta acercarte' : '';
+
+  const scale = Math.min(1, maxDim / Math.max(nativeW, nativeH));
+  const w = Math.round(nativeW * scale);
+  const h = Math.round(nativeH * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  if (bitmapSource) {
+    ctx.drawImage(bitmapSource, 0, 0, w, h);
+    bitmapSource.close(); // free GPU memory
+  } else {
+    // Fallback img path — draw via <img> element
+    await new Promise<void>(res => {
+      const img2 = new Image();
+      const url2 = URL.createObjectURL(file);
+      img2.onload = () => { ctx.drawImage(img2, 0, 0, w, h); URL.revokeObjectURL(url2); res(); };
+      img2.onerror = () => { URL.revokeObjectURL(url2); res(); };
+      img2.src = url2;
+    });
+  }
+
+  return new Promise(resolve => {
+    canvas.toBlob(blob => {
+      if (!blob) { resolve({ compressed: file, previewUrl: URL.createObjectURL(file), warning }); return; }
+      const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+      resolve({ compressed, previewUrl: URL.createObjectURL(blob), warning });
+    }, 'image/jpeg', quality);
+  });
+}
+
 /* ════════════════════════════════════════
    MAIN SCREEN
 ════════════════════════════════════════ */
@@ -1828,18 +1933,30 @@ export function AuditoriaScreen() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError,   setHistoryError]   = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const draftEntryIdRef    = useRef<string>('');
   const [palletFiles,      setPalletFiles]      = useState<Record<string, File>>({});
   const [palletPreviews,   setPalletPreviews]   = useState<Record<string, string>>({});
+  const [palletWarnings,   setPalletWarnings]   = useState<Record<string, string>>({});
+  const [palletStorageUrls,setPalletStorageUrls]= useState<Record<string, string>>({});
   const [fotoFiles,        setFotoFiles]        = useState<File[]>([]);
   const [fotoPreviews,     setFotoPreviews]     = useState<string[]>([]);
+  const [fotoWarnings,     setFotoWarnings]     = useState<string[]>([]);
+  const [fotoStorageUrls,  setFotoStorageUrls]  = useState<string[]>([]);
+  const [fotoStoragePaths, setFotoStoragePaths] = useState<string[]>([]);
   const [errorFotoFiles,   setErrorFotoFiles]   = useState<File[]>([]);
   const [errorFotoPreviews,setErrorFotoPreviews]= useState<string[]>([]);
+  const [errorFotoWarnings,setErrorFotoWarnings]= useState<string[]>([]);
+  const [errorFotoStorageUrls, setErrorFotoStorageUrls] = useState<string[]>([]);
+  const [errorFotoStoragePaths,setErrorFotoStoragePaths]= useState<string[]>([]);
+  const [lightboxUrl,      setLightboxUrl]      = useState<string | null>(null);
   const [submitting,       setSubmitting]       = useState(false);
+  const [uploadProgress,   setUploadProgress]   = useState('');
   const [pickerNombre,   setPickerNombre]   = useState('');
   const [pickerNombresList, setPickerNombresList] = useState<string[]>([]);
   const [auditorList,       setAuditorList]       = useState<string[]>([]);
   const [odooAutoDetected, setOdooAutoDetected] = useState(false);
   const [confirmSubmit,    setConfirmSubmit]    = useState(false);
+  const [confirmCancel,    setConfirmCancel]    = useState(false);
   const [tipoPending,      setTipoPending]      = useState<TipoAuditoria | null>(null);
   const [isOnline,         setIsOnline]         = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [cameraOpen,          setCameraOpen]          = useState(false);
@@ -1847,13 +1964,19 @@ export function AuditoriaScreen() {
   const [crossDeviceRestored, setCrossDeviceRestored] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const palletsInputRef = useRef<HTMLInputElement>(null);
-  const pendingScanRef  = useRef<string[] | null>(null);
+  const pendingScanRef  = useRef<OperacionEntry[] | null>(null);
+  const [palletIdInput,   setPalletIdInput]   = useState('');
+  const [palletIdLoading, setPalletIdLoading] = useState(false);
+  const [palletIdError,   setPalletIdError]   = useState('');
+  const [showPalletId2,   setShowPalletId2]   = useState(false);
+  const [palletIdInput2,  setPalletIdInput2]  = useState('');
+  const [palletIdError2,  setPalletIdError2]  = useState('');
+  const [pickerNombres,   setPickerNombres]   = useState<string[]>([]);
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
   const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [auditStartTime, setAuditStartTime] = useState('');
-  const [auditDurationSeconds, setAuditDurationSeconds] = useState(0);
   const timerIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const auditStartTimeRef  = useRef('');
   auditStartTimeRef.current = auditStartTime;
@@ -1911,15 +2034,21 @@ export function AuditoriaScreen() {
       setHistoryLoading(false);
     }
   };
-  // Realtime: re-fetch history whenever any audit_entries row changes
+  // Realtime: re-fetch history whenever any audit_entries row changes (debounced 1.5 s to absorb bursts)
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel('auditoria-screen-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_entries' }, () => {
-        if (viewInit) loadHistory();
+        if (!viewInit) return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => { loadHistory(); }, 1500);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewInit]);
 
@@ -1946,18 +2075,15 @@ export function AuditoriaScreen() {
   }, [authLoading, profile?.full_name]);
 
   useEffect(() => {
-    const codes = pendingScanRef.current;
+    const pending = pendingScanRef.current;
     pendingScanRef.current = null;
-    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => ({ subTipo: st, codigo: codes?.[i] ?? '' })));
+    setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => pending?.[i] ?? { subTipo: st, codigo: '' }));
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
-    setPalletFiles({});
-    setPalletPreviews({});
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setFotoFiles([]);
-    setFotoPreviews([]);
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]); setFotoStorageUrls([]); setFotoStoragePaths([]);
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setErrorFotoFiles([]);
-    setErrorFotoPreviews([]);
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
@@ -1972,6 +2098,15 @@ export function AuditoriaScreen() {
     document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const getDraftEntryId = () => {
+    if (!draftEntryIdRef.current) draftEntryIdRef.current = `AUD-${Date.now()}`;
+    return draftEntryIdRef.current;
+  };
+  const deleteStoragePath = (path: string) => {
+    if (!path || !user) return;
+    void supabase.storage.from('audit-photos').remove([path]).then(() => {}, () => {});
+  };
+
   // ── Persistent session: save to localStorage + Supabase (cross-device sync) ──
   const saveSession = useCallback(() => {
     const uid = user?.id;
@@ -1981,9 +2116,12 @@ export function AuditoriaScreen() {
       return;
     }
     const data = {
-      formPhase, auditStartTime, auditor, pickerNombre, picker,
+      formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker,
       tiendaCod: tienda?.cod ?? null, tipo, operaciones, pallets,
       tieneErrores, tiposError, productos, observaciones,
+      draftEntryId: draftEntryIdRef.current,
+      palletStorageUrls, fotoStorageUrls, fotoStoragePaths,
+      errorFotoStorageUrls, errorFotoStoragePaths,
       savedAt: new Date().toISOString(),
     };
     try { localStorage.setItem(sessionKey(uid), JSON.stringify(data)); } catch { /* storage full */ }
@@ -1993,14 +2131,14 @@ export function AuditoriaScreen() {
         .upsert({ user_id: uid, session_data: data, updated_at: new Date().toISOString() })
         .then(() => {}, () => {});
     }
-  }, [formPhase, auditStartTime, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, user?.id]);
+  }, [formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, palletStorageUrls, fotoStorageUrls, fotoStoragePaths, errorFotoStorageUrls, errorFotoStoragePaths, user?.id]);
 
   // Autosave every 2 s when setup/execution is active (localStorage + Supabase)
   useEffect(() => {
     if (formPhase !== 'execution' && formPhase !== 'setup') return;
     const handle = setTimeout(saveSession, 2000);
     return () => clearTimeout(handle);
-  }, [formPhase, auditor, pickerNombre, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
+  }, [formPhase, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
 
   // Save immediately when tab is hidden (user switches app)
   useEffect(() => {
@@ -2043,42 +2181,9 @@ export function AuditoriaScreen() {
     return () => document.removeEventListener('visibilitychange', reacquire);
   }, [formPhase]);
 
-  // Restore session on mount (before auth-fill effects) — reads legacy global key
+  // Legacy global key cleanup: remove any old unscoped session so it doesn't leak between users
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AUDIT_SESSION_KEY);
-      if (!raw) return;
-      type Sess = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; };
-      const s = JSON.parse(raw) as Sess;
-      if (!s.savedAt) return;
-      if (Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) { localStorage.removeItem(AUDIT_SESSION_KEY); return; }
-      if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
-      if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
-      if (s.picker)         setPicker(s.picker);
-      if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
-      if (s.tipo)           setTipo(s.tipo);
-      if (s.operaciones?.length) setOperaciones(s.operaciones);
-      if (s.pallets)        setPallets(s.pallets);
-      if (s.tieneErrores !== undefined) setTieneErrores(s.tieneErrores ?? null);
-      if (s.tiposError?.length) setTiposError(s.tiposError);
-      if (s.productos?.length)  setProductos(s.productos);
-      if (s.observaciones)  setObservaciones(s.observaciones);
-      if (s.formPhase === 'execution' || s.formPhase === 'setup') {
-        setFormPhase(s.formPhase as 'execution' | 'setup');
-        if (s.formPhase === 'execution' && s.auditStartTime) {
-          auditStartTimeRef.current = s.auditStartTime;
-          setAuditStartTime(s.auditStartTime);
-          const elapsed = Math.floor((Date.now() - new Date(s.auditStartTime).getTime()) / 1000);
-          setTimerSeconds(Math.max(0, elapsed));
-          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          timerIntervalRef.current = setInterval(() => {
-            const e = Math.floor((Date.now() - new Date(auditStartTimeRef.current).getTime()) / 1000);
-            setTimerSeconds(Math.max(0, e));
-          }, 1000);
-          setSessionRestored(true);
-        }
-      }
-    } catch { /* corrupt data */ }
+    try { localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2088,12 +2193,13 @@ export function AuditoriaScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     if (formPhase !== 'scan') return; // don't override an already-active session
 
-    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; };
+    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; pickerNombres?: string[]; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; draftEntryId?: string; palletStorageUrls?: Record<string, string>; fotoStorageUrls?: string[]; fotoStoragePaths?: string[]; errorFotoStorageUrls?: string[]; errorFotoStoragePaths?: string[]; };
 
     const applySD = (s: SD, isCrossDevice: boolean) => {
       if (!s.savedAt || Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) return false;
       if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
       if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
+      if (s.pickerNombres?.length) setPickerNombres(s.pickerNombres);
       if (s.picker)         setPicker(s.picker);
       if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
       if (s.tipo)           setTipo(s.tipo);
@@ -2103,6 +2209,21 @@ export function AuditoriaScreen() {
       if (s.tiposError?.length)  setTiposError(s.tiposError);
       if (s.productos?.length)   setProductos(s.productos);
       if (s.observaciones)  setObservaciones(s.observaciones);
+      if (s.draftEntryId) draftEntryIdRef.current = s.draftEntryId;
+      if (s.palletStorageUrls && Object.keys(s.palletStorageUrls).length > 0) {
+        setPalletStorageUrls(s.palletStorageUrls);
+        setPalletPreviews(s.palletStorageUrls);
+      }
+      if (s.fotoStorageUrls?.length) {
+        setFotoStorageUrls(s.fotoStorageUrls);
+        setFotoStoragePaths(s.fotoStoragePaths ?? []);
+        setFotoPreviews(s.fotoStorageUrls.filter(Boolean));
+      }
+      if (s.errorFotoStorageUrls?.length) {
+        setErrorFotoStorageUrls(s.errorFotoStorageUrls);
+        setErrorFotoStoragePaths(s.errorFotoStoragePaths ?? []);
+        setErrorFotoPreviews(s.errorFotoStorageUrls.filter(Boolean));
+      }
       if (s.formPhase === 'execution' || s.formPhase === 'setup') {
         setFormPhase(s.formPhase as 'execution' | 'setup');
         if (s.formPhase === 'execution' && s.auditStartTime) {
@@ -2175,6 +2296,155 @@ export function AuditoriaScreen() {
     }
   };
 
+  // Carga un pallet por ID numérico desde picking_pallets y auto-rellena el formulario
+  const ORIGIN_CATS: { kw: string; st: SubTipo }[] = [
+    { kw: 'Abastecimiento Comida', st: 'comida' },
+    { kw: 'Abastecimiento Aseo',   st: 'aseo' },
+    { kw: 'Abastecimiento Hogar',  st: 'hogar' },
+  ];
+
+  // Obtiene datos de un pallet por ID: picker, tienda, mapa subtipo→código
+  const fetchPalletCodeMap = async (idStr: string): Promise<{
+    store_cod: string; picker_label: string; picker_key: string;
+    codeBySubtipo: Partial<Record<SubTipo, string>>;
+  } | null> => {
+    const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`);
+    const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; contenido: string; refs: string }; error?: string };
+    if (!res.ok || !json.data) return null;
+    const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
+    // picker_key: parte de state_key después de '__', capitalizada → coincide con picker (Id. pistola)
+    const rawKey = (state_key.split('__')[1] ?? '').trim();
+    const picker_key = rawKey ? rawKey.replace(/\b\w/g, c => c.toUpperCase()) : '';
+
+    const codeBySubtipo: Partial<Record<SubTipo, string>> = {};
+
+    if (odooConfig.url) {
+      try {
+        const pickerKey = (state_key.split('__')[1] ?? '').toLowerCase().trim();
+        const odooRes = await fetch('/api/odoo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'picking_today_operations', config: odooConfig, query: store_cod }),
+        });
+        const odooData = await odooRes.json() as { pickings?: Array<{ name: string; responsible: string; origin: string }> };
+        if (odooRes.ok && odooData.pickings?.length) {
+          const matching = odooData.pickings.filter(p =>
+            (p.responsible ?? '').toLowerCase().trim() === pickerKey
+          );
+          for (const op of matching) {
+            for (const { kw, st } of ORIGIN_CATS) {
+              if ((op.origin ?? '').includes(kw)) { codeBySubtipo[st] = op.name; break; }
+            }
+          }
+        }
+      } catch { /* sigue con fallback */ }
+    }
+
+    // Fallback si Odoo no devolvió nada: contenido del DB + refs posicionales
+    if (Object.keys(codeBySubtipo).length === 0) {
+      const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
+      const fallbackTipo = contenido === 'mixto' ? 'comida-aseo' :
+        (VALID_TIPOS.includes(contenido as TipoAuditoria) ? contenido as TipoAuditoria : 'comida');
+      rawRefs.split('+').filter(Boolean).forEach((code, i) => {
+        const st = TIPO_TO_SUBTIPOS[fallbackTipo][i];
+        if (st) codeBySubtipo[st] = code;
+      });
+    }
+
+    return { store_cod, picker_label, picker_key, codeBySubtipo };
+  };
+
+  const handlePalletIdLookup = async (id1: string, id2?: string) => {
+    const trimId1 = id1.trim();
+    if (!trimId1 || !/^\d+$/.test(trimId1)) { setPalletIdError('Ingresa un número válido'); return; }
+    const trimId2 = id2?.trim() ?? '';
+    if (trimId2 && !/^\d+$/.test(trimId2)) { setPalletIdError2('Ingresa un número válido'); return; }
+
+    setPalletIdLoading(true); setPalletIdError(''); setPalletIdError2('');
+    try {
+      // Pallet 1 (obligatorio)
+      const p1 = await fetchPalletCodeMap(trimId1);
+      if (!p1) { setPalletIdError('ID no encontrado'); return; }
+
+      // Mapa combinado con atribución por picker
+      const combined: Partial<Record<SubTipo, string>> = { ...p1.codeBySubtipo };
+      const pickerNombreBySubtipo: Partial<Record<SubTipo, string>> = {};
+      for (const st of Object.keys(p1.codeBySubtipo) as SubTipo[]) {
+        pickerNombreBySubtipo[st] = p1.picker_label;
+      }
+
+      const involvedPickers: string[] = p1.picker_label.trim() ? [p1.picker_label.trim()] : [];
+      const involvedPickerKeys: string[] = p1.picker_key ? [p1.picker_key] : [];
+
+      if (trimId2) {
+        const p2 = await fetchPalletCodeMap(trimId2);
+        if (!p2) { setPalletIdError2('ID no encontrado'); return; }
+
+        // Validar misma tienda
+        if (p2.store_cod !== p1.store_cod) {
+          setPalletIdError2(`Tienda diferente — el pallet #${trimId2} pertenece a ${p2.store_cod}`);
+          return;
+        }
+
+        // Agregar operaciones del pallet 2 que no estaban en el 1
+        for (const [st, code] of Object.entries(p2.codeBySubtipo) as [SubTipo, string][]) {
+          if (!combined[st]) {
+            combined[st] = code;
+            pickerNombreBySubtipo[st] = p2.picker_label;
+          }
+        }
+
+        if (p2.picker_label.trim() && p2.picker_label.trim() !== p1.picker_label.trim()) {
+          involvedPickers.push(p2.picker_label.trim());
+        }
+        if (p2.picker_key && p2.picker_key !== p1.picker_key) {
+          involvedPickerKeys.push(p2.picker_key);
+        }
+      }
+
+      // Tipo desde el mapa combinado
+      const foundSts = Object.keys(combined) as SubTipo[];
+      const newTipo: TipoAuditoria = foundSts.length > 0 ? catsToTipo(foundSts.join(',')) : 'comida';
+
+      const orderedCodes = TIPO_TO_SUBTIPOS[newTipo].map(st => combined[st] ?? '');
+      const newOperaciones: OperacionEntry[] = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({
+        subTipo: st,
+        codigo: orderedCodes[i],
+        ...(involvedPickers.length > 1 && pickerNombreBySubtipo[st]
+          ? { pickerNombre: pickerNombreBySubtipo[st] }
+          : {}),
+      }));
+
+      if (p1.picker_label.trim()) setPickerNombre(p1.picker_label.trim());
+      setPickerNombres(involvedPickers);
+      // Id. pistola: combinar todos los grupos Odoo involucrados
+      if (involvedPickerKeys.length > 0) {
+        setPicker(involvedPickerKeys.join(' + '));
+        setOdooAutoDetected(true);
+      }
+
+      const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === p1.store_cod);
+      if (matchedTienda) setTienda(matchedTienda);
+
+      if (newTipo !== tipo) {
+        pendingScanRef.current = newOperaciones;
+        setTipo(newTipo);
+      } else {
+        setOperaciones(newOperaciones);
+      }
+
+      const idLabel = trimId2 ? `#${trimId1}+${trimId2}` : `#${trimId1}`;
+      const pickerLabel = involvedPickers.length > 1 ? involvedPickers.join(' + ') : (involvedPickers[0] ?? '');
+      showToast(`✓ ${idLabel} · ${p1.store_cod} · ${pickerLabel} · ${newTipo.toUpperCase()}`, '#16A34A');
+      setPalletIdInput(''); setPalletIdInput2(''); setShowPalletId2(false);
+      setFormPhase('setup');
+    } catch {
+      setPalletIdError('Error de conexión');
+    } finally {
+      setPalletIdLoading(false);
+    }
+  };
+
   // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
   const handleBarcodeScan = (raw: string): boolean => {
     // Separador ';' (sin modificador de teclado). Fallback legacy con '|' para etiquetas antiguas.
@@ -2193,11 +2463,9 @@ export function AuditoriaScreen() {
     if (matchedTienda) setTienda(matchedTienda);
 
     if (newTipo !== tipo) {
-      // El useEffect de tipo se encargará de setOperaciones usando pendingScanRef
-      pendingScanRef.current = opCodes;
+      pendingScanRef.current = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' }));
       setTipo(newTipo);
     } else {
-      // Tipo igual: set operaciones directamente
       setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
     }
 
@@ -2223,6 +2491,51 @@ export function AuditoriaScreen() {
     if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
   };
 
+  // Limpia el formulario al volver desde setup → scan (sin fotos que borrar en setup)
+  const handleBackFromSetup = () => {
+    try { localStorage.removeItem(sessionKey(user?.id)); } catch { /* */ }
+    if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
+    setFormPhase('scan');
+    setTienda(null); setTiendaQuery('');
+    setPicker(''); setPickerNombre(''); setPickerNombres([]); setOdooAutoDetected(false);
+    setTipo('comida');
+    setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
+    setPalletIdInput(''); setPalletIdError('');
+    setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
+  };
+
+  // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
+  const handleCancelAudit = () => {
+    setConfirmCancel(false);
+    stopTimer();
+    const pathsToDelete = [...fotoStoragePaths, ...errorFotoStoragePaths].filter(Boolean);
+    const draftId = draftEntryIdRef.current;
+    if (draftId) {
+      Object.keys(palletStorageUrls).forEach(k => pathsToDelete.push(`${user?.id}/${draftId}_pallet${k}.jpg`));
+    }
+    if (pathsToDelete.length > 0 && user)
+      void supabase.storage.from('audit-photos').remove(pathsToDelete).then(() => {}, () => {});
+    try { localStorage.removeItem(sessionKey(user?.id)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* */ }
+    if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
+    setSessionRestored(false); setCrossDeviceRestored(false);
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setPickerNombres([]); setOdooAutoDetected(false);
+    setTipo('comida'); setPallets('');
+    setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
+    setPalletIdInput(''); setPalletIdError('');
+    setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
+    setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]); setFotoStorageUrls([]); setFotoStoragePaths([]);
+    errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
+    draftEntryIdRef.current = '';
+    setTimerSeconds(0); setAuditStartTime(''); auditStartTimeRef.current = '';
+    setSubmitting(false); setUploadProgress('');
+    setFormPhase('scan');
+  };
+
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
   const handleSubmitClick = () => {
@@ -2243,64 +2556,57 @@ export function AuditoriaScreen() {
     const endNow = new Date().toISOString();
     setSubmitting(true);
     const now = new Date();
-    const entryId = `AUD-${Date.now()}`;
-    const uploadedFotos: { label: string; url: string }[] = [];
+    // Use pre-generated draft entry ID so photos are already at their final path
+    const entryId = draftEntryIdRef.current || `AUD-${Date.now()}`;
     const palletCount = parseInt(pallets) || 0;
     const canUploadPhotos = user && navigator.onLine;
-    if (canUploadPhotos) {
-      for (let n = 1; n <= palletCount; n++) {
-        const file = palletFiles[String(n)];
-        if (!file) continue;
-        const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_pallet${n}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('audit-photos')
-          .upload(path, file, { contentType: file.type, upsert: true });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedFotos.push({ label: `Pallet ${n}`, url: publicUrl });
-        } else {
-          showToast(`⚠ Error al subir foto pallet ${n}`, '#D97706');
-        }
-      }
+
+    // Start from already-uploaded URLs (photos uploaded on select)
+    const uploadedFotos: { label: string; url: string }[] = [];
+    Array.from({ length: palletCount }, (_, i) => String(i + 1)).forEach(k => {
+      if (palletStorageUrls[k]) uploadedFotos.push({ label: `Pallet ${k}`, url: palletStorageUrls[k] });
+    });
+    const uploadedFotoUrls: string[]      = fotoStorageUrls.filter(Boolean);
+    const uploadedErrorFotoUrls: string[] = errorFotoStorageUrls.filter(Boolean);
+
+    // Upload any photos that didn't get uploaded yet (e.g. user was offline when selecting)
+    const pendingPallets = Array.from({ length: palletCount }, (_, i) => String(i + 1))
+      .filter(k => !palletStorageUrls[k] && palletFiles[k])
+      .map(k => ({ k, file: palletFiles[k] }));
+    const pendingFotos  = fotoFiles.filter((_, fi) => !fotoStorageUrls[fi]);
+    const pendingErrors = errorFotoFiles.filter((_, fi) => !errorFotoStorageUrls[fi]);
+    const totalPending  = pendingPallets.length + pendingFotos.length + pendingErrors.length;
+
+    if (canUploadPhotos && totalPending > 0) {
+      setUploadProgress(`Subiendo fotos (0/${totalPending})…`);
+      let uploaded = 0;
+      await Promise.all([
+        ...pendingPallets.map(async ({ k, file }) => {
+          const path = `${user.id}/${entryId}_pallet${k}.jpg`;
+          const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
+          uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalPending})…`);
+          if (!error) uploadedFotos.push({ label: `Pallet ${k}`, url: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl });
+        }),
+        ...pendingFotos.map(async (file, fi) => {
+          const path = `${user.id}/${entryId}_foto${fi + 1}.jpg`;
+          const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
+          uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalPending})…`);
+          if (!error) uploadedFotoUrls.push(supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl);
+        }),
+        ...pendingErrors.map(async (file, fi) => {
+          const path = `${user.id}/${entryId}_error${fi + 1}.jpg`;
+          const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
+          uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalPending})…`);
+          if (!error) uploadedErrorFotoUrls.push(supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl);
+        }),
+      ]);
     }
-    const uploadedFotoUrls: string[] = [];
-    if (canUploadPhotos && fotoFiles.length > 0) {
-      for (let fi = 0; fi < fotoFiles.length; fi++) {
-        const fotoFile = fotoFiles[fi];
-        const ext = fotoFile.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_foto${fi + 1}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('audit-photos')
-          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedFotoUrls.push(publicUrl);
-        } else {
-          showToast(`⚠ Error al subir foto de productos ${fi + 1}`, '#D97706');
-        }
-      }
-    }
-    const uploadedErrorFotoUrls: string[] = [];
-    if (canUploadPhotos && errorFotoFiles.length > 0) {
-      for (let fi = 0; fi < errorFotoFiles.length; fi++) {
-        const fotoFile = errorFotoFiles[fi];
-        const ext = fotoFile.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${entryId}_error${fi + 1}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('audit-photos')
-          .upload(path, fotoFile, { contentType: fotoFile.type, upsert: true });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('audit-photos').getPublicUrl(path);
-          uploadedErrorFotoUrls.push(publicUrl);
-        } else {
-          showToast(`⚠ Error al subir foto de error ${fi + 1}`, '#D97706');
-        }
-      }
-    }
+
+    setUploadProgress('Guardando…');
     const entry: AuditEntry = {
       id: entryId, fecha: now.toLocaleDateString('es-CL'), hora: now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-      auditor: auditor.trim(), picker: picker.trim(), pickerNombre: pickerNombre.trim() || undefined,
+      auditor: auditor.trim(), picker: picker.trim(),
+      pickerNombre: (pickerNombres.length > 1 ? pickerNombres.join(' + ') : pickerNombre.trim()) || undefined,
       tiendaCod: tienda.cod, tiendaNombre: tienda.nombre, tiendaArea: tienda.area,
       tipo, operaciones, pallets: palletCount, tieneErrores: tieneErrores === true, tiposError, productos,
       correccion, resultado, observaciones: observaciones.trim(), reauditoriaDeId: reauditoriaOrigen?.id,
@@ -2338,21 +2644,24 @@ export function AuditoriaScreen() {
     try { localStorage.removeItem(sessionKey(user?.id)); localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
     if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
     setSessionRestored(false); setCrossDeviceRestored(false);
-    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
+    setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setPickerNombres([]); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
+    setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
+    setPalletIdInput(''); setPalletIdError('');
+    setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
-    setPalletFiles({}); setPalletPreviews({});
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setFotoFiles([]); setFotoPreviews([]);
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]); setFotoStorageUrls([]); setFotoStoragePaths([]);
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
-    setErrorFotoFiles([]); setErrorFotoPreviews([]);
-    setSubmitting(false);
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
+    draftEntryIdRef.current = '';
+    setSubmitting(false); setUploadProgress('');
     setLastEntry(entry);
     setLastDurationSeconds(durSecs);
     setFormPhase('result');
     setTimerSeconds(0);
     setAuditStartTime('');
-    setAuditDurationSeconds(0);
   };
 
   const iniciarReauditoria = (entry: AuditEntry) => {
@@ -2647,6 +2956,77 @@ export function AuditoriaScreen() {
                     <span className="font-barlow-condensed text-[16px] font-bold">Escanear con cámara</span>
                   </button>
                 </div>
+                {/* ID numérico de pallet */}
+                <div className="mt-3 bg-white border border-border rounded-card px-4 py-3" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                  <div className="font-barlow-condensed text-[13px] font-bold text-text-2 uppercase tracking-wide mb-2">Ingresar ID de pallet</div>
+
+                  {/* Pallet 1 */}
+                  <div className="flex gap-2">
+                    <input
+                      type="number" inputMode="numeric" pattern="[0-9]*"
+                      value={palletIdInput}
+                      onChange={e => { setPalletIdInput(e.target.value); setPalletIdError(''); }}
+                      onKeyDown={e => { if (e.key === 'Enter' && !showPalletId2) void handlePalletIdLookup(palletIdInput); }}
+                      placeholder="Ej: 1247"
+                      className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
+                      style={{ letterSpacing: '2px' }}
+                      disabled={palletIdLoading}
+                    />
+                    {!showPalletId2 && (
+                      <button
+                        type="button"
+                        onClick={() => void handlePalletIdLookup(palletIdInput)}
+                        disabled={palletIdLoading || !palletIdInput.trim()}
+                        className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                        {palletIdLoading ? '…' : 'Buscar'}
+                      </button>
+                    )}
+                  </div>
+                  {palletIdError && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError}</div>}
+
+                  {/* Pallet 2 (hogar separado) */}
+                  {showPalletId2 && (
+                    <div className="mt-3 pt-3 border-t border-border/60">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-[11px] font-bold text-text-2 uppercase tracking-wide">ID pallet hogar</span>
+                        <span className="text-[10px] text-text-3">(opcional — si va en pallet separado)</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="number" inputMode="numeric" pattern="[0-9]*"
+                          value={palletIdInput2}
+                          onChange={e => { setPalletIdInput2(e.target.value); setPalletIdError2(''); }}
+                          onKeyDown={e => { if (e.key === 'Enter') void handlePalletIdLookup(palletIdInput, palletIdInput2); }}
+                          placeholder="ID pallet 2"
+                          className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
+                          style={{ letterSpacing: '2px' }}
+                          disabled={palletIdLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handlePalletIdLookup(palletIdInput, palletIdInput2)}
+                          disabled={palletIdLoading || !palletIdInput.trim()}
+                          className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
+                          style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                          {palletIdLoading ? '…' : 'Buscar'}
+                        </button>
+                      </div>
+                      {palletIdError2 && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError2}</div>}
+                    </div>
+                  )}
+
+                  {/* Toggle segundo pallet */}
+                  <button
+                    type="button"
+                    onClick={() => { setShowPalletId2(v => !v); setPalletIdInput2(''); setPalletIdError2(''); }}
+                    className="mt-2.5 flex items-center gap-1.5 cursor-pointer border-none bg-transparent p-0 transition-opacity active:opacity-60"
+                    style={{ color: showPalletId2 ? '#9CA3AF' : '#2563EB' }}>
+                    <span className="text-[13px]">{showPalletId2 ? '− Quitar ID adicional' : '+ Agregar ID adicional (ej. hogar separado)'}</span>
+                  </button>
+
+                  <div className="mt-1.5 text-[10px] text-text-3">El número aparece en la etiqueta del pallet junto al código de tienda</div>
+                </div>
                 <button type="button" onClick={() => setFormPhase('setup')}
                   className="w-full mt-2 py-3 border-2 border-dashed border-navy/20 rounded-card font-barlow-condensed text-[15px] font-bold text-navy/50 cursor-pointer bg-transparent transition-all active:bg-navy/5">
                   Omitir escáner — ingresar datos manualmente
@@ -2663,8 +3043,18 @@ export function AuditoriaScreen() {
                 <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna automáticamente</span></SLabel>
                 <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { setPicker(''); setOdooAutoDetected(false); }} />
 
-                <SLabel>Picker (armador de pallet)</SLabel>
-                <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={setPickerNombre} />
+                <SLabel>Picker{pickerNombres.length > 1 ? 's' : ''} (armador{pickerNombres.length > 1 ? 'es' : ''} de pallet)</SLabel>
+                {pickerNombres.length > 1 ? (
+                  <div className="flex flex-wrap gap-2 py-1">
+                    {pickerNombres.map((n, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[rgba(37,99,235,0.08)] border border-[rgba(37,99,235,0.25)] rounded-full font-barlow-condensed text-[14px] font-bold text-info">
+                        <span className="text-[11px] font-normal text-text-3">P{i + 1}</span> {n}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={v => { setPickerNombre(v); setPickerNombres(v ? [v] : []); }} />
+                )}
 
                 <SLabel>Tienda</SLabel>
                 <div ref={tiendaRef} className="relative">
@@ -2704,11 +3094,12 @@ export function AuditoriaScreen() {
                 {operaciones.map((op, i) => (
                   <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
                     onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
-                    odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+                    odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')}
+                    pickerLabel={pickerNombres.length > 1 ? op.pickerNombre : undefined} />
                 ))}
 
                 <div className="mt-6 grid grid-cols-2 gap-2 mb-2">
-                  <button type="button" onClick={() => setFormPhase('scan')}
+                  <button type="button" onClick={handleBackFromSetup}
                     className="py-3.5 border border-border bg-white rounded-card font-barlow-condensed text-[16px] font-bold text-text-2 cursor-pointer transition-all active:scale-[0.98]">
                     ← Volver
                   </button>
@@ -2720,6 +3111,13 @@ export function AuditoriaScreen() {
                     Iniciar Auditoría ▶
                   </button>
                 </div>
+                {(!auditor.trim() || !tienda || operaciones.some(op => !op.codigo.trim())) && (
+                  <div className="mt-1 text-center text-[11px] text-text-3 font-semibold">
+                    {!auditor.trim() ? 'Selecciona el auditor'
+                    : !tienda ? 'Selecciona la tienda'
+                    : 'Completa los códigos de operación'}
+                  </div>
+                )}
               </>
             )}
 
@@ -2775,7 +3173,7 @@ export function AuditoriaScreen() {
                   <div className="pt-3 border-t border-border/50 text-[12px] text-text-3 space-y-0.5">
                     <div><strong className="text-text">{lastEntry.tiendaNombre}</strong><span className="font-mono ml-1.5 text-[10px]">{lastEntry.tiendaCod}</span></div>
                     {(lastEntry.pickerNombre || lastEntry.picker) && (
-                      <div>Picker: <strong className="text-text">{lastEntry.pickerNombre || lastEntry.picker}</strong></div>
+                      <div>Picker{(lastEntry.pickerNombre ?? '').includes(' + ') ? 's' : ''}: <strong className="text-text">{lastEntry.pickerNombre || lastEntry.picker}</strong></div>
                     )}
                     <div>{lastEntry.hora} · {lastEntry.auditor}</div>
                   </div>
@@ -2845,13 +3243,20 @@ export function AuditoriaScreen() {
                     <button onClick={() => setCrossDeviceRestored(false)} className="text-success/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
                   </div>
                 )}
-                {/* Timer */}
-                <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4"
+                {/* Timer + cancel */}
+                <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4 relative"
                   style={{ background: 'linear-gradient(135deg,rgba(26,37,80,0.06),rgba(26,37,80,0.02))', border: '2px solid rgba(26,37,80,0.14)', boxShadow: '0 4px 20px rgba(26,37,80,0.10)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancel(true)}
+                    className="absolute top-2 right-2 border-none cursor-pointer rounded-btn font-barlow-condensed text-[11px] font-bold tracking-wide transition-all active:scale-95"
+                    style={{ background: 'rgba(211,47,47,0.08)', color: '#B91C1C', padding: '4px 10px', border: '1px solid rgba(211,47,47,0.20)' }}>
+                    × Cancelar
+                  </button>
                   <div className="text-[10px] font-bold text-text-3 uppercase tracking-[0.2em] mb-1">Tiempo en curso</div>
                   <div className="font-barlow-condensed font-black text-navy leading-none tracking-wider" style={{ fontSize: 60 }}>{formatTimer(timerSeconds)}</div>
                   <div className="text-[12px] text-text-3 mt-2 truncate">
-                    {tienda?.nombre}{pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
+                    {tienda?.nombre}{pickerNombres.length > 1 ? ` · ${pickerNombres.join(' + ')}` : pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
                   </div>
                 </div>
 
@@ -2861,46 +3266,47 @@ export function AuditoriaScreen() {
                   onFocus={() => setTimeout(() => palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)}
                   className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
                 {parseInt(pallets) > 0 && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional</span></div>
-                    {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
-                      const key = String(n);
-                      const preview = palletPreviews[key];
-                      return (
-                        <div key={key}>
-                          {preview ? (
-                            <div className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                              <img src={preview} alt={`Pallet ${n}`} className="w-full object-cover" style={{ maxHeight: 140 }} />
-                              <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">Pallet {n}</div>
-                              <button
-                                onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); }}
-                                className="absolute top-2 right-2 bg-red text-white border-none rounded-full w-7 h-7 text-[16px] leading-none cursor-pointer flex items-center justify-center font-bold"
-                                style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>×</button>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="text-[10px] font-bold text-text-3 uppercase tracking-wide mb-1.5">Pallet {n}</div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                                  <span className="text-[26px]">📷</span>
-                                  <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
-                                  <span className="text-[10px] text-text-3">1 foto directa</span>
-                                  <input type="file" accept="image/*" capture="environment" className="hidden"
-                                    onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
-                                </label>
-                                <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                                  <span className="text-[26px]">🖼️</span>
-                                  <span className="text-[12px] text-text-2 font-semibold">Galería</span>
-                                  <span className="text-[10px] text-text-3">Desde archivo</span>
-                                  <input type="file" accept="image/*" className="hidden"
-                                    onChange={e => { const f = e.target.files?.[0]; if (f) { setPalletFiles(p => ({ ...p, [key]: f })); setPalletPreviews(p => ({ ...p, [key]: URL.createObjectURL(f) })); e.target.value = ''; } }} />
-                                </label>
+                  <div className="mt-2">
+                    <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mt-1 mb-2">Fotos exteriores de pallets · <span className="font-normal normal-case">opcional · toca cada celda</span></div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: parseInt(pallets) }, (_, i) => i + 1).map(n => {
+                        const key = String(n);
+                        const preview = palletPreviews[key];
+                        const warn = palletWarnings[key];
+                        return preview ? (
+                          <div key={key} className="relative rounded-card overflow-hidden border border-border" style={{ aspectRatio: '1', boxShadow: '0 2px 6px rgba(26,37,80,0.10)' }}>
+                            <img src={preview} alt={`P${n}`} className="w-full h-full object-cover" />
+                            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-black/60 rounded px-1">P{n}</div>
+                            <button
+                              onClick={() => { URL.revokeObjectURL(preview); setPalletPreviews(p => { const np = { ...p }; delete np[key]; return np; }); setPalletFiles(p => { const np = { ...p }; delete np[key]; return np; }); setPalletWarnings(w => { const nw = { ...w }; delete nw[key]; return nw; }); deleteStoragePath(`${user?.id}/${getDraftEntryId()}_pallet${key}.jpg`); setPalletStorageUrls(p => { const np = { ...p }; delete np[key]; return np; }); }}
+                              className="absolute top-0.5 right-0.5 bg-red text-white border-none rounded-full w-5 h-5 text-[12px] leading-none cursor-pointer flex items-center justify-center font-bold"
+                              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.35)' }}>×</button>
+                            {warn && (
+                              <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/90 text-[8px] font-bold text-white text-center px-0.5 py-0.5 leading-tight">
+                                ⚠ {warn}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                            )}
+                          </div>
+                        ) : (
+                          <div key={key} className="relative rounded-card overflow-hidden bg-white border-2 border-dashed border-border" style={{ aspectRatio: '1', boxShadow: '0 1px 3px rgba(26,37,80,0.04)' }}>
+                            {/* Camera — fills the cell */}
+                            <label className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:bg-bg">
+                              <span className="text-[22px]">📷</span>
+                              <span className="text-[10px] text-text-3 font-bold">P{n}</span>
+                              <input type="file" accept="image/*" capture="environment" className="hidden"
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } }} />
+                            </label>
+                            {/* Gallery — small corner button */}
+                            <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
+                              <span className="text-[11px]">🖼️</span>
+                              <input type="file" accept="image/*" className="hidden"
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } }} />
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[10px] text-text-3 mt-1.5 text-center">Toca 📷 para cámara · mantén presionado para galería</div>
                   </div>
                 )}
 
@@ -2954,19 +3360,28 @@ export function AuditoriaScreen() {
                   <>
                     <SLabel>Fotos de errores <span className="text-[9px] font-normal ml-1 normal-case">evidencia del error detectado · múltiples</span></SLabel>
                     {errorFotoPreviews.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div className="grid grid-cols-3 gap-1.5 mb-2">
                         {errorFotoPreviews.map((preview, idx) => (
                           <div key={idx} className="relative rounded-card overflow-hidden border-2 border-red/30" style={{ boxShadow: '0 2px 8px rgba(211,47,47,0.10)' }}>
-                            <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                            <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-red/80 rounded px-1.5 py-0.5">Error #{idx + 1}</div>
+                            <img src={preview} alt={`Error ${idx + 1}`} className="w-full object-cover cursor-pointer active:opacity-80" style={{ aspectRatio: '1', objectFit: 'cover' }} onClick={() => setLightboxUrl(preview)} />
+                            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-red/80 rounded px-1 py-0.5">{idx + 1}</div>
                             <button
                               onClick={() => {
                                 URL.revokeObjectURL(preview);
+                                deleteStoragePath(errorFotoStoragePaths[idx] ?? '');
                                 setErrorFotoPreviews(p => p.filter((_, i) => i !== idx));
                                 setErrorFotoFiles(f => f.filter((_, i) => i !== idx));
+                                setErrorFotoWarnings(w => w.filter((_, i) => i !== idx));
+                                setErrorFotoStorageUrls(p => p.filter((_, i) => i !== idx));
+                                setErrorFotoStoragePaths(p => p.filter((_, i) => i !== idx));
                               }}
                               className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
                               style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                            {errorFotoWarnings[idx] && (
+                              <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/90 text-[8px] font-bold text-white text-center px-0.5 py-0.5 leading-tight">
+                                ⚠ {errorFotoWarnings[idx]}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -2977,12 +3392,25 @@ export function AuditoriaScreen() {
                         <span className="text-[12px] text-red font-semibold">Cámara</span>
                         <span className="text-[10px] text-text-3">1 foto directa</span>
                         <input type="file" accept="image/*" capture="environment" className="hidden"
-                          onChange={e => {
+                          onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            setErrorFotoFiles(prev => [...prev, ...files]);
-                            setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                             e.target.value = '';
+                            const results: ProcessedPhoto[] = [];
+                            for (const f of files) results.push(await processPhoto(f));
+                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                            if (user && navigator.onLine) {
+                              const draftId = getDraftEntryId(); const ts = Date.now();
+                              const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
+                              const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                              setErrorFotoStorageUrls(prev => [...prev, ...urls]);
+                              setErrorFotoStoragePaths(prev => [...prev, ...paths]);
+                            } else {
+                              setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                              setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                            }
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
@@ -2990,12 +3418,25 @@ export function AuditoriaScreen() {
                         <span className="text-[12px] text-red font-semibold">Galería</span>
                         <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                         <input type="file" accept="image/*" multiple className="hidden"
-                          onChange={e => {
+                          onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            setErrorFotoFiles(prev => [...prev, ...files]);
-                            setErrorFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                             e.target.value = '';
+                            const results: ProcessedPhoto[] = [];
+                            for (const f of files) results.push(await processPhoto(f));
+                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                            if (user && navigator.onLine) {
+                              const draftId = getDraftEntryId(); const ts = Date.now();
+                              const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
+                              const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                              setErrorFotoStorageUrls(prev => [...prev, ...urls]);
+                              setErrorFotoStoragePaths(prev => [...prev, ...paths]);
+                            } else {
+                              setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                              setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                            }
                           }} />
                       </label>
                     </div>
@@ -3004,19 +3445,28 @@ export function AuditoriaScreen() {
 
                 <SLabel>Fotos de productos <span className="text-[9px] font-normal ml-1 normal-case">opcional · múltiples permitidas</span></SLabel>
                 {fotoPreviews.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className="grid grid-cols-3 gap-1.5 mb-2">
                     {fotoPreviews.map((preview, idx) => (
                       <div key={idx} className="relative rounded-card overflow-hidden border border-border" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.08)' }}>
-                        <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                        <div className="absolute top-1 left-2 text-[10px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">#{idx + 1}</div>
+                        <img src={preview} alt={`Foto ${idx + 1}`} className="w-full object-cover cursor-pointer active:opacity-80" style={{ aspectRatio: '1', objectFit: 'cover' }} onClick={() => setLightboxUrl(preview)} />
+                        <div className="absolute top-0.5 left-1 text-[9px] font-bold text-white bg-black/50 rounded px-1 py-0.5">#{idx + 1}</div>
                         <button
                           onClick={() => {
                             URL.revokeObjectURL(preview);
+                            deleteStoragePath(fotoStoragePaths[idx] ?? '');
                             setFotoPreviews(p => p.filter((_, i) => i !== idx));
                             setFotoFiles(f => f.filter((_, i) => i !== idx));
+                            setFotoWarnings(w => w.filter((_, i) => i !== idx));
+                            setFotoStorageUrls(p => p.filter((_, i) => i !== idx));
+                            setFotoStoragePaths(p => p.filter((_, i) => i !== idx));
                           }}
                           className="absolute top-1 right-1 bg-red text-white border-none rounded-full w-6 h-6 text-[14px] leading-none cursor-pointer flex items-center justify-center font-bold"
                           style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.30)' }}>×</button>
+                        {fotoWarnings[idx] && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/90 text-[8px] font-bold text-white text-center px-0.5 py-0.5 leading-tight">
+                            ⚠ {fotoWarnings[idx]}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3027,12 +3477,25 @@ export function AuditoriaScreen() {
                     <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
                     <span className="text-[10px] text-text-3">1 foto directa</span>
                     <input type="file" accept="image/*" capture="environment" className="hidden"
-                      onChange={e => {
+                      onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        setFotoFiles(prev => [...prev, ...files]);
-                        setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                         e.target.value = '';
+                        const results: ProcessedPhoto[] = [];
+                        for (const f of files) results.push(await processPhoto(f));
+                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                        if (user && navigator.onLine) {
+                          const draftId = getDraftEntryId(); const ts = Date.now();
+                          const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
+                          const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                          setFotoStorageUrls(prev => [...prev, ...urls]);
+                          setFotoStoragePaths(prev => [...prev, ...paths]);
+                        } else {
+                          setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                          setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                        }
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
@@ -3040,12 +3503,25 @@ export function AuditoriaScreen() {
                     <span className="text-[12px] text-text-2 font-semibold">Galería</span>
                     <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                     <input type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => {
+                      onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        setFotoFiles(prev => [...prev, ...files]);
-                        setFotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
                         e.target.value = '';
+                        const results: ProcessedPhoto[] = [];
+                        for (const f of files) results.push(await processPhoto(f));
+                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                        if (user && navigator.onLine) {
+                          const draftId = getDraftEntryId(); const ts = Date.now();
+                          const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
+                          const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                          setFotoStorageUrls(prev => [...prev, ...urls]);
+                          setFotoStoragePaths(prev => [...prev, ...paths]);
+                        } else {
+                          setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                          setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                        }
                       }} />
                   </label>
                 </div>
@@ -3053,8 +3529,18 @@ export function AuditoriaScreen() {
                 <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
                   className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
                   style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
-                  {submitting ? '⏳ Guardando…' : '✓ Registrar auditoría'}
+                  {submitting ? `⏳ ${uploadProgress || 'Guardando…'}` : '✓ Registrar auditoría'}
                 </button>
+                {!canSubmit && !submitting && (
+                  <div className="mt-2 text-center text-[11px] text-text-3 font-semibold">
+                    {(!pallets || parseInt(pallets) <= 0) ? '↑ Ingresa el número de pallets auditados'
+                    : tieneErrores === null ? '↑ Indica si el pallet tuvo errores'
+                    : (tieneErrores && tiposError.length === 0) ? '↑ Selecciona el tipo de error'
+                    : !auditor.trim() ? '↑ Selecciona el auditor'
+                    : !tienda ? '↑ Selecciona la tienda'
+                    : '↑ Completa todos los códigos de operación'}
+                  </div>
+                )}
               </>
             )}
           </div>}
@@ -3148,7 +3634,52 @@ export function AuditoriaScreen() {
         />
       )}
 
+      {/* ── CANCEL AUDIT MODAL ── */}
+      {confirmCancel && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmCancel(false)} />
+          <div className="relative bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(211,47,47,0.12)' }}>
+                <span className="text-[20px]">⚠</span>
+              </div>
+              <div className="font-barlow-condensed text-[21px] font-bold text-red leading-tight">Cancelar auditoría</div>
+            </div>
+            <div className="text-[13px] text-text-2 leading-relaxed mb-2">
+              Se perderán <strong>todos los datos</strong> de esta auditoría en curso:
+            </div>
+            <ul className="text-[12px] text-text-3 mb-5 space-y-1 ml-4 list-disc">
+              <li>Tienda, picker y tipo configurados</li>
+              <li>Fotos subidas (se eliminarán del servidor)</li>
+              <li>Errores y productos registrados</li>
+              <li>Tiempo transcurrido: <strong className="text-navy font-barlow-condensed text-[14px]">{formatTimer(timerSeconds)}</strong></li>
+            </ul>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(false)}
+                className="flex-1 py-3 border border-border rounded-card font-barlow-condensed text-[15px] font-bold text-text-2 cursor-pointer bg-white transition-all active:bg-bg">
+                Continuar
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelAudit}
+                className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                style={{ background: 'linear-gradient(135deg,#DC2626,#B91C1C)', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}>
+                Cancelar y salir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── CONFIRM SUBMIT MODAL (#6) ── */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="Vista ampliada" className="max-w-full max-h-full object-contain" style={{ maxHeight: '90dvh', maxWidth: '95vw' }} />
+          <button onClick={() => setLightboxUrl(null)} className="absolute top-4 right-4 text-white text-[28px] font-bold leading-none bg-black/40 rounded-full w-10 h-10 flex items-center justify-center cursor-pointer border-none">×</button>
+        </div>
+      )}
       {confirmSubmit && tienda && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmSubmit(false)} />
@@ -3163,10 +3694,12 @@ export function AuditoriaScreen() {
                 <span className="text-text-3 text-[12px]">Tienda</span>
                 <span className="font-semibold text-text text-[13px] text-right ml-4">{tienda.nombre}</span>
               </div>
-              {pickerNombre && (
+              {(pickerNombres.length > 0 || pickerNombre) && (
                 <div className="flex justify-between items-center py-1.5 border-b border-border">
-                  <span className="text-text-3 text-[12px]">Picker</span>
-                  <span className="font-semibold text-text text-[13px]">{pickerNombre}</span>
+                  <span className="text-text-3 text-[12px]">{pickerNombres.length > 1 ? 'Pickers' : 'Picker'}</span>
+                  <span className="font-semibold text-text text-[13px] text-right max-w-[60%] truncate">
+                    {pickerNombres.length > 1 ? pickerNombres.join(' + ') : (pickerNombre || '')}
+                  </span>
                 </div>
               )}
               {picker && (
@@ -3190,7 +3723,7 @@ export function AuditoriaScreen() {
               {auditStartTime && (
                 <div className="flex justify-between items-center py-1.5">
                   <span className="text-text-3 text-[12px]">Duración auditoría</span>
-                  <span className="font-barlow-condensed font-bold text-navy text-[22px]">⏱ {formatTimer(auditDurationSeconds)}</span>
+                  <span className="font-barlow-condensed font-bold text-navy text-[22px]">⏱ {formatTimer(timerSeconds)}</span>
                 </div>
               )}
               {tieneErrores && productos.length > 0 && (
@@ -3199,7 +3732,7 @@ export function AuditoriaScreen() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setConfirmSubmit(false)} className="flex-1 py-3 border border-border rounded-card font-barlow-condensed text-[15px] font-bold text-text-2 cursor-pointer">Cancelar</button>
-              <button onClick={handleSubmit} className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer" style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>Confirmar</button>
+              <button onClick={handleSubmit} disabled={submitting} className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>{submitting ? 'Guardando…' : 'Confirmar'}</button>
             </div>
           </div>
         </div>

@@ -38,6 +38,7 @@ export interface ProductoOdoo {
 export interface OperacionEntry {
   subTipo: SubTipo;
   codigo: string;
+  pickerNombre?: string; // picker que armó esta operación (auditorías con ≥2 pickers)
 }
 
 export interface ProductoError {

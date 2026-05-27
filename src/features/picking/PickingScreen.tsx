@@ -38,6 +38,7 @@ interface PalletSlot {
   picker_label: string;
   tipo: string;
   contenido: string;
+  refs: string;
   created_at: string;
 }
 
@@ -548,10 +549,10 @@ function Barcode1D({ value, height = 65, barWidth = 2 }: { value: string; height
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
-function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, tipo = 'P', compact = false, labelConfig }: {
+function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, tipo = 'P', compact = false, labelConfig, slotId }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
-  totalPickers: number; tipo?: string; compact?: boolean; labelConfig?: LabelConfig;
+  totalPickers: number; tipo?: string; compact?: boolean; labelConfig?: LabelConfig; slotId?: number;
 }) {
   const storeName = getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -615,6 +616,11 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
               {tipo}-{palletNum}
             </div>
             <div style={{ fontSize: s.deSize, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
+            {slotId != null && (
+              <div style={{ fontSize: compact ? 10 : 18, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                #{slotId}
+              </div>
+            )}
           </div>
         </div>
 
@@ -951,6 +957,7 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
                           allCategories={allCategories}
                           totalPickers={totalPickers}
                           tipo={slotTipo}
+                          slotId={slot?.id}
                           compact
                         />
                         {isSelected && (
@@ -1975,12 +1982,12 @@ export function PickingScreen() {
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
   useRealtimeRefresh('picking_pallets', loadPalletSlots);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar') => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
     try {
       const res = await fetch('/api/picking-pallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido }),
+        body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
@@ -2285,7 +2292,7 @@ export function PickingScreen() {
     type LabelData = {
       value: string; palletNum: number; total: number;
       storeCod: string; pickerLabel: string; responsibleKey: string;
-      allCategories: string[]; totalPickers: number; stateKey: string; tipo: string;
+      allCategories: string[]; totalPickers: number; stateKey: string; tipo: string; slotId: number;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -2330,6 +2337,7 @@ export function PickingScreen() {
             totalPickers: allStoreGroups.length,
             stateKey: group.stateKey,
             tipo,
+            slotId: slot.id,
           });
         }
       }
@@ -2631,8 +2639,9 @@ export function PickingScreen() {
                                 const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
                                 const groupCats = [...new Set(group.operations.flatMap(o => o.categories))];
                                 const contenido = categoriesToContenido(groupCats);
+                                const groupRefs = group.operations.map(o => o.name).join('+');
                                 if (delta > 0) {
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido);
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs);
                                 } else if (delta < 0) {
                                   for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo);
                                 }
