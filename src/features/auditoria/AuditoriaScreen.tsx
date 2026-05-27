@@ -2287,9 +2287,30 @@ export function AuditoriaScreen() {
     setPalletIdLoading(true); setPalletIdError('');
     try {
       const res  = await fetch(`/api/picking-pallets?id=${id}`);
-      const json = await res.json() as { data?: { store_cod: string; picker_label: string; tipo: string; contenido: string; refs: string }; error?: string };
+      const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; tipo: string; contenido: string; refs: string }; error?: string };
       if (!res.ok || !json.data) { setPalletIdError('ID no encontrado'); return; }
-      const { store_cod, picker_label, contenido, refs } = json.data;
+      const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
+      let refs = rawRefs;
+
+      // Fallback: si refs vacío, buscar operaciones en Odoo por tienda+picker
+      if (!refs && odooConfig.url) {
+        try {
+          const pickerKey = (state_key.split('__')[1] ?? '').toLowerCase().trim();
+          const odooRes = await fetch('/api/odoo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'picking_today_operations', config: odooConfig, query: store_cod }),
+          });
+          const odooData = await odooRes.json() as { pickings?: Array<{ name: string; responsible: string }> };
+          if (odooRes.ok && odooData.pickings?.length) {
+            const matching = odooData.pickings.filter(p =>
+              (p.responsible ?? '').toLowerCase().trim() === pickerKey
+            );
+            if (matching.length > 0) refs = matching.map(p => p.name).join('+');
+          }
+        } catch { /* refs queda vacío — no bloquea el flujo */ }
+      }
+
       const opCodes = refs.split('+').filter(Boolean);
       const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
       const newTipo: TipoAuditoria = contenido === 'mixto' ? 'comida-aseo' :
