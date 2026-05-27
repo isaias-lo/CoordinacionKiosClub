@@ -96,7 +96,12 @@ interface GridCardProps {
 function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
-  const hasGhost = pickingP > 0 || pickingB > 0 || pickingC > 0 || pickingCH > 0;
+  // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
+  const remP  = Math.max(0, pickingP  - palletCount);
+  const remB  = Math.max(0, pickingB  - boxCount);
+  const remC  = Math.max(0, pickingC  - contenedorCount);
+  const remCH = Math.max(0, pickingCH - chocolateCount);
+  const hasGhost = remP > 0 || remB > 0 || remC > 0 || remCH > 0;
   return (
     <div
       draggable={!!onDragStart}
@@ -118,11 +123,11 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         {t.name}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking data (siempre visibles si existen) */}
-        {pickingP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{pickingP}P</span>}
-        {pickingB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{pickingB}B</span>}
-        {pickingC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{pickingC}C</span>}
-        {pickingCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{pickingCH}CH</span>}
+        {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
+        {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
+        {remB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
+        {remC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
+        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
         {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
         {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}

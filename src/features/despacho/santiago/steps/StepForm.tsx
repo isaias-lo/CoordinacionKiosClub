@@ -93,6 +93,10 @@ function TiendaGridCard({
   const expP     = despachoP ?? 0;
   const expB     = despachoB ?? 0;
   const expC     = despachoC ?? 0;
+  // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
+  const remP = Math.max(0, expP - palletCount);
+  const remB = Math.max(0, expB - boxCount);
+  const remC = Math.max(0, expC - contenedorCount);
   return (
     <div
       onClick={onSelect}
@@ -122,10 +126,10 @@ function TiendaGridCard({
         {t.tienda}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking (siempre visibles si existen) */}
-        {expP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{expP}P</span>}
-        {expB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{expB}B</span>}
-        {expC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{expC}C</span>}
+        {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
+        {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
+        {remB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
+        {remC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
         {/* Solid badges: items ingresados en despacho */}
         {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
         {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
