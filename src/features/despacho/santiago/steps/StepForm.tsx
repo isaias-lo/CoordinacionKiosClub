@@ -252,8 +252,16 @@ export function StepForm() {
   const [pickingSlots,  setPickingSlots]  = useState<Record<string, { tipo: string; contenido: string }[]>>({});
 
   /* Resumen inline state */
-  const [resumenExpanded, setResumenExpanded] = useState<string | null>(null);
+  const [resumenExpanded, setResumenExpanded] = useState<Set<string>>(new Set());
   const [resumenEditing,  setResumenEditing]  = useState<ResumenEditState | null>(null);
+
+  function toggleResumenExpanded(cod: string) {
+    setResumenExpanded(prev => {
+      const next = new Set(prev);
+      next.has(cod) ? next.delete(cod) : next.add(cod);
+      return next;
+    });
+  }
 
   /* Guías PDF (compartidas con EstadoPage) */
   const [guides,        setGuides]        = useState<Record<string, GuideEntry>>(loadGuides);
@@ -820,7 +828,7 @@ export function StepForm() {
     if (!item) return;
     setResumenEditing({ cod, idx, tipo: item.tipo, contenido: item.contenido, estado: item.estado,
       peso: String(item.peso), alto: String(item.alto), largo: String(item.largo), ancho: String(item.ancho) });
-    setResumenExpanded(cod);
+    setResumenExpanded(prev => { const next = new Set(prev); next.add(cod); return next; });
   };
   const rCancelEdit = () => setResumenEditing(null);
   const rSaveEdit = () => {
@@ -967,6 +975,16 @@ export function StepForm() {
           <div className="flex items-center justify-between mb-2">
             <span className="font-barlow-condensed text-[11px] uppercase tracking-widest text-white/40">Resumen en tiempo real</span>
             <div className="flex items-center gap-2">
+              {activeTiendasCount > 1 && (
+                <button
+                  onClick={() => {
+                    const allCods = activeTiendas.map(([c]) => c);
+                    setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
+                  }}
+                  className="font-barlow-condensed text-[11px] font-bold text-white/50 hover:text-white/90 cursor-pointer transition-colors">
+                  {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
+                </button>
+              )}
               {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
                 <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded-full">✓ Hoy completo</span>
               )}
@@ -1032,13 +1050,13 @@ export function StepForm() {
               const pallets     = it.filter(i => i.tipo === 'Pallet').length;
               const bultos      = it.filter(i => i.tipo === 'Bulto').length;
               const contenedores = it.filter(i => i.tipo === 'Contenedor').length;
-              const isOpen      = resumenExpanded === cod;
+              const isOpen      = resumenExpanded.has(cod);
               const totalPeso = it.reduce((s, i) => s + i.peso, 0);
 
               return (
                 <div key={cod} className={`border-b border-border ${isOpen ? 'bg-white' : ''}`}>
                   <div
-                    onClick={() => { rCancelEdit(); setResumenExpanded(isOpen ? null : cod); }}
+                    onClick={() => { rCancelEdit(); toggleResumenExpanded(cod); }}
                     className={`flex items-center gap-2.5 px-3 py-3 cursor-pointer transition-all active:bg-bg ${isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'}`}>
                     <div className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded min-w-[42px] text-center flex-shrink-0">{formatCod(cod)}</div>
                     <div className="flex-1 min-w-0">

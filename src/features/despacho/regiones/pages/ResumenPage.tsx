@@ -41,7 +41,15 @@ interface ResumenPageProps {
 export function ResumenPage({ panel = false }: ResumenPageProps) {
   const { state, dispatch, showToast } = useApp();
   const { dispatch: dispatchData, selection } = state;
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(name: string) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  }
 
   const [editingItem, setEditingItem] = useState<{ tienda: string; idx: number } | null>(null);
 
@@ -119,7 +127,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     setEditGuia(item.guia || '');
     setEditValor(item.valor ? String(item.valor) : '');
     setEditingItem({ tienda, idx });
-    setExpanded(tienda);
+    setExpanded(prev => { const next = new Set(prev); next.add(tienda); return next; });
   };
 
   const handleCombineConfirm = (peso: number, alto: number) => {
@@ -247,7 +255,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         const items = dispatchData[name] || [];
         const sel   = selection[name] || new Set<number>();
         const allSel = sel.size === items.length;
-        const isOpen = expanded === name;
+        const isOpen = expanded.has(name);
         let pesoT = 0, valorT = 0;
         items.forEach(i => { pesoT += i.peso; valorT += i.valor || 0; });
         const pallets     = items.filter(i => i.pkg === 'pallet').length;
@@ -259,7 +267,7 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
 
             {/* Row header */}
             <div
-              onClick={() => { cancelEdit(); setExpanded(isOpen ? null : name); }}
+              onClick={() => { cancelEdit(); toggleExpanded(name); }}
               className={`flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-all active:bg-bg ${
                 isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'
               } ${sel.size > 0 ? 'border-l-4 border-l-success' : ''}`}>
@@ -665,8 +673,15 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-border">
         {/* Panel header */}
-        <div className="bg-navy px-3 py-2 flex-shrink-0 flex items-center">
-          <span className="font-barlow-condensed text-[13px] font-bold text-white/70 uppercase tracking-widest">Resumen del día</span>
+        <div className="bg-navy px-3 py-2 flex-shrink-0 flex items-center gap-2">
+          <span className="font-barlow-condensed text-[13px] font-bold text-white/70 uppercase tracking-widest flex-1">Resumen del día</span>
+          {names.length > 0 && (
+            <button
+              onClick={() => setExpanded(expanded.size === names.length ? new Set() : new Set(names))}
+              className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/90 cursor-pointer transition-colors">
+              {expanded.size === names.length ? '▲ Colapsar' : '▼ Ver todo'}
+            </button>
+          )}
         </div>
         {statsStrip}
         <div className="flex-1 overflow-y-auto">
