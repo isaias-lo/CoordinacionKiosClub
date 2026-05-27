@@ -13,12 +13,23 @@ import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, San
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
+import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
+import { processPdf } from '../../regiones/utils/pdfUtils';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
 const todayKey = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
 const EXTRA_KEY   = `calExtraSANT_${todayKey}`;
 const REMOVED_KEY = `calRemovedSANT_${todayKey}`;
+
+/* ── Guías PDF — compartidas con EstadoPage vía Supabase ── */
+const GUIDES_KEY = `estadoGuias_${todayKey}`;
+type GuideEntry = { fileName: string; guias: string[]; totalSum: number };
+function loadGuides(): Record<string, GuideEntry> {
+  if (typeof window === 'undefined') return {};
+  try { return JSON.parse(localStorage.getItem(GUIDES_KEY) || '{}'); } catch { return {}; }
+}
+function saveGuides(g: Record<string, GuideEntry>) { localStorage.setItem(GUIDES_KEY, JSON.stringify(g)); }
 function loadExtra():   string[] { try { return JSON.parse(localStorage.getItem(EXTRA_KEY)   || '[]'); } catch { return []; } }
 function loadRemoved(): string[] { try { return JSON.parse(localStorage.getItem(REMOVED_KEY) || '[]'); } catch { return []; } }
 
@@ -67,12 +78,13 @@ interface ResumenEditState {
 ═══════════════════════════════════════ */
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
-  despachoP, despachoB, despachoC,
+  despachoP, despachoB, despachoC, hasGuide,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number;
+  hasGuide?: boolean;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -89,6 +101,8 @@ function TiendaGridCard({
       className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[58px] relative
         ${isActive
           ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red'
+          : hasGuide
+          ? 'bg-[rgba(22,163,74,0.07)] border border-success active:bg-[rgba(22,163,74,0.12)]'
           : isToday
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border active:bg-bg'
@@ -103,7 +117,7 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[17px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[17px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasGuide ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
       <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5">
@@ -248,9 +262,81 @@ export function StepForm() {
   const [resumenExpanded, setResumenExpanded] = useState<string | null>(null);
   const [resumenEditing,  setResumenEditing]  = useState<ResumenEditState | null>(null);
 
+  /* Guías PDF (compartidas con EstadoPage) */
+  const [guides,        setGuides]        = useState<Record<string, GuideEntry>>(loadGuides);
+  const [guideUploading, setGuideUploading] = useState(false);
+  const guideFileRef = useRef<HTMLInputElement>(null);
+
   /* Calendar from Sheets */
   const [sheetsTodayGrouped, setSheetsTodayGrouped] = useState<{ rm: string[]; costa: string[] }>(getCalendarioSantiagoInicialHoy);
   const [selectedGrps, setSelectedGrps] = useState<Set<'rm' | 'costa'>>(new Set(['rm']));
+
+  /* ── Sincronización de guías PDF con Supabase ── */
+  useEffect(() => {
+    function applyRemoteGuides(remote: unknown) {
+      try {
+        const rg = remote as Record<string, GuideEntry>;
+        if (!rg || typeof rg !== 'object' || Array.isArray(rg)) return;
+        setGuides(prev => {
+          const merged = { ...rg, ...prev };
+          saveGuides(merged);
+          return merged;
+        });
+      } catch {}
+    }
+    fetchSessionState('guides').then(remote => {
+      const localGuides = loadGuides();
+      const remoteGuides =
+        remote && typeof remote === 'object' && !Array.isArray(remote)
+          ? (remote as Record<string, GuideEntry>)
+          : {};
+      const merged = { ...remoteGuides, ...localGuides };
+      if (Object.keys(localGuides).length > 0) pushSessionState('guides', merged).catch(() => {});
+      applyRemoteGuides(merged);
+    }).catch(() => {});
+    const unsub = subscribeToSessionState('guides', '', applyRemoteGuides);
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Subida de guías PDF de Santiago ── */
+  const handleGuideFiles = async (files: FileList) => {
+    if (!files.length) return;
+    setGuideUploading(true);
+    const codMap: Record<string, string> = {};
+    TIENDAS_SANTIAGO.forEach(t => { codMap[t.cod] = t.cod; });
+    const newGuides = { ...guides };
+    let assigned = 0, skipped = 0;
+    for (const file of Array.from(files)) {
+      const clean = file.name.replace(/\.pdf$/i, '');
+      const match = clean.match(/^(\d{1,2}[A-ZÁÉÍÓÚÑ]{2,4}\d?)/i);
+      if (!match) { skipped++; continue; }
+      const rawCod = match[1].toUpperCase();
+      const norm   = rawCod.normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const storeCod = codMap[rawCod] || codMap[norm]
+        || Object.keys(codMap).find(k => k.normalize('NFD').replace(/[̀-ͯ]/g, '') === norm);
+      if (!storeCod) { skipped++; continue; }
+      try {
+        const data = await processPdf(file);
+        if (!data.guias.length) data.guias = [{ num: clean, total: 0 }];
+        newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum };
+        assigned++;
+      } catch { skipped++; }
+    }
+    if (guideFileRef.current) guideFileRef.current.value = '';
+    setGuideUploading(false);
+    if (assigned > 0) {
+      setGuides(newGuides);
+      saveGuides(newGuides);
+      pushSessionState('guides', newGuides).catch(() => {});
+      showToast(
+        `✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`,
+        '#16A34A',
+      );
+    } else {
+      showToast('No se pudo asignar. El nombre debe empezar con el código (ej: 21NUC-guia.pdf)', '#D97706');
+    }
+  };
 
   useEffect(() => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
@@ -749,6 +835,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
+                  hasGuide={!!guides[t.cod]}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -775,6 +862,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
+                  hasGuide={!!guides[t.cod]}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
@@ -1635,6 +1723,47 @@ export function StepForm() {
               );
             })}
           </div>
+        </div>
+
+        {/* ── Subir guías PDF de Santiago ── */}
+        <div className="flex-shrink-0 border-b border-border">
+          <input
+            ref={guideFileRef} type="file" accept=".pdf" multiple className="hidden"
+            onChange={e => e.target.files && handleGuideFiles(e.target.files)} />
+          <div
+            onClick={() => !guideUploading && guideFileRef.current?.click()}
+            className="mx-3 mt-2 rounded-xl border-2 border-dashed flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all border-border hover:border-success/50 hover:bg-[rgba(22,163,74,0.02)]">
+            {guideUploading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-border border-t-success rounded-full animate-spin flex-shrink-0" style={{ borderWidth: 2 }} />
+                <span className="font-barlow-condensed text-[13px] font-bold text-text-2">Procesando guías…</span>
+              </>
+            ) : (
+              <>
+                <span className="text-xl opacity-30 flex-shrink-0">📄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-barlow-condensed text-[13px] font-bold text-text leading-tight">Subir guías de despacho</p>
+                  <p className="text-[10px] text-text-3 leading-tight mt-0.5">PDF por código · ej: 21NUC-guia.pdf</p>
+                </div>
+                <span className="text-[10px] text-text-3 font-bold border border-border rounded-lg px-2 py-1 flex-shrink-0 bg-white">PDF</span>
+              </>
+            )}
+          </div>
+          {/* Chips de guías cargadas (solo tiendas Santiago) */}
+          {Object.keys(guides).filter(cod => TIENDAS_SANTIAGO.some(t => t.cod === cod)).length > 0 && (
+            <div className="px-3 py-2 flex gap-1.5 flex-wrap">
+              {Object.entries(guides)
+                .filter(([cod]) => TIENDAS_SANTIAGO.some(t => t.cod === cod))
+                .map(([cod, g]) => (
+                  <span key={cod} className="flex items-center gap-1.5 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.25)] rounded-full px-2.5 py-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
+                    <span className="font-barlow-condensed text-[11px] font-bold text-success">{formatCod(cod)}</span>
+                    <span className="text-[10px] text-text-3">{g.guias.length}g</span>
+                  </span>
+                ))}
+            </div>
+          )}
+          {Object.keys(guides).filter(cod => TIENDAS_SANTIAGO.some(t => t.cod === cod)).length === 0 && <div className="pb-2" />}
         </div>
 
         {renderStoreGrid()}
