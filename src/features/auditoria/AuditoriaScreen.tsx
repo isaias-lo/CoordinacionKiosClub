@@ -122,6 +122,7 @@ function catsToTipo(cats: string): TipoAuditoria {
   if (c && a && h) return 'completo';
   if (c && a) return 'comida-aseo';
   if (a && h) return 'aseo-hogar';
+  if (c && h) return 'completo'; // no existe 'comida-hogar', se trata como completo
   if (c) return 'comida';
   if (a) return 'aseo';
   if (h) return 'hogar';
@@ -1958,6 +1959,9 @@ export function AuditoriaScreen() {
   const [palletIdInput,   setPalletIdInput]   = useState('');
   const [palletIdLoading, setPalletIdLoading] = useState(false);
   const [palletIdError,   setPalletIdError]   = useState('');
+  const [showPalletId2,   setShowPalletId2]   = useState(false);
+  const [palletIdInput2,  setPalletIdInput2]  = useState('');
+  const [palletIdError2,  setPalletIdError2]  = useState('');
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
   const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
@@ -2282,82 +2286,104 @@ export function AuditoriaScreen() {
   };
 
   // Carga un pallet por ID numérico desde picking_pallets y auto-rellena el formulario
-  const handlePalletIdLookup = async (idStr: string) => {
-    const id = idStr.trim();
-    if (!id || !/^\d+$/.test(id)) { setPalletIdError('Ingresa un número válido'); return; }
-    setPalletIdLoading(true); setPalletIdError('');
-    try {
-      const res  = await fetch(`/api/picking-pallets?id=${id}`);
-      const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; tipo: string; contenido: string; refs: string }; error?: string };
-      if (!res.ok || !json.data) { setPalletIdError('ID no encontrado'); return; }
-      const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
+  const ORIGIN_CATS: { kw: string; st: SubTipo }[] = [
+    { kw: 'Abastecimiento Comida', st: 'comida' },
+    { kw: 'Abastecimiento Aseo',   st: 'aseo' },
+    { kw: 'Abastecimiento Hogar',  st: 'hogar' },
+  ];
 
-      // Mapeo de keyword de origen Odoo → subtipo de auditoría
-      const ORIGIN_CATS: { kw: string; st: SubTipo }[] = [
-        { kw: 'Abastecimiento Comida', st: 'comida' },
-        { kw: 'Abastecimiento Aseo',   st: 'aseo' },
-        { kw: 'Abastecimiento Hogar',  st: 'hogar' },
-      ];
+  // Obtiene datos de un pallet por ID: picker, tienda, mapa subtipo→código
+  const fetchPalletCodeMap = async (idStr: string): Promise<{
+    store_cod: string; picker_label: string;
+    codeBySubtipo: Partial<Record<SubTipo, string>>;
+  } | null> => {
+    const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`);
+    const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; contenido: string; refs: string }; error?: string };
+    if (!res.ok || !json.data) return null;
+    const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
 
-      // Mapa subtipo → código de operación (construido desde Odoo o desde DB)
-      const codeBySubtipo: Partial<Record<SubTipo, string>> = {};
+    const codeBySubtipo: Partial<Record<SubTipo, string>> = {};
 
-      // Buscar operaciones en Odoo para detectar tipo real + asignar código por categoría
-      if (odooConfig.url) {
-        try {
-          const pickerKey = (state_key.split('__')[1] ?? '').toLowerCase().trim();
-          const odooRes = await fetch('/api/odoo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'picking_today_operations', config: odooConfig, query: store_cod }),
-          });
-          const odooData = await odooRes.json() as { pickings?: Array<{ name: string; responsible: string; origin: string }> };
-          if (odooRes.ok && odooData.pickings?.length) {
-            const matching = odooData.pickings.filter(p =>
-              (p.responsible ?? '').toLowerCase().trim() === pickerKey
-            );
-            for (const op of matching) {
-              for (const { kw, st } of ORIGIN_CATS) {
-                if ((op.origin ?? '').includes(kw)) { codeBySubtipo[st] = op.name; break; }
-              }
+    if (odooConfig.url) {
+      try {
+        const pickerKey = (state_key.split('__')[1] ?? '').toLowerCase().trim();
+        const odooRes = await fetch('/api/odoo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'picking_today_operations', config: odooConfig, query: store_cod }),
+        });
+        const odooData = await odooRes.json() as { pickings?: Array<{ name: string; responsible: string; origin: string }> };
+        if (odooRes.ok && odooData.pickings?.length) {
+          const matching = odooData.pickings.filter(p =>
+            (p.responsible ?? '').toLowerCase().trim() === pickerKey
+          );
+          for (const op of matching) {
+            for (const { kw, st } of ORIGIN_CATS) {
+              if ((op.origin ?? '').includes(kw)) { codeBySubtipo[st] = op.name; break; }
             }
           }
-        } catch { /* sigue con fallback */ }
+        }
+      } catch { /* sigue con fallback */ }
+    }
+
+    // Fallback si Odoo no devolvió nada: contenido del DB + refs posicionales
+    if (Object.keys(codeBySubtipo).length === 0) {
+      const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
+      const fallbackTipo = contenido === 'mixto' ? 'comida-aseo' :
+        (VALID_TIPOS.includes(contenido as TipoAuditoria) ? contenido as TipoAuditoria : 'comida');
+      rawRefs.split('+').filter(Boolean).forEach((code, i) => {
+        const st = TIPO_TO_SUBTIPOS[fallbackTipo][i];
+        if (st) codeBySubtipo[st] = code;
+      });
+    }
+
+    return { store_cod, picker_label, codeBySubtipo };
+  };
+
+  const handlePalletIdLookup = async (id1: string, id2?: string) => {
+    const trimId1 = id1.trim();
+    if (!trimId1 || !/^\d+$/.test(trimId1)) { setPalletIdError('Ingresa un número válido'); return; }
+    const trimId2 = id2?.trim() ?? '';
+    if (trimId2 && !/^\d+$/.test(trimId2)) { setPalletIdError2('Ingresa un número válido'); return; }
+
+    setPalletIdLoading(true); setPalletIdError(''); setPalletIdError2('');
+    try {
+      // Buscar primer pallet (obligatorio)
+      const p1 = await fetchPalletCodeMap(trimId1);
+      if (!p1) { setPalletIdError('ID no encontrado'); return; }
+
+      // Mapa combinado: empezar con pallet 1, luego agregar categorías del pallet 2 (sin pisar)
+      const combined: Partial<Record<SubTipo, string>> = { ...p1.codeBySubtipo };
+
+      if (trimId2) {
+        const p2 = await fetchPalletCodeMap(trimId2);
+        if (!p2) { setPalletIdError2('ID no encontrado'); return; }
+        for (const [st, code] of Object.entries(p2.codeBySubtipo) as [SubTipo, string][]) {
+          if (!combined[st]) combined[st] = code; // solo agrega lo que no estaba
+        }
       }
 
-      // Detectar tipo: desde categorías Odoo (fuente de verdad) o desde DB contenido
-      const foundSts = Object.keys(codeBySubtipo) as SubTipo[];
-      let newTipo: TipoAuditoria;
-      if (foundSts.length > 0) {
-        newTipo = catsToTipo(foundSts.join(','));
-      } else {
-        // Fallback: contenido del DB + refs posicionales
-        const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
-        newTipo = contenido === 'mixto' ? 'comida-aseo' :
-          (VALID_TIPOS.includes(contenido as TipoAuditoria) ? contenido as TipoAuditoria : 'comida');
-        rawRefs.split('+').filter(Boolean).forEach((code, i) => {
-          const st = TIPO_TO_SUBTIPOS[newTipo][i];
-          if (st) codeBySubtipo[st] = code;
-        });
-      }
+      // Detectar tipo desde el mapa combinado
+      const foundSts = Object.keys(combined) as SubTipo[];
+      const newTipo: TipoAuditoria = foundSts.length > 0 ? catsToTipo(foundSts.join(',')) : 'comida';
 
-      // Códigos en el orden correcto para TIPO_TO_SUBTIPOS[newTipo]
-      const orderedCodes = TIPO_TO_SUBTIPOS[newTipo].map(st => codeBySubtipo[st] ?? '');
+      const orderedCodes = TIPO_TO_SUBTIPOS[newTipo].map(st => combined[st] ?? '');
       const newOperaciones: OperacionEntry[] = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: orderedCodes[i] }));
 
-      if (picker_label.trim()) setPickerNombre(picker_label.trim());
-      const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === store_cod);
+      if (p1.picker_label.trim()) setPickerNombre(p1.picker_label.trim());
+      const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === p1.store_cod);
       if (matchedTienda) setTienda(matchedTienda);
 
       if (newTipo !== tipo) {
-        // useEffect([tipo]) aplicará las operaciones al cambiar el tipo
         pendingScanRef.current = orderedCodes;
         setTipo(newTipo);
       } else {
         setOperaciones(newOperaciones);
       }
-      showToast(`✓ #${id} · ${store_cod} · ${newTipo.toUpperCase()}`, '#16A34A');
-      setPalletIdInput('');
+
+      const idLabel = trimId2 ? `#${trimId1}+${trimId2}` : `#${trimId1}`;
+      showToast(`✓ ${idLabel} · ${p1.store_cod} · ${newTipo.toUpperCase()}`, '#16A34A');
+      setPalletIdInput(''); setPalletIdInput2(''); setShowPalletId2(false);
       setFormPhase('setup');
     } catch {
       setPalletIdError('Error de conexión');
@@ -2424,6 +2450,7 @@ export function AuditoriaScreen() {
     setTipo('comida');
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
+    setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
   };
 
   // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
@@ -2444,6 +2471,7 @@ export function AuditoriaScreen() {
     setTipo('comida'); setPallets('');
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
+    setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -2567,6 +2595,7 @@ export function AuditoriaScreen() {
     setTienda(null); setTiendaQuery(''); setPicker(''); setPickerNombre(''); setOdooAutoDetected(false); setTipo('comida'); setPallets('');
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
+    setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -2878,27 +2907,72 @@ export function AuditoriaScreen() {
                 {/* ID numérico de pallet */}
                 <div className="mt-3 bg-white border border-border rounded-card px-4 py-3" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
                   <div className="font-barlow-condensed text-[13px] font-bold text-text-2 uppercase tracking-wide mb-2">Ingresar ID de pallet</div>
+
+                  {/* Pallet 1 */}
                   <div className="flex gap-2">
                     <input
                       type="number" inputMode="numeric" pattern="[0-9]*"
                       value={palletIdInput}
                       onChange={e => { setPalletIdInput(e.target.value); setPalletIdError(''); }}
-                      onKeyDown={e => { if (e.key === 'Enter') void handlePalletIdLookup(palletIdInput); }}
+                      onKeyDown={e => { if (e.key === 'Enter' && !showPalletId2) void handlePalletIdLookup(palletIdInput); }}
                       placeholder="Ej: 1247"
                       className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
                       style={{ letterSpacing: '2px' }}
                       disabled={palletIdLoading}
                     />
-                    <button
-                      type="button"
-                      onClick={() => void handlePalletIdLookup(palletIdInput)}
-                      disabled={palletIdLoading || !palletIdInput.trim()}
-                      className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
-                      style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
-                      {palletIdLoading ? '…' : 'Buscar'}
-                    </button>
+                    {!showPalletId2 && (
+                      <button
+                        type="button"
+                        onClick={() => void handlePalletIdLookup(palletIdInput)}
+                        disabled={palletIdLoading || !palletIdInput.trim()}
+                        className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                        {palletIdLoading ? '…' : 'Buscar'}
+                      </button>
+                    )}
                   </div>
                   {palletIdError && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError}</div>}
+
+                  {/* Pallet 2 (hogar separado) */}
+                  {showPalletId2 && (
+                    <div className="mt-3 pt-3 border-t border-border/60">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-[11px] font-bold text-text-2 uppercase tracking-wide">ID pallet hogar</span>
+                        <span className="text-[10px] text-text-3">(opcional — si va en pallet separado)</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="number" inputMode="numeric" pattern="[0-9]*"
+                          value={palletIdInput2}
+                          onChange={e => { setPalletIdInput2(e.target.value); setPalletIdError2(''); }}
+                          onKeyDown={e => { if (e.key === 'Enter') void handlePalletIdLookup(palletIdInput, palletIdInput2); }}
+                          placeholder="ID pallet 2"
+                          className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
+                          style={{ letterSpacing: '2px' }}
+                          disabled={palletIdLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handlePalletIdLookup(palletIdInput, palletIdInput2)}
+                          disabled={palletIdLoading || !palletIdInput.trim()}
+                          className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
+                          style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
+                          {palletIdLoading ? '…' : 'Buscar'}
+                        </button>
+                      </div>
+                      {palletIdError2 && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError2}</div>}
+                    </div>
+                  )}
+
+                  {/* Toggle segundo pallet */}
+                  <button
+                    type="button"
+                    onClick={() => { setShowPalletId2(v => !v); setPalletIdInput2(''); setPalletIdError2(''); }}
+                    className="mt-2.5 flex items-center gap-1.5 cursor-pointer border-none bg-transparent p-0 transition-opacity active:opacity-60"
+                    style={{ color: showPalletId2 ? '#9CA3AF' : '#2563EB' }}>
+                    <span className="text-[13px]">{showPalletId2 ? '− Quitar ID adicional' : '+ Agregar ID adicional (ej. hogar separado)'}</span>
+                  </button>
+
                   <div className="mt-1.5 text-[10px] text-text-3">El número aparece en la etiqueta del pallet junto al código de tienda</div>
                 </div>
                 <button type="button" onClick={() => setFormPhase('setup')}
