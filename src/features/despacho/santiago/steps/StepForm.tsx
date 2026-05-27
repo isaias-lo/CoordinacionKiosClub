@@ -96,11 +96,11 @@ function TiendaGridCard({
   return (
     <div
       onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[58px] relative
+      className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red'
+          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
           : hasGuide
-          ? 'bg-[rgba(22,163,74,0.07)] border border-success active:bg-[rgba(22,163,74,0.12)]'
+          ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success active:bg-[rgba(22,163,74,0.12)]'
           : isToday
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border active:bg-bg'
@@ -115,10 +115,10 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[17px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasGuide ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasGuide ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5">
+      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
         {t.tienda}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
@@ -867,7 +867,7 @@ export function StepForm() {
             <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">HOY</span>
             <span className="font-barlow-condensed text-[10px] text-red/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 p-1.5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {todayList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
@@ -894,7 +894,7 @@ export function StepForm() {
             <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3">Todas</span>
             <span className="font-barlow-condensed text-[10px] text-text-3/50 uppercase tracking-wide hidden sm:inline">toca + para agregar a hoy</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 p-1.5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {othersList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
@@ -1623,11 +1623,14 @@ export function StepForm() {
             </div>
           )}
 
-          <button onClick={saveItem} disabled={!canAdd}
-            className="w-full py-4 lg:py-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[21px] lg:text-[18px] font-bold cursor-pointer disabled:opacity-30 active:bg-red-dark"
-            style={{ boxShadow: canAdd ? '0 4px 14px rgba(211,47,47,0.28)' : 'none' }}>
-            {editingIdx !== null ? '✓ Guardar cambios' : '+ Agregar'}
-          </button>
+          <div className="sticky bottom-0 z-10 pb-4 pt-2"
+            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
+            <button onClick={saveItem} disabled={!canAdd}
+              className="w-full py-4 lg:py-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[21px] lg:text-[18px] font-bold cursor-pointer disabled:opacity-30 active:bg-red-dark"
+              style={{ boxShadow: canAdd ? '0 4px 14px rgba(211,47,47,0.28)' : 'none' }}>
+              {editingIdx !== null ? '✓ Guardar cambios' : '+ Agregar'}
+            </button>
+          </div>
 
           {/* Items list */}
           {tiendaItems.length > 0 && (
@@ -1750,8 +1753,8 @@ export function StepForm() {
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
-      {/* ─── LEFT PANEL ─── */}
-      <div className={`${view === 'list' ? 'flex' : 'hidden'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
+      {/* ─── LEFT PANEL ─── always visible on mobile; hidden only in resumen view */}
+      <div className={`${view === 'resumen' ? 'hidden' : 'flex'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -1836,14 +1839,50 @@ export function StepForm() {
           </div>
         )}
 
-        {/* Desktop resumen (no tienda selected) + mobile form view */}
-        <div className={`${view === 'form' ? 'flex' : 'hidden'} lg:flex flex-1 flex-col overflow-hidden`}>
+        {/* Form panel — desktop only (mobile uses bottom sheet below) */}
+        <div className={`hidden lg:flex flex-1 flex-col overflow-hidden`}>
           {!currentTienda
             ? renderResumenPanel()
             : formRows.length > 0
               ? renderMultiForm()
               : renderSingleForm()
           }
+        </div>
+      </div>
+
+      {/* ── MOBILE BOTTOM SHEET ── (lg:hidden) */}
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 lg:hidden"
+        style={{
+          background: 'rgba(15,23,42,0.55)',
+          backdropFilter: 'blur(3px)',
+          opacity: currentTienda ? 1 : 0,
+          pointerEvents: currentTienda ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease',
+        }}
+        onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}
+      />
+      {/* Sheet */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
+        style={{
+          maxHeight: '92dvh',
+          transform: currentTienda ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
+          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer"
+          onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}>
+          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+        </div>
+        {/* Form content */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {currentTienda && (
+            formRows.length > 0 ? renderMultiForm() : renderSingleForm()
+          )}
         </div>
       </div>
 

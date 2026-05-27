@@ -102,19 +102,19 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-1 py-2 cursor-pointer rounded-lg transition-all select-none min-h-[64px] relative
+      className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red'
+          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
           : hasPdf
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
           : isToday
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      <div className={`font-barlow-condensed text-[13px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[11px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-0.5 uppercase">
+      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
         {t.name}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
@@ -1045,16 +1045,19 @@ export function TiendasPage() {
               </div>
             </>
           )}
-          <button onClick={saveItem}
-            className="w-full py-4 mt-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[20px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]"
-            style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.28)' }}>
-            {editingIdx !== null ? 'Guardar' : '+ Agregar'}
-          </button>
-          {items.length > 0 && editingIdx === null && (
-            <button onClick={copyLast} className="w-full py-2.5 mt-1 bg-white text-text-2 border border-dashed border-border-2 rounded-btn text-[13px] cursor-pointer font-barlow hover:border-text-3">
-              ↻ Copiar último
+          <div className="sticky bottom-0 z-10 mt-3 pb-4 pt-2"
+            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
+            <button onClick={saveItem}
+              className="w-full py-4 bg-red text-white border-none rounded-card font-barlow-condensed text-[20px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]"
+              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.28)' }}>
+              {editingIdx !== null ? 'Guardar' : '+ Agregar'}
             </button>
-          )}
+            {items.length > 0 && editingIdx === null && (
+              <button onClick={copyLast} className="w-full py-2.5 mt-1.5 bg-white text-text-2 border border-dashed border-border-2 rounded-btn text-[13px] cursor-pointer font-barlow hover:border-text-3">
+                ↻ Copiar último
+              </button>
+            )}
+          </div>
           {items.length > 0 && (
             <div className="mt-3">
               <SLabel>Items ({items.length})</SLabel>
@@ -1142,8 +1145,8 @@ export function TiendasPage() {
       {/* Wrapper: on mobile = top/bottom stack, on desktop = transparent via contents */}
       <div className="flex flex-col lg:contents flex-1 min-h-0 overflow-hidden">
 
-      {/* LEFT PANEL — lista de tiendas */}
-      <div className="w-full h-[42vh] lg:w-[28%] lg:h-auto lg:min-w-[160px] flex flex-col border-b-2 lg:border-b-0 lg:border-r-2 border-border overflow-hidden flex-shrink-0">
+      {/* LEFT PANEL — lista de tiendas (full height on mobile) */}
+      <div className="w-full flex-1 lg:w-[28%] lg:h-auto lg:min-w-[160px] flex flex-col lg:border-r-2 border-border overflow-hidden flex-shrink-0">
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
@@ -1199,7 +1202,7 @@ export function TiendasPage() {
                 </span>
                 {!addDropActive && <span className="font-barlow-condensed text-[11px] text-red/50 ml-2 uppercase tracking-wide">arrastra aquí</span>}
               </div>
-              <div className="grid grid-cols-3 gap-1 p-1.5">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                 {today.map(t => {
                   const cardItems = dispatchData[t.name] || [];
                   const pkSlots   = pickingSlots[t.name] ?? [];
@@ -1246,7 +1249,7 @@ export function TiendasPage() {
                 </div>
               )}
               {(showTodas || today.length === 0) && (
-                <div className="grid grid-cols-3 gap-1 p-1.5">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                   {others.map(t => {
                     const cardItems = dispatchData[t.name] || [];
                     const pkSlots   = pickingSlots[t.name] ?? [];
@@ -1306,8 +1309,8 @@ export function TiendasPage() {
         </div>
       </div>
 
-      {/* CENTER PANEL — formulario */}
-      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
+      {/* CENTER PANEL — formulario (desktop only) */}
+      <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
             ? renderForm()
@@ -1319,21 +1322,54 @@ export function TiendasPage() {
             )
           }
         </div>
-
-        {/* Calendar modals */}
-        {confirmAddName && (
-          <ConfirmCalendarModal name={confirmAddName} mode="add"
-            onConfirm={() => { addToToday(confirmAddName); setConfirmAddName(null); }}
-            onCancel={() => setConfirmAddName(null)} />
-        )}
-        {confirmRemoveName && (
-          <ConfirmCalendarModal name={confirmRemoveName} mode="remove"
-            onConfirm={() => { removeFromToday(confirmRemoveName); setConfirmRemoveName(null); }}
-            onCancel={() => setConfirmRemoveName(null)} />
-        )}
       </div>
 
       </div>{/* end top-row wrapper */}
+
+      {/* ── MOBILE BOTTOM SHEET ── (lg:hidden) */}
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 lg:hidden"
+        style={{
+          background: 'rgba(15,23,42,0.55)',
+          backdropFilter: 'blur(3px)',
+          opacity: selectedTienda ? 1 : 0,
+          pointerEvents: selectedTienda ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease',
+        }}
+        onClick={() => select(selectedTienda!)}
+      />
+      {/* Sheet */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
+        style={{
+          maxHeight: '92dvh',
+          transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
+          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer" onClick={() => select(selectedTienda!)}>
+          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+        </div>
+        {/* Form content (reuses renderForm logic) */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {selectedTienda && renderForm()}
+        </div>
+      </div>
+
+      {/* Calendar modals — top level so they work from both desktop form and mobile sheet */}
+      {confirmAddName && (
+        <ConfirmCalendarModal name={confirmAddName} mode="add"
+          onConfirm={() => { addToToday(confirmAddName); setConfirmAddName(null); }}
+          onCancel={() => setConfirmAddName(null)} />
+      )}
+      {confirmRemoveName && (
+        <ConfirmCalendarModal name={confirmRemoveName} mode="remove"
+          onConfirm={() => { removeFromToday(confirmRemoveName); setConfirmRemoveName(null); }}
+          onCancel={() => setConfirmRemoveName(null)} />
+      )}
 
       {/* RIGHT PANEL — resumen (right column on desktop only) */}
       <div className="hidden lg:flex lg:flex-col lg:h-auto lg:border-t-0 lg:w-[28%] lg:min-w-[200px] overflow-hidden flex-shrink-0">
