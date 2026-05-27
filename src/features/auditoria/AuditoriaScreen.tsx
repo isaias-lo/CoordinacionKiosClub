@@ -1834,41 +1834,57 @@ interface ProcessedPhoto {
   previewUrl: string;
   warning: string;
 }
-function processPhoto(file: File, maxDim = 1280, quality = 0.80): Promise<ProcessedPhoto> {
+async function processPhoto(file: File, maxDim = 1280, quality = 0.80): Promise<ProcessedPhoto> {
+  // createImageBitmap respects EXIF orientation (iOS Safari 15+, Chrome 83+, Firefox 90+).
+  // Fallback to <img> decode for older browsers that don't support it.
+  let bitmapSource: ImageBitmap | null = null;
+  let nativeW = 0, nativeH = 0;
+  try {
+    bitmapSource = await createImageBitmap(file);
+    nativeW = bitmapSource.width; nativeH = bitmapSource.height;
+  } catch {
+    // Fallback: decode via <img> (no EXIF correction on very old Safari)
+    await new Promise<void>(res => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => { nativeW = img.naturalWidth; nativeH = img.naturalHeight; URL.revokeObjectURL(url); res(); };
+      img.onerror = () => { URL.revokeObjectURL(url); res(); };
+      img.src = url;
+    });
+    if (!nativeW) return { compressed: file, previewUrl: URL.createObjectURL(file), warning: '' };
+  }
+
+  const minDim = Math.min(nativeW, nativeH);
+  const warning =
+    minDim < 400 ? 'Foto muy pequeña — puede ser ilegible' :
+    minDim < 700 ? 'Resolución baja — intenta acercarte' : '';
+
+  const scale = Math.min(1, maxDim / Math.max(nativeW, nativeH));
+  const w = Math.round(nativeW * scale);
+  const h = Math.round(nativeH * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  if (bitmapSource) {
+    ctx.drawImage(bitmapSource, 0, 0, w, h);
+    bitmapSource.close(); // free GPU memory
+  } else {
+    // Fallback img path — draw via <img> element
+    await new Promise<void>(res => {
+      const img2 = new Image();
+      const url2 = URL.createObjectURL(file);
+      img2.onload = () => { ctx.drawImage(img2, 0, 0, w, h); URL.revokeObjectURL(url2); res(); };
+      img2.onerror = () => { URL.revokeObjectURL(url2); res(); };
+      img2.src = url2;
+    });
+  }
+
   return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url); // free original blob URL immediately after decode
-
-      // Quality warning based on original (pre-scale) dimensions
-      const minDim = Math.min(img.width, img.height);
-      const warning =
-        minDim < 400 ? 'Foto muy pequeña — puede ser ilegible' :
-        minDim < 700 ? 'Resolución baja — intenta acercarte' : '';
-
-      // Compress: scale down to maxDim keeping aspect ratio
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => {
-        if (!blob) {
-          // Fallback: use original unchanged
-          resolve({ compressed: file, previewUrl: URL.createObjectURL(file), warning });
-          return;
-        }
-        const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
-        resolve({ compressed, previewUrl: URL.createObjectURL(blob), warning });
-      }, 'image/jpeg', quality);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve({ compressed: file, previewUrl: URL.createObjectURL(file), warning: '' });
-    };
-    img.src = url;
+    canvas.toBlob(blob => {
+      if (!blob) { resolve({ compressed: file, previewUrl: URL.createObjectURL(file), warning }); return; }
+      const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+      resolve({ compressed, previewUrl: URL.createObjectURL(blob), warning });
+    }, 'image/jpeg', quality);
   });
 }
 
@@ -2003,15 +2019,21 @@ export function AuditoriaScreen() {
       setHistoryLoading(false);
     }
   };
-  // Realtime: re-fetch history whenever any audit_entries row changes
+  // Realtime: re-fetch history whenever any audit_entries row changes (debounced 1.5 s to absorb bursts)
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel('auditoria-screen-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_entries' }, () => {
-        if (viewInit) loadHistory();
+        if (!viewInit) return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => { loadHistory(); }, 1500);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewInit]);
 
@@ -2144,57 +2166,9 @@ export function AuditoriaScreen() {
     return () => document.removeEventListener('visibilitychange', reacquire);
   }, [formPhase]);
 
-  // Restore session on mount (before auth-fill effects) — reads legacy global key
+  // Legacy global key cleanup: remove any old unscoped session so it doesn't leak between users
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AUDIT_SESSION_KEY);
-      if (!raw) return;
-      type Sess = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; draftEntryId?: string; palletStorageUrls?: Record<string, string>; fotoStorageUrls?: string[]; fotoStoragePaths?: string[]; errorFotoStorageUrls?: string[]; errorFotoStoragePaths?: string[]; };
-      const s = JSON.parse(raw) as Sess;
-      if (!s.savedAt) return;
-      if (Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) { localStorage.removeItem(AUDIT_SESSION_KEY); return; }
-      if (s.auditor)        { setAuditor(s.auditor); auditorFromProfile.current = false; }
-      if (s.pickerNombre)   setPickerNombre(s.pickerNombre);
-      if (s.picker)         setPicker(s.picker);
-      if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
-      if (s.tipo)           setTipo(s.tipo);
-      if (s.operaciones?.length) setOperaciones(s.operaciones);
-      if (s.pallets)        setPallets(s.pallets);
-      if (s.tieneErrores !== undefined) setTieneErrores(s.tieneErrores ?? null);
-      if (s.tiposError?.length) setTiposError(s.tiposError);
-      if (s.productos?.length)  setProductos(s.productos);
-      if (s.observaciones)  setObservaciones(s.observaciones);
-      if (s.draftEntryId) draftEntryIdRef.current = s.draftEntryId;
-      if (s.palletStorageUrls && Object.keys(s.palletStorageUrls).length > 0) {
-        setPalletStorageUrls(s.palletStorageUrls);
-        setPalletPreviews(s.palletStorageUrls);
-      }
-      if (s.fotoStorageUrls?.length) {
-        setFotoStorageUrls(s.fotoStorageUrls);
-        setFotoStoragePaths(s.fotoStoragePaths ?? []);
-        setFotoPreviews(s.fotoStorageUrls.filter(Boolean));
-      }
-      if (s.errorFotoStorageUrls?.length) {
-        setErrorFotoStorageUrls(s.errorFotoStorageUrls);
-        setErrorFotoStoragePaths(s.errorFotoStoragePaths ?? []);
-        setErrorFotoPreviews(s.errorFotoStorageUrls.filter(Boolean));
-      }
-      if (s.formPhase === 'execution' || s.formPhase === 'setup') {
-        setFormPhase(s.formPhase as 'execution' | 'setup');
-        if (s.formPhase === 'execution' && s.auditStartTime) {
-          auditStartTimeRef.current = s.auditStartTime;
-          setAuditStartTime(s.auditStartTime);
-          const elapsed = Math.floor((Date.now() - new Date(s.auditStartTime).getTime()) / 1000);
-          setTimerSeconds(Math.max(0, elapsed));
-          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          timerIntervalRef.current = setInterval(() => {
-            const e = Math.floor((Date.now() - new Date(auditStartTimeRef.current).getTime()) / 1000);
-            setTimerSeconds(Math.max(0, e));
-          }, 1000);
-          setSessionRestored(true);
-        }
-      }
-    } catch { /* corrupt data */ }
+    try { localStorage.removeItem(AUDIT_SESSION_KEY); } catch { /* empty */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3462,7 +3436,7 @@ export function AuditoriaScreen() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setConfirmSubmit(false)} className="flex-1 py-3 border border-border rounded-card font-barlow-condensed text-[15px] font-bold text-text-2 cursor-pointer">Cancelar</button>
-              <button onClick={handleSubmit} className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer" style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>Confirmar</button>
+              <button onClick={handleSubmit} disabled={submitting} className="flex-1 py-3 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>{submitting ? 'Guardando…' : 'Confirmar'}</button>
             </div>
           </div>
         </div>
