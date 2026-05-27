@@ -347,7 +347,7 @@ export function buildDespachoRMRecords(params: {
         largo:         null as null,
         ancho:         null as null,
         peso_v:        null as null,
-        ventana:       '',
+        ventana:       info?.v || '',
         estado:        'Listo para despachar',
         fecha_llegada: '',
         conductor,

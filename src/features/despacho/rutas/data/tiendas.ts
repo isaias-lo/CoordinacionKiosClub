@@ -52,6 +52,7 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   "29CFL":{n:"Florida Center",            z:"Corredor Sur",         v:"08:30-09:30", region:"RM",          d:"Av. Vicuña Mackenna Ote. 6100 Local 3100, La Florida",               correos:"cencoflorida@kiosclub.com",      tel_encargado:"56942536007"},
   "49PTA":{n:"Los Toros (Puente Alto)",   z:"Corredor Sur",         v:"08:30-09:30", region:"RM",          d:"Los Toros 297 Local 1009, Puente Alto",                               correos:"lostoros@kiosclub.com",          tel_encargado:"56995765854"},
   CLI:   {n:"Colina",                      z:"Corredor Norte",       v:"09:00-12:00", region:"RM"},
+  "55ITA":{n:"ITA",                        z:"Corredor RM",           v:"09:00-12:00", region:"RM",          correos:"55ita@kiosclub.com"},
   // ── Costa (Valparaíso) ───────────────────────────────────────────────────
   "37VIN":{n:"Viña del Mar",              z:"Costa",                v:"09:30-11:30", region:"Valparaíso",  d:"8 Norte 675, Viña del Mar",                                           correos:"vinadelmar@kiosclub.com",        tel_encargado:"56941223668"},
   "08RNC":{n:"Reñaca",                    z:"Costa",                v:"09:30-12:00", region:"Valparaíso",  d:"Av. Edmundo Eluchans 1850 Local 10, Reñaca",                          correos:"renaca@kiosclub.com",            tel_encargado:"56974772902"},
@@ -96,7 +97,7 @@ export const ALIAS: Record<string, string> = {
   "MPQ":"54MPQ","PSB":"39PSB","SER":"51SER","MCH":"27MCH","TLC":"31TLC",
   "CHL":"36CHL","TRE":"46TRE","SPP":"24SPP","SP2":"38SP2","TEM":"28TEM",
   "PUC":"75PUC","PAN":"76PAN","PTV":"47PTV","PTM":"50PTM","ANA":"41ANA",
-  "ANP":"42ANP","VAL":"53VAL",
+  "ANP":"42ANP","VAL":"53VAL","ITA":"55ITA",
 };
 
 export const GPS_INICIAL: Record<string, [number, number]> = {

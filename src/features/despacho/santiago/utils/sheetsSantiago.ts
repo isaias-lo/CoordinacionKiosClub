@@ -30,8 +30,9 @@ function buildRows(
     if (!tienda) continue;
 
     for (const item of tiendaItems) {
+      const tipoPrefix = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Bulto' ? 'B' : item.tipo === 'Contenedor' ? 'C' : 'CH';
       rows.push([
-        `${item.orden}${cod}${stamp}`,                                    // ID
+        `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — matches Enrutador format
         fecha,                                                             // FECHA
         cod,                                                               // COD
         tienda.tienda,                                                     // TIENDA

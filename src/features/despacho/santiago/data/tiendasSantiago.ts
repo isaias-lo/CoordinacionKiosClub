@@ -33,6 +33,7 @@ export const TIENDAS_SANTIAGO: TiendaSantiago[] = [
   { region:'RM', tienda:'LAS BRUJAS',              cod:'48BRU', direccion:'Carlos Silva Vildosola 9073 Local 64 La Reina',           comuna:'La Reina',      tipo:'STRIPCENTER', ventanaHoraria:'9:00 - 12:00',  diasDespacho:['MA','JU'] },
   { region:'RM', tienda:'PEDRO FONTOVA',           cod:'14PF',  direccion:'Av. Pedro Fontova 6251 Huechuraba',                       comuna:'Huechuraba',    tipo:'STRIPCENTER', ventanaHoraria:'9:30 - 10:00',  diasDespacho:['MA','VI'] },
   { region:'RM', tienda:'VITACURA',                cod:'03VIT', direccion:'Av. Vitacura 4020 Local 10 Vitacura',                     comuna:'Vitacura',      tipo:'STRIPCENTER', ventanaHoraria:'9:00 - 12:00',  diasDespacho:['MA','JU'] },
+  { region:'RM', tienda:'ITA',                     cod:'55ITA', direccion:'',                                                         comuna:'',              tipo:'STRIPCENTER', ventanaHoraria:'9:00 - 12:00',  diasDespacho:['MA','JU'] },
   // ── Costa (V Región) ────────────────────────────────────────────────────────
   { region:'VR', tienda:'VIÑA DEL MAR',            cod:'37VIÑ', direccion:'8 Norte 675, Viña del Mar',                               comuna:'Viña del Mar',  tipo:'STRIPCENTER', ventanaHoraria:'9:30 - 11:30',  diasDespacho:['LU','MI'] },
   { region:'VR', tienda:'REÑACA',                  cod:'08RNC', direccion:'Av. Edmundo Eluchans 1850 Local 10, Reñaca',              comuna:'Reñaca',        tipo:'STRIPCENTER', ventanaHoraria:'9:30 - 12:00',  diasDespacho:['LU','MI'] },
