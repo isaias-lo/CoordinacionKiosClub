@@ -12,6 +12,19 @@ export async function GET(request: NextRequest) {
       .eq('id', Number(idParam))
       .single();
     if (error) return NextResponse.json({ error: 'ID no encontrado' }, { status: 404 });
+    // If refs is empty, look for sibling pallets in the same group (same state_key + date) that have refs
+    if (data && !data.refs) {
+      const slotDate = (data.created_at as string).slice(0, 10);
+      const { data: sibling } = await supabaseServer()
+        .from('picking_pallets')
+        .select('refs')
+        .eq('state_key', data.state_key as string)
+        .eq('date', slotDate)
+        .neq('refs', '')
+        .limit(1)
+        .single();
+      if (sibling?.refs) data.refs = sibling.refs;
+    }
     return NextResponse.json({ data });
   }
   const date = request.nextUrl.searchParams.get('date') ?? new Date().toISOString().slice(0, 10);

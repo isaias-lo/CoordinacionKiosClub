@@ -2291,19 +2291,20 @@ export function AuditoriaScreen() {
       if (!res.ok || !json.data) { setPalletIdError('ID no encontrado'); return; }
       const { store_cod, picker_label, contenido, refs } = json.data;
       const opCodes = refs.split('+').filter(Boolean);
-      const newTipo: TipoAuditoria = contenido === 'mixto' ? 'comida-aseo' : (['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'].includes(contenido) ? contenido as TipoAuditoria : 'comida');
+      const VALID_TIPOS: TipoAuditoria[] = ['comida','hogar','aseo','comida-aseo','aseo-hogar','completo'];
+      const newTipo: TipoAuditoria = contenido === 'mixto' ? 'comida-aseo' :
+        (VALID_TIPOS.includes(contenido as TipoAuditoria) ? contenido as TipoAuditoria : 'comida');
       if (picker_label.trim()) setPickerNombre(picker_label.trim());
       const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === store_cod);
       if (matchedTienda) setTienda(matchedTienda);
-      if (opCodes.length > 0) {
-        if (newTipo !== tipo) {
-          pendingScanRef.current = opCodes;
-          setTipo(newTipo);
-        } else {
-          setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
-        }
-      } else {
+      // Always apply tipo + operaciones.
+      // If tipo changes: useEffect([tipo]) handles operaciones via pendingScanRef.
+      // If tipo is unchanged: set operaciones directly (setTipo no-op skips the effect).
+      if (newTipo !== tipo) {
+        pendingScanRef.current = opCodes.length > 0 ? opCodes : null;
         setTipo(newTipo);
+      } else {
+        setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
       }
       showToast(`✓ #${id} · ${store_cod} · ${picker_label.trim() || 'sin nombre'}`, '#16A34A');
       setPalletIdInput('');
