@@ -53,7 +53,7 @@ export function SeguimientoPanel() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error,   setError]   = useState('');
-  const [date,    setDate]    = useState(todayStr());
+  const [date,    setDate]    = useState('');
   const [search,  setSearch]  = useState('');
   const [source,  setSource]  = useState<'ambos' | 'rm' | 'regiones'>('ambos');
 
