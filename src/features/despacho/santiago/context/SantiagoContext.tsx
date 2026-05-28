@@ -20,7 +20,8 @@ type SyncableState = {
   items: Record<string, SantiagoItem[]>;
 };
 
-const todayKey = new Date().toISOString().split('T')[0];
+const _d = new Date();
+const todayKey = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
 const SANTIAGO_KEY = `santiagoState_${todayKey}`;
 export const SANTIAGO_TERMINADO_KEY = `santiagoTerminado_${todayKey}`;
 

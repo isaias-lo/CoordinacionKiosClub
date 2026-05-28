@@ -255,6 +255,8 @@ export function StepForm() {
   const [formRows,      setFormRows]     = useState<FormRow[]>([]);
   const [pickingSlots,  setPickingSlots]  = useState<Record<string, { tipo: string; contenido: string }[]>>({});
 
+  const [showTodas, setShowTodas] = useState(false);
+
   /* Resumen inline state */
   const [resumenExpanded, setResumenExpanded] = useState<Set<string>>(new Set());
   const [resumenEditing,  setResumenEditing]  = useState<ResumenEditState | null>(null);
@@ -483,6 +485,8 @@ export function StepForm() {
   const formScrollRef        = useRef<HTMLDivElement>(null);
   const formScrollDesktopRef = useRef<HTMLDivElement>(null);
   const pickingSlotsRef      = useRef(pickingSlots);
+  const sheetRef             = useRef<HTMLDivElement>(null);
+  const sheetDrag            = useRef({ start: 0, delta: 0 });
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
   useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
@@ -631,13 +635,25 @@ export function StepForm() {
 
       if (existing.length === 0 && slots.length > 0) {
         // Build rows from picking slots with contenido pre-filled
-        const rows: FormRow[] = slots.map((s, i) => ({
+        const allRows: FormRow[] = slots.map((s, i) => ({
           id:       `pick-${s.tipo}-${i}-${Date.now()}`,
           tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
           contenido: mapearCont(s.contenido),
           peso: '', alto: '', largo: '', ancho: '',
         }));
-        setFormRows(rows);
+        const chocRows = allRows.filter(r => r.tipo === 'Chocolate');
+        const nonChocRows = allRows.filter(r => r.tipo !== 'Chocolate');
+        if (chocRows.length > 0 && state.regimen) {
+          const regimen = state.regimen;
+          const chocItems: SantiagoItem[] = chocRows.map((_, i) => ({
+            id: `ch-pick-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
+            tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+            peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+            pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
+          }));
+          dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
+        }
+        setFormRows(nonChocRows);
       } else if (existing.length === 0) {
         const preset = presets[currentTienda.cod];
         if (preset) {
@@ -648,8 +664,17 @@ export function StepForm() {
             rows.push({ id: `b${i}-${Date.now()}`,  tipo: 'Bulto',     contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
           for (let i = 0; i < Math.max(0, (preset.contenedores ?? 0) - existing.filter(x => x.tipo === 'Contenedor').length); i++)
             rows.push({ id: `c${i}-${Date.now()}`,  tipo: 'Contenedor',contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
-          for (let i = 0; i < Math.max(0, (preset.chocolates ?? 0) - existing.filter(x => x.tipo === 'Chocolate').length); i++)
-            rows.push({ id: `ch${i}-${Date.now()}`, tipo: 'Chocolate', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+          const chocPresetCount = Math.max(0, (preset.chocolates ?? 0) - existing.filter(x => x.tipo === 'Chocolate').length);
+          if (chocPresetCount > 0 && state.regimen) {
+            const regimen = state.regimen;
+            const chocItems: SantiagoItem[] = Array.from({ length: chocPresetCount }, (_, i) => ({
+              id: `ch-pre-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
+              tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+              peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
+            }));
+            dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
+          }
           setFormRows(rows);
         } else {
           setFormRows([]);
@@ -759,7 +784,28 @@ export function StepForm() {
     const n   = Math.max(0, parseInt(value) || 0);
     const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     setPresets(prev => ({ ...prev, [cod]: { ...curr, [field]: n } }));
-    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : field === 'chocolates' ? 'Chocolate' : 'Bulto';
+    if (field === 'chocolates') {
+      const currentItems = items[cod] || [];
+      const existingChocCount = currentItems.filter(i => i.tipo === 'Chocolate').length;
+      if (n > existingChocCount) {
+        const newChocItems: SantiagoItem[] = Array.from({ length: n - existingChocCount }, (_, i) => ({
+          id: `ch-${Date.now()}-${i}`, tiendaCod: cod,
+          tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+          peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+          pesoVolumetrico: 0, regimen: state.regimen!, orden: `CH${existingChocCount + i + 1}`, estado: ESTADO_DEFAULT,
+        }));
+        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: [...currentItems, ...newChocItems] });
+      } else if (n < existingChocCount) {
+        let toRemove = existingChocCount - n;
+        const newItems = [...currentItems];
+        for (let i = newItems.length - 1; i >= 0 && toRemove > 0; i--)
+          if (newItems[i].tipo === 'Chocolate') { newItems.splice(i, 1); toRemove--; }
+        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: newItems });
+      }
+      setFormRows(prev => prev.filter(r => r.tipo !== 'Chocolate'));
+      return;
+    }
+    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
     const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
     const savedRows = formRows.filter(r => r.tipo === tipo2 && r.saved).length;
     const delta = (Math.max(0, n - existing - savedRows)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
@@ -776,6 +822,28 @@ export function StepForm() {
           if (result[i].tipo === tipo2 && !result[i].saved) { result.splice(i, 1); toRemove--; }
         return result;
       });
+    }
+  };
+
+  const onSheetDragStart = (e: React.TouchEvent) => {
+    sheetDrag.current = { start: e.touches[0].clientY, delta: 0 };
+    if (sheetRef.current) sheetRef.current.style.transition = 'none';
+  };
+  const onSheetDragMove = (e: React.TouchEvent) => {
+    const dy = Math.max(0, e.touches[0].clientY - sheetDrag.current.start);
+    sheetDrag.current.delta = dy;
+    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onSheetDragEnd = () => {
+    if (!sheetRef.current) return;
+    const delta = sheetDrag.current.delta;
+    sheetDrag.current.delta = 0;
+    sheetRef.current.style.transition = 'transform 0.35s cubic-bezier(0.32,0.72,0,1)';
+    if (delta > 80) {
+      sheetRef.current.style.transform = 'translateY(100%)';
+      setTimeout(() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }, 340);
+    } else {
+      sheetRef.current.style.transform = 'translateY(0)';
     }
   };
 
@@ -907,10 +975,18 @@ export function StepForm() {
       )}
       {othersList.length > 0 && (
         <div>
-          <div className="px-3 py-2 bg-bg border-b border-border sticky top-0 z-10 flex items-baseline gap-2">
-            <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3">Todas</span>
+          <div
+            onClick={() => todayList.length > 0 && setShowTodas(prev => !prev)}
+            className={`px-3 py-2 bg-bg border-b border-border sticky top-0 z-10 flex items-center gap-2 ${todayList.length > 0 ? 'cursor-pointer' : ''}`}>
+            <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3 flex-1">Todas</span>
             <span className="font-barlow-condensed text-[10px] text-text-3/50 uppercase tracking-wide hidden sm:inline">toca + para agregar a hoy</span>
+            {todayList.length > 0 && (
+              <span className="font-barlow-condensed text-[12px] text-text-3/50 select-none ml-1">
+                {showTodas ? '▲' : '▼'}
+              </span>
+            )}
           </div>
+          {(showTodas || todayList.length === 0) && (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {othersList.map(t => {
               const tI = items[t.cod] || [];
@@ -930,6 +1006,7 @@ export function StepForm() {
               );
             })}
           </div>
+          )}
         </div>
       )}
       {filtered.length === 0 && (
@@ -956,13 +1033,11 @@ export function StepForm() {
         ))}
       </div>
       <div className="px-3 pb-3 pt-1 flex gap-2">
-        {activeTiendasCount > 0 && (
-          <button onClick={goToResumen}
-            className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
-            style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
-            Ver resumen ({activeTiendasCount}) →
-          </button>
-        )}
+        <button onClick={goToResumen}
+          className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
+          style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+          RESUMEN ({activeTiendasCount})
+        </button>
         <button onClick={enrutar}
           className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
           style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
@@ -1568,6 +1643,7 @@ export function StepForm() {
           )}
 
           {/* Tipo */}
+          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-1 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Tipo</div>
           <div className="flex gap-2 flex-wrap">
             {(['Pallet', 'Bulto', 'Contenedor', 'Chocolate'] as TipoCargamento[]).map(t => (
               <button key={t} onClick={() => setTipo(t)}
@@ -1590,6 +1666,7 @@ export function StepForm() {
           )}
 
           {/* Contenido */}
+          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-2 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Contenido</div>
           <div className="flex gap-2">
             {(tipo === 'Pallet' ? CONTENIDO_PALLET : tipo === 'Contenedor' ? CONTENIDO_CONTENEDOR : CONTENIDO_BULTO).map(c => (
               <button key={c} onClick={() => setContenido(c)}
@@ -1601,7 +1678,8 @@ export function StepForm() {
             ))}
           </div>
 
-          {/* Peso */}
+          {/* Peso y dimensiones */}
+          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-2 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Peso y dimensiones</div>
           <div>
             <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">Peso (kg)</label>
             <input type="number" inputMode="decimal" value={peso} onChange={e => setPeso(e.target.value)} placeholder="0"
@@ -1803,7 +1881,7 @@ export function StepForm() {
         </div>
 
         {/* ── Subir guías PDF de Santiago ── */}
-        <div className="flex-shrink-0 border-b border-border">
+        <div className="flex-shrink-0 border-b border-border hidden lg:block">
           <input
             ref={guideFileRef} type="file" accept=".pdf" multiple className="hidden"
             onChange={e => e.target.files && handleGuideFiles(e.target.files)} />
@@ -1884,18 +1962,25 @@ export function StepForm() {
       />
       {/* Sheet */}
       <div
+        ref={sheetRef}
         className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
         style={{
+          minHeight: '82vh',
           maxHeight: '92vh',
           transform: currentTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
         }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer"
-          onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}>
-          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+        {/* Drag handle — touch here to swipe down and close */}
+        <div
+          className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
+          onTouchStart={onSheetDragStart}
+          onTouchMove={onSheetDragMove}
+          onTouchEnd={onSheetDragEnd}
+          onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}
+        >
+          <div className="w-14 h-1.5 rounded-full bg-gray-300" />
         </div>
         {/* Form content */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">

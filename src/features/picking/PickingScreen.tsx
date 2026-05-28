@@ -93,12 +93,14 @@ interface LabelConfig {
   storeNameFontSize: number;     // 24–72
   cornerRadius: number;          // 0–20
   showDate: boolean;
+  slotIdFontSize: number;        // 10–28
 }
 const DEFAULT_LABEL_CONFIG: LabelConfig = {
   borderWidth: 2, pickerFontSize: 34, storeFontSize: 128, catFontSize: 22,
   barcodeBarWidth: 2, barcodeHeight: 113, barcodeContainerWidth: 85,
   showResponsable: true, showCategories: true, showStoreName: true,
   dateFontSize: 12, palletNumSize: 80, storeNameFontSize: 52, cornerRadius: 12, showDate: true,
+  slotIdFontSize: 18,
 };
 
 const CANONICAL_PICKER_KEYS = [
@@ -617,7 +619,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
             </div>
             <div style={{ fontSize: s.deSize, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
             {slotId != null && (
-              <div style={{ fontSize: compact ? 10 : 18, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+              <div style={{ fontSize: compact ? 10 : cfg.slotIdFontSize, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                 #{slotId}
               </div>
             )}
@@ -654,11 +656,11 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
         {/* Código de barras */}
         <div style={{ marginTop: s.barMT }}>
           <div style={{ width: s.barW, margin: '0 auto' }}>
-            <Barcode1D value={value} height={s.barH} barWidth={s.barBW} />
+            <Barcode1D value={slotId != null ? String(slotId) : value} height={s.barH} barWidth={s.barBW} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
             <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
-              {value}
+              {slotId != null ? `ID #${slotId}` : value}
             </div>
             {(compact || cfg.showDate) && (
               <div style={{ fontSize: s.footerDateFS, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
@@ -675,7 +677,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots }: {
+function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow }: {
   group: PickerGroup; displayName: string; palletsByTipo: Record<string, number>;
   onNameChange: (v: string) => void; onTipoPalletsChange: (tipo: PickerType, n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
@@ -685,6 +687,7 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
   colsPerRow: number;
   onPrintSelected: (palletNums: Set<number>) => void;
   slots: PalletSlot[];
+  stickerBelow?: boolean;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -746,10 +749,10 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
       </div>
 
       {/* Split body */}
-      <div className="flex flex-col lg:flex-row">
+      <div className={stickerBelow ? 'flex flex-col' : 'flex flex-col lg:flex-row'}>
 
         {/* LEFT: Form */}
-        <div className="lg:w-[45%] p-5 border-b lg:border-b-0 lg:border-r border-gray-100 print:hidden space-y-4">
+        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-5 border-gray-100 print:hidden space-y-4`}>
 
           {/* Operaciones HORIZONTALES cuando hay más de una */}
           <div className={group.operations.length > 1 ? 'flex flex-wrap gap-2' : ''}>
@@ -847,8 +850,8 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
           </div>
         </div>
 
-        {/* RIGHT: estado por op cuando hay pendientes / barcodes cuando todo done */}
-        <div className="lg:w-[55%] p-4 bg-[#FAFAFA]">
+        {/* RIGHT / BOTTOM: estado por op cuando hay pendientes / barcodes cuando todo done */}
+        <div className={`${stickerBelow ? 'w-full border-t border-gray-100' : 'lg:w-[55%]'} p-4 bg-[#FAFAFA]`}>
           {!allDone ? (
             <div className="h-full min-h-[180px] flex flex-col gap-3">
               <div className="flex items-center gap-2 mb-1">
@@ -1199,10 +1202,13 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
 }
 
 const CFG_SLIDER_CSS = `
-  .cfg-slider{-webkit-appearance:none;appearance:none;height:3px;border-radius:9999px;outline:none;cursor:pointer}
-  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 4px rgba(217,119,6,.35);cursor:pointer;transition:box-shadow .15s}
-  .cfg-slider::-webkit-slider-thumb:hover{box-shadow:0 1px 4px rgba(217,119,6,.35),0 0 0 4px rgba(217,119,6,.14)}
-  .cfg-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #D97706;cursor:pointer}
+  .cfg-slider{-webkit-appearance:none;appearance:none;height:2px;border-radius:9999px;outline:none;cursor:pointer;touch-action:none;padding:10px 0;box-sizing:content-box}
+  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 6px rgba(217,119,6,.40);cursor:pointer;transition:box-shadow .12s,transform .12s;margin-top:-9px}
+  .cfg-slider::-webkit-slider-thumb:hover{box-shadow:0 1px 6px rgba(217,119,6,.40),0 0 0 6px rgba(217,119,6,.12);transform:scale(1.1)}
+  .cfg-slider::-webkit-slider-thumb:active{transform:scale(1.2);box-shadow:0 2px 10px rgba(217,119,6,.45),0 0 0 8px rgba(217,119,6,.10)}
+  .cfg-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;cursor:pointer;box-shadow:0 1px 6px rgba(217,119,6,.40)}
+  .cfg-slider::-webkit-slider-runnable-track{height:2px;border-radius:9999px}
+  .cfg-slider::-moz-range-track{height:2px;border-radius:9999px}
   .cfg-num::-webkit-inner-spin-button,.cfg-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
   .cfg-num{-moz-appearance:textfield}
 `;
@@ -1537,6 +1543,63 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
   );
 }
 
+// ─── PropRow — defined at module level so React never unmounts it mid-drag ─────
+
+function PropRow({ label, field, min, max, unit = 'px', labelConfig, onUpdate }: {
+  label: string; field: keyof LabelConfig; min: number; max: number; unit?: string;
+  labelConfig: LabelConfig; onUpdate: (f: keyof LabelConfig, v: number | boolean) => void;
+}) {
+  const committed = labelConfig[field] as number;
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const dragging = useRef(false);
+
+  // Sync slider + gradient when committed value changes from outside (± buttons, reset)
+  useEffect(() => {
+    if (dragging.current || !rangeRef.current) return;
+    rangeRef.current.value = String(committed);
+    const pct = ((committed - min) / (max - min) * 100).toFixed(1);
+    rangeRef.current.style.background = `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)`;
+  }, [committed, min, max]);
+
+  return (
+    <div className="flex items-center gap-2 py-2 border-b border-[#F8FAFC] last:border-0">
+      <span className="text-[11px] font-medium text-[#64748B] w-28 shrink-0 leading-tight">{label}</span>
+      <input
+        ref={rangeRef}
+        type="range" min={min} max={max} step={0.01}
+        defaultValue={committed}
+        className="cfg-slider flex-1 min-w-0"
+        onPointerDown={() => { dragging.current = true; }}
+        onPointerUp={() => { dragging.current = false; }}
+        onPointerCancel={() => { dragging.current = false; }}
+        onChange={e => {
+          const v = Number(e.target.value);
+          const pct = ((v - min) / (max - min) * 100).toFixed(1);
+          e.target.style.background = `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)`;
+          onUpdate(field, Math.round(v));
+        }}
+      />
+      <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
+        style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+        <button
+          onClick={() => committed > min && onUpdate(field, committed - 1)}
+          className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+          style={{ borderRight: '1px solid #E2E8F0' }}>−</button>
+        <input
+          type="number" min={min} max={max} value={committed}
+          className="cfg-num w-9 text-center text-[12px] font-mono font-semibold text-[#0F172A] bg-transparent outline-none border-none py-0"
+          onChange={e => { const n = Math.min(max, Math.max(min, parseInt(e.target.value) || min)); onUpdate(field, n); }}
+        />
+        <button
+          onClick={() => committed < max && onUpdate(field, committed + 1)}
+          className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+          style={{ borderLeft: '1px solid #E2E8F0' }}>+</button>
+      </div>
+      {unit && <span className="text-[10px] text-[#CBD5E1] w-4 shrink-0 font-medium">{unit}</span>}
+    </div>
+  );
+}
+
 // ─── ConfigTab ─────────────────────────────────────────────────────────────────
 
 function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange }: {
@@ -1552,41 +1615,6 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
 
   const upd = (field: keyof LabelConfig, val: number | boolean) =>
     onLabelConfigChange({ ...labelConfig, [field]: val });
-
-  function PropRow({ label, field, min, max, unit = 'px' }: {
-    label: string; field: keyof LabelConfig; min: number; max: number; unit?: string;
-  }) {
-    const val = labelConfig[field] as number;
-    const pct = ((val - min) / (max - min) * 100).toFixed(1);
-    return (
-      <div className="flex items-center gap-2 py-2 border-b border-[#F8FAFC] last:border-0">
-        <span className="text-[11px] font-medium text-[#64748B] w-28 shrink-0 leading-tight">{label}</span>
-        <input
-          type="range" min={min} max={max} value={val}
-          className="cfg-slider flex-1 min-w-0"
-          style={{ background: `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)` }}
-          onChange={e => upd(field, Number(e.target.value))}
-        />
-        <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
-          style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
-          <button
-            onClick={() => val > min && upd(field, val - 1)}
-            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
-            style={{ borderRight: '1px solid #E2E8F0' }}>−</button>
-          <input
-            type="number" min={min} max={max} value={val}
-            className="cfg-num w-9 text-center text-[12px] font-mono font-semibold text-[#0F172A] bg-transparent outline-none border-none py-0"
-            onChange={e => { const n = Math.min(max, Math.max(min, parseInt(e.target.value) || min)); upd(field, n); }}
-          />
-          <button
-            onClick={() => val < max && upd(field, val + 1)}
-            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
-            style={{ borderLeft: '1px solid #E2E8F0' }}>+</button>
-        </div>
-        {unit && <span className="text-[10px] text-[#CBD5E1] w-4 shrink-0 font-medium">{unit}</span>}
-      </div>
-    );
-  }
 
   function ToggleRow({ label, desc, field }: {
     label: string; desc?: string;
@@ -1656,12 +1684,13 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2h3v8H2zM7 5h3v5H7z" fill="currentColor"/></svg>
               } label="Tipografía" />
-              <PropRow label="Picker" field="pickerFontSize" min={20} max={50} />
-              <PropRow label="N.º pallet (P-1)" field="palletNumSize" min={50} max={120} />
-              <PropRow label="Cód. tienda" field="storeFontSize" min={80} max={200} />
-              <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} />
-              <PropRow label="Categorías" field="catFontSize" min={12} max={30} />
-              <PropRow label="Fecha" field="dateFontSize" min={8} max={20} />
+              <PropRow label="Picker" field="pickerFontSize" min={20} max={50} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="N.º pallet (P-1)" field="palletNumSize" min={50} max={120} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Código (#)" field="slotIdFontSize" min={10} max={28} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Cód. tienda" field="storeFontSize" min={80} max={200} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Categorías" field="catFontSize" min={12} max={30} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Fecha" field="dateFontSize" min={8} max={20} labelConfig={labelConfig} onUpdate={upd} />
             </div>
 
             {/* Preview central */}
@@ -1687,7 +1716,7 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
                   }}>
                     <BarcodeCard
                       value="17MAI;JuanPerez;WH/PICK/1234;P1;Comida,Aseo"
-                      palletNum={1} total={3}
+                      palletNum={1} total={3} slotId={419}
                       storeCod="17MAI" pickerLabel="Juan Pérez" responsibleKey="Pickers 1"
                       allCategories={['Comida', 'Aseo']} totalPickers={4}
                       compact={false} labelConfig={labelConfig}
@@ -1705,15 +1734,15 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="0" y="1" width="1.5" height="10"/><rect x="2.5" y="1" width="1" height="10"/><rect x="4.5" y="1" width="2" height="10"/><rect x="7.5" y="1" width="1" height="10"/><rect x="9.5" y="1" width="1.5" height="10"/></svg>
               } label="Código de barras" />
-              <PropRow label="Grosor barras" field="barcodeBarWidth" min={1} max={4} unit="" />
-              <PropRow label="Altura" field="barcodeHeight" min={40} max={130} />
-              <PropRow label="Ancho" field="barcodeContainerWidth" min={60} max={100} unit="%" />
+              <PropRow label="Grosor barras" field="barcodeBarWidth" min={1} max={4} unit="" labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Altura" field="barcodeHeight" min={40} max={130} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Ancho" field="barcodeContainerWidth" min={60} max={100} unit="%" labelConfig={labelConfig} onUpdate={upd} />
 
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.5"/></svg>
               } label="Forma" />
-              <PropRow label="Borde grosor" field="borderWidth" min={0} max={4} />
-              <PropRow label="Radio esquinas" field="cornerRadius" min={0} max={20} />
+              <PropRow label="Borde grosor" field="borderWidth" min={0} max={4} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Radio esquinas" field="cornerRadius" min={0} max={20} labelConfig={labelConfig} onUpdate={upd} />
 
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><ellipse cx="6" cy="6" rx="5" ry="3.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
@@ -2618,10 +2647,10 @@ export function PickingScreen() {
                       );
                     })()}
 
-                    <div className="space-y-4">
-                      {(() => {
+                    {(() => {
                         const allStore = allGroupedByStore[cod] ?? [];
-                        return storeGroups.map(group => {
+
+                        const renderCard = (group: PickerGroup, stickerBelow = false) => {
                           const nums = assignedNumsByStateKey[group.stateKey] ?? [];
                           return (
                             <PickerGroupCard
@@ -2655,11 +2684,105 @@ export function PickingScreen() {
                               colsPerRow={colsPerRow}
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
                               slots={slotsByStateKey[group.stateKey] ?? []}
+                              stickerBelow={stickerBelow}
                             />
                           );
-                        });
+                        };
+
+                        // Filtro activo (Hogar / Aseo y Comida): render plano, sin cambios
+                        if (sectionFilter !== 'all') {
+                          return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
+                        }
+
+                        // "Todas": grid de 2 columnas fijas, siempre visibles
+                        const SECTION_META = {
+                          'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
+                          hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
+                          mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
+                        } as const;
+
+                        const getSection = (g: PickerGroup): keyof typeof SECTION_META => {
+                          const cats = new Set(g.operations.flatMap(o => o.categories));
+                          const hasHogar      = cats.has('Hogar');
+                          const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
+                          if (hasHogar && hasAseoComida) return 'mixto';
+                          if (hasAseoComida) return 'aseo-comida';
+                          return 'hogar';
+                        };
+
+                        const countSlots = (gs: PickerGroup[]) =>
+                          gs.reduce((sum, g) => sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);
+
+                        const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
+                        const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
+                        const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
+                        const mixtoTotal       = countSlots(mixtoGroups);
+
+                        const renderSectionHeader = (key: keyof typeof SECTION_META, total: number) => {
+                          const meta = SECTION_META[key];
+                          return (
+                            <div className="mb-4 print:hidden">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="font-barlow-condensed text-[22px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
+                                  {meta.label}
+                                </span>
+                                {total > 0 && (
+                                  <span className="text-[13px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                                    style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                                    {total} pallet{total !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="h-[3px] rounded-full w-full" style={{ background: meta.color, opacity: 0.55 }} />
+                            </div>
+                          );
+                        };
+
+                        const columns: Array<{ key: keyof typeof SECTION_META; groups: PickerGroup[] }> = [
+                          { key: 'aseo-comida', groups: aseoComidaGroups },
+                          { key: 'hogar',       groups: hogarGroups },
+                        ];
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Grid de 2 columnas fijas — ambas siempre visibles */}
+                            <div className="grid grid-cols-2 gap-4 items-start">
+                              {columns.map((col) => {
+                                const total = countSlots(col.groups);
+                                const meta  = SECTION_META[col.key];
+                                return (
+                                  <div key={col.key}>
+                                    {renderSectionHeader(col.key, total)}
+                                    {col.groups.length > 0 ? (
+                                      <div className="space-y-3">
+                                        {col.groups.map(g => renderCard(g, true))}
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
+                                        style={{ borderColor: meta.color + '28', background: meta.bg }}>
+                                        <div className="text-[28px] mb-1" style={{ opacity: 0.18 }}>□</div>
+                                        <div className="text-[12px] font-semibold text-center" style={{ color: meta.color, opacity: 0.5 }}>
+                                          Sin operaciones aún
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Mixto (Hogar + Aseo en el mismo picker) — ancho completo abajo */}
+                            {mixtoGroups.length > 0 && (
+                              <div>
+                                {renderSectionHeader('mixto', mixtoTotal)}
+                                <div className="space-y-3">
+                                  {mixtoGroups.map(g => renderCard(g))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
                       })()}
-                    </div>
                   </div>
                 );
               })}
