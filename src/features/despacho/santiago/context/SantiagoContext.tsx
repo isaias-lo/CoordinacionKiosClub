@@ -122,7 +122,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
-  const clearedAtRef    = useRef<number>(0); // timestamp of last intentional RESET push
+  const clearedAtRef         = useRef<number>(0); // timestamp of last intentional RESET push
+  const lastPushTimestampRef = useRef<number>(0); // pushedAt value included in last push payload
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -139,6 +140,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       if (debounceRef.current !== null || isPushingRef.current) return;
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
+      // Reject remote data older than our last push — prevents a stale tab/device from overwriting fresh local data
+      const rawPushedAt = (remoteState as { pushedAt?: number }).pushedAt;
+      if (typeof rawPushedAt === 'number' && rawPushedAt < lastPushTimestampRef.current) return;
 
       const remote = normalize(remoteState as SyncableState);
       const remoteStr = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
@@ -199,7 +203,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       const prevLastPushed = lastPushedRef.current;
       lastPushedRef.current = current;
       isPushingRef.current = true;
-      pushSessionState('santiago', payload, userId ?? undefined)
+      const pushedAt = Date.now();
+      lastPushTimestampRef.current = pushedAt;
+      pushSessionState('santiago', { ...payload, pushedAt }, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
@@ -224,7 +230,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     const prevPushed = lastPushedRef.current;
     lastPushedRef.current = current;
-    pushSessionState('santiago', payload, userId ?? undefined)
+    const pushedAt = Date.now();
+    lastPushTimestampRef.current = pushedAt;
+    pushSessionState('santiago', { ...payload, pushedAt }, userId ?? undefined)
       .catch(() => { lastPushedRef.current = prevPushed; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);
