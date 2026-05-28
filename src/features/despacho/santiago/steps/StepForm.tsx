@@ -190,8 +190,8 @@ function TiendaFormHeader({ tienda, pallets, bultos, onBack }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; onBack: () => void;
 }) {
   return (
-    <div className="bg-navy px-3 py-3 flex items-center gap-2 flex-shrink-0">
-      <button onClick={onBack}
+    <div className="bg-navy px-3 py-3 flex items-center gap-2 flex-shrink-0 cursor-pointer active:opacity-90" onClick={onBack}>
+      <button onClick={e => { e.stopPropagation(); onBack(); }}
         className="flex items-center justify-center w-8 h-8 text-white/70 text-[20px] cursor-pointer border-none bg-white/10 rounded-full flex-shrink-0 active:bg-white/20">
         ←
       </button>
@@ -279,6 +279,7 @@ export function StepForm() {
   /* Guías PDF (compartidas con EstadoPage) */
   const [guides,        setGuides]        = useState<Record<string, GuideEntry>>(loadGuides);
   const [guideUploading, setGuideUploading] = useState(false);
+  const [guideDragOver,  setGuideDragOver]  = useState(false);
   const guideFileRef = useRef<HTMLInputElement>(null);
 
   /* Calendar from Sheets */
@@ -1136,13 +1137,27 @@ export function StepForm() {
         </div>
 
         {/* Mobile stats strip */}
-        <div className="lg:hidden bg-navy flex items-center flex-shrink-0">
-          {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }, i) => (
-            <div key={l} className={`flex-1 py-3 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
-              <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-              <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
+        <div className="lg:hidden bg-navy flex-shrink-0">
+          <div className="flex items-center">
+            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }, i) => (
+              <div key={l} className={`flex-1 py-3 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
+                <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
+                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
+              </div>
+            ))}
+          </div>
+          {activeTiendasCount > 1 && (
+            <div className="flex justify-end px-3 pb-2">
+              <button
+                onClick={() => {
+                  const allCods = activeTiendas.map(([c]) => c);
+                  setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
+                }}
+                className="font-barlow-condensed text-[11px] font-bold text-white/50 active:text-white/90 cursor-pointer transition-colors border-none bg-transparent">
+                {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
+              </button>
             </div>
-          ))}
+          )}
         </div>
 
 
@@ -1923,30 +1938,21 @@ export function StepForm() {
         </div>
 
         {/* ── Subir guías PDF de Santiago ── */}
-        <div className="flex-shrink-0 border-b border-border hidden lg:block">
+        <div className="hidden lg:flex px-2 py-1.5 bg-bg border-b border-border flex-shrink-0">
           <input
             ref={guideFileRef} type="file" accept=".pdf" multiple className="hidden"
             onChange={e => e.target.files && handleGuideFiles(e.target.files)} />
-          <div
+          <button
             onClick={() => !guideUploading && guideFileRef.current?.click()}
-            className="mx-3 mt-2 rounded-xl border-2 border-dashed flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all border-border hover:border-success/50 hover:bg-[rgba(22,163,74,0.02)]">
-            {guideUploading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-border border-t-success rounded-full animate-spin flex-shrink-0" style={{ borderWidth: 2 }} />
-                <span className="font-barlow-condensed text-[13px] font-bold text-text-2">Procesando guías…</span>
-              </>
-            ) : (
-              <>
-                <span className="text-xl opacity-30 flex-shrink-0">📄</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-barlow-condensed text-[13px] font-bold text-text leading-tight">Subir guías de despacho</p>
-                  <p className="text-[10px] text-text-3 leading-tight mt-0.5">PDF por código · ej: 21NUC-guia.pdf</p>
-                </div>
-                <span className="text-[10px] text-text-3 font-bold border border-border rounded-lg px-2 py-1 flex-shrink-0 bg-white">PDF</span>
-              </>
-            )}
-          </div>
-          <div className="pb-2" />
+            disabled={guideUploading}
+            onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setGuideDragOver(true); } }}
+            onDragLeave={e => { e.stopPropagation(); setGuideDragOver(false); }}
+            onDrop={e => { e.preventDefault(); e.stopPropagation(); setGuideDragOver(false); if (!guideUploading && e.dataTransfer.files.length) handleGuideFiles(e.dataTransfer.files); }}
+            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${guideDragOver ? 'border-red bg-[rgba(211,47,47,0.18)] text-red scale-[1.02]' : 'border-red bg-[rgba(211,47,47,0.06)] text-red active:bg-[rgba(211,47,47,0.12)]'}`}>
+            {guideUploading
+              ? <><div className="w-3 h-3 border-2 border-red/30 border-t-red rounded-full animate-spin" />PROCESANDO…</>
+              : guideDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
+          </button>
         </div>
 
         {renderStoreGrid()}

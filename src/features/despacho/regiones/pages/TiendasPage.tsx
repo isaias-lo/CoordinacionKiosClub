@@ -774,7 +774,7 @@ export function TiendasPage() {
 
     /* Shared header */
     const header = (
-      <div className="bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0">
+      <div className={`bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0 ${isMobile ? 'cursor-pointer active:opacity-90' : ''}`} onClick={isMobile ? () => select(selectedTienda!) : undefined}>
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
           <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
