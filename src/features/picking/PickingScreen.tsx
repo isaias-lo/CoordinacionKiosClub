@@ -1559,33 +1559,44 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
   const upd = (field: keyof LabelConfig, val: number | boolean) =>
     onLabelConfigChange({ ...labelConfig, [field]: val });
 
+  // Stores raw float value during drag so the thumb doesn't snap to integers mid-drag
+  const dragValRef = useRef<Partial<Record<keyof LabelConfig, number>>>({});
+  const [, setDragTick] = useState(0);
+
   function PropRow({ label, field, min, max, unit = 'px' }: {
     label: string; field: keyof LabelConfig; min: number; max: number; unit?: string;
   }) {
-    const val = labelConfig[field] as number;
-    const pct = ((val - min) / (max - min) * 100).toFixed(1);
+    const committed = labelConfig[field] as number;
+    const displayVal = dragValRef.current[field] ?? committed;
+    const pct = ((displayVal - min) / (max - min) * 100).toFixed(1);
     return (
       <div className="flex items-center gap-2 py-2 border-b border-[#F8FAFC] last:border-0">
         <span className="text-[11px] font-medium text-[#64748B] w-28 shrink-0 leading-tight">{label}</span>
         <input
-          type="range" min={min} max={max} step={0.01} value={val}
+          type="range" min={min} max={max} step={0.01} value={displayVal}
           className="cfg-slider flex-1 min-w-0"
           style={{ background: `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)` }}
-          onChange={e => upd(field, Math.round(Number(e.target.value)))}
+          onChange={e => {
+            const v = Number(e.target.value);
+            dragValRef.current[field] = v;
+            upd(field, Math.round(v));
+          }}
+          onPointerUp={() => { delete dragValRef.current[field]; setDragTick(t => t + 1); }}
+          onPointerCancel={() => { delete dragValRef.current[field]; setDragTick(t => t + 1); }}
         />
         <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
           style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
           <button
-            onClick={() => val > min && upd(field, val - 1)}
+            onClick={() => committed > min && upd(field, committed - 1)}
             className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
             style={{ borderRight: '1px solid #E2E8F0' }}>−</button>
           <input
-            type="number" min={min} max={max} value={val}
+            type="number" min={min} max={max} value={committed}
             className="cfg-num w-9 text-center text-[12px] font-mono font-semibold text-[#0F172A] bg-transparent outline-none border-none py-0"
             onChange={e => { const n = Math.min(max, Math.max(min, parseInt(e.target.value) || min)); upd(field, n); }}
           />
           <button
-            onClick={() => val < max && upd(field, val + 1)}
+            onClick={() => committed < max && upd(field, committed + 1)}
             className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
             style={{ borderLeft: '1px solid #E2E8F0' }}>+</button>
         </div>
@@ -1664,11 +1675,11 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
               } label="Tipografía" />
               <PropRow label="Picker" field="pickerFontSize" min={20} max={50} />
               <PropRow label="N.º pallet (P-1)" field="palletNumSize" min={50} max={120} />
+              <PropRow label="Código (#)" field="slotIdFontSize" min={10} max={28} />
               <PropRow label="Cód. tienda" field="storeFontSize" min={80} max={200} />
               <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} />
               <PropRow label="Categorías" field="catFontSize" min={12} max={30} />
               <PropRow label="Fecha" field="dateFontSize" min={8} max={20} />
-              <PropRow label="Código (#)" field="slotIdFontSize" min={10} max={28} />
             </div>
 
             {/* Preview central */}
