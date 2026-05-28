@@ -2795,7 +2795,8 @@ export function AuditoriaScreen() {
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
     draftEntryIdRef.current = '';
-    setSubmitting(false); setUploadProgress(''); setSubmitAttempted(false); setPhotoUploading(false);
+    photoUploadingRef.current = false; // garantizar que inputs de foto queden libres en el siguiente audit
+    setSubmitting(false); setUploadProgress(''); setSubmitAttempted(false); setPhotoUploading(false); setPhotoUploadMsg('');
     setLastEntry(entry);
     setLastDurationSeconds(durSecs);
     setFormPhase('result');
