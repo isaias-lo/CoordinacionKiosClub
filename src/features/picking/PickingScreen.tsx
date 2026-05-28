@@ -2621,7 +2621,8 @@ export function PickingScreen() {
                     <div className="space-y-4">
                       {(() => {
                         const allStore = allGroupedByStore[cod] ?? [];
-                        return storeGroups.map(group => {
+
+                        const renderCard = (group: PickerGroup) => {
                           const nums = assignedNumsByStateKey[group.stateKey] ?? [];
                           return (
                             <PickerGroupCard
@@ -2656,6 +2657,65 @@ export function PickingScreen() {
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
                               slots={slotsByStateKey[group.stateKey] ?? []}
                             />
+                          );
+                        };
+
+                        // Filtro activo: render plano sin secciones
+                        if (sectionFilter !== 'all') {
+                          return storeGroups.map(renderCard);
+                        }
+
+                        // "Todas": agrupar por sección con separadores visuales
+                        const SECTION_META = {
+                          hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.07)',  border: 'rgba(29,78,216,0.22)', accent: 'rgba(29,78,216,0.30)' },
+                          'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.07)', border: 'rgba(217,119,6,0.28)', accent: 'rgba(217,119,6,0.35)'  },
+                          mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.07)', border: 'rgba(124,58,237,0.22)', accent: 'rgba(124,58,237,0.30)' },
+                        } as const;
+
+                        const getSection = (g: PickerGroup): keyof typeof SECTION_META => {
+                          const cats = new Set(g.operations.flatMap(o => o.categories));
+                          const hasHogar = cats.has('Hogar');
+                          const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
+                          if (hasHogar && hasAseoComida) return 'mixto';
+                          if (hasAseoComida) return 'aseo-comida';
+                          return 'hogar';
+                        };
+
+                        const sectionOrder: (keyof typeof SECTION_META)[] = ['hogar', 'aseo-comida', 'mixto'];
+                        const grouped = sectionOrder
+                          .map(key => ({ key, meta: SECTION_META[key], groups: storeGroups.filter(g => getSection(g) === key) }))
+                          .filter(s => s.groups.length > 0);
+
+                        // Si solo hay una sección presente no hace falta separador
+                        if (grouped.length <= 1) {
+                          return storeGroups.map(renderCard);
+                        }
+
+                        return grouped.map((section, si) => {
+                          const totalSlots = section.groups.reduce((sum, g) =>
+                            sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);
+                          return (
+                            <div key={section.key} style={{ marginTop: si > 0 ? 20 : 0 }}>
+                              {/* Encabezado de sección */}
+                              <div className="flex items-center gap-2 mb-3 print:hidden">
+                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: section.meta.color }} />
+                                <span className="text-[11px] font-bold uppercase tracking-widest flex-shrink-0" style={{ color: section.meta.color }}>
+                                  {section.meta.label}
+                                </span>
+                                {totalSlots > 0 && (
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                                    style={{ background: section.meta.bg, color: section.meta.color, border: `1px solid ${section.meta.border}` }}>
+                                    {totalSlots} pallet{totalSlots !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                                <div className="flex-1 h-px" style={{ background: section.meta.color, opacity: 0.18 }} />
+                              </div>
+                              {/* Cards con borde izquierdo de color */}
+                              <div className="space-y-4 pl-3 border-l-[3px] rounded-sm"
+                                style={{ borderColor: section.meta.accent }}>
+                                {section.groups.map(renderCard)}
+                              </div>
+                            </div>
                           );
                         });
                       })()}
