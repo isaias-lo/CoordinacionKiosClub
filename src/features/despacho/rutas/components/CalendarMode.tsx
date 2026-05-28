@@ -38,7 +38,7 @@ export default function CalendarMode({ calT, grps, onToggleGroup, onToggleChip, 
         ))}
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
         {Object.keys(calT).map(cod => (
           <StoreChip
             key={cod}
@@ -63,53 +63,26 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
   onToggle: (cod: string) => void;
   onUpdate: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
 }) {
+  const inp = 'w-full h-[24px] rounded-[5px] border border-black/[0.09] bg-white text-[11px] font-bold text-center text-ktext placeholder:text-kmuted/40 focus:outline-none focus:border-kred';
   return (
     <div
       style={{ boxShadow: data.on ? '0 1px 4px rgba(212,43,43,0.12)' : '0 1px 3px rgba(0,0,0,0.06)' }}
-      className={`flex flex-col items-center justify-center rounded-[12px] px-1.5 py-2 border cursor-pointer transition-all h-[90px]
+      className={`flex flex-col items-center rounded-[12px] px-1.5 pt-2 pb-1.5 border cursor-pointer transition-all
         ${data.on
           ? 'border-kred/[0.35] bg-kred/[0.04]'
           : 'opacity-40 border-black/[0.07] bg-white'}`}
     >
       <span
-        className={`font-mono text-[14px] font-bold mb-1.5 ${data.on ? 'text-kred' : 'text-kmuted'}`}
+        className={`font-mono text-[13px] font-bold mb-1.5 leading-none ${data.on ? 'text-kred' : 'text-kmuted'}`}
         onClick={() => onToggle(cod)}
       >
         {formatCod(cod)}
       </span>
-      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-        <input
-          type="number" min="0" max="20"
-          value={data.p || ''}
-          placeholder="P"
-          onChange={e => onUpdate(cod, 'p', e.target.value)}
-          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-          className="w-8 h-[26px] rounded-[6px] border border-black/[0.09] bg-white text-[12px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
-        />
-        <input
-          type="number" min="0" max="99"
-          value={data.b || ''}
-          placeholder="B"
-          onChange={e => onUpdate(cod, 'b', e.target.value)}
-          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-          className="w-8 h-[26px] rounded-[6px] border border-black/[0.09] bg-white text-[12px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
-        />
-        <input
-          type="number" min="0" max="99"
-          value={data.c || ''}
-          placeholder="C"
-          onChange={e => onUpdate(cod, 'c', e.target.value)}
-          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-          className="w-8 h-[26px] rounded-[6px] border border-black/[0.09] bg-white text-[12px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
-        />
-        <input
-          type="number" min="0" max="99"
-          value={data.ch || ''}
-          placeholder="CH"
-          onChange={e => onUpdate(cod, 'ch', e.target.value)}
-          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-          className="w-8 h-[26px] rounded-[6px] border border-black/[0.09] bg-white text-[12px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
-        />
+      <div className="grid grid-cols-2 gap-[3px] w-full" onClick={e => e.stopPropagation()}>
+        <input type="number" min="0" max="20"  value={data.p  || ''} placeholder="P"  onChange={e => onUpdate(cod, 'p',  e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
+        <input type="number" min="0" max="99"  value={data.b  || ''} placeholder="B"  onChange={e => onUpdate(cod, 'b',  e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
+        <input type="number" min="0" max="99"  value={data.c  || ''} placeholder="C"  onChange={e => onUpdate(cod, 'c',  e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
+        <input type="number" min="0" max="99"  value={data.ch || ''} placeholder="CH" onChange={e => onUpdate(cod, 'ch', e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
       </div>
     </div>
   );

@@ -843,7 +843,7 @@ export default function RutasScreen() {
         onEliminarVehiculo={handleEliminarVehiculo}
       />
 
-      <main className="max-w-[700px] mx-auto px-3.5 py-5">
+      <main className="max-w-[1100px] mx-auto px-3.5 py-5">
         {!results ? (
           comparisonData ? (
             <ComparisonView
