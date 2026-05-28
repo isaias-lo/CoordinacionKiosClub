@@ -2083,6 +2083,9 @@ export function AuditoriaScreen() {
   const bumpPhotoInput = () => setPhotoInputVer(v => v + 1);
   // Estado visual mientras se comprime/sube una foto
   const [photoUploading,  setPhotoUploading]  = useState(false);
+  const [photoUploadMsg,  setPhotoUploadMsg]  = useState('');
+  // Ref guard — previene ejecuciones concurrentes de handlers de foto (doble-tap iOS/Android)
+  const photoUploadingRef = useRef(false);
   // Intentó hacer submit → resaltar campo bloqueante
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
@@ -2259,6 +2262,13 @@ export function AuditoriaScreen() {
     if (formPhase === 'execution' && pallets) saveSession();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pallets]);
+
+  // Bug 1 iOS/Android: guardar sesión inmediatamente al subir fotos (sin esperar debounce 2s)
+  // Si el tab muere entre la subida y el guardado, las fotos se conservan en la sesión
+  useEffect(() => {
+    if (formPhase === 'execution') saveSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fotoStorageUrls, errorFotoStorageUrls, palletStorageUrls]);
 
   // Save immediately when tab is hidden (user switches app)
   useEffect(() => {
@@ -3415,13 +3425,43 @@ export function AuditoriaScreen() {
                               <span className="text-[22px]">📷</span>
                               <span className="text-[10px] text-text-3 font-bold">P{n}</span>
                               <input key={`pcam-${key}-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; bumpPhotoInput(); setPhotoUploading(true); try { const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) { setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); showToast('📎 Foto guardada', '#16A34A'); } } else { showToast('📶 Sin conexión — se subirá al registrar', '#D97706'); } } finally { setPhotoUploading(false); } }} />
+                                onChange={async e => {
+                                  const f = e.target.files?.[0]; if (!f) return;
+                                  if (photoUploadingRef.current) return;
+                                  photoUploadingRef.current = true; setPhotoUploading(true); setPhotoUploadMsg('');
+                                  try {
+                                    const { compressed, previewUrl, warning } = await processPhoto(f);
+                                    setPalletFiles(p => ({ ...p, [key]: compressed }));
+                                    setPalletPreviews(p => ({ ...p, [key]: previewUrl }));
+                                    setPalletWarnings(p => ({ ...p, [key]: warning }));
+                                    if (user && navigator.onLine) {
+                                      const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`;
+                                      const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+                                      if (!error) { setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); showToast('📎 Foto guardada', '#16A34A'); }
+                                    } else { showToast('📶 Sin conexión — se subirá al registrar', '#D97706'); }
+                                  } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
+                                }} />
                             </label>
                             {/* Gallery — small corner button */}
                             <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
                               <span className="text-[11px]">🖼️</span>
                               <input key={`pgal-${key}-${photoInputVer}`} type="file" accept="image/*" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; bumpPhotoInput(); setPhotoUploading(true); try { const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) { setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); showToast('📎 Foto guardada', '#16A34A'); } } else { showToast('📶 Sin conexión — se subirá al registrar', '#D97706'); } } finally { setPhotoUploading(false); } }} />
+                                onChange={async e => {
+                                  const f = e.target.files?.[0]; if (!f) return;
+                                  if (photoUploadingRef.current) return;
+                                  photoUploadingRef.current = true; setPhotoUploading(true); setPhotoUploadMsg('');
+                                  try {
+                                    const { compressed, previewUrl, warning } = await processPhoto(f);
+                                    setPalletFiles(p => ({ ...p, [key]: compressed }));
+                                    setPalletPreviews(p => ({ ...p, [key]: previewUrl }));
+                                    setPalletWarnings(p => ({ ...p, [key]: warning }));
+                                    if (user && navigator.onLine) {
+                                      const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`;
+                                      const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true });
+                                      if (!error) { setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); showToast('📎 Foto guardada', '#16A34A'); }
+                                    } else { showToast('📶 Sin conexión — se subirá al registrar', '#D97706'); }
+                                  } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
+                                }} />
                             </label>
                           </div>
                         );
@@ -3435,7 +3475,7 @@ export function AuditoriaScreen() {
                 {photoUploading && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-semibold text-info bg-[rgba(37,99,235,0.07)] border border-info/20">
                     <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
-                    Procesando foto…
+                    {photoUploadMsg || 'Procesando foto…'}
                   </div>
                 )}
 
@@ -3526,11 +3566,10 @@ export function AuditoriaScreen() {
                         <input key={`ecam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
-                            if (!files.length) return;
-                            bumpPhotoInput(); setPhotoUploading(true);
+                            if (!files.length || photoUploadingRef.current) return;
+                            photoUploadingRef.current = true; setPhotoUploading(true); setPhotoUploadMsg('');
                             try {
-                              const results: ProcessedPhoto[] = [];
-                              for (const f of files) results.push(await processPhoto(f));
+                              const results = await Promise.all(files.map(f => processPhoto(f)));
                               setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                               setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                               setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
@@ -3547,7 +3586,7 @@ export function AuditoriaScreen() {
                                 setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
                                 showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
                               }
-                            } finally { setPhotoUploading(false); }
+                            } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
@@ -3556,29 +3595,39 @@ export function AuditoriaScreen() {
                         <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                         <input key={`egal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
                           onChange={async e => {
-                            const files = Array.from(e.target.files ?? []);
-                            if (!files.length) return;
-                            bumpPhotoInput(); setPhotoUploading(true);
+                            let files = Array.from(e.target.files ?? []);
+                            if (!files.length || photoUploadingRef.current) return;
+                            if (files.length > 20) { showToast(`Máximo 20 fotos por selección — se tomaron las primeras 20`, '#D97706'); files = files.slice(0, 20); }
+                            photoUploadingRef.current = true; setPhotoUploading(true);
                             try {
+                              // Compresión en lotes de 4 en paralelo con progreso
                               const results: ProcessedPhoto[] = [];
-                              for (const f of files) results.push(await processPhoto(f));
+                              for (let i = 0; i < files.length; i += 4) {
+                                setPhotoUploadMsg(`Comprimiendo ${Math.min(i + 4, files.length)} / ${files.length}…`);
+                                results.push(...await Promise.all(files.slice(i, i + 4).map(f => processPhoto(f))));
+                              }
                               setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                               setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                               setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                               if (user && navigator.onLine) {
                                 const draftId = getDraftEntryId(); const ts = Date.now();
                                 const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
-                                const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                                // Subida en lotes de 4 para no saturar conexión
+                                const urls: string[] = [];
+                                for (let i = 0; i < results.length; i += 4) {
+                                  setPhotoUploadMsg(`Subiendo ${Math.min(i + 4, results.length)} / ${results.length}…`);
+                                  urls.push(...await Promise.all(results.slice(i, i + 4).map(async (r, bi) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i + bi], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i + bi]).data.publicUrl; })));
+                                }
                                 setErrorFotoStorageUrls(prev => [...prev, ...urls]);
                                 setErrorFotoStoragePaths(prev => [...prev, ...paths]);
                                 const saved = urls.filter(Boolean).length;
-                                if (saved > 0) showToast(`📎 ${saved === 1 ? 'Foto guardada' : `${saved} fotos guardadas`}`, '#16A34A');
+                                if (saved > 0) showToast(`📎 ${saved} foto${saved !== 1 ? 's' : ''} guardada${saved !== 1 ? 's' : ''}`, '#16A34A');
                               } else {
                                 setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
                                 setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
                                 showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
                               }
-                            } finally { setPhotoUploading(false); }
+                            } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
                           }} />
                       </label>
                     </div>
@@ -3621,11 +3670,10 @@ export function AuditoriaScreen() {
                     <input key={`fcam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
-                        if (!files.length) return;
-                        bumpPhotoInput(); setPhotoUploading(true);
+                        if (!files.length || photoUploadingRef.current) return;
+                        photoUploadingRef.current = true; setPhotoUploading(true); setPhotoUploadMsg('');
                         try {
-                          const results: ProcessedPhoto[] = [];
-                          for (const f of files) results.push(await processPhoto(f));
+                          const results = await Promise.all(files.map(f => processPhoto(f)));
                           setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                           setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                           setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
@@ -3642,7 +3690,7 @@ export function AuditoriaScreen() {
                             setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
                             showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
                           }
-                        } finally { setPhotoUploading(false); }
+                        } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
@@ -3651,29 +3699,37 @@ export function AuditoriaScreen() {
                     <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                     <input key={`fgal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
                       onChange={async e => {
-                        const files = Array.from(e.target.files ?? []);
-                        if (!files.length) return;
-                        bumpPhotoInput(); setPhotoUploading(true);
+                        let files = Array.from(e.target.files ?? []);
+                        if (!files.length || photoUploadingRef.current) return;
+                        if (files.length > 20) { showToast(`Máximo 20 fotos por selección — se tomaron las primeras 20`, '#D97706'); files = files.slice(0, 20); }
+                        photoUploadingRef.current = true; setPhotoUploading(true);
                         try {
                           const results: ProcessedPhoto[] = [];
-                          for (const f of files) results.push(await processPhoto(f));
+                          for (let i = 0; i < files.length; i += 4) {
+                            setPhotoUploadMsg(`Comprimiendo ${Math.min(i + 4, files.length)} / ${files.length}…`);
+                            results.push(...await Promise.all(files.slice(i, i + 4).map(f => processPhoto(f))));
+                          }
                           setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                           setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                           setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                           if (user && navigator.onLine) {
                             const draftId = getDraftEntryId(); const ts = Date.now();
                             const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
-                            const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                            const urls: string[] = [];
+                            for (let i = 0; i < results.length; i += 4) {
+                              setPhotoUploadMsg(`Subiendo ${Math.min(i + 4, results.length)} / ${results.length}…`);
+                              urls.push(...await Promise.all(results.slice(i, i + 4).map(async (r, bi) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i + bi], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i + bi]).data.publicUrl; })));
+                            }
                             setFotoStorageUrls(prev => [...prev, ...urls]);
                             setFotoStoragePaths(prev => [...prev, ...paths]);
                             const saved = urls.filter(Boolean).length;
-                            if (saved > 0) showToast(`📎 ${saved === 1 ? 'Foto guardada' : `${saved} fotos guardadas`}`, '#16A34A');
+                            if (saved > 0) showToast(`📎 ${saved} foto${saved !== 1 ? 's' : ''} guardada${saved !== 1 ? 's' : ''}`, '#16A34A');
                           } else {
                             setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
                             setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
                             showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
                           }
-                        } finally { setPhotoUploading(false); }
+                        } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
                       }} />
                   </label>
                 </div>
