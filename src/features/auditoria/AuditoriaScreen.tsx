@@ -1972,6 +1972,13 @@ export function AuditoriaScreen() {
   const [palletIdInput2,  setPalletIdInput2]  = useState('');
   const [palletIdError2,  setPalletIdError2]  = useState('');
   const [pickerNombres,   setPickerNombres]   = useState<string[]>([]);
+  // Clave incremental para forzar re-mount de inputs de foto en iOS (fix: onChange stale tras cámara)
+  const [photoInputVer,   setPhotoInputVer]   = useState(0);
+  const bumpPhotoInput = () => setPhotoInputVer(v => v + 1);
+  // Estado visual mientras se comprime/sube una foto
+  const [photoUploading,  setPhotoUploading]  = useState(false);
+  // Intentó hacer submit → resaltar campo bloqueante
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
   const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
@@ -2139,6 +2146,13 @@ export function AuditoriaScreen() {
     const handle = setTimeout(saveSession, 2000);
     return () => clearTimeout(handle);
   }, [formPhase, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
+
+  // Guardar inmediatamente cuando cambia pallets en ejecución — evita pérdida si iOS
+  // mata el tab mientras el usuario abre la cámara justo después de ingresar el número
+  useEffect(() => {
+    if (formPhase === 'execution' && pallets) saveSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pallets]);
 
   // Save immediately when tab is hidden (user switches app)
   useEffect(() => {
@@ -2532,18 +2546,19 @@ export function AuditoriaScreen() {
     setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
     draftEntryIdRef.current = '';
     setTimerSeconds(0); setAuditStartTime(''); auditStartTimeRef.current = '';
-    setSubmitting(false); setUploadProgress('');
+    setSubmitting(false); setUploadProgress(''); setSubmitAttempted(false); setPhotoUploading(false);
     setFormPhase('scan');
   };
 
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
   const handleSubmitClick = () => {
+    setSubmitAttempted(true);
     if (!auditor.trim()) { showToast('Ingresa el nombre del auditor', '#D97706'); return; }
     if (!tienda) { showToast('Selecciona una tienda', '#D97706'); return; }
     if (operaciones.some(op => !op.codigo.trim())) { showToast('Completa todas las operaciones', '#D97706'); return; }
     if (!pallets || parseInt(pallets) <= 0) { showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
-    if (tieneErrores === null) { showToast('Indica si hubo errores', '#D97706'); return; }
+    if (tieneErrores === null) { showToast('¿Tuvo errores? — indica Sí o No', '#D97706'); return; }
     if (tieneErrores && tiposError.length === 0) { showToast('Selecciona el tipo de error', '#D97706'); return; }
     setConfirmSubmit(true);
   };
@@ -2656,7 +2671,7 @@ export function AuditoriaScreen() {
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
     draftEntryIdRef.current = '';
-    setSubmitting(false); setUploadProgress('');
+    setSubmitting(false); setUploadProgress(''); setSubmitAttempted(false); setPhotoUploading(false);
     setLastEntry(entry);
     setLastDurationSeconds(durSecs);
     setFormPhase('result');
@@ -3293,14 +3308,14 @@ export function AuditoriaScreen() {
                             <label className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:bg-bg">
                               <span className="text-[22px]">📷</span>
                               <span className="text-[10px] text-text-3 font-bold">P{n}</span>
-                              <input type="file" accept="image/*" capture="environment" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } }} />
+                              <input key={`pcam-${key}-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; bumpPhotoInput(); setPhotoUploading(true); try { const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } } finally { setPhotoUploading(false); } }} />
                             </label>
                             {/* Gallery — small corner button */}
                             <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
                               <span className="text-[11px]">🖼️</span>
-                              <input type="file" accept="image/*" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } }} />
+                              <input key={`pgal-${key}-${photoInputVer}`} type="file" accept="image/*" className="hidden"
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; bumpPhotoInput(); setPhotoUploading(true); try { const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } } finally { setPhotoUploading(false); } }} />
                             </label>
                           </div>
                         );
@@ -3310,12 +3325,23 @@ export function AuditoriaScreen() {
                   </div>
                 )}
 
+                {/* Spinner mientras se procesa/sube una foto */}
+                {photoUploading && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-semibold text-info bg-[rgba(37,99,235,0.07)] border border-info/20">
+                    <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
+                    Procesando foto…
+                  </div>
+                )}
+
                 {/* ¿Tuvo errores? */}
                 <SLabel>¿Tuvo errores?</SLabel>
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setTieneErrores(false)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
-                  <button onClick={() => setTieneErrores(true)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
+                <div className={`grid grid-cols-2 gap-3 rounded-xl transition-all ${submitAttempted && tieneErrores === null ? 'ring-2 ring-offset-1 ring-red/60 p-1' : ''}`}>
+                  <button onClick={() => { setTieneErrores(false); setSubmitAttempted(false); }} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
+                  <button onClick={() => { setTieneErrores(true); setSubmitAttempted(false); }} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
                 </div>
+                {submitAttempted && tieneErrores === null && (
+                  <div className="text-[12px] text-red font-bold text-center -mt-1">↑ Indica si el pallet tuvo errores</div>
+                )}
 
                 {tieneErrores === true && (
                   <>
@@ -3391,52 +3417,56 @@ export function AuditoriaScreen() {
                         <span className="text-[26px]">📷</span>
                         <span className="text-[12px] text-red font-semibold">Cámara</span>
                         <span className="text-[10px] text-text-3">1 foto directa</span>
-                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                        <input key={`ecam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            e.target.value = '';
-                            const results: ProcessedPhoto[] = [];
-                            for (const f of files) results.push(await processPhoto(f));
-                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                            if (user && navigator.onLine) {
-                              const draftId = getDraftEntryId(); const ts = Date.now();
-                              const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
-                              const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                              setErrorFotoStorageUrls(prev => [...prev, ...urls]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...paths]);
-                            } else {
-                              setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                            }
+                            bumpPhotoInput(); setPhotoUploading(true);
+                            try {
+                              const results: ProcessedPhoto[] = [];
+                              for (const f of files) results.push(await processPhoto(f));
+                              setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                              setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                              setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                              if (user && navigator.onLine) {
+                                const draftId = getDraftEntryId(); const ts = Date.now();
+                                const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
+                                const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                                setErrorFotoStorageUrls(prev => [...prev, ...urls]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...paths]);
+                              } else {
+                                setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                              }
+                            } finally { setPhotoUploading(false); }
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
                         <span className="text-[26px]">🖼️</span>
                         <span className="text-[12px] text-red font-semibold">Galería</span>
                         <span className="text-[10px] text-text-3">Múltiples a la vez</span>
-                        <input type="file" accept="image/*" multiple className="hidden"
+                        <input key={`egal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            e.target.value = '';
-                            const results: ProcessedPhoto[] = [];
-                            for (const f of files) results.push(await processPhoto(f));
-                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                            if (user && navigator.onLine) {
-                              const draftId = getDraftEntryId(); const ts = Date.now();
-                              const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
-                              const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                              setErrorFotoStorageUrls(prev => [...prev, ...urls]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...paths]);
-                            } else {
-                              setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                            }
+                            bumpPhotoInput(); setPhotoUploading(true);
+                            try {
+                              const results: ProcessedPhoto[] = [];
+                              for (const f of files) results.push(await processPhoto(f));
+                              setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                              setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                              setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                              if (user && navigator.onLine) {
+                                const draftId = getDraftEntryId(); const ts = Date.now();
+                                const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
+                                const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                                setErrorFotoStorageUrls(prev => [...prev, ...urls]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...paths]);
+                              } else {
+                                setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                              }
+                            } finally { setPhotoUploading(false); }
                           }} />
                       </label>
                     </div>
@@ -3476,52 +3506,56 @@ export function AuditoriaScreen() {
                     <span className="text-[26px]">📷</span>
                     <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
                     <span className="text-[10px] text-text-3">1 foto directa</span>
-                    <input type="file" accept="image/*" capture="environment" className="hidden"
+                    <input key={`fcam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        e.target.value = '';
-                        const results: ProcessedPhoto[] = [];
-                        for (const f of files) results.push(await processPhoto(f));
-                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                        if (user && navigator.onLine) {
-                          const draftId = getDraftEntryId(); const ts = Date.now();
-                          const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
-                          const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                          setFotoStorageUrls(prev => [...prev, ...urls]);
-                          setFotoStoragePaths(prev => [...prev, ...paths]);
-                        } else {
-                          setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                          setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                        }
+                        bumpPhotoInput(); setPhotoUploading(true);
+                        try {
+                          const results: ProcessedPhoto[] = [];
+                          for (const f of files) results.push(await processPhoto(f));
+                          setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                          setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                          setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                          if (user && navigator.onLine) {
+                            const draftId = getDraftEntryId(); const ts = Date.now();
+                            const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
+                            const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                            setFotoStorageUrls(prev => [...prev, ...urls]);
+                            setFotoStoragePaths(prev => [...prev, ...paths]);
+                          } else {
+                            setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                            setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                          }
+                        } finally { setPhotoUploading(false); }
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
                     <span className="text-[26px]">🖼️</span>
                     <span className="text-[12px] text-text-2 font-semibold">Galería</span>
                     <span className="text-[10px] text-text-3">Múltiples a la vez</span>
-                    <input type="file" accept="image/*" multiple className="hidden"
+                    <input key={`fgal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        e.target.value = '';
-                        const results: ProcessedPhoto[] = [];
-                        for (const f of files) results.push(await processPhoto(f));
-                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                        if (user && navigator.onLine) {
-                          const draftId = getDraftEntryId(); const ts = Date.now();
-                          const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
-                          const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                          setFotoStorageUrls(prev => [...prev, ...urls]);
-                          setFotoStoragePaths(prev => [...prev, ...paths]);
-                        } else {
-                          setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                          setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                        }
+                        bumpPhotoInput(); setPhotoUploading(true);
+                        try {
+                          const results: ProcessedPhoto[] = [];
+                          for (const f of files) results.push(await processPhoto(f));
+                          setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                          setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                          setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                          if (user && navigator.onLine) {
+                            const draftId = getDraftEntryId(); const ts = Date.now();
+                            const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
+                            const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                            setFotoStorageUrls(prev => [...prev, ...urls]);
+                            setFotoStoragePaths(prev => [...prev, ...paths]);
+                          } else {
+                            setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                            setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                          }
+                        } finally { setPhotoUploading(false); }
                       }} />
                   </label>
                 </div>
