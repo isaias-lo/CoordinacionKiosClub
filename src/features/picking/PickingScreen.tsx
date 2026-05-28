@@ -1202,13 +1202,13 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
 }
 
 const CFG_SLIDER_CSS = `
-  .cfg-slider{-webkit-appearance:none;appearance:none;height:4px;border-radius:9999px;outline:none;cursor:pointer;touch-action:none;padding:10px 0;box-sizing:content-box}
-  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 6px rgba(217,119,6,.40);cursor:pointer;transition:box-shadow .12s,transform .12s;margin-top:-8px}
+  .cfg-slider{-webkit-appearance:none;appearance:none;height:2px;border-radius:9999px;outline:none;cursor:pointer;touch-action:none;padding:10px 0;box-sizing:content-box}
+  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 6px rgba(217,119,6,.40);cursor:pointer;transition:box-shadow .12s,transform .12s;margin-top:-9px}
   .cfg-slider::-webkit-slider-thumb:hover{box-shadow:0 1px 6px rgba(217,119,6,.40),0 0 0 6px rgba(217,119,6,.12);transform:scale(1.1)}
   .cfg-slider::-webkit-slider-thumb:active{transform:scale(1.2);box-shadow:0 2px 10px rgba(217,119,6,.45),0 0 0 8px rgba(217,119,6,.10)}
   .cfg-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;cursor:pointer;box-shadow:0 1px 6px rgba(217,119,6,.40)}
-  .cfg-slider::-webkit-slider-runnable-track{height:4px;border-radius:9999px}
-  .cfg-slider::-moz-range-track{height:4px;border-radius:9999px}
+  .cfg-slider::-webkit-slider-runnable-track{height:2px;border-radius:9999px}
+  .cfg-slider::-moz-range-track{height:2px;border-radius:9999px}
   .cfg-num::-webkit-inner-spin-button,.cfg-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
   .cfg-num{-moz-appearance:textfield}
 `;
@@ -1543,6 +1543,63 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
   );
 }
 
+// ─── PropRow — defined at module level so React never unmounts it mid-drag ─────
+
+function PropRow({ label, field, min, max, unit = 'px', labelConfig, onUpdate }: {
+  label: string; field: keyof LabelConfig; min: number; max: number; unit?: string;
+  labelConfig: LabelConfig; onUpdate: (f: keyof LabelConfig, v: number | boolean) => void;
+}) {
+  const committed = labelConfig[field] as number;
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const dragging = useRef(false);
+
+  // Sync slider + gradient when committed value changes from outside (± buttons, reset)
+  useEffect(() => {
+    if (dragging.current || !rangeRef.current) return;
+    rangeRef.current.value = String(committed);
+    const pct = ((committed - min) / (max - min) * 100).toFixed(1);
+    rangeRef.current.style.background = `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)`;
+  }, [committed, min, max]);
+
+  return (
+    <div className="flex items-center gap-2 py-2 border-b border-[#F8FAFC] last:border-0">
+      <span className="text-[11px] font-medium text-[#64748B] w-28 shrink-0 leading-tight">{label}</span>
+      <input
+        ref={rangeRef}
+        type="range" min={min} max={max} step={0.01}
+        defaultValue={committed}
+        className="cfg-slider flex-1 min-w-0"
+        onPointerDown={() => { dragging.current = true; }}
+        onPointerUp={() => { dragging.current = false; }}
+        onPointerCancel={() => { dragging.current = false; }}
+        onChange={e => {
+          const v = Number(e.target.value);
+          const pct = ((v - min) / (max - min) * 100).toFixed(1);
+          e.target.style.background = `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)`;
+          onUpdate(field, Math.round(v));
+        }}
+      />
+      <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
+        style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+        <button
+          onClick={() => committed > min && onUpdate(field, committed - 1)}
+          className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+          style={{ borderRight: '1px solid #E2E8F0' }}>−</button>
+        <input
+          type="number" min={min} max={max} value={committed}
+          className="cfg-num w-9 text-center text-[12px] font-mono font-semibold text-[#0F172A] bg-transparent outline-none border-none py-0"
+          onChange={e => { const n = Math.min(max, Math.max(min, parseInt(e.target.value) || min)); onUpdate(field, n); }}
+        />
+        <button
+          onClick={() => committed < max && onUpdate(field, committed + 1)}
+          className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+          style={{ borderLeft: '1px solid #E2E8F0' }}>+</button>
+      </div>
+      {unit && <span className="text-[10px] text-[#CBD5E1] w-4 shrink-0 font-medium">{unit}</span>}
+    </div>
+  );
+}
+
 // ─── ConfigTab ─────────────────────────────────────────────────────────────────
 
 function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange }: {
@@ -1558,52 +1615,6 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
 
   const upd = (field: keyof LabelConfig, val: number | boolean) =>
     onLabelConfigChange({ ...labelConfig, [field]: val });
-
-  // Stores raw float value during drag so the thumb doesn't snap to integers mid-drag
-  const dragValRef = useRef<Partial<Record<keyof LabelConfig, number>>>({});
-  const [, setDragTick] = useState(0);
-
-  function PropRow({ label, field, min, max, unit = 'px' }: {
-    label: string; field: keyof LabelConfig; min: number; max: number; unit?: string;
-  }) {
-    const committed = labelConfig[field] as number;
-    const displayVal = dragValRef.current[field] ?? committed;
-    const pct = ((displayVal - min) / (max - min) * 100).toFixed(1);
-    return (
-      <div className="flex items-center gap-2 py-2 border-b border-[#F8FAFC] last:border-0">
-        <span className="text-[11px] font-medium text-[#64748B] w-28 shrink-0 leading-tight">{label}</span>
-        <input
-          type="range" min={min} max={max} step={0.01} value={displayVal}
-          className="cfg-slider flex-1 min-w-0"
-          style={{ background: `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)` }}
-          onChange={e => {
-            const v = Number(e.target.value);
-            dragValRef.current[field] = v;
-            upd(field, Math.round(v));
-          }}
-          onPointerUp={() => { delete dragValRef.current[field]; setDragTick(t => t + 1); }}
-          onPointerCancel={() => { delete dragValRef.current[field]; setDragTick(t => t + 1); }}
-        />
-        <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
-          style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
-          <button
-            onClick={() => committed > min && upd(field, committed - 1)}
-            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
-            style={{ borderRight: '1px solid #E2E8F0' }}>−</button>
-          <input
-            type="number" min={min} max={max} value={committed}
-            className="cfg-num w-9 text-center text-[12px] font-mono font-semibold text-[#0F172A] bg-transparent outline-none border-none py-0"
-            onChange={e => { const n = Math.min(max, Math.max(min, parseInt(e.target.value) || min)); upd(field, n); }}
-          />
-          <button
-            onClick={() => committed < max && upd(field, committed + 1)}
-            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-[#94A3B8] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
-            style={{ borderLeft: '1px solid #E2E8F0' }}>+</button>
-        </div>
-        {unit && <span className="text-[10px] text-[#CBD5E1] w-4 shrink-0 font-medium">{unit}</span>}
-      </div>
-    );
-  }
 
   function ToggleRow({ label, desc, field }: {
     label: string; desc?: string;
@@ -1673,13 +1684,13 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2h3v8H2zM7 5h3v5H7z" fill="currentColor"/></svg>
               } label="Tipografía" />
-              <PropRow label="Picker" field="pickerFontSize" min={20} max={50} />
-              <PropRow label="N.º pallet (P-1)" field="palletNumSize" min={50} max={120} />
-              <PropRow label="Código (#)" field="slotIdFontSize" min={10} max={28} />
-              <PropRow label="Cód. tienda" field="storeFontSize" min={80} max={200} />
-              <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} />
-              <PropRow label="Categorías" field="catFontSize" min={12} max={30} />
-              <PropRow label="Fecha" field="dateFontSize" min={8} max={20} />
+              <PropRow label="Picker" field="pickerFontSize" min={20} max={50} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="N.º pallet (P-1)" field="palletNumSize" min={50} max={120} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Código (#)" field="slotIdFontSize" min={10} max={28} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Cód. tienda" field="storeFontSize" min={80} max={200} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Categorías" field="catFontSize" min={12} max={30} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Fecha" field="dateFontSize" min={8} max={20} labelConfig={labelConfig} onUpdate={upd} />
             </div>
 
             {/* Preview central */}
@@ -1723,15 +1734,15 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="0" y="1" width="1.5" height="10"/><rect x="2.5" y="1" width="1" height="10"/><rect x="4.5" y="1" width="2" height="10"/><rect x="7.5" y="1" width="1" height="10"/><rect x="9.5" y="1" width="1.5" height="10"/></svg>
               } label="Código de barras" />
-              <PropRow label="Grosor barras" field="barcodeBarWidth" min={1} max={4} unit="" />
-              <PropRow label="Altura" field="barcodeHeight" min={40} max={130} />
-              <PropRow label="Ancho" field="barcodeContainerWidth" min={60} max={100} unit="%" />
+              <PropRow label="Grosor barras" field="barcodeBarWidth" min={1} max={4} unit="" labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Altura" field="barcodeHeight" min={40} max={130} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Ancho" field="barcodeContainerWidth" min={60} max={100} unit="%" labelConfig={labelConfig} onUpdate={upd} />
 
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.5"/></svg>
               } label="Forma" />
-              <PropRow label="Borde grosor" field="borderWidth" min={0} max={4} />
-              <PropRow label="Radio esquinas" field="cornerRadius" min={0} max={20} />
+              <PropRow label="Borde grosor" field="borderWidth" min={0} max={4} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Radio esquinas" field="cornerRadius" min={0} max={20} labelConfig={labelConfig} onUpdate={upd} />
 
               <PanelLabel icon={
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><ellipse cx="6" cy="6" rx="5" ry="3.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
