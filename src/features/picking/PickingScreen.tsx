@@ -2717,12 +2717,15 @@ export function PickingScreen() {
                         return (
                           <div className="space-y-4">
                             {/* Grid de 2 columnas fijas — ambas siempre visibles */}
-                            <div className="grid grid-cols-2 gap-4 items-start">
-                              {columns.map(col => {
+                            <div className="grid grid-cols-2 gap-0 items-start">
+                              {columns.map((col, colIdx) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
                                 return (
-                                  <div key={col.key}>
+                                  <div key={col.key}
+                                    className={colIdx === 0
+                                      ? 'pr-5 border-r-2 border-dashed border-gray-200'
+                                      : 'pl-5'}>
                                     {renderSectionHeader(col.key, total)}
                                     {col.groups.length > 0 ? (
                                       <div className="space-y-3">
