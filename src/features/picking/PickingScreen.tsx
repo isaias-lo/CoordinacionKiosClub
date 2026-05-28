@@ -8,6 +8,7 @@ import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import { supabase } from '@/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,21 @@ interface SessionStateRow {
   state_key: string;
   picker_label: string;
   tipo: string;
+}
+
+interface SupervisorPrint {
+  storeCod: string;
+  pickerLabel: string;
+  pallets: number;
+  tipo: string;
+  printedAt: string;
+}
+
+interface SupervisorPresence {
+  name: string;
+  userId: string;
+  recentPrints: SupervisorPrint[];
+  lastActive: string;
 }
 
 const SAVED_NAMES_KEY     = 'picking_saved_picker_names';
@@ -1213,6 +1229,102 @@ const CFG_SLIDER_CSS = `
   .cfg-num{-moz-appearance:textfield}
 `;
 
+// ─── SupervisorActivityPanel ──────────────────────────────────────────────────
+
+const TIPO_LABEL: Record<string, string> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chico' };
+
+function relativeTime(isoStr: string, nowMs: number): string {
+  const diffMs = nowMs - new Date(isoStr).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1)  return 'ahora mismo';
+  if (mins < 60) return `hace ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  return `hace ${hrs} h`;
+}
+
+function SupervisorActivityPanel({
+  supervisors, now,
+}: {
+  supervisors: Record<string, SupervisorPresence>;
+  now: number;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const list = Object.values(supervisors);
+  if (list.length === 0) return null;
+
+  return (
+    <div className="mx-4 mt-4 rounded-2xl overflow-hidden border border-[rgba(37,99,235,0.20)] print:hidden"
+      style={{ background: 'rgba(37,99,235,0.04)', boxShadow: '0 2px 12px rgba(37,99,235,0.07)' }}>
+      {/* Header */}
+      <button
+        type="button"
+        onClick={() => setCollapsed(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-2.5 cursor-pointer border-none bg-transparent"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[13px]">👥</span>
+          <span className="font-barlow-condensed text-[14px] font-bold text-info tracking-wide">
+            {list.length === 1 ? '1 supervisor activo' : `${list.length} supervisores activos`}
+          </span>
+          <div className="flex gap-1 ml-1">
+            {list.map(s => (
+              <span key={s.userId}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                {s.name.split(' ')[0]}
+              </span>
+            ))}
+          </div>
+        </div>
+        <span className="text-[11px] text-text-3">{collapsed ? '▼' : '▲'}</span>
+      </button>
+
+      {/* Body */}
+      {!collapsed && (
+        <div className="divide-y divide-[rgba(37,99,235,0.10)]">
+          {list.map(sup => (
+            <div key={sup.userId} className="px-4 py-3">
+              {/* Supervisor header */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <span className="font-barlow-condensed text-[15px] font-bold text-navy">{sup.name}</span>
+                </div>
+                <span className="text-[11px] text-text-3">{relativeTime(sup.lastActive, now)}</span>
+              </div>
+
+              {/* Recent prints */}
+              {sup.recentPrints.length === 0 ? (
+                <div className="text-[12px] text-text-3 italic">Sin impresiones aún este turno</div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {sup.recentPrints.slice(0, 5).map((p, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[12px]">
+                      <span className="font-mono font-bold text-navy bg-[rgba(26,37,80,0.06)] px-1.5 py-0.5 rounded text-[11px] flex-shrink-0">
+                        {p.storeCod}
+                      </span>
+                      <span className="text-text-2 truncate flex-1">{p.pickerLabel}</span>
+                      <span className="flex-shrink-0 font-bold text-text-3">{p.pallets}p</span>
+                      <span className="flex-shrink-0 text-[11px] px-1.5 py-0.5 rounded-full font-semibold"
+                        style={{ background: 'rgba(26,37,80,0.06)', color: '#475569' }}>
+                        {TIPO_LABEL[p.tipo] ?? p.tipo}
+                      </span>
+                      <span className="flex-shrink-0 text-[10px] text-text-3">
+                        {new Date(p.printedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── TurnoSummary ─────────────────────────────────────────────────────────────
 
 function TurnoSummary({
@@ -1986,6 +2098,46 @@ export function PickingScreen() {
   // Cross-desktop print visibility — tracks which stateKeys were printed today
   const [printedKeys, setPrintedKeys] = useState<Set<string>>(new Set());
 
+  // ── Supervisor presence — quién más está activo y qué está imprimiendo ──────
+  const [otherSupervisors, setOtherSupervisors] = useState<Record<string, SupervisorPresence>>({});
+  const presenceRef  = useRef<SupervisorPresence>({ name: '', userId: '', recentPrints: [], lastActive: '' });
+  const channelRef   = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Clock que se actualiza cada 30 s para los "hace X min" en el panel
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    const myId  = profile.id;
+    const myName = profile.full_name ?? 'Supervisor';
+    presenceRef.current = { name: myName, userId: myId, recentPrints: [], lastActive: new Date().toISOString() };
+
+    const ch = supabase.channel(`picking-supervisors-${todayISO()}`, {
+      config: { presence: { key: myId } },
+    });
+
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<SupervisorPresence>();
+      const others: Record<string, SupervisorPresence> = {};
+      for (const [uid, metas] of Object.entries(state)) {
+        if (uid === myId) continue;
+        const meta = (metas as SupervisorPresence[])[0];
+        if (meta) others[uid] = meta;
+      }
+      setOtherSupervisors(others);
+    });
+
+    ch.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await ch.track(presenceRef.current);
+      }
+    });
+
+    channelRef.current = ch;
+    return () => { void supabase.removeChannel(ch); channelRef.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id]);
+
   const loadPrintStatus = useCallback(async () => {
     try {
       const res  = await fetch(`/api/picking-prints?date=${todayISO()}`);
@@ -2279,20 +2431,27 @@ export function PickingScreen() {
 
   const recordPrints = useCallback((groups: PickerGroup[]) => {
     const date = todayISO();
+    const newPrints: SupervisorPrint[] = [];
     for (const group of groups) {
       const pallets = pickerPallets[group.stateKey] ?? 0;
       if (pallets === 0) continue;
+      const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+      const tipo        = pickerTypes[group.stateKey] ?? 'P';
       void fetch('/api/picking-prints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stateKey:    group.stateKey,
-          pickerLabel: pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key,
-          pallets,
-          tipo:        pickerTypes[group.stateKey] ?? 'P',
-          date,
-        }),
+        body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date }),
       });
+      newPrints.push({ storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() });
+    }
+    if (newPrints.length > 0 && channelRef.current) {
+      const updated: SupervisorPresence = {
+        ...presenceRef.current,
+        recentPrints: [...newPrints, ...presenceRef.current.recentPrints].slice(0, 8),
+        lastActive:   new Date().toISOString(),
+      };
+      presenceRef.current = updated;
+      void channelRef.current.track(updated);
     }
   }, [pickerPallets, pickerDisplayNames, pickerTypes, getCanonicalName]);
 
@@ -2523,20 +2682,24 @@ export function PickingScreen() {
 
           {/* ── Tab content: Monitoreo ── */}
           {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
-            <div className="m-auto text-center px-8 py-12">
-              <div className="text-[56px] mb-4">🏪</div>
-              <div className="font-barlow-condensed text-[24px] font-bold text-text-2 mb-2">Selecciona una o más tiendas</div>
-              <div className="text-[15px] text-text-3 max-w-sm mx-auto">
-                Selecciona varias tiendas para gestionar sus operaciones en conjunto. El estado se guarda durante la sesión.
-              </div>
-              {!hasOdoo && (
-                <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-xl px-4 py-3 text-[14px] text-red text-left inline-block">
-                  <span className="font-bold">Odoo no configurado.</span>
+            <>
+              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} />
+              <div className="m-auto text-center px-8 py-12">
+                <div className="text-[56px] mb-4">🏪</div>
+                <div className="font-barlow-condensed text-[24px] font-bold text-text-2 mb-2">Selecciona una o más tiendas</div>
+                <div className="text-[15px] text-text-3 max-w-sm mx-auto">
+                  Selecciona varias tiendas para gestionar sus operaciones en conjunto. El estado se guarda durante la sesión.
                 </div>
-              )}
-            </div>
+                {!hasOdoo && (
+                  <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-xl px-4 py-3 text-[14px] text-red text-left inline-block">
+                    <span className="font-bold">Odoo no configurado.</span>
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <>
+            <SupervisorActivityPanel supervisors={otherSupervisors} now={now} />
             <TurnoSummary
               allGroups={allGroups}
               pickerPallets={pickerPallets}

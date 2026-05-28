@@ -1754,24 +1754,129 @@ function HistoryContent({ history, today, onReaudit, onExportPDF, onRefresh, pic
 }
 
 /* ── Desktop Stats Panel ── */
+/* ── TendenciasContent ── */
+function TendenciasContent({ history, pickerNames }: { history: AuditEntry[]; pickerNames: Record<string, string> }) {
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - i));
+    return d.toLocaleDateString('es-CL');
+  });
+  const dayShort = days.map(d => { const [day, month] = d.split('/'); return `${day}/${month}`; });
+  const recent = history.filter(e => days.includes(e.fecha));
+
+  const pickerMap = new Map<string, { day: string; total: number; errores: number }[]>();
+  for (const e of recent) {
+    const name = e.pickerNombre?.trim() || (e.picker ? (pickerNames[e.picker] || e.picker) : null);
+    if (!name) continue;
+    if (!pickerMap.has(name)) pickerMap.set(name, []);
+    const arr = pickerMap.get(name)!;
+    const existing = arr.find(x => x.day === e.fecha);
+    if (existing) { existing.total++; if (e.tieneErrores) existing.errores++; }
+    else arr.push({ day: e.fecha, total: 1, errores: e.tieneErrores ? 1 : 0 });
+  }
+
+  const pickers = Array.from(pickerMap.entries())
+    .map(([name, data]) => ({ name, total: data.reduce((s, d) => s + d.total, 0), data }))
+    .sort((a, b) => b.total - a.total).slice(0, 6);
+
+  const barColor = (pct: number) => pct >= 60 ? '#D32F2F' : pct >= 30 ? '#D97706' : '#16A34A';
+
+  if (pickers.length === 0) return (
+    <div className="p-6 text-center">
+      <div className="text-[48px] mb-3">📈</div>
+      <div className="font-barlow-condensed text-[18px] font-bold text-text-2">Sin datos esta semana</div>
+      <div className="text-[13px] text-text-3 mt-1 max-w-xs mx-auto">Registra auditorías y aparecerán las tendencias de los últimos 7 días.</div>
+    </div>
+  );
+
+  return (
+    <div className="p-4 space-y-4 overflow-y-auto flex-1">
+      <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest">Últimos 7 días · % auditorías con error por picker</div>
+
+      <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+        <div className="overflow-x-auto">
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'rgba(26,37,80,0.04)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>Picker</th>
+                {dayShort.map((d, i) => <th key={i} style={{ textAlign: 'center', padding: '8px 4px', fontSize: 10, fontWeight: 700, color: '#6B7280', minWidth: 40 }}>{d}</th>)}
+                <th style={{ textAlign: 'center', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#6B7280' }}>Prom.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pickers.map(({ name, data }, pi) => {
+                const color = LINE_COLORS[pi % LINE_COLORS.length];
+                const dayStats = days.map(day => {
+                  const d = data.find(x => x.day === day);
+                  if (!d) return null;
+                  return { pct: d.total > 0 ? Math.round((d.errores / d.total) * 100) : 0, total: d.total };
+                });
+                const valid = dayStats.filter((d): d is { pct: number; total: number } => d !== null);
+                const avg = valid.length > 0 ? Math.round(valid.reduce((s, d) => s + d.pct, 0) / valid.length) : 0;
+                return (
+                  <tr key={name} style={{ borderTop: '1px solid #F3F4F6' }}>
+                    <td style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#1a2550', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 90 }}>{name.split(' ')[0]}</span>
+                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>({valid.reduce((s, d) => s + d.total, 0)}a)</span>
+                      </div>
+                    </td>
+                    {dayStats.map((d, i) => (
+                      <td key={i} style={{ textAlign: 'center', padding: '6px 4px', verticalAlign: 'bottom' }}>
+                        {d ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            <div style={{ width: 22, height: 36, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                              <div style={{ width: 14, height: `${Math.max(d.pct, 4)}%`, maxHeight: 36, background: barColor(d.pct), borderRadius: 3, minHeight: 2 }} />
+                            </div>
+                            <span style={{ fontSize: 9, color: barColor(d.pct), fontWeight: 700 }}>{d.pct}%</span>
+                            <span style={{ fontSize: 8, color: '#9CA3AF' }}>{d.total}a</span>
+                          </div>
+                        ) : <span style={{ fontSize: 12, color: '#E5E7EB' }}>—</span>}
+                      </td>
+                    ))}
+                    <td style={{ textAlign: 'center', padding: '10px 12px', fontSize: 14, fontWeight: 800, color: barColor(avg) }}>
+                      {valid.length > 0 ? `${avg}%` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        {[['#16A34A', '0–29%', 'Bueno'], ['#D97706', '30–59%', 'Regular'], ['#D32F2F', '≥60%', 'Crítico']].map(([c, r, l]) => (
+          <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: c, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ color: '#6B7280', fontWeight: 600 }}>{r} {l}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 10, color: '#9CA3AF', textAlign: 'center' }}>{recent.length} auditorías en los últimos 7 días · {pickers.length} pickers activos</div>
+    </div>
+  );
+}
+
 function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false, pickerNames, onRefresh }: {
   history: AuditEntry[]; today: string;
   onReaudit: (e: AuditEntry) => void; odooConfig: OdooConfig;
   onlyHistory?: boolean; pickerNames: Record<string, string>; onRefresh?: () => void;
 }) {
-  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history'>(onlyHistory ? 'history' : 'dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'ranking' | 'history' | 'tendencias'>(onlyHistory ? 'history' : 'dashboard');
   return (
     <div className="flex flex-col h-full bg-bg">
       {!onlyHistory && (
-        <div className="flex border-b border-border bg-white flex-shrink-0">
+        <div className="flex border-b border-border bg-white flex-shrink-0 overflow-x-auto">
           {([
-            { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
-            { key: 'ranking'   as const, label: 'Ranking',   Icon: Trophy },
-            { key: 'history'   as const, label: 'Historial', Icon: History },
+            { key: 'dashboard'  as const, label: 'Dashboard',  Icon: LayoutDashboard },
+            { key: 'ranking'    as const, label: 'Ranking',    Icon: Trophy },
+            { key: 'tendencias' as const, label: 'Tendencias', Icon: BarChart3 },
+            { key: 'history'    as const, label: 'Historial',  Icon: History },
           ]).map(({ key, label, Icon }) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-3 text-[13px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
-              <Icon size={13} strokeWidth={2} />
+              className={`flex-1 py-3 text-[12px] font-bold font-barlow-condensed border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${tab === key ? 'border-navy text-navy bg-[rgba(26,37,80,0.02)]' : 'border-transparent text-text-3 bg-white'}`}>
+              <Icon size={12} strokeWidth={2} />
               {label}
             </button>
           ))}
@@ -1788,9 +1893,10 @@ function StatsPanel({ history, today, onReaudit, odooConfig, onlyHistory = false
         </div>
       )}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {!onlyHistory && tab === 'dashboard' && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
-        {!onlyHistory && tab === 'ranking'   && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
-        {(onlyHistory || tab === 'history')  && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} onRefresh={onRefresh} pickerNames={pickerNames} />}
+        {!onlyHistory && tab === 'dashboard'  && <div className="flex-1 overflow-y-auto"><DashboardContent history={history} today={today} pickerNames={pickerNames} /></div>}
+        {!onlyHistory && tab === 'ranking'    && <RankingContent history={history} odooConfig={odooConfig} pickerNames={pickerNames} />}
+        {!onlyHistory && tab === 'tendencias' && <div className="flex-1 overflow-y-auto flex flex-col"><TendenciasContent history={history} pickerNames={pickerNames} /></div>}
+        {(onlyHistory || tab === 'history')   && <HistoryContent history={history} today={today} onReaudit={onReaudit} onExportPDF={exportarPDF} onRefresh={onRefresh} pickerNames={pickerNames} />}
       </div>
     </div>
   );
@@ -1972,6 +2078,13 @@ export function AuditoriaScreen() {
   const [palletIdInput2,  setPalletIdInput2]  = useState('');
   const [palletIdError2,  setPalletIdError2]  = useState('');
   const [pickerNombres,   setPickerNombres]   = useState<string[]>([]);
+  // Clave incremental para forzar re-mount de inputs de foto en iOS (fix: onChange stale tras cámara)
+  const [photoInputVer,   setPhotoInputVer]   = useState(0);
+  const bumpPhotoInput = () => setPhotoInputVer(v => v + 1);
+  // Estado visual mientras se comprime/sube una foto
+  const [photoUploading,  setPhotoUploading]  = useState(false);
+  // Intentó hacer submit → resaltar campo bloqueante
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [formPhase, setFormPhase] = useState<'scan' | 'setup' | 'execution' | 'result'>('scan');
   const [lastEntry, setLastEntry] = useState<AuditEntry | null>(null);
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
@@ -2139,6 +2252,13 @@ export function AuditoriaScreen() {
     const handle = setTimeout(saveSession, 2000);
     return () => clearTimeout(handle);
   }, [formPhase, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, saveSession]);
+
+  // Guardar inmediatamente cuando cambia pallets en ejecución — evita pérdida si iOS
+  // mata el tab mientras el usuario abre la cámara justo después de ingresar el número
+  useEffect(() => {
+    if (formPhase === 'execution' && pallets) saveSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pallets]);
 
   // Save immediately when tab is hidden (user switches app)
   useEffect(() => {
@@ -2532,18 +2652,19 @@ export function AuditoriaScreen() {
     setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
     draftEntryIdRef.current = '';
     setTimerSeconds(0); setAuditStartTime(''); auditStartTimeRef.current = '';
-    setSubmitting(false); setUploadProgress('');
+    setSubmitting(false); setUploadProgress(''); setSubmitAttempted(false); setPhotoUploading(false);
     setFormPhase('scan');
   };
 
   const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
   const handleSubmitClick = () => {
+    setSubmitAttempted(true);
     if (!auditor.trim()) { showToast('Ingresa el nombre del auditor', '#D97706'); return; }
     if (!tienda) { showToast('Selecciona una tienda', '#D97706'); return; }
     if (operaciones.some(op => !op.codigo.trim())) { showToast('Completa todas las operaciones', '#D97706'); return; }
     if (!pallets || parseInt(pallets) <= 0) { showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
-    if (tieneErrores === null) { showToast('Indica si hubo errores', '#D97706'); return; }
+    if (tieneErrores === null) { showToast('¿Tuvo errores? — indica Sí o No', '#D97706'); return; }
     if (tieneErrores && tiposError.length === 0) { showToast('Selecciona el tipo de error', '#D97706'); return; }
     setConfirmSubmit(true);
   };
@@ -2656,7 +2777,7 @@ export function AuditoriaScreen() {
     errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
     setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
     draftEntryIdRef.current = '';
-    setSubmitting(false); setUploadProgress('');
+    setSubmitting(false); setUploadProgress(''); setSubmitAttempted(false); setPhotoUploading(false);
     setLastEntry(entry);
     setLastDurationSeconds(durSecs);
     setFormPhase('result');
@@ -3293,14 +3414,14 @@ export function AuditoriaScreen() {
                             <label className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:bg-bg">
                               <span className="text-[22px]">📷</span>
                               <span className="text-[10px] text-text-3 font-bold">P{n}</span>
-                              <input type="file" accept="image/*" capture="environment" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } }} />
+                              <input key={`pcam-${key}-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; bumpPhotoInput(); setPhotoUploading(true); try { const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) { setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); showToast('📎 Foto guardada', '#16A34A'); } } else { showToast('📶 Sin conexión — se subirá al registrar', '#D97706'); } } finally { setPhotoUploading(false); } }} />
                             </label>
                             {/* Gallery — small corner button */}
                             <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
                               <span className="text-[11px]">🖼️</span>
-                              <input type="file" accept="image/*" className="hidden"
-                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); } }} />
+                              <input key={`pgal-${key}-${photoInputVer}`} type="file" accept="image/*" className="hidden"
+                                onChange={async e => { const f = e.target.files?.[0]; if (!f) return; bumpPhotoInput(); setPhotoUploading(true); try { const { compressed, previewUrl, warning } = await processPhoto(f); setPalletFiles(p => ({ ...p, [key]: compressed })); setPalletPreviews(p => ({ ...p, [key]: previewUrl })); setPalletWarnings(p => ({ ...p, [key]: warning })); if (user && navigator.onLine) { const path = `${user.id}/${getDraftEntryId()}_pallet${key}.jpg`; const { error } = await supabase.storage.from('audit-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: true }); if (!error) { setPalletStorageUrls(p => ({ ...p, [key]: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl })); showToast('📎 Foto guardada', '#16A34A'); } } else { showToast('📶 Sin conexión — se subirá al registrar', '#D97706'); } } finally { setPhotoUploading(false); } }} />
                             </label>
                           </div>
                         );
@@ -3310,12 +3431,23 @@ export function AuditoriaScreen() {
                   </div>
                 )}
 
+                {/* Spinner mientras se procesa/sube una foto */}
+                {photoUploading && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-semibold text-info bg-[rgba(37,99,235,0.07)] border border-info/20">
+                    <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
+                    Procesando foto…
+                  </div>
+                )}
+
                 {/* ¿Tuvo errores? */}
                 <SLabel>¿Tuvo errores?</SLabel>
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setTieneErrores(false)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
-                  <button onClick={() => setTieneErrores(true)} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
+                <div className={`grid grid-cols-2 gap-3 rounded-xl transition-all ${submitAttempted && tieneErrores === null ? 'ring-2 ring-offset-1 ring-red/60 p-1' : ''}`}>
+                  <button onClick={() => { setTieneErrores(false); setSubmitAttempted(false); }} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
+                  <button onClick={() => { setTieneErrores(true); setSubmitAttempted(false); }} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
                 </div>
+                {submitAttempted && tieneErrores === null && (
+                  <div className="text-[12px] text-red font-bold text-center -mt-1">↑ Indica si el pallet tuvo errores</div>
+                )}
 
                 {tieneErrores === true && (
                   <>
@@ -3391,52 +3523,62 @@ export function AuditoriaScreen() {
                         <span className="text-[26px]">📷</span>
                         <span className="text-[12px] text-red font-semibold">Cámara</span>
                         <span className="text-[10px] text-text-3">1 foto directa</span>
-                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                        <input key={`ecam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            e.target.value = '';
-                            const results: ProcessedPhoto[] = [];
-                            for (const f of files) results.push(await processPhoto(f));
-                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                            if (user && navigator.onLine) {
-                              const draftId = getDraftEntryId(); const ts = Date.now();
-                              const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
-                              const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                              setErrorFotoStorageUrls(prev => [...prev, ...urls]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...paths]);
-                            } else {
-                              setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                            }
+                            bumpPhotoInput(); setPhotoUploading(true);
+                            try {
+                              const results: ProcessedPhoto[] = [];
+                              for (const f of files) results.push(await processPhoto(f));
+                              setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                              setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                              setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                              if (user && navigator.onLine) {
+                                const draftId = getDraftEntryId(); const ts = Date.now();
+                                const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
+                                const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                                setErrorFotoStorageUrls(prev => [...prev, ...urls]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...paths]);
+                                const saved = urls.filter(Boolean).length;
+                                if (saved > 0) showToast(`📎 ${saved === 1 ? 'Foto guardada' : `${saved} fotos guardadas`}`, '#16A34A');
+                              } else {
+                                setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                                showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
+                              }
+                            } finally { setPhotoUploading(false); }
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
                         <span className="text-[26px]">🖼️</span>
                         <span className="text-[12px] text-red font-semibold">Galería</span>
                         <span className="text-[10px] text-text-3">Múltiples a la vez</span>
-                        <input type="file" accept="image/*" multiple className="hidden"
+                        <input key={`egal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
                           onChange={async e => {
                             const files = Array.from(e.target.files ?? []);
                             if (!files.length) return;
-                            e.target.value = '';
-                            const results: ProcessedPhoto[] = [];
-                            for (const f of files) results.push(await processPhoto(f));
-                            setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                            setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                            setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                            if (user && navigator.onLine) {
-                              const draftId = getDraftEntryId(); const ts = Date.now();
-                              const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
-                              const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                              setErrorFotoStorageUrls(prev => [...prev, ...urls]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...paths]);
-                            } else {
-                              setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                              setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                            }
+                            bumpPhotoInput(); setPhotoUploading(true);
+                            try {
+                              const results: ProcessedPhoto[] = [];
+                              for (const f of files) results.push(await processPhoto(f));
+                              setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                              setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                              setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                              if (user && navigator.onLine) {
+                                const draftId = getDraftEntryId(); const ts = Date.now();
+                                const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
+                                const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                                setErrorFotoStorageUrls(prev => [...prev, ...urls]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...paths]);
+                                const saved = urls.filter(Boolean).length;
+                                if (saved > 0) showToast(`📎 ${saved === 1 ? 'Foto guardada' : `${saved} fotos guardadas`}`, '#16A34A');
+                              } else {
+                                setErrorFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                                setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                                showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
+                              }
+                            } finally { setPhotoUploading(false); }
                           }} />
                       </label>
                     </div>
@@ -3476,52 +3618,62 @@ export function AuditoriaScreen() {
                     <span className="text-[26px]">📷</span>
                     <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
                     <span className="text-[10px] text-text-3">1 foto directa</span>
-                    <input type="file" accept="image/*" capture="environment" className="hidden"
+                    <input key={`fcam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        e.target.value = '';
-                        const results: ProcessedPhoto[] = [];
-                        for (const f of files) results.push(await processPhoto(f));
-                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                        if (user && navigator.onLine) {
-                          const draftId = getDraftEntryId(); const ts = Date.now();
-                          const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
-                          const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                          setFotoStorageUrls(prev => [...prev, ...urls]);
-                          setFotoStoragePaths(prev => [...prev, ...paths]);
-                        } else {
-                          setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                          setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                        }
+                        bumpPhotoInput(); setPhotoUploading(true);
+                        try {
+                          const results: ProcessedPhoto[] = [];
+                          for (const f of files) results.push(await processPhoto(f));
+                          setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                          setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                          setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                          if (user && navigator.onLine) {
+                            const draftId = getDraftEntryId(); const ts = Date.now();
+                            const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
+                            const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                            setFotoStorageUrls(prev => [...prev, ...urls]);
+                            setFotoStoragePaths(prev => [...prev, ...paths]);
+                            const saved = urls.filter(Boolean).length;
+                            if (saved > 0) showToast(`📎 ${saved === 1 ? 'Foto guardada' : `${saved} fotos guardadas`}`, '#16A34A');
+                          } else {
+                            setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                            setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                            showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
+                          }
+                        } finally { setPhotoUploading(false); }
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
                     <span className="text-[26px]">🖼️</span>
                     <span className="text-[12px] text-text-2 font-semibold">Galería</span>
                     <span className="text-[10px] text-text-3">Múltiples a la vez</span>
-                    <input type="file" accept="image/*" multiple className="hidden"
+                    <input key={`fgal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
                       onChange={async e => {
                         const files = Array.from(e.target.files ?? []);
                         if (!files.length) return;
-                        e.target.value = '';
-                        const results: ProcessedPhoto[] = [];
-                        for (const f of files) results.push(await processPhoto(f));
-                        setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
-                        setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
-                        setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
-                        if (user && navigator.onLine) {
-                          const draftId = getDraftEntryId(); const ts = Date.now();
-                          const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
-                          const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
-                          setFotoStorageUrls(prev => [...prev, ...urls]);
-                          setFotoStoragePaths(prev => [...prev, ...paths]);
-                        } else {
-                          setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
-                          setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
-                        }
+                        bumpPhotoInput(); setPhotoUploading(true);
+                        try {
+                          const results: ProcessedPhoto[] = [];
+                          for (const f of files) results.push(await processPhoto(f));
+                          setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
+                          setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
+                          setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
+                          if (user && navigator.onLine) {
+                            const draftId = getDraftEntryId(); const ts = Date.now();
+                            const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
+                            const urls = await Promise.all(results.map(async (r, i) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i]).data.publicUrl; }));
+                            setFotoStorageUrls(prev => [...prev, ...urls]);
+                            setFotoStoragePaths(prev => [...prev, ...paths]);
+                            const saved = urls.filter(Boolean).length;
+                            if (saved > 0) showToast(`📎 ${saved === 1 ? 'Foto guardada' : `${saved} fotos guardadas`}`, '#16A34A');
+                          } else {
+                            setFotoStorageUrls(prev => [...prev, ...results.map(() => '')]);
+                            setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
+                            showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
+                          }
+                        } finally { setPhotoUploading(false); }
                       }} />
                   </label>
                 </div>
