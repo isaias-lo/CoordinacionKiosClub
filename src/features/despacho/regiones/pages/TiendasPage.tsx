@@ -237,6 +237,8 @@ export function TiendasPage() {
   const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
   const itemDragRefs = useRef<(HTMLDivElement | null)[]>([]);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sheetRef     = useRef<HTMLDivElement>(null);
+  const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg } = state;
 
@@ -434,6 +436,28 @@ export function TiendasPage() {
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
 
   const select  = (name: string) => dispatch({ type: 'SET_TIENDA', payload: selectedTienda === name ? null : name });
+
+  const onSheetDragStart = (e: React.TouchEvent) => {
+    sheetDrag.current = { start: e.touches[0].clientY, delta: 0 };
+    if (sheetRef.current) sheetRef.current.style.transition = 'none';
+  };
+  const onSheetDragMove = (e: React.TouchEvent) => {
+    const dy = Math.max(0, e.touches[0].clientY - sheetDrag.current.start);
+    sheetDrag.current.delta = dy;
+    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onSheetDragEnd = () => {
+    if (!sheetRef.current) return;
+    const delta = sheetDrag.current.delta;
+    sheetDrag.current.delta = 0;
+    sheetRef.current.style.transition = 'transform 0.35s cubic-bezier(0.32,0.72,0,1)';
+    if (delta > 80) {
+      sheetRef.current.style.transform = 'translateY(100%)';
+      setTimeout(() => dispatch({ type: 'SET_TIENDA', payload: null }), 340);
+    } else {
+      sheetRef.current.style.transform = 'translateY(0)';
+    }
+  };
   const setTipo = (t: TipoContenido) => { if (currentPkg === 'box') return; dispatch({ type: 'SET_TIPO', payload: t }); };
   const setPkg  = (p: TipoPaquete) => {
     dispatch({ type: 'SET_PKG', payload: p });
@@ -1422,17 +1446,25 @@ export function TiendasPage() {
       />
       {/* Sheet */}
       <div
+        ref={sheetRef}
         className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
         style={{
+          minHeight: '82vh',
           maxHeight: '92vh',
           transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
         }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer" onClick={() => select(selectedTienda!)}>
-          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+        {/* Drag handle — touch here to swipe down and close */}
+        <div
+          className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
+          onTouchStart={onSheetDragStart}
+          onTouchMove={onSheetDragMove}
+          onTouchEnd={onSheetDragEnd}
+          onClick={() => select(selectedTienda!)}
+        >
+          <div className="w-14 h-1.5 rounded-full bg-gray-300" />
         </div>
         {/* Form content (reuses renderForm logic) */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
