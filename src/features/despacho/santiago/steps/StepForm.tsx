@@ -1145,13 +1145,6 @@ export function StepForm() {
           ))}
         </div>
 
-        {/* Summary string */}
-        {activeTiendas.length > 0 && (
-          <div className="mx-3 mt-3 mb-1 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.25)] rounded-xl px-3 py-2 flex-shrink-0">
-            <div className="font-barlow-condensed text-[10px] uppercase tracking-widest text-success mb-0.5">Resumen despacho</div>
-            <div className="font-barlow-condensed text-[14px] font-bold text-navy leading-snug">{buildSummaryString()}</div>
-          </div>
-        )}
 
         {/* Accordion */}
         <div className="flex-1 overflow-y-auto">
@@ -1953,21 +1946,7 @@ export function StepForm() {
               </>
             )}
           </div>
-          {/* Chips de guías cargadas (solo tiendas Santiago) */}
-          {Object.keys(guides).filter(cod => cod in tiendaByCod).length > 0 && (
-            <div className="px-3 py-2 flex gap-1.5 flex-wrap">
-              {Object.entries(guides)
-                .filter(([cod]) => cod in tiendaByCod)
-                .map(([cod, g]) => (
-                  <span key={cod} className="flex items-center gap-1.5 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.25)] rounded-full px-2.5 py-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
-                    <span className="font-barlow-condensed text-[11px] font-bold text-success">{formatCod(cod)}</span>
-                    <span className="text-[10px] text-text-3">{g.guias.length}g</span>
-                  </span>
-                ))}
-            </div>
-          )}
-          {Object.keys(guides).filter(cod => cod in tiendaByCod).length === 0 && <div className="pb-2" />}
+          <div className="pb-2" />
         </div>
 
         {renderStoreGrid()}
