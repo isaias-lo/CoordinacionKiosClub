@@ -675,7 +675,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots }: {
+function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow }: {
   group: PickerGroup; displayName: string; palletsByTipo: Record<string, number>;
   onNameChange: (v: string) => void; onTipoPalletsChange: (tipo: PickerType, n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
@@ -685,6 +685,7 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
   colsPerRow: number;
   onPrintSelected: (palletNums: Set<number>) => void;
   slots: PalletSlot[];
+  stickerBelow?: boolean;
 }) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -746,10 +747,10 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
       </div>
 
       {/* Split body */}
-      <div className="flex flex-col lg:flex-row">
+      <div className={stickerBelow ? 'flex flex-col' : 'flex flex-col lg:flex-row'}>
 
         {/* LEFT: Form */}
-        <div className="lg:w-[45%] p-5 border-b lg:border-b-0 lg:border-r border-gray-100 print:hidden space-y-4">
+        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-5 border-gray-100 print:hidden space-y-4`}>
 
           {/* Operaciones HORIZONTALES cuando hay más de una */}
           <div className={group.operations.length > 1 ? 'flex flex-wrap gap-2' : ''}>
@@ -847,8 +848,8 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
           </div>
         </div>
 
-        {/* RIGHT: estado por op cuando hay pendientes / barcodes cuando todo done */}
-        <div className="lg:w-[55%] p-4 bg-[#FAFAFA]">
+        {/* RIGHT / BOTTOM: estado por op cuando hay pendientes / barcodes cuando todo done */}
+        <div className={`${stickerBelow ? 'w-full border-t border-gray-100' : 'lg:w-[55%]'} p-4 bg-[#FAFAFA]`}>
           {!allDone ? (
             <div className="h-full min-h-[180px] flex flex-col gap-3">
               <div className="flex items-center gap-2 mb-1">
@@ -2618,11 +2619,10 @@ export function PickingScreen() {
                       );
                     })()}
 
-                    <div className="space-y-4">
-                      {(() => {
+                    {(() => {
                         const allStore = allGroupedByStore[cod] ?? [];
 
-                        const renderCard = (group: PickerGroup) => {
+                        const renderCard = (group: PickerGroup, stickerBelow = false) => {
                           const nums = assignedNumsByStateKey[group.stateKey] ?? [];
                           return (
                             <PickerGroupCard
@@ -2656,70 +2656,104 @@ export function PickingScreen() {
                               colsPerRow={colsPerRow}
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
                               slots={slotsByStateKey[group.stateKey] ?? []}
+                              stickerBelow={stickerBelow}
                             />
                           );
                         };
 
-                        // Filtro activo: render plano sin secciones
+                        // Filtro activo (Hogar / Aseo y Comida): render plano, sin cambios
                         if (sectionFilter !== 'all') {
-                          return storeGroups.map(renderCard);
+                          return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
                         }
 
-                        // "Todas": agrupar por sección con separadores visuales
+                        // "Todas": grid de 2 columnas fijas, siempre visibles
                         const SECTION_META = {
-                          hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.07)',  border: 'rgba(29,78,216,0.22)', accent: 'rgba(29,78,216,0.30)' },
-                          'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.07)', border: 'rgba(217,119,6,0.28)', accent: 'rgba(217,119,6,0.35)'  },
-                          mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.07)', border: 'rgba(124,58,237,0.22)', accent: 'rgba(124,58,237,0.30)' },
+                          'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
+                          hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
+                          mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
                         } as const;
 
                         const getSection = (g: PickerGroup): keyof typeof SECTION_META => {
                           const cats = new Set(g.operations.flatMap(o => o.categories));
-                          const hasHogar = cats.has('Hogar');
+                          const hasHogar      = cats.has('Hogar');
                           const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
                           if (hasHogar && hasAseoComida) return 'mixto';
                           if (hasAseoComida) return 'aseo-comida';
                           return 'hogar';
                         };
 
-                        const sectionOrder: (keyof typeof SECTION_META)[] = ['hogar', 'aseo-comida', 'mixto'];
-                        const grouped = sectionOrder
-                          .map(key => ({ key, meta: SECTION_META[key], groups: storeGroups.filter(g => getSection(g) === key) }))
-                          .filter(s => s.groups.length > 0);
+                        const countSlots = (gs: PickerGroup[]) =>
+                          gs.reduce((sum, g) => sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);
 
-                        // Si solo hay una sección presente no hace falta separador
-                        if (grouped.length <= 1) {
-                          return storeGroups.map(renderCard);
-                        }
+                        const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
+                        const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
+                        const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
+                        const mixtoTotal       = countSlots(mixtoGroups);
 
-                        return grouped.map((section, si) => {
-                          const totalSlots = section.groups.reduce((sum, g) =>
-                            sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);
+                        const renderSectionHeader = (key: keyof typeof SECTION_META, total: number) => {
+                          const meta = SECTION_META[key];
                           return (
-                            <div key={section.key} style={{ marginTop: si > 0 ? 20 : 0 }}>
-                              {/* Encabezado de sección */}
-                              <div className="flex items-center gap-2 mb-3 print:hidden">
-                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: section.meta.color }} />
-                                <span className="text-[11px] font-bold uppercase tracking-widest flex-shrink-0" style={{ color: section.meta.color }}>
-                                  {section.meta.label}
+                            <div className="flex items-center gap-2 mb-3 print:hidden">
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: meta.color }} />
+                              <span className="text-[11px] font-bold uppercase tracking-widest flex-shrink-0" style={{ color: meta.color }}>
+                                {meta.label}
+                              </span>
+                              {total > 0 && (
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                                  style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                                  {total} pallet{total !== 1 ? 's' : ''}
                                 </span>
-                                {totalSlots > 0 && (
-                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                                    style={{ background: section.meta.bg, color: section.meta.color, border: `1px solid ${section.meta.border}` }}>
-                                    {totalSlots} pallet{totalSlots !== 1 ? 's' : ''}
-                                  </span>
-                                )}
-                                <div className="flex-1 h-px" style={{ background: section.meta.color, opacity: 0.18 }} />
-                              </div>
-                              {/* Cards con borde izquierdo de color */}
-                              <div className="space-y-4 pl-3 border-l-[3px] rounded-sm"
-                                style={{ borderColor: section.meta.accent }}>
-                                {section.groups.map(renderCard)}
-                              </div>
+                              )}
+                              <div className="flex-1 h-px" style={{ background: meta.color, opacity: 0.15 }} />
                             </div>
                           );
-                        });
+                        };
+
+                        const columns: Array<{ key: keyof typeof SECTION_META; groups: PickerGroup[] }> = [
+                          { key: 'aseo-comida', groups: aseoComidaGroups },
+                          { key: 'hogar',       groups: hogarGroups },
+                        ];
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Grid de 2 columnas fijas — ambas siempre visibles */}
+                            <div className="grid grid-cols-2 gap-4 items-start">
+                              {columns.map(col => {
+                                const total = countSlots(col.groups);
+                                const meta  = SECTION_META[col.key];
+                                return (
+                                  <div key={col.key}>
+                                    {renderSectionHeader(col.key, total)}
+                                    {col.groups.length > 0 ? (
+                                      <div className="space-y-3">
+                                        {col.groups.map(g => renderCard(g, true))}
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
+                                        style={{ borderColor: meta.color + '28', background: meta.bg }}>
+                                        <div className="text-[28px] mb-1" style={{ opacity: 0.18 }}>□</div>
+                                        <div className="text-[12px] font-semibold text-center" style={{ color: meta.color, opacity: 0.5 }}>
+                                          Sin operaciones aún
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Mixto (Hogar + Aseo en el mismo picker) — ancho completo abajo */}
+                            {mixtoGroups.length > 0 && (
+                              <div>
+                                {renderSectionHeader('mixto', mixtoTotal)}
+                                <div className="space-y-3">
+                                  {mixtoGroups.map(g => renderCard(g))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
                       })()}
-                    </div>
                   </div>
                 );
               })}
