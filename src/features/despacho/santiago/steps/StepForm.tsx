@@ -255,6 +255,8 @@ export function StepForm() {
   const [formRows,      setFormRows]     = useState<FormRow[]>([]);
   const [pickingSlots,  setPickingSlots]  = useState<Record<string, { tipo: string; contenido: string }[]>>({});
 
+  const [showTodas, setShowTodas] = useState(false);
+
   /* Resumen inline state */
   const [resumenExpanded, setResumenExpanded] = useState<Set<string>>(new Set());
   const [resumenEditing,  setResumenEditing]  = useState<ResumenEditState | null>(null);
@@ -907,10 +909,18 @@ export function StepForm() {
       )}
       {othersList.length > 0 && (
         <div>
-          <div className="px-3 py-2 bg-bg border-b border-border sticky top-0 z-10 flex items-baseline gap-2">
-            <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3">Todas</span>
+          <div
+            onClick={() => todayList.length > 0 && setShowTodas(prev => !prev)}
+            className={`px-3 py-2 bg-bg border-b border-border sticky top-0 z-10 flex items-center gap-2 ${todayList.length > 0 ? 'cursor-pointer' : ''}`}>
+            <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3 flex-1">Todas</span>
             <span className="font-barlow-condensed text-[10px] text-text-3/50 uppercase tracking-wide hidden sm:inline">toca + para agregar a hoy</span>
+            {todayList.length > 0 && (
+              <span className="font-barlow-condensed text-[12px] text-text-3/50 select-none ml-1">
+                {showTodas ? '▲' : '▼'}
+              </span>
+            )}
           </div>
+          {(showTodas || todayList.length === 0) && (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {othersList.map(t => {
               const tI = items[t.cod] || [];
@@ -930,6 +940,7 @@ export function StepForm() {
               );
             })}
           </div>
+          )}
         </div>
       )}
       {filtered.length === 0 && (
@@ -956,13 +967,11 @@ export function StepForm() {
         ))}
       </div>
       <div className="px-3 pb-3 pt-1 flex gap-2">
-        {activeTiendasCount > 0 && (
-          <button onClick={goToResumen}
-            className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
-            style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
-            Ver resumen ({activeTiendasCount}) →
-          </button>
-        )}
+        <button onClick={goToResumen}
+          className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
+          style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+          RESUMEN ({activeTiendasCount})
+        </button>
         <button onClick={enrutar}
           className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
           style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
@@ -1568,6 +1577,7 @@ export function StepForm() {
           )}
 
           {/* Tipo */}
+          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-1 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Tipo</div>
           <div className="flex gap-2 flex-wrap">
             {(['Pallet', 'Bulto', 'Contenedor', 'Chocolate'] as TipoCargamento[]).map(t => (
               <button key={t} onClick={() => setTipo(t)}
@@ -1590,6 +1600,7 @@ export function StepForm() {
           )}
 
           {/* Contenido */}
+          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-2 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Contenido</div>
           <div className="flex gap-2">
             {(tipo === 'Pallet' ? CONTENIDO_PALLET : tipo === 'Contenedor' ? CONTENIDO_CONTENEDOR : CONTENIDO_BULTO).map(c => (
               <button key={c} onClick={() => setContenido(c)}
@@ -1601,7 +1612,8 @@ export function StepForm() {
             ))}
           </div>
 
-          {/* Peso */}
+          {/* Peso y dimensiones */}
+          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-2 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Peso y dimensiones</div>
           <div>
             <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">Peso (kg)</label>
             <input type="number" inputMode="decimal" value={peso} onChange={e => setPeso(e.target.value)} placeholder="0"

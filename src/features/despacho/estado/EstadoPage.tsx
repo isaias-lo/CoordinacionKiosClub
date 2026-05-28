@@ -39,7 +39,8 @@ interface GuideEntry {
   driveFileId?: string;
 }
 
-const TODAY_KEY = new Date().toISOString().split('T')[0];
+const _today = new Date();
+const TODAY_KEY = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
 const GUIDES_KEY = `estadoGuias_${TODAY_KEY}`;
 
 function loadSantiagoItems(): Record<string, SantiagoItem[]> {

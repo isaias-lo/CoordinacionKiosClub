@@ -1335,14 +1335,12 @@ export function TiendasPage() {
             ))}
           </div>
           <div className="px-3 pb-3 pt-1 flex gap-2">
-            {activeTiendasCount > 0 && (
-              <button
-                onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
-                className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
-                style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
-                Ver resumen ({activeTiendasCount}) →
-              </button>
-            )}
+            <button
+              onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
+              className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
+              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+              RESUMEN ({activeTiendasCount})
+            </button>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
               className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
