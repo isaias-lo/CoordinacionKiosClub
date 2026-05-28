@@ -33,6 +33,12 @@ function saveGuides(g: Record<string, GuideEntry>) { localStorage.setItem(GUIDES
 function loadExtra():   string[] { try { return JSON.parse(localStorage.getItem(EXTRA_KEY)   || '[]'); } catch { return []; } }
 function loadRemoved(): string[] { try { return JSON.parse(localStorage.getItem(REMOVED_KEY) || '[]'); } catch { return []; } }
 
+/* ── Consumed picking slots (physical pallet merges) ── */
+type ConsumedSlotsS = Record<string, { p: number; b: number; c: number }>;
+const CONSUMED_SLOTS_S_KEY = `consumedPickingSlotsS_${todayKey}`;
+function loadConsumedSlotsS(): ConsumedSlotsS { try { return JSON.parse(localStorage.getItem(CONSUMED_SLOTS_S_KEY) || '{}'); } catch { return {}; } }
+function saveConsumedSlotsS(v: ConsumedSlotsS) { try { localStorage.setItem(CONSUMED_SLOTS_S_KEY, JSON.stringify(v)); } catch {} }
+
 /* ── Constants ── */
 const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
 const CONTENIDO_BULTO:      ContenidoSantiago[] = ['Hogar', 'Chocolate'];
@@ -252,8 +258,9 @@ export function StepForm() {
 
   /* Preset / multi-form */
   const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
-  const [formRows,      setFormRows]     = useState<FormRow[]>([]);
-  const [pickingSlots,  setPickingSlots]  = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  const [formRows,             setFormRows]             = useState<FormRow[]>([]);
+  const [pickingSlots,         setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  const [consumedSlotsSant,    setConsumedSlotsSant]     = useState<ConsumedSlotsS>(() => typeof window === 'undefined' ? {} : loadConsumedSlotsS());
 
   const [showTodas, setShowTodas] = useState(false);
 
@@ -910,6 +917,15 @@ export function StepForm() {
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
+  const absorbPickingSlotSant = (cod: string, type: 'p' | 'b' | 'c') => {
+    setConsumedSlotsSant(prev => {
+      const cur = prev[cod] || { p: 0, b: 0, c: 0 };
+      const next = { ...prev, [cod]: { ...cur, [type]: cur[type] + 1 } };
+      saveConsumedSlotsS(next);
+      return next;
+    });
+  };
+
   const addFormRow = (t: TipoCargamento) =>
     setFormRows(prev => [...prev, { id: `row-${Date.now()}`, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
 
@@ -957,7 +973,8 @@ export function StepForm() {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
               const pkSlots = pickingSlots[t.cod] ?? [];
-              const pk = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : undefined;
+              const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
+              const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               return (
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday
@@ -992,7 +1009,8 @@ export function StepForm() {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
               const pkSlots = pickingSlots[t.cod] ?? [];
-              const pk = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length } : undefined;
+              const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
+              const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               return (
                 <TiendaGridCard key={t.cod} t={t}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
@@ -1459,6 +1477,20 @@ export function StepForm() {
         </div>
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {(() => {
+            const cod = currentTienda.cod;
+            const cns = consumedSlotsSant[cod] || { p: 0, b: 0, c: 0 };
+            const tiendaItemsList = items[cod] || [];
+            const gP  = Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - tiendaItemsList.filter(i => i.tipo === 'Pallet').length     - cns.p);
+            const gB  = Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - tiendaItemsList.filter(i => i.tipo === 'Bulto').length      - cns.b);
+            const gC  = Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - tiendaItemsList.filter(i => i.tipo === 'Contenedor').length  - cns.c);
+            type GC = { type: 'p' | 'b' | 'c'; border: string; text: string; bg: string; label: string; key: string };
+            const ghostCards: GC[] = [
+              ...Array.from({ length: gP }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
+              ...Array.from({ length: gB }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
+              ...Array.from({ length: gC }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
+            ];
+            return (
           <div className="grid grid-cols-2 gap-2 mb-2">
             {formRows.map((row, rowIdx) => {
               const tipoIdx  = formRows.slice(0, rowIdx + 1).filter(r => r.tipo === row.tipo).length;
@@ -1559,7 +1591,24 @@ export function StepForm() {
                 </div>
               );
             })}
+            {ghostCards.map(gc => (
+              <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col justify-between" style={{ borderColor: gc.border, background: gc.bg }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
+                  <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
+                </div>
+                <div className="text-[10px] text-text-3 mb-2 leading-relaxed">Unificado físicamente con el registrado</div>
+                <button
+                  onClick={() => absorbPickingSlotSant(cod, gc.type)}
+                  className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
+                  style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                  ✓ Fue unificado
+                </button>
+              </div>
+            ))}
           </div>
+            );
+          })()}
           <div className="flex gap-2 pb-2">
             <button onClick={() => addFormRow('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
             <button onClick={() => addFormRow('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
