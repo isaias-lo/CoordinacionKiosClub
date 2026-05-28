@@ -93,12 +93,14 @@ interface LabelConfig {
   storeNameFontSize: number;     // 24–72
   cornerRadius: number;          // 0–20
   showDate: boolean;
+  slotIdFontSize: number;        // 10–28
 }
 const DEFAULT_LABEL_CONFIG: LabelConfig = {
   borderWidth: 2, pickerFontSize: 34, storeFontSize: 128, catFontSize: 22,
   barcodeBarWidth: 2, barcodeHeight: 113, barcodeContainerWidth: 85,
   showResponsable: true, showCategories: true, showStoreName: true,
   dateFontSize: 12, palletNumSize: 80, storeNameFontSize: 52, cornerRadius: 12, showDate: true,
+  slotIdFontSize: 18,
 };
 
 const CANONICAL_PICKER_KEYS = [
@@ -617,7 +619,7 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
             </div>
             <div style={{ fontSize: s.deSize, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
             {slotId != null && (
-              <div style={{ fontSize: compact ? 10 : 18, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+              <div style={{ fontSize: compact ? 10 : cfg.slotIdFontSize, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                 #{slotId}
               </div>
             )}
@@ -654,11 +656,11 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
         {/* Código de barras */}
         <div style={{ marginTop: s.barMT }}>
           <div style={{ width: s.barW, margin: '0 auto' }}>
-            <Barcode1D value={value} height={s.barH} barWidth={s.barBW} />
+            <Barcode1D value={slotId != null ? String(slotId) : value} height={s.barH} barWidth={s.barBW} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
             <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
-              {value}
+              {slotId != null ? `ID #${slotId}` : value}
             </div>
             {(compact || cfg.showDate) && (
               <div style={{ fontSize: s.footerDateFS, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
@@ -1200,10 +1202,13 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
 }
 
 const CFG_SLIDER_CSS = `
-  .cfg-slider{-webkit-appearance:none;appearance:none;height:3px;border-radius:9999px;outline:none;cursor:pointer}
-  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 4px rgba(217,119,6,.35);cursor:pointer;transition:box-shadow .15s}
-  .cfg-slider::-webkit-slider-thumb:hover{box-shadow:0 1px 4px rgba(217,119,6,.35),0 0 0 4px rgba(217,119,6,.14)}
-  .cfg-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #D97706;cursor:pointer}
+  .cfg-slider{-webkit-appearance:none;appearance:none;height:4px;border-radius:9999px;outline:none;cursor:pointer;touch-action:none;padding:10px 0;box-sizing:content-box}
+  .cfg-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;box-shadow:0 1px 6px rgba(217,119,6,.40);cursor:pointer;transition:box-shadow .12s,transform .12s}
+  .cfg-slider::-webkit-slider-thumb:hover{box-shadow:0 1px 6px rgba(217,119,6,.40),0 0 0 6px rgba(217,119,6,.12);transform:scale(1.1)}
+  .cfg-slider::-webkit-slider-thumb:active{transform:scale(1.2);box-shadow:0 2px 10px rgba(217,119,6,.45),0 0 0 8px rgba(217,119,6,.10)}
+  .cfg-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:2.5px solid #D97706;cursor:pointer;box-shadow:0 1px 6px rgba(217,119,6,.40)}
+  .cfg-slider::-webkit-slider-runnable-track{height:4px;border-radius:9999px}
+  .cfg-slider::-moz-range-track{height:4px;border-radius:9999px}
   .cfg-num::-webkit-inner-spin-button,.cfg-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
   .cfg-num{-moz-appearance:textfield}
 `;
@@ -1663,6 +1668,7 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
               <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} />
               <PropRow label="Categorías" field="catFontSize" min={12} max={30} />
               <PropRow label="Fecha" field="dateFontSize" min={8} max={20} />
+              <PropRow label="Código (#)" field="slotIdFontSize" min={10} max={28} />
             </div>
 
             {/* Preview central */}
