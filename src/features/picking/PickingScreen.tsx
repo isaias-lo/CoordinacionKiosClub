@@ -1568,10 +1568,10 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
       <div className="flex items-center gap-2 py-2 border-b border-[#F8FAFC] last:border-0">
         <span className="text-[11px] font-medium text-[#64748B] w-28 shrink-0 leading-tight">{label}</span>
         <input
-          type="range" min={min} max={max} value={val}
+          type="range" min={min} max={max} step={0.01} value={val}
           className="cfg-slider flex-1 min-w-0"
           style={{ background: `linear-gradient(to right,#D97706 ${pct}%,#E2E8F0 ${pct}%)` }}
-          onChange={e => upd(field, Number(e.target.value))}
+          onChange={e => upd(field, Math.round(Number(e.target.value)))}
         />
         <div className="flex items-center shrink-0 rounded-lg overflow-hidden"
           style={{ border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
@@ -1694,7 +1694,7 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
                   }}>
                     <BarcodeCard
                       value="17MAI;JuanPerez;WH/PICK/1234;P1;Comida,Aseo"
-                      palletNum={1} total={3}
+                      palletNum={1} total={3} slotId={419}
                       storeCod="17MAI" pickerLabel="Juan Pérez" responsibleKey="Pickers 1"
                       allCategories={['Comida', 'Aseo']} totalPickers={4}
                       compact={false} labelConfig={labelConfig}
