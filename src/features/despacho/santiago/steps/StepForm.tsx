@@ -633,13 +633,25 @@ export function StepForm() {
 
       if (existing.length === 0 && slots.length > 0) {
         // Build rows from picking slots with contenido pre-filled
-        const rows: FormRow[] = slots.map((s, i) => ({
+        const allRows: FormRow[] = slots.map((s, i) => ({
           id:       `pick-${s.tipo}-${i}-${Date.now()}`,
           tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
           contenido: mapearCont(s.contenido),
           peso: '', alto: '', largo: '', ancho: '',
         }));
-        setFormRows(rows);
+        const chocRows = allRows.filter(r => r.tipo === 'Chocolate');
+        const nonChocRows = allRows.filter(r => r.tipo !== 'Chocolate');
+        if (chocRows.length > 0 && state.regimen) {
+          const regimen = state.regimen;
+          const chocItems: SantiagoItem[] = chocRows.map((_, i) => ({
+            id: `ch-pick-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
+            tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+            peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+            pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
+          }));
+          dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
+        }
+        setFormRows(nonChocRows);
       } else if (existing.length === 0) {
         const preset = presets[currentTienda.cod];
         if (preset) {
@@ -650,8 +662,17 @@ export function StepForm() {
             rows.push({ id: `b${i}-${Date.now()}`,  tipo: 'Bulto',     contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
           for (let i = 0; i < Math.max(0, (preset.contenedores ?? 0) - existing.filter(x => x.tipo === 'Contenedor').length); i++)
             rows.push({ id: `c${i}-${Date.now()}`,  tipo: 'Contenedor',contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
-          for (let i = 0; i < Math.max(0, (preset.chocolates ?? 0) - existing.filter(x => x.tipo === 'Chocolate').length); i++)
-            rows.push({ id: `ch${i}-${Date.now()}`, tipo: 'Chocolate', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' });
+          const chocPresetCount = Math.max(0, (preset.chocolates ?? 0) - existing.filter(x => x.tipo === 'Chocolate').length);
+          if (chocPresetCount > 0 && state.regimen) {
+            const regimen = state.regimen;
+            const chocItems: SantiagoItem[] = Array.from({ length: chocPresetCount }, (_, i) => ({
+              id: `ch-pre-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
+              tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+              peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
+            }));
+            dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
+          }
           setFormRows(rows);
         } else {
           setFormRows([]);
@@ -761,7 +782,28 @@ export function StepForm() {
     const n   = Math.max(0, parseInt(value) || 0);
     const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     setPresets(prev => ({ ...prev, [cod]: { ...curr, [field]: n } }));
-    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : field === 'chocolates' ? 'Chocolate' : 'Bulto';
+    if (field === 'chocolates') {
+      const currentItems = items[cod] || [];
+      const existingChocCount = currentItems.filter(i => i.tipo === 'Chocolate').length;
+      if (n > existingChocCount) {
+        const newChocItems: SantiagoItem[] = Array.from({ length: n - existingChocCount }, (_, i) => ({
+          id: `ch-${Date.now()}-${i}`, tiendaCod: cod,
+          tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+          peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+          pesoVolumetrico: 0, regimen: state.regimen!, orden: `CH${existingChocCount + i + 1}`, estado: ESTADO_DEFAULT,
+        }));
+        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: [...currentItems, ...newChocItems] });
+      } else if (n < existingChocCount) {
+        let toRemove = existingChocCount - n;
+        const newItems = [...currentItems];
+        for (let i = newItems.length - 1; i >= 0 && toRemove > 0; i--)
+          if (newItems[i].tipo === 'Chocolate') { newItems.splice(i, 1); toRemove--; }
+        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: newItems });
+      }
+      setFormRows(prev => prev.filter(r => r.tipo !== 'Chocolate'));
+      return;
+    }
+    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
     const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
     const savedRows = formRows.filter(r => r.tipo === tipo2 && r.saved).length;
     const delta = (Math.max(0, n - existing - savedRows)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
@@ -1815,7 +1857,7 @@ export function StepForm() {
         </div>
 
         {/* ── Subir guías PDF de Santiago ── */}
-        <div className="flex-shrink-0 border-b border-border">
+        <div className="flex-shrink-0 border-b border-border hidden lg:block">
           <input
             ref={guideFileRef} type="file" accept=".pdf" multiple className="hidden"
             onChange={e => e.target.files && handleGuideFiles(e.target.files)} />

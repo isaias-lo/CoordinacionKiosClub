@@ -363,18 +363,26 @@ export function TiendasPage() {
 
       if (existingItems.length === 0 && hasPickingData) {
         // Build form rows from picking slots — one row per slot with its contenido
-        const rows: FormRow[] = slots.map((s, i) => {
+        const allRows: FormRow[] = slots.map((s, i) => {
           const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
           const tipo = mapearContenido(s.contenido);
           return {
             id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '',
-            alto:  pkg === 'pallet' ? '' : pkg === 'chocolate' ? '42' : '',
-            ancho: pkg === 'pallet' ? '100' : pkg === 'chocolate' ? '56' : '',
-            largo: pkg === 'pallet' ? '120' : pkg === 'chocolate' ? '80' : '',
+            alto:  pkg === 'pallet' ? '' : '',
+            ancho: pkg === 'pallet' ? '100' : '',
+            largo: pkg === 'pallet' ? '120' : '',
             guia: '', valor: '',
           };
         });
-        setFormRows(rows);
+        const chocSlots = allRows.filter(r => r.pkg === 'chocolate');
+        const nonChocRows = allRows.filter(r => r.pkg !== 'chocolate');
+        if (chocSlots.length > 0) {
+          dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: chocSlots.map((_, i) => ({
+            orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+            peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
+          })) });
+        }
+        setFormRows(nonChocRows);
       } else if (existingItems.length === 0) {
         // No picking data — fall back to manual preset if set
         const preset = presets[selectedTienda];
@@ -386,8 +394,12 @@ export function TiendasPage() {
             rows.push({ id: `b${i}-${Date.now()}`,  pkg: 'box',       tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
           for (let i = 0; i < (preset.contenedores ?? 0); i++)
             rows.push({ id: `c${i}-${Date.now()}`,  pkg: 'contenedor',tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
-          for (let i = 0; i < (preset.chocolates ?? 0); i++)
-            rows.push({ id: `ch${i}-${Date.now()}`, pkg: 'chocolate', tipo: 'hogar', peso: '', alto: '42', ancho: '56', largo: '80', guia: '', valor: '' });
+          if ((preset.chocolates ?? 0) > 0) {
+            dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: Array.from({ length: preset.chocolates ?? 0 }, (_, i) => ({
+              orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+              peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
+            })) });
+          }
           setFormRows(rows);
         } else {
           setFormRows([]);
@@ -567,7 +579,26 @@ export function TiendasPage() {
     const n = Math.max(0, parseInt(value) || 0);
     const current = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     setPresets(prev => ({ ...prev, [selectedTienda]: { ...current, [field]: n } }));
-    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : field === 'contenedores' ? 'contenedor' : field === 'chocolates' ? 'chocolate' : 'box';
+    if (field === 'chocolates') {
+      const currentItems = dispatchData[selectedTienda] || [];
+      const existingChocCount = currentItems.filter(i => i.pkg === 'chocolate').length;
+      if (n > existingChocCount) {
+        const newItems = [...currentItems, ...Array.from({ length: n - existingChocCount }, (_, i) => ({
+          orden: `CH${existingChocCount + i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+          peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
+        }))];
+        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems });
+      } else if (n < existingChocCount) {
+        let toRemove = existingChocCount - n;
+        const newItems = [...currentItems];
+        for (let i = newItems.length - 1; i >= 0 && toRemove > 0; i--)
+          if (newItems[i].pkg === 'chocolate') { newItems.splice(i, 1); toRemove--; }
+        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems });
+      }
+      setFormRows(prev => prev.filter(r => r.pkg !== 'chocolate'));
+      return;
+    }
+    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : field === 'contenedores' ? 'contenedor' : 'box';
     const existing = (dispatchData[selectedTienda] || []).filter(i => i.pkg === pkg).length;
     const savedRowCount = formRows.filter(r => r.pkg === pkg && r.saved).length;
     const needed = Math.max(0, n - existing - savedRowCount);
@@ -577,9 +608,9 @@ export function TiendasPage() {
       const newRows: FormRow[] = [];
       for (let i = 0; i < delta; i++)
         newRows.push({ id: `row-${Date.now()}-${i}`, pkg, tipo: 'hogar', peso: '',
-          alto:  pkg === 'chocolate' ? '42'  : '',
-          ancho: pkg === 'pallet'   ? '100' : pkg === 'chocolate' ? '56' : '',
-          largo: pkg === 'pallet'   ? '120' : pkg === 'chocolate' ? '80' : '',
+          alto:  '',
+          ancho: pkg === 'pallet' ? '100' : '',
+          largo: pkg === 'pallet' ? '120' : '',
           guia: '', valor: '', saved: false });
       setFormRows(prev => [...prev, ...newRows]);
     } else if (delta < 0) {
@@ -782,7 +813,7 @@ export function TiendasPage() {
     /* ── Multi-form (preset) mode ── */
     if (formRows.length > 0) {
       const pdfStrip = (
-        <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2">
+        <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".pdf" className="hidden"
             onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
           {hasPdf ? (
@@ -977,7 +1008,7 @@ export function TiendasPage() {
         {header}
         {presetBar}
         {/* PDF compact strip — outside scroll */}
-        <div className="flex-shrink-0 px-2.5 py-1.5 border-b border-border flex items-center gap-2 bg-bg"
+        <div className="flex-shrink-0 px-2.5 py-1.5 border-b border-border hidden lg:flex items-center gap-2 bg-bg"
           onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type === 'application/pdf') handlePdfFile(f); }}>
           <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
