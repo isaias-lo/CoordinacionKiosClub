@@ -2693,18 +2693,19 @@ export function PickingScreen() {
                         const renderSectionHeader = (key: keyof typeof SECTION_META, total: number) => {
                           const meta = SECTION_META[key];
                           return (
-                            <div className="flex items-center gap-2 mb-3 print:hidden">
-                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: meta.color }} />
-                              <span className="text-[11px] font-bold uppercase tracking-widest flex-shrink-0" style={{ color: meta.color }}>
-                                {meta.label}
-                              </span>
-                              {total > 0 && (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                                  style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
-                                  {total} pallet{total !== 1 ? 's' : ''}
+                            <div className="mb-4 print:hidden">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="font-barlow-condensed text-[22px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
+                                  {meta.label}
                                 </span>
-                              )}
-                              <div className="flex-1 h-px" style={{ background: meta.color, opacity: 0.15 }} />
+                                {total > 0 && (
+                                  <span className="text-[13px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                                    style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                                    {total} pallet{total !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="h-[3px] rounded-full w-full" style={{ background: meta.color, opacity: 0.55 }} />
                             </div>
                           );
                         };
@@ -2717,15 +2718,12 @@ export function PickingScreen() {
                         return (
                           <div className="space-y-4">
                             {/* Grid de 2 columnas fijas — ambas siempre visibles */}
-                            <div className="grid grid-cols-2 gap-0 items-start">
-                              {columns.map((col, colIdx) => {
+                            <div className="grid grid-cols-2 gap-4 items-start">
+                              {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
                                 return (
-                                  <div key={col.key}
-                                    className={colIdx === 0
-                                      ? 'pr-5 border-r-2 border-dashed border-gray-200'
-                                      : 'pl-5'}>
+                                  <div key={col.key}>
                                     {renderSectionHeader(col.key, total)}
                                     {col.groups.length > 0 ? (
                                       <div className="space-y-3">
