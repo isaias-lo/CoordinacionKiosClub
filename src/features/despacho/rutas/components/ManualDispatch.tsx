@@ -9,7 +9,7 @@ import type { Parada } from './ParadasAdicionales';
 interface StoreTag { c: string; p: number; b: number; }
 
 interface Props {
-  calT: Record<string, { on: boolean; p: number; b: number; g?: string }>;
+  calT: Record<string, { on: boolean; p: number; b: number; c: number; ch: number; g?: string }>;
   flota: Vehiculo[];
   gps: Record<string, number[]>;
   tiendas: Record<string, TiendaInfo>;
@@ -70,8 +70,8 @@ export default function ManualDispatch({
   }, []);
 
   const tiendasActivas = Object.keys(calT)
-    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
-    .map(c => ({ c, p: calT[c].p, b: calT[c].b }));
+    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
+    .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
 
   const paradasConGps = paradas.filter(p => p.gps);
 
@@ -543,11 +543,12 @@ function StoreTagComp({ store, tiendas, isDragging, onDragStart, onDragEnd, onTo
       className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] touch-manipulation ${isDragging
         ? 'opacity-30 scale-95 bg-kred/[0.05] border-kred/20'
         : 'bg-kred/[0.07] border-kred/25 text-kred active:bg-kred/[0.15]'}`}
-      title={info ? `${info.n} · ${store.p}p ${store.b}b` : `${store.c} · ${store.p}p ${store.b}b`}
+      title={info ? `${info.n} · ${store.p}p ${store.b}b ${(store as { ch?: number }).ch ? `${(store as { ch?: number }).ch}ch` : ''}` : `${store.c} · ${store.p}p ${store.b}b`}
     >
       <span className="font-mono font-bold text-[12px]">{formatCod(store.c)}</span>
       <span className="text-[10px] text-kred/60">{store.p}p</span>
-      {store.b > 0 && <span className="text-[10px] text-kred/50">{store.b}b</span>}
+      {store.b  > 0 && <span className="text-[10px] text-kred/50">{store.b}b</span>}
+      {((store as { ch?: number }).ch ?? 0) > 0 && <span className="text-[10px] text-kred/40">{(store as { ch?: number }).ch}ch</span>}
       {onRemove && (
         <button onClick={e => { e.stopPropagation(); onRemove(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
           className="text-[11px] text-kred/40 hover:text-kred font-bold leading-none ml-0.5 w-[14px] h-[14px] flex items-center justify-center">×</button>

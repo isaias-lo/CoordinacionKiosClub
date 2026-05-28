@@ -253,15 +253,16 @@ export function TiendasPage() {
     if (typeof window === 'undefined') return;
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const counts: Record<string, { p: number; b: number; c: number }> = {};
+    const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
     Object.entries(dispatchData).forEach(([name, items]) => {
       if (!items.length) return;
       const tienda = TIENDAS[name];
       if (!tienda) return;
-      const p = items.filter(i => i.pkg === 'pallet').length;
-      const b = items.filter(i => i.pkg === 'box').length;
-      const c = items.filter(i => i.pkg === 'contenedor').length;
-      if (p > 0 || b > 0 || c > 0) counts[tienda.cod] = { p, b, c };
+      const p  = items.filter(i => i.pkg === 'pallet').length;
+      const b  = items.filter(i => i.pkg === 'box').length;
+      const c  = items.filter(i => i.pkg === 'contenedor').length;
+      const ch = items.filter(i => i.pkg === 'chocolate').length;
+      if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
     pushCounts('regiones', counts).catch(() => {});
@@ -774,7 +775,10 @@ export function TiendasPage() {
 
     /* Shared header */
     const header = (
-      <div className={`bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0 ${isMobile ? 'cursor-pointer active:opacity-90' : ''}`} onClick={isMobile ? () => select(selectedTienda!) : undefined}>
+      <div className={`bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
+        onTouchStart={isMobile ? onSheetDragStart : undefined}
+        onTouchMove={isMobile ? onSheetDragMove : undefined}
+        onTouchEnd={isMobile ? onSheetDragEnd : undefined}>
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
           <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
@@ -1506,16 +1510,6 @@ export function TiendasPage() {
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
         }}
       >
-        {/* Drag handle — touch here to swipe down and close */}
-        <div
-          className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove}
-          onTouchEnd={onSheetDragEnd}
-          onClick={() => select(selectedTienda!)}
-        >
-          <div className="w-14 h-1.5 rounded-full bg-gray-300" />
-        </div>
         {/* Form content (reuses renderForm logic) */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {selectedTienda && renderForm(true)}

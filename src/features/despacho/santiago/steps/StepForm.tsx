@@ -186,13 +186,17 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, onBack }: {
+function TiendaFormHeader({ tienda, pallets, bultos, onBack, swipe }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; onBack: () => void;
+  swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
 }) {
   return (
-    <div className="bg-navy px-3 py-3 flex items-center gap-2 flex-shrink-0 cursor-pointer active:opacity-90" onClick={onBack}>
-      <button onClick={e => { e.stopPropagation(); onBack(); }}
-        className="flex items-center justify-center w-8 h-8 text-white/70 text-[20px] cursor-pointer border-none bg-white/10 rounded-full flex-shrink-0 active:bg-white/20">
+    <div className="bg-navy px-3 py-3 flex items-center gap-2 flex-shrink-0 touch-none select-none"
+      onTouchStart={swipe?.start}
+      onTouchMove={swipe?.move}
+      onTouchEnd={swipe?.end}>
+      <button onClick={onBack}
+        className="flex items-center justify-center w-8 h-8 text-white/70 text-[20px] cursor-pointer border-none bg-white/10 rounded-full flex-shrink-0 active:bg-white/20 touch-auto">
         ←
       </button>
       <div className="flex-1 min-w-0">
@@ -419,12 +423,13 @@ export function StepForm() {
   // Write santiagoCounts whenever items change → Despacho reads this
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const counts: Record<string, { p: number; b: number; c: number }> = {};
+    const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
     Object.entries(items).forEach(([cod, list]) => {
-      const p = list.filter(i => i.tipo === 'Pallet').length;
-      const b = list.filter(i => i.tipo === 'Bulto').length;
-      const c = list.filter(i => i.tipo === 'Contenedor').length;
-      if (p > 0 || b > 0 || c > 0) counts[cod] = { p, b, c };
+      const p  = list.filter(i => i.tipo === 'Pallet').length;
+      const b  = list.filter(i => i.tipo === 'Bulto').length;
+      const c  = list.filter(i => i.tipo === 'Contenedor').length;
+      const ch = list.filter(i => i.tipo === 'Chocolate').length;
+      if (p > 0 || b > 0 || c > 0 || ch > 0) counts[cod] = { p, b, c, ch };
     });
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1092,16 +1097,6 @@ export function StepForm() {
           <div className="flex items-center justify-between mb-2">
             <span className="font-barlow-condensed text-[11px] uppercase tracking-widest text-white/40">Resumen en tiempo real</span>
             <div className="flex items-center gap-2">
-              {activeTiendasCount > 1 && (
-                <button
-                  onClick={() => {
-                    const allCods = activeTiendas.map(([c]) => c);
-                    setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
-                  }}
-                  className="font-barlow-condensed text-[11px] font-bold text-white/50 hover:text-white/90 cursor-pointer transition-colors">
-                  {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
-                </button>
-              )}
               {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
                 <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded-full">✓ Hoy completo</span>
               )}
@@ -1146,21 +1141,22 @@ export function StepForm() {
               </div>
             ))}
           </div>
-          {activeTiendasCount > 1 && (
-            <div className="flex justify-end px-3 pb-2">
-              <button
-                onClick={() => {
-                  const allCods = activeTiendas.map(([c]) => c);
-                  setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
-                }}
-                className="font-barlow-condensed text-[11px] font-bold text-white/50 active:text-white/90 cursor-pointer transition-colors border-none bg-transparent">
-                {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
-              </button>
-            </div>
-          )}
         </div>
 
 
+        {/* Ver todo / Colapsar — always visible on all screen sizes */}
+        {activeTiendasCount > 1 && (
+          <div className="flex justify-end px-3 py-1.5 bg-bg border-b border-border flex-shrink-0">
+            <button
+              onClick={() => {
+                const allCods = activeTiendas.map(([c]) => c);
+                setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
+              }}
+              className="font-barlow-condensed text-[12px] font-bold text-text-3 hover:text-navy active:text-navy cursor-pointer transition-colors border-none bg-transparent">
+              {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
+            </button>
+          </div>
+        )}
         {/* Accordion */}
         <div className="flex-1 overflow-y-auto">
           {activeTiendas.length === 0 ? (
@@ -1438,9 +1434,10 @@ export function StepForm() {
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
     const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
     const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
+    const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} />
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
 
         <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
@@ -1645,9 +1642,10 @@ export function StepForm() {
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
     const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
     const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
+    const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} />
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
 
         <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
@@ -2006,16 +2004,6 @@ export function StepForm() {
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
         }}
       >
-        {/* Drag handle — touch here to swipe down and close */}
-        <div
-          className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove}
-          onTouchEnd={onSheetDragEnd}
-          onClick={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }}
-        >
-          <div className="w-14 h-1.5 rounded-full bg-gray-300" />
-        </div>
         {/* Form content */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {currentTienda && (

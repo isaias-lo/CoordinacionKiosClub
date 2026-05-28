@@ -23,7 +23,7 @@ import type { Vehiculo } from './data/flota';
 import { buildDespachoRMRecords } from './utils/sheets';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
-type CalData   = { on: boolean; p: number; b: number; c: number; g?: string };
+type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
 
 function mergeCalT(
   newCal: CalRecord,
@@ -55,7 +55,7 @@ function mergeCalT(
 
   // Phase 2: append brand-new stores from newCal not previously seen
   newStoreMap.forEach((grp, c) => {
-    next[c] = { on: activeGrps.has(grp), p: 0, b: 0, c: 0, g: grp };
+    next[c] = { on: activeGrps.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
   });
 
   // Phase 3: preserve manual / non-empty stores removed from newCal
@@ -171,7 +171,7 @@ export default function RutasScreen() {
         if (items.length) {
           const newCalT: Record<string, CalData> = {};
           items.forEach(t => {
-            newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, g: 'rm' };
+            newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: 0, g: 'rm' };
           });
           setCalT(newCalT);
           setGrps(new Set(['rm']));
@@ -194,7 +194,7 @@ export default function RutasScreen() {
           if (items.length) {
             const newCalT: Record<string, CalData> = {};
             items.forEach(t => {
-              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, g: 'rm' };
+              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: 0, g: 'rm' };
             });
             setCalT(prev => {
               const merged = { ...prev };
@@ -215,7 +215,7 @@ export default function RutasScreen() {
       try {
         const rawCounts = localStorage.getItem('santiagoCounts');
         if (rawCounts) {
-          const sc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number }> } = JSON.parse(rawCounts);
+          const sc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number; ch?: number }> } = JSON.parse(rawCounts);
           const d = new Date();
           const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           const counts = (sc.date && sc.date === todayKey)
@@ -227,11 +227,12 @@ export default function RutasScreen() {
               let changed = false;
               Object.entries(counts).forEach(([cod, data]) => {
                 const c = norm(cod);
-                const newC = data.c ?? 0;
+                const newC  = data.c  ?? 0;
+                const newCh = data.ch ?? 0;
                 // Skip chips the user has manually edited in this session
                 if (merged[c] && !manuallyEditedRef.current.has(c)) {
-                  if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC) {
-                    merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, on: data.p > 0 || data.b > 0 || newC > 0 };
+                  if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC || merged[c].ch !== newCh) {
+                    merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, ch: newCh, on: data.p > 0 || data.b > 0 || newC > 0 || newCh > 0 };
                     changed = true;
                   }
                 }
@@ -246,7 +247,7 @@ export default function RutasScreen() {
       try {
         const rawRegiones = localStorage.getItem('regionesCounts');
         if (rawRegiones) {
-          const rc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number }> } = JSON.parse(rawRegiones);
+          const rc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number; ch?: number }> } = JSON.parse(rawRegiones);
           const d = new Date();
           const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           const counts = (rc.date && rc.date === todayKey) ? (rc.counts ?? null) : null;
@@ -256,15 +257,16 @@ export default function RutasScreen() {
               let changed = false;
               Object.entries(counts).forEach(([cod, data]) => {
                 const c = norm(cod);
-                const newC = data.c ?? 0;
+                const newC  = data.c  ?? 0;
+                const newCh = data.ch ?? 0;
                 if (manuallyEditedRef.current.has(c)) return;
                 if (merged[c]) {
-                  if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC) {
-                    merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, on: data.p > 0 || data.b > 0 || newC > 0 };
+                  if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC || merged[c].ch !== newCh) {
+                    merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, ch: newCh, on: data.p > 0 || data.b > 0 || newC > 0 || newCh > 0 };
                     changed = true;
                   }
-                } else if (data.p > 0 || data.b > 0 || newC > 0) {
-                  merged[c] = { on: true, p: data.p, b: data.b, c: newC, g: 'fal' };
+                } else if (data.p > 0 || data.b > 0 || newC > 0 || newCh > 0) {
+                  merged[c] = { on: true, p: data.p, b: data.b, c: newC, ch: newCh, g: 'fal' };
                   changed = true;
                 }
               });
@@ -297,14 +299,14 @@ export default function RutasScreen() {
         if (!prev[c]) {
           // Inject Regiones stores arriving via Supabase that aren't in the calendar yet
           if (row.fuente === 'regiones' && (row.pallets > 0 || row.bultos > 0)) {
-            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, g: 'fal' } };
+            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: 0, g: 'fal' } };
           }
           return prev;
         }
         if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === (row.contenedores ?? 0)) return prev;
         return {
           ...prev,
-          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, on: row.pallets > 0 || row.bultos > 0 || (row.contenedores ?? 0) > 0 },
+          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: prev[c].ch ?? 0, on: row.pallets > 0 || row.bultos > 0 || (row.contenedores ?? 0) > 0 },
         };
       });
     }
@@ -346,7 +348,7 @@ export default function RutasScreen() {
           const c = norm(cod);
           // Only restore counts for stores already in today's calendar — never inject
           // stores from a different day's session into the current day's view.
-          if (merged[c]) merged[c] = { ...merged[c], p: data.p, b: data.b, c: data.c ?? 0, on: true };
+          if (merged[c]) merged[c] = { ...merged[c], p: data.p, b: data.b, c: data.c ?? 0, ch: (data as { ch?: number }).ch ?? 0, on: true };
         });
         return merged;
       });
@@ -400,7 +402,7 @@ export default function RutasScreen() {
       const next = { ...prev };
       let changed = false;
       result.ts.forEach(t => {
-        if (!next[t.c]) { next[t.c] = { on: true, p: t.p, b: t.b, c: 0, g: 'manual' }; changed = true; }
+        if (!next[t.c]) { next[t.c] = { on: true, p: t.p, b: t.b, c: 0, ch: 0, g: 'manual' }; changed = true; }
         else if (next[t.c].p !== t.p || next[t.c].b !== t.b) { next[t.c] = { ...next[t.c], on: true, p: t.p, b: t.b }; changed = true; }
       });
       return changed ? next : prev;
@@ -435,7 +437,7 @@ export default function RutasScreen() {
     const newCalT: Record<string, CalData> = {};
     ['rm','costa','fal'].forEach(grp => {
       ((calDia as Record<string, string[]>)[grp] || []).forEach(c => {
-        if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, g: grp };
+        if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
       });
     });
     setCalT(newCalT);
@@ -479,7 +481,7 @@ export default function RutasScreen() {
     setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], on: !prev[cod].on } }));
   }
 
-  function handleUpdateChip(cod: string, key: 'p' | 'b' | 'c', val: string) {
+  function handleUpdateChip(cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) {
     manuallyEditedRef.current.add(cod);
     const v = parseInt(val) || 0;
     setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], [key]: v, on: v > 0 ? true : prev[cod].on } }));

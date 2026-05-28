@@ -1,14 +1,14 @@
 'use client';
 import { formatCod } from '../utils/helpers';
 
-interface CalData { on: boolean; p: number; b: number; c: number; g?: string; }
+interface CalData { on: boolean; p: number; b: number; c: number; ch: number; g?: string; }
 
 interface Props {
   calT: Record<string, CalData>;
   grps: Set<string>;
   onToggleGroup: (gid: string) => void;
   onToggleChip: (cod: string) => void;
-  onUpdateChip: (cod: string, key: 'p' | 'b' | 'c', val: string) => void;
+  onUpdateChip: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
 }
 
 export default function CalendarMode({ calT, grps, onToggleGroup, onToggleChip, onUpdateChip }: Props) {
@@ -51,7 +51,7 @@ export default function CalendarMode({ calT, grps, onToggleGroup, onToggleChip, 
       </div>
 
       <div className="mt-2 text-[11px] text-kmuted">
-        Toca una tienda para activar/desactivar. Ingresa P, B y C para cada una.
+        Toca una tienda para activar/desactivar. Ingresa P, B, C y CH para cada una.
       </div>
     </div>
   );
@@ -61,7 +61,7 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
   cod: string;
   data: CalData;
   onToggle: (cod: string) => void;
-  onUpdate: (cod: string, key: 'p' | 'b' | 'c', val: string) => void;
+  onUpdate: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
 }) {
   return (
     <div
@@ -99,6 +99,14 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
           value={data.c || ''}
           placeholder="C"
           onChange={e => onUpdate(cod, 'c', e.target.value)}
+          style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
+          className="w-8 h-[26px] rounded-[6px] border border-black/[0.09] bg-white text-[12px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
+        />
+        <input
+          type="number" min="0" max="99"
+          value={data.ch || ''}
+          placeholder="CH"
+          onChange={e => onUpdate(cod, 'ch', e.target.value)}
           style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
           className="w-8 h-[26px] rounded-[6px] border border-black/[0.09] bg-white text-[12px] font-bold text-center text-ktext placeholder:text-kmuted/50 focus:outline-none focus:border-kred"
         />
