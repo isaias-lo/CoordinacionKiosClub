@@ -2623,6 +2623,7 @@ export function AuditoriaScreen() {
 
   // Limpia el formulario al volver desde setup → scan (sin fotos que borrar en setup)
   const handleBackFromSetup = () => {
+    photoUploadingRef.current = false; // liberar guard por si había upload en setup
     try { localStorage.removeItem(sessionKey(user?.id)); } catch { /* */ }
     if (user?.id) void supabase.from('audit_active_sessions').delete().eq('user_id', user.id).then(() => {}, () => {});
     setFormPhase('scan');
@@ -2638,6 +2639,8 @@ export function AuditoriaScreen() {
   const handleCancelAudit = () => {
     setConfirmCancel(false);
     stopTimer();
+    // Liberar guard de foto — sin esto los inputs quedan permanentemente bloqueados
+    photoUploadingRef.current = false;
     const pathsToDelete = [...fotoStoragePaths, ...errorFotoStoragePaths].filter(Boolean);
     const draftId = draftEntryIdRef.current;
     if (draftId) {
@@ -2711,26 +2714,31 @@ export function AuditoriaScreen() {
     if (canUploadPhotos && totalPending > 0) {
       setUploadProgress(`Subiendo fotos (0/${totalPending})…`);
       let uploaded = 0;
+      let failedUploads = 0;
       await Promise.all([
         ...pendingPallets.map(async ({ k, file }) => {
           const path = `${user.id}/${entryId}_pallet${k}.jpg`;
           const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
           uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalPending})…`);
           if (!error) uploadedFotos.push({ label: `Pallet ${k}`, url: supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl });
+          else failedUploads++;
         }),
         ...pendingFotos.map(async (file, fi) => {
           const path = `${user.id}/${entryId}_foto${fi + 1}.jpg`;
           const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
           uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalPending})…`);
           if (!error) uploadedFotoUrls.push(supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl);
+          else failedUploads++;
         }),
         ...pendingErrors.map(async (file, fi) => {
           const path = `${user.id}/${entryId}_error${fi + 1}.jpg`;
           const { error } = await supabase.storage.from('audit-photos').upload(path, file, { contentType: 'image/jpeg', upsert: true });
           uploaded++; setUploadProgress(`Subiendo fotos (${uploaded}/${totalPending})…`);
           if (!error) uploadedErrorFotoUrls.push(supabase.storage.from('audit-photos').getPublicUrl(path).data.publicUrl);
+          else failedUploads++;
         }),
       ]);
+      if (failedUploads > 0) showToast(`⚠ ${failedUploads} foto${failedUploads > 1 ? 's' : ''} no se pudo subir — auditoría guardada, reintenta desde historial`, '#D97706');
     }
 
     setUploadProgress('Guardando…');
@@ -2797,10 +2805,22 @@ export function AuditoriaScreen() {
 
   const iniciarReauditoria = (entry: AuditEntry) => {
     if (reauditoriaOrigen) { showToast('Termina o cancela la re-auditoría en curso primero', '#D97706'); return; }
+    // Limpiar guard + fotos residuales de la sesión anterior antes de arrancar
+    photoUploadingRef.current = false;
+    draftEntryIdRef.current   = '';
+    Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
+    setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
+    fotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setFotoFiles([]); setFotoPreviews([]); setFotoWarnings([]); setFotoStorageUrls([]); setFotoStoragePaths([]);
+    errorFotoPreviews.forEach(url => URL.revokeObjectURL(url));
+    setErrorFotoFiles([]); setErrorFotoPreviews([]); setErrorFotoWarnings([]); setErrorFotoStorageUrls([]); setErrorFotoStoragePaths([]);
+    setPallets(''); setTimerSeconds(0); setAuditStartTime(''); auditStartTimeRef.current = '';
     setReauditoriaOrigen(entry);
     setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === entry.tiendaCod) ?? null);
-    setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || ''); setPickerNombre(''); setOdooAutoDetected(false);
+    setTiendaQuery(''); setTipo(entry.tipo); setPicker(entry.picker || ''); setPickerNombre('');
+    setPickerNombres([]); setOdooAutoDetected(false);
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones('');
+    setSubmitAttempted(false); setPhotoUploading(false); setPhotoUploadMsg('');
     setFormPhase('setup');
     setView('form');
   };
