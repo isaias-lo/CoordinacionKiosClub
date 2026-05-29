@@ -452,7 +452,8 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
         // Procesar si hay al menos 2 separadores del mismo tipo
         const hasSemi = (cur.match(/;/g) ?? []).length >= 2;
         const hasPipe = (cur.match(/\|/g) ?? []).length >= 2;
-        if (cur && (hasSemi || hasPipe)) tryParse(cur);
+        const isNumericId = /^\d{1,10}$/.test(cur);
+        if (cur && (hasSemi || hasPipe || isNumericId)) tryParse(cur);
       }, 100);
     };
 
@@ -506,7 +507,6 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
           ref={inputRef}
           type="text"
           defaultValue=""
-          autoFocus
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder="Listo para escanear…"
@@ -2237,7 +2237,7 @@ export function AuditoriaScreen() {
     }
     const data = {
       formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker,
-      tiendaCod: tienda?.cod ?? null, tipo, operaciones, pallets,
+      tiendaCod: tienda?.cod ?? null, tipo, tipoLocked, operaciones, pallets,
       tieneErrores, tiposError, productos, observaciones,
       draftEntryId: draftEntryIdRef.current,
       palletStorageUrls, fotoStorageUrls, fotoStoragePaths,
@@ -2251,7 +2251,7 @@ export function AuditoriaScreen() {
         .upsert({ user_id: uid, session_data: data, updated_at: new Date().toISOString() })
         .then(() => {}, () => {});
     }
-  }, [formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, palletStorageUrls, fotoStorageUrls, fotoStoragePaths, errorFotoStorageUrls, errorFotoStoragePaths, user?.id]);
+  }, [formPhase, auditStartTime, auditor, pickerNombre, pickerNombres, picker, tienda, tipo, tipoLocked, operaciones, pallets, tieneErrores, tiposError, productos, observaciones, palletStorageUrls, fotoStorageUrls, fotoStoragePaths, errorFotoStorageUrls, errorFotoStoragePaths, user?.id]);
 
   // Autosave every 2 s when setup/execution is active (localStorage + Supabase)
   useEffect(() => {
@@ -2327,7 +2327,7 @@ export function AuditoriaScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     if (formPhase !== 'scan') return; // don't override an already-active session
 
-    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; pickerNombres?: string[]; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; draftEntryId?: string; palletStorageUrls?: Record<string, string>; fotoStorageUrls?: string[]; fotoStoragePaths?: string[]; errorFotoStorageUrls?: string[]; errorFotoStoragePaths?: string[]; };
+    type SD = { formPhase?: string; auditStartTime?: string; auditor?: string; pickerNombre?: string; pickerNombres?: string[]; picker?: string; tiendaCod?: string | null; tipo?: TipoAuditoria; tipoLocked?: boolean; operaciones?: OperacionEntry[]; pallets?: string; tieneErrores?: boolean | null; tiposError?: TipoError[]; productos?: ProductoError[]; observaciones?: string; savedAt?: string; draftEntryId?: string; palletStorageUrls?: Record<string, string>; fotoStorageUrls?: string[]; fotoStoragePaths?: string[]; errorFotoStorageUrls?: string[]; errorFotoStoragePaths?: string[]; };
 
     const applySD = (s: SD, isCrossDevice: boolean) => {
       if (!s.savedAt || Date.now() - new Date(s.savedAt).getTime() > 10 * 3600 * 1000) return false;
@@ -2337,6 +2337,7 @@ export function AuditoriaScreen() {
       if (s.picker)         setPicker(s.picker);
       if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
       if (s.tipo)           setTipo(s.tipo);
+      if (s.tipoLocked)     setTipoLocked(s.tipoLocked);
       if (s.operaciones?.length) setOperaciones(s.operaciones);
       if (s.pallets)        setPallets(s.pallets);
       if (s.tieneErrores !== undefined) setTieneErrores(s.tieneErrores ?? null);
@@ -2582,6 +2583,11 @@ export function AuditoriaScreen() {
 
   // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
   const handleBarcodeScan = (raw: string): boolean => {
+    // Si el código es solo numérico, tratarlo como ID de pallet y buscar en Odoo
+    if (/^\d{1,10}$/.test(raw.trim())) {
+      void handlePalletIdLookup(raw.trim());
+      return true;
+    }
     // Separador ';' (sin modificador de teclado). Fallback legacy con '|' para etiquetas antiguas.
     const sep = raw.includes(';') ? ';' : '|';
     const parts = raw.split(sep);
@@ -2708,7 +2714,7 @@ export function AuditoriaScreen() {
     setFormPhase('scan');
   };
 
-  const canSubmit = !!auditor.trim() && !!tienda && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
+  const canSubmit = !!auditor.trim() && !!tienda && operaciones.length > 0 && operaciones.every(op => op.codigo.trim()) && !!pallets && parseInt(pallets) > 0 && tieneErrores !== null && (!tieneErrores || tiposError.length > 0);
 
   const handleSubmitClick = () => {
     setSubmitAttempted(true);
@@ -2723,7 +2729,7 @@ export function AuditoriaScreen() {
 
   const handleSubmit = async () => {
     setConfirmSubmit(false);
-    if (!tienda) return;
+    if (!tienda || submitting) return;
     stopTimer();
     const durSecs = timerSeconds;
     const endNow = new Date().toISOString();
@@ -3173,22 +3179,22 @@ export function AuditoriaScreen() {
                       onChange={e => { setPalletIdInput(e.target.value); setPalletIdError(''); }}
                       onKeyDown={e => { if (e.key === 'Enter' && !showPalletId2) void handlePalletIdLookup(palletIdInput); }}
                       placeholder="Ej: 1247"
-                      className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[36px] font-bold text-navy outline-none focus:border-navy"
-                      style={{ letterSpacing: '3px' }}
+                      className="w-full bg-bg border border-border rounded-btn px-3 py-3 font-barlow-condensed text-[42px] font-bold text-navy outline-none focus:border-navy text-center"
+                      style={{ letterSpacing: '4px' }}
                       disabled={palletIdLoading}
                     />
-                    {!showPalletId2 && (
-                      <button
-                        type="button"
-                        onClick={() => void handlePalletIdLookup(palletIdInput)}
-                        disabled={palletIdLoading || !palletIdInput.trim()}
-                        className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
-                        style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
-                        {palletIdLoading ? '…' : 'Buscar'}
-                      </button>
-                    )}
                   </div>
                   {palletIdError && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError}</div>}
+                  {!showPalletId2 && (
+                    <button
+                      type="button"
+                      onClick={() => { (document.activeElement as HTMLElement)?.blur(); void handlePalletIdLookup(palletIdInput); }}
+                      disabled={palletIdLoading || !palletIdInput.trim()}
+                      className="w-full mt-2 py-3 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98]"
+                      style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)', boxShadow: '0 4px 16px rgba(26,37,80,0.30)' }}>
+                      {palletIdLoading ? '⏳ Buscando…' : '🔍 Buscar pallet'}
+                    </button>
+                  )}
 
                   {/* Pallet 2 (hogar separado) */}
                   {showPalletId2 && (
@@ -3197,27 +3203,25 @@ export function AuditoriaScreen() {
                         <span className="text-[11px] font-bold text-text-2 uppercase tracking-wide">ID pallet hogar</span>
                         <span className="text-[10px] text-text-3">(opcional — si va en pallet separado)</span>
                       </div>
-                      <div className="flex gap-2">
-                        <input
-                          type="number" inputMode="numeric" pattern="[0-9]*"
-                          value={palletIdInput2}
-                          onChange={e => { setPalletIdInput2(e.target.value); setPalletIdError2(''); }}
-                          onKeyDown={e => { if (e.key === 'Enter') void handlePalletIdLookup(palletIdInput, palletIdInput2); }}
-                          placeholder="ID pallet 2"
-                          className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
-                          style={{ letterSpacing: '2px' }}
-                          disabled={palletIdLoading}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void handlePalletIdLookup(palletIdInput, palletIdInput2)}
-                          disabled={palletIdLoading || !palletIdInput.trim()}
-                          className="px-4 py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer disabled:opacity-40"
-                          style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)' }}>
-                          {palletIdLoading ? '…' : 'Buscar'}
-                        </button>
-                      </div>
+                      <input
+                        type="number" inputMode="numeric" pattern="[0-9]*"
+                        value={palletIdInput2}
+                        onChange={e => { setPalletIdInput2(e.target.value); setPalletIdError2(''); }}
+                        onKeyDown={e => { if (e.key === 'Enter') { (document.activeElement as HTMLElement)?.blur(); void handlePalletIdLookup(palletIdInput, palletIdInput2); } }}
+                        placeholder="ID pallet 2"
+                        className="w-full bg-bg border border-border rounded-btn px-3 py-3 font-barlow-condensed text-[42px] font-bold text-navy outline-none focus:border-navy text-center"
+                        style={{ letterSpacing: '4px' }}
+                        disabled={palletIdLoading}
+                      />
                       {palletIdError2 && <div className="mt-1.5 text-[12px] text-red font-semibold">{palletIdError2}</div>}
+                      <button
+                        type="button"
+                        onClick={() => { (document.activeElement as HTMLElement)?.blur(); void handlePalletIdLookup(palletIdInput, palletIdInput2); }}
+                        disabled={palletIdLoading || !palletIdInput.trim()}
+                        className="w-full mt-2 py-3 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98]"
+                        style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)', boxShadow: '0 4px 16px rgba(26,37,80,0.30)' }}>
+                        {palletIdLoading ? '⏳ Buscando…' : '🔍 Buscar pallets'}
+                      </button>
                     </div>
                   )}
 
@@ -3225,9 +3229,9 @@ export function AuditoriaScreen() {
                   <button
                     type="button"
                     onClick={() => { setShowPalletId2(v => !v); setPalletIdInput2(''); setPalletIdError2(''); }}
-                    className="mt-2.5 flex items-center gap-1.5 cursor-pointer border-none bg-transparent p-0 transition-opacity active:opacity-60"
+                    className="mt-3 w-full py-2.5 rounded-btn border-2 cursor-pointer border-none bg-transparent p-0 transition-opacity active:opacity-60 text-left"
                     style={{ color: showPalletId2 ? '#9CA3AF' : '#2563EB' }}>
-                    <span className="text-[13px]">{showPalletId2 ? '− Quitar ID adicional' : '+ Agregar ID adicional (ej. hogar separado)'}</span>
+                    <span className="text-[15px] font-bold">{showPalletId2 ? '− Quitar ID adicional' : '+ Agregar ID adicional (ej. hogar separado)'}</span>
                   </button>
 
                   <div className="mt-1.5 text-[10px] text-text-3">El número aparece en la etiqueta del pallet junto al código de tienda</div>
@@ -3242,11 +3246,26 @@ export function AuditoriaScreen() {
             {/* ══ FASE 2: CONFIGURACIÓN ══ */}
             {formPhase === 'setup' && (
               <>
+                {tipoLocked && (
+                  <div className="mt-2 mb-1 flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-info bg-[rgba(37,99,235,0.06)] border border-info/20">
+                    <span>🔒</span>
+                    <span className="flex-1">Datos del pallet confirmados</span>
+                    <button type="button" onClick={() => setTipoLocked(false)} className="text-info underline cursor-pointer border-none bg-transparent p-0 text-[11px] font-bold">Editar</button>
+                  </div>
+                )}
+
                 <SLabel>Auditor</SLabel>
-                <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
+                {tipoLocked && auditor ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-bg border border-border rounded-btn">
+                    <span className="flex-1 font-semibold text-text text-[15px]">{auditor}</span>
+                    <span className="text-[11px] text-text-3">🔒</span>
+                  </div>
+                ) : (
+                  <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
+                )}
 
                 <SLabel>Auditor (id. pistola) <span className="text-[10px] font-normal normal-case ml-1">Odoo lo asigna automáticamente</span></SLabel>
-                <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { setPicker(''); setOdooAutoDetected(false); }} />
+                <PickerOdooDisplay picker={picker} odooDetected={odooAutoDetected} onClear={() => { if (!tipoLocked) { setPicker(''); setOdooAutoDetected(false); } }} />
 
                 <SLabel>Picker{pickerNombres.length > 1 ? 's' : ''} (armador{pickerNombres.length > 1 ? 'es' : ''} de pallet)</SLabel>
                 {pickerNombres.length > 1 ? (
@@ -3257,35 +3276,51 @@ export function AuditoriaScreen() {
                       </span>
                     ))}
                   </div>
+                ) : tipoLocked && pickerNombre ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-bg border border-border rounded-btn">
+                    <span className="flex-1 font-semibold text-text text-[15px]">{pickerNombre}</span>
+                    <span className="text-[11px] text-text-3">🔒</span>
+                  </div>
                 ) : (
                   <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={v => { setPickerNombre(v); setPickerNombres(v ? [v] : []); }} />
                 )}
 
                 <SLabel>Tienda</SLabel>
-                <div ref={tiendaRef} className="relative">
-                  <div onClick={() => setTiendaOpen(o => !o)}
-                    className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${tiendaOpen ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`} style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
-                    {tienda ? (
-                      <div className="flex-1 min-w-0"><span className="font-semibold text-text text-[15px]">{tienda.nombre}</span><span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span><span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span></div>
-                    ) : <span className="text-text-3 font-barlow text-[15px]">Seleccionar tienda…</span>}
-                    <span className="text-text-3 ml-2 flex-shrink-0">{tiendaOpen ? '▲' : '▼'}</span>
-                  </div>
-                  {tiendaOpen && (
-                    <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
-                      <div className="p-2 border-b border-border"><input autoFocus type="text" value={tiendaQuery} onChange={e => setTiendaQuery(e.target.value)} placeholder="Buscar…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" /></div>
-                      <div className="max-h-56 overflow-y-auto">
-                        {tiendaFiltered.length === 0 && <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>}
-                        {tiendaFiltered.map(t => (
-                          <div key={t.cod} onClick={() => { setTienda(t); setTiendaOpen(false); setTiendaQuery(''); }} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${tienda?.cod === t.cod ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
-                            <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded">{t.cod}</span>
-                            <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-text truncate">{t.nombre}</div><div className="text-[11px] text-text-3">{t.comuna || t.region}</div></div>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${t.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{t.area === 'santiago' ? 'STG' : 'REG'}</span>
-                          </div>
-                        ))}
-                      </div>
+                {tipoLocked && tienda ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-bg border border-border rounded-btn">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold text-text text-[15px]">{tienda.nombre}</span>
+                      <span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span>
+                      <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span>
                     </div>
-                  )}
-                </div>
+                    <span className="text-[11px] text-text-3">🔒</span>
+                  </div>
+                ) : (
+                  <div ref={tiendaRef} className="relative">
+                    <div onClick={() => setTiendaOpen(o => !o)}
+                      className={`w-full bg-white border-[1.5px] rounded-btn px-3 py-3 flex items-center justify-between cursor-pointer transition-all ${tiendaOpen ? 'border-navy shadow-[0_0_0_3px_rgba(26,37,80,0.08)]' : 'border-border'}`} style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+                      {tienda ? (
+                        <div className="flex-1 min-w-0"><span className="font-semibold text-text text-[15px]">{tienda.nombre}</span><span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span><span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span></div>
+                      ) : <span className="text-text-3 font-barlow text-[15px]">Seleccionar tienda…</span>}
+                      <span className="text-text-3 ml-2 flex-shrink-0">{tiendaOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {tiendaOpen && (
+                      <div className="absolute top-full left-0 right-0 z-50 bg-white border border-border rounded-card mt-1 shadow-2xl overflow-hidden">
+                        <div className="p-2 border-b border-border"><input autoFocus type="text" value={tiendaQuery} onChange={e => setTiendaQuery(e.target.value)} placeholder="Buscar…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" /></div>
+                        <div className="max-h-56 overflow-y-auto">
+                          {tiendaFiltered.length === 0 && <div className="py-6 text-center text-text-3 text-[13px]">Sin resultados</div>}
+                          {tiendaFiltered.map(t => (
+                            <div key={t.cod} onClick={() => { setTienda(t); setTiendaOpen(false); setTiendaQuery(''); }} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 ${tienda?.cod === t.cod ? 'bg-[rgba(26,37,80,0.06)]' : 'hover:bg-bg'}`}>
+                              <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border px-1.5 py-0.5 rounded">{t.cod}</span>
+                              <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-text truncate">{t.nombre}</div><div className="text-[11px] text-text-3">{t.comuna || t.region}</div></div>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${t.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{t.area === 'santiago' ? 'STG' : 'REG'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <SLabel>Tipo de contenido</SLabel>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -3294,7 +3329,6 @@ export function AuditoriaScreen() {
                       className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold transition-all ${tipo === value ? TIPO_COLOR[value] : tipoLocked ? 'border-border bg-bg text-text-3 opacity-40 cursor-not-allowed' : 'border-border bg-white text-text-2 cursor-pointer'}`}>{label}</button>
                   ))}
                 </div>
-                {tipoLocked && <div className="text-[10px] text-text-3 -mt-1">Tipo bloqueado según datos del pallet — <button type="button" onClick={() => setTipoLocked(false)} className="text-info underline cursor-pointer border-none bg-transparent p-0 text-[10px]">desbloquear</button></div>}
 
                 <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
                 {operaciones.map((op, i) => (
@@ -3311,7 +3345,7 @@ export function AuditoriaScreen() {
                   </button>
                   <button type="button"
                     disabled={!auditor.trim() || !tienda || operaciones.some(op => !op.codigo.trim())}
-                    onClick={() => { startTimer(); setFormPhase('execution'); }}
+                    onClick={() => { (document.activeElement as HTMLElement)?.blur(); startTimer(); setFormPhase('execution'); }}
                     className="py-3.5 text-white rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98]"
                     style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)', boxShadow: '0 6px 24px rgba(22,163,74,0.35)' }}>
                     Iniciar Auditoría ▶
@@ -3470,6 +3504,7 @@ export function AuditoriaScreen() {
                 <SLabel>Pallets auditados</SLabel>
                 <input ref={palletsInputRef} type="number" inputMode="numeric" min="1" max="99" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0"
                   onFocus={() => setTimeout(() => palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLElement).blur(); }}
                   className="w-full bg-white border-[1.5px] border-border rounded-btn px-3 py-3 text-text font-barlow text-[28px] text-center outline-none focus:border-navy [-webkit-appearance:none]" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }} />
                 {parseInt(pallets) > 0 && (
                   <div className="mt-2">
