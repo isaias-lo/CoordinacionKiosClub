@@ -180,6 +180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isInitializedRef = useRef(false);
   const clearedAtRef    = useRef<number>(0); // timestamp of last intentional CLEAR_ALL push
   const lastPushCompletedAtRef = useRef<number>(0); // timestamp when last Supabase push completed
+  const lastPushTimestampRef   = useRef<number>(0); // pushedAt value included in last push payload
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -193,10 +194,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Date.now() - lastPushCompletedAtRef.current < 3_000) return;
       // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
-      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string };
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string; pushedAt?: number };
       // Reject data from a different calendar day — prevents stale sessions from other devices
       // from pushing yesterday's guides into today's view. Old records without sessionDate are also rejected.
       if (remote.sessionDate !== SESSION_DATE) return;
+      // Reject remote data that is older than our last push — prevents a stale push from another
+      // tab or device from overwriting items we already saved and pushed successfully.
+      if (typeof remote.pushedAt === 'number' && remote.pushedAt < lastPushTimestampRef.current) return;
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
 
@@ -290,8 +294,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const prevLastPushed = lastPushedRef.current;
       lastPushedRef.current = current;
       isPushingRef.current = true; // block handleRemote during the async upsert
-      // Include sessionDate so other devices can reject data from a different calendar day
-      pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE }, userId ?? undefined)
+      const pushedAt = Date.now();
+      lastPushTimestampRef.current = pushedAt;
+      // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
+      pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now(); });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
@@ -328,7 +334,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     const prevPushed = lastPushedRef.current;
     lastPushedRef.current = current;
-    pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE }, userId ?? undefined)
+    const pushedAt = Date.now();
+    lastPushTimestampRef.current = pushedAt;
+    pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
       .catch(() => { lastPushedRef.current = prevPushed; })
       .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}

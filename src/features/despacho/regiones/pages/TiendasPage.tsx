@@ -29,6 +29,12 @@ function saveExtraCods(cods: string[])  { localStorage.setItem(todayDateKey,   J
 function loadRemovedCods(): string[] { try { return JSON.parse(localStorage.getItem(todayRemoveKey) || '[]'); } catch { return []; } }
 function saveRemovedCods(cods: string[]) { localStorage.setItem(todayRemoveKey, JSON.stringify(cods)); }
 
+/* ── Consumed picking slots (physical pallet merges) ── */
+type ConsumedSlots = Record<string, { p: number; b: number; c: number; ch: number }>;
+const CONSUMED_SLOTS_KEY = `consumedPickingSlots_${_localDate}`;
+function loadConsumedSlots(): ConsumedSlots { try { return JSON.parse(localStorage.getItem(CONSUMED_SLOTS_KEY) || '{}'); } catch { return {}; } }
+function saveConsumedSlots(v: ConsumedSlots) { try { localStorage.setItem(CONSUMED_SLOTS_KEY, JSON.stringify(v)); } catch {} }
+
 /* ── Styles ── */
 const TIPO_CLS: Record<TipoContenido, string> = {
   comida:        'bg-[rgba(217,119,6,0.08)] border-warn text-warn',
@@ -190,8 +196,9 @@ export function TiendasPage() {
   const [removeDropActive,  setRemoveDropActive]   = useState(false);
   const [multiDragOver,     setMultiDragOver]      = useState(false);
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
-  const [pickingSlots,     setPickingSlots]       = useState<Record<string, { tipo: string; contenido: string }[]>>({});
-  const [formRows,          setFormRows]           = useState<FormRow[]>([]);
+  const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
+  const [formRows,              setFormRows]              = useState<FormRow[]>([]);
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
 
@@ -246,15 +253,16 @@ export function TiendasPage() {
     if (typeof window === 'undefined') return;
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const counts: Record<string, { p: number; b: number; c: number }> = {};
+    const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
     Object.entries(dispatchData).forEach(([name, items]) => {
       if (!items.length) return;
       const tienda = TIENDAS[name];
       if (!tienda) return;
-      const p = items.filter(i => i.pkg === 'pallet').length;
-      const b = items.filter(i => i.pkg === 'box').length;
-      const c = items.filter(i => i.pkg === 'contenedor').length;
-      if (p > 0 || b > 0 || c > 0) counts[tienda.cod] = { p, b, c };
+      const p  = items.filter(i => i.pkg === 'pallet').length;
+      const b  = items.filter(i => i.pkg === 'box').length;
+      const c  = items.filter(i => i.pkg === 'contenedor').length;
+      const ch = items.filter(i => i.pkg === 'chocolate').length;
+      if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
     pushCounts('regiones', counts).catch(() => {});
@@ -674,6 +682,15 @@ export function TiendasPage() {
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
+  const absorbPickingSlot = (tiendaName: string, type: 'p' | 'b' | 'c' | 'ch') => {
+    setConsumedPickingSlots(prev => {
+      const cur = prev[tiendaName] || { p: 0, b: 0, c: 0, ch: 0 };
+      const next = { ...prev, [tiendaName]: { ...cur, [type]: cur[type] + 1 } };
+      saveConsumedSlots(next);
+      return next;
+    });
+  };
+
   /* Single-item form helpers */
   const startEdit = (idx: number) => {
     const item = items[idx]; setEditingIdx(idx);
@@ -758,7 +775,10 @@ export function TiendasPage() {
 
     /* Shared header */
     const header = (
-      <div className="bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0">
+      <div className={`bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
+        onTouchStart={isMobile ? onSheetDragStart : undefined}
+        onTouchMove={isMobile ? onSheetDragMove : undefined}
+        onTouchEnd={isMobile ? onSheetDragEnd : undefined}>
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
           <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
@@ -871,8 +891,23 @@ export function TiendasPage() {
           {presetBar}
           {pdfStrip}
           <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              {formRows.map((row, rowIdx) => {
+            {(() => {
+              const cns  = selectedTienda ? (consumedPickingSlots[selectedTienda] || { p: 0, b: 0, c: 0, ch: 0 }) : { p: 0, b: 0, c: 0, ch: 0 };
+              const pkS  = selectedTienda ? (pickingSlots[selectedTienda] ?? []) : [];
+              const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
+              const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
+              const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
+              const gCH  = Math.max(0, pkS.filter(s => s.tipo === 'CH').length - items.filter(i => i.pkg === 'chocolate').length   - cns.ch);
+              type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
+              const ghostCards: GC[] = [
+                ...Array.from({ length: gP },  (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
+                ...Array.from({ length: gB },  (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
+                ...Array.from({ length: gC },  (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
+                ...Array.from({ length: gCH }, (_, i) => ({ type: 'ch' as const, border: 'rgba(120,53,15,0.35)',  text: '#92400E', bg: 'rgba(120,53,15,0.03)',   label: 'Choc.',   key: `gCH${i}` })),
+              ];
+              return (
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {formRows.map((row, rowIdx) => {
                 /* Locked / saved card */
                 const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
                 const pkgIdx   = formRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
@@ -995,8 +1030,25 @@ export function TiendasPage() {
                     </button>
                   </div>
                 );
-              })}
-            </div>
+                  })}
+                  {ghostCards.map(gc => (
+                    <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col justify-between" style={{ borderColor: gc.border, background: gc.bg }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
+                        <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
+                      </div>
+                      <div className="text-[10px] text-text-3 mb-2 leading-relaxed">Unificado físicamente con el registrado</div>
+                      <button
+                        onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
+                        className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
+                        style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                        ✓ Fue unificado
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-4 gap-1.5 pb-1">
               <button onClick={() => addFormRow('pallet')}
                 className="py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
@@ -1300,6 +1352,7 @@ export function TiendasPage() {
                 {today.map(t => {
                   const cardItems = dispatchData[t.name] || [];
                   const pkSlots   = pickingSlots[t.name] ?? [];
+                  const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                   return (
                     <TiendaGridCard key={t.name} name={t.name}
                       isActive={selectedTienda === t.name} isToday
@@ -1307,10 +1360,10 @@ export function TiendasPage() {
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                       contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                       chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
-                      pickingP={pkSlots.filter(s => s.tipo === 'P').length}
-                      pickingB={pkSlots.filter(s => s.tipo === 'B').length}
-                      pickingC={pkSlots.filter(s => s.tipo === 'C').length}
-                      pickingCH={pkSlots.filter(s => s.tipo === 'CH').length}
+                      pickingP={Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - consumed.p)}
+                      pickingB={Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - consumed.b)}
+                      pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
+                      pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
                       onSelect={() => select(t.name)}
@@ -1347,6 +1400,7 @@ export function TiendasPage() {
                   {others.map(t => {
                     const cardItems = dispatchData[t.name] || [];
                     const pkSlots   = pickingSlots[t.name] ?? [];
+                    const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                     return (
                       <TiendaGridCard key={t.name} name={t.name}
                         isActive={selectedTienda === t.name} isToday={false}
@@ -1354,10 +1408,10 @@ export function TiendasPage() {
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                         contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                         chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
-                        pickingP={pkSlots.filter(s => s.tipo === 'P').length}
-                        pickingB={pkSlots.filter(s => s.tipo === 'B').length}
-                        pickingC={pkSlots.filter(s => s.tipo === 'C').length}
-                        pickingCH={pkSlots.filter(s => s.tipo === 'CH').length}
+                        pickingP={Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - consumed.p)}
+                        pickingB={Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - consumed.b)}
+                        pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
+                        pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                         hasPdf={!!state.pdfData[t.name]}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />
@@ -1456,16 +1510,6 @@ export function TiendasPage() {
           boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
         }}
       >
-        {/* Drag handle — touch here to swipe down and close */}
-        <div
-          className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove}
-          onTouchEnd={onSheetDragEnd}
-          onClick={() => select(selectedTienda!)}
-        >
-          <div className="w-14 h-1.5 rounded-full bg-gray-300" />
-        </div>
         {/* Form content (reuses renderForm logic) */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {selectedTienda && renderForm(true)}
