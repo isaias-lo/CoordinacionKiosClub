@@ -466,7 +466,23 @@ export function TiendasPage() {
           setFormRows([]);
         }
       } else {
-        setFormRows([]);
+        // Returning to a store with existing items — show them as saved cards (multi-form)
+        const savedRows: FormRow[] = existingItems
+          .filter(item => item.pkg !== 'chocolate')
+          .map((item, i) => ({
+            id: `saved-${i}-${item.pkg}-${Date.now()}`,
+            pkg: item.pkg,
+            tipo: item.tipo,
+            peso: String(item.peso ?? ''),
+            alto: String(item.alto ?? ''),
+            ancho: String(item.ancho ?? ''),
+            largo: String(item.largo ?? ''),
+            guia: item.guia || '',
+            valor: item.valor ? String(item.valor) : '',
+            saved: true,
+            savedItem: item,
+          }));
+        setFormRows(savedRows);
       }
     } else {
       setFormRows([]);
@@ -1082,21 +1098,42 @@ export function TiendasPage() {
                   </div>
                 );
                   })}
-                  {ghostCards.map(gc => (
-                    <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col justify-between" style={{ borderColor: gc.border, background: gc.bg }}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
-                        <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
+                  {ghostCards.map(gc => {
+                    const pkgMap: Record<string, string> = { p: 'pallet', b: 'box', c: 'contenedor', ch: 'chocolate' };
+                    const prefixMap: Record<string, string> = { p: 'P', b: 'B', c: 'C', ch: 'CH' };
+                    const regCount = items.filter(i => i.pkg === pkgMap[gc.type]).length;
+                    const prefix = prefixMap[gc.type];
+                    const opts = Array.from({ length: regCount }, (_, i) => `${prefix}${i + 1}`);
+                    return (
+                      <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col gap-1.5" style={{ borderColor: gc.border, background: gc.bg }}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
+                          <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
+                        </div>
+                        <div className="text-[10px] text-text-3 leading-snug">¿Con cuál fue unificado?</div>
+                        {opts.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {opts.map(opt => (
+                              <button
+                                key={opt}
+                                onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
+                                className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97] border-2"
+                                style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                                ✓ {opt}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
+                            className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
+                            style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                            ✓ Confirmar
+                          </button>
+                        )}
                       </div>
-                      <div className="text-[10px] text-text-3 mb-2 leading-relaxed">Unificado físicamente con el registrado</div>
-                      <button
-                        onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
-                        className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
-                        style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
-                        ✓ Fue unificado
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
