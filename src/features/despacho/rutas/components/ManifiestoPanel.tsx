@@ -74,7 +74,7 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
     estado:        'pendiente',
     tiendas: ruta.ts.map((t, i) => {
       const info = infoTienda(t.c, tiendas);
-      return { store_cod: t.c, nombre: info.n, ventana: info.v, orden: i + 1, pallets: t.p, bultos: t.b, contenedores: 0 };
+      return { store_cod: t.c, nombre: info.n, ventana: info.v, orden: i + 1, pallets: t.p, bultos: t.b + ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
     }),
     total_pallets: ruta.tp,
     total_bultos:  ruta.tb,

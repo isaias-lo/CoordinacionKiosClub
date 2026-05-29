@@ -531,7 +531,12 @@ export default function RutasScreen() {
   function handleUpdateChip(cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) {
     manuallyEditedRef.current.add(cod);
     const v = parseInt(val) || 0;
-    setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], [key]: v, on: v > 0 ? true : prev[cod].on } }));
+    setCalT(prev => ({
+      ...prev,
+      [cod]: key === 'b'
+        ? { ...prev[cod], b: v, ch: 0, on: v > 0 ? true : prev[cod].on }
+        : { ...prev[cod], [key]: v, on: v > 0 ? true : prev[cod].on },
+    }));
   }
 
   // ── Fleet handlers ────────────────────────────────────────────────
@@ -652,7 +657,7 @@ export default function RutasScreen() {
         if (!stores.length) return null;
         const ordered = stores.length > 1 ? nn(stores, extGps, cdRef.current) : stores;
         const tp = ordered.reduce((s, t) => s + t.p, 0);
-        const tb = ordered.reduce((s, t) => s + t.b, 0);
+        const tb = ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0);
         return { v, ts: ordered, tp, tb };
       })
       .filter((r): r is Ruta => r !== null);

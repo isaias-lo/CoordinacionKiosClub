@@ -63,7 +63,11 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
   onToggle: (cod: string) => void;
   onUpdate: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
 }) {
-  const inp = 'w-full h-[24px] rounded-[5px] border border-black/[0.09] bg-white text-[11px] font-bold text-center text-ktext placeholder:text-kmuted/40 focus:outline-none focus:border-kred';
+  const fields: { key: 'p' | 'b' | 'c'; label: string; max: number; display?: number }[] = [
+    { key: 'p', label: 'P', max: 20 },
+    { key: 'b', label: 'B', max: 99, display: (data.b || 0) + (data.ch || 0) },
+    { key: 'c', label: 'C', max: 99 },
+  ];
   return (
     <div
       style={{ boxShadow: data.on ? '0 1px 4px rgba(212,43,43,0.12)' : '0 1px 3px rgba(0,0,0,0.06)' }}
@@ -78,11 +82,19 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
       >
         {formatCod(cod)}
       </span>
-      <div className="grid grid-cols-2 gap-[3px] w-full" onClick={e => e.stopPropagation()}>
-        <input type="number" min="0" max="20"  value={data.p  || ''} placeholder="P"  onChange={e => onUpdate(cod, 'p',  e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
-        <input type="number" min="0" max="99"  value={data.b  || ''} placeholder="B"  onChange={e => onUpdate(cod, 'b',  e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
-        <input type="number" min="0" max="99"  value={data.c  || ''} placeholder="C"  onChange={e => onUpdate(cod, 'c',  e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
-        <input type="number" min="0" max="99"  value={data.ch || ''} placeholder="CH" onChange={e => onUpdate(cod, 'ch', e.target.value)} style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} className={inp} />
+      <div className="grid grid-cols-3 gap-[3px] w-full" onClick={e => e.stopPropagation()}>
+        {fields.map(({ key, label, max, display }) => (
+          <div key={key} className="flex items-center gap-[2px] rounded-[5px] px-[3px] h-[22px] bg-black/[0.04] border border-black/[0.07]">
+            <span className="text-[8px] font-extrabold text-kmuted/60 leading-none shrink-0 select-none">{label}</span>
+            <input
+              type="number" min="0" max={max}
+              value={display !== undefined ? (display || '') : (data[key] || '')}
+              placeholder="0"
+              onChange={e => onUpdate(cod, key, e.target.value)}
+              className="w-full bg-transparent text-[11px] font-bold text-center text-ktext focus:outline-none [-webkit-appearance:none]"
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
