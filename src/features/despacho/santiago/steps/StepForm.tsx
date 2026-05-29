@@ -251,6 +251,7 @@ export function StepForm() {
   const [dragIdx,         setDragIdx]         = useState<number | null>(null);
   const [dropIdx,         setDropIdx]         = useState<number | null>(null);
   const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string } | null>(null);
+  const [pickingMergeTarget, setPickingMergeTarget] = useState<{ rowId: string; type: 'p' | 'b' | 'c' } | null>(null);
   const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
   const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1555,11 +1556,15 @@ export function StepForm() {
             const gP  = Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - tiendaItemsList.filter(i => i.tipo === 'Pallet').length     - cns.p);
             const gB  = Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - tiendaItemsList.filter(i => i.tipo === 'Bulto').length      - cns.b);
             const gC  = Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - tiendaItemsList.filter(i => i.tipo === 'Contenedor').length  - cns.c);
+            // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
+            const unsavedP = formRows.filter(r => !r.saved && r.tipo === 'Pallet').length;
+            const unsavedB = formRows.filter(r => !r.saved && r.tipo === 'Bulto').length;
+            const unsavedC = formRows.filter(r => !r.saved && r.tipo === 'Contenedor').length;
             type GC = { type: 'p' | 'b' | 'c'; border: string; text: string; bg: string; label: string; key: string };
             const ghostCards: GC[] = [
-              ...Array.from({ length: gP }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
-              ...Array.from({ length: gB }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
-              ...Array.from({ length: gC }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
+              ...Array.from({ length: Math.max(0, gP - unsavedP) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
+              ...Array.from({ length: Math.max(0, gB - unsavedB) }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
+              ...Array.from({ length: Math.max(0, gC - unsavedC) }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
             ];
             return (
           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -1659,6 +1664,27 @@ export function StepForm() {
                     className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     + Agregar
                   </button>
+                  {(() => {
+                    const rowTypeKey = row.tipo === 'Pallet' ? 'p' : row.tipo === 'Bulto' ? 'b' : row.tipo === 'Contenedor' ? 'c' : null;
+                    const numGhosts = rowTypeKey === 'p' ? gP : rowTypeKey === 'b' ? gB : rowTypeKey === 'c' ? gC : 0;
+                    const sameTypeBefore = formRows.slice(0, rowIdx).filter(r => !r.saved && r.tipo === row.tipo).length;
+                    if (!rowTypeKey || sameTypeBefore >= numGhosts) return null;
+                    const gcStyle = rowTypeKey === 'p'
+                      ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
+                      : rowTypeKey === 'b'
+                      ? { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' }
+                      : { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' };
+                    return (
+                      <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
+                        <button
+                          onClick={() => setPickingMergeTarget({ rowId: row.id, type: rowTypeKey })}
+                          className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
+                          style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
+                          🔗 Fue unificado con picking
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -2168,6 +2194,28 @@ export function StepForm() {
               setDragIdx(null); setDropIdx(null);
               setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
             }}
+          />
+        );
+      })()}
+
+      {pickingMergeTarget && currentTienda && (() => {
+        const targetRow = formRows.find(r => r.id === pickingMergeTarget.rowId);
+        if (!targetRow) return null;
+        const targetIdx = formRows.findIndex(r => r.id === pickingMergeTarget.rowId);
+        const tipoIdx = formRows.slice(0, targetIdx + 1).filter(r => r.tipo === targetRow.tipo).length;
+        const rowLabel = targetRow.tipo === 'Pallet' ? `P${tipoIdx}` : targetRow.tipo === 'Contenedor' ? `C${tipoIdx}` : `B${tipoIdx}`;
+        return (
+          <CombineItemsModal
+            pkgLabel={targetRow.tipo === 'Pallet' ? 'Pallets' : targetRow.tipo === 'Bulto' ? 'Bultos' : 'Contenedores'}
+            srcLabel={`${rowLabel} — despacho`}
+            tgtLabel="Pallet de picking (físico)"
+            onConfirm={(peso, alto) => {
+              updateRow(pickingMergeTarget.rowId, 'peso', String(peso));
+              updateRow(pickingMergeTarget.rowId, 'alto', String(alto));
+              absorbPickingSlotSant(currentTienda.cod, pickingMergeTarget.type);
+              setPickingMergeTarget(null);
+            }}
+            onCancel={() => setPickingMergeTarget(null)}
           />
         );
       })()}
