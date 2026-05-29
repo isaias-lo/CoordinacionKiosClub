@@ -2801,9 +2801,9 @@ export function PickingScreen() {
 
           {/* ── Tab content: Monitoreo ── */}
           {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
-            <>
+            <div className="flex-1 overflow-y-auto min-h-0">
               <SupervisorActivityPanel supervisors={otherSupervisors} now={now} />
-              <div className="m-auto text-center px-8 py-12">
+              <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="text-[56px] mb-4">🏪</div>
                 <div className="font-barlow-condensed text-[24px] font-bold text-text-2 mb-2">Selecciona una o más tiendas</div>
                 <div className="text-[15px] text-text-3 max-w-sm mx-auto">
@@ -2815,9 +2815,9 @@ export function PickingScreen() {
                   </div>
                 )}
               </div>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="flex-1 overflow-y-auto min-h-0">
             <SupervisorActivityPanel supervisors={otherSupervisors} now={now} />
             <TurnoSummary
               allGroups={allGroups}
@@ -2825,7 +2825,7 @@ export function PickingScreen() {
               printedKeys={printedKeys}
               selectedCods={selectedCods}
             />
-            <div className="flex-1 overflow-y-auto px-4 pb-10">
+            <div className="px-4 pb-10">
 
               {/* Filtro de sección + columnas por fila */}
               <div className="mt-4 mb-3 print:hidden flex flex-wrap items-end gap-6">
@@ -3069,7 +3069,7 @@ export function PickingScreen() {
                 );
               })}
             </div>
-            </>
+            </div>
           ))}
         </div>
       </div>
