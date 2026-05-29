@@ -286,34 +286,44 @@ export function StepForm() {
   const [guideDragOver,  setGuideDragOver]  = useState(false);
   const guideFileRef = useRef<HTMLInputElement>(null);
 
-  /* ── Resizable left panel ── */
+  /* ── Resizable panels (left + right, center takes flex-1) ── */
   const [leftWidth, setLeftWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return 320;
     return parseInt(localStorage.getItem('santiago_left_panel_width') || '320', 10);
   });
+  const [rightWidth, setRightWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return 300;
+    return parseInt(localStorage.getItem('santiago_right_panel_width') || '300', 10);
+  });
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== 'undefined' && window.innerWidth >= 1024
   );
-  const isResizingRef = useRef(false);
-  const dragStartXRef = useRef(0);
-  const dragStartWRef = useRef(0);
+  const resizingPanelRef = useRef<'left' | 'right' | null>(null);
+  const dragStartXRef    = useRef(0);
+  const dragStartWRef    = useRef(0);
   useEffect(() => {
     const onMove = (x: number) => {
-      if (!isResizingRef.current) return;
+      if (!resizingPanelRef.current) return;
       const delta = x - dragStartXRef.current;
-      const next  = Math.min(520, Math.max(200, dragStartWRef.current + delta));
-      setLeftWidth(next);
+      if (resizingPanelRef.current === 'left') {
+        setLeftWidth(Math.min(520, Math.max(200, dragStartWRef.current + delta)));
+      } else {
+        // Right divider: moving right shrinks the right panel
+        setRightWidth(Math.min(520, Math.max(200, dragStartWRef.current - delta)));
+      }
     };
     const onUp = () => {
-      if (!isResizingRef.current) return;
-      isResizingRef.current = false;
+      if (!resizingPanelRef.current) return;
+      const panel = resizingPanelRef.current;
+      resizingPanelRef.current = null;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      setLeftWidth(w => { localStorage.setItem('santiago_left_panel_width', String(w)); return w; });
+      if (panel === 'left')  setLeftWidth(w  => { localStorage.setItem('santiago_left_panel_width',  String(w)); return w; });
+      if (panel === 'right') setRightWidth(w => { localStorage.setItem('santiago_right_panel_width', String(w)); return w; });
     };
-    const onMouseMove  = (e: MouseEvent)  => onMove(e.clientX);
-    const onTouchMove  = (e: TouchEvent)  => onMove(e.touches[0].clientX);
-    const onResize     = () => setIsDesktop(window.innerWidth >= 1024);
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
+    const onTouchMove = (e: TouchEvent) => onMove(e.touches[0].clientX);
+    const onResize    = () => setIsDesktop(window.innerWidth >= 1024);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup',   onUp);
     document.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -2002,13 +2012,13 @@ export function StepForm() {
         {renderStatsBar()}
       </div>
 
-      {/* Resize divider — desktop only */}
+      {/* Divider: Left ↔ Center — desktop only */}
       {isDesktop && (
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
           style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
-          onMouseDown={e => { isResizingRef.current = true; dragStartXRef.current = e.clientX; dragStartWRef.current = leftWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
-          onTouchStart={e => { isResizingRef.current = true; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = leftWidth; }}
+          onMouseDown={e => { resizingPanelRef.current = 'left'; dragStartXRef.current = e.clientX; dragStartWRef.current = leftWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
+          onTouchStart={e => { resizingPanelRef.current = 'left'; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = leftWidth; }}
         >
           <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -2017,27 +2027,47 @@ export function StepForm() {
         </div>
       )}
 
-      {/* ─── RIGHT PANEL ─── */}
-      {/* Mobile: visible when view='form' or view='resumen' | Desktop: always visible */}
-      <div className={`${view === 'list' ? 'hidden' : 'flex'} lg:flex flex-1 flex-col overflow-hidden`}>
-
-        {/* Mobile resumen view (hidden on desktop) */}
-        {view === 'resumen' && (
-          <div className="flex lg:hidden flex-1 flex-col overflow-hidden">
-            {renderResumenPanel()}
-          </div>
-        )}
-
-        {/* Form panel — desktop only (mobile uses bottom sheet below) */}
-        <div className={`hidden lg:flex flex-1 flex-col overflow-hidden`}>
-          {!currentTienda
-            ? renderResumenPanel()
-            : formRows.length > 0
-              ? renderMultiForm(false)
-              : renderSingleForm(false)
-          }
-        </div>
+      {/* ─── CENTER PANEL — form (desktop only) ─── */}
+      <div className="hidden lg:flex flex-1 flex-col overflow-hidden">
+        {!currentTienda
+          ? (
+            <div className="flex-1 flex flex-col items-center justify-center bg-navy" style={{ minHeight: 0 }}>
+              <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
+            </div>
+          )
+          : formRows.length > 0
+            ? renderMultiForm(false)
+            : renderSingleForm(false)
+        }
       </div>
+
+      {/* Divider: Center ↔ Right — desktop only */}
+      {isDesktop && (
+        <div
+          className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
+          style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
+          onMouseDown={e => { resizingPanelRef.current = 'right'; dragStartXRef.current = e.clientX; dragStartWRef.current = rightWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
+          onTouchStart={e => { resizingPanelRef.current = 'right'; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = rightWidth; }}
+        >
+          <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
+          <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {[0,1,2].map(i => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#D97706' }} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ─── RIGHT PANEL — resumen (desktop only) ─── */}
+      <div className="hidden lg:flex flex-col overflow-hidden flex-shrink-0"
+           style={isDesktop ? { width: rightWidth } : undefined}>
+        {renderResumenPanel()}
+      </div>
+
+      {/* ─── MOBILE: resumen view ─── */}
+      {view === 'resumen' && (
+        <div className="flex lg:hidden flex-1 flex-col overflow-hidden">
+          {renderResumenPanel()}
+        </div>
+      )}
 
       {/* ── MOBILE BOTTOM SHEET ── (lg:hidden) */}
       {/* Backdrop */}
