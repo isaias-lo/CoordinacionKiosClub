@@ -2027,6 +2027,9 @@ export function AuditoriaScreen() {
   const [productos,         setProductos]         = useState<ProductoError[]>([]);
   const [observaciones,     setObservaciones]     = useState('');
   const [reauditoriaOrigen, setReauditoriaOrigen] = useState<AuditEntry | null>(null);
+  const [showSecondScan,    setShowSecondScan]    = useState(false);
+  const [tipoLocked,        setTipoLocked]        = useState(false);
+  const firstScanRef = useRef<{ tipo: TipoAuditoria; operaciones: OperacionEntry[]; tienda: TiendaRef | null; picker: string; pickerNombre: string } | null>(null);
 
   const [tiendaQuery, setTiendaQuery] = useState('');
   const [tiendaOpen,  setTiendaOpen]  = useState(false);
@@ -2567,6 +2570,7 @@ export function AuditoriaScreen() {
       const idLabel = trimId2 ? `#${trimId1}+${trimId2}` : `#${trimId1}`;
       const pickerLabel = involvedPickers.length > 1 ? involvedPickers.join(' + ') : (involvedPickers[0] ?? '');
       showToast(`✓ ${idLabel} · ${p1.store_cod} · ${pickerLabel} · ${newTipo.toUpperCase()}`, '#16A34A');
+      setTipoLocked(true);
       setPalletIdInput(''); setPalletIdInput2(''); setShowPalletId2(false);
       setFormPhase('setup');
     } catch {
@@ -2587,19 +2591,51 @@ export function AuditoriaScreen() {
     if (opCodes.length === 0) return false;
 
     const newTipo = cats ? catsToTipo(cats) : tipo;
+    const newOps: OperacionEntry[] = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' }));
+    const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === storeCod) ?? null;
 
-    if (pickerName?.trim()) setPickerNombre(pickerName.trim());
-
-    const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === storeCod);
-    if (matchedTienda) setTienda(matchedTienda);
-
-    if (newTipo !== tipo) {
-      pendingScanRef.current = TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' }));
-      setTipo(newTipo);
-    } else {
-      setOperaciones(TIPO_TO_SUBTIPOS[newTipo].map((st, i) => ({ subTipo: st, codigo: opCodes[i] ?? '' })));
+    // Modo segundo escaneo: combinar con el primer resultado
+    if (showSecondScan && firstScanRef.current) {
+      const first = firstScanRef.current;
+      const combinedOps: OperacionEntry[] = [...first.operaciones];
+      for (const op of newOps) {
+        if (!combinedOps.find(o => o.subTipo === op.subTipo)) combinedOps.push(op);
+      }
+      const combinedTipo: TipoAuditoria = catsToTipo(combinedOps.map(o => o.subTipo).join(','));
+      const pickerLabel = [first.pickerNombre, pickerName?.trim()].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' + ');
+      if (pickerLabel) setPickerNombre(pickerLabel);
+      if (matchedTienda) setTienda(matchedTienda);
+      if (combinedTipo !== tipo) {
+        pendingScanRef.current = combinedOps;
+        setTipo(combinedTipo);
+      } else {
+        setOperaciones(combinedOps);
+      }
+      setTipoLocked(true);
+      showToast(`✓ ${storeCod} · ${pickerLabel || 'sin nombre'} · 2 códigos`, '#16A34A');
+      firstScanRef.current = null;
+      setShowSecondScan(false);
+      setFormPhase('setup');
+      return true;
     }
 
+    // Modo primer escaneo con segundo pendiente
+    if (showSecondScan) {
+      firstScanRef.current = { tipo: newTipo, operaciones: newOps, tienda: matchedTienda, picker: '', pickerNombre: pickerName?.trim() ?? '' };
+      showToast(`✓ Código 1 leído — ahora escanea el 2°`, '#2563EB');
+      return true;
+    }
+
+    // Modo normal (un solo escaneo)
+    if (pickerName?.trim()) setPickerNombre(pickerName.trim());
+    if (matchedTienda) setTienda(matchedTienda);
+    if (newTipo !== tipo) {
+      pendingScanRef.current = newOps;
+      setTipo(newTipo);
+    } else {
+      setOperaciones(newOps);
+    }
+    setTipoLocked(true);
     showToast(`✓ ${storeCod} · ${pickerName?.trim() || 'sin nombre'}`, '#16A34A');
     setFormPhase('setup');
     return true;
@@ -2634,6 +2670,7 @@ export function AuditoriaScreen() {
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
+    setTipoLocked(false); setShowSecondScan(false); firstScanRef.current = null;
   };
 
   // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
@@ -2657,6 +2694,7 @@ export function AuditoriaScreen() {
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
+    setTipoLocked(false); setShowSecondScan(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -2788,6 +2826,7 @@ export function AuditoriaScreen() {
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
+    setTipoLocked(false); setShowSecondScan(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -3101,12 +3140,25 @@ export function AuditoriaScreen() {
                 <SLabel>Auditor</SLabel>
                 <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
                 <div className="mt-5">
+                  {showSecondScan && firstScanRef.current && (
+                    <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-semibold text-info bg-[rgba(37,99,235,0.07)] border border-info/20">
+                      <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
+                      Código 1 leído — escanea el 2° código ahora
+                    </div>
+                  )}
                   <BarcodeInputScanner onScan={handleBarcodeScan} />
                   <button type="button" onClick={() => setCameraOpen(true)}
                     className="w-full mt-2 flex items-center justify-center gap-2.5 py-3 rounded-card border-2 cursor-pointer transition-all active:scale-[0.99]"
                     style={{ background: 'rgba(37,99,235,0.06)', borderColor: 'rgba(37,99,235,0.30)', color: '#2563EB' }}>
                     <span className="text-[22px]">📷</span>
                     <span className="font-barlow-condensed text-[16px] font-bold">Escanear con cámara</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowSecondScan(v => !v); firstScanRef.current = null; }}
+                    className="mt-2 flex items-center gap-1.5 cursor-pointer border-none bg-transparent p-0 transition-opacity active:opacity-60"
+                    style={{ color: showSecondScan ? '#9CA3AF' : '#2563EB' }}>
+                    <span className="text-[13px]">{showSecondScan ? '− Cancelar 2° código' : '+ Leer 2 códigos distintos (pistola / cámara)'}</span>
                   </button>
                 </div>
                 {/* ID numérico de pallet */}
@@ -3121,8 +3173,8 @@ export function AuditoriaScreen() {
                       onChange={e => { setPalletIdInput(e.target.value); setPalletIdError(''); }}
                       onKeyDown={e => { if (e.key === 'Enter' && !showPalletId2) void handlePalletIdLookup(palletIdInput); }}
                       placeholder="Ej: 1247"
-                      className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[22px] font-bold text-navy outline-none focus:border-navy"
-                      style={{ letterSpacing: '2px' }}
+                      className="flex-1 bg-bg border border-border rounded-btn px-3 py-2.5 font-barlow-condensed text-[36px] font-bold text-navy outline-none focus:border-navy"
+                      style={{ letterSpacing: '3px' }}
                       disabled={palletIdLoading}
                     />
                     {!showPalletId2 && (
@@ -3238,12 +3290,13 @@ export function AuditoriaScreen() {
                 <SLabel>Tipo de contenido</SLabel>
                 <div className="grid grid-cols-3 gap-1.5">
                   {TIPOS.map(({ value, label }) => (
-                    <button key={value} onClick={() => handleTipoChange(value)} className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all ${tipo === value ? TIPO_COLOR[value] : 'border-border bg-white text-text-2'}`}>{label}</button>
+                    <button key={value} onClick={() => !tipoLocked && handleTipoChange(value)}
+                      className={`py-2.5 rounded-btn border-[1.5px] font-barlow-condensed text-[14px] font-bold transition-all ${tipo === value ? TIPO_COLOR[value] : tipoLocked ? 'border-border bg-bg text-text-3 opacity-40 cursor-not-allowed' : 'border-border bg-white text-text-2 cursor-pointer'}`}>{label}</button>
                   ))}
                 </div>
+                {tipoLocked && <div className="text-[10px] text-text-3 -mt-1">Tipo bloqueado según datos del pallet — <button type="button" onClick={() => setTipoLocked(false)} className="text-info underline cursor-pointer border-none bg-transparent p-0 text-[10px]">desbloquear</button></div>}
 
                 <SLabel>Operaciones Odoo <span className="text-[10px] font-normal normal-case ml-1">({operaciones.length} op{operaciones.length !== 1 ? 's' : '.'})</span></SLabel>
-                <BarcodeInputScanner onScan={handleBarcodeScan} />
                 {operaciones.map((op, i) => (
                   <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
                     onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
@@ -3619,7 +3672,6 @@ export function AuditoriaScreen() {
                           onChange={async e => {
                             let files = Array.from(e.target.files ?? []);
                             if (!files.length || photoUploadingRef.current) return;
-                            if (files.length > 20) { showToast(`Máximo 20 fotos por selección — se tomaron las primeras 20`, '#D97706'); files = files.slice(0, 20); }
                             photoUploadingRef.current = true; setPhotoUploading(true);
                             try {
                               // Compresión en lotes de 4 en paralelo con progreso
