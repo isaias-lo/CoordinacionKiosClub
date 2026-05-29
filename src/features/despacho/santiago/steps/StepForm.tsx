@@ -251,6 +251,7 @@ export function StepForm() {
   const [dragIdx,         setDragIdx]         = useState<number | null>(null);
   const [dropIdx,         setDropIdx]         = useState<number | null>(null);
   const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string } | null>(null);
+  const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
   const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
   const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -745,7 +746,21 @@ export function StepForm() {
           setFormRows([]);
         }
       } else {
-        setFormRows([]);
+        // Returning to a store with existing items — show them as saved cards (multi-form)
+        const savedRows: FormRow[] = existing
+          .filter(item => item.tipo !== 'Chocolate')
+          .map((item, i) => ({
+            id: `saved-${i}-${item.tipo}-${Date.now()}`,
+            tipo: item.tipo,
+            contenido: item.contenido,
+            peso: String(item.peso ?? ''),
+            alto: String(item.alto ?? ''),
+            largo: String(item.largo ?? ''),
+            ancho: String(item.ancho ?? ''),
+            saved: true,
+            savedItem: item,
+          }));
+        setFormRows(savedRows);
       }
     } else {
       setFormRows([]);
@@ -1541,11 +1556,15 @@ export function StepForm() {
             const gP  = Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - tiendaItemsList.filter(i => i.tipo === 'Pallet').length     - cns.p);
             const gB  = Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - tiendaItemsList.filter(i => i.tipo === 'Bulto').length      - cns.b);
             const gC  = Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - tiendaItemsList.filter(i => i.tipo === 'Contenedor').length  - cns.c);
+            // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
+            const unsavedP = formRows.filter(r => !r.saved && r.tipo === 'Pallet').length;
+            const unsavedB = formRows.filter(r => !r.saved && r.tipo === 'Bulto').length;
+            const unsavedC = formRows.filter(r => !r.saved && r.tipo === 'Contenedor').length;
             type GC = { type: 'p' | 'b' | 'c'; border: string; text: string; bg: string; label: string; key: string };
             const ghostCards: GC[] = [
-              ...Array.from({ length: gP }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
-              ...Array.from({ length: gB }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
-              ...Array.from({ length: gC }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
+              ...Array.from({ length: Math.max(0, gP - unsavedP) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
+              ...Array.from({ length: Math.max(0, gB - unsavedB) }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
+              ...Array.from({ length: Math.max(0, gC - unsavedC) }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
             ];
             return (
           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -1645,24 +1664,89 @@ export function StepForm() {
                     className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     + Agregar
                   </button>
+                  {(() => {
+                    if (isChocTipo) return null;
+                    const otherRows = formRows.filter(r => !r.saved && r.id !== row.id && r.tipo === row.tipo);
+                    if (otherRows.length === 0) return null;
+                    const gcStyle = row.tipo === 'Pallet'
+                      ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
+                      : row.tipo === 'Contenedor'
+                      ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
+                      : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
+                    const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                    const getRowLabel = (r: typeof row) => {
+                      const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
+                      return r.tipo === 'Pallet' ? `P${idx}` : r.tipo === 'Contenedor' ? `C${idx}` : `B${idx}`;
+                    };
+                    return (
+                      <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
+                        {isExpanded ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">¿Combinar con…?</div>
+                            <div className="flex flex-wrap gap-1">
+                              {otherRows.map(other => (
+                                <button key={other.id}
+                                  onClick={() => setFormMergeState({ sourceId: row.id, targetId: other.id })}
+                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                  style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
+                                  {getRowLabel(other)}
+                                </button>
+                              ))}
+                              <button onClick={() => setFormMergeState(null)}
+                                className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
+                                style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                            className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
+                            style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
+                            UNIFICAR
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
-            {ghostCards.map(gc => (
-              <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col justify-between" style={{ borderColor: gc.border, background: gc.bg }}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
-                  <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
+            {ghostCards.map(gc => {
+              const tipoMap: Record<string, string> = { p: 'Pallet', b: 'Bulto', c: 'Contenedor' };
+              const prefixMap: Record<string, string> = { p: 'P', b: 'B', c: 'C' };
+              const regCount = tiendaItemsList.filter(i => i.tipo === tipoMap[gc.type]).length;
+              const prefix = prefixMap[gc.type];
+              const opts = Array.from({ length: regCount }, (_, i) => `${prefix}${i + 1}`);
+              return (
+                <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col gap-1.5" style={{ borderColor: gc.border, background: gc.bg }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
+                    <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
+                  </div>
+                  <div className="text-[10px] text-text-3 leading-snug">¿Con cuál fue unificado?</div>
+                  {opts.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {opts.map(opt => (
+                        <button
+                          key={opt}
+                          onClick={() => absorbPickingSlotSant(cod, gc.type)}
+                          className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97] border-2"
+                          style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                          ✓ {opt}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => absorbPickingSlotSant(cod, gc.type)}
+                      className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
+                      style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                      ✓ Confirmar
+                    </button>
+                  )}
                 </div>
-                <div className="text-[10px] text-text-3 mb-2 leading-relaxed">Unificado físicamente con el registrado</div>
-                <button
-                  onClick={() => absorbPickingSlotSant(cod, gc.type)}
-                  className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
-                  style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
-                  ✓ Fue unificado
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
             );
           })()}
@@ -2133,6 +2217,30 @@ export function StepForm() {
               setDragIdx(null); setDropIdx(null);
               setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
             }}
+          />
+        );
+      })()}
+
+      {formMergeState?.targetId && (() => {
+        const sourceRow = formRows.find(r => r.id === formMergeState.sourceId);
+        const targetRow = formRows.find(r => r.id === formMergeState.targetId);
+        if (!sourceRow || !targetRow) return null;
+        const getLabel = (r: typeof sourceRow) => {
+          const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
+          return r.tipo === 'Pallet' ? `P${idx}` : r.tipo === 'Contenedor' ? `C${idx}` : `B${idx}`;
+        };
+        return (
+          <CombineItemsModal
+            pkgLabel={sourceRow.tipo === 'Pallet' ? 'Pallets' : sourceRow.tipo === 'Bulto' ? 'Bultos' : 'Contenedores'}
+            srcLabel={getLabel(sourceRow)}
+            tgtLabel={getLabel(targetRow)}
+            onConfirm={(peso, alto) => {
+              updateRow(formMergeState.sourceId, 'peso', String(peso));
+              updateRow(formMergeState.sourceId, 'alto', String(alto));
+              setFormRows(prev => prev.filter(r => r.id !== formMergeState.targetId));
+              setFormMergeState(null);
+            }}
+            onCancel={() => setFormMergeState(null)}
           />
         );
       })()}
