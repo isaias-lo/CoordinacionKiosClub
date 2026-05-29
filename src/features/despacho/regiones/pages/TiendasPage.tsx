@@ -242,7 +242,7 @@ export function TiendasPage() {
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
   const [dropIdx,      setDropIdx]      = useState<number | null>(null);
   const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
-  const [pickingMergeTarget, setPickingMergeTarget] = useState<{ rowId: string; type: 'p' | 'b' | 'c' | 'ch' } | null>(null);
+  const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
   const itemDragRefs = useRef<(HTMLDivElement | null)[]>([]);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetRef     = useRef<HTMLDivElement>(null);
@@ -1102,23 +1102,46 @@ export function TiendasPage() {
                       + Agregar
                     </button>
                     {(() => {
-                      const rowTypeKey = row.pkg === 'pallet' ? 'p' : row.pkg === 'box' ? 'b' : row.pkg === 'contenedor' ? 'c' : null;
-                      const numGhosts = rowTypeKey === 'p' ? gP : rowTypeKey === 'b' ? gB : rowTypeKey === 'c' ? gC : 0;
-                      const sameTypeBefore = formRows.slice(0, rowIdx).filter(r => !r.saved && r.pkg === row.pkg).length;
-                      if (!rowTypeKey || sameTypeBefore >= numGhosts) return null;
-                      const gcStyle = rowTypeKey === 'p'
+                      if (row.pkg === 'chocolate') return null;
+                      const otherRows = formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg);
+                      if (otherRows.length === 0) return null;
+                      const gcStyle = row.pkg === 'pallet'
                         ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
-                        : rowTypeKey === 'b'
-                        ? { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' }
-                        : { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' };
+                        : row.pkg === 'contenedor'
+                        ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
+                        : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
+                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                      const getRowLabel = (r: typeof row) => {
+                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+                        return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                      };
                       return (
                         <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
-                          <button
-                            onClick={() => setPickingMergeTarget({ rowId: row.id, type: rowTypeKey })}
-                            className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
-                            style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
-                            🔗 Fue unificado con picking
-                          </button>
+                          {isExpanded ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">¿Combinar con…?</div>
+                              <div className="flex flex-wrap gap-1">
+                                {otherRows.map(other => (
+                                  <button key={other.id}
+                                    onClick={() => setFormMergeState({ sourceId: row.id, targetId: other.id })}
+                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                    style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
+                                    {getRowLabel(other)}
+                                  </button>
+                                ))}
+                                <button onClick={() => setFormMergeState(null)}
+                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
+                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
+                              style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
+                              UNIFICAR
+                            </button>
+                          )}
                         </div>
                       );
                     })()}
@@ -1731,24 +1754,26 @@ export function TiendasPage() {
         );
       })()}
 
-      {pickingMergeTarget && selectedTienda && (() => {
-        const targetRow = formRows.find(r => r.id === pickingMergeTarget.rowId);
-        if (!targetRow) return null;
-        const targetIdx = formRows.findIndex(r => r.id === pickingMergeTarget.rowId);
-        const pkgIdx = formRows.slice(0, targetIdx + 1).filter(r => r.pkg === targetRow.pkg).length;
-        const rowLabel = targetRow.pkg === 'pallet' ? `P${pkgIdx}` : targetRow.pkg === 'contenedor' ? `C${pkgIdx}` : targetRow.pkg === 'chocolate' ? `CH${pkgIdx}` : `B${pkgIdx}`;
+      {formMergeState?.targetId && (() => {
+        const sourceRow = formRows.find(r => r.id === formMergeState.sourceId);
+        const targetRow = formRows.find(r => r.id === formMergeState.targetId);
+        if (!sourceRow || !targetRow) return null;
+        const getLabel = (r: typeof sourceRow) => {
+          const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+          return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+        };
         return (
           <CombineItemsModal
-            pkgLabel={targetRow.pkg === 'pallet' ? 'Pallets' : targetRow.pkg === 'box' ? 'Bultos' : 'Contenedores'}
-            srcLabel={`${rowLabel} — despacho`}
-            tgtLabel="Pallet de picking (físico)"
+            pkgLabel={sourceRow.pkg === 'pallet' ? 'Pallets' : sourceRow.pkg === 'box' ? 'Bultos' : 'Contenedores'}
+            srcLabel={getLabel(sourceRow)}
+            tgtLabel={getLabel(targetRow)}
             onConfirm={(peso, alto) => {
-              updateRow(pickingMergeTarget.rowId, 'peso', String(peso));
-              updateRow(pickingMergeTarget.rowId, 'alto', String(alto));
-              absorbPickingSlot(selectedTienda, pickingMergeTarget.type);
-              setPickingMergeTarget(null);
+              updateRow(formMergeState.sourceId, 'peso', String(peso));
+              updateRow(formMergeState.sourceId, 'alto', String(alto));
+              setFormRows(prev => prev.filter(r => r.id !== formMergeState.targetId));
+              setFormMergeState(null);
             }}
-            onCancel={() => setPickingMergeTarget(null)}
+            onCancel={() => setFormMergeState(null)}
           />
         );
       })()}
