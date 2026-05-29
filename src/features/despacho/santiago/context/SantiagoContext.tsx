@@ -23,6 +23,13 @@ type SyncableState = {
 const _d = new Date();
 const todayKey = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
 const SANTIAGO_KEY = `santiagoState_${todayKey}`;
+
+function isTodayPush(pushedAt: unknown): boolean {
+  if (typeof pushedAt !== 'number') return false; // no timestamp — reject to avoid stale data
+  const d = new Date(pushedAt);
+  const t = new Date();
+  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+}
 export const SANTIAGO_TERMINADO_KEY = `santiagoTerminado_${todayKey}`;
 
 function loadState(): SantiagoState {
@@ -140,8 +147,10 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       if (debounceRef.current !== null || isPushingRef.current) return;
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
-      // Reject remote data older than our last push — prevents a stale tab/device from overwriting fresh local data
+      // Reject remote data from a different day — prevents yesterday's items from appearing today
       const rawPushedAt = (remoteState as { pushedAt?: number }).pushedAt;
+      if (!isTodayPush(rawPushedAt)) return;
+      // Reject remote data older than our last push — prevents a stale tab/device from overwriting fresh local data
       if (typeof rawPushedAt === 'number' && rawPushedAt < lastPushTimestampRef.current) return;
 
       const remote = normalize(remoteState as SyncableState);
@@ -167,6 +176,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
+        // Reject data from a previous day — prevents yesterday's items from loading today
+        const rawPushedAt = (remote as { pushedAt?: number }).pushedAt;
+        if (!isTodayPush(rawPushedAt)) return;
         const s = normalize(remote as SyncableState);
         lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
         dispatch({ type: 'LOAD_STATE', payload: s });

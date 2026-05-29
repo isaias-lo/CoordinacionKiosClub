@@ -304,9 +304,10 @@ export default function RutasScreen() {
         const c = norm(row.tienda_cod);
         if (manuallyEditedRef.current.has(c)) return prev;
         if (!prev[c]) {
-          // Inject Regiones stores arriving via Supabase that aren't in the calendar yet
-          if (row.fuente === 'regiones' && (row.pallets > 0 || row.bultos > 0)) {
-            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: 0, g: 'fal' } };
+          // Inject stores arriving via Supabase that aren't in the calendar yet
+          if ((row.fuente === 'regiones' || row.fuente === 'rm' || row.fuente === 'santiago') && (row.pallets > 0 || row.bultos > 0)) {
+            const grp = row.fuente === 'regiones' ? 'fal' : 'rm';
+            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: 0, g: grp } };
           }
           return prev;
         }
