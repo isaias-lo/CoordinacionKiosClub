@@ -458,25 +458,6 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualText, modo]);
 
-  // ── Sync calT → manual text ───────────────────────────────────────
-  useEffect(() => {
-    if (modo !== 'man') return;
-    const stores = Object.keys(sortedCalT).filter(cod => {
-      const grupo = sortedCalT[cod]?.g;
-      return grupo === 'rm' || grupo === 'costa' || grupo === 'fal';
-    });
-    if (stores.length === 0) return;
-    const newText = stores.map(cod => {
-      const data = sortedCalT[cod];
-      const p = data.p ? `${data.p}P` : '';
-      const b = data.b ? `${data.b}B` : '';
-      const counts = [p, b].filter(Boolean).join(' ');
-      return counts ? `${cod}: ${counts}` : `${cod}:`;
-    }).join('\n');
-    if (manualText !== newText) setManualTextRef.current(newText);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedCalT, modo]);
-
   // ── Init calT from calendar when empty ───────────────────────────
   useEffect(() => {
     if (Object.keys(calT).length > 0) return;
@@ -510,6 +491,25 @@ export default function RutasScreen() {
     extras.forEach(c => { result[c] = calT[c]; });
     return result;
   }, [calT, cal, fecha]);
+
+  // ── Sync calT → manual text ───────────────────────────────────────
+  useEffect(() => {
+    if (modo !== 'man') return;
+    const stores = Object.keys(sortedCalT).filter(cod => {
+      const grupo = sortedCalT[cod]?.g;
+      return grupo === 'rm' || grupo === 'costa' || grupo === 'fal';
+    });
+    if (stores.length === 0) return;
+    const newText = stores.map(cod => {
+      const data = sortedCalT[cod];
+      const p = data.p ? `${data.p}P` : '';
+      const b = data.b ? `${data.b}B` : '';
+      const counts = [p, b].filter(Boolean).join(' ');
+      return counts ? `${cod}: ${counts}` : `${cod}:`;
+    }).join('\n');
+    if (manualText !== newText) setManualTextRef.current(newText);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedCalT, modo]);
 
   // ── Calendar handlers ─────────────────────────────────────────────
   function handleToggleGroup(gid: string) {
