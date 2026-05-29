@@ -17,6 +17,7 @@ import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
+import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
@@ -86,7 +87,8 @@ interface ComparisonData {
 
 export default function RutasScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  const userId = user?.id;
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -145,6 +147,11 @@ export default function RutasScreen() {
 
   const sessionRestoredRef = useRef(false);
   const restoringRef       = useRef(false);
+
+  // ── Real-time sync: manualAsignaciones across devices ────────────
+  const lastPushedManualRef = useRef<string>('');
+  const debounceManualRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isManualInitRef     = useRef(false);
 
   // ── Sync cal from CalendarioCentral (cross-tab) ───────────────────
   useEffect(() => {
@@ -390,6 +397,46 @@ export default function RutasScreen() {
       return changed ? next : prev;
     });
   }, [calT]);
+
+  // ── Fetch + subscribe manualAsignaciones (cross-device) ──────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    fetchSessionState('rutas').then(remote => {
+      if (remote && typeof remote === 'object') {
+        const remoteJson = JSON.stringify(remote);
+        setManualAsignaciones(remote as Record<string, StoreItem[]>);
+        lastPushedManualRef.current = remoteJson;
+      }
+      isManualInitRef.current = true;
+    }).catch(() => { isManualInitRef.current = true; });
+
+    const unsub = subscribeToSessionState('rutas', userId ?? '', (state) => {
+      if (!state || typeof state !== 'object') return;
+      const remoteJson = JSON.stringify(state);
+      if (remoteJson === lastPushedManualRef.current) return;
+      lastPushedManualRef.current = remoteJson;
+      setManualAsignaciones(state as Record<string, StoreItem[]>);
+    });
+
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Debounced push manualAsignaciones → Supabase ─────────────────
+  useEffect(() => {
+    if (!isManualInitRef.current) return;
+    const json = JSON.stringify(manualAsignaciones);
+    if (json === lastPushedManualRef.current) return;
+    if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
+    debounceManualRef.current = setTimeout(() => {
+      lastPushedManualRef.current = json;
+      pushSessionState('rutas', manualAsignaciones, userId).catch(() => {});
+    }, 800);
+    return () => {
+      if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
+    };
+  }, [manualAsignaciones, userId]);
 
   // ── Sync manual text → calT ───────────────────────────────────────
   useEffect(() => {
