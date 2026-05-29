@@ -2028,6 +2028,7 @@ export function AuditoriaScreen() {
   const [observaciones,     setObservaciones]     = useState('');
   const [reauditoriaOrigen, setReauditoriaOrigen] = useState<AuditEntry | null>(null);
   const [showSecondScan,    setShowSecondScan]    = useState(false);
+  const [firstScanDone,     setFirstScanDone]     = useState(false);
   const [tipoLocked,        setTipoLocked]        = useState(false);
   const firstScanRef = useRef<{ tipo: TipoAuditoria; operaciones: OperacionEntry[]; tienda: TiendaRef | null; picker: string; pickerNombre: string } | null>(null);
 
@@ -2620,6 +2621,7 @@ export function AuditoriaScreen() {
       setTipoLocked(true);
       showToast(`✓ ${storeCod} · ${pickerLabel || 'sin nombre'} · 2 códigos`, '#16A34A');
       firstScanRef.current = null;
+      setFirstScanDone(false);
       setShowSecondScan(false);
       setFormPhase('setup');
       return true;
@@ -2628,6 +2630,7 @@ export function AuditoriaScreen() {
     // Modo primer escaneo con segundo pendiente
     if (showSecondScan) {
       firstScanRef.current = { tipo: newTipo, operaciones: newOps, tienda: matchedTienda, picker: '', pickerNombre: pickerName?.trim() ?? '' };
+      setFirstScanDone(true);
       showToast(`✓ Código 1 leído — ahora escanea el 2°`, '#2563EB');
       return true;
     }
@@ -2676,7 +2679,7 @@ export function AuditoriaScreen() {
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
-    setTipoLocked(false); setShowSecondScan(false); firstScanRef.current = null;
+    setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
   };
 
   // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
@@ -2700,7 +2703,7 @@ export function AuditoriaScreen() {
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
-    setTipoLocked(false); setShowSecondScan(false); firstScanRef.current = null;
+    setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -2832,7 +2835,7 @@ export function AuditoriaScreen() {
     setOperaciones(TIPO_TO_SUBTIPOS['comida'].map(st => ({ subTipo: st, codigo: '' })));
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
-    setTipoLocked(false); setShowSecondScan(false); firstScanRef.current = null;
+    setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
@@ -3146,7 +3149,7 @@ export function AuditoriaScreen() {
                 <SLabel>Auditor</SLabel>
                 <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
                 <div className="mt-5">
-                  {showSecondScan && firstScanRef.current && (
+                  {showSecondScan && firstScanDone && (
                     <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-semibold text-info bg-[rgba(37,99,235,0.07)] border border-info/20">
                       <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
                       Código 1 leído — escanea el 2° código ahora
@@ -3161,7 +3164,7 @@ export function AuditoriaScreen() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setShowSecondScan(v => !v); firstScanRef.current = null; }}
+                    onClick={() => { setShowSecondScan(v => !v); setFirstScanDone(false); firstScanRef.current = null; }}
                     className="mt-2 flex items-center gap-1.5 cursor-pointer border-none bg-transparent p-0 transition-opacity active:opacity-60"
                     style={{ color: showSecondScan ? '#9CA3AF' : '#2563EB' }}>
                     <span className="text-[13px]">{showSecondScan ? '− Cancelar 2° código' : '+ Leer 2 códigos distintos (pistola / cámara)'}</span>
@@ -3177,7 +3180,7 @@ export function AuditoriaScreen() {
                       type="number" inputMode="numeric" pattern="[0-9]*"
                       value={palletIdInput}
                       onChange={e => { setPalletIdInput(e.target.value); setPalletIdError(''); }}
-                      onKeyDown={e => { if (e.key === 'Enter' && !showPalletId2) void handlePalletIdLookup(palletIdInput); }}
+                      onKeyDown={e => { if (e.key === 'Enter' && !showPalletId2) { (e.target as HTMLElement).blur(); void handlePalletIdLookup(palletIdInput); } }}
                       placeholder="Ej: 1247"
                       className="w-full bg-bg border border-border rounded-btn px-3 py-3 font-barlow-condensed text-[42px] font-bold text-navy outline-none focus:border-navy text-center"
                       style={{ letterSpacing: '4px' }}
