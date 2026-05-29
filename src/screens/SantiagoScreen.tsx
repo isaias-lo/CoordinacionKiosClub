@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { SantiagoProvider, useSantiago } from '../features/despacho/santiago/context/SantiagoContext';
@@ -9,6 +10,11 @@ import { ProfilePill } from '../components/ProfilePill';
 function SantiagoContent() {
   const router = useRouter();
   const { state, dispatch } = useSantiago();
+  const [todayLabel, setTodayLabel] = useState('');
+  useEffect(() => {
+    const d = new Date();
+    setTodayLabel(d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'short' }));
+  }, []);
 
   // Navegación contextual:
   //   step='regimen' (SECO/CONGELADO) → volver a /despacho/conteo
@@ -37,8 +43,15 @@ function SantiagoContent() {
           }}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
-        <div className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1 text-center">
-          Bodega Santiago
+        <div className="flex flex-col items-center flex-1 min-w-0">
+          <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
+            METROPOLITANA / COSTA
+          </div>
+          {todayLabel && (
+            <div className="font-barlow-condensed text-[11px] text-white/50 tracking-wide capitalize leading-none mt-0.5">
+              {todayLabel}
+            </div>
+          )}
         </div>
         <button
           onClick={() => router.push('/')}
