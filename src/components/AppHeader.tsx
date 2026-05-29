@@ -49,8 +49,15 @@ export function AppHeader({ onFinish, backTo = '/despacho-hub' }: AppHeaderProps
         }}>
         <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
       </button>
-      <div className="font-barlow-condensed text-[13px] text-white/60 tracking-wide flex-1 text-center">
-        {state.dispatchDate}
+      <div className="flex flex-col items-center flex-1 min-w-0">
+        <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
+          NACIONAL
+        </div>
+        {state.dispatchDate && (
+          <div className="font-barlow-condensed text-[11px] text-white/50 tracking-wide leading-none mt-0.5">
+            {state.dispatchDate}
+          </div>
+        )}
       </div>
 
       {terminated ? (
