@@ -2073,8 +2073,9 @@ export function AuditoriaScreen() {
   const [sessionRestored,     setSessionRestored]     = useState(false);
   const [crossDeviceRestored, setCrossDeviceRestored] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  const palletsInputRef = useRef<HTMLInputElement>(null);
-  const tieneErroresRef = useRef<HTMLDivElement>(null);
+  const palletsInputRef  = useRef<HTMLInputElement>(null);
+  const tieneErroresRef  = useRef<HTMLDivElement>(null);
+  const operacionesRef   = useRef<HTMLDivElement>(null);
   const pendingScanRef  = useRef<OperacionEntry[] | null>(null);
   const [palletIdInput,   setPalletIdInput]   = useState('');
   const [palletIdLoading, setPalletIdLoading] = useState(false);
@@ -2337,9 +2338,15 @@ export function AuditoriaScreen() {
       if (s.pickerNombres?.length) setPickerNombres(s.pickerNombres);
       if (s.picker)         setPicker(s.picker);
       if (s.tiendaCod)      setTienda(TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null);
-      if (s.tipo)           setTipo(s.tipo);
+      if (s.tipo) {
+        // Si el tipo difiere del actual, useEffect([tipo]) se va a disparar y resetea operaciones.
+        // Cargamos pendingScanRef ANTES para que use los códigos restaurados en lugar de vacíos.
+        if (s.operaciones?.length) pendingScanRef.current = s.operaciones;
+        setTipo(s.tipo);
+      } else if (s.operaciones?.length) {
+        setOperaciones(s.operaciones);
+      }
       if (s.tipoLocked)     setTipoLocked(s.tipoLocked);
-      if (s.operaciones?.length) setOperaciones(s.operaciones);
       if (s.pallets)        setPallets(s.pallets);
       if (s.tieneErrores !== undefined) setTieneErrores(s.tieneErrores ?? null);
       if (s.tiposError?.length)  setTiposError(s.tiposError);
@@ -2723,7 +2730,7 @@ export function AuditoriaScreen() {
     setSubmitAttempted(true);
     if (!auditor.trim()) { showToast('Ingresa el nombre del auditor', '#D97706'); return; }
     if (!tienda) { showToast('Selecciona una tienda', '#D97706'); return; }
-    if (operaciones.some(op => !op.codigo.trim())) { showToast('Completa todas las operaciones', '#D97706'); return; }
+    if (!operaciones.length || operaciones.some(op => !op.codigo.trim())) { operacionesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('Completa todas las operaciones', '#D97706'); return; }
     if (!pallets || parseInt(pallets) <= 0) { palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
     if (tieneErrores === null) { tieneErroresRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('¿Tuvo errores? — indica Sí o No', '#D97706'); return; }
     if (tieneErrores && tiposError.length === 0) { tieneErroresRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('Selecciona el tipo de error', '#D97706'); return; }
@@ -3501,6 +3508,29 @@ export function AuditoriaScreen() {
                   <div className="text-[12px] text-text-3 mt-2 truncate">
                     {tienda?.nombre}{pickerNombres.length > 1 ? ` · ${pickerNombres.join(' + ')}` : pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
                   </div>
+                </div>
+
+                {/* Códigos de operación — read-only en ejecución, editable si falta alguno */}
+                <div ref={operacionesRef}>
+                  {operaciones.some(op => !op.codigo.trim()) ? (
+                    <div className="mb-3 px-3 py-3 rounded-xl border-2 border-red/40 bg-[rgba(211,47,47,0.05)]">
+                      <div className="text-[11px] font-bold text-red uppercase tracking-wide mb-2">Códigos de operación incompletos</div>
+                      {operaciones.map((op, i) => (
+                        <OperacionInput key={op.subTipo} subTipo={op.subTipo} codigo={op.codigo}
+                          onChange={v => updateOperacion(i, v)} onSelect={handleOpSelect}
+                          odooConfig={odooConfig} onNeedConfig={() => showToast('Configura NEXT_PUBLIC_ODOO_* en .env.local', '#D97706')} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      {operaciones.map(op => (
+                        <span key={op.subTipo} className="inline-flex items-center gap-1 px-2 py-1 bg-[rgba(26,37,80,0.06)] border border-border rounded-btn font-mono text-[11px] text-text-2">
+                          <span className="text-[9px] text-text-3 uppercase">{op.subTipo}</span>
+                          <span className="font-bold">{op.codigo}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Pallets auditados */}
