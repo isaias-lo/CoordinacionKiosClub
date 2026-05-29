@@ -286,6 +286,48 @@ export function StepForm() {
   const [guideDragOver,  setGuideDragOver]  = useState(false);
   const guideFileRef = useRef<HTMLInputElement>(null);
 
+  /* ── Resizable left panel ── */
+  const [leftWidth, setLeftWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return 320;
+    return parseInt(localStorage.getItem('santiago_left_panel_width') || '320', 10);
+  });
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 1024
+  );
+  const isResizingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWRef = useRef(0);
+  useEffect(() => {
+    const onMove = (x: number) => {
+      if (!isResizingRef.current) return;
+      const delta = x - dragStartXRef.current;
+      const next  = Math.min(520, Math.max(200, dragStartWRef.current + delta));
+      setLeftWidth(next);
+    };
+    const onUp = () => {
+      if (!isResizingRef.current) return;
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setLeftWidth(w => { localStorage.setItem('santiago_left_panel_width', String(w)); return w; });
+    };
+    const onMouseMove  = (e: MouseEvent)  => onMove(e.clientX);
+    const onTouchMove  = (e: TouchEvent)  => onMove(e.touches[0].clientX);
+    const onResize     = () => setIsDesktop(window.innerWidth >= 1024);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup',   onUp);
+    document.addEventListener('touchmove', onTouchMove, { passive: true });
+    document.addEventListener('touchend',  onUp);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup',   onUp);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend',  onUp);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
   /* Calendar from Sheets */
   const [sheetsTodayGrouped, setSheetsTodayGrouped] = useState<{ rm: string[]; costa: string[] }>(getCalendarioSantiagoInicialHoy);
   const [selectedGrps, setSelectedGrps] = useState<Set<'rm' | 'costa'>>(new Set(['rm']));
@@ -1906,7 +1948,10 @@ export function StepForm() {
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
       {/* ─── LEFT PANEL ─── always visible on mobile; hidden only in resumen view */}
-      <div className={`${view === 'resumen' ? 'hidden' : 'flex'} lg:flex flex-1 lg:flex-none flex-col w-full lg:w-[42%] lg:border-r-2 lg:border-border overflow-hidden lg:flex-shrink-0`}>
+      <div
+        className={`${view === 'resumen' ? 'hidden' : 'flex'} lg:flex flex-1 lg:flex-none flex-col w-full overflow-hidden flex-shrink-0`}
+        style={isDesktop ? { width: leftWidth } : undefined}
+      >
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -1956,6 +2001,21 @@ export function StepForm() {
         {renderStoreGrid()}
         {renderStatsBar()}
       </div>
+
+      {/* Resize divider — desktop only */}
+      {isDesktop && (
+        <div
+          className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
+          style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
+          onMouseDown={e => { isResizingRef.current = true; dragStartXRef.current = e.clientX; dragStartWRef.current = leftWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
+          onTouchStart={e => { isResizingRef.current = true; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = leftWidth; }}
+        >
+          <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
+          <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {[0,1,2].map(i => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#D97706' }} />)}
+          </div>
+        </div>
+      )}
 
       {/* ─── RIGHT PANEL ─── */}
       {/* Mobile: visible when view='form' or view='resumen' | Desktop: always visible */}
