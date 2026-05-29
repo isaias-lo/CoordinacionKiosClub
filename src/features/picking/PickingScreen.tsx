@@ -828,36 +828,53 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
 
           {/* 3 independent counters: P, C, B */}
           <div>
-            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-2">Unidades</label>
+            <label className="text-[10px] font-black text-text-3 uppercase tracking-[1.5px] block mb-2">Unidades a despachar</label>
             <div className="flex gap-2">
               {([
-                { tipo: 'P'  as PickerType, label: 'Pallets',       color: '#1E3A8A' },
-                { tipo: 'C'  as PickerType, label: 'Contenedores',  color: '#6B21A8' },
-                { tipo: 'B'  as PickerType, label: 'Bultos',        color: '#065F46' },
-                { tipo: 'CH' as PickerType, label: 'Chocolates',    color: '#92400E' },
+                { tipo: 'P'  as PickerType, label: 'PALLETS',       color: '#1E3A8A' },
+                { tipo: 'C'  as PickerType, label: 'CONTENEDORES',  color: '#6B21A8' },
+                { tipo: 'B'  as PickerType, label: 'BULTOS',        color: '#065F46' },
+                { tipo: 'CH' as PickerType, label: 'CHOCOLATES',    color: '#92400E' },
               ]).map(({ tipo, label, color }) => {
                 const count = palletsByTipo[tipo] ?? 0;
                 return (
-                  <div key={tipo} className="flex-1 flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl border transition-all"
+                  <div key={tipo} className="flex-1 flex flex-col items-center gap-2 py-3 px-1.5 rounded-2xl border-2 transition-all"
                     style={{
-                      borderColor: count > 0 ? color : 'rgba(26,37,80,0.12)',
-                      background: count > 0 ? `${color}0D` : 'transparent',
+                      borderColor: count > 0 ? color : 'rgba(26,37,80,0.09)',
+                      background: count > 0
+                        ? `linear-gradient(160deg, ${color}12 0%, ${color}06 100%)`
+                        : 'rgba(249,250,251,0.7)',
+                      boxShadow: count > 0
+                        ? `0 4px 14px ${color}22, inset 0 1px 0 rgba(255,255,255,0.8)`
+                        : '0 1px 3px rgba(0,0,0,0.04)',
                     }}>
-                    <div className="text-[10px] font-bold uppercase tracking-wide leading-tight text-center"
-                      style={{ color: count > 0 ? color : '#9CA3AF' }}>
-                      {tipo}<br/><span className="text-[9px] font-semibold normal-case tracking-normal">{label}</span>
+                    <div className="text-center leading-none">
+                      <div className="text-[14px] font-black leading-none"
+                        style={{ color: count > 0 ? color : '#CBD5E1' }}>{tipo}</div>
+                      <div className="text-[8px] font-black uppercase tracking-wide mt-0.5"
+                        style={{ color: count > 0 ? `${color}99` : '#CBD5E1' }}>{label}</div>
                     </div>
-                    <div className="flex items-center gap-1 w-full justify-center">
+                    <div className="flex items-center gap-1.5 w-full justify-center">
                       <button
                         onClick={() => onTipoPalletsChange(tipo, Math.max(0, count - 1))}
-                        className="w-7 h-7 rounded-full border font-bold text-[16px] flex items-center justify-center cursor-pointer transition-colors hover:bg-gray-100"
-                        style={{ borderColor: 'rgba(26,37,80,0.15)', color: '#6B7280' }}>−</button>
-                      <span className="w-7 text-center text-[22px] font-barlow-condensed font-bold leading-none"
+                        className="w-8 h-8 rounded-full font-bold text-[18px] flex items-center justify-center cursor-pointer transition-all active:scale-95"
+                        style={{
+                          border: '1.5px solid rgba(26,37,80,0.14)',
+                          color: '#6B7280',
+                          background: '#fff',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                        }}>−</button>
+                      <span className="w-8 text-center text-[26px] font-barlow-condensed font-black leading-none"
                         style={{ color: count > 0 ? color : '#D1D5DB' }}>{count}</span>
                       <button
                         onClick={() => onTipoPalletsChange(tipo, count + 1)}
-                        className="w-7 h-7 rounded-full border font-bold text-[16px] flex items-center justify-center cursor-pointer transition-colors"
-                        style={{ borderColor: color, color: color, background: `${color}15` }}>+</button>
+                        className="w-8 h-8 rounded-full font-bold text-[18px] flex items-center justify-center cursor-pointer transition-all active:scale-95"
+                        style={{
+                          border: `1.5px solid ${color}`,
+                          color: '#fff',
+                          background: color,
+                          boxShadow: `0 2px 8px ${color}50`,
+                        }}>+</button>
                     </div>
                   </div>
                 );
@@ -1253,45 +1270,63 @@ function SupervisorActivityPanel({
   if (list.length === 0) return null;
 
   return (
-    <div className="mx-4 mt-4 rounded-2xl overflow-hidden border border-[rgba(37,99,235,0.20)] print:hidden"
-      style={{ background: 'rgba(37,99,235,0.04)', boxShadow: '0 2px 12px rgba(37,99,235,0.07)' }}>
+    <div className="mx-4 mt-4 rounded-2xl overflow-hidden print:hidden"
+      style={{
+        background: 'linear-gradient(135deg, rgba(37,99,235,0.07) 0%, rgba(37,99,235,0.02) 100%)',
+        boxShadow: '0 4px 20px rgba(37,99,235,0.10), inset 0 1px 0 rgba(255,255,255,0.85)',
+        border: '1px solid rgba(37,99,235,0.18)',
+      }}>
       {/* Header */}
       <button
         type="button"
         onClick={() => setCollapsed(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-2.5 cursor-pointer border-none bg-transparent"
+        className="w-full flex items-center justify-between px-4 py-3 cursor-pointer border-none bg-transparent"
       >
-        <div className="flex items-center gap-2">
-          <span className="text-[13px]">👥</span>
-          <span className="font-barlow-condensed text-[14px] font-bold text-info tracking-wide">
-            {list.length === 1 ? '1 supervisor activo' : `${list.length} supervisores activos`}
-          </span>
-          <div className="flex gap-1 ml-1">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-[12px] flex items-center justify-center text-[22px] flex-shrink-0"
+            style={{
+              background: 'rgba(37,99,235,0.13)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 2px 6px rgba(37,99,235,0.18)',
+            }}>👥</div>
+          <div className="text-left">
+            <div className="text-[10px] font-black uppercase tracking-[1.5px] leading-none mb-0.5"
+              style={{ color: 'rgba(37,99,235,0.55)' }}>EN TURNO</div>
+            <div className="font-black text-[17px] leading-tight" style={{ color: '#1E3A8A' }}>
+              {list.length === 1 ? '1 Supervisor Activo' : `${list.length} Supervisores Activos`}
+            </div>
+          </div>
+          <div className="flex gap-1.5 ml-1 flex-wrap">
             {list.map(s => (
               <span key={s.userId}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                className="inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1 rounded-full"
+                style={{
+                  background: 'rgba(37,99,235,0.13)',
+                  color: '#1D4ED8',
+                  boxShadow: '0 1px 4px rgba(37,99,235,0.18)',
+                }}>
+                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0 inline-block"
+                  style={{ boxShadow: '0 0 0 3px rgba(34,197,94,0.25)' }} />
                 {s.name.split(' ')[0]}
               </span>
             ))}
           </div>
         </div>
-        <span className="text-[11px] text-text-3">{collapsed ? '▼' : '▲'}</span>
+        <span className="text-[15px] text-[#9CA3AF] ml-2">{collapsed ? '⌄' : '⌃'}</span>
       </button>
 
       {/* Body */}
       {!collapsed && (
         <div className="divide-y divide-[rgba(37,99,235,0.10)]">
           {list.map(sup => (
-            <div key={sup.userId} className="px-4 py-3">
+            <div key={sup.userId} className="px-4 py-3.5">
               {/* Supervisor header */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                  <span className="font-barlow-condensed text-[15px] font-bold text-navy">{sup.name}</span>
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"
+                    style={{ boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
+                  <span className="font-black text-[16px] text-navy">{sup.name}</span>
                 </div>
-                <span className="text-[11px] text-text-3">{relativeTime(sup.lastActive, now)}</span>
+                <span className="text-[11px] font-semibold text-text-3 bg-white/60 px-2 py-0.5 rounded-full">{relativeTime(sup.lastActive, now)}</span>
               </div>
 
               {/* Recent prints */}
@@ -2634,29 +2669,30 @@ export function PickingScreen() {
         ].join(' ')}>
 
           {/* ── Tab bar ── */}
-          <div className="flex items-end gap-1 px-4 pt-2 flex-shrink-0 print:hidden"
-            style={{ background: '#fff', borderBottom: '2px solid #F0F2F5' }}>
-            {([
-              { key: 'monitoreo',     label: 'Monitoreo',     icon: '📋' },
-              { key: 'historial',     label: 'Historial',     icon: '📜' },
-              { key: 'estadisticas',  label: 'Estadísticas',  icon: '📊' },
-              { key: 'configuracion', label: 'Configuración', icon: '⚙️' },
-            ] as { key: typeof rightTab; label: string; icon: string }[]).map(tab => {
-              const active = rightTab === tab.key;
-              return (
-                <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                  className="flex items-center gap-2 px-4 py-2.5 text-[14px] font-semibold cursor-pointer transition-all rounded-t-xl relative"
-                  style={{
-                    background: active ? 'rgba(217,119,6,0.07)' : 'transparent',
-                    color: active ? '#92400E' : '#6B7280',
-                    borderBottom: active ? '2px solid #D97706' : '2px solid transparent',
-                    marginBottom: -2,
-                  }}>
-                  <span>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+          <div className="px-4 py-2.5 flex-shrink-0 print:hidden"
+            style={{ background: '#fff', borderBottom: '1.5px solid #F0F2F5' }}>
+            <div className="flex gap-1 p-1 rounded-[14px]" style={{ background: '#F3F4F6' }}>
+              {([
+                { key: 'monitoreo',     label: 'MONITOREO',     icon: '🖥️' },
+                { key: 'historial',     label: 'HISTORIAL',     icon: '🕐' },
+                { key: 'estadisticas',  label: 'ESTADÍSTICAS',  icon: '📈' },
+                { key: 'configuracion', label: 'CONFIG',        icon: '⚙️' },
+              ] as { key: typeof rightTab; label: string; icon: string }[]).map(tab => {
+                const active = rightTab === tab.key;
+                return (
+                  <button key={tab.key} onClick={() => setRightTab(tab.key)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 text-[11px] font-black tracking-[0.5px] cursor-pointer transition-all rounded-[10px]"
+                    style={{
+                      background: active ? '#fff' : 'transparent',
+                      color: active ? '#D97706' : '#9CA3AF',
+                      boxShadow: active ? '0 1px 5px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04)' : 'none',
+                    }}>
+                    <span className="text-[15px]">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* ── Tab content: Estadísticas ── */}
