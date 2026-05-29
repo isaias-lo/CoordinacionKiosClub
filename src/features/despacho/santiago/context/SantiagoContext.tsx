@@ -149,10 +149,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       if (debounceRef.current !== null || isPushingRef.current) return;
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
-      // Reject remote data from a different day — prevents yesterday's items from appearing today
-      const rawPushedAt = (remoteState as { pushedAt?: number }).pushedAt;
-      if (!isTodayPush(rawPushedAt)) return;
+      // Reject data without an explicit sessionDate or from a different calendar day
+      const remoteSessionDate = (remoteState as { sessionDate?: string }).sessionDate;
+      if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
       // Reject remote data older than our last push — prevents a stale tab/device from overwriting fresh local data
+      const rawPushedAt = (remoteState as { pushedAt?: number }).pushedAt;
       if (typeof rawPushedAt === 'number' && rawPushedAt < lastPushTimestampRef.current) return;
 
       const remote = normalize(remoteState as SyncableState);
@@ -178,9 +179,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       .then((remote) => {
         isInitializedRef.current = true;
         if (!remote) return;
-        // Reject data from a previous day — prevents yesterday's items from loading today
-        const rawPushedAt = (remote as { pushedAt?: number }).pushedAt;
-        if (!isTodayPush(rawPushedAt)) return;
+        // Reject data without an explicit sessionDate or from a different calendar day
+        const remoteSessionDate = (remote as { sessionDate?: string }).sessionDate;
+        if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
         const s = normalize(remote as SyncableState);
         lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
         dispatch({ type: 'LOAD_STATE', payload: s });
@@ -219,7 +220,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       isPushingRef.current = true;
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
-      pushSessionState('santiago', { ...payload, pushedAt }, userId ?? undefined)
+      pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
@@ -246,7 +247,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushedRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionState('santiago', { ...payload, pushedAt }, userId ?? undefined)
+    pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
       .catch(() => { lastPushedRef.current = prevPushed; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
