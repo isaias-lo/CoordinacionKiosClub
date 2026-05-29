@@ -340,112 +340,110 @@ export default function ManualDispatch({
             <div
               key={v.p}
               data-dropzone={v.p}
-              className={`rounded-kios border-[1.5px] transition-all bg-white ${isOver ? 'border-kred shadow-[0_0_0_3px_rgba(212,43,43,0.15)]' : m.overCap ? 'border-amber-400' : 'border-black/[0.09]'}`}
+              className={`rounded-kios border-[1.5px] transition-all bg-white flex flex-col ${isOver ? 'border-kred shadow-[0_0_0_3px_rgba(212,43,43,0.15)]' : m.overCap ? 'border-amber-400' : 'border-black/[0.09]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
               onClick={() => { if (isSelected && dragging) ejecutarDrop(v.p, dragging); }}
             >
-              <div className="px-3 py-2.5 border-b border-black/[0.06] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-mono font-bold text-[15px] text-ktext">{v.p}</span>
-                  {v.tlbd      && <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full font-bold">2a vuelta</span>}
-                  {v.porton    && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">Portón</span>}
-                  {v.refrigerado && <span className="text-[10px] bg-cyan-50 text-cyan-600 px-1.5 py-0.5 rounded-full font-semibold">Frío</span>}
+              {/* ── Cabecera: patente + conductor ── */}
+              <div className="px-2.5 pt-2.5 pb-2 border-b border-black/[0.06]">
+                <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                  <span className="font-mono font-bold text-[15px] text-ktext leading-none">{v.p}</span>
+                  {v.tlbd      && <span className="text-[8px] bg-purple-50 text-purple-600 px-1 py-px rounded-full font-bold leading-none">2ª v.</span>}
+                  {v.porton    && <span className="text-[8px] bg-blue-50 text-blue-600 px-1 py-px rounded-full font-semibold leading-none">Portón</span>}
+                  {v.refrigerado && <span className="text-[8px] bg-cyan-50 text-cyan-600 px-1 py-px rounded-full font-semibold leading-none">Frío</span>}
                 </div>
-                <div className="text-right shrink min-w-0">
-                  {conductorEditando === v.p ? (
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="relative">
-                        <select
-                          autoFocus value={v.ch || ''}
-                          onChange={e => {
-                            if (e.target.value === '___nuevo___') { setNuevoConductor('__mostrar_input__'); }
-                            else { onConductorChange(realIdx, e.target.value); setConductorEditando(null); }
-                          }}
-                          onBlur={() => { if (nuevoConductor !== '__mostrar_input__') setConductorEditando(null); }}
-                          className="text-[12px] font-semibold text-kred bg-white border border-kred rounded px-2 py-1 min-w-[130px] appearance-none cursor-pointer"
-                        >
-                          <option value="">Sin conductor</option>
-                          {conductores.map(c => <option key={c} value={c}>{c}</option>)}
-                          <option value="___nuevo___">+ Agregar nuevo</option>
-                        </select>
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-kred pointer-events-none">▼</span>
-                      </div>
-                      {nuevoConductor === '__mostrar_input__' && (
-                        <input
-                          type="text" placeholder="Nombre del conductor" autoFocus
-                          onChange={e => setNuevoConductor(e.target.value)}
-                          onKeyDown={e => {
-                            const target = e.target as HTMLInputElement;
-                            if (e.key === 'Enter' && target.value.trim()) {
-                              onAgregarConductor(target.value.trim());
-                              onConductorChange(realIdx, target.value.trim());
-                              setConductorEditando(null);
-                              setNuevoConductor('');
-                            }
-                          }}
-                          onBlur={e => {
-                            if (nuevoConductor !== '__mostrar_input__' && e.target.value.trim()) {
-                              onAgregarConductor(e.target.value.trim());
-                              onConductorChange(realIdx, e.target.value.trim());
-                            }
+                {v.t && <div className="text-[9px] text-kmuted/50 mb-1.5 truncate">{v.t}</div>}
+                {conductorEditando === v.p ? (
+                  <div className="flex flex-col gap-1">
+                    <select
+                      autoFocus value={v.ch || ''}
+                      onChange={e => {
+                        if (e.target.value === '___nuevo___') { setNuevoConductor('__mostrar_input__'); }
+                        else { onConductorChange(realIdx, e.target.value); setConductorEditando(null); }
+                      }}
+                      onBlur={() => { if (nuevoConductor !== '__mostrar_input__') setConductorEditando(null); }}
+                      className="text-[11px] font-semibold text-kred bg-white border border-kred rounded px-2 py-1 w-full appearance-none cursor-pointer"
+                    >
+                      <option value="">Sin conductor</option>
+                      {conductores.map(c => <option key={c} value={c}>{c}</option>)}
+                      <option value="___nuevo___">+ Agregar nuevo</option>
+                    </select>
+                    {nuevoConductor === '__mostrar_input__' && (
+                      <input
+                        type="text" placeholder="Nombre conductor" autoFocus
+                        onChange={e => setNuevoConductor(e.target.value)}
+                        onKeyDown={e => {
+                          const target = e.target as HTMLInputElement;
+                          if (e.key === 'Enter' && target.value.trim()) {
+                            onAgregarConductor(target.value.trim());
+                            onConductorChange(realIdx, target.value.trim());
                             setConductorEditando(null);
                             setNuevoConductor('');
-                          }}
-                          className="text-[12px] border border-kred rounded px-2 py-1 w-[130px] mt-1"
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <div onClick={() => setConductorEditando(v.p)} className="text-[12px] font-semibold text-kmuted hover:text-kred cursor-pointer truncate max-w-[100px]">
+                          }
+                        }}
+                        onBlur={e => {
+                          if (nuevoConductor !== '__mostrar_input__' && e.target.value.trim()) {
+                            onAgregarConductor(e.target.value.trim());
+                            onConductorChange(realIdx, e.target.value.trim());
+                          }
+                          setConductorEditando(null);
+                          setNuevoConductor('');
+                        }}
+                        className="text-[11px] border border-kred rounded px-2 py-1 w-full"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConductorEditando(v.p)}
+                    className="flex items-center gap-1.5 w-full text-left group"
+                  >
+                    <span className="text-[10px] text-kmuted/40 shrink-0">👤</span>
+                    <span className="text-[11px] font-semibold text-kmuted group-hover:text-kred truncate transition-colors">
                       {v.ch || 'Sin conductor'}
-                    </div>
-                  )}
-                  <div className="text-[11px] text-kmuted/70 truncate max-w-[100px]">{v.t}</div>
-                </div>
+                    </span>
+                  </button>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 divide-x divide-black/[0.06] border-b border-black/[0.06]">
-                <div className="px-3 py-2.5">
-                  <div className="text-[10px] font-bold text-kmuted uppercase tracking-[0.5px] mb-1.5">Capacidad de carga</div>
-                  <div className="flex items-end gap-1 mb-1.5">
-                    <span className={`text-[22px] font-bold leading-none ${m.overCap ? 'text-red-500' : 'text-ktext'}`}>{m.tp}</span>
-                    <span className="text-[13px] text-kmuted mb-0.5">/ {v.c} pallets</span>
+              {/* ── Métricas: carga + km ── */}
+              <div className="px-2.5 py-2 border-b border-black/[0.06] space-y-2">
+                {/* Capacidad */}
+                <div>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className={`text-[16px] font-bold leading-none ${m.overCap ? 'text-red-500' : 'text-ktext'}`}>{m.tp}</span>
+                      <span className="text-[10px] text-kmuted">/ {v.c} p</span>
+                    </div>
+                    <span className={`text-[11px] font-bold ${m.overCap ? 'text-red-500' : m.pct > 0.85 ? 'text-amber-500' : 'text-green-600'}`}>
+                      {Math.round(m.pct * 100)}%{m.overCap && ' ⚠'}
+                    </span>
                   </div>
-                  <div className="h-[7px] bg-kbg rounded-full overflow-hidden mb-1">
+                  <div className="h-[5px] bg-kbg rounded-full overflow-hidden mb-1">
                     <div className={`h-full rounded-full transition-all duration-300 ${pctColor}`} style={{ width: `${Math.min(m.pct * 100, 100)}%` }} />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[12px] font-bold ${m.overCap ? 'text-red-500' : m.pct > 0.85 ? 'text-amber-500' : 'text-green-600'}`}>
-                      {Math.round(m.pct * 100)}%{m.overCap && ' ⚠ Excede'}
-                    </span>
-                    <span className="text-[11px] text-kmuted">{m.tb}b</span>
-                  </div>
+                  {m.tb > 0 && <div className="text-[9px] text-kmuted">{m.tb} bulto{m.tb !== 1 ? 's' : ''}</div>}
                 </div>
-                <div className="px-3 py-2.5">
-                  <div className="text-[10px] font-bold text-kmuted uppercase tracking-[0.5px] mb-1.5">Ruta estimada</div>
+                {/* KM estimado */}
+                <div className="flex items-baseline gap-1">
                   {m.kmEst > 0 ? (
                     <>
-                      <div className="flex items-end gap-1 mb-1">
-                        <span className="text-[22px] font-bold leading-none text-ktext">{m.kmEst}</span>
-                        <span className="text-[13px] text-kmuted mb-0.5">km</span>
-                      </div>
-                      <div className="text-[11px] text-kmuted">CD → {stores.length} tienda{stores.length !== 1 ? 's' : ''} → CD</div>
+                      <span className="text-[14px] font-bold text-ktext leading-none">~{m.kmEst}</span>
+                      <span className="text-[10px] text-kmuted">km · {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
                     </>
                   ) : (
-                    <div className="flex flex-col gap-1 mt-1">
-                      <span className="text-[18px] font-bold text-kmuted/30">— km</span>
-                      <span className="text-[11px] text-kmuted/50 italic">Sin tiendas asignadas</span>
-                    </div>
+                    <span className="text-[10px] text-kmuted/40 italic">Sin tiendas aún</span>
                   )}
                 </div>
               </div>
 
-              <div className="px-3 pb-3 pt-2 flex flex-wrap gap-[5px] min-h-[44px]">
+              {/* ── Tiendas asignadas ── */}
+              <div className="px-2.5 pb-2.5 pt-2 flex flex-wrap gap-[4px] min-h-[40px] flex-1">
                 {stores.length === 0 ? (
-                  <span className={`text-[11px] italic transition-colors ${isOver ? 'text-kred/70' : 'text-kmuted/50'}`}>
-                    {isOver || isSelected ? '↓ Suelta aquí' : 'Arrastra tiendas o paradas aquí'}
+                  <span className={`text-[10px] italic transition-colors ${isOver ? 'text-kred/70' : 'text-kmuted/40'}`}>
+                    {isOver || isSelected ? '↓ Suelta aquí' : 'Arrastra aquí'}
                   </span>
                 ) : (
                   stores.map(t => {
@@ -453,7 +451,8 @@ export default function ManualDispatch({
                     return parada ? (
                       <ParadaTagComp
                         key={t.c} parada={parada}
-                        isDragging={dragging?.c === t.c}                        onDragStart={e => handleDragStart(e, t, v.p)}
+                        isDragging={dragging?.c === t.c}
+                        onDragStart={e => handleDragStart(e, t, v.p)}
                         onDragEnd={handleDragEnd}
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
                         onRemove={() => removeStore(v.p, t.c)}
@@ -461,7 +460,8 @@ export default function ManualDispatch({
                     ) : (
                       <StoreTagComp
                         key={t.c} store={t} tiendas={tiendas}
-                        isDragging={dragging?.c === t.c}                        onDragStart={e => handleDragStart(e, t, v.p)}
+                        isDragging={dragging?.c === t.c}
+                        onDragStart={e => handleDragStart(e, t, v.p)}
                         onDragEnd={handleDragEnd}
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
                         onRemove={() => removeStore(v.p, t.c)}
