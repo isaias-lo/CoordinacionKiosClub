@@ -2070,6 +2070,7 @@ export function AuditoriaScreen() {
   const [crossDeviceRestored, setCrossDeviceRestored] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const palletsInputRef = useRef<HTMLInputElement>(null);
+  const tieneErroresRef = useRef<HTMLDivElement>(null);
   const pendingScanRef  = useRef<OperacionEntry[] | null>(null);
   const [palletIdInput,   setPalletIdInput]   = useState('');
   const [palletIdLoading, setPalletIdLoading] = useState(false);
@@ -2676,9 +2677,9 @@ export function AuditoriaScreen() {
     if (!auditor.trim()) { showToast('Ingresa el nombre del auditor', '#D97706'); return; }
     if (!tienda) { showToast('Selecciona una tienda', '#D97706'); return; }
     if (operaciones.some(op => !op.codigo.trim())) { showToast('Completa todas las operaciones', '#D97706'); return; }
-    if (!pallets || parseInt(pallets) <= 0) { showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
-    if (tieneErrores === null) { showToast('¿Tuvo errores? — indica Sí o No', '#D97706'); return; }
-    if (tieneErrores && tiposError.length === 0) { showToast('Selecciona el tipo de error', '#D97706'); return; }
+    if (!pallets || parseInt(pallets) <= 0) { palletsInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('Ingresa la cantidad de pallets', '#D97706'); return; }
+    if (tieneErrores === null) { tieneErroresRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('¿Tuvo errores? — indica Sí o No', '#D97706'); return; }
+    if (tieneErrores && tiposError.length === 0) { tieneErroresRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast('Selecciona el tipo de error', '#D97706'); return; }
     setConfirmSubmit(true);
   };
 
@@ -3502,7 +3503,7 @@ export function AuditoriaScreen() {
 
                 {/* ¿Tuvo errores? */}
                 <SLabel>¿Tuvo errores?</SLabel>
-                <div className={`grid grid-cols-2 gap-3 rounded-xl transition-all ${submitAttempted && tieneErrores === null ? 'ring-2 ring-offset-1 ring-red/60 p-1' : ''}`}>
+                <div ref={tieneErroresRef} className={`grid grid-cols-2 gap-3 rounded-xl transition-all ${submitAttempted && tieneErrores === null ? 'ring-2 ring-offset-1 ring-red/60 p-1' : ''}`}>
                   <button onClick={() => { setTieneErrores(false); setSubmitAttempted(false); }} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === false ? 'bg-[rgba(22,163,74,0.12)] border-success text-success' : 'bg-white border-border text-text-2'}`} style={tieneErrores === false ? { boxShadow: '0 4px 16px rgba(22,163,74,0.20)' } : {}}>✓ No</button>
                   <button onClick={() => { setTieneErrores(true); setSubmitAttempted(false); }} className={`py-4 rounded-card border-2 font-barlow-condensed text-[20px] font-bold cursor-pointer transition-all ${tieneErrores === true ? 'bg-[rgba(211,47,47,0.12)] border-red text-red' : 'bg-white border-border text-text-2'}`} style={tieneErrores === true ? { boxShadow: '0 4px 16px rgba(211,47,47,0.20)' } : {}}>✗ Sí</button>
                 </div>
@@ -3755,13 +3756,13 @@ export function AuditoriaScreen() {
                   </label>
                 </div>
 
-                <button onClick={handleSubmitClick} disabled={!canSubmit || submitting}
-                  className="w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:scale-[0.99]"
+                <button onClick={handleSubmitClick} disabled={submitting}
+                  className={`w-full mt-4 py-4 bg-navy text-white border-none rounded-card font-barlow-condensed text-[22px] font-bold tracking-wide cursor-pointer transition-all active:scale-[0.99] ${(!canSubmit || submitting) ? 'opacity-30' : ''}`}
                   style={{ background: canSubmit && !submitting ? 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)' : undefined, boxShadow: canSubmit && !submitting ? '0 6px 24px rgba(26,37,80,0.40)' : 'none' }}>
                   {submitting ? `⏳ ${uploadProgress || 'Guardando…'}` : '✓ Registrar auditoría'}
                 </button>
                 {!canSubmit && !submitting && (
-                  <div className="mt-2 text-center text-[11px] text-text-3 font-semibold">
+                  <div className="mt-2 text-center text-[12px] text-red font-bold">
                     {(!pallets || parseInt(pallets) <= 0) ? '↑ Ingresa el número de pallets auditados'
                     : tieneErrores === null ? '↑ Indica si el pallet tuvo errores'
                     : (tieneErrores && tiposError.length === 0) ? '↑ Selecciona el tipo de error'
