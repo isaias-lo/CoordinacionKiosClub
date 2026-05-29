@@ -37,7 +37,9 @@ function loadState(): SantiagoState {
   try {
     const raw = localStorage.getItem(SANTIAGO_KEY);
     if (!raw) return defaultState;
-    const s = JSON.parse(raw) as SantiagoState;
+    const s = JSON.parse(raw) as SantiagoState & { _savedAt?: number };
+    // Reject if the saved state has no timestamp or was written on a different day
+    if (!isTodayPush(s._savedAt)) return defaultState;
     s.step = 'regimen'; // always start at regime selection on fresh load; user must confirm
     return s;
   } catch {
@@ -220,7 +222,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       pushSessionState('santiago', { ...payload, pushedAt }, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; });
-      try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(state)); } catch {}
+      try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
     }, 800);
 
     return () => {
@@ -228,7 +230,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
         // Flush synchronously on unmount so navigating away doesn't lose data
-        try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(stateRef.current)); } catch {}
+        try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
       }
     };
   }, [state.step, state.regimen, state.items, state]);
@@ -246,7 +248,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('santiago', { ...payload, pushedAt }, userId ?? undefined)
       .catch(() => { lastPushedRef.current = prevPushed; });
-    try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify(stateRef.current)); } catch {}
+    try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
 
   return (
