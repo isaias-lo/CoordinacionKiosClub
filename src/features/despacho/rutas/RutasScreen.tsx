@@ -461,13 +461,13 @@ export default function RutasScreen() {
   // ── Sync calT → manual text ───────────────────────────────────────
   useEffect(() => {
     if (modo !== 'man') return;
-    const stores = Object.keys(calT || {}).filter(cod => {
-      const grupo = calT[cod]?.g;
+    const stores = Object.keys(sortedCalT).filter(cod => {
+      const grupo = sortedCalT[cod]?.g;
       return grupo === 'rm' || grupo === 'costa' || grupo === 'fal';
     });
     if (stores.length === 0) return;
     const newText = stores.map(cod => {
-      const data = calT[cod];
+      const data = sortedCalT[cod];
       const p = data.p ? `${data.p}P` : '';
       const b = data.b ? `${data.b}B` : '';
       const counts = [p, b].filter(Boolean).join(' ');
@@ -475,7 +475,7 @@ export default function RutasScreen() {
     }).join('\n');
     if (manualText !== newText) setManualTextRef.current(newText);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calT, modo]);
+  }, [sortedCalT, modo]);
 
   // ── Init calT from calendar when empty ───────────────────────────
   useEffect(() => {
