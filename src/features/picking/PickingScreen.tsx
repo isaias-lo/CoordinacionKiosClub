@@ -2303,12 +2303,11 @@ export function PickingScreen() {
     return subscribeToCalendarChanges(applyCalendar);
   }, [applyCalendar]);
 
-  // Si hay tiendas seleccionadas al restaurar sesión, mostrar planilla y re-cargar ops faltantes
+  // Si hay tiendas seleccionadas al restaurar sesión, mostrar planilla y siempre recargar ops frescos
   useEffect(() => {
     if (selectedCods.length > 0) {
       setPanelView('planilla');
-      // Re-fetch ops for stores that are selected but have no opsMap data (SESSION_KEY bump)
-      selectedCods.forEach(cod => { if (!opsMap[cod]) void fetchOpsForStore(cod); });
+      selectedCods.forEach(cod => void fetchOpsForStore(cod));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
