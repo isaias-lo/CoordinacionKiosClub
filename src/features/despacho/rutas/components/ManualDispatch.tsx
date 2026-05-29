@@ -328,7 +328,8 @@ export default function ManualDispatch({
           No hay vehículos activos.
         </div>
       ) : (
-        flotaDisp.map((v) => {
+        <div className="grid grid-cols-2 gap-3">
+        {flotaDisp.map((v) => {
           const realIdx = flota.findIndex(fv => fv.p === v.p);
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
@@ -352,7 +353,7 @@ export default function ManualDispatch({
                   {v.porton    && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">Portón</span>}
                   {v.refrigerado && <span className="text-[10px] bg-cyan-50 text-cyan-600 px-1.5 py-0.5 rounded-full font-semibold">Frío</span>}
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink min-w-0">
                   {conductorEditando === v.p ? (
                     <div className="flex flex-col items-end gap-1">
                       <div className="relative">
@@ -397,11 +398,11 @@ export default function ManualDispatch({
                       )}
                     </div>
                   ) : (
-                    <div onClick={() => setConductorEditando(v.p)} className="text-[12px] font-semibold text-kmuted hover:text-kred cursor-pointer">
+                    <div onClick={() => setConductorEditando(v.p)} className="text-[12px] font-semibold text-kmuted hover:text-kred cursor-pointer truncate max-w-[100px]">
                       {v.ch || 'Sin conductor'}
                     </div>
                   )}
-                  <div className="text-[11px] text-kmuted/70">{v.t}</div>
+                  <div className="text-[11px] text-kmuted/70 truncate max-w-[100px]">{v.t}</div>
                 </div>
               </div>
 
@@ -471,7 +472,8 @@ export default function ManualDispatch({
               </div>
             </div>
           );
-        })
+        })}
+        </div>
       )}
 
       {issues.length > 0 && (
