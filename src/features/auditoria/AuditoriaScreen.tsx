@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, LayoutDashboard, Trophy, History, Users, UserCheck, SlidersHorizontal, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, LayoutDashboard, Trophy, History, Users, UserCheck, SlidersHorizontal, RefreshCw, Radio } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -2004,6 +2004,163 @@ async function processPhoto(file: File, maxDim = 1280, quality = 0.80): Promise<
   });
 }
 
+/* ────────────────────────────────────────
+   LIVE AUDITS PANEL (admin-auditoria)
+   Muestra todas las sesiones activas en tiempo real vía Realtime
+──────────────────────────────────────── */
+type LiveSession = { user_id: string; session_data: Record<string, unknown>; updated_at: string };
+
+function LiveAuditsPanel({ onBack, allStores }: { onBack: () => void; allStores: TiendaRef[] }) {
+  const [sessions, setSessions] = useState<LiveSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [, setTick] = useState(0); // fuerza re-render cada segundo para actualizar timers
+
+  // Cargar sesiones iniciales
+  useEffect(() => {
+    supabase.from('audit_active_sessions').select('user_id,session_data,updated_at')
+      .then(({ data }) => {
+        if (data) setSessions(data as LiveSession[]);
+        setLoading(false);
+      });
+  }, []);
+
+  // Suscripción Realtime para actualizaciones en tiempo real
+  useEffect(() => {
+    const ch = supabase
+      .channel('live_audits_admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_active_sessions' },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            setSessions(prev => prev.filter(s => s.user_id !== (payload.old as LiveSession).user_id));
+          } else {
+            const row = payload.new as LiveSession;
+            const sd = row.session_data as Record<string, unknown>;
+            if (sd?.formPhase !== 'execution' && sd?.formPhase !== 'setup') {
+              setSessions(prev => prev.filter(s => s.user_id !== row.user_id));
+            } else {
+              setSessions(prev => {
+                const existing = prev.findIndex(s => s.user_id === row.user_id);
+                if (existing >= 0) { const next = [...prev]; next[existing] = row; return next; }
+                return [...prev, row];
+              });
+            }
+          }
+        })
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, []);
+
+  // Timer: re-render cada segundo para actualizar tiempos
+  useEffect(() => {
+    const t = setInterval(() => setTick(v => v + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const active = sessions.filter(s => {
+    const sd = s.session_data as Record<string, unknown>;
+    return sd?.formPhase === 'execution' || sd?.formPhase === 'setup';
+  });
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-white border-b border-border" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
+        <button onClick={onBack} className="border-none bg-transparent cursor-pointer text-navy p-1 rounded-btn active:bg-bg">
+          <ChevronLeft size={22} />
+        </button>
+        <div className="flex items-center gap-2 flex-1">
+          <span className="text-[18px]">🔴</span>
+          <span className="font-barlow-condensed text-[20px] font-bold text-navy">En Vivo</span>
+          {!loading && (
+            <span className={`ml-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${active.length > 0 ? 'bg-[rgba(239,68,68,0.12)] text-red' : 'bg-bg text-text-3'}`}>
+              {active.length} activa{active.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <div className="text-[10px] text-text-3 font-semibold">Actualización automática</div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {loading && (
+          <div className="flex items-center justify-center py-16 gap-3 text-text-3">
+            <div className="w-4 h-4 border-2 border-text-3/30 border-t-text-3 rounded-full animate-spin" />
+            <span className="text-[13px]">Cargando sesiones…</span>
+          </div>
+        )}
+        {!loading && active.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 gap-2 text-text-3">
+            <span className="text-[40px]">🟢</span>
+            <span className="text-[15px] font-semibold">Sin auditorías activas ahora mismo</span>
+            <span className="text-[12px]">Esta vista se actualiza en tiempo real</span>
+          </div>
+        )}
+        {active.map(session => {
+          const sd = session.session_data as Record<string, unknown>;
+          const tienda = allStores.find(t => t.cod === sd.tiendaCod);
+          const elapsed = sd.auditStartTime ? Math.floor((Date.now() - new Date(sd.auditStartTime as string).getTime()) / 1000) : 0;
+          const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+          const ss = String(elapsed % 60).padStart(2, '0');
+          const isExec = sd.formPhase === 'execution';
+          const pallets = sd.pallets as string | undefined;
+          const tieneErrores = sd.tieneErrores as boolean | null | undefined;
+          const tipo = (sd.tipo as string ?? '').toUpperCase();
+          return (
+            <div key={session.user_id} className="bg-white rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.08)' }}>
+              {/* Header de tarjeta */}
+              <div className="px-4 py-3 flex items-center gap-3" style={{ background: isExec ? 'linear-gradient(135deg,rgba(22,163,74,0.08),rgba(22,163,74,0.03))' : 'linear-gradient(135deg,rgba(217,119,6,0.08),rgba(217,119,6,0.03))' }}>
+                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isExec ? 'bg-success animate-pulse' : 'bg-warn animate-pulse'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-barlow-condensed text-[16px] font-bold text-navy truncate">{(sd.auditor as string) || 'Auditor desconocido'}</div>
+                  <div className="text-[11px] text-text-3">{isExec ? 'En ejecución' : 'Configurando'}</div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="font-barlow-condensed text-[22px] font-black text-navy">{mm}:{ss}</div>
+                  <div className="text-[10px] text-text-3">tiempo</div>
+                </div>
+              </div>
+              {/* Datos */}
+              <div className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                <div>
+                  <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Tienda</div>
+                  <div className="font-semibold text-text truncate">{tienda?.nombre ?? (sd.tiendaCod as string) ?? '—'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Tipo</div>
+                  <div className="font-semibold text-text">{tipo || '—'}</div>
+                </div>
+                {(sd.pickerNombre as string) && (
+                  <div>
+                    <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Picker</div>
+                    <div className="font-semibold text-text truncate">{sd.pickerNombre as string}</div>
+                  </div>
+                )}
+                {pallets && (
+                  <div>
+                    <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Pallets</div>
+                    <div className="font-semibold text-text">{pallets}</div>
+                  </div>
+                )}
+                {isExec && tieneErrores !== undefined && tieneErrores !== null && (
+                  <div className="col-span-2">
+                    <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Resultado preliminar</div>
+                    <div className={`inline-block font-bold text-[12px] px-2 py-0.5 rounded-full ${tieneErrores ? 'bg-[rgba(211,47,47,0.12)] text-red' : 'bg-[rgba(22,163,74,0.12)] text-success'}`}>
+                      {tieneErrores ? '✗ MALO' : '✓ BUENO'}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Footer timestamp */}
+              <div className="px-4 pb-2.5 text-[10px] text-text-3">
+                Última actualización: {new Date(session.updated_at).toLocaleTimeString('es-CL')}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════
    MAIN SCREEN
 ════════════════════════════════════════ */
@@ -2029,6 +2186,7 @@ export function AuditoriaScreen() {
   const [reauditoriaOrigen, setReauditoriaOrigen] = useState<AuditEntry | null>(null);
   const [showSecondScan,    setShowSecondScan]    = useState(false);
   const [firstScanDone,     setFirstScanDone]     = useState(false);
+  const [remoteSession,     setRemoteSession]     = useState<Record<string, unknown> | null>(null);
   const [tipoLocked,        setTipoLocked]        = useState(false);
   const firstScanRef = useRef<{ tipo: TipoAuditoria; operaciones: OperacionEntry[]; tienda: TiendaRef | null; picker: string; pickerNombre: string } | null>(null);
 
@@ -2037,7 +2195,7 @@ export function AuditoriaScreen() {
   const tiendaRef = useRef<HTMLDivElement>(null);
 
   const odooConfig = useMemo(() => getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' }, []);
-  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision' | 'config' | 'produccion'>('form');
+  const [view, setView] = useState<'hub' | 'form' | 'history' | 'ranking' | 'dashboard' | 'stats' | 'revision' | 'config' | 'produccion' | 'live'>('form');
   const [viewInit,       setViewInit]       = useState(false);
   const [history,        setHistory]        = useState<AuditEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -2282,6 +2440,24 @@ export function AuditoriaScreen() {
     document.addEventListener('visibilitychange', onHide);
     return () => document.removeEventListener('visibilitychange', onHide);
   }, [saveSession]);
+
+  // Realtime: escucha cambios en la sesión del mismo usuario desde otro dispositivo.
+  // Solo activo cuando no hay auditoría local (formPhase='scan').
+  useEffect(() => {
+    if (!user?.id || formPhase !== 'scan') { setRemoteSession(null); return; }
+    const ch = supabase
+      .channel(`audit_session_${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_active_sessions', filter: `user_id=eq.${user.id}` },
+        payload => {
+          if (payload.eventType === 'DELETE') { setRemoteSession(null); return; }
+          const row = (payload.new ?? {}) as Record<string, unknown>;
+          const sd = row.session_data as Record<string, unknown> | null;
+          if (sd?.formPhase === 'execution' || sd?.formPhase === 'setup') setRemoteSession(sd);
+          else setRemoteSession(null);
+        })
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [user?.id, formPhase]);
 
   // Warn before navigating away while audit is in progress
   useEffect(() => {
@@ -2889,6 +3065,7 @@ export function AuditoriaScreen() {
   if (isAdminAud && view === 'hub') {
     const hubCards = [
       { Icon: ClipboardPlus,   title: 'Agregar Audición',   sub: 'Registrar nueva auditoría de pallet',    fn: () => setView('form'),               border: 'rgba(34,197,94,0.55)',  bg: 'rgba(34,197,94,0.18)',  shadow: 'rgba(34,197,94,0.22)' },
+      { Icon: Radio,           title: 'En Vivo',            sub: 'Auditorías activas ahora mismo',         fn: () => setView('live'),               border: 'rgba(239,68,68,0.55)',  bg: 'rgba(239,68,68,0.18)',  shadow: 'rgba(239,68,68,0.22)' },
       { Icon: BarChart3,       title: 'Estadísticas',        sub: 'Dashboard del día · Ranking de Pickers', fn: () => setView('stats'),              border: 'rgba(37,99,235,0.55)',  bg: 'rgba(37,99,235,0.18)',  shadow: 'rgba(37,99,235,0.22)' },
       { Icon: PackageOpen,     title: 'Producción diaria',   sub: 'Registrar pallets producidos por picker',fn: () => setView('produccion'),          border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.16)', shadow: 'rgba(245,158,11,0.20)' },
       { Icon: Search,           title: 'Revisión Auditoría',  sub: 'Lista · Fotos · Estadísticas',           fn: () => router.push('/auditoria-admin'),border: 'rgba(124,58,237,0.55)', bg: 'rgba(124,58,237,0.18)', shadow: 'rgba(124,58,237,0.22)' },
@@ -3035,6 +3212,11 @@ export function AuditoriaScreen() {
     );
   }
 
+  /* ── Live view (admin-auditoria: auditorías activas en tiempo real) ── */
+  if (isAdminAud && view === 'live') {
+    return <LiveAuditsPanel onBack={() => setView('hub')} allStores={TODAS_LAS_TIENDAS} />;
+  }
+
   /* ════ FORM RENDER (all roles) ════ */
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
@@ -3149,6 +3331,70 @@ export function AuditoriaScreen() {
                 </div>
               </div>
             )}
+
+            {/* Banner: sesión activa en otro dispositivo (mismo usuario) */}
+            {formPhase === 'scan' && remoteSession && (() => {
+              const rs = remoteSession;
+              const tiendaNombre = (TODAS_LAS_TIENDAS.find(t => t.cod === rs.tiendaCod)?.nombre ?? rs.tiendaCod ?? '—') as string;
+              const elapsed = rs.auditStartTime ? Math.floor((Date.now() - new Date(rs.auditStartTime as string).getTime()) / 1000) : 0;
+              const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+              const ss = String(elapsed % 60).padStart(2, '0');
+              return (
+                <div className="mt-4 rounded-2xl overflow-hidden border-2 border-warn" style={{ boxShadow: '0 4px 20px rgba(217,119,6,0.22)' }}>
+                  <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg,rgba(217,119,6,0.14),rgba(217,119,6,0.06))' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[18px] animate-pulse">🔴</span>
+                      <span className="font-barlow-condensed text-[15px] font-bold text-warn uppercase tracking-wide">Auditoría activa en otro dispositivo</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] mb-3">
+                      <span className="text-text-3">Tienda</span><span className="font-bold text-text">{tiendaNombre}</span>
+                      <span className="text-text-3">Auditor</span><span className="font-bold text-text">{(rs.auditor as string) || '—'}</span>
+                      <span className="text-text-3">Tipo</span><span className="font-bold text-text">{((rs.tipo as string) ?? '—').toUpperCase()}</span>
+                      <span className="text-text-3">Tiempo</span><span className="font-bold text-navy">{mm}:{ss}</span>
+                      {rs.pallets ? <><span className="text-text-3">Pallets</span><span className="font-bold text-text">{rs.pallets as string}</span></> : null}
+                      <span className="text-text-3">Fase</span><span className={`font-bold ${rs.formPhase === 'execution' ? 'text-success' : 'text-warn'}`}>{rs.formPhase === 'execution' ? 'En ejecución' : 'Configurando'}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const s = remoteSession;
+                        setRemoteSession(null);
+                        // Aplicar la sesión remota en este dispositivo
+                        const tiendaObj = TODAS_LAS_TIENDAS.find(t => t.cod === s.tiendaCod) ?? null;
+                        if (s.auditor)       setAuditor(s.auditor as string);
+                        if (s.pickerNombre)  setPickerNombre(s.pickerNombre as string);
+                        if (s.picker)        setPicker(s.picker as string);
+                        if (tiendaObj)       setTienda(tiendaObj);
+                        if (s.tipo)          setTipo(s.tipo as TipoAuditoria);
+                        if (s.tipoLocked)    setTipoLocked(true);
+                        if (Array.isArray(s.operaciones) && s.operaciones.length) { pendingScanRef.current = s.operaciones as OperacionEntry[]; }
+                        if (s.pallets)       setPallets(s.pallets as string);
+                        if (s.tieneErrores !== undefined) setTieneErrores((s.tieneErrores ?? null) as boolean | null);
+                        if (Array.isArray(s.tiposError) && s.tiposError.length) setTiposError(s.tiposError as TipoError[]);
+                        if (s.draftEntryId)  draftEntryIdRef.current = s.draftEntryId as string;
+                        if (s.formPhase === 'execution' && s.auditStartTime) {
+                          auditStartTimeRef.current = s.auditStartTime as string;
+                          setAuditStartTime(s.auditStartTime as string);
+                          const el = Math.floor((Date.now() - new Date(s.auditStartTime as string).getTime()) / 1000);
+                          setTimerSeconds(Math.max(0, el));
+                          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+                          timerIntervalRef.current = setInterval(() => {
+                            const e = Math.floor((Date.now() - new Date(auditStartTimeRef.current).getTime()) / 1000);
+                            setTimerSeconds(Math.max(0, e));
+                          }, 1000);
+                          setFormPhase('execution');
+                        } else {
+                          setFormPhase('setup');
+                        }
+                        setCrossDeviceRestored(true);
+                      }}
+                      className="w-full py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer transition-all active:scale-[0.98]"
+                      style={{ background: 'linear-gradient(135deg,#b45309,#d97706)', boxShadow: '0 4px 12px rgba(217,119,6,0.40)' }}>
+                      📲 Continuar aquí
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ══ FASE 1: ESCÁNER ══ */}
             {formPhase === 'scan' && (
