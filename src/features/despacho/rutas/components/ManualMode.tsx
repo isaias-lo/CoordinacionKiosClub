@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface CalData { on: boolean; p: number; b: number; g?: string; }
 
@@ -11,12 +11,22 @@ interface Props {
 }
 
 export default function ManualMode({ value, onChange, calT, modo }: Props) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const stores = Object.keys(calT || {})
     .filter(cod => {
       const grupo = calT[cod]?.g;
       return grupo === 'rm' || grupo === 'costa';
     })
     .sort();
+
+  // Auto-resize to content so the full list is always visible
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   useEffect(() => {
     if (modo !== 'man') return;
@@ -35,10 +45,12 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
   return (
     <div>
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={"LP: 3P 2B\nMQH: 1P 2B\nTRE: 5P"}
-        className="w-full min-h-[120px] px-3 py-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 resize-y text-[13px] font-mono text-ktext leading-[1.7] transition-colors focus:border-kred focus:outline-none"
+        rows={Math.max(6, (value.match(/\n/g) || []).length + 2)}
+        className="w-full min-h-[160px] px-3 py-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 resize-none overflow-hidden text-[13px] font-mono text-ktext leading-[1.8] transition-colors focus:border-kred focus:outline-none"
       />
       <div className="text-[11px] text-kmuted mt-1.5 leading-relaxed space-y-0.5">
         <div>Una tienda por línea: <code className="font-mono bg-kbg px-1 py-px rounded text-kred">CÓDIGO  Pallets P  Bultos B</code></div>
