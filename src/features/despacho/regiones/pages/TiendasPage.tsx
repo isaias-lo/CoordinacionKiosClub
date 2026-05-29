@@ -276,34 +276,43 @@ export function TiendasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── Resizable left panel ── */
+  /* ── Resizable panels (left + right, center takes flex-1) ── */
   const [leftWidth, setLeftWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return 280;
     return parseInt(localStorage.getItem('regiones_left_panel_width') || '280', 10);
   });
+  const [rightWidth, setRightWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return 300;
+    return parseInt(localStorage.getItem('regiones_right_panel_width') || '300', 10);
+  });
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== 'undefined' && window.innerWidth >= 1024
   );
-  const isResizingRef   = useRef(false);
-  const dragStartXRef   = useRef(0);
-  const dragStartWRef   = useRef(0);
+  const resizingPanelRef = useRef<'left' | 'right' | null>(null);
+  const dragStartXRef    = useRef(0);
+  const dragStartWRef    = useRef(0);
   useEffect(() => {
     const onMove = (x: number) => {
-      if (!isResizingRef.current) return;
+      if (!resizingPanelRef.current) return;
       const delta = x - dragStartXRef.current;
-      const next  = Math.min(480, Math.max(180, dragStartWRef.current + delta));
-      setLeftWidth(next);
+      if (resizingPanelRef.current === 'left') {
+        setLeftWidth(Math.min(480, Math.max(180, dragStartWRef.current + delta)));
+      } else {
+        setRightWidth(Math.min(480, Math.max(180, dragStartWRef.current - delta)));
+      }
     };
     const onUp = () => {
-      if (!isResizingRef.current) return;
-      isResizingRef.current = false;
+      if (!resizingPanelRef.current) return;
+      const panel = resizingPanelRef.current;
+      resizingPanelRef.current = null;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      setLeftWidth(w => { localStorage.setItem('regiones_left_panel_width', String(w)); return w; });
+      if (panel === 'left')  setLeftWidth(w  => { localStorage.setItem('regiones_left_panel_width',  String(w)); return w; });
+      if (panel === 'right') setRightWidth(w => { localStorage.setItem('regiones_right_panel_width', String(w)); return w; });
     };
-    const onMouseMove  = (e: MouseEvent)  => onMove(e.clientX);
-    const onTouchMove  = (e: TouchEvent)  => onMove(e.touches[0].clientX);
-    const onResize     = () => setIsDesktop(window.innerWidth >= 1024);
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
+    const onTouchMove = (e: TouchEvent) => onMove(e.touches[0].clientX);
+    const onResize    = () => setIsDesktop(window.innerWidth >= 1024);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup',   onUp);
     document.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -1511,13 +1520,13 @@ export function TiendasPage() {
         </div>
       </div>
 
-      {/* Resize divider — desktop only */}
+      {/* Divider: Left ↔ Center — desktop only */}
       {isDesktop && (
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
           style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
-          onMouseDown={e => { isResizingRef.current = true; dragStartXRef.current = e.clientX; dragStartWRef.current = leftWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
-          onTouchStart={e => { isResizingRef.current = true; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = leftWidth; }}
+          onMouseDown={e => { resizingPanelRef.current = 'left'; dragStartXRef.current = e.clientX; dragStartWRef.current = leftWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
+          onTouchStart={e => { resizingPanelRef.current = 'left'; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = leftWidth; }}
         >
           <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -1527,7 +1536,7 @@ export function TiendasPage() {
       )}
 
       {/* CENTER PANEL — formulario (desktop only) */}
-      <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative lg:border-r-2 lg:border-border">
+      <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
             ? renderForm(false)
@@ -1586,8 +1595,24 @@ export function TiendasPage() {
           onCancel={() => setConfirmRemoveName(null)} />
       )}
 
+      {/* Divider: Center ↔ Right — desktop only */}
+      {isDesktop && (
+        <div
+          className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
+          style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
+          onMouseDown={e => { resizingPanelRef.current = 'right'; dragStartXRef.current = e.clientX; dragStartWRef.current = rightWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
+          onTouchStart={e => { resizingPanelRef.current = 'right'; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = rightWidth; }}
+        >
+          <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
+          <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {[0,1,2].map(i => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#D97706' }} />)}
+          </div>
+        </div>
+      )}
+
       {/* RIGHT PANEL — resumen (right column on desktop only) */}
-      <div className="hidden lg:flex lg:flex-col lg:h-auto lg:border-t-0 lg:w-[28%] lg:min-w-[200px] overflow-hidden flex-shrink-0">
+      <div className="hidden lg:flex lg:flex-col overflow-hidden flex-shrink-0"
+           style={isDesktop ? { width: rightWidth } : undefined}>
         <ResumenPage panel />
       </div>
 
