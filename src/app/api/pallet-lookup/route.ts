@@ -52,12 +52,20 @@ async function aggregateBy(
 ): Promise<{ pallets: number; bultos: number; contenedores: number }> {
   const { data } = await sb
     .from(table)
-    .select('tipo')
+    .select('tipo, n_pallet_bulto')
     .eq('cod', cod)
     .eq('fecha', fecha);
-  const rows = (data ?? []) as { tipo: string }[];
+  const rows = (data ?? []) as { tipo: string; n_pallet_bulto: string | null }[];
+
+  // Deduplicar por (tipo, n_pallet_bulto) para evitar contar duplicados
+  // que aparecen cuando varias fuentes (Bodega + Enrutador) escriben el mismo
+  // pallet real en la tabla.
+  const seen = new Set<string>();
   let pallets = 0, bultos = 0, contenedores = 0;
   for (const r of rows) {
+    const key = `${r.tipo}__${r.n_pallet_bulto ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const t = normaliseTipo(r.tipo);
     if (t === 'Pallet')      pallets++;
     else if (t === 'Bulto')  bultos++;
