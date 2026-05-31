@@ -281,7 +281,8 @@ export default function CalendarioColumnas({
       setSaveStatus('success');
       setLastSaved(new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
       setTimeout(() => setSaveStatus('idle'), 3500);
-    } catch {
+    } catch (err) {
+      console.error('[CalendarioColumnas:save]', err);
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 4000);
     }
