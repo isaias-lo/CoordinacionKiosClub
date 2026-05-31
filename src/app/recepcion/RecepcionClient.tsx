@@ -34,24 +34,67 @@ function inputNum(extra?: React.CSSProperties): React.CSSProperties {
 }
 
 export function RecepcionClient() {
-  const params = useSearchParams();
-  const cod = params?.get('cod') ?? '';
-  const p   = parseInt(params?.get('p') ?? '0', 10);
-  const b   = parseInt(params?.get('b') ?? '0', 10);
-  const g   = params?.get('g') ?? '';
-  const drv = params?.get('drv') ?? '';
+  const params  = useSearchParams();
+  const urlCod  = params?.get('cod') ?? '';
+  const urlP    = parseInt(params?.get('p') ?? '0', 10);
+  const urlB    = parseInt(params?.get('b') ?? '0', 10);
+  const g       = params?.get('g') ?? '';
+  const drv     = params?.get('drv') ?? '';
+  // Soporte para deep-link con ID canónico:   /recepcion?id=P11023 31052026P
+  const canonId = (params?.get('id') ?? '').trim();
 
-  const store = TIENDAS_INICIAL[cod];
-  const guias = g ? g.split(',').filter(Boolean) : [];
+  // Datos resueltos: arrancan desde la URL y se sobreescriben si se resuelve un canonId
+  const [cod, setCod] = useState(urlCod);
+  const [p,   setP]   = useState(urlP);
+  const [b,   setB]   = useState(urlB);
+  const [lookupLoading, setLookupLoading] = useState(Boolean(canonId));
+  const [lookupError,   setLookupError]   = useState('');
 
   const [done,       setDone]       = useState(false);
-  const [palletsRec, setPalletsRec] = useState(String(p));
-  const [bultosRec,  setBultosRec]  = useState(String(b));
+  const [palletsRec, setPalletsRec] = useState(String(urlP));
+  const [bultosRec,  setBultosRec]  = useState(String(urlB));
   const [receptor,   setReceptor]   = useState('');
   const [rut,        setRut]        = useState('');
   const [hasSig,     setHasSig]     = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
+
+  const store = TIENDAS_INICIAL[cod];
+  const guias = g ? g.split(',').filter(Boolean) : [];
+
+  // Si llega un id canónico, resolver contra /api/pallet-lookup para hidratar
+  // cod + cantidades esperadas. Si falla, dejamos el flujo "Código inválido".
+  useEffect(() => {
+    if (!canonId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/pallet-lookup?id=${encodeURIComponent(canonId)}`);
+        if (!res.ok) {
+          if (!cancelled) { setLookupError('ID no encontrado'); setLookupLoading(false); }
+          return;
+        }
+        const json = await res.json() as {
+          data?: { cod: string; n_pallets: number; n_bultos: number };
+        };
+        const d = json.data;
+        if (!cancelled && d?.cod) {
+          setCod(d.cod);
+          setP(d.n_pallets);
+          setB(d.n_bultos);
+          setPalletsRec(String(d.n_pallets));
+          setBultosRec(String(d.n_bultos));
+        } else if (!cancelled) {
+          setLookupError('ID no encontrado');
+        }
+      } catch {
+        if (!cancelled) setLookupError('Error de conexión');
+      } finally {
+        if (!cancelled) setLookupLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [canonId]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -158,6 +201,19 @@ export function RecepcionClient() {
     }
   };
 
+  /* ── Resolviendo ID canónico ── */
+  if (lookupLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ textAlign: 'center', color: '#fff' }}>
+          <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.25)', borderTopColor: '#fff', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
+          <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Buscando datos del pallet…</p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
   /* ── QR inválido ── */
   if (!cod || !store) {
     return (
@@ -165,7 +221,9 @@ export function RecepcionClient() {
         <div style={{ textAlign: 'center', color: '#fff' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
           <p style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Código inválido</p>
-          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>El QR escaneado no contiene datos válidos.</p>
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>
+            {lookupError || 'El QR escaneado no contiene datos válidos.'}
+          </p>
         </div>
       </div>
     );
