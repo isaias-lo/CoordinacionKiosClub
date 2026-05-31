@@ -3064,6 +3064,30 @@ export function AuditoriaScreen() {
               showToast('⚠ Error al guardar — se sincronizará cuando haya conexión', '#D97706');
             }
           });
+
+        // Fire-and-forget: marcar pallet como auditado en despacho_rm/regiones.
+        // No bloquea el flujo principal y, si falla, solo afecta el badge en Estado.
+        if (scannedCanonicalId) {
+          const cid = scannedCanonicalId;
+          const auditadoAt = new Date().toISOString();
+          void (async () => {
+            try {
+              const rmRes = await supabase
+                .from('despacho_rm')
+                .update({ auditado: true, auditado_at: auditadoAt, auditado_canonical_id: cid })
+                .eq('id', cid)
+                .select('id');
+              if (rmRes.error || !rmRes.data || rmRes.data.length === 0) {
+                await supabase
+                  .from('despacho_regiones')
+                  .update({ auditado: true, auditado_at: auditadoAt, auditado_canonical_id: cid })
+                  .eq('id', cid);
+              }
+            } catch {
+              /* silencioso: solo afecta badge */
+            }
+          })();
+        }
       }
     }
     try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
