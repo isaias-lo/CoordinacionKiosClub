@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Determine the rank (1-based) of this slot among all slots of same store/tipo today.
     // This rank becomes the sequence number in the canonical ID.
     const { data: slots } = await sb
-      .from('pallet_slots')
+      .from('picking_pallets')
       .select('id')
       .eq('date', date)
       .eq('store_cod', store_cod)
