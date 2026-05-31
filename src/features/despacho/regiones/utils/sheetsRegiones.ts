@@ -20,6 +20,27 @@ const URBAN_COMMUNES = new Set([
 // ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
 // TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
 // N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
+
+// Extrae el número de secuencia de un orden tipo "pallet1", "bulto12", "contenedor3", "CH2".
+function ordenSeq(orden: string): string {
+  const m = orden.match(/(\d+)$/);
+  return m ? m[1] : orden;
+}
+
+// Construye el canonical ID siguiendo el formato estándar del sistema
+// (mismo que despacho-picking y santiago):
+//   pallet      → P{seq}{cod}{stamp}P
+//   bulto/box   → {seq}B{cod}{stamp}B
+//   chocolate   → CH{seq}{cod}{stamp}CH
+//   contenedor  → C{seq}{cod}{stamp}C
+function canonicalId(pkg: string, orden: string, cod: string, stamp: string): string {
+  const seq = ordenSeq(orden);
+  if (pkg === 'pallet')     return `P${seq}${cod}${stamp}P`;
+  if (pkg === 'contenedor') return `C${seq}${cod}${stamp}C`;
+  if (pkg === 'chocolate')  return `CH${seq}${cod}${stamp}CH`;
+  return `${seq}B${cod}${stamp}B`; // bulto / box (default)
+}
+
 function buildRows(
   dispatchData: Record<string, DispatchItem[]>,
   regimen: string,
@@ -45,7 +66,7 @@ function buildRows(
         : '';
 
       rows.push([
-        `${item.orden}${tienda.cod}${stamp}`,          // ID
+        canonicalId(item.pkg, item.orden, tienda.cod, stamp), // ID
         fecha,                                          // FECHA
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
@@ -63,7 +84,7 @@ function buildRows(
         pesoV,                                          // PESO_V
         '',                                             // VENTANA
         'Listo para despachar',                         // ESTADO
-        item.orden,                                     // N_PALLET_BULTO
+        ordenSeq(item.orden),                           // N_PALLET_BULTO
         '',                                             // FECHA_LLEGADA
         '',                                             // CONDUCTOR
         '',                                             // RUTA
