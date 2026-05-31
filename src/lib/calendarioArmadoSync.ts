@@ -209,6 +209,25 @@ export async function aprobarTodosLosCambios(
   void pushCalendario; // imported but used via saveCalendario above
 }
 
+// Pure: applies a single CambioCal to a CalRecord without any Supabase write
+export function applyChange(cal: CalRecord, cambio: CambioCal): CalRecord {
+  const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
+  const next: CalRecord = JSON.parse(JSON.stringify(cal));
+  for (const dia of DIAS) {
+    if (!next[dia]) next[dia] = { rm: [], costa: [], fal: [] };
+  }
+  const g = cambio.grupo;
+  if (cambio.tipo === 'add') {
+    if (!next[cambio.dia][g].includes(cambio.tienda)) next[cambio.dia][g].push(cambio.tienda);
+  } else if (cambio.tipo === 'remove') {
+    next[cambio.dia][g] = next[cambio.dia][g].filter(t => t !== cambio.tienda);
+  } else if (cambio.tipo === 'move') {
+    if (cambio.from_dia) next[cambio.from_dia][g] = next[cambio.from_dia][g].filter(t => t !== cambio.tienda);
+    if (!next[cambio.dia][g].includes(cambio.tienda)) next[cambio.dia][g].push(cambio.tienda);
+  }
+  return next;
+}
+
 // Applies a single CambioCal to the current despacho calendar
 export async function aprobarCambioIndividual(
   _notifId: string,

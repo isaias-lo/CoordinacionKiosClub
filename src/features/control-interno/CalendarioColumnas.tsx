@@ -7,8 +7,10 @@ import { saveCalendario } from '@/lib/calendarioSync';
 import {
   fetchCalendarioArmado, saveCalendarioArmado, subscribeToCalendarioArmado,
   computeDiff, crearNotificacion, fetchCalendarioDespacho,
+  marcarNotificacionResuelta, type CalRecord as CalRecordType,
 } from '@/lib/calendarioArmadoSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
 const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado' };
@@ -68,6 +70,7 @@ export default function CalendarioColumnas({
   const [dragOver, setDragOver]     = useState<{ dia: string; idx: number } | null>(null);
 
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
+  const pendingResolveRef = useRef<string[]>([]);
   const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string }>>({});
 
   useEffect(() => {
@@ -270,6 +273,9 @@ export default function CalendarioColumnas({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ calendario: local }),
         }).catch(e => console.error('[CalendarioColumnas:sheets]', e));
+        // Resolve notifications that were locally applied
+        const toResolve = pendingResolveRef.current.splice(0);
+        for (const id of toResolve) void marcarNotificacionResuelta(id);
       }
       setCal(local);
       setSaveStatus('success');
@@ -427,6 +433,14 @@ export default function CalendarioColumnas({
   const grpInfo = GRUPOS.find(g => g[0] === grp);
 
   return (
+    <>
+    {source === 'despacho' && (
+      <CalendarioNotificaciones
+        localCal={local as CalRecordType}
+        onApplyToLocal={newCal => setLocal(newCal as CalRecord)}
+        onMarkPendingResolve={id => { pendingResolveRef.current.push(id); }}
+      />
+    )}
     <div style={{ background: '#F2F2F7', borderRadius: 20, padding: '20px 16px 24px' }}>
 
       {/* ── Toolbar ── */}
@@ -880,5 +894,6 @@ export default function CalendarioColumnas({
         document.body
       )}
     </div>
+    </>
   );
 }

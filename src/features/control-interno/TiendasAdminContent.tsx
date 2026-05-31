@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Store, CalendarDays } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
-import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 
 export interface Tienda {
   codigo: string; nombre: string; direccion: string; region: string;
@@ -173,12 +172,7 @@ export default function TiendasAdminContent({
       </div>
 
       {/* Calendario tab */}
-      {activeTab === 'calendario' && (
-        <>
-          {source === 'despacho' && <CalendarioNotificaciones />}
-          <CalendarioColumnas readOnly={!canEditCalendario} source={source} />
-        </>
-      )}
+      {activeTab === 'calendario' && <CalendarioColumnas readOnly={!canEditCalendario} source={source} />}
 
       {/* Tiendas tab */}
       {activeTab === 'tiendas' && <>
