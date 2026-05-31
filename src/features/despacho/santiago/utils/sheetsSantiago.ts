@@ -7,10 +7,10 @@ const URBAN_COMMUNES = new Set([
   'Lo Barnechea', 'Puente Alto',
 ]);
 
-// Columnas DESPACHO RM:
+// Columnas DESPACHO RM (25 cols):
 // ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
 // TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
-// N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR
+// N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
 function buildRows(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
@@ -31,12 +31,13 @@ function buildRows(
 
     for (const item of tiendaItems) {
       const tipoPrefix = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Bulto' ? 'B' : item.tipo === 'Contenedor' ? 'C' : 'CH';
+      const tipoLabel  = item.tipo === 'Chocolate' ? 'Bulto CH' : item.tipo;
       rows.push([
         `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — matches Enrutador format
         fecha,                                                             // FECHA
         cod,                                                               // COD
         tienda.tienda,                                                     // TIENDA
-        item.tipo,                                                         // TIPO
+        tipoLabel,                                                         // TIPO
         regimen,                                                           // REGIMEN
         'Luis Fica',                                                       // TRANSPORTE
         item.contenido,                                                    // CARGA
@@ -55,6 +56,8 @@ function buildRows(
         '',                                                                // CONDUCTOR
         '',                                                                // RUTA
         '',                                                                // SUPERVISOR
+        '',                                                                // GUIA
+        '',                                                                // VALOR
       ]);
     }
   }
@@ -72,6 +75,6 @@ export function sheetsSantiagoWrite(
   fetch('/api/sheets-write', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows }),
+    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows, fuente: 'bodega_rm' }),
   }).catch(err => console.error('[sheetsSantiagoWrite]', err));
 }

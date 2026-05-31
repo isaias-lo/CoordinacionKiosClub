@@ -51,6 +51,8 @@ function toRmRecord(row: (string | number)[]) {
     conductor:        String(row[20] ?? ''),
     ruta:             String(row[21] ?? ''),
     supervisor:       String(row[22] ?? ''),
+    guia:             String(row[23] ?? ''),
+    valor:            n(row[24] ?? ''),
     seguimiento: 'Registrado',
   };
 }
@@ -77,15 +79,18 @@ function toRegionesRecord(row: (string | number)[]) {
     estado:           String(row[17] ?? ''),
     n_pallet_bulto:   String(row[18] ?? ''),
     fecha_llegada:    String(row[19] ?? ''),
-    guia:             String(row[20] ?? ''),
-    valor:            n(row[21] ?? ''),
+    conductor:        String(row[20] ?? ''),
+    ruta:             String(row[21] ?? ''),
+    supervisor:       String(row[22] ?? ''),
+    guia:             String(row[23] ?? ''),
+    valor:            n(row[24] ?? ''),
     seguimiento: 'Registrado',
   };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { sheet, rows } = await request.json() as { sheet: string; rows: (string | number)[][] };
+    const { sheet, rows, fuente } = await request.json() as { sheet: string; rows: (string | number)[][]; fuente?: string };
 
     if (!ALLOWED_SHEETS.has(sheet)) {
       return NextResponse.json({ error: `Hoja no permitida: ${sheet}` }, { status: 400 });
@@ -113,45 +118,51 @@ export async function POST(request: NextRequest) {
         ? rows.map(toRmRecord)
         : rows.map(toRegionesRecord);
 
-      // Determine if this write comes from the Enrutador (null dims) or Bodega Santiago (has dims).
-      // Enrutador records must not overwrite existing dimension data from Bodega Santiago.
+      // Enrutador sends no dimension data; Bodega (Santiago / Regiones) sends dimensions.
       const hasDims = records.some(r => (r as Record<string,unknown>).peso_kg !== null);
 
-      if (hasDims) {
-        // Bodega Santiago: full upsert — dims take precedence
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await sb.from(table).upsert(records as any[], { onConflict: 'id' });
-        if (error) {
-          console.error(`[sheets-write] Supabase ${table}:`, error.message);
-          return NextResponse.json({ ok: true, written: rows.length, supabaseError: error.message });
+      if (!hasDims) {
+        // Enrutador: bulk-update routing fields for all records with matching (fecha, cod).
+        // IDs from Enrutador differ from Picking/Bodega IDs, so match by date + store code.
+        const seen = new Set<string>();
+        for (const r of records) {
+          const key = `${r.fecha}::${r.cod}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const rm = r as Record<string, unknown>;
+          const { error } = await sb.from(table)
+            .update({ conductor: rm.conductor, ruta: rm.ruta, supervisor: rm.supervisor,
+                      transporte: rm.transporte, estado: rm.estado, ventana: rm.ventana })
+            .eq('fecha', r.fecha)
+            .eq('cod', r.cod);
+          if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
       } else {
-        // Enrutador: insert new records; for existing ones, update only routing fields (preserve dims).
+        // Bodega: insert new records; update existing (Picking-created) records with confirmed dims.
         const ids = records.map(r => r.id);
         const { data: existing } = await sb.from(table).select('id').in('id', ids);
         const existingIds = new Set((existing ?? []).map((e: { id: string }) => e.id));
-
         const newRecords      = records.filter(r => !existingIds.has(r.id));
         const existingRecords = records.filter(r =>  existingIds.has(r.id));
 
         if (newRecords.length) {
+          const withFuente = fuente ? newRecords.map(r => ({ ...r, fuente })) : newRecords;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error } = await sb.from(table).insert(newRecords as any[]);
+          const { error } = await sb.from(table).insert(withFuente as any[]);
           if (error) console.error(`[sheets-write] Supabase insert ${table}:`, error.message);
         }
 
         for (const r of existingRecords) {
           const rm = r as Record<string, unknown>;
-          const { error } = await sb.from(table)
-            .update({
-              conductor:  rm.conductor,
-              ruta:       rm.ruta,
-              transporte: rm.transporte,
-              estado:     rm.estado,
-              supervisor: rm.supervisor,
-              ventana:    rm.ventana,
-            })
-            .eq('id', r.id);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const updateObj: Record<string, any> = {
+            tipo: rm.tipo, carga: rm.carga, regimen: rm.regimen, transporte: rm.transporte,
+            tipo_comuna: rm.tipo_comuna,
+            peso_kg: rm.peso_kg, alto: rm.alto, largo: rm.largo, ancho: rm.ancho, peso_v: rm.peso_v,
+            ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
+          };
+          if (fuente) updateObj.fuente = fuente;
+          const { error } = await sb.from(table).update(updateObj).eq('id', r.id);
           if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
       }

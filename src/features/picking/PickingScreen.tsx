@@ -2230,7 +2230,15 @@ export function PickingScreen() {
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
-      if (json.data) setPalletSlots(prev => [...prev, json.data!]);
+      if (json.data) {
+        setPalletSlots(prev => [...prev, json.data!]);
+        // Register partial despacho record for traceability — fire and forget
+        fetch('/api/despacho-picking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date: todayISO() }),
+        }).catch(err => console.error('[picking] despacho-picking error', err));
+      }
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
     }

@@ -32,12 +32,12 @@ const SEGUIMIENTO_STYLE: Record<string, { bg: string; color: string }> = {
 
 const TABLE_COLS: Record<TabKey, string[]> = {
   rm: [
-    'fecha','cod','tienda','tipo','regimen','carga','region','comuna',
-    'peso_kg','estado','n_pallet_bulto','conductor','ruta','supervisor','seguimiento',
+    'fecha','cod','tienda','tipo','regimen','transporte','carga','region','comuna',
+    'peso_kg','estado','n_pallet_bulto','conductor','ruta','supervisor','guia','valor','fuente','seguimiento',
   ],
   regiones: [
-    'fecha','cod','tienda','tipo','regimen','carga','region','comuna',
-    'peso_kg','estado','n_pallet_bulto','guia','valor','seguimiento',
+    'fecha','cod','tienda','tipo','regimen','transporte','carga','region','comuna',
+    'peso_kg','estado','n_pallet_bulto','conductor','ruta','supervisor','guia','valor','fuente','seguimiento',
   ],
   recepcion: [
     'created_at','cod','tienda','pallets_sent','bultos_sent',
@@ -47,9 +47,10 @@ const TABLE_COLS: Record<TabKey, string[]> = {
 
 const COL_LABEL: Record<string, string> = {
   fecha: 'Fecha', cod: 'Cod', tienda: 'Tienda', tipo: 'Tipo', regimen: 'Régimen',
-  carga: 'Carga', region: 'Región', comuna: 'Comuna', peso_kg: 'Peso kg',
+  transporte: 'Transporte', carga: 'Carga', region: 'Región', comuna: 'Comuna', peso_kg: 'Peso kg',
   estado: 'Estado', n_pallet_bulto: 'N°', conductor: 'Conductor', ruta: 'Ruta',
   supervisor: 'Supervisor', seguimiento: 'Seguimiento', guia: 'Guía', valor: 'Valor',
+  fuente: 'Fuente',
   created_at: 'Fecha/Hora', pallets_sent: 'P. Env.', bultos_sent: 'B. Env.',
   pallets_recibidos: 'P. Rec.', bultos_recibidos: 'B. Rec.',
   receptor: 'Receptor', rut: 'RUT',

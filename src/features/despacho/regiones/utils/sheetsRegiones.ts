@@ -1,10 +1,13 @@
 import { TIENDAS } from '../data/tiendas';
-import type { DispatchItem, TipoContenido } from '../../../../types';
+import type { DispatchItem } from '../../../../types';
 
-const CARGA_LABEL: Record<TipoContenido, string> = {
+const CARGA_LABEL: Record<string, string> = {
   comida:         'Comida',
   hogar:          'Hogar',
   'comida-hogar': 'Comida-Hogar',
+  aseo:           'Aseo',
+  chocolate:      'Chocolate',
+  mixto:          'Mixto',
 };
 
 const URBAN_COMMUNES = new Set([
@@ -13,9 +16,10 @@ const URBAN_COMMUNES = new Set([
   'Lo Barnechea', 'Puente Alto',
 ]);
 
-// Columnas: ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
-//           TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
-//           N_PALLET_BULTO,FECHA_LLEGADA,GUIA,VALOR
+// Columnas DESPACHO REGIONES (25 cols):
+// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+// TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
+// N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
 function buildRows(
   dispatchData: Record<string, DispatchItem[]>,
   regimen: string,
@@ -45,7 +49,7 @@ function buildRows(
         fecha,                                          // FECHA
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
-        item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : 'Bulto',  // TIPO
+        item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : item.pkg === 'chocolate' ? 'Bulto CH' : 'Bulto',  // TIPO
         regimen,                                        // REGIMEN
         transporte,                                     // TRANSPORTE
         CARGA_LABEL[item.tipo] ?? item.tipo,            // CARGA
@@ -61,6 +65,9 @@ function buildRows(
         'Listo para despachar',                         // ESTADO
         item.orden,                                     // N_PALLET_BULTO
         '',                                             // FECHA_LLEGADA
+        '',                                             // CONDUCTOR
+        '',                                             // RUTA
+        '',                                             // SUPERVISOR
         item.guia  || '',                               // GUIA
         item.valor || '',                               // VALOR
       ]);
@@ -80,6 +87,6 @@ export function sheetsRegionesWrite(
   fetch('/api/sheets-write', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet: 'DESPACHO REGIONES', rows }),
+    body:    JSON.stringify({ sheet: 'DESPACHO REGIONES', rows, fuente: 'bodega_regiones' }),
   }).catch(err => console.error('[sheetsRegionesWrite]', err));
 }

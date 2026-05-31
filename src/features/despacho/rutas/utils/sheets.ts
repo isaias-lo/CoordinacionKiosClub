@@ -293,6 +293,8 @@ export interface RMRecord {
   conductor: string;
   ruta: string;
   supervisor: string;
+  guia: string;
+  valor: null;
   seguimiento: string;
 }
 
@@ -353,14 +355,16 @@ export function buildDespachoRMRecords(params: {
         conductor,
         ruta:          String(rutaNum),
         supervisor,
+        guia:          '',
+        valor:         null as null,
         seguimiento,
       };
 
       if (ts.p > 0) {
-        records.push({ ...base, id: `${rutaNum}${ts.c}${stamp}P`, tipo: 'Pallet', n_pallet_bulto: String(ts.p) });
+        records.push({ ...base, id: `R${rutaNum}${ts.c}${stamp}P`, tipo: 'Pallet', n_pallet_bulto: String(ts.p) });
       }
       if (ts.b > 0) {
-        records.push({ ...base, id: `${rutaNum}${ts.c}${stamp}B`, tipo: 'Bulto',  n_pallet_bulto: String(ts.b) });
+        records.push({ ...base, id: `R${rutaNum}${ts.c}${stamp}B`, tipo: 'Bulto',  n_pallet_bulto: String(ts.b) });
       }
     });
   });
@@ -368,9 +372,10 @@ export function buildDespachoRMRecords(params: {
   return records;
 }
 
-// Columnas: ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
-//           TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
-//           N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR
+// Columnas DESPACHO RM (25 cols):
+// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+// TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
+// N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
 export function guardarDespachoRMFn(params: {
   fecha: string;
   supervisor: string;
@@ -387,12 +392,13 @@ export function guardarDespachoRMFn(params: {
     '', '', '', '', '',   // PESO_KG, ALTO, LARGO, ANCHO, PESO_V
     r.ventana, r.estado, r.n_pallet_bulto, r.fecha_llegada,
     r.conductor, r.ruta, r.supervisor,
+    '', '',               // GUIA, VALOR
   ]);
 
   fetch('/api/sheets-write', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows }),
+    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows, fuente: 'enrutador' }),
   }).catch(err => console.error('[guardarDespachoRM]', err));
 }
 
