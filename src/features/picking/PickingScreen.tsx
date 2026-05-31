@@ -192,6 +192,26 @@ function sanitizeForBarcode(s: string): string {
 
 function todayISO(): string { return new Date().toISOString().slice(0, 10); }
 
+// ── Canonical pallet ID — debe coincidir con src/app/api/despacho-picking/route.ts ──
+// Formato:
+//   P  → P{seq}{cod}{stamp}P
+//   B  → {seq}B{cod}{stamp}B
+//   CH → CH{seq}{cod}{stamp}CH
+//   C  → C{seq}{cod}{stamp}C
+// stamp = DDMMYYYY (sin separadores)
+function stampFromISO(isoDate: string): string {
+  const [yyyy, mm, dd] = isoDate.split('-');
+  return `${dd}${mm}${yyyy}`;
+}
+function buildCanonicalId(tipo: string, seq: number, cod: string, isoDate: string): string {
+  const stamp = stampFromISO(isoDate);
+  if (tipo === 'P')  return `P${seq}${cod}${stamp}P`;
+  if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
+  if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
+  if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
+  return `${seq}${cod}${stamp}`;
+}
+
 function StateBadge({ state }: { state: string }) {
   const info = STATE_INFO[state] ?? { label: state, color: '#6B7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.25)' };
   return (
@@ -568,10 +588,11 @@ function Barcode1D({ value, height = 65, barWidth = 2 }: { value: string; height
 
 // ─── Barcode Card — etiqueta 150mm × 100mm ────────────────────────────────────
 
-function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, tipo = 'P', compact = false, labelConfig, slotId }: {
+function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories, totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
   totalPickers: number; tipo?: string; compact?: boolean; labelConfig?: LabelConfig; slotId?: number;
+  canonicalId?: string;
 }) {
   const storeName = getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -670,14 +691,19 @@ function BarcodeCard({ value, palletNum, total, storeCod, pickerLabel, responsib
           )}
         </div>
 
-        {/* Código de barras */}
+        {/* Código de barras — ID canónico (compatible con Auditoría, Conductor y Recepción Tienda) */}
         <div style={{ marginTop: s.barMT }}>
           <div style={{ width: s.barW, margin: '0 auto' }}>
-            <Barcode1D value={slotId != null ? String(slotId) : value} height={s.barH} barWidth={s.barBW} />
+            <Barcode1D
+              value={canonicalId || (slotId != null ? String(slotId) : value)}
+              height={s.barH} barWidth={s.barBW}
+            />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
             <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
-              {slotId != null ? `ID #${slotId}` : value}
+              {canonicalId
+                ? (slotId != null ? `${canonicalId}  ·  #${slotId}` : canonicalId)
+                : (slotId != null ? `ID #${slotId}` : value)}
             </div>
             {(compact || cfg.showDate) && (
               <div style={{ fontSize: s.footerDateFS, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
@@ -995,6 +1021,7 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
                           totalPickers={totalPickers}
                           tipo={slotTipo}
                           slotId={slot?.id}
+                          canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
                           compact
                         />
                         {isSelected && (
@@ -2583,6 +2610,7 @@ export function PickingScreen() {
       value: string; palletNum: number; total: number;
       storeCod: string; pickerLabel: string; responsibleKey: string;
       allCategories: string[]; totalPickers: number; stateKey: string; tipo: string; slotId: number;
+      canonicalId: string;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -2628,6 +2656,7 @@ export function PickingScreen() {
             stateKey: group.stateKey,
             tipo,
             slotId: slot.id,
+            canonicalId: buildCanonicalId(tipo, pNum, group.storeCod, todayISO()),
           });
         }
       }
