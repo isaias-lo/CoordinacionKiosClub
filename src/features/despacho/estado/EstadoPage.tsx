@@ -9,6 +9,7 @@ import { processPdf } from '../regiones/utils/pdfUtils';
 import { formatCod } from '../rutas/utils/helpers';
 import { useApp } from '../../../context/AppContext';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
+import { supabase } from '@/lib/supabase';
 import type { SantiagoState, SantiagoItem } from '../santiago/types';
 import type { DispatchItem } from '../../../types';
 
@@ -115,7 +116,7 @@ function Barcode1D({ value, height = 50, barWidth = 1.6 }: { value: string; heig
 }
 
 /* ── Label (100×150mm para Zebra) ── */
-function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: LabelItem; qrUrl: string; hasGuide: boolean }) {
+function Label({ store, item, qrUrl, hasGuide, audited = false }: { store: StoreLabel; item: LabelItem; qrUrl: string; hasGuide: boolean; audited?: boolean }) {
   const isPallet     = item.tipo === 'Pallet';
   const isContenedor = item.tipo === 'Contenedor';
   const badgeBg      = isPallet ? '#1B2A6B' : isContenedor ? '#6B21A8' : '#D97706';
@@ -124,7 +125,22 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
   return (
     <div
       className="label-card bg-white flex flex-col"
-      style={{ width: '100mm', height: '150mm', padding: '4mm', boxSizing: 'border-box', overflow: 'hidden', pageBreakAfter: 'always', breakAfter: 'page' }}>
+      style={{ width: '100mm', height: '150mm', padding: '4mm', boxSizing: 'border-box', overflow: 'hidden', pageBreakAfter: 'always', breakAfter: 'page', position: 'relative' }}>
+
+      {/* Badge AUDITADO — esquina superior derecha */}
+      {audited && (
+        <div style={{
+          position: 'absolute', top: '2mm', right: '2mm',
+          background: '#16A34A', color: '#fff',
+          padding: '1mm 2mm', borderRadius: '2mm',
+          fontFamily: 'Arial Black, sans-serif', fontSize: '7pt', fontWeight: 900,
+          letterSpacing: '0.5pt', textTransform: 'uppercase',
+          boxShadow: '0 0 0 1.5px #fff, 0 0 0 2.5px #16A34A',
+          zIndex: 10,
+        }}>
+          ✓ Auditado
+        </div>
+      )}
 
       {/* HEADER */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '2mm', marginBottom: '2mm', flexShrink: 0 }}>
@@ -220,13 +236,14 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
 
 /* ── Store card ── */
 function StoreCard({
-  store, isSelected, onClick, checked, onCheck,
+  store, isSelected, onClick, checked, onCheck, audited = false,
 }: {
   store: StoreLabel;
   isSelected: boolean;
   onClick: () => void;
   checked: boolean;
   onCheck: (v: boolean) => void;
+  audited?: boolean;
 }) {
   const pallets      = store.items.filter(i => i.tipo === 'Pallet').length;
   const bultos       = store.items.filter(i => i.tipo === 'Bulto').length;
@@ -257,6 +274,11 @@ function StoreCard({
           {hasGuides && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[rgba(22,163,74,0.10)] text-success uppercase">
               PDF ✓
+            </span>
+          )}
+          {audited && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[rgba(22,163,74,0.18)] text-success uppercase">
+              ✓ Auditado
             </span>
           )}
         </div>
@@ -298,6 +320,8 @@ export function EstadoPage() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [dragOver,      setDragOver]      = useState(false);
   const [toast,         setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
+  // canonical_ids de pallets auditados hoy (despacho_rm + despacho_regiones)
+  const [auditedIds,    setAuditedIds]    = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
   // Registra tiendas que el usuario desmarcó explícitamente.
   // rebuild las respeta y no las vuelve a marcar automáticamente.
@@ -486,6 +510,49 @@ export function EstadoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.pdfData]);
 
+  // Carga los canonical_ids auditados HOY desde despacho_rm + despacho_regiones
+  // para mostrar badges "Auditado" en StoreCard y Label. Solo lectura: si falla,
+  // los badges no aparecen pero el resto del flujo sigue funcionando.
+  useEffect(() => {
+    const cods = stores.map(s => s.cod);
+    if (!cods.length) { setAuditedIds(new Set()); return; }
+    const now = new Date();
+    const dd   = String(now.getDate()).padStart(2, '0');
+    const mm   = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(now.getFullYear());
+    const fechaHoy = `${dd}/${mm}/${yyyy}`;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rmRes, regRes] = await Promise.all([
+          supabase.from('despacho_rm')
+            .select('auditado_canonical_id')
+            .in('cod', cods)
+            .eq('fecha', fechaHoy)
+            .eq('auditado', true),
+          supabase.from('despacho_regiones')
+            .select('auditado_canonical_id')
+            .in('cod', cods)
+            .eq('fecha', fechaHoy)
+            .eq('auditado', true),
+        ]);
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const r of (rmRes.data ?? []) as { auditado_canonical_id: string | null }[]) {
+          if (r.auditado_canonical_id) ids.add(r.auditado_canonical_id);
+        }
+        for (const r of (regRes.data ?? []) as { auditado_canonical_id: string | null }[]) {
+          if (r.auditado_canonical_id) ids.add(r.auditado_canonical_id);
+        }
+        setAuditedIds(ids);
+      } catch {
+        /* silencioso: badge opcional */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [stores]);
+
   // Poll Santiago localStorage every 3 s — SantiagoContext isn't in this tree
   useEffect(() => {
     let lastSantiago = JSON.stringify(loadSantiagoItems());
@@ -625,9 +692,12 @@ export function EstadoPage() {
             .flatMap(store => {
               const qrUrl    = buildQrUrl(store, guides[store.cod]?.driveFileId);
               const hasGuide = !!guides[store.cod];
-              return store.items.map((item, idx) => (
-                <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} hasGuide={hasGuide} />
-              ));
+              return store.items.map((item, idx) => {
+                const audited = auditedIds.has(buildCanonicalId(item.tipo, item.itemNum, store.cod));
+                return (
+                  <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} hasGuide={hasGuide} audited={audited} />
+                );
+              });
             })}
         </div>,
         document.body
@@ -751,25 +821,31 @@ export function EstadoPage() {
                 </p>
               </div>
             ) : (
-              stores.map(s => (
-                <StoreCard
-                  key={s.cod}
-                  store={s}
-                  isSelected={selected === s.cod}
-                  onClick={() => setSelected(s.cod)}
-                  checked={printCods.has(s.cod)}
-                  onCheck={v => {
-                    // Registrar intención del usuario antes de actualizar el set
-                    if (!v) userUncheckedRef.current.add(s.cod);
-                    else userUncheckedRef.current.delete(s.cod);
-                    setPrintCods(prev => {
-                      const next = new Set(prev);
-                      v ? next.add(s.cod) : next.delete(s.cod);
-                      return next;
-                    });
-                  }}
-                />
-              ))
+              stores.map(s => {
+                const storeAudited = s.items.some(i =>
+                  auditedIds.has(buildCanonicalId(i.tipo, i.itemNum, s.cod)),
+                );
+                return (
+                  <StoreCard
+                    key={s.cod}
+                    store={s}
+                    isSelected={selected === s.cod}
+                    onClick={() => setSelected(s.cod)}
+                    checked={printCods.has(s.cod)}
+                    audited={storeAudited}
+                    onCheck={v => {
+                      // Registrar intención del usuario antes de actualizar el set
+                      if (!v) userUncheckedRef.current.add(s.cod);
+                      else userUncheckedRef.current.delete(s.cod);
+                      setPrintCods(prev => {
+                        const next = new Set(prev);
+                        v ? next.add(s.cod) : next.delete(s.cod);
+                        return next;
+                      });
+                    }}
+                  />
+                );
+              })
             )}
           </div>
         </div>
@@ -832,16 +908,19 @@ export function EstadoPage() {
                   const H = 567 * SCALE; // ≈357px
                   const qrUrl    = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
                   const hasGuide = !!guides[selectedStore.cod];
-                  return selectedStore.items.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="shadow-xl rounded-xl overflow-hidden flex-shrink-0"
-                      style={{ border: '1px solid #d0d4df', width: W, height: H, position: 'relative' }}>
-                      <div style={{ position: 'absolute', top: 0, left: 0, transform: `scale(${SCALE})`, transformOrigin: 'top left' }}>
-                        <Label store={selectedStore} item={item} qrUrl={qrUrl} hasGuide={hasGuide} />
+                  return selectedStore.items.map((item, idx) => {
+                    const audited = auditedIds.has(buildCanonicalId(item.tipo, item.itemNum, selectedStore.cod));
+                    return (
+                      <div
+                        key={idx}
+                        className="shadow-xl rounded-xl overflow-hidden flex-shrink-0"
+                        style={{ border: '1px solid #d0d4df', width: W, height: H, position: 'relative' }}>
+                        <div style={{ position: 'absolute', top: 0, left: 0, transform: `scale(${SCALE})`, transformOrigin: 'top left' }}>
+                          <Label store={selectedStore} item={item} qrUrl={qrUrl} hasGuide={hasGuide} audited={audited} />
+                        </div>
                       </div>
-                    </div>
-                  ));
+                    );
+                  });
                 })()}
               </div>
             </div>
