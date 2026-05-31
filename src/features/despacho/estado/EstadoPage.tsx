@@ -12,6 +12,22 @@ import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/
 import type { SantiagoState, SantiagoItem } from '../santiago/types';
 import type { DispatchItem } from '../../../types';
 
+/* ── Canonical pallet ID — debe coincidir con /api/despacho-picking ─────── */
+function stampFromTodayISO(): string {
+  const d = new Date();
+  const dd   = String(d.getDate()).padStart(2, '0');
+  const mm   = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(d.getFullYear());
+  return `${dd}${mm}${yyyy}`;
+}
+function buildCanonicalId(tipo: 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate', seq: number, cod: string): string {
+  const stamp = stampFromTodayISO();
+  if (tipo === 'Pallet')      return `P${seq}${cod}${stamp}P`;
+  if (tipo === 'Contenedor')  return `C${seq}${cod}${stamp}C`;
+  if (tipo === 'Chocolate')   return `CH${seq}${cod}${stamp}CH`;
+  return `${seq}B${cod}${stamp}B`;
+}
+
 /* ── Types ── */
 interface StoreLabel {
   source: 'santiago' | 'regiones';
@@ -76,11 +92,34 @@ function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
   return `${base}/recepcion?${p.toString()}`;
 }
 
+/* ── 1D Barcode (Code128) — para la etiqueta maestra de Estado/Seguimiento ── */
+function Barcode1D({ value, height = 50, barWidth = 1.6 }: { value: string; height?: number; barWidth?: number }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    if (!svgRef.current || !value) return;
+    import('jsbarcode').then(({ default: JsBarcode }) => {
+      if (!svgRef.current) return;
+      try {
+        JsBarcode(svgRef.current, value, {
+          format: 'CODE128', width: barWidth, height,
+          displayValue: false, margin: 4,
+          background: '#ffffff', lineColor: '#000000',
+        });
+      } catch {
+        const safe = value.replace(/[^\x20-\x7E]/g, '');
+        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: barWidth, height, displayValue: false, margin: 4 }); } catch { /* ignore */ }
+      }
+    });
+  }, [value, height, barWidth]);
+  return <svg ref={svgRef} style={{ width: '100%', display: 'block' }} />;
+}
+
 /* ── Label (100×150mm para Zebra) ── */
 function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: LabelItem; qrUrl: string; hasGuide: boolean }) {
   const isPallet     = item.tipo === 'Pallet';
   const isContenedor = item.tipo === 'Contenedor';
   const badgeBg      = isPallet ? '#1B2A6B' : isContenedor ? '#6B21A8' : '#D97706';
+  const canonicalId  = buildCanonicalId(item.tipo, item.itemNum, store.cod);
 
   return (
     <div
@@ -121,23 +160,31 @@ function Label({ store, item, qrUrl, hasGuide }: { store: StoreLabel; item: Labe
 
       <div style={{ borderTop: '1.5px solid #d0d0d0', marginBottom: '2mm', flexShrink: 0 }} />
 
-      {/* QR — flex:1 toma el espacio restante entre header y footer */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '1mm', minHeight: 0 }}>
+      {/* QR + CODE128 — flex:1 toma el espacio restante entre header y footer */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '1.5mm', minHeight: 0 }}>
         {hasGuide ? (
           <>
-            <QRCodeSVG value={qrUrl} size={120} level="M" />
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#aaa', letterSpacing: '0.3pt' }}>
-              Escanear para confirmar recepción
+            <QRCodeSVG value={qrUrl} size={92} level="M" />
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6pt', color: '#aaa', letterSpacing: '0.3pt' }}>
+              QR · Confirmar recepción
             </div>
           </>
         ) : (
-          <div style={{ width: 120, height: 120, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2mm' }}>
-            <div style={{ fontSize: '18pt', opacity: 0.25 }}>📄</div>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#bbb', textAlign: 'center', padding: '0 8px', lineHeight: 1.4 }}>
-              Sube guía de despacho<br />para activar el QR
+          <div style={{ width: 92, height: 92, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1mm' }}>
+            <div style={{ fontSize: '14pt', opacity: 0.25 }}>📄</div>
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#bbb', textAlign: 'center', padding: '0 6px', lineHeight: 1.3 }}>
+              Sube guía<br />para activar QR
             </div>
           </div>
         )}
+
+        {/* CODE128 con ID canónico — siempre presente como código maestro de trazabilidad */}
+        <div style={{ width: '90%', marginTop: '1mm' }}>
+          <Barcode1D value={canonicalId} height={42} barWidth={1.6} />
+          <div style={{ fontFamily: 'monospace', fontSize: '6.5pt', color: '#444', textAlign: 'center', marginTop: '0.5mm', wordBreak: 'break-all', lineHeight: 1.2 }}>
+            {canonicalId}
+          </div>
+        </div>
       </div>
 
       {/* FOOTER — siempre al fondo */}
