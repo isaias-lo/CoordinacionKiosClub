@@ -22,6 +22,7 @@ export function entryToRow(entry: AuditEntry, userId: string) {
     start_time:       entry.startTime ?? null,
     end_time:         entry.endTime ?? null,
     duration_seconds: entry.durationSeconds ?? null,
+    canonical_id:     entry.canonicalId ?? null,
   };
 }
 
@@ -46,5 +47,6 @@ export function rowToEntry(r: Record<string, unknown>): AuditEntry {
     startTime:       (r.start_time as string) || undefined,
     endTime:         (r.end_time as string) || undefined,
     durationSeconds: (r.duration_seconds as number) || undefined,
+    canonicalId:     (r.canonical_id as string) || undefined,
   };
 }

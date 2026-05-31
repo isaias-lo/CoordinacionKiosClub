@@ -77,4 +77,5 @@ export interface AuditEntry {
   startTime?: string;
   endTime?: string;
   durationSeconds?: number;
+  canonicalId?: string;
 }

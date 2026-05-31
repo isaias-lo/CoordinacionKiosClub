@@ -2245,6 +2245,9 @@ export function AuditoriaScreen() {
   const [palletIdInput2,  setPalletIdInput2]  = useState('');
   const [palletIdError2,  setPalletIdError2]  = useState('');
   const [pickerNombres,   setPickerNombres]   = useState<string[]>([]);
+  // canonical_id del pallet escaneado (P/B/CH/C{...}). Se resuelve via /api/pallet-lookup
+  // y se persiste en audit_entries para cruzar trazabilidad con despacho_rm/regiones.
+  const [scannedCanonicalId, setScannedCanonicalId] = useState<string | null>(null);
   // Clave incremental para forzar re-mount de inputs de foto en iOS (fix: onChange stale tras cámara)
   const [photoInputVer,   setPhotoInputVer]   = useState(0);
   const bumpPhotoInput = () => setPhotoInputVer(v => v + 1);
@@ -2798,6 +2801,9 @@ export function AuditoriaScreen() {
       const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === cod) ?? null;
       if (matchedTienda) setTienda(matchedTienda);
 
+      // Guarda el canonical_id escaneado para persistirlo luego en audit_entries
+      setScannedCanonicalId(canonicalId);
+
       showToast(`✓ ${canonicalId} · ${cod} · ${rmTipo}`, '#16A34A');
       // Saltamos al setup como hace el flujo legacy para que el supervisor
       // termine de seleccionar picker y subtipos manualmente.
@@ -2912,6 +2918,7 @@ export function AuditoriaScreen() {
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
+    setScannedCanonicalId(null);
   };
 
   // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
@@ -2937,6 +2944,7 @@ export function AuditoriaScreen() {
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
+    setScannedCanonicalId(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
@@ -3035,6 +3043,7 @@ export function AuditoriaScreen() {
       startTime:       auditStartTime || undefined,
       endTime:         auditStartTime ? endNow : undefined,
       durationSeconds: auditStartTime ? durSecs : undefined,
+      canonicalId:     scannedCanonicalId ?? undefined,
     };
     setHistory([entry, ...history.slice(0, 199)]);
     if (user) {
@@ -3069,6 +3078,7 @@ export function AuditoriaScreen() {
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
+    setScannedCanonicalId(null);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
