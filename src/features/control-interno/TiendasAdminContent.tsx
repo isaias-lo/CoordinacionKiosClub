@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Store, CalendarDays } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
+import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 
 export interface Tienda {
   codigo: string; nombre: string; direccion: string; region: string;
@@ -30,11 +31,13 @@ const S = {
 };
 
 export default function TiendasAdminContent({
-  canEditTiendas   = true,
+  canEditTiendas    = true,
   canEditCalendario = true,
+  source            = 'despacho',
 }: {
   canEditTiendas?:    boolean;
   canEditCalendario?: boolean;
+  source?:            'despacho' | 'armado';
 }) {
   const [tiendas,   setTiendas]   = useState<Tienda[]>([]);
   const [loading,   setLoading]   = useState(true);
@@ -144,7 +147,7 @@ export default function TiendasAdminContent({
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: 'rgba(255,255,255,0.06)', borderRadius: 18, padding: 6 }}>
         {([
           { id: 'tiendas'    as const, label: 'GESTIONAR TIENDAS', Icon: Store,        color: '#6366F1', dark: '#4338CA', shadow: 'rgba(99,102,241,0.45)'  },
-          { id: 'calendario' as const, label: 'CALENDARIO',         Icon: CalendarDays, color: '#D42B2B', dark: '#991B1B', shadow: 'rgba(212,43,43,0.45)'  },
+          { id: 'calendario' as const, label: source === 'armado' ? 'CALENDARIO ARMADO' : 'CALENDARIO DESPACHO', Icon: CalendarDays, color: '#D42B2B', dark: '#991B1B', shadow: 'rgba(212,43,43,0.45)'  },
         ]).map(({ id, label, Icon, color, dark, shadow }) => {
           const active = activeTab === id;
           return (
@@ -170,7 +173,12 @@ export default function TiendasAdminContent({
       </div>
 
       {/* Calendario tab */}
-      {activeTab === 'calendario' && <CalendarioColumnas readOnly={!canEditCalendario} />}
+      {activeTab === 'calendario' && (
+        <>
+          {source === 'despacho' && <CalendarioNotificaciones />}
+          <CalendarioColumnas readOnly={!canEditCalendario} source={source} />
+        </>
+      )}
 
       {/* Tiendas tab */}
       {activeTab === 'tiendas' && <>

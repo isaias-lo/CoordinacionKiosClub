@@ -34,7 +34,7 @@ export default function TiendasAdminPage() {
         <ProfilePill compact />
       </div>
 
-      <TiendasAdminContent />
+      <TiendasAdminContent source="armado" />
     </div>
   );
 }

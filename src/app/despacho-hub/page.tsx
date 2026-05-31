@@ -1,13 +1,20 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Route, Activity, Clock, Database, Users, Settings, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ProfilePill } from '../../components/ProfilePill';
+import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
 
 export default function DespachoHubPage() {
   const router = useRouter();
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+    fetchNotificacionesPendientes().then(n => setNotifCount(n.length));
+    return subscribeToNotificaciones(n => setNotifCount(n.length));
+  }, []);
 
   const tabs: { id: string; label: React.ReactNode; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string }[] = [
     {
@@ -116,6 +123,15 @@ export default function DespachoHubPage() {
               <button key={t.id} onClick={t.onClick}
                 className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
                 style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
+                {t.id === 'config-tiendas' && notifCount > 0 && (
+                  <div style={{
+                    position: 'absolute', top: 8, right: 10,
+                    background: '#FF9500', borderRadius: 10,
+                    padding: '2px 7px', fontSize: 11, fontWeight: 800, color: '#fff',
+                    boxShadow: '0 2px 8px rgba(255,149,0,0.55)',
+                    lineHeight: 1.4,
+                  }}>{notifCount}</div>
+                )}
                 <t.Icon size={24} color={t.iconColor} strokeWidth={1.6} style={{ marginBottom: 10 }} />
                 <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
                 <div className="text-xs text-white/60 mt-1">{t.sub}</div>
@@ -135,6 +151,15 @@ export default function DespachoHubPage() {
                 borderColor: t.border,
                 boxShadow: `0 8px 24px ${t.shadow}`,
               }}>
+              {t.id === 'config-tiendas' && notifCount > 0 && (
+                <div style={{
+                  position: 'absolute', top: 10, right: 14,
+                  background: '#FF9500', borderRadius: 10,
+                  padding: '2px 8px', fontSize: 11, fontWeight: 800, color: '#fff',
+                  boxShadow: '0 2px 8px rgba(255,149,0,0.55)',
+                  lineHeight: 1.4,
+                }}>{notifCount} pendiente{notifCount !== 1 ? 's' : ''}</div>
+              )}
               <t.Icon size={22} color={t.iconColor} strokeWidth={1.6} style={{ flexShrink: 0 }} />
               <div>
                 <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>

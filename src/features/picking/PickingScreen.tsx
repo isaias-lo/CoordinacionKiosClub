@@ -9,6 +9,7 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { supabase } from '@/lib/supabase';
+import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1968,6 +1969,12 @@ export function PickingScreen() {
   const odooConfig: OdooConfig = getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' };
   const hasOdoo = !!odooConfig.url;
 
+  const [notifCount, setNotifCount] = useState(0);
+  useEffect(() => {
+    fetchNotificacionesPendientes().then(n => setNotifCount(n.length));
+    return subscribeToNotificaciones(n => setNotifCount(n.length));
+  }, []);
+
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
   const [rightTab, setRightTab]   = useState<'monitoreo' | 'estadisticas' | 'historial' | 'configuracion'>('monitoreo');
 
@@ -2694,6 +2701,23 @@ export function PickingScreen() {
         )}
         <ProfilePill />
       </div>
+
+      {/* ── Alerta cambios calendario ── */}
+      {notifCount > 0 && (
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 print:hidden"
+          style={{ background: 'rgba(255,149,0,0.10)', borderBottom: '1px solid rgba(255,149,0,0.25)' }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>🔔</span>
+          <div className="flex-1 text-[12px]" style={{ color: '#D97706', fontWeight: 600 }}>
+            Control Interno realizó {notifCount} cambio{notifCount !== 1 ? 's' : ''} al calendario — revisalos en Config. Tiendas
+          </div>
+          <button
+            onClick={() => router.push('/despacho/config-tiendas')}
+            className="text-[11px] font-bold px-3 py-1.5 rounded-lg shrink-0 cursor-pointer"
+            style={{ background: 'rgba(255,149,0,0.18)', border: '1px solid rgba(255,149,0,0.40)', color: '#D97706' }}>
+            Ver
+          </button>
+        </div>
+      )}
 
       {/* ── Split body ── */}
       <div className="flex-1 flex overflow-hidden">

@@ -4,6 +4,10 @@ import { createPortal } from 'react-dom';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
 import { fetchCalendarioCompleto, writeCalendario } from '@/features/despacho/utils/useCalendario';
 import { saveCalendario } from '@/lib/calendarioSync';
+import {
+  fetchCalendarioArmado, saveCalendarioArmado, subscribeToCalendarioArmado,
+  computeDiff, crearNotificacion, fetchCalendarioDespacho,
+} from '@/lib/calendarioArmadoSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
@@ -43,7 +47,13 @@ function displayCode(cod: string): string {
   return formatCod(cod.replace('PEN', 'PEÑ').replace('VIN', 'VIÑ'));
 }
 
-export default function CalendarioColumnas({ readOnly = false }: { readOnly?: boolean }) {
+export default function CalendarioColumnas({
+  readOnly = false,
+  source   = 'despacho',
+}: {
+  readOnly?: boolean;
+  source?:   'despacho' | 'armado';
+}) {
   const [cal, setCal]               = useState<CalRecord | null>(null);
   const [local, setLocal]           = useState<CalRecord | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -100,10 +110,19 @@ export default function CalendarioColumnas({ readOnly = false }: { readOnly?: bo
   }
 
   useEffect(() => {
-    fetchCalendarioCompleto()
+    const loader = source === 'armado'
+      ? fetchCalendarioArmado().then(c => c ?? fetchCalendarioCompleto())
+      : fetchCalendarioCompleto();
+    loader
       .then(c => { setCal(c); setLocal(JSON.parse(JSON.stringify(c))); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+
+    if (source === 'armado') {
+      const unsub = subscribeToCalendarioArmado(c => setCal(c));
+      return unsub;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
 
   useEffect(() => {
     if (cal) setLocal(JSON.parse(JSON.stringify(cal)));
@@ -236,19 +255,26 @@ export default function CalendarioColumnas({ readOnly = false }: { readOnly?: bo
     if (!local) return;
     setSaveStatus('saving');
     try {
-      // Primary: Supabase (must succeed — source of truth)
-      await saveCalendario(local);
-      writeCalendario(local);
+      if (source === 'armado') {
+        await saveCalendarioArmado(local);
+        const calDespacho = await fetchCalendarioDespacho();
+        if (calDespacho) {
+          const cambios = computeDiff(calDespacho, local);
+          await crearNotificacion(cambios, local);
+        }
+      } else {
+        await saveCalendario(local);
+        writeCalendario(local);
+        fetch('/api/calendario-write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ calendario: local }),
+        }).catch(e => console.error('[CalendarioColumnas:sheets]', e));
+      }
       setCal(local);
       setSaveStatus('success');
       setLastSaved(new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
       setTimeout(() => setSaveStatus('idle'), 3500);
-      // Secondary: Sheets copy (fire-and-forget — no bloquea el guardado)
-      fetch('/api/calendario-write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ calendario: local }),
-      }).catch(e => console.error('[CalendarioColumnas:sheets]', e));
     } catch {
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 4000);

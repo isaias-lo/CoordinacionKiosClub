@@ -119,6 +119,7 @@ export default function DespachoConfigTiendasPage() {
       <TiendasAdminContent
         canEditTiendas={can('config-tiendas/tiendas', 'edit')}
         canEditCalendario={can('config-tiendas/calendario', 'edit')}
+        source="despacho"
       />
       <ConfigImpresion />
     </div>
