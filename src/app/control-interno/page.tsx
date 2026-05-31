@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ClipboardCheck, Search, Settings, PackageCheck, CheckSquare } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, Search, Settings, PackageCheck, CheckSquare, Activity } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
@@ -46,6 +46,12 @@ export default function ControlInternoPage() {
       border: 'rgba(99,102,241,0.55)', bg: 'rgba(99,102,241,0.13)', shadow: 'rgba(99,102,241,0.20)',
       onClick: () => router.push('/validacion-tienda'), path: '/validacion-tienda',
       Icon: CheckSquare, iconColor: 'rgba(129,140,248,0.9)',
+    },
+    {
+      label: 'Panel Operaciones', sub: 'Registro de entregas · Recepción tiendas',
+      border: 'rgba(6,182,212,0.55)', bg: 'rgba(6,182,212,0.13)', shadow: 'rgba(6,182,212,0.20)',
+      onClick: () => router.push('/panel-operaciones'), path: '/panel-operaciones',
+      Icon: Activity, iconColor: 'rgba(34,211,238,0.9)',
     },
   ].filter(t => canSee(t.path));
 
