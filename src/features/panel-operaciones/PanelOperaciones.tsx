@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Fuente = 'conductor' | 'tienda';
+type Fuente = 'conductor' | 'tienda' | 'pendientes';
 
 interface Rec {
   id: number;
@@ -44,6 +44,19 @@ interface Stats {
   sello_roto: number;
   sello_ausente: number;
   con_fotos: number;
+}
+
+interface PendingStore {
+  cod: string;
+  tienda: string;
+  source: 'rm' | 'regiones';
+  seguimiento: string;
+  pallets: number;
+  bultos: number;
+  contenedores: number;
+  conductor?: string | null;
+  ventana?: string | null;
+  ruta?: string | null;
 }
 
 function todayISO(): string {
@@ -327,16 +340,20 @@ export default function PanelOperaciones() {
   const router = useRouter();
   const today  = todayISO();
 
-  const [tab,      setTab]      = useState<Fuente>('conductor');
-  const [desde,    setDesde]    = useState(today);
-  const [hasta,    setHasta]    = useState(today);
-  const [codFilt,  setCodFilt]  = useState('');
-  const [records,  setRecords]  = useState<Rec[]>([]);
-  const [stats,    setStats]    = useState<Stats | null>(null);
-  const [loading,  setLoading]  = useState(false);
-  const [selected, setSelected] = useState<Rec | null>(null);
+  const [tab,          setTab]          = useState<Fuente>('conductor');
+  const [desde,        setDesde]        = useState(today);
+  const [hasta,        setHasta]        = useState(today);
+  const [codFilt,      setCodFilt]      = useState('');
+  const [records,      setRecords]      = useState<Rec[]>([]);
+  const [stats,        setStats]        = useState<Stats | null>(null);
+  const [loading,      setLoading]      = useState(false);
+  const [selected,     setSelected]     = useState<Rec | null>(null);
+  const [pendientes,   setPendientes]   = useState<PendingStore[]>([]);
+  const [pendTotal,    setPendTotal]    = useState(0);
+  const [loadingPend,  setLoadingPend]  = useState(false);
 
   const fetchData = useCallback(async (fuente: Fuente, d: string, h: string, c: string) => {
+    if (fuente === 'pendientes') return;
     setLoading(true);
     try {
       const p = new URLSearchParams({ fuente, desde: d, hasta: h, limit: '300' });
@@ -353,13 +370,35 @@ export default function PanelOperaciones() {
     }
   }, []);
 
+  const fetchPendientes = useCallback(async (fecha: string) => {
+    setLoadingPend(true);
+    try {
+      const res  = await fetch(`/api/panel-operaciones/pendientes?fecha=${fecha}`);
+      const json = await res.json() as { stores?: PendingStore[]; total?: number; error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Error');
+      setPendientes(json.stores ?? []);
+      setPendTotal(json.total ?? 0);
+    } catch (err) {
+      console.error('[panel-operaciones/pendientes]', err);
+    } finally {
+      setLoadingPend(false);
+    }
+  }, []);
+
   // Auto-fetch when tab changes
   useEffect(() => {
-    fetchData(tab, desde, hasta, codFilt);
+    if (tab === 'pendientes') {
+      fetchPendientes(desde);
+    } else {
+      fetchData(tab, desde, hasta, codFilt);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  function handleApply() { fetchData(tab, desde, hasta, codFilt); }
+  function handleApply() {
+    if (tab === 'pendientes') fetchPendientes(desde);
+    else fetchData(tab, desde, hasta, codFilt);
+  }
 
   return (
     <div style={{ minHeight: '100dvh', background: 'linear-gradient(160deg,#0f172a 0%,#1a2550 100%)', color: '#fff' }}>
@@ -388,23 +427,23 @@ export default function PanelOperaciones() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 5, marginBottom: 18, background: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: 4 }}>
-          {(['conductor', 'tienda'] as Fuente[]).map(f => (
+          {([
+            { f: 'conductor',  label: '🚚 Conductor',    activeColor: 'rgba(251,146,60,0.22)',  activeBorder: 'rgba(251,146,60,0.5)'  },
+            { f: 'tienda',     label: '🏪 Tienda',       activeColor: 'rgba(99,102,241,0.22)',  activeBorder: 'rgba(99,102,241,0.5)'  },
+            { f: 'pendientes', label: '⚠ Sin recepción', activeColor: 'rgba(239,68,68,0.22)',   activeBorder: 'rgba(239,68,68,0.55)'  },
+          ] as { f: Fuente; label: string; activeColor: string; activeBorder: string }[]).map(({ f, label, activeColor, activeBorder }) => (
             <button
               key={f}
               onClick={() => setTab(f)}
               style={{
-                flex: 1, padding: '10px 6px', borderRadius: 10,
-                fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' as const, cursor: 'pointer',
-                background: tab === f
-                  ? (f === 'conductor' ? 'rgba(251,146,60,0.22)' : 'rgba(99,102,241,0.22)')
-                  : 'transparent',
-                border: `1.5px solid ${tab === f
-                  ? (f === 'conductor' ? 'rgba(251,146,60,0.5)' : 'rgba(99,102,241,0.5)')
-                  : 'transparent'}`,
+                flex: 1, padding: '10px 4px', borderRadius: 10,
+                fontSize: 11, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' as const, cursor: 'pointer',
+                background: tab === f ? activeColor : 'transparent',
+                border: `1.5px solid ${tab === f ? activeBorder : 'transparent'}`,
                 color: tab === f ? '#fff' : 'rgba(255,255,255,0.4)',
               }}
             >
-              {f === 'conductor' ? '🚚 Entregas Conductor' : '🏪 Recepción Tienda'}
+              {label}
             </button>
           ))}
         </div>
@@ -474,25 +513,111 @@ export default function PanelOperaciones() {
           </>
         )}
 
-        {/* Records */}
-        {loading ? (
-          <div style={{ textAlign: 'center' as const, padding: '40px 0', color: 'rgba(255,255,255,0.35)', fontSize: 14 }}>
-            Cargando registros...
-          </div>
-        ) : records.length === 0 ? (
-          <div style={{ textAlign: 'center' as const, padding: '40px 0', color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>
-            Sin registros para este período
-          </div>
-        ) : (
+        {/* Records — conductor / tienda tabs */}
+        {tab !== 'pendientes' && (
+          loading ? (
+            <div style={{ textAlign: 'center' as const, padding: '40px 0', color: 'rgba(255,255,255,0.35)', fontSize: 14 }}>
+              Cargando registros...
+            </div>
+          ) : records.length === 0 ? (
+            <div style={{ textAlign: 'center' as const, padding: '40px 0', color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>
+              Sin registros para este período
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+                {records.length} registro{records.length !== 1 ? 's' : ''}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {records.map(rec => (
+                  <RecordCard key={rec.id} rec={rec} onClick={() => setSelected(rec)} />
+                ))}
+              </div>
+            </>
+          )
+        )}
+
+        {/* Pendientes tab */}
+        {tab === 'pendientes' && (
           <>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
-              {records.length} registro{records.length !== 1 ? 's' : ''}
+            {/* KPI */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <div style={{ flex: 1, textAlign: 'center' as const, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, padding: '14px 6px' }}>
+                <div style={{ fontSize: 28, fontWeight: 900, color: '#F87171', lineHeight: 1 }}>{pendTotal}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>Sin recepción</div>
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {records.map(rec => (
-                <RecordCard key={rec.id} rec={rec} onClick={() => setSelected(rec)} />
-              ))}
-            </div>
+
+            {loadingPend ? (
+              <div style={{ textAlign: 'center' as const, padding: '40px 0', color: 'rgba(255,255,255,0.35)', fontSize: 14 }}>
+                Cargando...
+              </div>
+            ) : pendientes.length === 0 ? (
+              <div style={{ textAlign: 'center' as const, padding: '40px 0' }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Todas las tiendas tienen recepción</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pendientes.map(ps => {
+                  const seguimientoColor = ps.seguimiento === 'En camino' ? '#FCD34D'
+                    : ps.seguimiento === 'Entregado' ? '#60A5FA'
+                    : ps.seguimiento === 'Pendiente' ? '#FCA5A5'
+                    : 'rgba(255,255,255,0.35)';
+                  return (
+                    <div key={ps.cod} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                            <span style={{ fontWeight: 900, fontSize: 16 }}>{ps.cod}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                              background: ps.source === 'rm' ? 'rgba(37,99,235,0.18)' : 'rgba(211,47,47,0.18)',
+                              color: ps.source === 'rm' ? '#93C5FD' : '#FCA5A5',
+                              letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
+                              {ps.source === 'rm' ? 'Santiago' : 'Regiones'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{ps.tienda}</div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                          background: `${seguimientoColor}22`, border: `1px solid ${seguimientoColor}55`,
+                          color: seguimientoColor, whiteSpace: 'nowrap' as const }}>
+                          {ps.seguimiento}
+                        </span>
+                      </div>
+
+                      {/* Counts */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: ps.conductor || ps.ventana ? 6 : 0 }}>
+                        {ps.pallets > 0 && (
+                          <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(37,99,235,0.15)', color: '#93C5FD' }}>
+                            {ps.pallets}P
+                          </span>
+                        )}
+                        {ps.bultos > 0 && (
+                          <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(217,119,6,0.15)', color: '#FCD34D' }}>
+                            {ps.bultos}B
+                          </span>
+                        )}
+                        {ps.contenedores > 0 && (
+                          <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(107,33,168,0.15)', color: '#C4B5FD' }}>
+                            {ps.contenedores}C
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Extra info */}
+                      {(ps.conductor || ps.ventana || ps.ruta) && (
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+                          {ps.conductor && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>🚚 {ps.conductor}</span>}
+                          {ps.ventana   && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>🕐 {ps.ventana}</span>}
+                          {ps.ruta      && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>📍 {ps.ruta}</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
