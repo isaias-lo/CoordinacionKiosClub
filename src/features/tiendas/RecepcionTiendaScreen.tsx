@@ -34,6 +34,16 @@ const SELLO_OPTS: { value: SelloEstado; label: string; color: string; bg: string
   { value: 'ausente', label: 'Ausente', color: '#F97316', bg: 'rgba(249,115,22,0.12)', icon: '❌' },
 ];
 
+// Detecta el formato del scan: URL con `?cod=...`, ID canónico (P{seq}{cod}{stamp}P, etc.) o legacy.
+function isCanonicalId(raw: string): boolean {
+  const clean = raw.trim();
+  if (clean.startsWith('http')) return false;
+  if (clean.includes(';') || clean.includes('|')) return false;
+  if (clean.includes('?'))   return false;
+  // Termina en P / B / C / CH y contiene un stamp DDMMYYYY (8 dígitos seguidos)
+  return /\d{8}/.test(clean) && /^[A-Z]?[A-Z]?\d+.*(?:P|B|C|CH)$/i.test(clean);
+}
+
 function parseQRData(raw: string): QRData | null {
   try {
     let params: URLSearchParams;
@@ -54,6 +64,29 @@ function parseQRData(raw: string): QRData | null {
     };
   } catch {
     return { cod: raw, palletsSent: 0, bultosSent: 0, contenedoresSent: 0, guias: [] };
+  }
+}
+
+// Resuelve un ID canónico contra /api/pallet-lookup y devuelve la QRData
+// pre-cargada con las cantidades esperadas para la tienda.
+async function resolveCanonicalIdQRData(canonicalId: string): Promise<QRData | null> {
+  try {
+    const res = await fetch(`/api/pallet-lookup?id=${encodeURIComponent(canonicalId)}`);
+    if (!res.ok) return null;
+    const json = await res.json() as {
+      data?: { cod: string; n_pallets: number; n_bultos: number; n_contenedores: number };
+    };
+    const d = json.data;
+    if (!d?.cod) return null;
+    return {
+      cod:              d.cod,
+      palletsSent:      d.n_pallets,
+      bultosSent:       d.n_bultos,
+      contenedoresSent: d.n_contenedores,
+      guias:            [],
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -106,8 +139,22 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
     if (selloLlegada && selloEstado) setStep('scanner');
   }
 
-  // QR scanner — tras detectar el QR envía OTP y va al paso de validación
+  // QR scanner — tras detectar el QR envía OTP y va al paso de validación.
+  // Acepta tanto URLs con `?cod=...` como ID canónico (P{seq}{cod}{stamp}P, etc.).
   function handleQRDetected(raw: string) {
+    // Caso 1 — ID canónico → resolver vía /api/pallet-lookup
+    if (isCanonicalId(raw)) {
+      void (async () => {
+        const data = await resolveCanonicalIdQRData(raw.trim());
+        if (!data) { setQrError('ID canónico no encontrado. Intenta de nuevo.'); return; }
+        setQrData(data); setQrError('');
+        setOtpInput(''); setOtpError(''); setOtpSentTo('');
+        setStep('otp');
+        void enviarOTP(data.cod);
+      })();
+      return;
+    }
+    // Caso 2 — URL / formato legacy
     const data = parseQRData(raw);
     if (!data) { setQrError('QR inválido. Intenta de nuevo.'); return; }
     setQrData(data); setQrError('');
