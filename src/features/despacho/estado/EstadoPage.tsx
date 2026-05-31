@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { BarcodeCard, LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, PropRow, ToggleRow } from '@/features/despacho/shared/BarcodeCard';
 import { TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { TIENDAS } from '../regiones/data/tiendas';
 import { processPdf } from '../regiones/utils/pdfUtils';
@@ -80,159 +80,10 @@ function saveGuides(g: Record<string, GuideEntry>) {
   localStorage.setItem(GUIDES_KEY, JSON.stringify(g));
 }
 
-function buildQrUrl(store: StoreLabel, driveFileId?: string): string {
-  const pallets     = store.items.filter(i => i.tipo === 'Pallet').length;
-  const bultos      = store.items.filter(i => i.tipo === 'Bulto').length;
-  const contenedores = store.items.filter(i => i.tipo === 'Contenedor').length;
-  const allGuias = [...new Set(store.items.flatMap(i => i.guias))];
-  const p = new URLSearchParams({ cod: store.cod, p: String(pallets), b: String(bultos) });
-  if (contenedores > 0) p.set('c', String(contenedores));
-  if (allGuias.length > 0) p.set('g', allGuias.join(','));
-  if (driveFileId) p.set('drv', driveFileId);
-  const base = typeof window !== 'undefined' ? window.location.origin : 'https://toolskios.vercel.app';
-  return `${base}/recepcion?${p.toString()}`;
-}
 
-/* ── 1D Barcode (Code128) — para la etiqueta maestra de Estado/Seguimiento ── */
-function Barcode1D({ value, height = 50, barWidth = 1.6 }: { value: string; height?: number; barWidth?: number }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  useEffect(() => {
-    if (!svgRef.current || !value) return;
-    import('jsbarcode').then(({ default: JsBarcode }) => {
-      if (!svgRef.current) return;
-      try {
-        JsBarcode(svgRef.current, value, {
-          format: 'CODE128', width: barWidth, height,
-          displayValue: false, margin: 4,
-          background: '#ffffff', lineColor: '#000000',
-        });
-      } catch {
-        const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: barWidth, height, displayValue: false, margin: 4 }); } catch { /* ignore */ }
-      }
-    });
-  }, [value, height, barWidth]);
-  return <svg ref={svgRef} style={{ width: '100%', display: 'block' }} />;
-}
+// Barcode1D → imported via BarcodeCard from @/features/despacho/shared/BarcodeCard
 
-/* ── Label (100×150mm para Zebra) ── */
-function Label({ store, item, qrUrl, hasGuide, audited = false }: { store: StoreLabel; item: LabelItem; qrUrl: string; hasGuide: boolean; audited?: boolean }) {
-  const isPallet     = item.tipo === 'Pallet';
-  const isContenedor = item.tipo === 'Contenedor';
-  const badgeBg      = isPallet ? '#1B2A6B' : isContenedor ? '#6B21A8' : '#D97706';
-  const canonicalId  = buildCanonicalId(item.tipo, item.itemNum, store.cod);
-
-  return (
-    <div
-      className="label-card bg-white flex flex-col"
-      style={{ width: '100mm', height: '150mm', padding: '4mm', boxSizing: 'border-box', overflow: 'hidden', pageBreakAfter: 'always', breakAfter: 'page', position: 'relative' }}>
-
-      {/* Badge AUDITADO — esquina superior derecha */}
-      {audited && (
-        <div style={{
-          position: 'absolute', top: '2mm', right: '2mm',
-          background: '#16A34A', color: '#fff',
-          padding: '1mm 2mm', borderRadius: '2mm',
-          fontFamily: 'Arial Black, sans-serif', fontSize: '7pt', fontWeight: 900,
-          letterSpacing: '0.5pt', textTransform: 'uppercase',
-          boxShadow: '0 0 0 1.5px #fff, 0 0 0 2.5px #16A34A',
-          zIndex: 10,
-        }}>
-          ✓ Auditado
-        </div>
-      )}
-
-      {/* HEADER */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '2mm', marginBottom: '2mm', flexShrink: 0 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'monospace', fontSize: '6.5pt', color: '#888', marginBottom: '0.5mm', letterSpacing: '0.5pt' }}>
-            {store.source === 'santiago' ? 'BODEGA SANTIAGO' : 'BODEGA REGIONES'}
-          </div>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '28pt', fontWeight: 900, lineHeight: 1, color: '#111' }}>
-            {formatCod(store.cod)}
-          </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '11pt', fontWeight: 700, color: '#222', marginTop: '1mm', lineHeight: 1.2 }}>
-            {store.name}
-          </div>
-          {store.address && (
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#666', marginTop: '0.5mm', lineHeight: 1.3 }}>
-              {store.address}
-            </div>
-          )}
-        </div>
-
-        <div style={{ flexShrink: 0, textAlign: 'center', minWidth: '22mm' }}>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '9pt', fontWeight: 900, letterSpacing: '1pt', textTransform: 'uppercase', marginBottom: '0.5mm', color: badgeBg }}>
-            {item.tipo}
-          </div>
-          <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '40pt', fontWeight: 900, lineHeight: 1, color: badgeBg }}>
-            {item.itemNum}
-          </div>
-          <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8.5pt', color: '#999', marginTop: '0.5mm' }}>
-            de {item.totalItems}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ borderTop: '1.5px solid #d0d0d0', marginBottom: '2mm', flexShrink: 0 }} />
-
-      {/* QR + CODE128 — flex:1 toma el espacio restante entre header y footer */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, justifyContent: 'center', gap: '1.5mm', minHeight: 0 }}>
-        {hasGuide ? (
-          <>
-            <QRCodeSVG value={qrUrl} size={92} level="M" />
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6pt', color: '#aaa', letterSpacing: '0.3pt' }}>
-              QR · Confirmar recepción
-            </div>
-          </>
-        ) : (
-          <div style={{ width: 92, height: 92, border: '2px dashed #e0e0e0', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1mm' }}>
-            <div style={{ fontSize: '14pt', opacity: 0.25 }}>📄</div>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', color: '#bbb', textAlign: 'center', padding: '0 6px', lineHeight: 1.3 }}>
-              Sube guía<br />para activar QR
-            </div>
-          </div>
-        )}
-
-        {/* CODE128 con ID canónico — siempre presente como código maestro de trazabilidad */}
-        <div style={{ width: '90%', marginTop: '1mm' }}>
-          <Barcode1D value={canonicalId} height={42} barWidth={1.6} />
-          <div style={{ fontFamily: 'monospace', fontSize: '6.5pt', color: '#444', textAlign: 'center', marginTop: '0.5mm', wordBreak: 'break-all', lineHeight: 1.2 }}>
-            {canonicalId}
-          </div>
-        </div>
-      </div>
-
-      {/* FOOTER — siempre al fondo */}
-      <div style={{ borderTop: '1.5px solid #d0d0d0', marginTop: '1.5mm', paddingTop: '1.5mm', flexShrink: 0 }}>
-        {item.guias.length > 0 && (
-          <div style={{ marginBottom: '1mm' }}>
-            <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Guía:{' '}</span>
-            <span style={{ fontFamily: 'monospace', fontSize: '9.5pt', fontWeight: 700, color: '#222' }}>{item.guias.join(' · ')}</span>
-          </div>
-        )}
-        <div style={{ marginBottom: '1mm' }}>
-          <span style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Fecha:{' '}</span>
-          <span style={{ fontFamily: 'monospace', fontSize: '8.5pt', fontWeight: 700, color: '#444' }}>
-            {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <div>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Peso</div>
-            <div style={{ fontFamily: 'Arial Black, sans-serif', fontSize: '11pt', color: '#222' }}>{item.peso} kg</div>
-          </div>
-          {store.ventana && (
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '7.5pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5pt' }}>Ventana</div>
-              <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '9.5pt', fontWeight: 700, color: '#222' }}>{store.ventana}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// Label (Zebra 100x150mm) → replaced by shared BarcodeCard
 
 /* ── Store card ── */
 function StoreCard({
@@ -326,6 +177,19 @@ export function EstadoPage() {
   // Registra tiendas que el usuario desmarcó explícitamente.
   // rebuild las respeta y no las vuelve a marcar automáticamente.
   const userUncheckedRef = useRef<Set<string>>(new Set());
+
+  const ESTADO_LABEL_CONFIG_KEY = 'estado_label_config_v1';
+  const [labelConfig, setLabelConfig] = useState<LabelConfig>(() => {
+    if (typeof window === 'undefined') return DEFAULT_LABEL_CONFIG;
+    try { return { ...DEFAULT_LABEL_CONFIG, ...JSON.parse(localStorage.getItem('estado_label_config_v1') ?? '{}') }; }
+    catch { return DEFAULT_LABEL_CONFIG; }
+  });
+  const [configOpen, setConfigOpen] = useState(false);
+
+  function updateLabelConfig(cfg: LabelConfig) {
+    setLabelConfig(cfg);
+    localStorage.setItem(ESTADO_LABEL_CONFIG_KEY, JSON.stringify(cfg));
+  }
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -675,30 +539,54 @@ export function EstadoPage() {
 
   return (
     <>
-      <style>{`
-        @media print {
-          body > *:not(#estado-print-area) { display: none !important; }
-          #estado-print-area { display: block !important; }
-          @page { size: 100mm 150mm; margin: 0; }
-          .label-card { page-break-after: always; break-after: page; width: 100mm; height: 150mm; }
-        }
-      `}</style>
+      <style dangerouslySetInnerHTML={{ __html:
+        CFG_SLIDER_CSS +
+        '@media print{' +
+        '@page{size:landscape;margin:0}' +
+        'html,body{width:100%;height:100%;margin:0;padding:0}' +
+        'body>*{display:none!important}' +
+        '#estado-print-area{display:block!important;width:100%;height:100%}' +
+        '.picking-label{display:flex!important;flex-direction:column!important;' +
+        'width:100vw!important;height:100vh!important;max-width:100vw!important;' +
+        'border-radius:0!important;margin:0!important;border:none!important;' +
+        'padding:8mm!important;box-sizing:border-box!important;' +
+        'break-after:page;page-break-after:always;overflow:hidden}' +
+        '.picking-label>div{flex:1!important;display:flex!important;flex-direction:column!important;' +
+        'height:100%!important;min-height:0!important;padding:0!important}' +
+        '.picking-label:last-child{break-after:avoid;page-break-after:avoid}}'
+      }} />
 
       {/* Print area rendered as portal directly into body — escapes all overflow:hidden containers */}
       {mounted && createPortal(
         <div id="estado-print-area" style={{ display: 'none' }}>
           {stores
             .filter(store => printCods.has(store.cod))
-            .flatMap(store => {
-              const qrUrl    = buildQrUrl(store, guides[store.cod]?.driveFileId);
-              const hasGuide = !!guides[store.cod];
-              return store.items.map((item, idx) => {
-                const audited = auditedIds.has(buildCanonicalId(item.tipo, item.itemNum, store.cod));
+            .flatMap(store =>
+              store.items.map((item, idx) => {
+                const tipoCod = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Contenedor' ? 'C' : item.tipo === 'Chocolate' ? 'CH' : 'B';
+                const canonicalId = buildCanonicalId(item.tipo, item.itemNum, store.cod);
+                const audited = auditedIds.has(canonicalId);
                 return (
-                  <Label key={`${store.cod}-${idx}`} store={store} item={item} qrUrl={qrUrl} hasGuide={hasGuide} audited={audited} />
+                  <BarcodeCard
+                    key={`${store.cod}-${idx}`}
+                    value={canonicalId}
+                    palletNum={item.itemNum}
+                    total={item.totalItems}
+                    storeCod={store.cod}
+                    storeName={store.name}
+                    pickerLabel={store.ventana || store.name}
+                    responsibleKey={store.source === 'santiago' ? 'BODEGA SANTIAGO' : 'BODEGA REGIONES'}
+                    allCategories={item.guias}
+                    totalPickers={0}
+                    tipo={tipoCod}
+                    canonicalId={canonicalId}
+                    labelConfig={labelConfig}
+                    audited={audited}
+                    footerExtra={item.peso > 0 ? `${item.peso} kg` : undefined}
+                  />
                 );
-              });
-            })}
+              })
+            )}
         </div>,
         document.body
       )}
@@ -891,32 +779,95 @@ export function EstadoPage() {
                     {selectedStore.ventana  ? ` · Ventana: ${selectedStore.ventana}` : ''}
                   </p>
                 </div>
-                <button
-                  onClick={() => printSingleStore(selectedStore.cod)}
-                  className="flex-shrink-0 px-5 py-3 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[15px] font-bold cursor-pointer active:opacity-80 flex items-center gap-2 whitespace-nowrap"
-                  style={{ boxShadow: '0 3px 10px rgba(27,42,107,0.30)' }}>
-                  🖨 Solo esta tienda
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setConfigOpen(v => !v)}
+                    className="px-4 py-2.5 rounded-btn border font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all active:opacity-80 flex items-center gap-1.5 whitespace-nowrap"
+                    style={{
+                      background: configOpen ? 'rgba(26,37,80,0.10)' : 'rgba(255,255,255,0.9)',
+                      borderColor: configOpen ? 'rgba(26,37,80,0.30)' : '#d0d4df',
+                      color: '#1B2A6B',
+                    }}>
+                    ⚙ Config
+                  </button>
+                  <button
+                    onClick={() => printSingleStore(selectedStore.cod)}
+                    className="px-5 py-2.5 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[15px] font-bold cursor-pointer active:opacity-80 flex items-center gap-2 whitespace-nowrap"
+                    style={{ boxShadow: '0 3px 10px rgba(27,42,107,0.30)' }}>
+                    🖨 Solo esta tienda
+                  </button>
+                </div>
               </div>
 
-              {/* Scale labels for preview only — 100mm≈378px, 150mm≈567px at 96dpi */}
-              {/* auto-fill: 1 col en móvil (~360px), 3 cols en desktop (≥800px) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 238px)', gap: 16 }}>
+              {/* Config panel */}
+              {configOpen && (
+                <div className="mb-6 bg-white rounded-2xl p-4" style={{ border: '1px solid #E2E8F0' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[14px] font-bold text-navy">Diseño de etiqueta</div>
+                    <button
+                      onClick={() => updateLabelConfig({ ...DEFAULT_LABEL_CONFIG })}
+                      className="text-[12px] font-medium rounded-xl px-3 py-1.5 cursor-pointer transition-all active:scale-95"
+                      style={{ color: '#64748B', background: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+                      ↺ Restablecer
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#94A3B8] mb-1">Tipografía</div>
+                      <PropRow label="Ventana / nombre" field="pickerFontSize" min={20} max={50} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="N.º pallet (P-1)" field="palletNumSize" min={50} max={120} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="Cód. tienda" field="storeFontSize" min={80} max={200} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="Nombre tienda" field="storeNameFontSize" min={24} max={72} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="Guías / categ." field="catFontSize" min={12} max={30} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="Fecha" field="dateFontSize" min={8} max={20} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#94A3B8] mb-1">Código de barras</div>
+                      <PropRow label="Grosor barras" field="barcodeBarWidth" min={1} max={4} unit="" labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="Altura" field="barcodeHeight" min={40} max={130} labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <PropRow label="Ancho" field="barcodeContainerWidth" min={60} max={100} unit="%" labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#94A3B8] mb-1 mt-3">Visibilidad</div>
+                      <ToggleRow label="Fuente (Bodega Santiago/Regiones)" field="showResponsable" labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <ToggleRow label="Guías como etiquetas" field="showCategories" labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <ToggleRow label="Nombre de tienda" field="showStoreName" labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                      <ToggleRow label="Fecha impresión" field="showDate" labelConfig={labelConfig} onUpdate={(f, v) => updateLabelConfig({ ...labelConfig, [f]: v })} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Preview grid — BarcodeCard scaled to fit */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 360px)', gap: 16 }}>
                 {(() => {
-                  const SCALE = 0.63;
-                  const W = 378 * SCALE; // ≈238px
-                  const H = 567 * SCALE; // ≈357px
-                  const qrUrl    = buildQrUrl(selectedStore, guides[selectedStore.cod]?.driveFileId);
-                  const hasGuide = !!guides[selectedStore.cod];
+                  const SCALE = 0.50;
+                  const W = 720 * SCALE; // 360px
+                  const H = 600 * SCALE; // 300px
                   return selectedStore.items.map((item, idx) => {
-                    const audited = auditedIds.has(buildCanonicalId(item.tipo, item.itemNum, selectedStore.cod));
+                    const tipoCod = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Contenedor' ? 'C' : item.tipo === 'Chocolate' ? 'CH' : 'B';
+                    const canonicalId = buildCanonicalId(item.tipo, item.itemNum, selectedStore.cod);
+                    const audited = auditedIds.has(canonicalId);
                     return (
                       <div
                         key={idx}
                         className="shadow-xl rounded-xl overflow-hidden flex-shrink-0"
                         style={{ border: '1px solid #d0d4df', width: W, height: H, position: 'relative' }}>
-                        <div style={{ position: 'absolute', top: 0, left: 0, transform: `scale(${SCALE})`, transformOrigin: 'top left' }}>
-                          <Label store={selectedStore} item={item} qrUrl={qrUrl} hasGuide={hasGuide} audited={audited} />
+                        <div style={{ position: 'absolute', top: 0, left: 0, transform: `scale(${SCALE})`, transformOrigin: 'top left', width: 720 }}>
+                          <BarcodeCard
+                            value={canonicalId}
+                            palletNum={item.itemNum}
+                            total={item.totalItems}
+                            storeCod={selectedStore.cod}
+                            storeName={selectedStore.name}
+                            pickerLabel={selectedStore.ventana || selectedStore.name}
+                            responsibleKey={selectedStore.source === 'santiago' ? 'BODEGA SANTIAGO' : 'BODEGA REGIONES'}
+                            allCategories={item.guias}
+                            totalPickers={0}
+                            tipo={tipoCod}
+                            canonicalId={canonicalId}
+                            labelConfig={labelConfig}
+                            audited={audited}
+                            footerExtra={item.peso > 0 ? `${item.peso} kg` : undefined}
+                          />
                         </div>
                       </div>
                     );
