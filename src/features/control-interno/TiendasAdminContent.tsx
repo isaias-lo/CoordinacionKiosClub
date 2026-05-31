@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Store, CalendarDays } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
 
@@ -10,6 +10,7 @@ export interface Tienda {
   frecuencia: string; prom_por_dia: string; lat: number | null; lon: number | null;
   correos: string; tel_encargado: string; supervisor: string;
   tel_supervisor: string; transportista: string; activo: boolean;
+  created_at?: string; updated_at?: string;
 }
 
 const EMPTY: Tienda = {
@@ -17,6 +18,81 @@ const EMPTY: Tienda = {
   corredor: '', tipo: '', ventana: '', frecuencia: '', prom_por_dia: '',
   lat: null, lon: null, correos: '', tel_encargado: '', supervisor: '',
   tel_supervisor: '', transportista: '', activo: true,
+};
+
+type ViewMode = 'xl' | 'lg' | 'md' | 'sm' | 'list';
+type SortBy  = 'nombre' | 'codigo' | 'region' | 'estado' | 'recientes' | 'modificadas';
+type SortDir = 'asc' | 'desc';
+
+const SORT_OPTS: { id: SortBy; label: string; sym: string; defaultDir: SortDir }[] = [
+  { id: 'nombre',      label: 'Nombre',      sym: 'Aa', defaultDir: 'asc'  },
+  { id: 'codigo',      label: 'Código',      sym: '#',  defaultDir: 'asc'  },
+  { id: 'region',      label: 'Región',      sym: '◎',  defaultDir: 'asc'  },
+  { id: 'estado',      label: 'Estado',      sym: '●',  defaultDir: 'asc'  },
+  { id: 'recientes',   label: 'Recientes',   sym: '⊕',  defaultDir: 'desc' },
+  { id: 'modificadas', label: 'Modificadas', sym: '✎',  defaultDir: 'desc' },
+];
+
+function relativeTime(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const diff  = Date.now() - new Date(iso).getTime();
+  const mins  = Math.floor(diff / 60_000);
+  if (mins < 2)    return 'hace un momento';
+  if (mins < 60)   return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24)  return `hace ${hours}h`;
+  const days  = Math.floor(hours / 24);
+  if (days < 7)    return `hace ${days}d`;
+  if (days < 30)   return `hace ${Math.floor(days / 7)} sem`;
+  return new Date(iso).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: days > 365 ? '2-digit' : undefined });
+}
+
+function sortTiendas(list: Tienda[], by: SortBy, dir: SortDir): Tienda[] {
+  return [...list].sort((a, b) => {
+    let cmp = 0;
+    switch (by) {
+      case 'nombre':      cmp = a.nombre.localeCompare(b.nombre, 'es'); break;
+      case 'codigo':      cmp = a.codigo.localeCompare(b.codigo, 'es'); break;
+      case 'region':      cmp = a.region.localeCompare(b.region, 'es'); break;
+      case 'estado':      cmp = (a.activo === b.activo) ? 0 : a.activo ? -1 : 1; break;
+      case 'recientes':
+        cmp = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
+        return dir === 'desc' ? cmp : -cmp;
+      case 'modificadas':
+        cmp = new Date(b.updated_at ?? b.created_at ?? 0).getTime()
+            - new Date(a.updated_at ?? a.created_at ?? 0).getTime();
+        return dir === 'desc' ? cmp : -cmp;
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
+function IconXL() {
+  return <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="1" y="1" width="16" height="16" rx="3"/></svg>;
+}
+function IconLG() {
+  return <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="1" y="1" width="6.5" height="16" rx="2"/><rect x="10.5" y="1" width="6.5" height="16" rx="2"/></svg>;
+}
+function IconMD() {
+  return <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="1" y="1" width="4" height="16" rx="1.5"/><rect x="7" y="1" width="4" height="16" rx="1.5"/><rect x="13" y="1" width="4" height="16" rx="1.5"/></svg>;
+}
+function IconSM() {
+  return <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="1" y="1" width="7" height="7" rx="2"/><rect x="10" y="1" width="7" height="7" rx="2"/><rect x="1" y="10" width="7" height="7" rx="2"/><rect x="10" y="10" width="7" height="7" rx="2"/></svg>;
+}
+function IconList() {
+  return <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="1" y="2" width="16" height="3" rx="1.5"/><rect x="1" y="7.5" width="16" height="3" rx="1.5"/><rect x="1" y="13" width="16" height="3" rx="1.5"/></svg>;
+}
+
+const VIEW_OPTS: { id: ViewMode; label: string; Icon: () => React.ReactElement }[] = [
+  { id: 'xl',   label: 'Extra grande', Icon: IconXL },
+  { id: 'lg',   label: 'Grande',       Icon: IconLG },
+  { id: 'md',   label: 'Mediano',      Icon: IconMD },
+  { id: 'sm',   label: 'Pequeño',      Icon: IconSM },
+  { id: 'list', label: 'Lista',        Icon: IconList },
+];
+
+const GRID_CLASS: Record<ViewMode, string> = {
+  xl: 'tg-xl', lg: 'tg-lg', md: 'tg-md', sm: 'tg-sm', list: 'tg-list',
 };
 
 const S = {
@@ -50,6 +126,31 @@ export default function TiendasAdminContent({
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
   const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === 'undefined') return 'lg';
+    return (localStorage.getItem('tiendas_view_mode') as ViewMode) ?? 'lg';
+  });
+  const [sortBy,  setSortBy]  = useState<SortBy>(() => {
+    if (typeof window === 'undefined') return 'nombre';
+    return (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre';
+  });
+  const [sortDir, setSortDir] = useState<SortDir>(() => {
+    if (typeof window === 'undefined') return 'asc';
+    return (localStorage.getItem('tiendas_sort_dir') as SortDir) ?? 'asc';
+  });
+
+  useEffect(() => { localStorage.setItem('tiendas_view_mode', viewMode); }, [viewMode]);
+  useEffect(() => { localStorage.setItem('tiendas_sort_by',  sortBy);   }, [sortBy]);
+  useEffect(() => { localStorage.setItem('tiendas_sort_dir', sortDir);  }, [sortDir]);
+
+  function handleSortClick(id: SortBy) {
+    if (sortBy === id) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(id);
+      setSortDir(SORT_OPTS.find(o => o.id === id)?.defaultDir ?? 'asc');
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,8 +188,8 @@ export default function TiendasAdminContent({
     finally { setExporting(false); }
   }
 
-  function openAdd()          { setForm(EMPTY);         setModal('add');  }
-  function openEdit(t: Tienda){ setForm({ ...t });      setModal('edit'); }
+  function openAdd()          { setForm(EMPTY);    setModal('add');  }
+  function openEdit(t: Tienda){ setForm({ ...t }); setModal('edit'); }
 
   async function handleSave() {
     if (!form.codigo || !form.nombre) return;
@@ -120,15 +221,170 @@ export default function TiendasAdminContent({
   );
   const activas   = searchFiltered.filter(t =>  t.activo).length;
   const inactivas = searchFiltered.filter(t => !t.activo).length;
-  const filtered  = activeFilter === 'activas'   ? searchFiltered.filter(t =>  t.activo)
-                  : activeFilter === 'inactivas' ? searchFiltered.filter(t => !t.activo)
-                  : searchFiltered;
+  const baseFiltered = activeFilter === 'activas'   ? searchFiltered.filter(t =>  t.activo)
+                     : activeFilter === 'inactivas' ? searchFiltered.filter(t => !t.activo)
+                     : searchFiltered;
+  const filtered  = sortTiendas(baseFiltered, sortBy, sortDir);
+
+  // Whether any tienda in the current view has timestamp data
+  const hasTimestamps = filtered.some(t => t.created_at || t.updated_at);
+
+  // ── Card renderer ────────────────────────────────────────────────────────────
+  function renderCard(t: Tienda) {
+    const codeBadge = (size: number, pad: string, radius: number) => (
+      <span style={{ fontFamily: 'monospace', fontSize: size, fontWeight: 900, background: 'rgba(37,99,235,0.3)', color: '#93C5FD', borderRadius: radius, padding: pad, letterSpacing: '0.03em', whiteSpace: 'nowrap' as const }}>
+        {t.codigo}
+      </span>
+    );
+    const statusBadge = (size: number, pad: string) => (
+      <span style={{ fontSize: size, fontWeight: 800, borderRadius: 20, padding: pad, background: t.activo ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: t.activo ? '#34D399' : '#F87171', border: `1px solid ${t.activo ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`, letterSpacing: '0.05em', whiteSpace: 'nowrap' as const }}>
+        {t.activo ? 'ACTIVO' : 'INACTIVO'}
+      </span>
+    );
+
+    // Contextual timestamp shown based on active sort
+    const tsValue  = sortBy === 'recientes'   ? t.created_at
+                   : sortBy === 'modificadas' ? (t.updated_at ?? t.created_at)
+                   : t.updated_at;
+    const tsLabel  = sortBy === 'recientes'   ? 'agregada'
+                   : sortBy === 'modificadas' ? 'modificada'
+                   : 'modificada';
+    const tsText   = relativeTime(tsValue);
+    const tsColor  = (() => {
+      if (!tsValue) return 'rgba(255,255,255,0.2)';
+      const days = (Date.now() - new Date(tsValue).getTime()) / 86_400_000;
+      if (days < 1)  return '#34D399';
+      if (days < 7)  return '#FCD34D';
+      if (days < 30) return 'rgba(255,255,255,0.45)';
+      return 'rgba(255,255,255,0.25)';
+    })();
+
+    const tsBadge = (showLabel = true) => tsText ? (
+      <span style={{ fontSize: 11, color: tsColor, display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' as const }}>
+        <span style={{ opacity: 0.7 }}>{showLabel ? `${tsLabel}:` : '◷'}</span> {tsText}
+      </span>
+    ) : null;
+
+    // ── LISTA ────────────────────────────────────────────────────────────────
+    if (viewMode === 'list') {
+      return (
+        <div key={t.codigo} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '9px 14px', flexWrap: 'wrap' }}>
+          {codeBadge(13, '2px 9px', 6)}
+          <span style={{ color: '#fff', fontSize: 14, fontWeight: 700, flex: 1, minWidth: 140 }}>{t.nombre}</span>
+          {t.region  && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.06)', borderRadius: 5, padding: '2px 8px' }}>{t.region}</span>}
+          {t.ventana && <span style={{ fontSize: 12, color: '#FCD34D', fontWeight: 600, background: 'rgba(252,211,77,0.1)', borderRadius: 5, padding: '2px 8px' }}>{t.ventana}</span>}
+          {tsBadge(false)}
+          {statusBadge(11, '3px 10px')}
+          {canEditTiendas && (
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+              <button onClick={() => handleToggleActivo(t)} style={{ height: 30, borderRadius: 7, border: 'none', fontSize: 11, fontWeight: 800, cursor: 'pointer', padding: '0 12px', background: t.activo ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)', color: t.activo ? '#F87171' : '#34D399' }}>
+                {t.activo ? 'DESACT.' : 'ACTIVAR'}
+              </button>
+              <button onClick={() => openEdit(t)} style={{ height: 30, borderRadius: 7, border: 'none', fontSize: 11, fontWeight: 800, cursor: 'pointer', padding: '0 12px', background: 'rgba(59,130,246,0.2)', color: '#93C5FD' }}>
+                EDITAR
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── EXTRA GRANDE ─────────────────────────────────────────────────────────
+    if (viewMode === 'xl') {
+      return (
+        <div key={t.codigo} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 18, padding: '22px 26px', display: 'flex', gap: 22, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 100 }}>
+            <div style={{ width: 78, height: 78, borderRadius: 20, background: 'rgba(37,99,235,0.18)', border: '2px solid rgba(37,99,235,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 900, color: '#93C5FD', textAlign: 'center', lineHeight: 1.3, padding: '0 4px' }}>{t.codigo}</span>
+            </div>
+            {statusBadge(11, '4px 10px')}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: '#fff', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{t.nombre}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {t.region    && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '3px 9px' }}>{t.region}</span>}
+              {t.corredor  && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '3px 9px' }}>{t.corredor}</span>}
+              {t.ventana   && <span style={{ fontSize: 13, color: '#FCD34D', background: 'rgba(252,211,77,0.12)', borderRadius: 6, padding: '3px 9px', fontWeight: 600 }}>{t.ventana}</span>}
+              {t.supervisor && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '3px 9px' }}>Sup: {t.supervisor}</span>}
+              {t.transportista && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '3px 9px' }}>{t.transportista}</span>}
+            </div>
+            {t.direccion && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 8 }}>{t.direccion}</div>}
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              {t.correos       && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>✉ {t.correos}</span>}
+              {t.tel_encargado && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>📞 {t.tel_encargado}</span>}
+              {tsText && <span style={{ marginLeft: 'auto' }}>{tsBadge()}</span>}
+            </div>
+          </div>
+          {canEditTiendas && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 130 }}>
+              <button onClick={() => handleToggleActivo(t)} style={{ height: 40, borderRadius: 10, border: 'none', fontSize: 13, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: t.activo ? 'linear-gradient(175deg,#EF4444,#B91C1C)' : 'linear-gradient(175deg,#10B981,#059669)', color: '#fff', boxShadow: t.activo ? '0 3px 10px rgba(239,68,68,0.35)' : '0 3px 10px rgba(16,185,129,0.35)' }}>
+                {t.activo ? 'DESACTIVAR' : 'ACTIVAR'}
+              </button>
+              <button onClick={() => openEdit(t)} style={{ height: 40, borderRadius: 10, border: 'none', fontSize: 13, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: 'linear-gradient(175deg,#3B82F6,#1D4ED8)', color: '#fff', boxShadow: '0 3px 10px rgba(59,130,246,0.35)' }}>
+                EDITAR
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── GRANDE / MEDIANO / PEQUEÑO ────────────────────────────────────────────
+    const isLG = viewMode === 'lg';
+    const isSM = viewMode === 'sm';
+
+    return (
+      <div key={t.codigo} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: isSM ? 12 : isLG ? 16 : 14, padding: isSM ? '12px 14px' : isLG ? '18px 20px' : '14px 16px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isSM ? 6 : 8, marginBottom: isSM ? 6 : 8, flexWrap: 'wrap' }}>
+          {codeBadge(isSM ? 12 : isLG ? 18 : 14, isSM ? '3px 8px' : isLG ? '4px 12px' : '3px 9px', isSM ? 6 : 8)}
+          {statusBadge(isSM ? 10 : 11, isSM ? '2px 7px' : '3px 9px')}
+        </div>
+        <div style={{ color: '#fff', fontSize: isSM ? 12 : isLG ? 20 : 15, fontWeight: 700, marginBottom: isSM ? 6 : 8, lineHeight: 1.2 }}>{t.nombre}</div>
+        {!isSM && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+            {t.region   && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 5, padding: '2px 7px' }}>{t.region}</span>}
+            {t.ventana  && <span style={{ fontSize: 12, color: '#FCD34D', background: 'rgba(252,211,77,0.12)', borderRadius: 5, padding: '2px 7px', fontWeight: 600 }}>{t.ventana}</span>}
+            {isLG && t.corredor   && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 5, padding: '2px 7px' }}>{t.corredor}</span>}
+            {isLG && t.supervisor && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', borderRadius: 5, padding: '2px 7px' }}>Sup: {t.supervisor}</span>}
+          </div>
+        )}
+        {isLG && t.direccion && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>{t.direccion}</div>}
+        {isLG && (t.correos || t.tel_encargado) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+            {t.correos       && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>✉ {t.correos}</span>}
+            {t.tel_encargado && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>📞 {t.tel_encargado}</span>}
+          </div>
+        )}
+        {isLG && tsText && <div style={{ marginBottom: 10 }}>{tsBadge()}</div>}
+        <div style={{ flex: 1 }} />
+        {canEditTiendas && (
+          <div style={{ display: 'flex', gap: isSM ? 4 : 8, marginTop: 'auto', paddingTop: (!isSM && !(isLG && (t.correos || t.tel_encargado))) ? 14 : 0 }}>
+            <button onClick={() => handleToggleActivo(t)} style={{ flex: 1, height: isSM ? 28 : 40, borderRadius: isSM ? 7 : 10, border: 'none', fontSize: isSM ? 10 : 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.03em', background: t.activo ? 'linear-gradient(175deg,#EF4444,#B91C1C)' : 'linear-gradient(175deg,#10B981,#059669)', color: '#fff', boxShadow: t.activo ? '0 3px 10px rgba(239,68,68,0.35)' : '0 3px 10px rgba(16,185,129,0.35)' }}>
+              {t.activo ? (isSM ? 'DESACT.' : 'DESACTIVAR') : 'ACTIVAR'}
+            </button>
+            <button onClick={() => openEdit(t)} style={{ flex: 1, height: isSM ? 28 : 40, borderRadius: isSM ? 7 : 10, border: 'none', fontSize: isSM ? 10 : 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.03em', background: 'linear-gradient(175deg,#3B82F6,#1D4ED8)', color: '#fff', boxShadow: '0 3px 10px rgba(59,130,246,0.35)' }}>
+              EDITAR
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
-      <style>{`.tiendas-grid{display:grid;grid-template-columns:1fr;gap:14px}@media(min-width:700px){.tiendas-grid{grid-template-columns:repeat(2,1fr)}}@media(min-width:1080px){.tiendas-grid{grid-template-columns:repeat(3,1fr)}}`}</style>
+      <style>{`
+        .tg-xl{display:grid;grid-template-columns:1fr;gap:14px}
+        .tg-lg{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+        .tg-md{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+        .tg-sm{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+        .tg-list{display:flex;flex-direction:column;gap:6px}
+        @media(max-width:1000px){.tg-sm{grid-template-columns:repeat(3,1fr)}}
+        @media(max-width:750px){.tg-lg,.tg-md,.tg-sm{grid-template-columns:repeat(2,1fr)}}
+        @media(max-width:480px){.tg-lg,.tg-md,.tg-sm{grid-template-columns:1fr}}
+      `}</style>
 
-      {/* Action buttons row — solo visibles con permiso de edición */}
+      {/* Action buttons row */}
       {activeTab === 'tiendas' && canEditTiendas && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           <button style={S.syncBtn} onClick={handleSync} disabled={syncing}>
@@ -197,11 +453,11 @@ export default function TiendasAdminContent({
           </div>
         )}
 
-        {/* Search + stats */}
-        <div style={{ display: 'flex', gap: 14, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Search + stats + view mode */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por código, nombre o región…"
-            style={{ ...S.input, flex: 1, minWidth: 200 }} />
+            style={{ ...S.input, flex: 1, minWidth: 180 }} />
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
             <button
               onClick={() => setActiveFilter(f => f === 'activas' ? 'all' : 'activas')}
@@ -217,6 +473,58 @@ export default function TiendasAdminContent({
               <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>inactivas</span>
             </button>
           </div>
+
+          {/* View mode toolbar */}
+          <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.07)', borderRadius: 10, padding: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
+            {VIEW_OPTS.map(({ id, label, Icon }) => (
+              <button key={id} title={label} onClick={() => setViewMode(id)} style={{
+                width: 34, height: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: viewMode === id ? 'rgba(99,102,241,0.35)' : 'transparent',
+                color: viewMode === id ? '#A5B4FC' : 'rgba(255,255,255,0.3)',
+                transition: 'all 0.15s',
+              }}>
+                <Icon />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sort toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginRight: 2 }}>ORDENAR</span>
+          {SORT_OPTS.map(({ id, label, sym }) => {
+            const active = sortBy === id;
+            const isTimeBased = id === 'recientes' || id === 'modificadas';
+            const unavail = isTimeBased && !hasTimestamps;
+            return (
+              <button key={id} onClick={() => !unavail && handleSortClick(id)}
+                title={unavail ? 'Requiere columna updated_at en Supabase' : label}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  height: 28, borderRadius: 8, padding: '0 10px',
+                  border: `1px solid ${active ? 'rgba(99,102,241,0.55)' : 'rgba(255,255,255,0.1)'}`,
+                  background: active ? 'rgba(99,102,241,0.2)' : unavail ? 'transparent' : 'rgba(255,255,255,0.04)',
+                  color: active ? '#A5B4FC' : unavail ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)',
+                  fontSize: 12, fontWeight: active ? 700 : 500,
+                  cursor: unavail ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s',
+                }}>
+                <span style={{ fontSize: 11, opacity: 0.8 }}>{sym}</span>
+                <span>{label}</span>
+                {active && (
+                  <span style={{ fontSize: 10, marginLeft: 1, opacity: 0.8 }}>
+                    {sortDir === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+                {unavail && <span style={{ fontSize: 9, marginLeft: 1 }}>⊘</span>}
+              </button>
+            );
+          })}
+          {/* Result count */}
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,0.25)' }}>
+            {filtered.length} tienda{filtered.length !== 1 ? 's' : ''}
+          </span>
         </div>
 
         {loading ? (
@@ -226,44 +534,8 @@ export default function TiendasAdminContent({
             {tiendas.length === 0 ? 'No hay tiendas. Usa "Sheets → Supabase" para importar.' : 'Sin resultados'}
           </div>
         ) : (
-          <div className="tiendas-grid">
-            {filtered.map(t => (
-              <div key={t.codigo} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 900, background: 'rgba(37,99,235,0.3)', color: '#93C5FD', borderRadius: 8, padding: '4px 12px', letterSpacing: '0.03em' }}>
-                    {t.codigo}
-                  </span>
-                  <span style={{ fontSize: 13, fontWeight: 800, borderRadius: 20, padding: '4px 12px', background: t.activo ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: t.activo ? '#34D399' : '#F87171', border: `1px solid ${t.activo ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`, letterSpacing: '0.05em' }}>
-                    {t.activo ? 'ACTIVO' : 'INACTIVO'}
-                  </span>
-                </div>
-                <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, marginBottom: 8, lineHeight: 1.2 }}>{t.nombre}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {t.region    && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '3px 9px' }}>{t.region}</span>}
-                  {t.corredor  && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '3px 9px' }}>{t.corredor}</span>}
-                  {t.ventana   && <span style={{ fontSize: 13, color: '#FCD34D', background: 'rgba(252,211,77,0.12)', borderRadius: 6, padding: '3px 9px', fontWeight: 600 }}>{t.ventana}</span>}
-                  {t.supervisor && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '3px 9px' }}>Sup: {t.supervisor}</span>}
-                </div>
-                {t.direccion && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>{t.direccion}</div>}
-                {(t.correos || t.tel_encargado) && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-                    {t.correos       && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>✉ {t.correos}</span>}
-                    {t.tel_encargado && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>📞 {t.tel_encargado}</span>}
-                  </div>
-                )}
-                <div style={{ flex: 1 }} />
-                {canEditTiendas && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: t.correos || t.tel_encargado ? 0 : 14 }}>
-                    <button onClick={() => handleToggleActivo(t)} style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: t.activo ? 'linear-gradient(175deg,#EF4444,#B91C1C)' : 'linear-gradient(175deg,#10B981,#059669)', color: '#fff', boxShadow: t.activo ? '0 3px 10px rgba(239,68,68,0.35)' : '0 3px 10px rgba(16,185,129,0.35)' }}>
-                      {t.activo ? 'DESACTIVAR' : 'ACTIVAR'}
-                    </button>
-                    <button onClick={() => openEdit(t)} style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', background: 'linear-gradient(175deg,#3B82F6,#1D4ED8)', color: '#fff', boxShadow: '0 3px 10px rgba(59,130,246,0.35)' }}>
-                      EDITAR
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className={GRID_CLASS[viewMode]}>
+            {filtered.map(t => renderCard(t))}
           </div>
         )}
       </>}
