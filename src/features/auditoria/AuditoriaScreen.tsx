@@ -448,12 +448,15 @@ function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boolean }) {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         const cur = el.value.trim();
-        // Formato: COD;picker;refs;P#;cats  (o '|' legacy)
-        // Procesar si hay al menos 2 separadores del mismo tipo
+        // Formatos aceptados:
+        //   • COD;picker;refs;P#;cats  (o '|' legacy)
+        //   • ID numérico (slot_id legacy)
+        //   • ID canónico: termina en P / B / C / CH y contiene letras+dígitos (P{seq}{cod}{stamp}P, etc.)
         const hasSemi = (cur.match(/;/g) ?? []).length >= 2;
         const hasPipe = (cur.match(/\|/g) ?? []).length >= 2;
-        const isNumericId = /^\d{1,10}$/.test(cur);
-        if (cur && (hasSemi || hasPipe || isNumericId)) tryParse(cur);
+        const isNumericId  = /^\d{1,10}$/.test(cur);
+        const isCanonicalId = /^[A-Z]?[A-Z]?\d+.*(?:P|B|C|CH)$/i.test(cur) && /\d{8}/.test(cur);
+        if (cur && (hasSemi || hasPipe || isNumericId || isCanonicalId)) tryParse(cur);
       }, 100);
     };
 
@@ -2765,11 +2768,57 @@ export function AuditoriaScreen() {
     }
   };
 
+  // Lookup por ID canónico (P{seq}{cod}{stamp}P, etc.). Resuelve cod y tipo
+  // contra despacho_rm/despacho_regiones y pre-rellena la tienda. Si además
+  // existe un picking_pallets matching (por slot_id), reutiliza el flujo
+  // existente para auto-rellenar picker + operaciones.
+  const handleCanonicalIdLookup = async (canonicalId: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/pallet-lookup?id=${encodeURIComponent(canonicalId)}`);
+      if (!res.ok) {
+        showToast(`✗ ID no encontrado: ${canonicalId}`, '#D32F2F');
+        return;
+      }
+      const json = await res.json() as {
+        data?: { source: string; id: string; cod: string; tienda: string; tipo: string; carga: string };
+      };
+      if (!json.data) {
+        showToast(`✗ ID no encontrado: ${canonicalId}`, '#D32F2F');
+        return;
+      }
+      const { cod, tipo: rmTipo } = json.data;
+
+      // Si la búsqueda cayó en picking_pallets (slot legacy), reutilizar el flujo
+      // existente que sí carga picker + operaciones desde Odoo.
+      if (json.data.source === 'picking_pallets') {
+        void handlePalletIdLookup(json.data.id);
+        return;
+      }
+
+      const matchedTienda = TODAS_LAS_TIENDAS.find(t => t.cod === cod) ?? null;
+      if (matchedTienda) setTienda(matchedTienda);
+
+      showToast(`✓ ${canonicalId} · ${cod} · ${rmTipo}`, '#16A34A');
+      // Saltamos al setup como hace el flujo legacy para que el supervisor
+      // termine de seleccionar picker y subtipos manualmente.
+      setFormPhase('setup');
+    } catch {
+      showToast('✗ Error de conexión al buscar el ID', '#D32F2F');
+    }
+  };
+
   // Parsea código de barra del pallet: COD|PickerName|Refs|P#|Cats
   const handleBarcodeScan = (raw: string): boolean => {
+    const clean = raw.trim();
     // Si el código es solo numérico, tratarlo como ID de pallet y buscar en Odoo
-    if (/^\d{1,10}$/.test(raw.trim())) {
-      void handlePalletIdLookup(raw.trim());
+    if (/^\d{1,10}$/.test(clean)) {
+      void handlePalletIdLookup(clean);
+      return true;
+    }
+    // ID canónico (sin separadores, formato P{seq}{cod}{stamp}P / {seq}B{cod}{stamp}B / etc.)
+    if (!clean.includes(';') && !clean.includes('|')
+        && /\d{8}/.test(clean) && /^[A-Z]?[A-Z]?\d+.*(?:P|B|C|CH)$/i.test(clean)) {
+      void handleCanonicalIdLookup(clean);
       return true;
     }
     // Separador ';' (sin modificador de teclado). Fallback legacy con '|' para etiquetas antiguas.
