@@ -32,6 +32,11 @@ interface RecepcionBody {
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
+function todayFecha(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
 function getAuth() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
@@ -107,10 +112,11 @@ export async function POST(request: NextRequest) {
 
     // Conductor entrega → queda en 'Entregado' hasta que la tienda valide
     const nuevoEstado = 'Entregado';
+    const fechaHoy = todayFecha();
 
     await Promise.all([
-      sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
-      sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod),
+      sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaHoy),
+      sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaHoy),
     ]);
 
     // Write to ENTREGA/TIENDA sheet
