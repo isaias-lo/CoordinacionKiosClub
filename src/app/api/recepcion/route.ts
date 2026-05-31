@@ -28,6 +28,7 @@ interface RecepcionBody {
   cdSalidaHora?: string;
   estadoFotoUrls?: string[];
   codigoVerificacion?: string;
+  canonicalId?: string;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
       cd_salida_hora:       body.cdSalidaHora          ?? '',
       estado_fotos:         body.estadoFotoUrls        ?? [],
       codigo_verificacion:  body.codigoVerificacion    ?? '',
+      canonical_id:         body.canonicalId           ?? null,
       fuente:               'conductor',
     });
 

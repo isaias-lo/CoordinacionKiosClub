@@ -9,6 +9,7 @@ import { formatHora } from './RecepcionTiendaScreen';
 
 interface Props {
   qrData: QRData;
+  canonicalId?: string | null;
   selloLlegada: FotoRegistro;
   selloEstado: SelloEstado;
   cdFoto: FotoRegistro | null;
@@ -41,7 +42,7 @@ async function uploadPhoto(file: File, path: string): Promise<string> {
   return publicUrl;
 }
 
-export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDone, onBack }: Props) {
+export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, cdFoto, onDone, onBack }: Props) {
   const { cod, palletsSent, bultosSent, contenedoresSent, guias, driveFileId } = qrData;
   const store = TIENDAS_INICIAL[cod];
 
@@ -249,6 +250,7 @@ export function RecepcionForm({ qrData, selloLlegada, selloEstado, cdFoto, onDon
           cdSalidaUrl,       cdSalidaHora:      cdFoto?.hora ?? '',
           estadoFotoUrls,    signatureDataUrl,
           codigoVerificacion: code,
+          canonicalId:       canonicalId ?? undefined,
         }),
       });
       const data = await res.json();

@@ -117,6 +117,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
   const [selloLlegada, setSelloLlegada] = useState<FotoRegistro | null>(null);
   const [selloEstado,  setSelloEstado]  = useState<SelloEstado | null>(null);
   const [qrData,       setQrData]       = useState<QRData | null>(null);
+  const [canonicalId,  setCanonicalId]  = useState<string | null>(null);
   const [qrError,      setQrError]      = useState('');
 
   // OTP
@@ -147,6 +148,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
       void (async () => {
         const data = await resolveCanonicalIdQRData(raw.trim());
         if (!data) { setQrError('ID canónico no encontrado. Intenta de nuevo.'); return; }
+        setCanonicalId(raw.trim());
         setQrData(data); setQrError('');
         setOtpInput(''); setOtpError(''); setOtpSentTo('');
         setStep('otp');
@@ -157,6 +159,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
     // Caso 2 — URL / formato legacy
     const data = parseQRData(raw);
     if (!data) { setQrError('QR inválido. Intenta de nuevo.'); return; }
+    setCanonicalId(null);
     setQrData(data); setQrError('');
     setOtpInput(''); setOtpError(''); setOtpSentTo('');
     setStep('otp');
@@ -209,7 +212,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
   // Start next delivery (keeps CD photo)
   function handleSiguienteEntrega() {
     setSelloLlegada(null); setSelloEstado(null);
-    setQrData(null); setQrError('');
+    setQrData(null); setCanonicalId(null); setQrError('');
     setOtpInput(''); setOtpError(''); setOtpSentTo('');
     setStep('sello-llegada');
   }
@@ -506,6 +509,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 <RecepcionForm
                   qrData={qrData}
+                  canonicalId={canonicalId}
                   selloLlegada={selloLlegada}
                   selloEstado={selloEstado!}
                   cdFoto={cdFoto}

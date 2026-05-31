@@ -21,6 +21,7 @@ interface RecepcionTiendaBody {
   estadoFotoUrls?: string[];
   guias?: string[];
   driveFileId?: string;
+  canonicalId?: string;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
       sello_estado:      body.selloEstado    ?? '',
       sello_foto_url:    body.selloFotoUrl   ?? '',
       estado_fotos:      body.estadoFotoUrls ?? [],
+      canonical_id:      body.canonicalId    ?? null,
       fuente:            'tienda',
     });
 

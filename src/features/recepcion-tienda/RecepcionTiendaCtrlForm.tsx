@@ -16,6 +16,7 @@ interface QRData {
 
 interface Props {
   qrData: QRData;
+  canonicalId?: string | null;
   onDone: () => void;
   onBack: () => void;
 }
@@ -51,7 +52,7 @@ const S: Record<string, React.CSSProperties> = {
   sectionTitle: { margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.1em', textTransform: 'uppercase' as const },
 };
 
-export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
+export function RecepcionTiendaCtrlForm({ qrData, canonicalId, onDone, onBack }: Props) {
   const { cod, palletsSent, bultosSent, contenedoresSent, guias, driveFileId } = qrData;
   const store = TIENDAS_INICIAL[cod];
 
@@ -187,6 +188,7 @@ export function RecepcionTiendaCtrlForm({ qrData, onDone, onBack }: Props) {
           signatureDataUrl,
           guias,
           driveFileId:      driveFileId ?? '',
+          canonicalId:      canonicalId ?? undefined,
         }),
       });
       const data = await res.json();

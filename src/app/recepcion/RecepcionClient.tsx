@@ -189,6 +189,7 @@ export function RecepcionClient() {
           receptor: receptor.trim(),
           rut: rut.trim(),
           signatureDataUrl,
+          canonicalId: canonId || undefined,
         }),
       });
       const data = await res.json();

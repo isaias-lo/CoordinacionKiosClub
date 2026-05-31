@@ -19,6 +19,36 @@ interface QRData {
 
 type Step = 'scanner' | 'form' | 'done';
 
+// Detecta IDs canónicos del estilo P{seq}{cod}{stamp}P, {seq}B{cod}{stamp}B,
+// C{seq}{cod}{stamp}C, CH{seq}{cod}{stamp}CH.
+function isCanonicalId(raw: string): boolean {
+  const clean = raw.trim();
+  if (clean.startsWith('http')) return false;
+  if (clean.includes(';') || clean.includes('|') || clean.includes('?')) return false;
+  return /\d{8}/.test(clean) && /^[A-Z]?[A-Z]?\d+.*(?:P|B|C|CH)$/i.test(clean);
+}
+
+async function resolveCanonicalIdQRData(canonicalId: string): Promise<QRData | null> {
+  try {
+    const res = await fetch(`/api/pallet-lookup?id=${encodeURIComponent(canonicalId)}`);
+    if (!res.ok) return null;
+    const json = await res.json() as {
+      data?: { cod: string; n_pallets: number; n_bultos: number; n_contenedores: number };
+    };
+    const d = json.data;
+    if (!d?.cod) return null;
+    return {
+      cod:              d.cod,
+      palletsSent:      d.n_pallets,
+      bultosSent:       d.n_bultos,
+      contenedoresSent: d.n_contenedores,
+      guias:            [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseQRData(raw: string): QRData | null {
   try {
     let params: URLSearchParams;
@@ -45,23 +75,46 @@ function parseQRData(raw: string): QRData | null {
 export function RecepcionTiendaCtrlScreen() {
   const router       = useRouter();
   const { profile }  = useAuth();
-  const [step,    setStep]    = useState<Step>('scanner');
-  const [qrData,  setQrData]  = useState<QRData | null>(null);
-  const [qrError, setQrError] = useState('');
+  const [step,        setStep]        = useState<Step>('scanner');
+  const [qrData,      setQrData]      = useState<QRData | null>(null);
+  const [canonicalId, setCanonicalId] = useState<string | null>(null);
+  const [qrError,     setQrError]     = useState('');
 
   function handleQRDetected(raw: string) {
+    // Caso 1 — ID canónico (escaneo de etiqueta Zebra) → resolver vía pallet-lookup
+    if (isCanonicalId(raw)) {
+      void (async () => {
+        const data = await resolveCanonicalIdQRData(raw.trim());
+        if (!data) {
+          setQrError('ID canónico no encontrado. Intenta de nuevo.');
+          return;
+        }
+        setCanonicalId(raw.trim());
+        setQrData(data);
+        setQrError('');
+        setStep('form');
+      })();
+      return;
+    }
+    // Caso 2 — URL / formato legacy
     const data = parseQRData(raw);
     if (!data) {
       setQrError('QR inválido. Intenta de nuevo o ingresa el código manualmente.');
       return;
     }
+    setCanonicalId(null);
     setQrData(data);
     setQrError('');
     setStep('form');
   }
 
   function handleDone() { setStep('done'); }
-  function handleScanAnother() { setQrData(null); setQrError(''); setStep('scanner'); }
+  function handleScanAnother() {
+    setQrData(null);
+    setCanonicalId(null);
+    setQrError('');
+    setStep('scanner');
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFF', display: 'flex', flexDirection: 'column' }}>
@@ -100,7 +153,7 @@ export function RecepcionTiendaCtrlScreen() {
         )}
 
         {step === 'form' && qrData && (
-          <RecepcionTiendaCtrlForm qrData={qrData} onDone={handleDone} onBack={handleScanAnother} />
+          <RecepcionTiendaCtrlForm qrData={qrData} canonicalId={canonicalId} onDone={handleDone} onBack={handleScanAnother} />
         )}
 
         {step === 'done' && (
