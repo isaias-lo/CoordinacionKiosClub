@@ -112,8 +112,29 @@ export async function POST(request: NextRequest) {
 
     if (insertError) throw new Error(insertError.message);
 
-    // Conductor entrega → queda en 'Entregado' hasta que la tienda valide
-    const nuevoEstado = 'Entregado';
+    // Auto-transición: si la tienda ya registró su recepción para hoy, comparamos
+    // cantidades. Si coinciden con lo enviado por el conductor → 'Recibido';
+    // si hay diferencia → 'Diferencia'. Sin recepción previa → 'Entregado'.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const { data: prevTiendaRecep } = await sb
+      .from('recepcion')
+      .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos')
+      .eq('cod', body.cod)
+      .eq('fuente', 'tienda')
+      .gte('created_at', todayStart.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let nuevoEstado: 'Entregado' | 'Recibido' | 'Diferencia' = 'Entregado';
+    if (prevTiendaRecep) {
+      const hayDiferencia =
+        (body.palletsSent      ?? 0) !== (prevTiendaRecep.pallets_recibidos      ?? 0) ||
+        (body.bultosSent       ?? 0) !== (prevTiendaRecep.bultos_recibidos       ?? 0) ||
+        (body.contenedoresSent ?? 0) !== (prevTiendaRecep.contenedores_recibidos ?? 0);
+      nuevoEstado = hayDiferencia ? 'Diferencia' : 'Recibido';
+    }
     const fechaHoy = todayFecha();
 
     await Promise.all([
