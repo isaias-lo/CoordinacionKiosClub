@@ -2016,52 +2016,56 @@ type LiveSession = { user_id: string; session_data: Record<string, unknown>; upd
 function LiveAuditsPanel({ onBack, allStores }: { onBack: () => void; allStores: TiendaRef[] }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [, setTick] = useState(0); // fuerza re-render cada segundo para actualizar timers
+  const [, setTick] = useState(0);
 
-  // Cargar sesiones iniciales
+  const tipoLabel = (val: string) => TIPOS.find(t => t.value === val)?.label ?? val;
+
+  const pickersOf = (sd: Record<string, unknown>): string[] => {
+    const arr = sd.pickerNombres as string[] | undefined;
+    if (Array.isArray(arr) && arr.length > 0) return arr;
+    const single = (sd.pickerNombre as string | undefined)?.trim();
+    if (single) return [single];
+    return [];
+  };
+
+  // Carga inicial
   useEffect(() => {
     supabase.from('audit_active_sessions').select('user_id,session_data,updated_at')
-      .then(({ data }) => {
-        if (data) setSessions(data as LiveSession[]);
-        setLoading(false);
-      });
+      .then(({ data }) => { if (data) setSessions(data as LiveSession[]); setLoading(false); });
   }, []);
 
-  // Suscripción Realtime para actualizaciones en tiempo real
+  // Realtime
   useEffect(() => {
-    const ch = supabase
-      .channel('live_audits_admin')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_active_sessions' },
-        payload => {
-          if (payload.eventType === 'DELETE') {
-            setSessions(prev => prev.filter(s => s.user_id !== (payload.old as LiveSession).user_id));
-          } else {
-            const row = payload.new as LiveSession;
-            const sd = row.session_data as Record<string, unknown>;
-            if (sd?.formPhase !== 'execution' && sd?.formPhase !== 'setup') {
-              setSessions(prev => prev.filter(s => s.user_id !== row.user_id));
-            } else {
-              setSessions(prev => {
-                const existing = prev.findIndex(s => s.user_id === row.user_id);
-                if (existing >= 0) { const next = [...prev]; next[existing] = row; return next; }
-                return [...prev, row];
-              });
-            }
-          }
-        })
-      .subscribe();
+    const ch = supabase.channel('live_audits_admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_active_sessions' }, payload => {
+        if (payload.eventType === 'DELETE') {
+          setSessions(prev => prev.filter(s => s.user_id !== (payload.old as LiveSession).user_id));
+          return;
+        }
+        const row = payload.new as LiveSession;
+        const phase = (row.session_data as Record<string, unknown>)?.formPhase;
+        if (phase !== 'execution' && phase !== 'setup') {
+          setSessions(prev => prev.filter(s => s.user_id !== row.user_id));
+        } else {
+          setSessions(prev => {
+            const idx = prev.findIndex(s => s.user_id === row.user_id);
+            if (idx >= 0) { const next = [...prev]; next[idx] = row; return next; }
+            return [...prev, row];
+          });
+        }
+      }).subscribe();
     return () => { void supabase.removeChannel(ch); };
   }, []);
 
-  // Timer: re-render cada segundo para actualizar tiempos
+  // Re-render cada segundo para timers en vivo
   useEffect(() => {
     const t = setInterval(() => setTick(v => v + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
   const active = sessions.filter(s => {
-    const sd = s.session_data as Record<string, unknown>;
-    return sd?.formPhase === 'execution' || sd?.formPhase === 'setup';
+    const phase = (s.session_data as Record<string, unknown>)?.formPhase;
+    return phase === 'execution' || phase === 'setup';
   });
 
   return (
@@ -2072,15 +2076,18 @@ function LiveAuditsPanel({ onBack, allStores }: { onBack: () => void; allStores:
           <ChevronLeft size={22} />
         </button>
         <div className="flex items-center gap-2 flex-1">
-          <span className="text-[18px]">🔴</span>
+          <span className="relative flex h-3 w-3">
+            {active.length > 0 && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red opacity-60" />}
+            <span className={`relative inline-flex rounded-full h-3 w-3 ${active.length > 0 ? 'bg-red' : 'bg-text-3'}`} />
+          </span>
           <span className="font-barlow-condensed text-[20px] font-bold text-navy">En Vivo</span>
           {!loading && (
-            <span className={`ml-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${active.length > 0 ? 'bg-[rgba(239,68,68,0.12)] text-red' : 'bg-bg text-text-3'}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${active.length > 0 ? 'bg-[rgba(239,68,68,0.12)] text-red' : 'bg-bg text-text-3'}`}>
               {active.length} activa{active.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
-        <div className="text-[10px] text-text-3 font-semibold">Actualización automática</div>
+        <span className="text-[10px] text-text-3 font-semibold">Tiempo real</span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -2099,62 +2106,111 @@ function LiveAuditsPanel({ onBack, allStores }: { onBack: () => void; allStores:
         )}
         {active.map(session => {
           const sd = session.session_data as Record<string, unknown>;
-          const tienda = allStores.find(t => t.cod === sd.tiendaCod);
-          const elapsed = sd.auditStartTime ? Math.floor((Date.now() - new Date(sd.auditStartTime as string).getTime()) / 1000) : 0;
+          const isExec = sd.formPhase === 'execution';
+          const tienda = allStores.find(t => t.cod === (sd.tiendaCod as string));
+          const auditor = (sd.auditor as string)?.trim() || 'Auditor desconocido';
+          const pickers = pickersOf(sd);
+          const tipo = (sd.tipo as string) ?? '';
+          const pallets = (sd.pallets as string)?.trim();
+          const tieneErrores = sd.tieneErrores as boolean | null | undefined;
+          const elapsed = sd.auditStartTime
+            ? Math.floor((Date.now() - new Date(sd.auditStartTime as string).getTime()) / 1000)
+            : 0;
           const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
           const ss = String(elapsed % 60).padStart(2, '0');
-          const isExec = sd.formPhase === 'execution';
-          const pallets = sd.pallets as string | undefined;
-          const tieneErrores = sd.tieneErrores as boolean | null | undefined;
-          const tipo = (sd.tipo as string ?? '').toUpperCase();
+
           return (
             <div key={session.user_id} className="bg-white rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.08)' }}>
-              {/* Header de tarjeta */}
-              <div className="px-4 py-3 flex items-center gap-3" style={{ background: isExec ? 'linear-gradient(135deg,rgba(22,163,74,0.08),rgba(22,163,74,0.03))' : 'linear-gradient(135deg,rgba(217,119,6,0.08),rgba(217,119,6,0.03))' }}>
-                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isExec ? 'bg-success animate-pulse' : 'bg-warn animate-pulse'}`} />
+
+              {/* Barra superior: estado + auditor + timer */}
+              <div className="px-4 py-3 flex items-center gap-3"
+                style={{ background: isExec ? 'linear-gradient(135deg,rgba(22,163,74,0.09),rgba(22,163,74,0.03))' : 'linear-gradient(135deg,rgba(217,119,6,0.09),rgba(217,119,6,0.03))' }}>
+                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isExec ? 'bg-success' : 'bg-warn'} animate-pulse`} />
                 <div className="flex-1 min-w-0">
-                  <div className="font-barlow-condensed text-[16px] font-bold text-navy truncate">{(sd.auditor as string) || 'Auditor desconocido'}</div>
-                  <div className="text-[11px] text-text-3">{isExec ? 'En ejecución' : 'Configurando'}</div>
+                  <div className="font-barlow-condensed text-[17px] font-bold text-navy leading-tight">{auditor}</div>
+                  <div className={`text-[10px] font-bold uppercase tracking-wide ${isExec ? 'text-success' : 'text-warn'}`}>
+                    {isExec ? 'En ejecución' : 'Configurando'}
+                  </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="font-barlow-condensed text-[22px] font-black text-navy">{mm}:{ss}</div>
-                  <div className="text-[10px] text-text-3">tiempo</div>
-                </div>
+                {isExec && (
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-barlow-condensed text-[26px] font-black text-navy leading-none">{mm}:{ss}</div>
+                    <div className="text-[9px] text-text-3 uppercase tracking-wide">tiempo</div>
+                  </div>
+                )}
               </div>
-              {/* Datos */}
-              <div className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
-                <div>
-                  <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Tienda</div>
-                  <div className="font-semibold text-text truncate">{tienda?.nombre ?? (sd.tiendaCod as string) ?? '—'}</div>
+
+              {/* Cuerpo: datos de la auditoría */}
+              <div className="px-4 py-3 space-y-2.5">
+
+                {/* Tienda */}
+                <div className="flex items-start gap-2">
+                  <span className="text-[10px] text-text-3 uppercase font-bold w-20 flex-shrink-0 pt-0.5">Tienda</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-[13px] text-text">
+                      {tienda?.nombre ?? (sd.tiendaCod as string) ?? '—'}
+                    </span>
+                    {tienda && (
+                      <span className="ml-1.5 font-mono text-[10px] text-text-3">[{tienda.cod}]</span>
+                    )}
+                    {tienda && (
+                      <span className={`ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
+                        {tienda.area === 'santiago' ? 'STG' : 'REG'}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Tipo</div>
-                  <div className="font-semibold text-text">{tipo || '—'}</div>
-                </div>
-                {(sd.pickerNombre as string) && (
-                  <div>
-                    <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Picker</div>
-                    <div className="font-semibold text-text truncate">{sd.pickerNombre as string}</div>
+
+                {/* Contenido (tipo) */}
+                {tipo && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-3 uppercase font-bold w-20 flex-shrink-0">Contenido</span>
+                    <span className="font-semibold text-[13px] text-text">{tipoLabel(tipo)}</span>
                   </div>
                 )}
-                {pallets && (
-                  <div>
-                    <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Pallets</div>
-                    <div className="font-semibold text-text">{pallets}</div>
-                  </div>
-                )}
-                {isExec && tieneErrores !== undefined && tieneErrores !== null && (
-                  <div className="col-span-2">
-                    <div className="text-[10px] text-text-3 uppercase font-bold mb-0.5">Resultado preliminar</div>
-                    <div className={`inline-block font-bold text-[12px] px-2 py-0.5 rounded-full ${tieneErrores ? 'bg-[rgba(211,47,47,0.12)] text-red' : 'bg-[rgba(22,163,74,0.12)] text-success'}`}>
-                      {tieneErrores ? '✗ MALO' : '✓ BUENO'}
+
+                {/* Pickers */}
+                {pickers.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] text-text-3 uppercase font-bold w-20 flex-shrink-0 pt-0.5">
+                      {pickers.length > 1 ? 'Pickers' : 'Picker'}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {pickers.map((p, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[rgba(37,99,235,0.08)] border border-[rgba(37,99,235,0.20)] rounded-full text-[12px] font-semibold text-info">
+                          {pickers.length > 1 && <span className="text-[9px] text-text-3">P{i + 1}</span>}
+                          {p}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}
+
+                {/* Pallets */}
+                {pallets && parseInt(pallets) > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-3 uppercase font-bold w-20 flex-shrink-0">Pallets</span>
+                    <span className="font-semibold text-[13px] text-text">{pallets}</span>
+                  </div>
+                )}
+
+                {/* Resultado preliminar */}
+                {isExec && tieneErrores !== undefined && tieneErrores !== null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-3 uppercase font-bold w-20 flex-shrink-0">Resultado</span>
+                    <span className={`font-bold text-[12px] px-2 py-0.5 rounded-full ${tieneErrores ? 'bg-[rgba(211,47,47,0.12)] text-red' : 'bg-[rgba(22,163,74,0.12)] text-success'}`}>
+                      {tieneErrores ? '✗ MALO' : '✓ BUENO'}
+                    </span>
+                  </div>
+                )}
               </div>
-              {/* Footer timestamp */}
-              <div className="px-4 pb-2.5 text-[10px] text-text-3">
-                Última actualización: {new Date(session.updated_at).toLocaleTimeString('es-CL')}
+
+              {/* Footer */}
+              <div className="px-4 pb-2.5 flex items-center justify-between">
+                <span className="text-[9px] text-text-3 font-mono truncate">{session.user_id.slice(0, 8)}…</span>
+                <span className="text-[10px] text-text-3">
+                  Actualizado {new Date(session.updated_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
               </div>
             </div>
           );
