@@ -3822,21 +3822,26 @@ export function AuditoriaScreen() {
                     <button onClick={() => setCrossDeviceRestored(false)} className="text-success/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
                   </div>
                 )}
-                {/* Timer + cancel */}
-                <div className="mt-4 mb-5 rounded-2xl text-center py-5 px-4 relative"
-                  style={{ background: 'linear-gradient(135deg,rgba(26,37,80,0.06),rgba(26,37,80,0.02))', border: '2px solid rgba(26,37,80,0.14)', boxShadow: '0 4px 20px rgba(26,37,80,0.10)' }}>
+                {/* Info + cancel */}
+                <div className="mt-4 mb-5 rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
+                  style={{ background: 'rgba(26,37,80,0.04)', border: '1.5px solid rgba(26,37,80,0.10)' }}>
+                  <div className="min-w-0">
+                    <div className="font-barlow-condensed text-[16px] font-bold text-navy truncate">
+                      {tienda?.nombre ?? '—'}
+                    </div>
+                    {(pickerNombres.length > 1 || pickerNombre || picker) && (
+                      <div className="text-[12px] text-text-3 truncate mt-0.5">
+                        {pickerNombres.length > 1 ? pickerNombres.join(' · ') : pickerNombre || picker}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setConfirmCancel(true)}
-                    className="absolute top-2 right-2 border-none cursor-pointer rounded-btn font-barlow-condensed text-[11px] font-bold tracking-wide transition-all active:scale-95"
-                    style={{ background: 'rgba(211,47,47,0.08)', color: '#B91C1C', padding: '4px 10px', border: '1px solid rgba(211,47,47,0.20)' }}>
+                    className="flex-shrink-0 border-none cursor-pointer rounded-btn font-barlow-condensed text-[11px] font-bold tracking-wide transition-all active:scale-95"
+                    style={{ background: 'rgba(211,47,47,0.08)', color: '#B91C1C', padding: '5px 12px', border: '1px solid rgba(211,47,47,0.20)' }}>
                     × Cancelar
                   </button>
-                  <div className="text-[10px] font-bold text-text-3 uppercase tracking-[0.2em] mb-1">Tiempo en curso</div>
-                  <div className="font-barlow-condensed font-black text-navy leading-none tracking-wider" style={{ fontSize: 60 }}>{formatTimer(timerSeconds)}</div>
-                  <div className="text-[12px] text-text-3 mt-2 truncate">
-                    {tienda?.nombre}{pickerNombres.length > 1 ? ` · ${pickerNombres.join(' + ')}` : pickerNombre ? ` · ${pickerNombre}` : picker ? ` · ${picker}` : ''}
-                  </div>
                 </div>
 
                 {/* Códigos de operación — read-only en ejecución, editable si falta alguno */}
