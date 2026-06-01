@@ -2048,11 +2048,6 @@ export function StepForm() {
       >
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
-          <button
-            onClick={() => dispatch({ type: 'BACK_TO_REGIMEN' })}
-            className="flex items-center gap-1 mb-2 text-text-3 font-barlow-condensed text-[13px] font-bold uppercase tracking-widest cursor-pointer border-none bg-transparent p-0 active:opacity-60">
-            ← {regimen ?? 'Régimen'}
-          </button>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar tienda…"
             className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-red placeholder:text-text-3 transition-all" />

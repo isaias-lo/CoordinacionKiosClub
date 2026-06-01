@@ -44,6 +44,7 @@ function loadState(): SantiagoState {
     const resumeForm = typeof window !== 'undefined' && sessionStorage.getItem('santiago_resume_form');
     if (resumeForm) {
       sessionStorage.removeItem('santiago_resume_form');
+      s.step = 'form'; // volver desde Enrutador: saltar selector de regimen, ir directo a la lista
     } else {
       s.step = 'regimen'; // always start at regime selection on fresh load; user must confirm
     }
