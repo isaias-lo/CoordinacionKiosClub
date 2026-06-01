@@ -147,6 +147,12 @@ export function LaunchScreen() {
   const isRecepcion      = profile?.role === 'recepcion-tienda';
   const isSupervisorPick = profile?.role === 'supervisor-picking';
 
+  function canSee(path: string): boolean {
+    const paths = profile?.allowedPaths ?? [];
+    if (paths.includes('*')) return true;
+    return paths.some(p => p === path || path.startsWith(p + '/'));
+  }
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 480);
     check();
@@ -403,42 +409,68 @@ export function LaunchScreen() {
               <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
             </button>
           </div>
-        ) : (
-          <div className="ls-cards-outer w-full max-w-sm">
-            <div className="ls-cards-grid grid grid-cols-2 gap-3 mb-10" style={{ gridAutoRows: '130px' }}>
-              <button onClick={() => router.push('/despacho-hub')}
-                className="ls-nav-card ls-card-0 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
-                style={{ background: 'rgba(37,99,235,0.18)', border: '2px solid rgba(37,99,235,0.40)', boxShadow: '0 8px 24px rgba(37,99,235,0.22)' }}>
-                <div className="ls-card-icon mb-2.5 flex">
-                  <Truck size={24} color="rgba(96,165,250,0.9)" strokeWidth={1.6} />
-                </div>
-                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Despacho</div>
-                <div className="text-xs text-white/55 mt-1">Bodegas · Enrutador</div>
-              </button>
-              <button onClick={() => router.push('/control-interno')}
-                className="ls-nav-card ls-card-1 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95"
-                style={{ background: 'rgba(16,185,129,0.16)', border: '2px solid rgba(16,185,129,0.40)', boxShadow: '0 8px 24px rgba(16,185,129,0.18)' }}>
-                <div className="ls-card-icon mb-2.5 flex">
-                  <ClipboardList size={24} color="rgba(52,211,153,0.9)" strokeWidth={1.6} />
-                </div>
-                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Control Interno</div>
-                <div className="text-xs text-white/55 mt-1">Tiendas · Auditoría</div>
-              </button>
-              {isAdmin && (
+        ) : (() => {
+          type MainTile = { key: string; path: string; label: string; sub: string; Icon: React.ElementType; iconColor: string; bg: string; border: string; shadow: string; cardClass: string };
+          const mainTiles: MainTile[] = ([
+            canSee('/despacho-hub') || canSee('/despacho') ? {
+              key: 'despacho', path: '/despacho-hub',
+              label: 'Despacho', sub: 'Bodegas · Enrutador',
+              Icon: Truck,      iconColor: 'rgba(96,165,250,0.9)',
+              bg: 'rgba(37,99,235,0.18)', border: 'rgba(37,99,235,0.40)', shadow: 'rgba(37,99,235,0.22)',
+              cardClass: 'ls-card-0',
+            } : null,
+            canSee('/control-interno') ? {
+              key: 'ci', path: '/control-interno',
+              label: 'Control Interno', sub: 'Tiendas · Auditoría',
+              Icon: ClipboardList, iconColor: 'rgba(52,211,153,0.9)',
+              bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.40)', shadow: 'rgba(16,185,129,0.18)',
+              cardClass: 'ls-card-1',
+            } : null,
+            canSee('/picking') ? {
+              key: 'picking', path: '/picking',
+              label: 'Picking', sub: 'Supervisión de operaciones',
+              Icon: Layers,    iconColor: 'rgba(234,179,8,0.9)',
+              bg: 'rgba(234,179,8,0.14)', border: 'rgba(234,179,8,0.50)', shadow: 'rgba(234,179,8,0.25)',
+              cardClass: 'ls-card-2',
+            } : null,
+          ] as (MainTile | null)[]).filter((t): t is MainTile => t !== null);
+
+          if (mainTiles.length === 1) {
+            const t = mainTiles[0];
+            return (
+              <div className="ls-cards-outer w-full max-w-sm mb-8">
                 <button
-                  onClick={() => router.push('/picking')}
-                  className="ls-nav-card ls-card-2 relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
-                  style={{ background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.25)' }}>
+                  onClick={() => router.push(t.path)}
+                  className={`ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2`}
+                  style={{ height: 140, background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
                   <div className="ls-card-icon mb-2.5 flex">
-                    <Layers size={24} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
+                    <t.Icon size={28} color={t.iconColor} strokeWidth={1.6} />
                   </div>
-                  <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
-                  <div className="text-xs text-white/55 mt-1">Supervisión de operaciones</div>
+                  <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
+                  <div className="text-xs text-white/60 mt-1">{t.sub}</div>
                 </button>
-              )}
+              </div>
+            );
+          }
+
+          return (
+            <div className="ls-cards-outer w-full max-w-sm">
+              <div className="ls-cards-grid grid grid-cols-2 gap-3 mb-10" style={{ gridAutoRows: '130px' }}>
+                {mainTiles.map(t => (
+                  <button key={t.key} onClick={() => router.push(t.path)}
+                    className={`ls-nav-card ${t.cardClass} relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95`}
+                    style={{ background: t.bg, border: `2px solid ${t.border}`, boxShadow: `0 8px 24px ${t.shadow}` }}>
+                    <div className="ls-card-icon mb-2.5 flex">
+                      <t.Icon size={24} color={t.iconColor} strokeWidth={1.6} />
+                    </div>
+                    <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
+                    <div className="text-xs text-white/55 mt-1">{t.sub}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Stats */}
         <div className="ls-stats-row flex gap-5">

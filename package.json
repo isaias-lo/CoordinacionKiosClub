@@ -16,6 +16,8 @@
     "@supabase/supabase-js": "^2.105.4",
     "@types/nodemailer": "^8.0.0",
     "@vercel/blob": "^2.3.3",
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "googleapis": "^171.4.0",
     "jsbarcode": "^3.12.3",
     "jsqr": "^1.4.0",

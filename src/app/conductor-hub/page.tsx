@@ -99,8 +99,7 @@ export default function ConductorHubPage() {
 
   /* ── Login ──────────────────────────────────────────── */
   if (!patente) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)', position: 'relative' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)', position: 'relative' }}>
 
       <button
         onClick={() => router.push('/panel-choferes')}
@@ -160,10 +159,10 @@ export default function ConductorHubPage() {
 
   /* ── Hub (autenticado) ──────────────────────────────── */
   return (
-    <div className="min-h-screen" style={{ background: '#0f172a' }}>
+    <div style={{ background: '#0f172a', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '18px 18px 0' }}>
+      <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '18px 18px 0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
@@ -195,7 +194,7 @@ export default function ConductorHubPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['ruta', '🚚 Mi Ruta'], ['recepcion', '✅ Recepción en Tienda']] as const).map(([key, label]) => (
+          {([['ruta', '🚚 Mi Ruta'], ['recepcion', '📦 Entregar en Tienda']] as const).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               style={{
                 flex: 1, padding: '10px 8px', border: 'none', cursor: 'pointer',
@@ -213,7 +212,7 @@ export default function ConductorHubPage() {
 
       {/* ── Tab: Mi Ruta ────────────────────────────────── */}
       {tab === 'ruta' && (
-        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {loading && (
             <div style={{ textAlign: 'center', paddingTop: 40 }}>
@@ -339,9 +338,9 @@ export default function ConductorHubPage() {
         </div>
       )}
 
-      {/* ── Tab: Recepción en Tienda ─────────────────────── */}
+      {/* ── Tab: Entregar en Tienda ──────────────────────── */}
       {tab === 'recepcion' && (
-        <RecepcionTiendaScreen />
+        <RecepcionTiendaScreen onBack={() => setTab('ruta')} />
       )}
     </div>
   );

@@ -33,39 +33,42 @@ interface PermGroup   { id: string; label: string; color: string; sections: Perm
 /* ─── Constants ──────────────────────────────────────────────── */
 
 const FALLBACK_ROLES: AppRole[] = [
-  { id: 'auditor',            label: 'Auditor',            color: '#9333EA', home_path: '/auditoria',      allowed_paths: ['/auditoria','/historial','/perfil'],                                                                                                                          is_system: true },
-  { id: 'admin-auditoria',    label: 'Admin Auditoría',    color: '#0891B2', home_path: '/auditoria',      allowed_paths: ['/auditoria','/auditoria-admin','/perfil'],                                                                                                                   is_system: true },
-  { id: 'despachador',        label: 'Despachador',        color: '#2563EB', home_path: '/',               allowed_paths: ['/','/despacho-hub','/despacho','/despacho/regiones','/despacho/santiago','/despacho/estado','/historial','/registros','/tiendas','/control-interno','/recepcion-tienda','/perfil'], is_system: true },
-  { id: 'supervisor',         label: 'Supervisor',         color: '#16A34A', home_path: '/',               allowed_paths: ['/','/despacho-hub','/despacho','/despacho/regiones','/despacho/santiago','/despacho/estado','/historial','/registros','/tiendas','/control-interno','/recepcion-tienda','/perfil'], is_system: true },
-  { id: 'recepcion-tienda',   label: 'Recepción Tienda',   color: '#10B981', home_path: '/tiendas',        allowed_paths: ['/tiendas','/recepcion-tienda','/perfil'],                                                                                                                    is_system: true },
-  { id: 'supervisor-picking', label: 'Supervisor Picking', color: '#6366F1', home_path: '/picking',        allowed_paths: ['/picking','/perfil'],                                                                                                                                       is_system: true },
-  { id: 'admin',              label: 'Administrador',      color: '#D97706', home_path: '/',               allowed_paths: ['*'],                                                                                                                                                         is_system: true },
+  { id: 'auditor',            label: 'Auditor',            color: '#9333EA', home_path: '/auditoria',      allowed_paths: ['/auditoria','/historial','/perfil'],                                                                                                                                                                                                                         is_system: true },
+  { id: 'admin-auditoria',    label: 'Admin Auditoría',    color: '#0891B2', home_path: '/auditoria',      allowed_paths: ['/auditoria','/auditoria-admin','/perfil'],                                                                                                                                                                                                                  is_system: true },
+  { id: 'despachador',        label: 'Despachador',        color: '#2563EB', home_path: '/',               allowed_paths: ['/','/despacho-hub','/despacho','/despacho/regiones','/despacho/santiago','/despacho/conteo','/despacho/control-flota','/despacho/estado','/panel-choferes','/historial','/registros','/tiendas','/control-interno','/recepcion-tienda','/validacion-tienda','/panel-operaciones','/perfil'], is_system: true },
+  { id: 'supervisor',         label: 'Supervisor',         color: '#16A34A', home_path: '/',               allowed_paths: ['/','/despacho-hub','/despacho','/despacho/regiones','/despacho/santiago','/despacho/conteo','/despacho/control-flota','/despacho/estado','/panel-choferes','/historial','/registros','/tiendas','/control-interno','/recepcion-tienda','/validacion-tienda','/panel-operaciones','/perfil'], is_system: true },
+  { id: 'recepcion-tienda',   label: 'Recepción Tienda',   color: '#10B981', home_path: '/tiendas',        allowed_paths: ['/tiendas','/recepcion-tienda','/control-interno','/validacion-tienda','/perfil'],                                                                                                                                                                            is_system: true },
+  { id: 'supervisor-picking', label: 'Supervisor Picking', color: '#6366F1', home_path: '/picking',        allowed_paths: ['/picking','/perfil'],                                                                                                                                                                                                                                       is_system: true },
+  { id: 'admin',              label: 'Administrador',      color: '#D97706', home_path: '/',               allowed_paths: ['*'],                                                                                                                                                                                                                                                        is_system: true },
 ];
 
 const PERMISSION_GROUPS: PermGroup[] = [
   {
     id: 'despacho', label: 'Despacho', color: '#2563EB',
     sections: [
-      { path: '/despacho-hub',      label: 'Hub de Despacho'      },
-      { path: '/despacho/regiones', label: 'Nacional'                      },
-      { path: '/despacho/santiago', label: 'RM/Costa'                      },
-      { path: '/despacho/conteo',   label: 'Conteo/Consolidación'         },
-      { path: '/despacho',          label: 'Enrutador'             },
-      { path: '/despacho/estado',   label: 'Estado / Seguimiento'  },
-      { path: '/historial',         label: 'Historial'             },
-      { path: '/registros',         label: 'Registros'             },
-      { path: '/tiendas',           label: 'Conductores'           },
+      { path: '/despacho-hub',           label: 'Hub Despacho'          },
+      { path: '/despacho',               label: 'Enrutador'             },
+      { path: '/despacho/regiones',      label: 'Nacional'              },
+      { path: '/despacho/santiago',      label: 'RM/Costa'              },
+      { path: '/despacho/conteo',        label: 'Conteo/Consolidación'  },
+      { path: '/despacho/control-flota', label: 'Control de Flota'      },
+      { path: '/despacho/estado',        label: 'Estado / Seguimiento'  },
+      { path: '/panel-choferes',         label: 'Panel Choferes'        },
+      { path: '/tiendas',                label: 'Conductores'           },
+      { path: '/historial',              label: 'Historial'             },
+      { path: '/registros',              label: 'Registros'             },
     ],
   },
   {
     id: 'control-interno', label: 'Control Interno', color: '#10B981',
     sections: [
-      { path: '/control-interno',  label: 'Control Interno'    },
-      { path: '/auditoria',        label: 'Auditoría'          },
-      { path: '/auditoria-admin',  label: 'Revisión Auditoría' },
-      { path: '/admin/tiendas',    label: 'Config. Tiendas'    },
+      { path: '/control-interno',   label: 'Control Interno'    },
+      { path: '/auditoria',         label: 'Auditoría'          },
+      { path: '/auditoria-admin',   label: 'Revisión Auditoría' },
       { path: '/recepcion-tienda',  label: 'Recepción/Tienda'   },
       { path: '/validacion-tienda', label: 'Validación Tienda'  },
+      { path: '/panel-operaciones', label: 'Panel Operaciones'  },
+      { path: '/admin/tiendas',     label: 'Config. Tiendas'    },
     ],
   },
   {
@@ -103,8 +106,9 @@ function applyGroupToggle(group: PermGroup, paths: string[]): string[] {
 const HOME_OPTIONS = [
   { value: '/',                label: 'Dashboard'         },
   { value: '/auditoria',       label: 'Auditoría'         },
-  { value: '/despacho-hub',    label: 'Hub de Despacho'   },
+  { value: '/despacho-hub',    label: 'Hub Despacho'      },
   { value: '/control-interno', label: 'Control Interno'   },
+  { value: '/panel-choferes',  label: 'Panel Choferes'    },
   { value: '/tiendas',         label: 'Conductores'       },
   { value: '/picking',         label: 'Picking'           },
   { value: '/perfil',          label: 'Perfil'            },

@@ -16,13 +16,13 @@ const ROLE_HOME: Record<string, string> = {
 const ROLE_ALLOWED: Record<string, string[]> = {
   auditor:               ['/auditoria', '/historial', '/perfil'],
   'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
-  despachador:           ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/perfil'],
-  supervisor:            ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/estado', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/perfil'],
+  despachador:           ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/control-flota', '/despacho/estado', '/panel-choferes', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/panel-operaciones', '/perfil'],
+  supervisor:            ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/control-flota', '/despacho/estado', '/panel-choferes', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/panel-operaciones', '/perfil'],
   'recepcion-tienda':    ['/tiendas', '/recepcion-tienda', '/control-interno', '/validacion-tienda', '/perfil'],
   'supervisor-picking':  ['/picking', '/perfil'],
   admin:                 ['*'],
-  'asistente-despacho':  ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/perfil'],
-  'coordinador-flota':   ['/despacho', '/despacho-hub', '/perfil'],
+  'asistente-despacho':  ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/perfil'],
+  'coordinador-flota':   ['/despacho', '/despacho-hub', '/despacho/control-flota', '/panel-choferes', '/perfil'],
 };
 
 function isAllowed(role: string, pathname: string, customPaths?: string[]): boolean {

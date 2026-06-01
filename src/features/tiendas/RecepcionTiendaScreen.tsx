@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { ProfilePill } from '../../components/ProfilePill';
-import { QRScanner } from './QRScanner';
+import { BarcodeScanner } from './BarcodeScanner';
 import { RecepcionForm } from './RecepcionForm';
 
 export type SelloEstado = 'intacto' | 'roto' | 'ausente';
@@ -104,7 +104,7 @@ function capturarFoto(
   e.target.value = '';
 }
 
-export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath?: string } = {}) {
+export function RecepcionTiendaScreen({ backPath = '/despacho-hub', onBack }: { backPath?: string; onBack?: () => void } = {}) {
   const router      = useRouter();
   const { profile } = useAuth();
 
@@ -230,7 +230,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
 
       {/* Header */}
       <div style={{ background: '#1B2A6B', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
-        <button onClick={() => router.push(backPath)} style={hdrBtn}>
+        <button onClick={() => onBack ? onBack() : router.push(backPath)} style={hdrBtn}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div style={{ flex: 1 }}>
@@ -318,7 +318,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
 
                 {/* Progress bar */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 22 }}>
-                  {['Sello llegada', 'QR', 'Formulario', 'Sello salida'].map((label, i) => (
+                  {['Sello llegada', 'Código', 'Formulario', 'Sello salida'].map((label, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < 3 ? 1 : 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <div style={{ width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#1B2A6B' : '#E5E7EB', color: i === 0 ? '#fff' : '#9CA3AF', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</div>
@@ -380,13 +380,13 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
                   {/* CTA */}
                   <button onClick={handleEscanearQR} disabled={!selloLlegada || !selloEstado}
                     style={{ width: '100%', padding: '18px 0', background: !selloLlegada || !selloEstado ? '#E5E7EB' : '#1B2A6B', color: !selloLlegada || !selloEstado ? '#9CA3AF' : '#fff', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 17, cursor: !selloLlegada || !selloEstado ? 'not-allowed' : 'pointer', boxShadow: !selloLlegada || !selloEstado ? 'none' : '0 4px 20px rgba(27,42,107,0.4)', transition: 'all 0.2s' }}>
-                    {!selloLlegada ? '📸  Toma la foto del sello primero' : !selloEstado ? 'Selecciona el estado del sello' : 'Escanear QR de la tienda →'}
+                    {!selloLlegada ? '📸  Toma la foto del sello primero' : !selloEstado ? 'Selecciona el estado del sello' : 'Escanear código de barras →'}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* ── PASO 2: Scanner QR ─────────────────────────────────────── */}
+            {/* ── PASO 2: Scanner de código de barras ────────────────────── */}
             {step === 'scanner' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ padding: '12px 16px 8px', flexShrink: 0 }}>
@@ -396,8 +396,8 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
                   </button>
                 </div>
                 <div style={{ padding: '4px 20px 10px', textAlign: 'center', flexShrink: 0 }}>
-                  <p style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear QR de la tienda</p>
-                  <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al código QR de la etiqueta Zebra</p>
+                  <p style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear código de barras</p>
+                  <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al código de barras de la etiqueta</p>
                 </div>
                 {qrError && (
                   <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0 }}>
@@ -405,7 +405,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
                   </div>
                 )}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <QRScanner onDetect={handleQRDetected} />
+                  <BarcodeScanner onDetect={handleQRDetected} />
                 </div>
               </div>
             )}
@@ -416,7 +416,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
 
                 {/* Progress bar */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 22 }}>
-                  {['Sello llegada', 'QR', 'Código', 'Formulario'].map((label, i) => (
+                  {['Sello llegada', 'Código', 'OTP', 'Formulario'].map((label, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < 3 ? 1 : 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <div style={{ width: 22, height: 22, borderRadius: '50%', background: i <= 2 ? '#1B2A6B' : '#E5E7EB', color: i <= 2 ? '#fff' : '#9CA3AF', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</div>
@@ -497,7 +497,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub' }: { backPath
 
                     <button onClick={() => setStep('scanner')}
                       style={{ width: '100%', background: 'none', border: 'none', color: '#9CA3AF', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: '6px 0' }}>
-                      ← Volver a escanear QR
+                      ← Volver a escanear código
                     </button>
                   </div>
                 </div>
