@@ -120,7 +120,11 @@ export async function PATCH(req: NextRequest) {
   // ── PUNTO 2: Despacho ─────────────────────────────────────────────
   if (body.punto === 'despacho') {
     const { ids, temperatura_salida, usuario_despacho } = body;
-    if (!ids?.length) return NextResponse.json({ error: 'ids requerido' }, { status: 400 });
+    const rutaId = (body as unknown as Record<string, unknown>).ruta_id as number | undefined;
+
+    if (!ids?.length && !rutaId) {
+      return NextResponse.json({ error: 'ids o ruta_id requerido' }, { status: 400 });
+    }
 
     const update: Record<string, unknown> = {
       fecha_hora_despacho: new Date().toISOString(),
@@ -129,12 +133,14 @@ export async function PATCH(req: NextRequest) {
     if (temperatura_salida !== undefined) update.temperatura_salida = temperatura_salida;
     if (usuario_despacho)                update.usuario_despacho    = usuario_despacho;
 
-    const { data, error } = await sb
-      .from(TABLE)
-      .update(update)
-      .in('id_unidad_logistica', ids)
-      .select();
+    let query = sb.from(TABLE).update(update);
+    if (ids?.length) {
+      query = query.in('id_unidad_logistica', ids);
+    } else {
+      query = query.eq('ruta_id', rutaId!).in('estado_actual', ['CREADO', 'EN_RUTA']);
+    }
 
+    const { data, error } = await query.select();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ data });
   }

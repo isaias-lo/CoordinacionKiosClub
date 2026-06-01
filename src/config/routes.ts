@@ -35,6 +35,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { path: '/tiendas',                label: 'Conductores / Tiendas'  },
       { path: '/historial',              label: 'Historial'              },
       { path: '/registros',              label: 'Registros'              },
+      { path: '/incidencias',            label: 'Incidencias'            },
     ],
   },
   {
@@ -102,8 +103,9 @@ export function isPathAllowed(allowed: string[], pathname: string): boolean {
 const DESPACHO_FULL = [
   '/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago',
   '/despacho/conteo', '/despacho/control-flota', '/despacho/estado',
-  '/panel-choferes', '/panel-operaciones', '/historial', '/registros',
-  '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/perfil',
+  '/panel-choferes', '/conductor-hub', '/panel-operaciones', '/historial', '/registros',
+  '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda',
+  '/incidencias', '/perfil',
 ];
 
 export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
