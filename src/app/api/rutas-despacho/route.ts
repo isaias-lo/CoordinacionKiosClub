@@ -24,6 +24,9 @@ export async function POST(request: NextRequest) {
     bodega_origen?: string;
     pioneta_1?: string;
     pioneta_2?: string;
+    tipo_carga?: string;
+    regimen?:    string;
+    usuario_creador?: string;
     tiendas?: { store_cod: string; orden: number; pallets: number; bultos: number; contenedores?: number }[];
     guias?:   { store_cod?: string; folio_dte: string; drive_url?: string }[];
   };
@@ -74,6 +77,73 @@ export async function POST(request: NextRequest) {
         drive_url: g.drive_url ?? null,
       })));
     if (gErr) return NextResponse.json({ error: gErr.message }, { status: 500 });
+  }
+
+  // ── Crear registros en trazabilidad_unidades (PUNTO 1 — Creación) ──
+  // Enriquecer con datos de tiendas para caché de destino
+  if (body.tiendas?.length) {
+    const sb2 = supabaseServer();
+    const cods = [...new Set(body.tiendas.map(t => t.store_cod))];
+    const { data: tiendaRows } = await sb2
+      .from('tiendas')
+      .select('codigo, nombre, tipo, sector_comuna, region, direccion, ventana')
+      .in('codigo', cods);
+
+    const tiendaMap = Object.fromEntries(
+      (tiendaRows ?? []).map((t: {
+        codigo: string; nombre: string; tipo: string;
+        sector_comuna: string; region: string; direccion: string; ventana: string;
+      }) => [t.codigo, t])
+    );
+
+    // Guía por store_cod (primera coincidencia)
+    const guiaMap: Record<string, string> = {};
+    (body.guias ?? []).forEach(g => {
+      if (g.store_cod && !guiaMap[g.store_cod]) guiaMap[g.store_cod] = g.folio_dte;
+    });
+
+    // Una fila por tipo de unidad por tienda (donde cantidad > 0)
+    const trazRows: Record<string, unknown>[] = [];
+    for (const t of body.tiendas) {
+      const tienda = tiendaMap[t.store_cod] as {
+        nombre?: string; tipo?: string; sector_comuna?: string;
+        region?: string; direccion?: string; ventana?: string;
+      } | undefined;
+
+      const base = {
+        origen:                    body.bodega_origen ?? 'Santiago',
+        codigo_tienda:             t.store_cod,
+        tienda_destino:            tienda?.nombre  ?? null,
+        tipo_tienda:               tienda?.tipo    ?? null,
+        comuna_destino:            tienda?.sector_comuna ?? null,
+        region_destino:            tienda?.region  ?? null,
+        direccion_tienda:          tienda?.direccion ?? null,
+        ventana_horaria_recepcion: tienda?.ventana ?? null,
+        transportista:             body.chofer,
+        tipo_carga:                body.tipo_carga  ?? null,
+        regimen:                   body.regimen     ?? null,
+        numero_guia:               guiaMap[t.store_cod] ?? null,
+        usuario_creador:           body.usuario_creador ?? null,
+        ruta_id:                   ruta.id,
+        estado_actual:             'CREADO',
+        origen_carga:              'manual',
+      };
+
+      if (t.pallets > 0) {
+        trazRows.push({ ...base, id_unidad_logistica: crypto.randomUUID(), tipo_unidad: 'Pallet' });
+      }
+      if (t.bultos > 0) {
+        trazRows.push({ ...base, id_unidad_logistica: crypto.randomUUID(), tipo_unidad: 'Bulto' });
+      }
+      if ((t.contenedores ?? 0) > 0) {
+        trazRows.push({ ...base, id_unidad_logistica: crypto.randomUUID(), tipo_unidad: 'Contenedor' });
+      }
+    }
+
+    if (trazRows.length) {
+      // fire-and-forget — no bloquea la respuesta al cliente
+      void sb2.from('trazabilidad_unidades').insert(trazRows);
+    }
   }
 
   return NextResponse.json({ data: ruta });
