@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
+import { MODULE_GROUPS, HOME_OPTIONS, ALL_MODULE_PATHS, type ModuleGroup } from '@/config/routes';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 
@@ -27,59 +28,7 @@ interface AppRole {
   permissions?: Record<string, 'edit' | 'read'>;
 }
 
-interface PermSection { path: string; label: string; }
-interface PermGroup   { id: string; label: string; color: string; sections: PermSection[]; }
-
 /* ─── Constants ──────────────────────────────────────────────── */
-
-const FALLBACK_ROLES: AppRole[] = [
-  { id: 'auditor',            label: 'Auditor',            color: '#9333EA', home_path: '/auditoria',      allowed_paths: ['/auditoria','/historial','/perfil'],                                                                                                                                                                                                                         is_system: true },
-  { id: 'admin-auditoria',    label: 'Admin Auditoría',    color: '#0891B2', home_path: '/auditoria',      allowed_paths: ['/auditoria','/auditoria-admin','/perfil'],                                                                                                                                                                                                                  is_system: true },
-  { id: 'despachador',        label: 'Despachador',        color: '#2563EB', home_path: '/',               allowed_paths: ['/','/despacho-hub','/despacho','/despacho/regiones','/despacho/santiago','/despacho/conteo','/despacho/control-flota','/despacho/estado','/panel-choferes','/historial','/registros','/tiendas','/control-interno','/recepcion-tienda','/validacion-tienda','/panel-operaciones','/perfil'], is_system: true },
-  { id: 'supervisor',         label: 'Supervisor',         color: '#16A34A', home_path: '/',               allowed_paths: ['/','/despacho-hub','/despacho','/despacho/regiones','/despacho/santiago','/despacho/conteo','/despacho/control-flota','/despacho/estado','/panel-choferes','/historial','/registros','/tiendas','/control-interno','/recepcion-tienda','/validacion-tienda','/panel-operaciones','/perfil'], is_system: true },
-  { id: 'recepcion-tienda',   label: 'Recepción Tienda',   color: '#10B981', home_path: '/tiendas',        allowed_paths: ['/tiendas','/recepcion-tienda','/control-interno','/validacion-tienda','/perfil'],                                                                                                                                                                            is_system: true },
-  { id: 'supervisor-picking', label: 'Supervisor Picking', color: '#6366F1', home_path: '/picking',        allowed_paths: ['/picking','/perfil'],                                                                                                                                                                                                                                       is_system: true },
-  { id: 'admin',              label: 'Administrador',      color: '#D97706', home_path: '/',               allowed_paths: ['*'],                                                                                                                                                                                                                                                        is_system: true },
-];
-
-const PERMISSION_GROUPS: PermGroup[] = [
-  {
-    id: 'despacho', label: 'Despacho', color: '#2563EB',
-    sections: [
-      { path: '/despacho-hub',           label: 'Hub Despacho'          },
-      { path: '/despacho',               label: 'Enrutador'             },
-      { path: '/despacho/regiones',      label: 'Nacional'              },
-      { path: '/despacho/santiago',      label: 'RM/Costa'              },
-      { path: '/despacho/conteo',        label: 'Conteo/Consolidación'  },
-      { path: '/despacho/control-flota', label: 'Control de Flota'      },
-      { path: '/despacho/estado',        label: 'Estado / Seguimiento'  },
-      { path: '/panel-choferes',         label: 'Panel Choferes'        },
-      { path: '/tiendas',                label: 'Conductores'           },
-      { path: '/historial',              label: 'Historial'             },
-      { path: '/registros',              label: 'Registros'             },
-    ],
-  },
-  {
-    id: 'control-interno', label: 'Control Interno', color: '#10B981',
-    sections: [
-      { path: '/control-interno',   label: 'Control Interno'    },
-      { path: '/auditoria',         label: 'Auditoría'          },
-      { path: '/auditoria-admin',   label: 'Revisión Auditoría' },
-      { path: '/recepcion-tienda',  label: 'Recepción/Tienda'   },
-      { path: '/validacion-tienda', label: 'Validación Tienda'  },
-      { path: '/panel-operaciones', label: 'Panel Operaciones'  },
-      { path: '/admin/tiendas',     label: 'Config. Tiendas'    },
-    ],
-  },
-  {
-    id: 'picking', label: 'Picking', color: '#F59E0B',
-    sections: [
-      { path: '/picking', label: 'Picking' },
-    ],
-  },
-];
-
-const ALL_SECTION_PATHS = PERMISSION_GROUPS.flatMap(g => g.sections.map(s => s.path));
 
 interface SectionPerm { id: string; label: string; desc: string; group: string; }
 const SECTION_PERMISSIONS: SectionPerm[] = [
@@ -88,31 +37,20 @@ const SECTION_PERMISSIONS: SectionPerm[] = [
   { id: 'estado/seguimiento',        label: 'Sync desde Sheets',  desc: 'Importar registros desde Google Sheets',     group: 'Estado'          },
 ];
 
-function groupState(group: PermGroup, paths: string[]): 'all' | 'some' | 'none' {
-  const n = group.sections.filter(s => paths.includes(s.path)).length;
+function groupState(group: ModuleGroup, paths: string[]): 'all' | 'some' | 'none' {
+  const n = group.routes.filter(r => paths.includes(r.path)).length;
   if (n === 0) return 'none';
-  if (n === group.sections.length) return 'all';
+  if (n === group.routes.length) return 'all';
   return 'some';
 }
 
-function applyGroupToggle(group: PermGroup, paths: string[]): string[] {
+function applyGroupToggle(group: ModuleGroup, paths: string[]): string[] {
   if (groupState(group, paths) === 'all') {
-    return paths.filter(p => !group.sections.some(s => s.path === p));
+    return paths.filter(p => !group.routes.some(r => r.path === p));
   }
-  const toAdd = group.sections.map(s => s.path).filter(p => !paths.includes(p));
+  const toAdd = group.routes.map(r => r.path).filter(p => !paths.includes(p));
   return [...paths, ...toAdd];
 }
-
-const HOME_OPTIONS = [
-  { value: '/',                label: 'Dashboard'         },
-  { value: '/auditoria',       label: 'Auditoría'         },
-  { value: '/despacho-hub',    label: 'Hub Despacho'      },
-  { value: '/control-interno', label: 'Control Interno'   },
-  { value: '/panel-choferes',  label: 'Panel Choferes'    },
-  { value: '/tiendas',         label: 'Conductores'       },
-  { value: '/picking',         label: 'Picking'           },
-  { value: '/perfil',          label: 'Perfil'            },
-];
 
 const PRESET_COLORS = [
   '#9333EA','#0891B2','#2563EB','#16A34A','#10B981',
@@ -167,8 +105,9 @@ export default function UsuariosPage() {
   const [approveError,  setApproveError]  = useState('');
 
   /* ── Roles state ── */
-  const [roles,       setRoles]       = useState<AppRole[]>(FALLBACK_ROLES);
-  const [rolesLoading, setRolesLoading] = useState(false);
+  const [roles,       setRoles]       = useState<AppRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [rolesError,   setRolesError]   = useState(false);
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const [pendingPerms,        setPendingPerms]        = useState<Record<string, string[]>>({});
   const [pendingSectionPerms, setPendingSectionPerms] = useState<Record<string, Record<string, 'edit' | 'read'>>>({});
@@ -215,13 +154,15 @@ export default function UsuariosPage() {
 
   const loadRoles = useCallback(async () => {
     setRolesLoading(true);
+    setRolesError(false);
     try {
       const headers = await authHeaders();
       const res  = await fetch('/api/admin/roles', { headers });
       const data = await res.json() as { roles?: AppRole[]; error?: string };
       if (res.ok && data.roles) setRoles(data.roles);
+      else setRolesError(true);
     } catch {
-      // silently keep fallback roles
+      setRolesError(true);
     } finally {
       setRolesLoading(false);
     }
@@ -261,12 +202,12 @@ export default function UsuariosPage() {
 
   function toggleAllPaths(roleId: string, originalPaths: string[]) {
     const current = getEditingPaths(roleId, originalPaths);
-    const allEnabled = ALL_SECTION_PATHS.every(p => current.includes(p));
-    const next = allEnabled ? ['/perfil'] : [...ALL_SECTION_PATHS, '/perfil'];
+    const allEnabled = ALL_MODULE_PATHS.every(p => current.includes(p));
+    const next = allEnabled ? ['/perfil'] : [...ALL_MODULE_PATHS, '/perfil'];
     setPendingPerms(prev => ({ ...prev, [roleId]: next }));
   }
 
-  function toggleRoleGroup(roleId: string, group: PermGroup, originalPaths: string[]) {
+  function toggleRoleGroup(roleId: string, group: ModuleGroup, originalPaths: string[]) {
     const current = getEditingPaths(roleId, originalPaths);
     const next = applyGroupToggle(group, current);
     setPendingPerms(prev => ({ ...prev, [roleId]: next }));
@@ -390,7 +331,7 @@ export default function UsuariosPage() {
     }));
   }
 
-  function toggleNewRoleGroup(group: PermGroup) {
+  function toggleNewRoleGroup(group: ModuleGroup) {
     setNewRole(prev => ({
       ...prev,
       allowed_paths: applyGroupToggle(group, prev.allowed_paths),
@@ -769,6 +710,17 @@ export default function UsuariosPage() {
               </div>
             )}
 
+            {rolesError && !rolesLoading && (
+              <div className="flex flex-col items-center gap-3 py-14">
+                <span className="text-[13px] text-red-400/80">No se pudieron cargar los roles desde Supabase</span>
+                <button onClick={loadRoles}
+                  className="text-[12px] font-bold uppercase tracking-wider px-4 py-2 rounded-xl cursor-pointer transition-all"
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+                  Reintentar
+                </button>
+              </div>
+            )}
+
             {roles.map(role => {
               const isExpanded = expandedRole === role.id;
               const editingPaths = getEditingPaths(role.id, role.allowed_paths);
@@ -873,15 +825,15 @@ export default function UsuariosPage() {
                               onClick={() => toggleAllPaths(role.id, role.allowed_paths)}
                               className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full cursor-pointer transition-all active:scale-95"
                               style={{ color: role.color, background: `${role.color}15`, border: `1px solid ${role.color}30` }}>
-                              {ALL_SECTION_PATHS.every(p => editingPaths.includes(p)) ? 'Quitar todo' : 'Dar acceso total'}
+                              {ALL_MODULE_PATHS.every(p => editingPaths.includes(p)) ? 'Quitar todo' : 'Dar acceso total'}
                             </button>
                           </div>
 
                           {/* Permission groups */}
                           <div className="flex flex-col gap-2">
-                            {PERMISSION_GROUPS.map(group => {
+                            {MODULE_GROUPS.map(group => {
                               const gState = groupState(group, editingPaths);
-                              const activeCount = group.sections.filter(s => editingPaths.includes(s.path)).length;
+                              const activeCount = group.routes.filter(r => editingPaths.includes(r.path)).length;
                               return (
                                 <div key={group.id} className="rounded-xl overflow-hidden transition-all"
                                      style={{
@@ -909,17 +861,17 @@ export default function UsuariosPage() {
                                             background: gState !== 'none' ? `${group.color}20` : 'rgba(255,255,255,0.05)',
                                             color: gState !== 'none' ? group.color : 'rgba(255,255,255,0.25)',
                                           }}>
-                                      {activeCount}/{group.sections.length}
+                                      {activeCount}/{group.routes.length}
                                     </span>
                                   </button>
 
                                   {/* Sections grid */}
                                   <div className="px-3 pb-2.5 grid grid-cols-2 gap-1">
-                                    {group.sections.map(section => {
-                                      const isOn = editingPaths.includes(section.path);
+                                    {group.routes.map(route => {
+                                      const isOn = editingPaths.includes(route.path);
                                       return (
-                                        <button key={section.path}
-                                          onClick={() => togglePath(role.id, section.path, role.allowed_paths)}
+                                        <button key={route.path}
+                                          onClick={() => togglePath(role.id, route.path, role.allowed_paths)}
                                           className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all cursor-pointer"
                                           style={{ background: isOn ? `${group.color}12` : 'transparent' }}>
                                           <div className="w-3.5 h-3.5 rounded-sm flex items-center justify-center flex-shrink-0 transition-all"
@@ -931,7 +883,7 @@ export default function UsuariosPage() {
                                           </div>
                                           <span className="text-[12px] truncate transition-colors"
                                                 style={{ color: isOn ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.35)' }}>
-                                            {section.label}
+                                            {route.label}
                                           </span>
                                         </button>
                                       );
@@ -1323,7 +1275,7 @@ export default function UsuariosPage() {
             <div className="flex flex-col gap-2">
               <label className="text-[11px] text-white/65 uppercase tracking-wider">Acceso por módulo</label>
               <div className="flex flex-col gap-2">
-                {PERMISSION_GROUPS.map(group => {
+                {MODULE_GROUPS.map(group => {
                   const state = groupState(group, newRole.allowed_paths);
                   return (
                     <div key={group.id} className="rounded-xl overflow-hidden"
@@ -1346,16 +1298,16 @@ export default function UsuariosPage() {
                           {group.label}
                         </span>
                         <span className="text-[10px] text-white/30">
-                          {group.sections.filter(s => newRole.allowed_paths.includes(s.path)).length}/{group.sections.length}
+                          {group.routes.filter(r => newRole.allowed_paths.includes(r.path)).length}/{group.routes.length}
                         </span>
                       </button>
                       {/* Sub-secciones */}
                       <div className="px-2 pb-1.5 flex flex-col gap-0.5">
-                        {group.sections.map(section => {
-                          const isOn = newRole.allowed_paths.includes(section.path);
+                        {group.routes.map(route => {
+                          const isOn = newRole.allowed_paths.includes(route.path);
                           return (
-                            <button key={section.path}
-                              onClick={() => toggleNewRolePath(section.path)}
+                            <button key={route.path}
+                              onClick={() => toggleNewRolePath(route.path)}
                               className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all cursor-pointer"
                               style={{ background: isOn ? `${group.color}10` : 'transparent' }}>
                               <div className="w-3 h-3 rounded flex items-center justify-center flex-shrink-0"
@@ -1366,7 +1318,7 @@ export default function UsuariosPage() {
                                 {isOn && <span className="text-white text-[8px] font-bold">✓</span>}
                               </div>
                               <span className="text-[12px]" style={{ color: isOn ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)' }}>
-                                {section.label}
+                                {route.label}
                               </span>
                             </button>
                           );

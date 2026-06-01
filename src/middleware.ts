@@ -1,43 +1,15 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-
-const ROLE_HOME: Record<string, string> = {
-  auditor:               '/auditoria',
-  'admin-auditoria':     '/auditoria',
-  despachador:           '/',
-  supervisor:            '/',
-  admin:                 '/',
-  'recepcion-tienda':    '/tiendas',
-  'supervisor-picking':  '/picking',
-  'asistente-despacho':  '/despacho-hub',
-  'coordinador-flota':   '/despacho',
-};
-
-const ROLE_ALLOWED: Record<string, string[]> = {
-  auditor:               ['/auditoria', '/historial', '/perfil'],
-  'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
-  despachador:           ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/control-flota', '/despacho/estado', '/panel-choferes', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/panel-operaciones', '/perfil'],
-  supervisor:            ['/', '/despacho-hub', '/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/control-flota', '/despacho/estado', '/panel-choferes', '/historial', '/registros', '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda', '/panel-operaciones', '/perfil'],
-  'recepcion-tienda':    ['/tiendas', '/recepcion-tienda', '/control-interno', '/validacion-tienda', '/perfil'],
-  'supervisor-picking':  ['/picking', '/perfil'],
-  admin:                 ['*'],
-  'asistente-despacho':  ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/perfil'],
-  'coordinador-flota':   ['/despacho', '/despacho-hub', '/despacho/control-flota', '/panel-choferes', '/perfil'],
-};
+import { isPathAllowed, SYSTEM_ROLE_PATHS, SYSTEM_ROLE_HOME } from '@/config/routes';
 
 function isAllowed(role: string, pathname: string, customPaths?: string[]): boolean {
-  const allowed = customPaths ?? ROLE_ALLOWED[role] ?? [];
-  if (allowed.includes('*')) return true;
-  return allowed.some(p =>
-    p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(p + '/')
-  );
+  const allowed = customPaths ?? SYSTEM_ROLE_PATHS[role] ?? [];
+  return isPathAllowed(allowed, pathname);
 }
 
 function roleHome(role: string, metaHome?: string, metaPaths?: string[]): string {
-  // Only use metaHome if it's actually accessible for this role
   if (metaHome && isAllowed(role, metaHome, metaPaths)) return metaHome;
-  if (ROLE_HOME[role]) return ROLE_HOME[role];
-  // Custom role: derive home from first allowed path that isn't /perfil
+  if (SYSTEM_ROLE_HOME[role]) return SYSTEM_ROLE_HOME[role];
   const first = metaPaths?.find(p => p !== '/perfil' && p !== '*');
   return first ?? '/perfil';
 }
@@ -108,7 +80,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Custom role with no paths in JWT yet (user created before fix) → force re-login to refresh JWT
-  const isCustomRole = !Object.keys(ROLE_ALLOWED).includes(role) && role !== 'pending';
+  const isCustomRole = !Object.keys(SYSTEM_ROLE_PATHS).includes(role) && role !== 'pending';
   if (isCustomRole && !metaPaths?.length && pathname !== '/login') {
     const cleanResp = NextResponse.redirect(new URL('/login', request.url));
     request.cookies.getAll()
