@@ -6,9 +6,11 @@ import { ChevronLeft } from 'lucide-react';
 import { SantiagoProvider, useSantiago } from '../features/despacho/santiago/context/SantiagoContext';
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { ProfilePill } from '../components/ProfilePill';
+import { useAuth } from '../components/AuthProvider';
 
 function SantiagoContent() {
   const router = useRouter();
+  const { profile } = useAuth();
   const { state, dispatch } = useSantiago();
   const [todayLabel, setTodayLabel] = useState('');
   useEffect(() => {
@@ -17,13 +19,15 @@ function SantiagoContent() {
   }, []);
 
   // Navegación contextual:
-  //   step='regimen' (SECO/CONGELADO) → volver a /despacho/conteo
-  //   step='form'    (grilla de tiendas) → volver a step='regimen'
+  //   step='form'    → volver a step='regimen'
+  //   step='regimen' → volver a /despacho/conteo si tiene acceso, sino a /despacho-hub
   const handleBack = () => {
     if (state.step === 'form') {
       dispatch({ type: 'BACK_TO_REGIMEN' });
     } else {
-      router.push('/despacho/conteo');
+      const paths = profile?.allowedPaths ?? [];
+      const hasConteo = paths.includes('*') || paths.includes('/despacho/conteo');
+      router.push(hasConteo ? '/despacho/conteo' : '/despacho-hub');
     }
   };
 

@@ -79,9 +79,17 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
 
 export function isPathAllowed(allowed: string[], pathname: string): boolean {
   if (allowed.includes('*')) return true;
-  return allowed.some(p =>
-    p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(p + '/')
-  );
+  return allowed.some(p => {
+    if (p === '/') return pathname === '/';
+    if (pathname === p) return true;
+    if (pathname.startsWith(p + '/')) {
+      // Prefix match solo aplica si el sub-path no es un permiso registrado propio.
+      // Ej: tener /despacho NO da acceso a /despacho/santiago (permiso separado).
+      //     pero tener /despacho/santiago SÍ da acceso a /despacho/santiago/rutas.
+      return !ALL_MODULE_PATHS.includes(pathname);
+    }
+    return false;
+  });
 }
 
 // ── Roles de sistema (fallback para middleware) ──────────────────

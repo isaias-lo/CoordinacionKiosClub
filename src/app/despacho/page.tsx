@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SantiagoProvider } from '../../features/despacho/santiago/context/SantiagoContext';
 import { ProfilePill } from '../../components/ProfilePill';
+import { useAuth } from '@/components/AuthProvider';
 
 function RutasScreenWrapper({ onBack }: { onBack: () => void }) {
   const [RutasScreen, setRutasScreen] = useState<React.ComponentType<{ onBack?: () => void }> | null>(null);
@@ -82,6 +83,7 @@ function SyncManager() {
 
 function DespachoContent() {
   const router  = useRouter();
+  const { profile } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -97,8 +99,13 @@ function DespachoContent() {
         return;
       }
     }
-    router.push('/despacho-hub');
-  }, [router]);
+    // Navegar al hub si el usuario tiene acceso, de lo contrario al inicio de sesión
+    const paths = profile?.allowedPaths ?? [];
+    const dest = paths.includes('*') || paths.includes('/despacho-hub')
+      ? '/despacho-hub'
+      : '/';
+    router.push(dest);
+  }, [router, profile]);
 
   if (!mounted) {
     return (
@@ -129,7 +136,7 @@ function DespachoContent() {
           <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
         </div>
         <button
-          onClick={() => router.push('/')}
+          onClick={handleBack}
           className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
           style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
           <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">INICIO</span>

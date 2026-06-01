@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, Route, Activity, Users, Settings, ClipboardList, Truck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ProfilePill } from '../../components/ProfilePill';
+import { useAuth } from '@/components/AuthProvider';
 import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
 
 export default function DespachoHubPage() {
   const router = useRouter();
+  const { profile } = useAuth();
   const [notifCount, setNotifCount] = useState(0);
 
   useEffect(() => {
@@ -16,44 +18,60 @@ export default function DespachoHubPage() {
     return subscribeToNotificaciones(n => setNotifCount(n.length));
   }, []);
 
-  const tabs: { id: string; label: React.ReactNode; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string }[] = [
+  function canSee(path: string): boolean {
+    const paths = profile?.allowedPaths ?? [];
+    if (paths.includes('*')) return true;
+    return paths.includes(path);
+  }
+
+  // Página de inicio para el botón "Volver" — usa la primera ruta accesible
+  function homeForBack(): string {
+    const paths = profile?.allowedPaths ?? [];
+    if (paths.includes('*') || paths.includes('/')) return '/';
+    return '/';
+  }
+
+  type HubTab = { id: string; path: string; label: React.ReactNode; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string };
+  const allTabs: HubTab[] = [
     {
-      id: 'conteo', label: <>Conteo/<br />Consolidación</>, sub: 'Nacional · RM/Costa',
+      id: 'conteo', path: '/despacho/conteo', label: <>Conteo/<br />Consolidación</>, sub: 'Nacional · RM/Costa',
       border: 'rgba(6,182,212,0.50)', bg: 'rgba(6,182,212,0.15)', shadow: 'rgba(6,182,212,0.20)',
       onClick: () => router.push('/despacho/conteo'),
       Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
     },
     {
-      id: 'enrutador', label: 'Enrutador', sub: 'Sistema de enrutamiento',
+      id: 'enrutador', path: '/despacho', label: 'Enrutador', sub: 'Sistema de enrutamiento',
       border: 'rgba(34,197,94,0.50)', bg: 'rgba(34,197,94,0.16)', shadow: 'rgba(34,197,94,0.20)',
       onClick: () => { sessionStorage.setItem('despacho_from', '/despacho-hub'); router.push('/despacho'); },
       Icon: Route, iconColor: 'rgba(110,231,183,0.9)',
     },
     {
-      id: 'control-flota', label: 'Control de Flota', sub: 'Conductor · Pionetas · Reasignar',
+      id: 'control-flota', path: '/despacho/control-flota', label: 'Control de Flota', sub: 'Conductor · Pionetas · Reasignar',
       border: 'rgba(249,115,22,0.50)', bg: 'rgba(249,115,22,0.13)', shadow: 'rgba(249,115,22,0.18)',
       onClick: () => router.push('/despacho/control-flota'),
       Icon: Truck, iconColor: 'rgba(253,186,116,0.9)',
     },
     {
-      id: 'panel-choferes', label: 'Panel Choferes', sub: 'Hub Conductor · Recepción',
+      id: 'panel-choferes', path: '/panel-choferes', label: 'Panel Choferes', sub: 'Hub Conductor · Recepción',
       border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
       onClick: () => router.push('/panel-choferes'),
       Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
     },
     {
-      id: 'estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
+      id: 'estado', path: '/despacho/estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
       border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
       onClick: () => router.push('/despacho/estado'),
       Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
     },
     {
-      id: 'config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',
+      id: 'config-tiendas', path: '/despacho/config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',
       border: 'rgba(99,102,241,0.50)', bg: 'rgba(99,102,241,0.15)', shadow: 'rgba(99,102,241,0.20)',
       onClick: () => router.push('/despacho/config-tiendas'),
       Icon: Settings, iconColor: 'rgba(165,180,252,0.9)',
     },
   ];
+
+  const tabs = profile ? allTabs.filter(t => canSee(t.path)) : allTabs;
 
   return (
     <>
@@ -92,7 +110,7 @@ export default function DespachoHubPage() {
         <div className="dh-header flex items-center gap-3 mb-10 px-6">
           <div className="flex items-center gap-3 flex-1">
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push(homeForBack())}
               className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
               style={{
                 width: 36, height: 36,
