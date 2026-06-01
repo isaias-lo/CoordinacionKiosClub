@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Route, Activity, Clock, Database, Users, Settings, ClipboardList } from 'lucide-react';
+import { ChevronLeft, Route, Activity, Users, Settings, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ProfilePill } from '../../components/ProfilePill';
 import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
@@ -40,18 +40,6 @@ export default function DespachoHubPage() {
       border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
       onClick: () => router.push('/panel-choferes'),
       Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
-    },
-    {
-      id: 'historial', label: 'Historial', sub: 'Registros de despacho',
-      border: 'rgba(255,255,255,0.22)', bg: 'rgba(255,255,255,0.08)', shadow: 'rgba(255,255,255,0.10)',
-      onClick: () => router.push('/historial'),
-      Icon: Clock, iconColor: 'rgba(255,255,255,0.7)',
-    },
-    {
-      id: 'registros', label: 'Registros', sub: 'Base de datos de despachos',
-      border: 'rgba(16,185,129,0.50)', bg: 'rgba(16,185,129,0.16)', shadow: 'rgba(16,185,129,0.20)',
-      onClick: () => router.push('/registros'),
-      Icon: Database, iconColor: 'rgba(52,211,153,0.9)',
     },
     {
       id: 'config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',

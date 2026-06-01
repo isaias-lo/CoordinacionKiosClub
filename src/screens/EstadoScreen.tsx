@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Tag, Activity, Scan } from 'lucide-react';
+import { ChevronLeft, Tag, Activity, Scan, Clock } from 'lucide-react';
 import { AppProvider } from '../context/AppContext';
 import { ProfilePill } from '../components/ProfilePill';
 import { EstadoPage } from '../features/despacho/estado/EstadoPage';
 import { SeguimientoPanel } from '../features/despacho/estado/SeguimientoPanel';
 import { ScannerPanel } from '../features/despacho/estado/ScannerPanel';
+import { HistContent } from '../screens/HistScreen';
 import { useAuth } from '../components/AuthProvider';
 
-type View = 'etiquetas' | 'escaneo' | 'estado';
+type View = 'etiquetas' | 'escaneo' | 'estado' | 'historial';
 
 function EstadoContent() {
   const router = useRouter();
@@ -18,17 +19,15 @@ function EstadoContent() {
   const [view, setView] = useState<View>('etiquetas');
 
   const tabs: { id: View; label: string; Icon: typeof Tag }[] = [
-    { id: 'etiquetas', label: 'Etiquetas', Icon: Tag },
-    { id: 'escaneo',   label: 'Escaneo',   Icon: Scan },
-    { id: 'estado',    label: 'Estado',    Icon: Activity },
+    { id: 'etiquetas', label: 'Etiquetas', Icon: Tag      },
+    { id: 'escaneo',   label: 'Escaneo',   Icon: Scan     },
+    { id: 'estado',    label: 'Estado',    Icon: Activity  },
+    { id: 'historial', label: 'Historial', Icon: Clock    },
   ];
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <div
-        className="flex-shrink-0 bg-navy"
-        style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-
+      <div className="flex-shrink-0 bg-navy" style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <div className="flex items-center px-4 pt-3 pb-3 gap-3">
           <button
             onClick={() => router.push('/despacho-hub')}
@@ -46,7 +45,6 @@ function EstadoContent() {
             Estado / Seguimiento
           </div>
 
-          {/* Tabs: ETIQUETAS / ESCANEO / ESTADO */}
           <div className="flex rounded-full overflow-hidden border border-white/20">
             {tabs.map(({ id, label, Icon }) => (
               <button
@@ -70,6 +68,7 @@ function EstadoContent() {
         {view === 'etiquetas' && <EstadoPage />}
         {view === 'escaneo'   && <ScannerPanel />}
         {view === 'estado'    && <SeguimientoPanel canSync={can('estado/seguimiento', 'edit')} />}
+        {view === 'historial' && <HistContent />}
       </div>
     </div>
   );
