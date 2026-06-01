@@ -52,14 +52,27 @@ export async function POST(request: NextRequest) {
 
   const sb = adminSb();
 
-  // Fetch role config so allowed_paths/home_path land in the JWT from day 1
+  // Fetch role config so allowed_paths/home_path land in the JWT from day 1.
+  // Only select columns guaranteed to exist — permissions column may not be present yet.
   const user_metadata: Record<string, unknown> = { full_name: full_name || email, role };
-  const { data: roleData } = await sb.from('roles').select('allowed_paths,home_path,permissions').eq('id', role).single();
-  if (roleData) {
-    user_metadata.allowed_paths = roleData.allowed_paths ?? [];
+  const { data: roleData, error: roleErr } = await sb
+    .from('roles')
+    .select('allowed_paths,home_path')
+    .eq('id', role)
+    .single();
+
+  if (!roleErr && roleData) {
+    user_metadata.allowed_paths = Array.isArray(roleData.allowed_paths) ? roleData.allowed_paths : [];
     user_metadata.home_path     = roleData.home_path ?? '/perfil';
-    user_metadata.permissions   = roleData.permissions ?? {};
   }
+
+  // Try to also fetch permissions (column may not exist yet — ignore error)
+  const { data: permData } = await sb
+    .from('roles')
+    .select('permissions')
+    .eq('id', role)
+    .single();
+  if (permData?.permissions) user_metadata.permissions = permData.permissions;
 
   const { data: { user }, error } = await sb.auth.admin.createUser({
     email,
@@ -91,12 +104,23 @@ export async function PATCH(request: NextRequest) {
   if (full_name) meta.full_name = full_name;
 
   if (role) {
-    const { data: roleData } = await sb.from('roles').select('allowed_paths,home_path,permissions').eq('id', role).single();
-    if (roleData) {
-      meta.allowed_paths = roleData.allowed_paths;
-      meta.home_path     = roleData.home_path;
-      meta.permissions   = roleData.permissions ?? {};
+    // Select only guaranteed columns to avoid silent query failure
+    const { data: roleData, error: roleErr } = await sb
+      .from('roles')
+      .select('allowed_paths,home_path')
+      .eq('id', role)
+      .single();
+    if (!roleErr && roleData) {
+      meta.allowed_paths = Array.isArray(roleData.allowed_paths) ? roleData.allowed_paths : [];
+      meta.home_path     = roleData.home_path ?? '/perfil';
     }
+    // Permissions fetched separately — column may not exist yet
+    const { data: permData } = await sb
+      .from('roles')
+      .select('permissions')
+      .eq('id', role)
+      .single();
+    if (permData?.permissions) meta.permissions = permData.permissions;
   }
 
   const updatePayload: Record<string, unknown> = { user_metadata: meta };
