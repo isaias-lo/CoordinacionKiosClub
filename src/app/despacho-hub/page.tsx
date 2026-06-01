@@ -24,12 +24,6 @@ export default function DespachoHubPage() {
       Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
     },
     {
-      id: 'estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
-      border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
-      onClick: () => router.push('/despacho/estado'),
-      Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
-    },
-    {
       id: 'enrutador', label: 'Enrutador', sub: 'Sistema de enrutamiento',
       border: 'rgba(34,197,94,0.50)', bg: 'rgba(34,197,94,0.16)', shadow: 'rgba(34,197,94,0.20)',
       onClick: () => { sessionStorage.setItem('despacho_from', '/despacho-hub'); router.push('/despacho'); },
@@ -46,6 +40,12 @@ export default function DespachoHubPage() {
       border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
       onClick: () => router.push('/panel-choferes'),
       Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
+    },
+    {
+      id: 'estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
+      border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
+      onClick: () => router.push('/despacho/estado'),
+      Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
     },
     {
       id: 'config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',

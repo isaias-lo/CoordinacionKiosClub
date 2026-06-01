@@ -30,12 +30,6 @@ export default function ControlInternoPage() {
       Icon: Search, iconColor: 'rgba(167,139,250,0.9)',
     },
     {
-      label: 'Config. Tiendas', sub: 'Gestión de tiendas · Calendario central',
-      border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.28)',
-      onClick: () => router.push('/admin/tiendas'), path: '/admin/tiendas',
-      Icon: Settings, iconColor: 'rgba(252,165,165,0.9)',
-    },
-    {
       label: 'Recepción/Tienda', sub: 'Registro de entrega en tienda',
       border: 'rgba(16,185,129,0.55)', bg: 'rgba(16,185,129,0.13)', shadow: 'rgba(16,185,129,0.20)',
       onClick: () => router.push('/recepcion-tienda'), path: '/recepcion-tienda',
@@ -52,6 +46,12 @@ export default function ControlInternoPage() {
       border: 'rgba(6,182,212,0.55)', bg: 'rgba(6,182,212,0.13)', shadow: 'rgba(6,182,212,0.20)',
       onClick: () => router.push('/panel-operaciones'), path: '/panel-operaciones',
       Icon: Activity, iconColor: 'rgba(34,211,238,0.9)',
+    },
+    {
+      label: 'Config. Tiendas', sub: 'Gestión de tiendas · Calendario central',
+      border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.28)',
+      onClick: () => router.push('/admin/tiendas'), path: '/admin/tiendas',
+      Icon: Settings, iconColor: 'rgba(252,165,165,0.9)',
     },
   ].filter(t => canSee(t.path));
 
