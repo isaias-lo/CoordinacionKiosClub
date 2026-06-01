@@ -85,10 +85,23 @@ interface ComparisonData {
   rebalanceada?: boolean;
 }
 
+type PendientesGuardados = { savedAt: string; stores: { c: string; p: number; b: number; ch: number }[] };
+
 export default function RutasScreen() {
   const router = useRouter();
   const { signOut, user } = useAuth();
   const userId = user?.id;
+
+  const [pendientes, setPendientes] = useState<PendientesGuardados | null>(() => {
+    try {
+      if (typeof window === 'undefined') return null;
+      const raw = localStorage.getItem('despacho_pendientes');
+      if (!raw) return null;
+      const data = JSON.parse(raw) as PendientesGuardados;
+      const today = new Date().toISOString().split('T')[0];
+      return data.savedAt && data.savedAt !== today && data.stores?.length > 0 ? data : null;
+    } catch { return null; }
+  });
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -895,6 +908,50 @@ export default function RutasScreen() {
         onAgregarVehiculo={handleAgregarVehiculo}
         onEliminarVehiculo={handleEliminarVehiculo}
       />
+
+      {/* Banner pendientes de día anterior */}
+      {pendientes && (
+        <div className="max-w-[1100px] mx-auto px-3.5 pt-4">
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-kios2 px-4 py-3">
+            <span className="text-xl flex-shrink-0">📦</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-amber-900 text-[14px]">
+                {pendientes.stores.length} tienda{pendientes.stores.length !== 1 ? 's' : ''} pendiente{pendientes.stores.length !== 1 ? 's' : ''} del {pendientes.savedAt}
+              </div>
+              <div className="text-amber-700 text-[12px] mt-0.5">
+                {pendientes.stores.map(s => `${s.c} (${s.p > 0 ? `${s.p}P` : ''}${s.b > 0 ? `${s.b}B` : ''})`).join(' · ')}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setCalT(prev => {
+                  const next = { ...prev };
+                  pendientes.stores.forEach(s => {
+                    if (!next[s.c]) {
+                      next[s.c] = { on: true, p: s.p, b: s.b, c: 0, ch: s.ch ?? 0, g: 'manual' };
+                    } else {
+                      next[s.c] = { ...next[s.c], on: true, p: s.p, b: s.b, ch: s.ch ?? 0 };
+                    }
+                  });
+                  return next;
+                });
+                localStorage.removeItem('despacho_pendientes');
+                setPendientes(null);
+              }}
+              className="flex-shrink-0 px-3 py-1.5 bg-amber-500 text-white rounded-kios2 text-[13px] font-bold cursor-pointer active:scale-95 transition-all">
+              Incluir
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('despacho_pendientes');
+                setPendientes(null);
+              }}
+              className="flex-shrink-0 px-3 py-1.5 bg-white border border-amber-300 text-amber-700 rounded-kios2 text-[13px] font-bold cursor-pointer active:scale-95 transition-all">
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-[1100px] mx-auto px-3.5 py-5">
         {!results ? (

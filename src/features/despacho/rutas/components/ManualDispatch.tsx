@@ -489,9 +489,19 @@ export default function ManualDispatch({
               const ok = confirm(
                 `Quedan ${pendientesTotal} parada${pendientesTotal > 1 ? 's' : ''} sin asignar.\n\n` +
                 `¿Calcular ruta parcial con lo asignado hasta ahora?\n\n` +
-                `Las paradas sin asignar no se incluirán en esta ruta.`
+                `Las paradas sin asignar quedarán guardadas para el día siguiente.`
               );
               if (!ok) return;
+              // Guardar tiendas pendientes para el día siguiente
+              try {
+                localStorage.setItem('despacho_pendientes', JSON.stringify({
+                  savedAt: new Date().toISOString().split('T')[0],
+                  stores: pool.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
+                }));
+              } catch {}
+            } else {
+              // Todo asignado: limpiar pendientes anteriores si los hubiera
+              try { localStorage.removeItem('despacho_pendientes'); } catch {}
             }
             onCalcular();
           }}
