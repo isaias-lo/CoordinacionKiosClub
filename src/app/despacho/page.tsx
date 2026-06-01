@@ -105,8 +105,9 @@ function DespachoContent() {
       <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
         <div className="bg-navy px-4 py-3 flex items-center gap-2 flex-shrink-0">
           <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub" />
-          <div className="font-barlow-condensed text-[13px] text-white/60 tracking-wide flex-1 text-center">
-            🗺️ Sistema de Despacho
+          <div className="flex-1 text-center">
+            <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
+            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -123,8 +124,9 @@ function DespachoContent() {
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub"
              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-        <div className="font-barlow-condensed text-[13px] text-white/60 tracking-wide flex-1 text-center">
-          🗺️ Sistema de Despacho
+        <div className="flex-1 text-center">
+          <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
+          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
         </div>
         <button
           onClick={() => router.push('/')}

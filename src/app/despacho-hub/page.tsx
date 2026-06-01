@@ -96,10 +96,7 @@ export default function DespachoHubPage() {
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
-            <div>
-              <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
-              <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Despacho</div>
-            </div>
+            <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Despacho</div>
           </div>
           <ProfilePill />
         </div>
