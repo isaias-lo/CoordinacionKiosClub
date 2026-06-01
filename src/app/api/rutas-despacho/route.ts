@@ -22,6 +22,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json() as {
     fecha: string; codigo_ruta: string; chofer: string; patente: string;
     bodega_origen?: string;
+    pioneta_1?: string;
+    pioneta_2?: string;
     tiendas?: { store_cod: string; orden: number; pallets: number; bultos: number; contenedores?: number }[];
     guias?:   { store_cod?: string; folio_dte: string; drive_url?: string }[];
   };
@@ -32,14 +34,17 @@ export async function POST(request: NextRequest) {
   const { data: ruta, error: rutaErr } = await supabaseServer()
     .from('rutas_despacho')
     .insert({
-      fecha:         body.fecha,
-      codigo_ruta:   body.codigo_ruta,
-      chofer:        body.chofer,
-      patente:       body.patente,
-      bodega_origen: body.bodega_origen ?? 'Santiago',
-      estado:        'pendiente',
-      token_qr:      token,
-      token_exp:     tokenExp,
+      fecha:          body.fecha,
+      codigo_ruta:    body.codigo_ruta,
+      chofer:         body.chofer,
+      chofer_original: body.chofer,  // snapshot at creation
+      patente:        body.patente,
+      bodega_origen:  body.bodega_origen ?? 'Santiago',
+      estado:         'pendiente',
+      token_qr:       token,
+      token_exp:      tokenExp,
+      pioneta_1:      body.pioneta_1 ?? null,
+      pioneta_2:      body.pioneta_2 ?? null,
     })
     .select()
     .single();

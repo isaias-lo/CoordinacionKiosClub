@@ -37,15 +37,19 @@ const RM_COLS: ColDef[] = [
   { key: 'estado',         label: 'Estado',       defaultWidth: 155, minWidth: 90  },
   { key: 'seguimiento',    label: 'Seguimiento',  defaultWidth: 120, minWidth: 80  },
   // ── Columnas adicionales ──────────────────────────────────────────────────
-  { key: 'regimen',        label: 'Régimen',      defaultWidth: 85,  minWidth: 55  },
-  { key: 'transporte',     label: 'Transporte',   defaultWidth: 100, minWidth: 70  },
-  { key: 'carga',          label: 'Carga',        defaultWidth: 80,  minWidth: 55  },
-  { key: 'region',         label: 'Región',       defaultWidth: 200, minWidth: 90  },
-  { key: 'comuna',         label: 'Comuna',       defaultWidth: 95,  minWidth: 60  },
-  { key: 'supervisor',     label: 'Supervisor',   defaultWidth: 130, minWidth: 70  },
-  { key: 'guia',           label: 'Guía',         defaultWidth: 95,  minWidth: 60  },
-  { key: 'valor',          label: 'Valor',        defaultWidth: 90,  minWidth: 60  },
-  { key: 'fuente',         label: 'Fuente',       defaultWidth: 90,  minWidth: 60  },
+  { key: 'regimen',              label: 'Régimen',       defaultWidth: 85,  minWidth: 55  },
+  { key: 'transporte',           label: 'Transporte',    defaultWidth: 100, minWidth: 70  },
+  { key: 'carga',                label: 'Carga',         defaultWidth: 80,  minWidth: 55  },
+  { key: 'region',               label: 'Región',        defaultWidth: 200, minWidth: 90  },
+  { key: 'comuna',               label: 'Comuna',        defaultWidth: 95,  minWidth: 60  },
+  { key: 'supervisor',           label: 'Supervisor',    defaultWidth: 130, minWidth: 70  },
+  { key: 'guia',                 label: 'Guía',          defaultWidth: 95,  minWidth: 60  },
+  { key: 'valor',                label: 'Valor',         defaultWidth: 90,  minWidth: 60  },
+  { key: 'fuente',               label: 'Fuente',        defaultWidth: 90,  minWidth: 60  },
+  { key: 'pioneta_1',            label: 'Pioneta 1',     defaultWidth: 120, minWidth: 70  },
+  { key: 'pioneta_2',            label: 'Pioneta 2',     defaultWidth: 120, minWidth: 70  },
+  { key: 'conductor_original',   label: 'Cond. orig.',   defaultWidth: 130, minWidth: 80  },
+  { key: 'conductor_modificado', label: 'Modif.',        defaultWidth: 75,  minWidth: 55  },
 ];
 
 const REC_COLS: ColDef[] = [
@@ -57,6 +61,7 @@ const REC_COLS: ColDef[] = [
   { key: 'pallets_recibidos', label: 'P. Rec',      defaultWidth: 65,  minWidth: 45  },
   { key: 'bultos_recibidos',  label: 'B. Rec',      defaultWidth: 65,  minWidth: 45  },
   { key: 'conductor',         label: 'Conductor',   defaultWidth: 130, minWidth: 70  },
+  { key: 'pionetas',          label: 'Pionetas',    defaultWidth: 140, minWidth: 80  },
   { key: 'receptor',          label: 'Receptor',    defaultWidth: 130, minWidth: 70  },
 ];
 
@@ -459,6 +464,11 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
     if (col.key === 'carga')       return val ? <CargaBadge value={String(val)} /> : <span style={{ color: '#C0C7D4' }}>—</span>;
     if (col.key === 'cod')         return <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#1B2A6B' }}>{String(val ?? '')}</span>;
     if (col.key === 'valor' && val != null) return <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#374151' }}>{Number(val).toLocaleString('es-CL')}</span>;
+    if (col.key === 'conductor_modificado') {
+      return val
+        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#EA580C', background: 'rgba(249,115,22,0.12)', padding: '2px 8px', borderRadius: 99 }}>● Modif.</span>
+        : <span style={{ color: '#C0C7D4' }}>—</span>;
+    }
     if (col.key === 'created_at' && val) {
       const d = new Date(String(val));
       return `${d.toLocaleDateString('es-CL')} ${d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`;

@@ -53,6 +53,8 @@ function toRmRecord(row: (string | number)[]) {
     supervisor:       String(row[22] ?? ''),
     guia:             String(row[23] ?? ''),
     valor:            n(row[24] ?? ''),
+    pioneta_1:        row[25] ? String(row[25]) : null,
+    pioneta_2:        row[26] ? String(row[26]) : null,
     seguimiento: 'Registrado',
   };
 }
@@ -84,6 +86,8 @@ function toRegionesRecord(row: (string | number)[]) {
     supervisor:       String(row[22] ?? ''),
     guia:             String(row[23] ?? ''),
     valor:            n(row[24] ?? ''),
+    pioneta_1:        row[25] ? String(row[25]) : null,
+    pioneta_2:        row[26] ? String(row[26]) : null,
     seguimiento: 'Registrado',
   };
 }
@@ -134,7 +138,8 @@ export async function POST(request: NextRequest) {
             .update({ conductor: rm.conductor, ruta: rm.ruta, supervisor: rm.supervisor,
                       transporte: rm.transporte, estado: rm.estado, ventana: rm.ventana })
             .eq('fecha', r.fecha)
-            .eq('cod', r.cod);
+            .eq('cod', r.cod)
+            .eq('conductor_modificado', false); // guard: never overwrite manual reassignments
           if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
       } else {

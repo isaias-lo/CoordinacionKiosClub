@@ -53,6 +53,8 @@ function toRmRecord(row: (string | number)[]) {
     conductor:      String(row[20] ?? ''),
     ruta:           String(row[21] ?? ''),
     supervisor:     String(row[22] ?? ''),
+    pioneta_1:      row[25] ? String(row[25]) : null,
+    pioneta_2:      row[26] ? String(row[26]) : null,
     seguimiento:    'Registrado',
   };
 }

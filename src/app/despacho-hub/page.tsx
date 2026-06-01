@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Route, Activity, Users, Settings, ClipboardList } from 'lucide-react';
+import { ChevronLeft, Route, Activity, Users, Settings, ClipboardList, Truck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ProfilePill } from '../../components/ProfilePill';
 import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
@@ -34,6 +34,12 @@ export default function DespachoHubPage() {
       border: 'rgba(34,197,94,0.50)', bg: 'rgba(34,197,94,0.16)', shadow: 'rgba(34,197,94,0.20)',
       onClick: () => { sessionStorage.setItem('despacho_from', '/despacho-hub'); router.push('/despacho'); },
       Icon: Route, iconColor: 'rgba(110,231,183,0.9)',
+    },
+    {
+      id: 'control-flota', label: 'Control de Flota', sub: 'Conductor · Pionetas · Reasignar',
+      border: 'rgba(249,115,22,0.50)', bg: 'rgba(249,115,22,0.13)', shadow: 'rgba(249,115,22,0.18)',
+      onClick: () => router.push('/despacho/control-flota'),
+      Icon: Truck, iconColor: 'rgba(253,186,116,0.9)',
     },
     {
       id: 'panel-choferes', label: 'Panel Choferes', sub: 'Hub Conductor · Recepción',
