@@ -427,8 +427,8 @@ export function LaunchScreen() {
               bg: 'rgba(251,146,60,0.13)', border: 'rgba(251,146,60,0.40)', shadow: 'rgba(251,146,60,0.18)',
               cardClass: 'ls-card-0',
             } : null,
-            // Hub Conductor — acceso directo para el rol Conductor
-            canSee('/conductor-hub') ? {
+            // Hub Conductor — solo si no tiene acceso al hub de despacho (rol puro de conductor)
+            !canSee('/despacho-hub') && !canSee('/despacho') && canSee('/conductor-hub') ? {
               key: 'conductor-hub', path: '/conductor-hub',
               label: 'Hub Conductor', sub: 'Mi ruta · Entregas · Escaneo',
               Icon: Truck,      iconColor: 'rgba(251,146,60,0.9)',
