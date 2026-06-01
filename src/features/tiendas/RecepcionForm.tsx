@@ -15,6 +15,7 @@ interface Props {
   cdFoto: FotoRegistro | null;
   onDone: () => void;
   onBack: () => void;
+  regimen?: string;
 }
 
 type Phase = 'filling' | 'verifying' | 'sello-salida';
@@ -42,7 +43,7 @@ async function uploadPhoto(file: File, path: string): Promise<string> {
   return publicUrl;
 }
 
-export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, cdFoto, onDone, onBack }: Props) {
+export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, cdFoto, onDone, onBack, regimen }: Props) {
   const { cod, palletsSent, bultosSent, contenedoresSent, guias, driveFileId } = qrData;
   const store = TIENDAS_INICIAL[cod];
 
@@ -257,6 +258,7 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
           canonicalId:       canonicalId ?? undefined,
           tipoIncidencia:    tipoIncidencia || undefined,
           temperaturaLlegada: temperaturaLlegada ? parseFloat(temperaturaLlegada) : undefined,
+          regimen:           regimen || undefined,
         }),
       });
       const data = await res.json();
@@ -502,19 +504,21 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
               </select>
             </div>
 
-            {/* Temperatura (campo libre, relevante para carga fría) */}
-            <div>
-              <label style={S.label}>Temperatura al llegar °C <span style={{ fontWeight: 400, color: '#9CA3AF' }}>— solo carga fría</span></label>
-              <input
-                type="number"
-                step="0.1"
-                inputMode="decimal"
-                value={temperaturaLlegada}
-                onChange={e => setTemperaturaLlegada(e.target.value)}
-                placeholder="Ej: 4.5"
-                style={{ ...S.input, fontFamily: 'monospace' }}
-              />
-            </div>
+            {/* Temperatura — solo para camiones refrigerados (regimen Congelado) */}
+            {regimen === 'Congelado' && (
+              <div>
+                <label style={S.label}>Temperatura al llegar °C</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  inputMode="decimal"
+                  value={temperaturaLlegada}
+                  onChange={e => setTemperaturaLlegada(e.target.value)}
+                  placeholder="Ej: -18.0"
+                  style={{ ...S.input, fontFamily: 'monospace' }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

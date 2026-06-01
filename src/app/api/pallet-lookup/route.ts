@@ -26,6 +26,7 @@ interface DespachoRow {
   tienda: string;
   tipo: string;
   carga?: string | null;
+  regimen?: string | null;
   conductor?: string | null;
   ruta?: string | null;
   ventana?: string | null;
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
 
   const { data: rm } = await sb
     .from('despacho_rm')
-    .select('id, fecha, cod, tienda, tipo, carga, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto')
+    .select('id, fecha, cod, tienda, tipo, carga, regimen, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto')
     .eq('id', id)
     .maybeSingle();
   if (rm) { row = rm as DespachoRow; table = 'despacho_rm'; }
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
   if (!row) {
     const { data: reg } = await sb
       .from('despacho_regiones')
-      .select('id, fecha, cod, tienda, tipo, carga, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto')
+      .select('id, fecha, cod, tienda, tipo, carga, regimen, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto')
       .eq('id', id)
       .maybeSingle();
     if (reg) { row = reg as DespachoRow; table = 'despacho_regiones'; }
@@ -151,6 +152,7 @@ export async function GET(request: NextRequest) {
       direccion: '',
       tipo: normaliseTipo(row.tipo),
       carga: row.carga ?? '',
+      regimen: row.regimen ?? '',
       conductor: row.conductor ?? '',
       ruta: row.ruta ?? '',
       ventana: row.ventana ?? '',

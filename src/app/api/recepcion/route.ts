@@ -32,6 +32,7 @@ interface RecepcionBody {
   tipoIncidencia?: string;
   temperaturaLlegada?: number;
   usuarioRecepcion?: string;
+  regimen?: string;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -215,6 +216,7 @@ export async function POST(request: NextRequest) {
           direccion_tienda:    body.direccion,
           transportista:       body.conductor ?? null,
           tipo_unidad:         'Pallet',
+          regimen:             body.regimen ?? null,
           ...trazUpdate,
         }, { onConflict: 'id_unidad_logistica' });
       } else {

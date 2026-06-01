@@ -17,6 +17,7 @@ export interface QRData {
   contenedoresSent: number;
   guias: string[];
   driveFileId?: string;
+  regimen?: string;
 }
 
 export interface FotoRegistro {
@@ -74,7 +75,7 @@ async function resolveCanonicalIdQRData(canonicalId: string): Promise<QRData | n
     const res = await fetch(`/api/pallet-lookup?id=${encodeURIComponent(canonicalId)}`);
     if (!res.ok) return null;
     const json = await res.json() as {
-      data?: { cod: string; n_pallets: number; n_bultos: number; n_contenedores: number };
+      data?: { cod: string; n_pallets: number; n_bultos: number; n_contenedores: number; regimen?: string };
     };
     const d = json.data;
     if (!d?.cod) return null;
@@ -84,6 +85,7 @@ async function resolveCanonicalIdQRData(canonicalId: string): Promise<QRData | n
       bultosSent:       d.n_bultos,
       contenedoresSent: d.n_contenedores,
       guias:            [],
+      regimen:          d.regimen || undefined,
     };
   } catch {
     return null;
@@ -517,6 +519,7 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub', onBack, embe
                   cdFoto={cdFoto}
                   onDone={handleFormDone}
                   onBack={() => setStep('sello-llegada')}
+                  regimen={qrData.regimen}
                 />
               </div>
             )}

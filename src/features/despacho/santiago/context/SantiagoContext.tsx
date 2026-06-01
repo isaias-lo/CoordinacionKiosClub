@@ -40,7 +40,13 @@ function loadState(): SantiagoState {
     const s = JSON.parse(raw) as SantiagoState & { _savedAt?: number };
     // Reject if the saved state has no timestamp or was written on a different day
     if (!isTodayPush(s._savedAt)) return defaultState;
-    s.step = 'regimen'; // always start at regime selection on fresh load; user must confirm
+    // Si venimos de vuelta desde el Enrutador, retomar el paso guardado (no pedir regimen de nuevo)
+    const resumeForm = typeof window !== 'undefined' && sessionStorage.getItem('santiago_resume_form');
+    if (resumeForm) {
+      sessionStorage.removeItem('santiago_resume_form');
+    } else {
+      s.step = 'regimen'; // always start at regime selection on fresh load; user must confirm
+    }
     return s;
   } catch {
     return defaultState;
