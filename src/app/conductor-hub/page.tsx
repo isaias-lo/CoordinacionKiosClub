@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
+import { ProfilePill } from '@/components/ProfilePill';
 
 /* ── Types ──────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -166,7 +167,7 @@ export default function ConductorHubPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
-              onClick={() => router.push('/panel-choferes')}
+              onClick={() => tab === 'recepcion' ? setTab('ruta') : router.push('/panel-choferes')}
               style={{
                 width: 34, height: 34, borderRadius: 10, flexShrink: 0,
                 background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
@@ -177,13 +178,16 @@ export default function ConductorHubPage() {
             </button>
             <div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Hub Conductor</div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: 2, marginTop: 2 }}>{patente}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: 2, marginTop: 2 }}>{patente}</div>
+                <button onClick={handleSalir}
+                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 10, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+                  cambiar
+                </button>
+              </div>
             </div>
           </div>
-          <button onClick={handleSalir}
-            style={{ padding: '6px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer' }}>
-            Salir
-          </button>
+          <ProfilePill />
         </div>
 
         {offline && (
@@ -340,7 +344,7 @@ export default function ConductorHubPage() {
 
       {/* ── Tab: Entregar en Tienda ──────────────────────── */}
       {tab === 'recepcion' && (
-        <RecepcionTiendaScreen onBack={() => setTab('ruta')} />
+        <RecepcionTiendaScreen onBack={() => setTab('ruta')} embedded />
       )}
     </div>
   );

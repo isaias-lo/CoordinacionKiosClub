@@ -104,7 +104,7 @@ function capturarFoto(
   e.target.value = '';
 }
 
-export function RecepcionTiendaScreen({ backPath = '/despacho-hub', onBack }: { backPath?: string; onBack?: () => void } = {}) {
+export function RecepcionTiendaScreen({ backPath = '/despacho-hub', onBack, embedded = false }: { backPath?: string; onBack?: () => void; embedded?: boolean } = {}) {
   const router      = useRouter();
   const { profile } = useAuth();
 
@@ -228,17 +228,19 @@ export function RecepcionTiendaScreen({ backPath = '/despacho-hub', onBack }: { 
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFF', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Header */}
-      <div style={{ background: '#1B2A6B', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
-        <button onClick={() => onBack ? onBack() : router.push(backPath)} style={hdrBtn}>
-          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-        </button>
-        <div style={{ flex: 1 }}>
-          <div style={{ color: '#fff', fontWeight: 800, fontSize: 17, letterSpacing: '0.02em' }}>Entrega a Tienda</div>
-          {profile && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 1 }}>{profile.full_name ?? profile.id}</div>}
+      {/* Header — hidden when embedded inside conductor-hub */}
+      {!embedded && (
+        <div style={{ background: '#1B2A6B', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
+          <button onClick={() => onBack ? onBack() : router.push(backPath)} style={hdrBtn}>
+            <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+          </button>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: '#fff', fontWeight: 800, fontSize: 17, letterSpacing: '0.02em' }}>Entrega a Tienda</div>
+            {profile && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 1 }}>{profile.full_name ?? profile.id}</div>}
+          </div>
+          <ProfilePill />
         </div>
-        <ProfilePill />
-      </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
