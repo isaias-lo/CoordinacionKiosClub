@@ -34,11 +34,12 @@ function isAllowed(role: string, pathname: string, customPaths?: string[]): bool
 }
 
 function roleHome(role: string, metaHome?: string, metaPaths?: string[]): string {
-  if (metaHome) return metaHome;
+  // Only use metaHome if it's actually accessible for this role
+  if (metaHome && isAllowed(role, metaHome, metaPaths)) return metaHome;
   if (ROLE_HOME[role]) return ROLE_HOME[role];
   // Custom role: derive home from first allowed path that isn't /perfil
   const first = metaPaths?.find(p => p !== '/perfil' && p !== '*');
-  return first ?? '/login';
+  return first ?? '/perfil';
 }
 
 const PUBLIC_ROUTES = ['/login', '/registro', '/recuperar-contrasena', '/actualizar-contrasena'];

@@ -413,7 +413,7 @@ export function LaunchScreen() {
           type MainTile = { key: string; path: string; label: string; sub: string; Icon: React.ElementType; iconColor: string; bg: string; border: string; shadow: string; cardClass: string };
           const mainTiles: MainTile[] = ([
             canSee('/despacho-hub') || canSee('/despacho') ? {
-              key: 'despacho', path: '/despacho-hub',
+              key: 'despacho', path: canSee('/despacho-hub') ? '/despacho-hub' : '/despacho',
               label: 'Despacho', sub: 'Bodegas · Enrutador',
               Icon: Truck,      iconColor: 'rgba(96,165,250,0.9)',
               bg: 'rgba(37,99,235,0.18)', border: 'rgba(37,99,235,0.40)', shadow: 'rgba(37,99,235,0.22)',

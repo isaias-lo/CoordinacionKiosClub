@@ -121,7 +121,7 @@ const PRESET_COLORS = [
 
 const EMPTY_FORM = { email: '', password: '', full_name: '', role: 'auditor' };
 const EMPTY_NEW_ROLE: Omit<AppRole,'is_system'> = {
-  id: '', label: '', color: '#2563EB', home_path: '/', allowed_paths: ['/perfil'],
+  id: '', label: '', color: '#2563EB', home_path: '/perfil', allowed_paths: ['/perfil'],
 };
 
 /* ─── Helpers ────────────────────────────────────────────────── */
