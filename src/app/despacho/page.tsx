@@ -95,6 +95,9 @@ function DespachoContent() {
       const from = sessionStorage.getItem('despacho_from');
       if (from) {
         sessionStorage.removeItem('despacho_from');
+        if (from === '/despacho/santiago') {
+          sessionStorage.setItem('santiago_resume_form', '1');
+        }
         router.push(from);
         return;
       }

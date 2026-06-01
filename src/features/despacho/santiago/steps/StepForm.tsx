@@ -626,7 +626,6 @@ export function StepForm() {
     })).filter(t => t.p > 0 || t.b > 0);
     localStorage.setItem('rutasInput', JSON.stringify(rutasInput));
     sessionStorage.setItem('despacho_from', '/despacho/santiago');
-    sessionStorage.setItem('santiago_resume_form', '1'); // volver desde Enrutador retoma la lista, no el selector de regimen
     flushPending(); // push antes de navegar — evita que el debounce se cancele al salir
     router.push('/despacho');
   };
