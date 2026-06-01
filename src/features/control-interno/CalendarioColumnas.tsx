@@ -12,10 +12,10 @@ import {
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 
-const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
-const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado' };
-const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF9500', JU: '#AF52DE', VI: '#FF2D55', SA: '#00C7BE' };
-const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE' };
+const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
+const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado', DO: 'Domingo' };
+const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF9500', JU: '#AF52DE', VI: '#FF2D55', SA: '#00C7BE', DO: '#FF6B35' };
+const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE', DO: '#FFF3EE' };
 
 const GRUPOS: [string, string, string][] = [
   ['rm',      '📦 RM',        'Bodega Santiago — RM'],
@@ -68,6 +68,12 @@ export default function CalendarioColumnas({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCod, setPickerCod]   = useState('');
   const [dragOver, setDragOver]     = useState<{ dia: string; idx: number } | null>(null);
+  const [visibleCount, setVisibleCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 6;
+    const s = localStorage.getItem('cal_visible_count');
+    const n = s ? parseInt(s, 10) : 6;
+    return isNaN(n) ? 6 : Math.min(7, Math.max(1, n));
+  });
 
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
   const pendingResolveRef = useRef<string[]>([]);
@@ -132,6 +138,14 @@ export default function CalendarioColumnas({
   }, [cal]);
 
   const hasChanges = local && cal && JSON.stringify(local) !== JSON.stringify(cal);
+
+  const visibleDias = DIAS.slice(0, visibleCount);
+
+  function updateVisibleCount(n: number) {
+    const clamped = Math.min(7, Math.max(1, n));
+    setVisibleCount(clamped);
+    localStorage.setItem('cal_visible_count', String(clamped));
+  }
 
   function handleSearch(q: string) {
     setSearch(q);
@@ -308,7 +322,7 @@ export default function CalendarioColumnas({
     };
 
     // Regiones → Costa → RM (igual que la vista General)
-    const dayOrdered: Array<Array<{ cod: string; zone: Zone }>> = DIAS.map(dia => {
+    const dayOrdered: Array<Array<{ cod: string; zone: Zone }>> = visibleDias.map(dia => {
       const rm    = local![dia]?.rm    || [];
       const costa = local![dia]?.costa || [];
       const fal   = local![dia]?.fal   || [];
@@ -324,7 +338,7 @@ export default function CalendarioColumnas({
     let bodyRows = '';
     for (let i = 0; i < maxRows; i++) {
       bodyRows += '<tr>';
-      for (let j = 0; j < DIAS.length; j++) {
+      for (let j = 0; j < visibleDias.length; j++) {
         const store = dayOrdered[j][i];
         if (store) {
           const c = ZONE_COLOR[store.zone];
@@ -373,12 +387,7 @@ export default function CalendarioColumnas({
   <table>
     <thead>
       <tr>
-        <th>LUNES</th>
-        <th>MARTES</th>
-        <th>MIÉRCOLES</th>
-        <th>JUEVES</th>
-        <th>VIERNES</th>
-        <th>SÁBADO</th>
+        ${visibleDias.map(d => `<th>${DNOM[d].toUpperCase()}</th>`).join('')}
       </tr>
     </thead>
     <tbody>
@@ -472,6 +481,48 @@ export default function CalendarioColumnas({
             </button>
           );
         })}
+
+        {/* Day count stepper */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 2,
+          background: '#FFFFFF', borderRadius: 100, height: 42,
+          padding: '0 6px 0 12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.09), inset 0 1px 0 rgba(255,255,255,0.95)',
+        }}>
+          <span style={{ fontSize: 12, color: '#8E8E93', fontWeight: 600, marginRight: 4, whiteSpace: 'nowrap' }}>
+            Días:
+          </span>
+          <button
+            onClick={() => updateVisibleCount(visibleCount - 1)}
+            disabled={visibleCount <= 1}
+            style={{
+              width: 30, height: 30, borderRadius: '50%', border: 'none',
+              background: visibleCount <= 1 ? 'transparent' : '#F2F2F7',
+              cursor: visibleCount <= 1 ? 'default' : 'pointer',
+              fontSize: 18, color: visibleCount <= 1 ? '#C7C7CC' : '#1C1C1E',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, transition: 'background 0.12s',
+            }}>−</button>
+          <span style={{
+            fontSize: 15, fontWeight: 800, color: '#1C1C1E',
+            minWidth: 22, textAlign: 'center',
+          }}>{visibleCount}</span>
+          <button
+            onClick={() => updateVisibleCount(visibleCount + 1)}
+            disabled={visibleCount >= 7}
+            style={{
+              width: 30, height: 30, borderRadius: '50%', border: 'none',
+              background: visibleCount >= 7 ? 'transparent' : '#F2F2F7',
+              cursor: visibleCount >= 7 ? 'default' : 'pointer',
+              fontSize: 18, color: visibleCount >= 7 ? '#C7C7CC' : '#1C1C1E',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, transition: 'background 0.12s',
+            }}>+</button>
+          <span style={{
+            fontSize: 11, color: DCOL[visibleDias[visibleDias.length - 1]],
+            fontWeight: 700, marginLeft: 4, marginRight: 2,
+          }}>{DNOM[visibleDias[visibleDias.length - 1]]?.slice(0, 3).toUpperCase()}</span>
+        </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {lastSaved && (
@@ -631,7 +682,7 @@ export default function CalendarioColumnas({
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
                 <thead>
                   <tr>
-                    {DIAS.map(dia => {
+                    {visibleDias.map(dia => {
                       const count = (local![dia]?.rm?.length || 0) + (local![dia]?.costa?.length || 0) + (local![dia]?.fal?.length || 0);
                       return (
                         <th key={dia} style={{ background: DLIGHT[dia], padding: '13px 10px 10px', borderBottom: `3px solid ${DCOL[dia]}`, borderRight: '1px solid rgba(0,0,0,0.05)', minWidth: 118, textAlign: 'center' }}>
@@ -644,7 +695,7 @@ export default function CalendarioColumnas({
                 </thead>
                 <tbody>
                   <tr>
-                    {DIAS.map(dia => {
+                    {visibleDias.map(dia => {
                       const rm    = local![dia]?.rm    || [];
                       const costa = local![dia]?.costa || [];
                       const fal   = local![dia]?.fal   || [];
@@ -686,7 +737,7 @@ export default function CalendarioColumnas({
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
           <thead>
             <tr>
-              {DIAS.map(dia => (
+              {visibleDias.map(dia => (
                 <th key={dia} style={{
                   background: DLIGHT[dia],
                   padding: '13px 10px 10px',
@@ -706,7 +757,7 @@ export default function CalendarioColumnas({
           </thead>
           <tbody>
             <tr>
-              {DIAS.map(dia => {
+              {visibleDias.map(dia => {
                 const tiendas = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
                 return (
                   <td key={dia}
