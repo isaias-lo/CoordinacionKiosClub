@@ -324,6 +324,9 @@ export function AuditoriaScreen() {
   }, [authLoading, profile?.full_name]);
 
   useEffect(() => {
+    // No resetear operaciones ni fotos si la auditoría ya inició — el tipo
+    // no cambia en execution/result y el efecto solo confundiría al restore.
+    if (formPhase === 'execution' || formPhase === 'result') return;
     const pending = pendingScanRef.current;
     pendingScanRef.current = null;
     setOperaciones(TIPO_TO_SUBTIPOS[tipo].map((st, i) => pending?.[i] ?? { subTipo: st, codigo: '' }));
