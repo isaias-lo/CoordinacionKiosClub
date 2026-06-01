@@ -51,11 +51,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email, contraseña y rol son requeridos' }, { status: 400 });
 
   const sb = adminSb();
+
+  // Fetch role config so allowed_paths/home_path land in the JWT from day 1
+  const user_metadata: Record<string, unknown> = { full_name: full_name || email, role };
+  const { data: roleData } = await sb.from('roles').select('allowed_paths,home_path,permissions').eq('id', role).single();
+  if (roleData) {
+    user_metadata.allowed_paths = roleData.allowed_paths ?? [];
+    user_metadata.home_path     = roleData.home_path ?? '/perfil';
+    user_metadata.permissions   = roleData.permissions ?? {};
+  }
+
   const { data: { user }, error } = await sb.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: full_name || email, role },
+    user_metadata,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

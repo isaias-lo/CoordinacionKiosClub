@@ -33,8 +33,12 @@ function isAllowed(role: string, pathname: string, customPaths?: string[]): bool
   );
 }
 
-function roleHome(role: string, metaHome?: string): string {
-  return metaHome ?? ROLE_HOME[role] ?? '/auditoria';
+function roleHome(role: string, metaHome?: string, metaPaths?: string[]): string {
+  if (metaHome) return metaHome;
+  if (ROLE_HOME[role]) return ROLE_HOME[role];
+  // Custom role: derive home from first allowed path that isn't /perfil
+  const first = metaPaths?.find(p => p !== '/perfil' && p !== '*');
+  return first ?? '/login';
 }
 
 const PUBLIC_ROUTES = ['/login', '/registro', '/recuperar-contrasena', '/actualizar-contrasena'];
@@ -88,7 +92,7 @@ export async function middleware(request: NextRequest) {
   const metaHome   = user.user_metadata?.home_path      as string   | undefined;
 
   if (PUBLIC_ROUTES.some(p => pathname === p)) {
-    return NextResponse.redirect(new URL(roleHome(role, metaHome), request.url));
+    return NextResponse.redirect(new URL(roleHome(role, metaHome, metaPaths), request.url));
   }
 
   if (role === 'pending') {
@@ -99,11 +103,21 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === '/login') {
-    return NextResponse.redirect(new URL(roleHome(role, metaHome), request.url));
+    return NextResponse.redirect(new URL(roleHome(role, metaHome, metaPaths), request.url));
+  }
+
+  // Custom role with no paths in JWT yet (user created before fix) → force re-login to refresh JWT
+  const isCustomRole = !Object.keys(ROLE_ALLOWED).includes(role) && role !== 'pending';
+  if (isCustomRole && !metaPaths?.length && pathname !== '/login') {
+    const cleanResp = NextResponse.redirect(new URL('/login', request.url));
+    request.cookies.getAll()
+      .filter(c => c.name.startsWith('sb-'))
+      .forEach(c => cleanResp.cookies.delete(c.name));
+    return cleanResp;
   }
 
   if (!isAllowed(role, pathname, metaPaths)) {
-    return NextResponse.redirect(new URL(roleHome(role, metaHome), request.url));
+    return NextResponse.redirect(new URL(roleHome(role, metaHome, metaPaths), request.url));
   }
 
   return response;
