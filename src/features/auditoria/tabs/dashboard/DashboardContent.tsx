@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   fetchParametros, fetchProduccionMes, fetchProduccionHoy,
   computeMetricas, semaforo, calcIndiceEquidad,
@@ -376,22 +377,40 @@ export function DashboardContent({ history, today, pickerNames }: { history: Aud
       )}
 
       {/* Distribución de correcciones */}
-      <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
-        <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-3">Distribución de correcciones</div>
-        <div className="flex rounded-full overflow-hidden h-4 mb-3">
-          {(Object.entries(corrBreak) as [CorreccionAuditoria, number][]).filter(([, v]) => v > 0).map(([k, v]) => (
-            <div key={k} style={{ flex: v, background: CORR_COLORS[k] }} title={`${CORR_LABEL[k]}: ${v}`} />
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.entries(corrBreak) as [CorreccionAuditoria, number][]).map(([k, v]) => (
-            <div key={k} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: CORR_COLORS[k] }} />
-              <span className="text-[12px] text-text-2">{CORR_LABEL[k]}: <strong>{v}</strong></span>
+      {entries.length > 0 && (() => {
+        const pieData = (Object.entries(corrBreak) as [CorreccionAuditoria, number][])
+          .filter(([, v]) => v > 0)
+          .map(([k, v]) => ({ name: CORR_LABEL[k], value: v, color: CORR_COLORS[k], key: k }));
+        const total = pieData.reduce((s, d) => s + d.value, 0);
+        return (
+          <div className="bg-white border border-border rounded-card p-4" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.06)' }}>
+            <div className="text-[11px] font-bold text-text-3 uppercase tracking-wide mb-1">Distribución de correcciones</div>
+            <div className="flex items-center gap-2">
+              <div style={{ width: 120, height: 120, flexShrink: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={30} outerRadius={54} dataKey="value" paddingAngle={2}>
+                      {pieData.map(d => <Cell key={d.key} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: unknown) => [`${v} (${Math.round(((v as number) / total) * 100)}%)`, '']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 grid grid-cols-1 gap-1.5">
+                {pieData.map(d => (
+                  <div key={d.key} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: d.color }} />
+                      <span className="text-[12px] text-text-2">{d.name}</span>
+                    </div>
+                    <span className="text-[12px] font-bold text-text">{d.value} <span className="text-[10px] text-text-3 font-normal">({Math.round((d.value / total) * 100)}%)</span></span>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

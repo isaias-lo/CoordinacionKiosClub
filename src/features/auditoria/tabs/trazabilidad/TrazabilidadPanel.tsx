@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronLeft, TableProperties, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import {
+  useReactTable, getCoreRowModel, getSortedRowModel,
+  getFilteredRowModel, flexRender,
+  type ColumnDef, type SortingState, type ColumnFiltersState,
+} from '@tanstack/react-table';
+import { ChevronLeft, TableProperties, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, Search } from 'lucide-react';
 import type { AuditEntry, SubTipo, ProductoError } from '../../types';
 
 /* ─── helpers de fecha ────────────────────────────────── */
@@ -11,7 +16,6 @@ const MESES_ES = [
 ];
 
 function parseDate(fecha: string) {
-  // Soporta "dd/mm/yyyy", "d/m/yyyy" y "yyyy-mm-dd"
   if (fecha.includes('/')) {
     const parts = fecha.split('/');
     const [d, m, y] = parts;
@@ -26,16 +30,15 @@ function entryDate(e: AuditEntry): Date {
   return new Date(`${año}-${mes}-${dia}`);
 }
 
-/* ─── expansión por picker con productos asignados ───── */
+/* ─── expansión por picker ──────────────────────────────── */
 type PickerRow = {
   picker: string;
   opsMap: Partial<Record<SubTipo, string>>;
   pallets: number;
-  productos: ProductoError[];   // solo los productos de este picker
+  productos: ProductoError[];
 };
 
 function expandByPicker(e: AuditEntry): PickerRow[] {
-  // Agrupa operaciones por picker
   const map = new Map<string, Partial<Record<SubTipo, string>>>();
   for (const op of (e.operaciones ?? [])) {
     const pk = op.pickerNombre?.trim() || e.pickerNombre?.trim() || e.picker || '—';
@@ -45,22 +48,16 @@ function expandByPicker(e: AuditEntry): PickerRow[] {
 
   const todos = e.productos ?? [];
 
-  if (map.size === 0) {
-    return [{ picker: e.pickerNombre || e.picker || '—', opsMap: {}, pallets: e.pallets, productos: todos }];
-  }
-
+  if (map.size === 0) return [{ picker: e.pickerNombre || e.picker || '—', opsMap: {}, pallets: e.pallets, productos: todos }];
   if (map.size === 1) {
     const [[pk, opsMap]] = [...map.entries()];
     return [{ picker: pk, opsMap, pallets: e.pallets, productos: todos }];
   }
 
-  // Múltiples pickers: distribuir pallets y asignar productos
   const pickers = [...map.entries()];
   const opCounts = pickers.map(([, ops]) => Object.keys(ops).length);
   const totalOps = opCounts.reduce((a, b) => a + b, 0);
 
-  // Asignar cada producto a su picker según operacionCod
-  // Si no tiene operacionCod o no se puede detectar, va al primer picker
   const productosAsignados: ProductoError[][] = pickers.map(() => []);
   for (const prod of todos) {
     let asignado = false;
@@ -71,87 +68,74 @@ function expandByPicker(e: AuditEntry): PickerRow[] {
         if (idx >= 0) { productosAsignados[idx].push(prod); asignado = true; }
       }
     }
-    if (!asignado) productosAsignados[0].push(prod); // sin operacionCod → primer picker
+    if (!asignado) productosAsignados[0].push(prod);
   }
 
   let remaining = e.pallets;
   return pickers.map(([pk, opsMap], i) => {
-    const share = i === pickers.length - 1
-      ? remaining
-      : Math.round(e.pallets * opCounts[i] / totalOps);
+    const share = i === pickers.length - 1 ? remaining : Math.round(e.pallets * opCounts[i] / totalOps);
     remaining -= share;
     return { picker: pk, opsMap, pallets: Math.max(0, share), productos: productosAsignados[i] };
   });
 }
 
 /* ─── helpers de texto ────────────────────────────────── */
-function unidadesLabel(p: ProductoError): string {
+function unidadesLabel(p: ProductoError) {
   return p.cantidadEsperada != null ? `${p.unidades}/${p.cantidadEsperada}` : `${p.unidades}`;
 }
-
-function productosText(prods: ProductoError[]): string {
-  if (!prods.length) return '—';
-  return prods.map(p => `[${p.codigo}] ${p.nombre}`).join(' | ');
-}
-
-function unidadesText(prods: ProductoError[]): string {
-  if (!prods.length) return '—';
-  return prods.map(p => unidadesLabel(p)).join(', ');
-}
-
-/* ─── ordenación ──────────────────────────────────────── */
-type SortKey = 'fecha_desc' | 'fecha_asc' | 'picker_az' | 'picker_za' | 'resultado_malo' | 'resultado_bueno';
-
-const SORT_LABELS: Record<SortKey, string> = {
-  fecha_desc:      'Fecha ↓ (reciente)',
-  fecha_asc:       'Fecha ↑ (antigua)',
-  picker_az:       'Responsable A→Z',
-  picker_za:       'Responsable Z→A',
-  resultado_malo:  'Malo primero',
-  resultado_bueno: 'Bueno primero',
-};
 
 const CORR_ES: Record<string, string> = {
   correcto: 'Correcto', cruce: 'Cruce', faltante: 'Faltante', sobrante: 'Sobrante',
 };
 
-/* ─── columnas ────────────────────────────────────────── */
-const COLS = [
-  { key: 'n',         label: 'N°',                   w: 48  },
-  { key: 'fecha',     label: 'Fecha',                 w: 96  },
-  { key: 'mes',       label: 'Mes',                   w: 110 },
-  { key: 'año',       label: 'Año',                   w: 60  },
-  { key: 'resp',      label: 'Responsable',           w: 150 },
-  { key: 'tienda',    label: 'Tienda',                w: 88  },
-  { key: 'comida',    label: 'Comida',                w: 160 },
-  { key: 'aseo',      label: 'Aseo',                  w: 160 },
-  { key: 'hogar',     label: 'Hogar',                 w: 160 },
-  { key: 'pallets',   label: 'Pallets',               w: 72  },
-  { key: 'errores',   label: 'Errores',               w: 72  },
-  { key: 'productos', label: 'Cód. Producto',         w: 240 },
-  { key: 'unidades',  label: 'Unidades',              w: 100 },
-  { key: 'corr',      label: 'Corrección',            w: 100 },
-  { key: 'resultado', label: 'Resultado',             w: 90  },
-  { key: 'obs',       label: 'Observaciones',         w: 200 },
-  { key: 'auditor',   label: 'Responsable Auditoría', w: 160 },
-];
+/* ─── tipo de fila plana ───────────────────────────────── */
+type FlatRow = {
+  n: number;
+  row: PickerRow;
+  entry: AuditEntry;
+  isFirstOfEntry: boolean;
+  // campos "aplanados" para TanStack
+  fecha: string;
+  mesNombre: string;
+  year: string;
+  picker: string;
+  tiendaCod: string;
+  comida: string;
+  aseo: string;
+  hogar: string;
+  pallets: number;
+  errores: number;
+  productos: string;
+  unidades: string;
+  correccion: string;
+  resultado: string;
+  observaciones: string;
+  auditor: string;
+  entryDateTs: number;
+};
+
+/* ─── sort icon helper ─────────────────────────────────── */
+function SortIcon({ dir }: { dir: 'asc' | 'desc' | false }) {
+  if (dir === 'asc') return <ChevronUp size={11} className="inline ml-0.5 text-navy" />;
+  if (dir === 'desc') return <ChevronDown size={11} className="inline ml-0.5 text-navy" />;
+  return <ChevronsUpDown size={11} className="inline ml-0.5 text-text-3 opacity-50" />;
+}
 
 /* ─── componente ──────────────────────────────────────── */
 export function TrazabilidadPanel({
   onBack, history, onRefresh,
 }: { onBack: () => void; history: AuditEntry[]; onRefresh: () => void }) {
-  const [refreshing,  setRefreshing]  = useState(false);
-  const [sortBy,      setSortBy]      = useState<SortKey>('fecha_desc');
-  const [showSort,    setShowSort]    = useState(false);
-  const [filtroAño,   setFiltroAño]   = useState(() => {
-    // Default: año más reciente disponible
+  const [refreshing,       setRefreshing]       = useState(false);
+  const [sorting,          setSorting]          = useState<SortingState>([{ id: 'entryDateTs', desc: true }]);
+  const [filtroAño,        setFiltroAño]        = useState(() => {
     const años = [...new Set(history.map(e => parseDate(e.fecha).año))].filter(Boolean).sort();
     return años[años.length - 1] ?? '';
   });
-  const [filtroMes,       setFiltroMes]       = useState('');
-  const [filtroResultado, setFiltroResultado] = useState('');
-  const [filtroCorr,      setFiltroCorr]      = useState('');
-  const [busqueda,        setBusqueda]        = useState('');
+  const [filtroMes,        setFiltroMes]        = useState('');
+  const [filtroResultado,  setFiltroResultado]  = useState('');
+  const [filtroCorr,       setFiltroCorr]       = useState('');
+  const [busqueda,         setBusqueda]         = useState('');
+  const [columnFilters,    setColumnFilters]    = useState<ColumnFiltersState>([]);
 
   const años = useMemo(() => {
     const s = new Set<string>();
@@ -168,7 +152,8 @@ export function TrazabilidadPanel({
     return [...s].filter(Boolean).sort();
   }, [history, filtroAño]);
 
-  const flatRows = useMemo(() => {
+  // Construir filas planas con todos los campos para TanStack
+  const flatRows: FlatRow[] = useMemo(() => {
     const q = busqueda.toLowerCase().trim();
 
     let entries = history.filter(e => {
@@ -185,69 +170,114 @@ export function TrazabilidadPanel({
       return true;
     });
 
-    entries = entries.slice().sort((a, b) => {
-      switch (sortBy) {
-        case 'fecha_desc':      return entryDate(b).getTime() - entryDate(a).getTime();
-        case 'fecha_asc':       return entryDate(a).getTime() - entryDate(b).getTime();
-        case 'picker_az':       return (a.pickerNombre || a.picker || '').localeCompare(b.pickerNombre || b.picker || '');
-        case 'picker_za':       return (b.pickerNombre || b.picker || '').localeCompare(a.pickerNombre || a.picker || '');
-        case 'resultado_malo':  return a.resultado === b.resultado ? 0 : a.resultado === 'malo'  ? -1 : 1;
-        case 'resultado_bueno': return a.resultado === b.resultado ? 0 : a.resultado === 'bueno' ? -1 : 1;
-        default: return 0;
-      }
-    });
+    // Ordenamos entries por fecha descendente antes de numerar
+    entries = entries.slice().sort((a, b) => entryDate(b).getTime() - entryDate(a).getTime());
 
-    const result: Array<{ n: number; row: PickerRow; entry: AuditEntry; isFirstOfEntry: boolean }> = [];
+    const result: FlatRow[] = [];
     entries.forEach((e, i) => {
+      const { dia, mes, año } = parseDate(e.fecha);
+      const mesNombre = MESES_ES[parseInt(mes) - 1] ?? mes;
       expandByPicker(e).forEach((row, j) => {
-        result.push({ n: entries.length - i, row, entry: e, isFirstOfEntry: j === 0 });
+        result.push({
+          n: entries.length - i,
+          row, entry: e,
+          isFirstOfEntry: j === 0,
+          fecha: `${dia}/${mes}/${año}`,
+          mesNombre, year: año,
+          picker: row.picker,
+          tiendaCod: e.tiendaCod ?? '',
+          comida: row.opsMap['comida'] ?? '—',
+          aseo: row.opsMap['aseo'] ?? '—',
+          hogar: row.opsMap['hogar'] ?? '—',
+          pallets: row.pallets,
+          errores: row.productos.length,
+          productos: row.productos.length ? row.productos.map(p => `[${p.codigo}] ${p.nombre}`).join(' | ') : '—',
+          unidades: row.productos.length ? row.productos.map(p => unidadesLabel(p)).join(', ') : '—',
+          correccion: CORR_ES[e.correccion] ?? e.correccion,
+          resultado: e.resultado ?? '',
+          observaciones: e.observaciones || '—',
+          auditor: e.auditor || '—',
+          entryDateTs: entryDate(e).getTime(),
+        });
       });
     });
     return result;
-  }, [history, filtroAño, filtroMes, filtroResultado, filtroCorr, busqueda, sortBy]);
+  }, [history, filtroAño, filtroMes, filtroResultado, filtroCorr, busqueda]);
 
-  const hayFiltros = !!(filtroAño || filtroMes || filtroResultado || filtroCorr || busqueda);
-  const totalMinWidth = COLS.reduce((s, c) => s + c.w, 0);
+  /* ─── column defs ──────────────────────────────────── */
+  const columns = useMemo<ColumnDef<FlatRow>[]>(() => [
+    { id: 'n',         header: 'N°',                   accessorKey: 'n',            size: 48,  enableSorting: false, cell: ({ row }) => row.original.isFirstOfEntry ? <span className="text-[11px] font-bold text-text-3">{row.original.n}</span> : '' },
+    { id: 'fecha',     header: 'Fecha',                 accessorKey: 'fecha',        size: 96,  cell: ({ getValue }) => <span className="font-mono text-[12px]">{getValue() as string}</span> },
+    { id: 'mes',       header: 'Mes',                   accessorKey: 'mesNombre',    size: 110 },
+    { id: 'año',       header: 'Año',                   accessorKey: 'year',         size: 60  },
+    { id: 'entryDateTs', header: '', accessorKey: 'entryDateTs', size: 0, enableHiding: true },
+    { id: 'picker',    header: 'Responsable',           accessorKey: 'picker',       size: 150, cell: ({ getValue }) => <div className="truncate font-semibold text-[12px]" style={{ maxWidth: 150 }}>{getValue() as string}</div> },
+    { id: 'tienda',    header: 'Tienda',                accessorKey: 'tiendaCod',    size: 88,  cell: ({ getValue }) => <span className="font-mono font-bold text-[12px]">{getValue() as string}</span> },
+    { id: 'comida',    header: 'Comida',                accessorKey: 'comida',       size: 160, cell: ({ getValue }) => <span className="font-mono text-[11px] text-text-2">{getValue() as string}</span> },
+    { id: 'aseo',      header: 'Aseo',                  accessorKey: 'aseo',         size: 160, cell: ({ getValue }) => <span className="font-mono text-[11px] text-text-2">{getValue() as string}</span> },
+    { id: 'hogar',     header: 'Hogar',                 accessorKey: 'hogar',        size: 160, cell: ({ getValue }) => <span className="font-mono text-[11px] text-text-2">{getValue() as string}</span> },
+    { id: 'pallets',   header: 'Pallets',               accessorKey: 'pallets',      size: 72,  cell: ({ getValue }) => <span className="text-[12px] font-bold text-text block text-center">{getValue() as number}</span> },
+    { id: 'errores',   header: 'Errores',               accessorKey: 'errores',      size: 72,  cell: ({ getValue }) => {
+        const v = getValue() as number;
+        return v > 0
+          ? <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(211,47,47,0.10)] text-red block text-center">{v}</span>
+          : <span className="text-[11px] text-text-3 block text-center">0</span>;
+      }
+    },
+    { id: 'productos', header: 'Cód. Producto',         accessorKey: 'productos',    size: 240, cell: ({ getValue }) => <div className="truncate text-[11px] text-text-2" style={{ maxWidth: 240 }} title={getValue() as string}>{getValue() as string}</div> },
+    { id: 'unidades',  header: 'Unidades',              accessorKey: 'unidades',     size: 100, cell: ({ getValue }) => <span className="font-mono text-[11px] text-text-2">{getValue() as string}</span> },
+    { id: 'corr',      header: 'Corrección',            accessorKey: 'correccion',   size: 100, cell: ({ getValue, row }) => {
+        const v = getValue() as string;
+        const e = row.original.entry;
+        const color = e.correccion === 'correcto' ? 'text-success' : e.correccion === 'cruce' ? 'text-info' : 'text-red';
+        return <span className={`text-[11px] font-semibold whitespace-nowrap ${color}`}>{v}</span>;
+      }
+    },
+    { id: 'resultado', header: 'Resultado',             accessorKey: 'resultado',    size: 90,  cell: ({ getValue }) => {
+        const v = getValue() as string;
+        const isGood = v === 'bueno';
+        return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${isGood ? 'bg-[rgba(22,163,74,0.12)] text-success' : 'bg-[rgba(211,47,47,0.12)] text-red'}`}>{isGood ? '✓ BUENO' : '✗ MALO'}</span>;
+      }
+    },
+    { id: 'obs',       header: 'Observaciones',         accessorKey: 'observaciones', size: 200, cell: ({ getValue }) => <div className="truncate text-[11px] text-text-2" style={{ maxWidth: 200 }}>{getValue() as string}</div> },
+    { id: 'auditor',   header: 'Resp. Auditoría',       accessorKey: 'auditor',      size: 160, cell: ({ getValue }) => <div className="truncate font-semibold text-[12px]" style={{ maxWidth: 160 }}>{getValue() as string}</div> },
+  ], []);
+
+  const table = useReactTable({
+    data: flatRows,
+    columns,
+    state: { sorting, columnFilters },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    initialState: { columnVisibility: { entryDateTs: false } },
+  });
+
+  const visibleRows = table.getRowModel().rows;
+  const hayFiltros  = !!(filtroAño || filtroMes || filtroResultado || filtroCorr || busqueda);
+  const totalMinWidth = columns.reduce((s, c) => s + (c.size ?? 0), 0);
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden" onClick={() => showSort && setShowSort(false)}>
+    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 bg-white border-b border-border" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.06)' }}>
 
-        {/* Fila 1: título + ordenar + refresh */}
+        {/* Fila 1: título + refresh */}
         <div className="flex items-center gap-2 px-4 py-3">
           <button onClick={onBack} className="border-none bg-transparent cursor-pointer text-navy p-1 rounded-btn active:bg-bg">
             <ChevronLeft size={22} />
           </button>
           <TableProperties size={18} className="text-navy flex-shrink-0" />
           <span className="font-barlow-condensed text-[20px] font-bold text-navy flex-1">Trazabilidad</span>
-
-          {/* Ordenar */}
-          <div className="relative" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setShowSort(s => !s)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn border border-border text-[12px] text-text-2 font-semibold cursor-pointer active:bg-bg bg-white">
-              <ArrowUpDown size={13} />
-              Ordenar
-            </button>
-            {showSort && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-border rounded-card shadow-xl overflow-hidden min-w-[190px]">
-                {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
-                  <button key={k} onClick={() => { setSortBy(k); setShowSort(false); }}
-                    className={`w-full text-left px-3 py-2.5 text-[12px] cursor-pointer border-b border-border/30 last:border-0 hover:bg-bg transition-colors ${sortBy === k ? 'font-bold text-navy bg-[rgba(26,37,80,0.05)]' : 'text-text-2'}`}>
-                    {SORT_LABELS[k]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           <button
             onClick={async () => { setRefreshing(true); await onRefresh(); setRefreshing(false); }}
             className={`border-none bg-transparent cursor-pointer text-navy p-1 rounded-btn active:bg-bg ${refreshing ? 'animate-spin' : ''}`}>
             <RefreshCw size={16} />
           </button>
-          <span className="text-[11px] text-text-3 whitespace-nowrap">{flatRows.length} fil.</span>
+          <span className="text-[11px] text-text-3 whitespace-nowrap">{visibleRows.length} fil.</span>
         </div>
 
         {/* Fila 2: filtros */}
@@ -302,12 +332,6 @@ export function TrazabilidadPanel({
               × Limpiar
             </button>
           )}
-
-          {/* Orden activo */}
-          <span className="ml-auto text-[10px] text-text-3 flex items-center gap-1 whitespace-nowrap">
-            {sortBy.includes('asc') ? <ArrowUp size={10} /> : sortBy.includes('desc') ? <ArrowDown size={10} /> : null}
-            {SORT_LABELS[sortBy]}
-          </span>
         </div>
       </div>
 
@@ -315,129 +339,49 @@ export function TrazabilidadPanel({
       <div className="flex-1 overflow-auto">
         <table className="border-collapse" style={{ minWidth: totalMinWidth }}>
           <thead className="sticky top-0 z-10">
-            <tr>
-              {COLS.map(c => (
-                <th key={c.key} style={{ width: c.w, minWidth: c.w }}
-                  className="px-3 py-2.5 text-left text-[10px] font-bold text-text-3 uppercase tracking-wide border-b border-border whitespace-nowrap bg-white">
-                  {c.label}
-                </th>
-              ))}
-            </tr>
+            {table.getHeaderGroups().map(hg => (
+              <tr key={hg.id}>
+                {hg.headers.map(header => {
+                  const canSort = header.column.getCanSort();
+                  const sortDir = header.column.getIsSorted();
+                  if (header.column.id === 'entryDateTs') return null;
+                  return (
+                    <th key={header.id}
+                      style={{ width: header.getSize(), minWidth: header.getSize() }}
+                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                      className={`px-3 py-2.5 text-left text-[10px] font-bold text-text-3 uppercase tracking-wide border-b border-border whitespace-nowrap bg-white select-none ${canSort ? 'cursor-pointer hover:text-navy' : ''}`}>
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {canSort && <SortIcon dir={sortDir} />}
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
           </thead>
           <tbody>
-            {flatRows.length === 0 && (
+            {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={COLS.length} className="py-16 text-center text-text-3 text-[13px]">
+                <td colSpan={columns.length - 1} className="py-16 text-center text-text-3 text-[13px]">
                   Sin registros para este período
                 </td>
               </tr>
             )}
-            {flatRows.map(({ n, row, entry: e, isFirstOfEntry }, idx) => {
-              const { dia, mes, año } = parseDate(e.fecha);
-              const mesNombre = MESES_ES[parseInt(mes) - 1] ?? mes;
-              const isGood = e.resultado === 'bueno';
+            {visibleRows.map((vRow, idx) => {
+              const { isFirstOfEntry } = vRow.original;
               const bgClass = idx % 2 === 0 ? 'bg-white' : 'bg-[rgba(26,37,80,0.018)]';
               const borderClass = !isFirstOfEntry
                 ? 'border-t border-dashed border-border/40'
                 : 'border-b border-border/40';
-
-              const myProductosText = productosText(row.productos);
-              const myUnidadesText  = unidadesText(row.productos);
-
               return (
-                <tr key={`${e.id}-${idx}`}
-                  className={`${borderClass} ${bgClass} hover:bg-[rgba(26,37,80,0.04)] transition-colors`}>
-
-                  {/* N° */}
-                  <td className="px-3 py-2 text-[11px] font-bold text-text-3 whitespace-nowrap">
-                    {isFirstOfEntry ? n : ''}
-                  </td>
-
-                  {/* Fecha — dd/mm/yyyy */}
-                  <td className="px-3 py-2 text-[12px] font-mono text-text whitespace-nowrap">
-                    {`${dia}/${mes}/${año}`}
-                  </td>
-
-                  {/* Mes */}
-                  <td className="px-3 py-2 text-[12px] text-text whitespace-nowrap">{mesNombre}</td>
-
-                  {/* Año */}
-                  <td className="px-3 py-2 text-[12px] text-text whitespace-nowrap">{año}</td>
-
-                  {/* Responsable (picker) */}
-                  <td className="px-3 py-2 text-[12px] text-text" style={{ maxWidth: 150 }}>
-                    <div className="truncate font-semibold">{row.picker}</div>
-                  </td>
-
-                  {/* Tienda — solo código */}
-                  <td className="px-3 py-2 text-[12px] font-mono font-bold text-text whitespace-nowrap">
-                    {e.tiendaCod}
-                  </td>
-
-                  {/* Comida */}
-                  <td className="px-3 py-2 text-[11px] font-mono text-text-2 whitespace-nowrap">
-                    {row.opsMap['comida'] ?? '—'}
-                  </td>
-
-                  {/* Aseo */}
-                  <td className="px-3 py-2 text-[11px] font-mono text-text-2 whitespace-nowrap">
-                    {row.opsMap['aseo'] ?? '—'}
-                  </td>
-
-                  {/* Hogar */}
-                  <td className="px-3 py-2 text-[11px] font-mono text-text-2 whitespace-nowrap">
-                    {row.opsMap['hogar'] ?? '—'}
-                  </td>
-
-                  {/* Pallets */}
-                  <td className="px-3 py-2 text-[12px] text-center font-bold text-text">
-                    {row.pallets}
-                  </td>
-
-                  {/* Errores */}
-                  <td className="px-3 py-2 text-center">
-                    {row.productos.length > 0 ? (
-                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(211,47,47,0.10)] text-red">
-                        {row.productos.length}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-text-3">0</span>
-                    )}
-                  </td>
-
-                  {/* Código producto — solo los de este picker */}
-                  <td className="px-3 py-2 text-[11px] text-text-2" style={{ maxWidth: 240 }}>
-                    <div className="truncate" title={myProductosText}>{myProductosText}</div>
-                  </td>
-
-                  {/* Unidades */}
-                  <td className="px-3 py-2 text-[11px] font-mono text-text-2 whitespace-nowrap">
-                    {myUnidadesText}
-                  </td>
-
-                  {/* Corrección */}
-                  <td className="px-3 py-2 text-[11px] whitespace-nowrap">
-                    <span className={`font-semibold ${e.correccion === 'correcto' ? 'text-success' : e.correccion === 'cruce' ? 'text-info' : 'text-red'}`}>
-                      {CORR_ES[e.correccion] ?? e.correccion}
-                    </span>
-                  </td>
-
-                  {/* Resultado */}
-                  <td className="px-3 py-2">
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${isGood ? 'bg-[rgba(22,163,74,0.12)] text-success' : 'bg-[rgba(211,47,47,0.12)] text-red'}`}>
-                      {isGood ? '✓ BUENO' : '✗ MALO'}
-                    </span>
-                  </td>
-
-                  {/* Observaciones */}
-                  <td className="px-3 py-2 text-[11px] text-text-2" style={{ maxWidth: 200 }}>
-                    <div className="truncate">{e.observaciones || '—'}</div>
-                  </td>
-
-                  {/* Responsable Auditoría (auditor) */}
-                  <td className="px-3 py-2 text-[12px] text-text" style={{ maxWidth: 160 }}>
-                    <div className="truncate font-semibold">{e.auditor || '—'}</div>
-                  </td>
+                <tr key={vRow.id} className={`${borderClass} ${bgClass} hover:bg-[rgba(26,37,80,0.04)] transition-colors`}>
+                  {vRow.getVisibleCells().map(cell => {
+                    if (cell.column.id === 'entryDateTs') return null;
+                    return (
+                      <td key={cell.id} className="px-3 py-2">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}

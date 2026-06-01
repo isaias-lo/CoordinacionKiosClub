@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { supabase } from '../lib/supabase';
-import { Settings, Users, Bell, LogOut } from 'lucide-react';
+import { Settings, Users, Bell, LogOut, ClipboardList } from 'lucide-react';
+import { MiHistorialModal } from '../features/auditoria/components/MiHistorialModal';
 
 const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador',
@@ -55,16 +56,20 @@ export function ProfilePill({ compact = false }: ProfilePillProps) {
   const router = useRouter();
   const { profile, signOut } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
+  const [showHistorial, setShowHistorial] = useState(false);
+  const [userId, setUserId] = useState('');
   const [email, setEmail] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const isAdmin = profile?.role === 'admin';
-  const initial = (profile?.full_name ?? 'U')[0].toUpperCase();
+  const isAdmin   = profile?.role === 'admin';
+  const isAuditor = profile?.role === 'auditor' || profile?.role === 'admin-auditoria';
+  const initial   = (profile?.full_name ?? 'U')[0].toUpperCase();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user?.email) setEmail(data.user.email);
+      if (data.user?.id) setUserId(data.user.id);
     });
   }, []);
 
@@ -117,6 +122,12 @@ export function ProfilePill({ compact = false }: ProfilePillProps) {
       <div className="py-3 flex flex-col gap-0.5">
         <MenuItem onClick={() => { setShowMenu(false); router.push('/perfil'); }}
           Icon={Settings} from="#7C3AED" to="#5B21B6" shadow="rgba(124,58,237,0.45)" label="Gestionar cuenta" />
+
+        {isAuditor && <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 16px' }} />}
+        {isAuditor && (
+          <MenuItem onClick={() => { setShowMenu(false); setShowHistorial(true); }}
+            Icon={ClipboardList} from="#0D9488" to="#0F766E" shadow="rgba(13,148,136,0.45)" label="Mi historial" />
+        )}
 
         {isAdmin && <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 16px' }} />}
         {isAdmin && (
@@ -188,6 +199,9 @@ export function ProfilePill({ compact = false }: ProfilePillProps) {
       </button>
 
       {showMenu && dropdown}
+      {showHistorial && userId && (
+        <MiHistorialModal userId={userId} onClose={() => setShowHistorial(false)} />
+      )}
     </div>
   );
 }

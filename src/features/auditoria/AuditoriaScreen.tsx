@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, History, Radio, TableProperties } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -217,6 +218,7 @@ export function AuditoriaScreen() {
   // Estado visual mientras se comprime/sube una foto
   const [photoUploading,  setPhotoUploading]  = useState(false);
   const [photoUploadMsg,  setPhotoUploadMsg]  = useState('');
+  const [photoProgress,   setPhotoProgress]   = useState({ done: 0, total: 0, phase: '' as '' | 'compress' | 'upload' });
   // Ref guard — previene ejecuciones concurrentes de handlers de foto (doble-tap iOS/Android)
   const photoUploadingRef = useRef(false);
   // Intentó hacer submit → resaltar campo bloqueante
@@ -1453,8 +1455,12 @@ export function AuditoriaScreen() {
               );
             })()}
 
+            <AnimatePresence mode="wait" initial={false}>
             {/* ══ FASE 1: ESCÁNER ══ */}
             {formPhase === 'scan' && (
+              <motion.div key="scan"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}>
               <>
                 <SLabel>Auditor</SLabel>
                 <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
@@ -1554,10 +1560,14 @@ export function AuditoriaScreen() {
                   Omitir escáner — ingresar datos manualmente
                 </button>
               </>
+              </motion.div>
             )}
 
             {/* ══ FASE 2: CONFIGURACIÓN ══ */}
             {formPhase === 'setup' && (
+              <motion.div key="setup"
+                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}>
               <>
                 {tipoLocked && (
                   <div className="mt-2 mb-1 flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-info bg-[rgba(37,99,235,0.06)] border border-info/20">
@@ -1672,10 +1682,14 @@ export function AuditoriaScreen() {
                   </div>
                 )}
               </>
+              </motion.div>
             )}
 
             {/* ══ FASE 4: RESULTADO ══ */}
             {formPhase === 'result' && lastEntry && (
+              <motion.div key="result"
+                initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.28, ease: 'easeOut' }}>
               <>
                 {/* Banner resultado */}
                 <div className="mt-4 rounded-2xl overflow-hidden"
@@ -1773,10 +1787,14 @@ export function AuditoriaScreen() {
                   ▶ Nueva Auditoría
                 </button>
               </>
+              </motion.div>
             )}
 
             {/* ══ FASE 3: EJECUCIÓN ══ */}
             {formPhase === 'execution' && (
+              <motion.div key="execution"
+                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}>
               <>
                 {/* Session restored banner */}
                 {sessionRestored && (
@@ -1923,12 +1941,33 @@ export function AuditoriaScreen() {
                 )}
 
                 {/* Spinner mientras se procesa/sube una foto */}
-                {photoUploading && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-semibold text-info bg-[rgba(37,99,235,0.07)] border border-info/20">
-                    <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
-                    {photoUploadMsg || 'Procesando foto…'}
-                  </div>
-                )}
+                {photoUploading && (() => {
+                  const { done, total, phase } = photoProgress;
+                  const hasBatch = total > 1;
+                  const pct = hasBatch && total > 0 ? Math.round((done / total) * 100) : null;
+                  const label = hasBatch
+                    ? phase === 'compress'
+                      ? `Comprimiendo ${done}/${total}…`
+                      : phase === 'upload'
+                      ? `Subiendo ${done}/${total}…`
+                      : 'Procesando…'
+                    : (photoUploadMsg || 'Procesando foto…');
+                  return (
+                    <div className="px-3 py-2.5 rounded-xl bg-[rgba(37,99,235,0.07)] border border-info/20 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3.5 h-3.5 border-2 border-info/30 border-t-info rounded-full animate-spin flex-shrink-0" />
+                        <span className="text-[12px] font-semibold text-info flex-1">{label}</span>
+                        {pct !== null && <span className="text-[11px] text-info/60 font-bold">{pct}%</span>}
+                      </div>
+                      {hasBatch && pct !== null && (
+                        <div className="h-1.5 bg-info/15 rounded-full overflow-hidden">
+                          <div className="h-full bg-info rounded-full transition-all duration-200"
+                            style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* ¿Tuvo errores? */}
                 <SLabel>¿Tuvo errores?</SLabel>
@@ -2048,26 +2087,33 @@ export function AuditoriaScreen() {
                           onChange={async e => {
                             let files = Array.from(e.target.files ?? []);
                             if (!files.length || photoUploadingRef.current) return;
+                            if (files.length > 100) { showToast(`Máximo 100 fotos por carga — se tomaron las primeras 100`, '#D97706'); files = files.slice(0, 100); }
                             photoUploadingRef.current = true; setPhotoUploading(true);
+                            const total = files.length;
                             try {
-                              // Compresión en lotes de 4 en paralelo con progreso
                               const results: ProcessedPhoto[] = [];
-                              for (let i = 0; i < files.length; i += 4) {
-                                setPhotoUploadMsg(`Comprimiendo ${Math.min(i + 4, files.length)} / ${files.length}…`);
-                                results.push(...await Promise.all(files.slice(i, i + 4).map(f => processPhoto(f))));
+                              for (let i = 0; i < files.length; i += 3) {
+                                setPhotoProgress({ done: i, total, phase: 'compress' });
+                                results.push(...await Promise.all(files.slice(i, i + 3).map(f => processPhoto(f))));
                               }
+                              setPhotoProgress({ done: total, total, phase: 'compress' });
                               setErrorFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                               setErrorFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                               setErrorFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
                               if (user && navigator.onLine) {
                                 const draftId = getDraftEntryId(); const ts = Date.now();
                                 const paths = results.map((_, i) => `${user.id}/${draftId}_errd_${ts}_${i}.jpg`);
-                                // Subida en lotes de 4 para no saturar conexión
                                 const urls: string[] = [];
+                                let uploaded = 0;
                                 for (let i = 0; i < results.length; i += 4) {
-                                  setPhotoUploadMsg(`Subiendo ${Math.min(i + 4, results.length)} / ${results.length}…`);
-                                  urls.push(...await Promise.all(results.slice(i, i + 4).map(async (r, bi) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i + bi], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i + bi]).data.publicUrl; })));
+                                  setPhotoProgress({ done: uploaded, total, phase: 'upload' });
+                                  const batch = await Promise.all(results.slice(i, i + 4).map(async (r, bi) => {
+                                    const { error } = await supabase.storage.from('audit-photos').upload(paths[i + bi], r.compressed, { contentType: 'image/jpeg', upsert: true });
+                                    return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i + bi]).data.publicUrl;
+                                  }));
+                                  urls.push(...batch); uploaded += batch.length;
                                 }
+                                setPhotoProgress({ done: total, total, phase: 'upload' });
                                 setErrorFotoStorageUrls(prev => [...prev, ...urls]);
                                 setErrorFotoStoragePaths(prev => [...prev, ...paths]);
                                 const saved = urls.filter(Boolean).length;
@@ -2077,7 +2123,7 @@ export function AuditoriaScreen() {
                                 setErrorFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
                                 showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
                               }
-                            } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
+                            } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); setPhotoProgress({ done: 0, total: 0, phase: '' }); bumpPhotoInput(); }
                           }} />
                       </label>
                     </div>
@@ -2151,14 +2197,16 @@ export function AuditoriaScreen() {
                       onChange={async e => {
                         let files = Array.from(e.target.files ?? []);
                         if (!files.length || photoUploadingRef.current) return;
-                        if (files.length > 20) { showToast(`Máximo 20 fotos por selección — se tomaron las primeras 20`, '#D97706'); files = files.slice(0, 20); }
+                        if (files.length > 100) { showToast(`Máximo 100 fotos por carga — se tomaron las primeras 100`, '#D97706'); files = files.slice(0, 100); }
                         photoUploadingRef.current = true; setPhotoUploading(true);
+                        const total = files.length;
                         try {
                           const results: ProcessedPhoto[] = [];
-                          for (let i = 0; i < files.length; i += 4) {
-                            setPhotoUploadMsg(`Comprimiendo ${Math.min(i + 4, files.length)} / ${files.length}…`);
-                            results.push(...await Promise.all(files.slice(i, i + 4).map(f => processPhoto(f))));
+                          for (let i = 0; i < files.length; i += 3) {
+                            setPhotoProgress({ done: i, total, phase: 'compress' });
+                            results.push(...await Promise.all(files.slice(i, i + 3).map(f => processPhoto(f))));
                           }
+                          setPhotoProgress({ done: total, total, phase: 'compress' });
                           setFotoFiles(prev => [...prev, ...results.map(r => r.compressed)]);
                           setFotoPreviews(prev => [...prev, ...results.map(r => r.previewUrl)]);
                           setFotoWarnings(prev => [...prev, ...results.map(r => r.warning)]);
@@ -2166,10 +2214,16 @@ export function AuditoriaScreen() {
                             const draftId = getDraftEntryId(); const ts = Date.now();
                             const paths = results.map((_, i) => `${user.id}/${draftId}_fotod_${ts}_${i}.jpg`);
                             const urls: string[] = [];
+                            let uploaded = 0;
                             for (let i = 0; i < results.length; i += 4) {
-                              setPhotoUploadMsg(`Subiendo ${Math.min(i + 4, results.length)} / ${results.length}…`);
-                              urls.push(...await Promise.all(results.slice(i, i + 4).map(async (r, bi) => { const { error } = await supabase.storage.from('audit-photos').upload(paths[i + bi], r.compressed, { contentType: 'image/jpeg', upsert: true }); return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i + bi]).data.publicUrl; })));
+                              setPhotoProgress({ done: uploaded, total, phase: 'upload' });
+                              const batch = await Promise.all(results.slice(i, i + 4).map(async (r, bi) => {
+                                const { error } = await supabase.storage.from('audit-photos').upload(paths[i + bi], r.compressed, { contentType: 'image/jpeg', upsert: true });
+                                return error ? '' : supabase.storage.from('audit-photos').getPublicUrl(paths[i + bi]).data.publicUrl;
+                              }));
+                              urls.push(...batch); uploaded += batch.length;
                             }
+                            setPhotoProgress({ done: total, total, phase: 'upload' });
                             setFotoStorageUrls(prev => [...prev, ...urls]);
                             setFotoStoragePaths(prev => [...prev, ...paths]);
                             const saved = urls.filter(Boolean).length;
@@ -2179,7 +2233,7 @@ export function AuditoriaScreen() {
                             setFotoStoragePaths(prev => [...prev, ...results.map(() => '')]);
                             showToast('📶 Sin conexión — se subirán al registrar', '#D97706');
                           }
-                        } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); bumpPhotoInput(); }
+                        } finally { photoUploadingRef.current = false; setPhotoUploading(false); setPhotoUploadMsg(''); setPhotoProgress({ done: 0, total: 0, phase: '' }); bumpPhotoInput(); }
                       }} />
                   </label>
                 </div>
@@ -2200,7 +2254,9 @@ export function AuditoriaScreen() {
                   </div>
                 )}
               </>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>}
         </div>
 

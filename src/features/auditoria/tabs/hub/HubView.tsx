@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, Radio, TableProperties } from 'lucide-react';
 import { ProfilePill } from '../../../../components/ProfilePill';
+import { motion } from 'framer-motion';
 
 interface HubCard {
   Icon: React.ElementType;
@@ -88,23 +89,32 @@ export function HubView({ userRole, onNavigate }: {
         {/* Desktop grid */}
         <div className="aud-hub-desktop px-6">
           <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-lg md:mx-auto">
-            {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }) => (
-              <button key={title} onClick={fn}
-                className="relative overflow-hidden rounded-2xl px-5 py-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
+            {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }, i) => (
+              <motion.button key={title} onClick={fn}
+                initial={{ opacity: 0, scale: 0.92, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: i * 0.055, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                whileHover={{ scale: 1.03, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                className="relative overflow-hidden rounded-2xl px-5 py-5 flex flex-col items-center justify-center text-center cursor-pointer border-2"
                 style={{ background: bg, borderColor: border, boxShadow: `0 8px 24px ${shadow}`, minHeight: 118 }}>
                 <Icon size={28} color="rgba(255,255,255,0.85)" strokeWidth={1.5} style={{ marginBottom: 10 }} />
                 <div className="font-barlow-condensed text-[18px] font-bold text-white tracking-widest uppercase leading-tight">{title}</div>
                 <div className="text-[11px] text-white/55 mt-0.5">{sub}</div>
-              </button>
+              </motion.button>
             ))}
           </div>
         </div>
 
         {/* Mobile cards */}
         <div className="aud-hub-mobile flex md:hidden flex-col gap-3 px-6">
-          {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }) => (
-            <button key={title} onClick={fn}
-              className="aud-hub-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer transition-all active:scale-[0.98] border-2 text-left"
+          {hubCards.map(({ Icon, title, sub, fn, border, bg, shadow }, i) => (
+            <motion.button key={title} onClick={fn}
+              initial={{ opacity: 0, x: -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.05, duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              whileTap={{ scale: 0.97 }}
+              className="aud-hub-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer border-2 text-left"
               style={{ background: bg, borderColor: border, boxShadow: `0 6px 20px ${shadow}`, minHeight: 66 }}>
               <Icon size={24} color="rgba(255,255,255,0.85)" strokeWidth={1.5} style={{ flexShrink: 0 }} />
               <div className="flex-1 min-w-0">
@@ -112,7 +122,7 @@ export function HubView({ userRole, onNavigate }: {
                 <div className="text-[11px] text-white/55">{sub}</div>
               </div>
               <ChevronLeft size={16} color="rgba(255,255,255,0.3)" strokeWidth={2.5} style={{ flexShrink: 0, transform: 'rotate(180deg)' }} />
-            </button>
+            </motion.button>
           ))}
         </div>
 
