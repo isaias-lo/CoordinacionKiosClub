@@ -419,6 +419,22 @@ export function LaunchScreen() {
               bg: 'rgba(37,99,235,0.18)', border: 'rgba(37,99,235,0.40)', shadow: 'rgba(37,99,235,0.22)',
               cardClass: 'ls-card-0',
             } : null,
+            // Panel Choferes solo visible si NO tiene acceso al hub completo de despacho
+            !canSee('/despacho-hub') && !canSee('/despacho') && canSee('/panel-choferes') ? {
+              key: 'panel-choferes', path: '/panel-choferes',
+              label: 'Panel Choferes', sub: 'Hub Conductor · Conductores',
+              Icon: Truck,      iconColor: 'rgba(251,146,60,0.9)',
+              bg: 'rgba(251,146,60,0.13)', border: 'rgba(251,146,60,0.40)', shadow: 'rgba(251,146,60,0.18)',
+              cardClass: 'ls-card-0',
+            } : null,
+            // Hub Conductor — acceso directo para el rol Conductor
+            canSee('/conductor-hub') ? {
+              key: 'conductor-hub', path: '/conductor-hub',
+              label: 'Hub Conductor', sub: 'Mi ruta · Entregas · Escaneo',
+              Icon: Truck,      iconColor: 'rgba(251,146,60,0.9)',
+              bg: 'rgba(251,146,60,0.13)', border: 'rgba(251,146,60,0.40)', shadow: 'rgba(251,146,60,0.18)',
+              cardClass: 'ls-card-0',
+            } : null,
             canSee('/control-interno') ? {
               key: 'ci', path: '/control-interno',
               label: 'Control Interno', sub: 'Tiendas · Auditoría',

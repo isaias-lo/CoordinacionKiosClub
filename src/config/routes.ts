@@ -30,6 +30,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { path: '/despacho/control-flota', label: 'Control de Flota'       },
       { path: '/despacho/estado',        label: 'Estado / Seguimiento'   },
       { path: '/panel-choferes',         label: 'Panel Choferes'         },
+      { path: '/conductor-hub',          label: 'Hub Conductor'          },
       { path: '/panel-operaciones',      label: 'Panel Operaciones'      },
       { path: '/tiendas',                label: 'Conductores / Tiendas'  },
       { path: '/historial',              label: 'Historial'              },
