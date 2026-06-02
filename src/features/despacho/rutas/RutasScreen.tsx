@@ -390,6 +390,34 @@ export default function RutasScreen() {
     localStorage.setItem('despachoCounts', JSON.stringify({ date: fecha, counts }));
   }, [calT, fecha]);
 
+  // ── Load fleet from Supabase (source of truth) ───────────────────
+  useEffect(() => {
+    fetch('/api/flota')
+      .then(r => r.ok ? r.json() : null)
+      .then((json: { flota: Vehiculo[] } | null) => {
+        if (json?.flota && json.flota.length > 0) {
+          setFlota(json.flota);
+          setConductores(prev => {
+            const names = json.flota.map(v => v.ch).filter((c): c is string => Boolean(c));
+            const merged = [...new Set([...prev, ...names])];
+            return merged;
+          });
+        } else if (json?.flota && json.flota.length === 0) {
+          // Table is empty — seed it with FLOTA_INICIAL
+          FLOTA_INICIAL.forEach(v => {
+            fetch('/api/flota', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify(v),
+            }).catch(() => {});
+          });
+        }
+        // If fetch fails entirely, keep the hard-coded FLOTA_INICIAL (already in state)
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Load sheets data ──────────────────────────────────────────────
   useEffect(() => { handleActualizarDatos(); }, []);
 
@@ -571,27 +599,61 @@ export default function RutasScreen() {
   function handleAgregarVehiculo(vehiculo: Vehiculo) {
     setFlota(prev => {
       const newFlota = [...prev, vehiculo];
+      // Mirror to Apps Script (legacy compatibility)
       guardarFlotaFn({
         flota: newFlota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
         onStart:   () => setFlotaStatus('saving'),
         onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
         onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
       });
+      // Persist to Supabase (source of truth)
+      fetch('/api/flota', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(vehiculo),
+      }).then(r => {
+        if (r.status === 409) {
+          // Already exists — update instead
+          return fetch('/api/flota', {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(vehiculo),
+          });
+        }
+      }).catch(() => {});
       return newFlota;
     });
   }
   function handleEliminarVehiculo(idx: number) {
     setFlota(prev => {
+      const vehiculoEliminado = prev[idx];
       const newFlota = prev.filter((_, i) => i !== idx);
+      // Mirror to Apps Script (legacy compatibility)
       guardarFlotaFn({
         flota: newFlota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
         onStart:   () => setFlotaStatus('saving'),
         onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
         onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
       });
+      // Soft-delete in Supabase (source of truth)
+      if (vehiculoEliminado?.p) {
+        fetch(`/api/flota?patente=${encodeURIComponent(vehiculoEliminado.p)}`, {
+          method: 'DELETE',
+        }).catch(() => {});
+      }
       return newFlota;
     });
   }
+  const handleActualizarVehiculoRef = useRef<((v: Partial<Vehiculo> & { p: string }) => void) | null>(null);
+  handleActualizarVehiculoRef.current = function handleActualizarVehiculo(vehiculo: Partial<Vehiculo> & { p: string }) {
+    setFlota(prev => prev.map(v => v.p === vehiculo.p ? { ...v, ...vehiculo } : v));
+    // Persist update to Supabase
+    fetch('/api/flota', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(vehiculo),
+    }).catch(() => {});
+  };
 
   // ── Manual text parser ────────────────────────────────────────────
   function parseManual(txt: string): { ts: StoreItem[]; errs: string[] } {
