@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
   const from = `${date}T00:00:00.000Z`;

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
+
+const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const date = request.nextUrl.searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
   const { data, error } = await supabaseServer()
     .from('picking_session_state')
@@ -12,6 +16,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as {
     state_key: string; date: string; picker_label: string; tipo: string;
   };

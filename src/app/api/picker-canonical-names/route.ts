@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 
-export async function GET() {
+const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const { data, error } = await supabaseServer()
     .from('picker_canonical_names')
     .select('key, display_name, updated_by_name, updated_at')
@@ -11,16 +15,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as { key: string; display_name: string; updated_by_name?: string };
   const sb = supabaseServer();
 
-  // Fetch old name for audit trail
-  const { data: existing } = await sb
-    .from('picker_canonical_names')
-    .select('display_name')
-    .eq('key', body.key)
-    .maybeSingle();
-  const oldName = (existing as { display_name?: string } | null)?.display_name ?? '';
   const newName = body.display_name?.trim() ?? '';
   const byName  = body.updated_by_name?.trim() ?? '';
 
@@ -34,13 +32,6 @@ export async function POST(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Log change if name actually changed
-  if (oldName !== newName) {
-    await sb.from('picker_name_changes').insert({
-      picker_key: body.key, old_name: oldName, new_name: newName,
-      changed_by_name: byName, changed_at: new Date().toISOString(),
-    });
-  }
-
+  // Audit logging handled atomically by Postgres trigger trg_picker_name_change
   return NextResponse.json({ ok: true });
 }

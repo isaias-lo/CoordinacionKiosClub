@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
 
 const URBAN_COMMUNES = new Set([
@@ -43,6 +44,7 @@ function tipoLabel(tipo: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const { slot_id, store_cod, tipo, contenido, date } = await request.json() as {
       slot_id:   number;
