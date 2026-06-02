@@ -132,18 +132,18 @@ function DespachoContent() {
       <div
         className="no-print flex items-center justify-between px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
+        <button
+          onClick={handleBack}
+          className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
+          <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">← Volver</span>
+        </button>
         <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub"
              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         <div className="flex-1 text-center">
           <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
           <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
         </div>
-        <button
-          onClick={handleBack}
-          className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
-          <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">INICIO</span>
-        </button>
         <ProfilePill />
       </div>
       <div className="despacho-content flex-1 overflow-hidden">

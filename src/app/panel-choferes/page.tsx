@@ -10,6 +10,10 @@ export default function PanelChoferesPage() {
   const paths = profile?.allowedPaths ?? [];
   const canSee = (p: string) => paths.includes('*') || paths.includes(p);
 
+  const esConductor = !!(profile?.allowedPaths ?? []).includes('/panel-choferes')
+    && !(profile?.allowedPaths ?? []).includes('*')
+    && !(profile?.allowedPaths ?? []).includes('/despacho-hub');
+
   function goBack() {
     if (canSee('/despacho-hub')) { router.push('/despacho-hub'); return; }
     if (canSee('/despacho'))     { router.push('/despacho');     return; }
@@ -20,17 +24,19 @@ export default function PanelChoferesPage() {
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)', position: 'relative' }}>
 
       {/* Back button */}
-      <button
-        onClick={goBack}
-        style={{
-          position: 'absolute', top: 20, left: 20,
-          width: 38, height: 38, borderRadius: 12,
-          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
-          color: 'rgba(255,255,255,0.7)', fontSize: 20, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-        ‹
-      </button>
+      {!esConductor && (
+        <button
+          onClick={goBack}
+          style={{
+            position: 'absolute', top: 20, left: 20,
+            width: 38, height: 38, borderRadius: 12,
+            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.7)', fontSize: 20, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          ‹
+        </button>
+      )}
 
       {/* Profile pill */}
       <div style={{ position: 'absolute', top: 16, right: 16 }}>

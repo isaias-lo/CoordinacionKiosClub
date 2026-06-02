@@ -63,10 +63,11 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
   onToggle: (cod: string) => void;
   onUpdate: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
 }) {
-  const fields: { key: 'p' | 'b' | 'c'; label: string; max: number; display?: number }[] = [
-    { key: 'p', label: 'P', max: 20 },
-    { key: 'b', label: 'B', max: 99, display: (data.b || 0) + (data.ch || 0) },
-    { key: 'c', label: 'C', max: 99 },
+  const fields: { key: 'p' | 'b' | 'c' | 'ch'; label: string; max: number }[] = [
+    { key: 'p',  label: 'P',  max: 20 },
+    { key: 'b',  label: 'B',  max: 99 },
+    { key: 'c',  label: 'C',  max: 99 },
+    { key: 'ch', label: 'CH', max: 99 },
   ];
   return (
     <div
@@ -82,13 +83,13 @@ function StoreChip({ cod, data, onToggle, onUpdate }: {
       >
         {formatCod(cod)}
       </span>
-      <div className="grid grid-cols-3 gap-[3px] w-full" onClick={e => e.stopPropagation()}>
-        {fields.map(({ key, label, max, display }) => (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-[3px] w-full" onClick={e => e.stopPropagation()}>
+        {fields.map(({ key, label, max }) => (
           <div key={key} className="flex items-center gap-[2px] rounded-[5px] px-[3px] h-[22px] bg-black/[0.04] border border-black/[0.07]">
             <span className="text-[8px] font-extrabold text-kmuted/60 leading-none shrink-0 select-none">{label}</span>
             <input
               type="number" min="0" max={max}
-              value={display !== undefined ? (display || '') : (data[key] || '')}
+              value={data[key] || ''}
               placeholder="0"
               onChange={e => onUpdate(cod, key, e.target.value)}
               className="w-full bg-transparent text-[11px] font-bold text-center text-ktext focus:outline-none [-webkit-appearance:none]"
