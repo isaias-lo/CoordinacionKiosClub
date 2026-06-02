@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
 
 export async function GET(request: NextRequest) {
   const fecha   = request.nextUrl.searchParams.get('fecha') ?? new Date().toISOString().slice(0, 10);
@@ -143,6 +144,11 @@ export async function POST(request: NextRequest) {
     if (trazRows.length) {
       // fire-and-forget — no bloquea la respuesta al cliente
       void sb2.from('trazabilidad_unidades').insert(trazRows);
+
+      // Mirror a Google Sheets (fire-and-forget)
+      trazRows.forEach(row => {
+        upsertTrazabilidadSheet(row as Parameters<typeof upsertTrazabilidadSheet>[0]).catch(() => {});
+      });
     }
   }
 

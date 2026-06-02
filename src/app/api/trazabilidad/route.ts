@@ -6,6 +6,7 @@ import type {
   TrazabilidadRecepcionPayload,
   TrazabilidadCierrePayload,
 } from '@/lib/trazabilidad.types';
+import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
 
 const TABLE = 'trazabilidad_unidades';
 
@@ -142,6 +143,12 @@ export async function PATCH(req: NextRequest) {
 
     const { data, error } = await query.select();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Mirror a Google Sheets (fire-and-forget)
+    if (Array.isArray(data)) {
+      data.forEach(row => { upsertTrazabilidadSheet(row).catch(() => {}); });
+    }
+
     return NextResponse.json({ data });
   }
 
@@ -181,6 +188,10 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Mirror a Google Sheets (fire-and-forget)
+    if (data) { upsertTrazabilidadSheet(data).catch(() => {}); }
+
     return NextResponse.json({ data });
   }
 
@@ -205,6 +216,10 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Mirror a Google Sheets (fire-and-forget)
+    if (data) { upsertTrazabilidadSheet(data).catch(() => {}); }
+
     return NextResponse.json({ data });
   }
 

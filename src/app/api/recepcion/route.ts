@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
 
 interface RecepcionBody {
   cod: string;
@@ -209,16 +210,19 @@ export async function POST(request: NextRequest) {
 
       if (body.canonicalId) {
         // Upsert por canonical ID (el barcode escaneado)
-        void sb.from('trazabilidad_unidades').upsert({
+        const upsertData = {
           id_unidad_logistica: body.canonicalId,
           codigo_tienda:       body.cod,
           tienda_destino:      body.tienda,
           direccion_tienda:    body.direccion,
           transportista:       body.conductor ?? null,
-          tipo_unidad:         'Pallet',
+          tipo_unidad:         'Pallet' as const,
           regimen:             body.regimen ?? null,
           ...trazUpdate,
-        }, { onConflict: 'id_unidad_logistica' });
+        };
+        void sb.from('trazabilidad_unidades').upsert(upsertData, { onConflict: 'id_unidad_logistica' });
+        // Mirror a Google Sheets (fire-and-forget)
+        upsertTrazabilidadSheet(upsertData as Parameters<typeof upsertTrazabilidadSheet>[0]).catch(() => {});
       } else {
         // Actualizar la primera unidad EN_RUTA para esta tienda
         void sb.from('trazabilidad_unidades')
@@ -226,7 +230,13 @@ export async function POST(request: NextRequest) {
           .eq('codigo_tienda', body.cod)
           .in('estado_actual', ['EN_RUTA', 'CREADO'])
           .order('fecha_hora_creacion', { ascending: true })
-          .limit(1);
+          .limit(1)
+          .select()
+          .then(({ data: updated }) => {
+            if (Array.isArray(updated)) {
+              updated.forEach(row => { upsertTrazabilidadSheet(row).catch(() => {}); });
+            }
+          });
       }
     }
 
