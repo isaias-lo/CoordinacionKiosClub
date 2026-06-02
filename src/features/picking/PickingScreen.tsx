@@ -1125,8 +1125,9 @@ function SupervisorActivityPanel({
   nameChanges: PickerNameChange[];
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [namesCollapsed, setNamesCollapsed] = useState(false);
   const list = Object.values(supervisors);
-  if (list.length === 0) return null;
+  if (list.length === 0 && nameChanges.length === 0) return null;
 
   return (
     <div className="mx-4 mt-4 rounded-2xl overflow-hidden print:hidden"
@@ -1151,7 +1152,9 @@ function SupervisorActivityPanel({
             <div className="text-[10px] font-black uppercase tracking-[1.5px] leading-none mb-0.5"
               style={{ color: 'rgba(37,99,235,0.55)' }}>EN TURNO</div>
             <div className="font-black text-[17px] leading-tight" style={{ color: '#1E3A8A' }}>
-              {list.length === 1 ? '1 Supervisor Activo' : `${list.length} Supervisores Activos`}
+              {list.length === 0
+                ? 'Sin supervisores activos'
+                : list.length === 1 ? '1 Supervisor Activo' : `${list.length} Supervisores Activos`}
             </div>
           </div>
           <div className="flex gap-1.5 ml-1 flex-wrap">
@@ -1218,22 +1221,28 @@ function SupervisorActivityPanel({
 
       {/* Cambios de nombres hoy */}
       {nameChanges.length > 0 && (
-        <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(37,99,235,0.12)' }}>
-          <div className="text-[10px] font-black uppercase tracking-[1.2px] mb-2" style={{ color: 'rgba(37,99,235,0.45)' }}>
-            Cambios de nombre hoy ({nameChanges.length})
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {nameChanges.slice(0, 8).map(c => (
-              <div key={c.id} className="flex items-center gap-2 text-[12px]">
-                <span className="font-mono font-bold text-navy bg-[rgba(26,37,80,0.06)] px-1.5 py-0.5 rounded text-[11px] flex-shrink-0">{c.picker_key}</span>
-                <span className="text-text-3 flex-shrink-0 text-[10px]">«{c.old_name || '—'}»</span>
-                <span className="text-[10px] text-text-3 flex-shrink-0">→</span>
-                <span className="font-semibold text-navy flex-1 truncate">«{c.new_name || '—'}»</span>
-                <span className="flex-shrink-0 text-[11px] text-text-3">{c.changed_by_name}</span>
-                <span className="flex-shrink-0 text-[10px] text-text-3">{new Date(c.changed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-            ))}
-          </div>
+        <div className="border-t" style={{ borderColor: 'rgba(37,99,235,0.12)' }}>
+          <button type="button" onClick={() => setNamesCollapsed(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 cursor-pointer border-none bg-transparent">
+            <div className="text-[10px] font-black uppercase tracking-[1.2px]" style={{ color: 'rgba(37,99,235,0.55)' }}>
+              Cambios de nombre hoy · {nameChanges.length}
+            </div>
+            <span className="text-[12px] text-[#9CA3AF]">{namesCollapsed ? '⌄' : '⌃'}</span>
+          </button>
+          {!namesCollapsed && (
+            <div className="px-4 pb-3 flex flex-col gap-1.5">
+              {nameChanges.map(c => (
+                <div key={c.id} className="flex items-center gap-2 text-[12px]">
+                  <span className="font-mono font-bold text-navy bg-[rgba(26,37,80,0.06)] px-1.5 py-0.5 rounded text-[11px] flex-shrink-0">{c.picker_key}</span>
+                  <span className="text-text-3 flex-shrink-0 text-[10px]">«{c.old_name || '—'}»</span>
+                  <span className="text-[10px] text-text-3 flex-shrink-0">→</span>
+                  <span className="font-semibold text-navy flex-1 truncate">«{c.new_name || '—'}»</span>
+                  <span className="flex-shrink-0 text-[11px] text-text-3">{c.changed_by_name}</span>
+                  <span className="flex-shrink-0 text-[10px] text-text-3">{new Date(c.changed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
