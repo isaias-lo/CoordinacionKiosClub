@@ -63,7 +63,7 @@ export function ProfilePill({ compact = false }: ProfilePillProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isAdmin   = profile?.role === 'admin';
-  const isAuditor = profile?.role === 'auditor' || profile?.role === 'admin-auditoria';
+  const isAuditor = profile?.role === 'auditor' || profile?.role === 'admin-auditoria' || profile?.role === 'admin';
   const initial   = (profile?.full_name ?? 'U')[0].toUpperCase();
 
   useEffect(() => {
