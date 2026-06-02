@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
@@ -70,38 +70,14 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
 
   const activosCount = flota.filter(v => v.on).length;
 
+  useEffect(() => {
+    const handler = () => setMenuOpen(true);
+    window.addEventListener('open-enrutador-menu', handler);
+    return () => window.removeEventListener('open-enrutador-menu', handler);
+  }, []);
+
   return (
-    <header className="bg-white border-b border-black/[0.09] sticky top-0 z-[100] no-print">
-      <div className="max-w-[700px] mx-auto flex items-center justify-between h-[60px] px-4">
-
-        <div className="flex items-center gap-2.5">
-          <div className="flex flex-col gap-0.5 leading-none">
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-[20px] font-extrabold text-kred tracking-tight">KIOS</span>
-              <span className="text-[17px] italic font-bold text-kred">Club</span>
-            </div>
-            <div className="bg-knavy rounded-[2px] px-1.5 py-0.5 flex gap-[3px]">
-              {[0,1,2,3,4].map(i => <span key={i} className="text-white text-[8px]">★</span>)}
-            </div>
-          </div>
-          <div className="w-px h-[30px] bg-black/[0.09]" />
-          <div>
-            <div className="text-[10px] font-semibold text-kmuted uppercase tracking-[0.8px]">Centro de Distribución</div>
-            <div className="text-[13px] font-bold text-ktext">Sistema de Enrutamiento</div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setMenuOpen(o => !o)}
-          className="w-[36px] h-[36px] rounded-[8px] flex flex-col items-center justify-center gap-[5px] bg-kbg border border-black/[0.1] hover:bg-kred/[0.07] hover:border-kred/[0.2] transition-all"
-          aria-label="Menú"
-        >
-          <span className="w-[16px] h-[1.5px] bg-ktext rounded-full" />
-          <span className="w-[16px] h-[1.5px] bg-ktext rounded-full" />
-          <span className="w-[16px] h-[1.5px] bg-ktext rounded-full" />
-        </button>
-      </div>
-
+    <>
       {/* ── Hamburger menu ─────────────────────────────────────────── */}
       {menuOpen && createPortal(
         <>
@@ -274,6 +250,6 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
         </>,
         document.body
       )}
-    </header>
+    </>
   );
 }

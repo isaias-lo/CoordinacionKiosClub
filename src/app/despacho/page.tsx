@@ -134,9 +134,9 @@ function DespachoContent() {
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <button
           onClick={handleBack}
-          className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+          className="w-[34px] h-[34px] rounded-full cursor-pointer transition-all active:scale-95 flex items-center justify-center flex-shrink-0"
           style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
-          <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">← Volver</span>
+          <span className="text-white text-[18px] leading-none">←</span>
         </button>
         <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub"
              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -144,7 +144,19 @@ function DespachoContent() {
           <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
           <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
         </div>
-        <ProfilePill />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-enrutador-menu'))}
+            className="w-[34px] h-[34px] rounded-[8px] flex flex-col items-center justify-center gap-[5px] flex-shrink-0 transition-all active:scale-95"
+            style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}
+            aria-label="Menú"
+          >
+            <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
+            <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
+            <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
+          </button>
+          <ProfilePill />
+        </div>
       </div>
       <div className="despacho-content flex-1 overflow-hidden">
         <RutasScreenWrapper onBack={handleBack} />
