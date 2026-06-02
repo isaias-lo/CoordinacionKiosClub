@@ -7,8 +7,8 @@ const URBAN_COMMUNES = new Set([
   'Lo Barnechea', 'Puente Alto',
 ]);
 
-// Columnas DESPACHO RM (25 cols):
-// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+// Columnas DESPACHO RM (26 cols):
+// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,PATENTE,CARGA,REGION,COMUNA,
 // TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
 // N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
 function buildRows(
@@ -40,6 +40,7 @@ function buildRows(
         tipoLabel,                                                         // TIPO
         regimen,                                                           // REGIMEN
         'Luis Fica',                                                       // TRANSPORTE
+        '',                                                                // PATENTE (enrutador la completa)
         item.contenido,                                                    // CARGA
         tienda.region,                                                     // REGION
         tienda.comuna,                                                     // COMUNA

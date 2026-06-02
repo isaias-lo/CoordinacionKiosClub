@@ -277,6 +277,7 @@ export interface RMRecord {
   tipo: string;
   regimen: string;
   transporte: string;
+  patente: string;
   carga: string;
   region: string;
   comuna: string;
@@ -326,6 +327,7 @@ export function buildDespachoRMRecords(params: {
   rutas.forEach((ruta, ri) => {
     const conductor = ruta._choferAsignado || ruta.v.ch || '';
     const vehiculo  = ruta.v.p;
+    const empresa   = ruta.v.empresa || 'Luis Fica';
     const rutaNum   = ri + 1;
 
     ruta.ts.forEach(ts => {
@@ -339,7 +341,8 @@ export function buildDespachoRMRecords(params: {
         cod:           ts.c,
         tienda:        nombre,
         regimen:       'Carga',
-        transporte:    vehiculo,
+        transporte:    empresa,
+        patente:       vehiculo,
         carga:         '',
         region:        'REGIÓN METROPOLITANA',
         comuna:        zona,
@@ -372,8 +375,8 @@ export function buildDespachoRMRecords(params: {
   return records;
 }
 
-// Columnas DESPACHO RM (25 cols):
-// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,CARGA,REGION,COMUNA,
+// Columnas DESPACHO RM (26 cols):
+// ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,PATENTE,CARGA,REGION,COMUNA,
 // TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
 // N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
 export function guardarDespachoRMFn(params: {
@@ -385,9 +388,9 @@ export function guardarDespachoRMFn(params: {
   const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
   if (!records.length) return;
 
-  // Convertir objetos a filas para Google Sheets (mismo orden que antes)
+  // Convertir objetos a filas para Google Sheets (26 cols — PATENTE entre TRANSPORTE y CARGA)
   const rows = records.map(r => [
-    r.id, r.fecha, r.cod, r.tienda, r.tipo, r.regimen, r.transporte, r.carga,
+    r.id, r.fecha, r.cod, r.tienda, r.tipo, r.regimen, r.transporte, r.patente, r.carga,
     r.region, r.comuna, r.tipo_comuna,
     '', '', '', '', '',   // PESO_KG, ALTO, LARGO, ANCHO, PESO_V
     r.ventana, r.estado, r.n_pallet_bulto, r.fecha_llegada,
