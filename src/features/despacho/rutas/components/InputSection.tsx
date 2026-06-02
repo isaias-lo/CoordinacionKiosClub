@@ -41,6 +41,7 @@ interface Props {
   onCalcularManual: () => void;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
+  rightPanelContent?: React.ReactNode;
 }
 
 /* ── Sidebar store row ──────────────────────────────────────────── */
@@ -93,6 +94,21 @@ function SidebarRow({
   );
 }
 
+/* ── 3D icon for mode tabs ───────────────────────────────────────── */
+function TabIcon3D({ emoji, from, to, shadow }: { emoji: string; from: string; to: string; shadow: string }) {
+  return (
+    <span
+      style={{
+        background: `linear-gradient(145deg, ${from}, ${to})`,
+        boxShadow: `0 2px 6px ${shadow}, inset 0 1px 0 rgba(255,255,255,0.25)`,
+      }}
+      className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-[13px] flex-shrink-0 select-none"
+    >
+      {emoji}
+    </span>
+  );
+}
+
 /* ── Group badge ─────────────────────────────────────────────────── */
 function GroupBadge({ active, label, onClick }: { id?: string; active: boolean; label: string; onClick: () => void }) {
   return (
@@ -118,6 +134,7 @@ export default function InputSection({
   onConductorChange, onAgregarConductor,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onLimpiar, onEliminarParada,
+  rightPanelContent,
 }: Props) {
   const dia = getDia(fecha);
   const [sidebarFilter, setSidebarFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
@@ -246,8 +263,8 @@ export default function InputSection({
           <div className="text-[10px] font-semibold text-kmuted/70 uppercase tracking-wider mb-2">Grupos activos</div>
           <div className="flex gap-2">
             <GroupBadge id="rm"    active={grps.has('rm')}    label="RM"       onClick={() => onToggleGroup('rm')} />
-            <GroupBadge id="costa" active={grps.has('costa')} label="Costa"    onClick={() => onToggleGroup('costa')} />
-            <GroupBadge id="fal"   active={grps.has('fal')}   label="Regiones" onClick={() => onToggleGroup('fal')} />
+            <GroupBadge id="costa" active={grps.has('costa')} label="COSTA"    onClick={() => onToggleGroup('costa')} />
+            <GroupBadge id="fal"   active={grps.has('fal')}   label="REGIONES" onClick={() => onToggleGroup('fal')} />
           </div>
         </div>
 
@@ -339,110 +356,122 @@ export default function InputSection({
       ═══════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col overflow-hidden bg-kbg min-w-0">
 
-        {/* ── Mode tab bar ── */}
-        <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
-          <div className="flex items-center gap-3 px-4 py-3">
-            {/* Mode tabs */}
-            <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1">
-              {([
-                ['drag', '🎯', 'Despacho'],
-                ['cal',  '🚛', 'Calcular'],
-                ['man',  '✏️', 'Manual'],
-              ] as [string, string, string][]).map(([id, icon, label]) => (
-                <button
-                  key={id}
-                  onClick={() => onModo(id)}
-                  style={modo === id ? { boxShadow: '0 1px 4px rgba(0,0,0,0.10)' } : undefined}
-                  className={`h-[36px] px-4 rounded-[9px] text-[13px] font-bold flex items-center gap-1.5 transition-all
-                    ${modo === id ? 'bg-white text-kred' : 'text-kmuted hover:text-ktext'}`}
-                >
-                  <span>{icon}</span>
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1" />
-
-            {/* Action buttons */}
-            {modo !== 'drag' && (
-              <button
-                onClick={onCalcular}
-                style={{ boxShadow: '0 3px 12px rgba(212,43,43,0.28)' }}
-                className="h-[40px] px-6 rounded-[12px] bg-kred text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-2"
-              >
-                🚛 <span>Calcular Rutas</span>
-              </button>
-            )}
-            <button
-              onClick={onLimpiar}
-              className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
-            >
-              Limpiar
-            </button>
+        {rightPanelContent ? (
+          /* ── Results / Comparison override ── */
+          <div className="flex-1 overflow-hidden">
+            {rightPanelContent}
           </div>
-        </div>
+        ) : (
+          <>
+            {/* ── Mode tab bar ── */}
+            <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center gap-2 px-4 py-2.5">
+                {/* Mode tabs */}
+                <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1">
+                  {([
+                    ['drag', '🎯', 'DESPACHO', '#FF5252', '#C42020', 'rgba(196,32,32,0.4)'],
+                    ['cal',  '🚛', 'CALCULAR', '#3D52CC', '#1B2A6B', 'rgba(27,42,107,0.45)'],
+                    ['man',  '✏️', 'MANUAL',   '#8E8E93', '#636366', 'rgba(99,99,102,0.35)'],
+                  ] as [string, string, string, string, string, string][]).map(([id, icon, label, from, to, shadow]) => (
+                    <button
+                      key={id}
+                      onClick={() => onModo(id)}
+                      style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
+                      className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
+                        ${modo === id ? '' : 'hover:bg-white/60'}`}
+                    >
+                      <TabIcon3D emoji={icon} from={from} to={to} shadow={shadow} />
+                      <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
+                        ${modo === id ? 'text-ktext' : 'text-kmuted'}`}>
+                        {label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
 
-        {/* ── Content area ── */}
-        <div className="flex-1 overflow-y-auto">
+                <div className="flex-1" />
 
-          {/* 🎯 DESPACHO MODE */}
-          {modo === 'drag' && (
-            <div className="p-4">
-              <ManualDispatch
-                calT={calT}
-                flota={flota}
-                gps={gps}
-                tiendas={tiendas}
-                cd={cd}
-                paradas={paradasAdicionales}
-                asignaciones={manualAsignaciones}
-                onAsignaciones={onAsignaciones}
-                onCalcular={onCalcularManual}
-                conductores={conductores}
-                onConductorChange={onConductorChange}
-                onAgregarConductor={onAgregarConductor}
-                onEliminarParada={onEliminarParada}
-              />
-            </div>
-          )}
-
-          {/* 🚛 CALCULAR MODE */}
-          {modo === 'cal' && (
-            <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-              <div
-                style={{ boxShadow: '0 8px 32px rgba(27,42,107,0.12)', background: 'linear-gradient(145deg, #1B2A6B, #2D3FA0)' }}
-                className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center text-[36px] mb-6"
-              >
-                🚛
-              </div>
-              <div className="text-[22px] font-bold text-ktext mb-2">Cálculo automático de rutas</div>
-              <div className="text-[14px] text-kmuted mb-10 max-w-md leading-relaxed">
-                Las tiendas y cantidades están en el panel izquierdo. El sistema asigna camiones por cercanía GPS y optimiza el orden de entrega.
-              </div>
-              <button
-                onClick={onCalcular}
-                style={{ boxShadow: '0 6px 20px rgba(212,43,43,0.32)' }}
-                className="h-[56px] px-12 rounded-[16px] bg-kred text-white text-[17px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-3"
-              >
-                🚛 <span>Calcular Rutas</span>
-              </button>
-              <div className="mt-6 text-[13px] text-kmuted/60">
-                {activeCount > 0
-                  ? `${activeCount} tiendas activas con carga`
-                  : 'Activa tiendas en el panel izquierdo primero'}
+                {/* Action buttons */}
+                {modo !== 'drag' && (
+                  <button
+                    onClick={onCalcular}
+                    style={{ boxShadow: '0 3px 12px rgba(212,43,43,0.28)' }}
+                    className="h-[40px] px-6 rounded-[12px] bg-kred text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-2"
+                  >
+                    🚛 <span>Calcular Rutas</span>
+                  </button>
+                )}
+                <button
+                  onClick={onLimpiar}
+                  className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
+                >
+                  Limpiar
+                </button>
               </div>
             </div>
-          )}
 
-          {/* ✏️ MANUAL MODE */}
-          {modo === 'man' && (
-            <div className="p-6 max-w-[680px]">
-              <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wider mb-3">Ingreso manual</div>
-              <ManualMode value={manualText} onChange={onManual} calT={calT} modo={modo} />
+            {/* ── Content area ── */}
+            <div className="flex-1 overflow-y-auto">
+
+              {/* 🎯 DESPACHO MODE */}
+              {modo === 'drag' && (
+                <div className="p-4">
+                  <ManualDispatch
+                    calT={calT}
+                    flota={flota}
+                    gps={gps}
+                    tiendas={tiendas}
+                    cd={cd}
+                    paradas={paradasAdicionales}
+                    asignaciones={manualAsignaciones}
+                    onAsignaciones={onAsignaciones}
+                    onCalcular={onCalcularManual}
+                    conductores={conductores}
+                    onConductorChange={onConductorChange}
+                    onAgregarConductor={onAgregarConductor}
+                    onEliminarParada={onEliminarParada}
+                  />
+                </div>
+              )}
+
+              {/* 🚛 CALCULAR MODE */}
+              {modo === 'cal' && (
+                <div className="flex flex-col items-center justify-center h-full p-10 text-center">
+                  <div
+                    style={{ boxShadow: '0 8px 32px rgba(27,42,107,0.12)', background: 'linear-gradient(145deg, #1B2A6B, #2D3FA0)' }}
+                    className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center text-[36px] mb-6"
+                  >
+                    🚛
+                  </div>
+                  <div className="text-[22px] font-bold text-ktext mb-2">Cálculo automático de rutas</div>
+                  <div className="text-[14px] text-kmuted mb-10 max-w-md leading-relaxed">
+                    Las tiendas y cantidades están en el panel izquierdo. El sistema asigna camiones por cercanía GPS y optimiza el orden de entrega.
+                  </div>
+                  <button
+                    onClick={onCalcular}
+                    style={{ boxShadow: '0 6px 20px rgba(212,43,43,0.32)' }}
+                    className="h-[56px] px-12 rounded-[16px] bg-kred text-white text-[17px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-3"
+                  >
+                    🚛 <span>Calcular Rutas</span>
+                  </button>
+                  <div className="mt-6 text-[13px] text-kmuted/60">
+                    {activeCount > 0
+                      ? `${activeCount} tiendas activas con carga`
+                      : 'Activa tiendas en el panel izquierdo primero'}
+                  </div>
+                </div>
+              )}
+
+              {/* ✏️ MANUAL MODE */}
+              {modo === 'man' && (
+                <div className="p-6 max-w-[680px]">
+                  <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wider mb-3">Ingreso manual</div>
+                  <ManualMode value={manualText} onChange={onManual} calT={calT} modo={modo} />
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

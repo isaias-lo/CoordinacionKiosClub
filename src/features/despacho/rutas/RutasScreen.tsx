@@ -1103,74 +1103,73 @@ export default function RutasScreen() {
       )}
 
       <main className="flex-1 overflow-hidden">
-        {!results ? (
-          comparisonData ? (
-            <div className="h-full overflow-y-auto">
-              <div className="max-w-[1100px] mx-auto px-3.5 py-5">
-                <ComparisonView
-                  data={comparisonData}
-                  gps={comparisonData.extGps || gps}
-                  cd={cdRef.current}
-                  tiendas={(comparisonData.extTiendas || tiendas) as Record<string, TiendaInfo>}
-                  onUsar={handleUsarRuta}
-                  onVolver={handleVolverEditar}
-                />
+        <InputSection
+          flota={flota} conductores={conductores}
+          modo={modo} grps={grps} calT={sortedCalT}
+          supervisor={supervisor} fecha={fecha}
+          manualText={manualText} errors={errors}
+          dnom={DNOM}
+          tiendas={tiendas} gps={gps} cd={cdRef.current}
+          manualAsignaciones={manualAsignaciones}
+          paradasAdicionales={paradasAdicionales}
+          onOpenParadas={handleOpenParadas}
+          onModo={m => setModo(m)}
+          onToggleGroup={handleToggleGroup}
+          onToggleChip={handleToggleChip}
+          onUpdateChip={handleUpdateChip}
+          onConductorChange={handleConductorChange}
+          onAgregarConductor={handleAgregarConductor}
+          onSupervisor={setSupervisor}
+          onFecha={setFecha}
+          onManual={setManualText}
+          onAsignaciones={setManualAsignaciones}
+          onCalcular={handleCalcular}
+          onCalcularManual={handleCalcularManual}
+          onLimpiar={handleLimpiar}
+          onEliminarParada={handleEliminarParada}
+          rightPanelContent={
+            results ? (
+              <div className="h-full overflow-y-auto">
+                <div className="px-3.5 py-5">
+                  <ResultsSection
+                    results={results}
+                    supervisor={supervisor}
+                    fecha={fecha}
+                    tiendas={(results.extTiendas || tiendas) as Parameters<typeof ResultsSection>[0]['tiendas']}
+                    gps={results.extGps || gps}
+                    cd={cdRef.current}
+                    flota={flota}
+                    onLimpiar={handleLimpiar}
+                    onVolver={handleVolverAEdicion}
+                    onGenerarPDF={handleGenerarPDF}
+                    onGuardarHistorial={handleGuardarHistorial}
+                    onChoferChange={handleChoferChange}
+                    historialStatus={historialStatus}
+                    historialMsg={historialMsg}
+                    onKmTotalReal={km => { kmTotalRealRef.current = km; }}
+                    onCdUpdate={coords => { cdRef.current = coords; }}
+                  />
+                </div>
+                <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
+                  KiosClub · Sistema de Enrutamiento v4.3 · {Object.keys(tiendas).length} tiendas
+                </footer>
               </div>
-            </div>
-          ) : (
-            <InputSection
-              flota={flota} conductores={conductores}
-              modo={modo} grps={grps} calT={sortedCalT}
-              supervisor={supervisor} fecha={fecha}
-              manualText={manualText} errors={errors}
-              dnom={DNOM}
-              tiendas={tiendas} gps={gps} cd={cdRef.current}
-              manualAsignaciones={manualAsignaciones}
-              paradasAdicionales={paradasAdicionales}
-              onOpenParadas={handleOpenParadas}
-              onModo={m => setModo(m)}
-              onToggleGroup={handleToggleGroup}
-              onToggleChip={handleToggleChip}
-              onUpdateChip={handleUpdateChip}
-              onConductorChange={handleConductorChange}
-              onAgregarConductor={handleAgregarConductor}
-              onSupervisor={setSupervisor}
-              onFecha={setFecha}
-              onManual={setManualText}
-              onAsignaciones={setManualAsignaciones}
-              onCalcular={handleCalcular}
-              onCalcularManual={handleCalcularManual}
-              onLimpiar={handleLimpiar}
-              onEliminarParada={handleEliminarParada}
-            />
-          )
-        ) : (
-          <div className="h-full overflow-y-auto">
-            <div className="max-w-[1100px] mx-auto px-3.5 py-5">
-              <ResultsSection
-                results={results}
-                supervisor={supervisor}
-                fecha={fecha}
-                tiendas={(results.extTiendas || tiendas) as Parameters<typeof ResultsSection>[0]['tiendas']}
-                gps={results.extGps || gps}
-                cd={cdRef.current}
-                flota={flota}
-                onLimpiar={handleLimpiar}
-                onVolver={handleVolverAEdicion}
-                onGenerarPDF={handleGenerarPDF}
-                onGuardarHistorial={handleGuardarHistorial}
-                onChoferChange={handleChoferChange}
-                historialStatus={historialStatus}
-                historialMsg={historialMsg}
-                onKmTotalReal={km => { kmTotalRealRef.current = km; }}
-                onCdUpdate={coords => { cdRef.current = coords; }}
-              />
-            </div>
-            <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
-              KiosClub · Sistema de Enrutamiento v4.3 · {Object.keys(tiendas).length} tiendas
-            </footer>
-          </div>
-        )}
+            ) : comparisonData ? (
+              <div className="h-full overflow-y-auto">
+                <div className="px-3.5 py-5">
+                  <ComparisonView
+                    data={comparisonData}
+                    gps={comparisonData.extGps || gps}
+                    cd={cdRef.current}
+                    tiendas={(comparisonData.extTiendas || tiendas) as Record<string, TiendaInfo>}
+                    onUsar={handleUsarRuta}
+                    onVolver={handleVolverEditar}
+                  />
+                </div>
+              </div>
+            ) : undefined
+          }
+        />
       </main>
 
       <ParadasAdicionales
