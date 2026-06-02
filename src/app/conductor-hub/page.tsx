@@ -59,12 +59,25 @@ export default function ConductorHubPage() {
   const [salidaId,     setSalidaId]     = useState<number | null>(null);  // ruta_id en confirmación
   const [salidaTemp,   setSalidaTemp]   = useState('');
   const [salidaLoading, setSalidaLoading] = useState(false);
+  // Vehículo refrigerado
+  const [esRefrigerado, setEsRefrigerado] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(PATENTE_KEY);
     if (saved) { setPatente(saved); void cargar(saved); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!patente) return;
+    fetch('/api/flota')
+      .then(r => r.json())
+      .then(({ flota }) => {
+        const v = flota?.find((v: { p: string; refrigerado: boolean }) => v.p === patente);
+        setEsRefrigerado(v?.refrigerado === true);
+      })
+      .catch(() => {});
+  }, [patente]);
 
   const cargar = useCallback(async (pat: string) => {
     setLoading(true);
@@ -392,24 +405,31 @@ export default function ConductorHubPage() {
                             <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                               🚀 Confirmar salida del CD
                             </div>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 12, lineHeight: 1.6 }}>
-                              Opcional: registra la temperatura si la carga es refrigerada o congelada.
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                              <input
-                                type="number"
-                                step="0.1"
-                                inputMode="decimal"
-                                placeholder="Temp. °C (opcional)"
-                                value={salidaTemp}
-                                onChange={e => setSalidaTemp(e.target.value)}
-                                style={{
-                                  flex: 1, padding: '9px 12px', borderRadius: 10,
-                                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
-                                  color: '#fff', fontSize: 14, outline: 'none',
-                                }}
-                              />
-                            </div>
+                            {esRefrigerado && (
+                              <>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8, lineHeight: 1.6 }}>
+                                  Registra la temperatura de salida de la carga.
+                                </div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10 }}>
+                                  🌡️ Requerido para vehículo refrigerado
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    inputMode="decimal"
+                                    placeholder="Temp. °C"
+                                    value={salidaTemp}
+                                    onChange={e => setSalidaTemp(e.target.value)}
+                                    style={{
+                                      flex: 1, padding: '9px 12px', borderRadius: 10,
+                                      background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                                      color: '#fff', fontSize: 14, outline: 'none',
+                                    }}
+                                  />
+                                </div>
+                              </>
+                            )}
                             <div style={{ display: 'flex', gap: 8 }}>
                               <button
                                 onClick={() => { setSalidaId(null); setSalidaTemp(''); }}
