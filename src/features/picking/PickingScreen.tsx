@@ -1836,7 +1836,7 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'estadisticas' | 'historial' | 'configuracion'>('monitoreo');
+  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion'>('monitoreo');
 
   // Resizable left panel
   const [leftWidth, setLeftWidth] = useState<number>(() => {
@@ -2666,22 +2666,22 @@ export function PickingScreen() {
             style={{ background: '#fff', borderBottom: '1.5px solid #F0F2F5' }}>
             <div className="flex gap-1 p-1 rounded-[14px]" style={{ background: '#F3F4F6' }}>
               {([
-                { key: 'monitoreo',     label: 'MONITOREO',     icon: '🖥️' },
-                { key: 'historial',     label: 'HISTORIAL',     icon: '🕐' },
-                { key: 'estadisticas',  label: 'ESTADÍSTICAS',  icon: '📈' },
-                { key: 'configuracion', label: 'CONFIG',        icon: '⚙️' },
-              ] as { key: typeof rightTab; label: string; icon: string }[]).map(tab => {
+                { key: 'monitoreo',     label: 'MONITOREO'   },
+                { key: 'actividad',     label: 'ACTIVIDAD'   },
+                { key: 'historial',     label: 'HISTORIAL'   },
+                { key: 'estadisticas',  label: 'ESTADÍSTICAS'},
+                { key: 'configuracion', label: 'CONFIG'      },
+              ] as { key: typeof rightTab; label: string }[]).map(tab => {
                 const active = rightTab === tab.key;
                 return (
                   <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 text-[11px] font-black tracking-[0.5px] cursor-pointer transition-all rounded-[10px]"
+                    className="flex-1 flex items-center justify-center py-2 px-1 text-[10px] font-black tracking-[0.4px] cursor-pointer transition-all rounded-[10px]"
                     style={{
                       background: active ? '#fff' : 'transparent',
                       color: active ? '#D97706' : '#9CA3AF',
                       boxShadow: active ? '0 1px 5px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04)' : 'none',
                     }}>
-                    <span className="text-[15px]">{tab.icon}</span>
-                    <span>{tab.label}</span>
+                    {tab.label}
                   </button>
                 );
               })}
@@ -2691,6 +2691,19 @@ export function PickingScreen() {
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
             <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} />
+          )}
+
+          {/* ── Tab content: Actividad ── */}
+          {rightTab === 'actividad' && (
+            <div className="flex-1 overflow-y-auto min-h-0 py-2">
+              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
+              {Object.keys(otherSupervisors).length === 0 && nameChanges.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-text-3">
+                  <div className="text-[48px] mb-3 opacity-30">👥</div>
+                  <div className="text-[15px] font-semibold">Sin actividad registrada hoy</div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* ── Tab content: Historial ── */}
@@ -2712,7 +2725,6 @@ export function PickingScreen() {
           {/* ── Tab content: Monitoreo ── */}
           {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
-              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="text-[56px] mb-4">🏪</div>
                 <div className="font-barlow-condensed text-[24px] font-bold text-text-2 mb-2">Selecciona una o más tiendas</div>
@@ -2728,7 +2740,6 @@ export function PickingScreen() {
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto min-h-0">
-            <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
             <TurnoSummary
               allGroups={allGroups}
               pickerPallets={pickerPallets}
