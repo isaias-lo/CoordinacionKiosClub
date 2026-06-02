@@ -8,7 +8,6 @@ import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from 
 import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
-import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
@@ -600,23 +599,6 @@ export function StepForm() {
       !!alto && parseFloat(alto) > 0 &&
       (tipo === 'Pallet' || (!!largo && parseFloat(largo) > 0 && !!ancho && parseFloat(ancho) > 0))
     ));
-
-  /* ── Resumen helpers ── */
-  const buildSummaryString = () =>
-    activeTiendas.map(([cod, it]) => {
-      const p  = it.filter(i => i.tipo === 'Pallet').length;
-      const b  = it.filter(i => i.tipo === 'Bulto').length;
-      const c  = it.filter(i => i.tipo === 'Contenedor').length;
-      const ch = it.filter(i => i.tipo === 'Chocolate').length;
-      return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : '', c > 0 ? `${c}C` : '', ch > 0 ? `${ch}CH` : ''].filter(Boolean).join('+')}`;
-    }).join(', ');
-
-  const registrar = () => {
-    if (!activeTiendas.length) { showToast('No hay items para registrar', '#D97706'); return; }
-    flushPending(); // persist data before writing to Sheets
-    sheetsSantiagoWrite(items, regimen!);
-    showToast(`✓ Registrado · ${buildSummaryString()}`, '#16A34A');
-  };
 
   const enrutar = () => {
     const rutasInput = activeTiendas.map(([cod, it]) => ({
@@ -1485,11 +1467,6 @@ export function StepForm() {
             onClick={() => setView('list')}
             className="lg:hidden w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
             title="Volver">←</button>
-          <button onClick={registrar} disabled={activeTiendas.length === 0}
-            className="flex-1 py-3.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[18px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:bg-red-dark"
-            style={{ boxShadow: activeTiendas.length > 0 ? '0 4px 16px rgba(211,47,47,0.30)' : 'none' }}>
-            ↑ Registrar despacho
-          </button>
           {activeTiendas.length > 0 && (
             <button onClick={enrutar}
               className="w-12 flex items-center justify-center py-3.5 bg-navy text-white border-none rounded-card text-[18px] cursor-pointer active:bg-navy-dark transition-all"

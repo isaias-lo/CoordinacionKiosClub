@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
 import { pushSessionState } from '@/lib/userSessionState';
 import { useAuth } from '@/components/AuthProvider';
-import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
@@ -62,12 +61,6 @@ export function StepResumen() {
     } catch {}
     localStorage.setItem(SANTIAGO_TERMINADO_KEY,
       new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
-  };
-
-  const registrar = () => {
-    if (!activeTiendas.length) { showToast('No hay items para registrar', '#D97706'); return; }
-    sheetsSantiagoWrite(items, regimen!);
-    showToast(`✓ Registrado · ${buildSummaryString()}`, '#16A34A');
   };
 
   const startEdit = (cod: string, idx: number) => {
@@ -341,13 +334,6 @@ export function StepResumen() {
           className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
           title="Nuevo despacho">
           🗑
-        </button>
-        <button
-          onClick={registrar}
-          disabled={activeTiendas.length === 0}
-          className="flex-1 py-3.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[18px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:bg-red-dark"
-          style={{ boxShadow: activeTiendas.length > 0 ? '0 4px 16px rgba(211,47,47,0.30)' : 'none' }}>
-          ↑ Registrar despacho
         </button>
         <button
           onClick={() => {

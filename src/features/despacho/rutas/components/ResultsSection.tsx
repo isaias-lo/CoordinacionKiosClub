@@ -142,7 +142,7 @@ export default function ResultsSection({
           disabled={historialStatus === 'loading'}
           className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
         >
-          {historialStatus === 'loading' ? '⏳ Guardando...' : '📊 Guardar Historial'}
+          {historialStatus === 'loading' ? '⏳ Registrando...' : '📊 REGISTRAR DESPACHO'}
         </button>
         {historialMsg && (
           <div

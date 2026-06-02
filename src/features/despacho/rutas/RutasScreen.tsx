@@ -928,6 +928,32 @@ export default function RutasScreen() {
         body:    JSON.stringify({ table: 'despacho_rm', records: rmRecords }),
       }).catch(() => {});
     }
+
+    // También registra en Supabase historial_despacho
+    const totalPallets = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
+    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b, 0), 0);
+    const totalTiendas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c))).size;
+    const totalRutas   = results.rutas.length;
+    const kmTotal      = results.rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0);
+
+    fetch('/api/historial-despacho', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fecha,
+        supervisor,
+        totalTiendas,
+        totalPallets,
+        totalBultos,
+        totalRutas,
+        kmTotal,
+        resumen: results.rutas.map(r => ({
+          patente:   r.v.p,
+          conductor: r._choferAsignado || r.v.ch,
+          tiendas:   r.ts.map(t => t.c),
+        })),
+      }),
+    }).catch(err => console.error('[historial-despacho]', err));
   }
 
   // ── Driver change ─────────────────────────────────────────────────
