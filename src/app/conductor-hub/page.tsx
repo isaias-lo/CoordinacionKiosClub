@@ -18,6 +18,8 @@ interface RutaData {
   id: number; codigo_ruta: string; fecha: string;
   chofer: string; patente: string; bodega_origen: string; estado: string;
   token_qr?: string;
+  pioneta_1?: string | null;
+  pioneta_2?: string | null;
   ruta_tiendas: TiendaRuta[];
   ruta_guias:   GuiaRuta[];
 }
@@ -309,6 +311,11 @@ export default function ConductorHubPage() {
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
                       {r.chofer} · {r.ruta_tiendas.length} tienda{r.ruta_tiendas.length !== 1 ? 's' : ''} · {totalP}P {totalB}B
                     </div>
+                    {(r.pioneta_1 || r.pioneta_2) && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        Pionetas: {[r.pioneta_1, r.pioneta_2].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                     <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700, color: '#fff', background: estadoCol }}>

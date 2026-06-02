@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Truck, Users, Plus, Trash2, Save, X, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { Truck, Users, Plus, Trash2, Save, X, ChevronDown, ChevronUp, AlertCircle, Edit2 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Pioneta { id: string; nombre: string; telefono?: string; empresa?: string; }
+interface Conductor { id: number; nombre: string; telefono?: string; empresa?: string; }
 
 interface RutaTienda { store_cod: string; orden: number; pallets: number; bultos: number; }
 
@@ -93,7 +94,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
   }
 
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', marginBottom: 20 }}>
+    <div style={{ background: '#1e293b', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 20 }}>
       <div style={{ background: 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Users size={18} color="rgba(255,255,255,0.8)" />
         <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 15, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
@@ -112,18 +113,18 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
           </div>
         )}
         {pionetas.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8FAFF', borderRadius: 10, padding: '8px 12px' }}>
+          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#1F2937' }}>{p.nombre}</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#F1F5F9' }}>{p.nombre}</div>
               {(p.telefono || p.empresa) && (
-                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
                   {[p.telefono, p.empresa].filter(Boolean).join(' · ')}
                 </div>
               )}
             </div>
             <button
               onClick={() => handleDelete(p.id, p.nombre)}
-              style={{ background: 'rgba(239,68,68,0.08)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#EF4444', display: 'flex', alignItems: 'center' }}>
+              style={{ background: 'rgba(239,68,68,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#F87171', display: 'flex', alignItems: 'center' }}>
               <Trash2 size={14} />
             </button>
           </div>
@@ -131,7 +132,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
       </div>
 
       {/* Add form */}
-      <div style={{ borderTop: '1px solid #F1F5F9', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           <input
             value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
@@ -143,7 +144,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
             value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
             style={inputStyle} />
         </div>
-        {error && <div style={{ fontSize: 12, color: '#EF4444' }}>{error}</div>}
+        {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
         <button
           onClick={handleAdd} disabled={adding || !nombre.trim()}
           style={{ ...btnPrimary, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
@@ -155,24 +156,181 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
   );
 }
 
+// ── Sub-component: Gestionar Conductores ──────────────────────────────────────
+function GestionarConductores({ conductores, onRefresh }: { conductores: Conductor[]; onRefresh: () => void }) {
+  const [nombre,    setNombre]    = useState('');
+  const [telefono,  setTelefono]  = useState('');
+  const [empresa,   setEmpresa]   = useState('');
+  const [adding,    setAdding]    = useState(false);
+  const [error,     setError]     = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editNombre,   setEditNombre]   = useState('');
+  const [editTelefono, setEditTelefono] = useState('');
+  const [editEmpresa,  setEditEmpresa]  = useState('');
+  const [saving,    setSaving]    = useState(false);
+
+  async function handleAdd() {
+    if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
+    setAdding(true); setError('');
+    try {
+      const res = await fetch('/api/conductores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: nombre.trim(), telefono: telefono.trim() || undefined, empresa: empresa.trim() || undefined }),
+      });
+      const json = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Error al agregar');
+      setNombre(''); setTelefono(''); setEmpresa('');
+      onRefresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error');
+    } finally { setAdding(false); }
+  }
+
+  async function handleDelete(id: number, nombre: string) {
+    if (!confirm(`¿Eliminar a "${nombre}" del catálogo de conductores?`)) return;
+    await fetch(`/api/conductores?id=${id}`, { method: 'DELETE' });
+    onRefresh();
+  }
+
+  function startEdit(c: Conductor) {
+    setEditingId(c.id);
+    setEditNombre(c.nombre);
+    setEditTelefono(c.telefono ?? '');
+    setEditEmpresa(c.empresa ?? '');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditNombre(''); setEditTelefono(''); setEditEmpresa('');
+  }
+
+  async function handleSaveEdit(id: number) {
+    if (!editNombre.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/conductores', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, nombre: editNombre.trim(), telefono: editTelefono || null, empresa: editEmpresa || null }),
+      });
+      const json = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar');
+      cancelEdit();
+      onRefresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error al guardar');
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 20 }}>
+      <div style={{ background: 'linear-gradient(135deg,#064E3B,#065F46)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Truck size={18} color="rgba(255,255,255,0.8)" />
+        <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 15, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          Catálogo de Conductores
+        </span>
+        <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, color: '#fff' }}>
+          {conductores.length}
+        </span>
+      </div>
+
+      {/* List */}
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
+        {conductores.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0' }}>
+            Sin conductores en el catálogo
+          </div>
+        )}
+        {conductores.map(c => (
+          <div key={c.id}>
+            {editingId === c.id ? (
+              <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <input value={editNombre} onChange={e => setEditNombre(e.target.value)} placeholder="Nombre *" style={inputStyle} />
+                  <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono" style={inputStyle} />
+                  <input value={editEmpresa} onChange={e => setEditEmpresa(e.target.value)} placeholder="Empresa" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={cancelEdit} style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <X size={12} /> Cancelar
+                  </button>
+                  <button onClick={() => void handleSaveEdit(c.id)} disabled={saving || !editNombre.trim()}
+                    style={{ ...btnSuccess, opacity: saving || !editNombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Save size={12} /> {saving ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#F1F5F9' }}>{c.nombre}</div>
+                  {(c.telefono || c.empresa) && (
+                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
+                      {[c.telefono, c.empresa].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => startEdit(c)}
+                  style={{ background: 'rgba(59,130,246,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#60A5FA', display: 'flex', alignItems: 'center' }}>
+                  <Edit2 size={14} />
+                </button>
+                <button
+                  onClick={() => void handleDelete(c.id, c.nombre)}
+                  style={{ background: 'rgba(239,68,68,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#F87171', display: 'flex', alignItems: 'center' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add form */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <input
+            value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
+            style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} />
+          <input
+            value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
+            style={inputStyle} />
+          <input
+            value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
+            style={inputStyle} />
+        </div>
+        {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
+        <button
+          onClick={handleAdd} disabled={adding || !nombre.trim()}
+          style={{ ...btnSuccess, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+          <Plus size={14} />
+          {adding ? 'Agregando…' : 'Agregar Conductor'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Sub-component: Ruta Card ───────────────────────────────────────────────────
 function RutaCard({
-  ruta, edit, pionetas, onChange, onSave, onReset,
+  ruta, edit, pionetas, conductores, onChange, onSave, onReset,
 }: {
-  ruta:     Ruta;
-  edit:     EditState;
-  pionetas: Pioneta[];
-  onChange: (field: keyof EditState, value: string) => void;
-  onSave:   () => void;
-  onReset:  () => void;
+  ruta:       Ruta;
+  edit:       EditState;
+  pionetas:   Pioneta[];
+  conductores: Conductor[];
+  onChange:   (field: keyof EditState, value: string) => void;
+  onSave:     () => void;
+  onReset:    () => void;
 }) {
   const dirty    = isDirty(ruta, edit);
   const modified = ruta.flota_modificada;
 
   return (
     <div style={{
-      background: '#fff', borderRadius: 18, border: `2px solid ${modified ? 'rgba(249,115,22,0.35)' : '#E5E7EB'}`,
-      overflow: 'hidden', boxShadow: modified ? '0 4px 20px rgba(249,115,22,0.10)' : '0 2px 12px rgba(0,0,0,0.05)',
+      background: '#1e293b', borderRadius: 18, border: `2px solid ${modified ? 'rgba(249,115,22,0.45)' : 'rgba(255,255,255,0.08)'}`,
+      overflow: 'hidden', boxShadow: modified ? '0 4px 20px rgba(249,115,22,0.15)' : '0 2px 12px rgba(0,0,0,0.2)',
     }}>
       {/* Card header */}
       <div style={{ background: modified ? 'linear-gradient(135deg,#EA580C,#F97316)' : 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -197,9 +355,9 @@ function RutaCard({
 
       {/* Tiendas chips */}
       {ruta.ruta_tiendas.length > 0 && (
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid #F1F5F9', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[...ruta.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => (
-            <span key={t.store_cod} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(27,42,107,0.07)', color: '#1B2A6B', fontFamily: 'monospace' }}>
+            <span key={t.store_cod} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(45,63,140,0.35)', color: '#93C5FD', fontFamily: 'monospace' }}>
               {t.store_cod}
             </span>
           ))}
@@ -209,18 +367,23 @@ function RutaCard({
       {/* Edit fields */}
       <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* Conductor */}
+        {/* Conductor — dropdown from catalogue */}
         <div>
           <label style={labelStyle}>Conductor</label>
           {modified && ruta.chofer_original && ruta.chofer_original !== edit.chofer && (
-            <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 4 }}>
-              Original: <span style={{ color: '#6B7280', fontWeight: 600 }}>{ruta.chofer_original}</span>
+            <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>
+              Original: <span style={{ color: '#CBD5E1', fontWeight: 600 }}>{ruta.chofer_original}</span>
             </div>
           )}
-          <input
-            value={edit.chofer} onChange={e => onChange('chofer', e.target.value)}
-            placeholder="Nombre del conductor"
-            style={inputStyle} />
+          <select
+            value={edit.chofer}
+            onChange={e => onChange('chofer', e.target.value)}
+            style={selectStyle}>
+            <option value="">— Sin asignar —</option>
+            {conductores.map(c => (
+              <option key={c.id} value={c.nombre}>{c.nombre}</option>
+            ))}
+          </select>
         </div>
 
         {/* Pionetas */}
@@ -242,7 +405,7 @@ function RutaCard({
         </div>
 
         {edit.error && (
-          <div style={{ fontSize: 12, color: '#EF4444', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{ fontSize: 12, color: '#F87171', display: 'flex', gap: 6, alignItems: 'center' }}>
             <AlertCircle size={12} /> {edit.error}
           </div>
         )}
@@ -251,7 +414,7 @@ function RutaCard({
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
           {dirty && (
             <button onClick={onReset} disabled={edit.saving}
-              style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 5 }}>
+              style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 5 }}>
               <X size={13} /> Cancelar
             </button>
           )}
@@ -268,43 +431,91 @@ function RutaCard({
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13, color: '#1F2937',
-  border: '1.5px solid #E5E7EB', outline: 'none', background: '#fff', boxSizing: 'border-box',
+  width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13, color: '#F1F5F9',
+  border: '1.5px solid rgba(255,255,255,0.12)', outline: 'none', background: 'rgba(255,255,255,0.06)', boxSizing: 'border-box',
 };
 
 const selectStyle: React.CSSProperties = {
-  ...inputStyle, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+  ...inputStyle, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
   backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
 };
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 10, fontWeight: 700, color: '#9CA3AF',
+  display: 'block', fontSize: 10, fontWeight: 700, color: '#94A3B8',
   textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5,
 };
 
 const btnPrimary: React.CSSProperties = {
-  padding: '8px 18px', borderRadius: 10, border: 'none', background: '#1B2A6B',
+  padding: '8px 18px', borderRadius: 10, border: 'none', background: '#2563EB',
   color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
 };
 
-const btnSecondary: React.CSSProperties = {
-  padding: '8px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB',
-  background: '#F9FAFB', color: '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+const btnSuccess: React.CSSProperties = {
+  padding: '8px 18px', borderRadius: 10, border: 'none', background: '#16A34A',
+  color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
 };
+
+const btnGray: React.CSSProperties = {
+  padding: '8px 14px', borderRadius: 10, border: '1.5px solid rgba(255,255,255,0.12)',
+  background: 'rgba(255,255,255,0.06)', color: '#CBD5E1', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+};
+
+// ── Density toggle ─────────────────────────────────────────────────────────────
+type Density = 1 | 2 | 3 | 4;
+const DENSITY_KEY = 'controlFlotaDensidad';
+
+function DensityToggle({ value, onChange }: { value: Density; onChange: (d: Density) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginRight: 2 }}>Col</span>
+      {([1, 2, 3, 4] as Density[]).map(d => (
+        <button key={d} onClick={() => onChange(d)}
+          style={{
+            width: 28, height: 28, borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            background: value === d ? '#2563EB' : 'rgba(255,255,255,0.06)',
+            color: value === d ? '#fff' : '#94A3B8',
+            transition: 'all 0.15s',
+          }}>
+          {d}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function ControlFlotaPanel() {
-  const [fecha,       setFecha]       = useState(() => new Date().toISOString().slice(0, 10));
-  const [rutas,       setRutas]       = useState<Ruta[]>([]);
-  const [pionetas,    setPionetas]    = useState<Pioneta[]>([]);
-  const [edits,       setEdits]       = useState<Record<number, EditState>>({});
-  const [loading,     setLoading]     = useState(false);
-  const [showGestion, setShowGestion] = useState(false);
+  const [fecha,        setFecha]       = useState(() => new Date().toISOString().slice(0, 10));
+  const [rutas,        setRutas]       = useState<Ruta[]>([]);
+  const [pionetas,     setPionetas]    = useState<Pioneta[]>([]);
+  const [conductores,  setConductores] = useState<Conductor[]>([]);
+  const [edits,        setEdits]       = useState<Record<number, EditState>>({});
+  const [loading,      setLoading]     = useState(false);
+  const [showGestion,  setShowGestion] = useState(false);
+  const [density,      setDensity]     = useState<Density>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(DENSITY_KEY);
+      const n = saved ? parseInt(saved) : 1;
+      if (n === 1 || n === 2 || n === 3 || n === 4) return n as Density;
+    }
+    return 1;
+  });
+
+  function handleDensity(d: Density) {
+    setDensity(d);
+    localStorage.setItem(DENSITY_KEY, String(d));
+  }
 
   const loadPionetas = useCallback(async () => {
     const res  = await fetch('/api/pionetas');
     const json = await res.json() as { data?: Pioneta[] };
     setPionetas(json.data ?? []);
+  }, []);
+
+  const loadConductores = useCallback(async () => {
+    const res  = await fetch('/api/conductores');
+    const json = await res.json() as { conductores?: Conductor[] };
+    setConductores(json.conductores ?? []);
   }, []);
 
   const loadRutas = useCallback(async (f: string) => {
@@ -320,6 +531,7 @@ export function ControlFlotaPanel() {
 
   useEffect(() => { loadRutas(fecha); }, [fecha, loadRutas]);
   useEffect(() => { loadPionetas(); }, [loadPionetas]);
+  useEffect(() => { loadConductores(); }, [loadConductores]);
 
   function handleChange(rutaId: number, field: keyof EditState, value: string) {
     setEdits(prev => ({ ...prev, [rutaId]: { ...prev[rutaId], [field]: value } }));
@@ -352,37 +564,57 @@ export function ControlFlotaPanel() {
 
   const modifiedCount = rutas.filter(r => r.flota_modificada).length;
 
+  // Grid columns CSS based on density
+  const gridCols = density === 1
+    ? 'repeat(1, 1fr)'
+    : density === 2
+    ? 'repeat(2, 1fr)'
+    : density === 3
+    ? 'repeat(3, 1fr)'
+    : 'repeat(4, 1fr)';
+
   return (
-    <div className="flex-1 overflow-y-auto bg-bg" style={{ padding: '16px 16px 32px' }}>
+    <div className="flex-1 overflow-y-auto" style={{ background: '#0f172a', padding: '16px 16px 32px' }}>
 
       {/* Top bar */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fecha</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fecha</span>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
             style={{ ...inputStyle, width: 'auto', padding: '7px 12px' }} />
         </div>
         {modifiedCount > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(249,115,22,0.10)', borderRadius: 20, padding: '4px 12px', border: '1px solid rgba(249,115,22,0.25)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(249,115,22,0.12)', borderRadius: 20, padding: '4px 12px', border: '1px solid rgba(249,115,22,0.30)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F97316', display: 'inline-block' }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#EA580C' }}>{modifiedCount} modificada{modifiedCount !== 1 ? 's' : ''}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#FB923C' }}>{modifiedCount} modificada{modifiedCount !== 1 ? 's' : ''}</span>
           </div>
         )}
-        <button
-          onClick={() => setShowGestion(v => !v)}
-          style={{ ...btnSecondary, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Users size={14} />
-          Pionetas
-          {showGestion ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-        </button>
+
+        {/* Density selector */}
+        <DensityToggle value={density} onChange={handleDensity} />
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setShowGestion(v => !v)}
+            style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Users size={14} />
+            Gestionar
+            {showGestion ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        </div>
       </div>
 
-      {/* Gestionar Pionetas (collapsible) */}
-      {showGestion && <GestionarPionetas pionetas={pionetas} onRefresh={loadPionetas} />}
+      {/* Gestión (collapsible) — Pionetas + Conductores */}
+      {showGestion && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 4 }}>
+          <GestionarPionetas pionetas={pionetas} onRefresh={loadPionetas} />
+          <GestionarConductores conductores={conductores} onRefresh={loadConductores} />
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: '#64748B', fontSize: 14 }}>
           Cargando rutas…
         </div>
       )}
@@ -391,20 +623,21 @@ export function ControlFlotaPanel() {
       {!loading && rutas.length === 0 && (
         <div style={{ textAlign: 'center', padding: '64px 24px' }}>
           <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.2 }}>🚚</div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#374151', marginBottom: 4 }}>Sin rutas para esta fecha</div>
-          <div style={{ fontSize: 13, color: '#9CA3AF' }}>No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#E2E8F0', marginBottom: 4 }}>Sin rutas para esta fecha</div>
+          <div style={{ fontSize: 13, color: '#64748B' }}>No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
         </div>
       )}
 
-      {/* Rutas */}
+      {/* Rutas grid */}
       {!loading && rutas.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 14 }}>
           {rutas.map(ruta => (
             <RutaCard
               key={ruta.id}
               ruta={ruta}
               edit={edits[ruta.id] ?? emptyEdit(ruta)}
               pionetas={pionetas}
+              conductores={conductores}
               onChange={(f, v) => handleChange(ruta.id, f, v)}
               onSave={() => handleSave(ruta)}
               onReset={() => handleReset(ruta)}
