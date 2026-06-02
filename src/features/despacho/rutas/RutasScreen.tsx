@@ -102,6 +102,7 @@ export default function RutasScreen() {
       return data.savedAt && data.savedAt !== today && data.stores?.length > 0 ? data : null;
     } catch { return null; }
   });
+  const [showPendientesModal, setShowPendientesModal] = useState(false);
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -711,6 +712,19 @@ export default function RutasScreen() {
     const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas);
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
+
+    // Guardar tiendas sin asignar en localStorage para segunda vuelta
+    try {
+      const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
+      const noAsignadas = ts.filter(t => !asignadas.has(t.c) && !t.c.startsWith('_P'));
+      if (noAsignadas.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem('despacho_pendientes', JSON.stringify({
+          savedAt: today,
+          stores: noAsignadas.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? 0) })),
+        }));
+      }
+    } catch {}
   }
 
   // ── Calculate manual routes ───────────────────────────────────────
@@ -905,7 +919,13 @@ export default function RutasScreen() {
       kmTotalReal: kmTotalRealRef.current,
       sheetsWebAppUrl: SHEETS_WEB_APP_URL,
       onStart:   () => { setHistorialStatus('loading'); setHistorialMsg(''); },
-      onSuccess: msg => { setHistorialMsg(msg); setHistorialStatus('success'); },
+      onSuccess: msg => {
+        setHistorialMsg(msg);
+        setHistorialStatus('success');
+        // Limpiar pendientes al registrar despacho exitosamente
+        try { localStorage.removeItem('despacho_pendientes'); } catch {}
+        setPendientes(null);
+      },
       onWarn:    msg => { setHistorialMsg(msg); setHistorialStatus('warn'); },
       onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
     });
@@ -997,46 +1017,87 @@ export default function RutasScreen() {
         onEliminarVehiculo={handleEliminarVehiculo}
       />
 
-      {/* Banner pendientes de día anterior */}
-      {pendientes && (
-        <div className="max-w-[1100px] mx-auto px-3.5 pt-4">
-          <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-kios2 px-4 py-3">
-            <span className="text-xl flex-shrink-0">📦</span>
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-amber-900 text-[14px]">
-                {pendientes.stores.length} tienda{pendientes.stores.length !== 1 ? 's' : ''} pendiente{pendientes.stores.length !== 1 ? 's' : ''} del {pendientes.savedAt}
+      {/* Botón compacto de pendientes del día anterior */}
+      {pendientes && pendientes.stores.length > 0 && (
+        <div className="max-w-[1100px] mx-auto px-3.5 pt-3 flex">
+          <button
+            onClick={() => setShowPendientesModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
+          >
+            📦 Tiendas pendientes de ayer ({pendientes.stores.length})
+          </button>
+        </div>
+      )}
+
+      {/* Modal de pendientes */}
+      {showPendientesModal && pendientes && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) setShowPendientesModal(false); }}
+        >
+          <div className="bg-[#1a1a1a] border border-amber-500/30 rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-amber-500/20 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-amber-300">Tiendas pendientes</div>
+                <div className="text-xs text-amber-500/70 mt-0.5">{pendientes.savedAt}</div>
               </div>
-              <div className="text-amber-700 text-[12px] mt-0.5">
-                {pendientes.stores.map(s => `${s.c} (${s.p > 0 ? `${s.p}P` : ''}${s.b > 0 ? `${s.b}B` : ''})`).join(' · ')}
-              </div>
+              <button
+                onClick={() => setShowPendientesModal(false)}
+                className="text-white/40 hover:text-white/80 text-lg leading-none transition-colors"
+              >
+                ×
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setCalT(prev => {
-                  const next = { ...prev };
-                  pendientes.stores.forEach(s => {
-                    if (!next[s.c]) {
-                      next[s.c] = { on: true, p: s.p, b: s.b, c: 0, ch: s.ch ?? 0, g: 'manual' };
-                    } else {
-                      next[s.c] = { ...next[s.c], on: true, p: s.p, b: s.b, ch: s.ch ?? 0 };
-                    }
+
+            {/* Lista de tiendas */}
+            <div className="px-5 py-4 max-h-64 overflow-y-auto space-y-2">
+              {pendientes.stores.map(s => (
+                <div key={s.c} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+                  <span className="font-mono text-sm font-bold text-white">{s.c}</span>
+                  <div className="flex gap-2 text-xs text-white/60">
+                    {s.p > 0 && <span>{s.p}P</span>}
+                    {s.b > 0 && <span>{s.b}B</span>}
+                    {s.ch > 0 && <span>{s.ch}CH</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Acciones */}
+            <div className="px-5 py-4 border-t border-white/10 flex gap-3">
+              <button
+                onClick={() => {
+                  setCalT(prev => {
+                    const next = { ...prev };
+                    pendientes.stores.forEach(s => {
+                      if (!next[s.c]) {
+                        next[s.c] = { on: true, p: s.p, b: s.b, c: 0, ch: s.ch ?? 0, g: 'pendiente' };
+                      } else {
+                        next[s.c] = { ...next[s.c], on: true, p: s.p, b: s.b, ch: s.ch ?? 0, g: 'pendiente' };
+                      }
+                    });
+                    return next;
                   });
-                  return next;
-                });
-                localStorage.removeItem('despacho_pendientes');
-                setPendientes(null);
-              }}
-              className="flex-shrink-0 px-3 py-1.5 bg-amber-500 text-white rounded-kios2 text-[13px] font-bold cursor-pointer active:scale-95 transition-all">
-              Incluir
-            </button>
-            <button
-              onClick={() => {
-                localStorage.removeItem('despacho_pendientes');
-                setPendientes(null);
-              }}
-              className="flex-shrink-0 px-3 py-1.5 bg-white border border-amber-300 text-amber-700 rounded-kios2 text-[13px] font-bold cursor-pointer active:scale-95 transition-all">
-              Descartar
-            </button>
+                  localStorage.removeItem('despacho_pendientes');
+                  setPendientes(null);
+                  setShowPendientesModal(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all"
+              >
+                ✅ Incluir en esta sesión
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('despacho_pendientes');
+                  setPendientes(null);
+                  setShowPendientesModal(false);
+                }}
+                className="py-2.5 px-4 rounded-xl text-sm font-semibold bg-white/10 text-white/70 hover:bg-white/20 active:scale-95 transition-all"
+              >
+                🗑 Descartar
+              </button>
+            </div>
           </div>
         </div>
       )}
