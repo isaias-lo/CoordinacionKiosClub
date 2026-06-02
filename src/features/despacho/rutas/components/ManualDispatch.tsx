@@ -283,7 +283,7 @@ export default function ManualDispatch({
       {tiendasCount > 0 && (
         <div
           data-dropzone="pool"
-          className={`rounded-kios border-[1.5px] transition-all ${dragOver === 'pool' ? 'border-kred bg-kred/[0.04] shadow-[0_0_0_2px_rgba(212,43,43,0.1)]' : 'border-black/[0.09] bg-kbg'}`}
+          className={`rounded-kios border-[1.5px] transition-all mb-3 ${dragOver === 'pool' ? 'border-kred bg-kred/[0.04] shadow-[0_0_0_2px_rgba(212,43,43,0.1)]' : 'border-black/[0.09] bg-kbg'}`}
           onDragOver={e => { e.preventDefault(); setDragOver('pool'); }}
           onDrop={e => { e.preventDefault(); if (dragging) ejecutarDrop('pool', dragging); }}
           onDragLeave={handleDragLeave}
@@ -328,7 +328,7 @@ export default function ManualDispatch({
           No hay vehículos activos.
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {flotaDisp.map((v) => {
           const realIdx = flota.findIndex(fv => fv.p === v.p);
           const m       = getMetrics(v.p, v);

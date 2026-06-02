@@ -993,7 +993,7 @@ export default function RutasScreen() {
   }
 
   return (
-    <div className="despacho-inner h-screen overflow-y-auto bg-kbg font-sans text-ktext" style={{ paddingBottom: '60px' }}>
+    <div className="despacho-inner h-full flex flex-col overflow-hidden bg-kbg font-sans text-ktext">
       <Header
         updateStatus={updateStatus}
         tiendas={tiendas}
@@ -1017,12 +1017,12 @@ export default function RutasScreen() {
         onEliminarVehiculo={handleEliminarVehiculo}
       />
 
-      {/* Botón compacto de pendientes del día anterior */}
+      {/* Pill de pendientes del día anterior */}
       {pendientes && pendientes.stores.length > 0 && (
-        <div className="max-w-[1100px] mx-auto px-3.5 pt-3 flex">
+        <div className="flex-shrink-0 px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/20 flex">
           <button
             onClick={() => setShowPendientesModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
+            className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
           >
             📦 Tiendas pendientes de ayer ({pendientes.stores.length})
           </button>
@@ -1102,17 +1102,21 @@ export default function RutasScreen() {
         </div>
       )}
 
-      <main className="max-w-[1100px] mx-auto px-3.5 py-5">
+      <main className="flex-1 overflow-hidden">
         {!results ? (
           comparisonData ? (
-            <ComparisonView
-              data={comparisonData}
-              gps={comparisonData.extGps || gps}
-              cd={cdRef.current}
-              tiendas={(comparisonData.extTiendas || tiendas) as Record<string, TiendaInfo>}
-              onUsar={handleUsarRuta}
-              onVolver={handleVolverEditar}
-            />
+            <div className="h-full overflow-y-auto">
+              <div className="max-w-[1100px] mx-auto px-3.5 py-5">
+                <ComparisonView
+                  data={comparisonData}
+                  gps={comparisonData.extGps || gps}
+                  cd={cdRef.current}
+                  tiendas={(comparisonData.extTiendas || tiendas) as Record<string, TiendaInfo>}
+                  onUsar={handleUsarRuta}
+                  onVolver={handleVolverEditar}
+                />
+              </div>
+            </div>
           ) : (
             <InputSection
               flota={flota} conductores={conductores}
@@ -1141,30 +1145,33 @@ export default function RutasScreen() {
             />
           )
         ) : (
-          <ResultsSection
-            results={results}
-            supervisor={supervisor}
-            fecha={fecha}
-            tiendas={(results.extTiendas || tiendas) as Parameters<typeof ResultsSection>[0]['tiendas']}
-            gps={results.extGps || gps}
-            cd={cdRef.current}
-            flota={flota}
-            onLimpiar={handleLimpiar}
-            onVolver={handleVolverAEdicion}
-            onGenerarPDF={handleGenerarPDF}
-            onGuardarHistorial={handleGuardarHistorial}
-            onChoferChange={handleChoferChange}
-            historialStatus={historialStatus}
-            historialMsg={historialMsg}
-            onKmTotalReal={km => { kmTotalRealRef.current = km; }}
-            onCdUpdate={coords => { cdRef.current = coords; }}
-          />
+          <div className="h-full overflow-y-auto">
+            <div className="max-w-[1100px] mx-auto px-3.5 py-5">
+              <ResultsSection
+                results={results}
+                supervisor={supervisor}
+                fecha={fecha}
+                tiendas={(results.extTiendas || tiendas) as Parameters<typeof ResultsSection>[0]['tiendas']}
+                gps={results.extGps || gps}
+                cd={cdRef.current}
+                flota={flota}
+                onLimpiar={handleLimpiar}
+                onVolver={handleVolverAEdicion}
+                onGenerarPDF={handleGenerarPDF}
+                onGuardarHistorial={handleGuardarHistorial}
+                onChoferChange={handleChoferChange}
+                historialStatus={historialStatus}
+                historialMsg={historialMsg}
+                onKmTotalReal={km => { kmTotalRealRef.current = km; }}
+                onCdUpdate={coords => { cdRef.current = coords; }}
+              />
+            </div>
+            <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
+              KiosClub · Sistema de Enrutamiento v4.3 · {Object.keys(tiendas).length} tiendas
+            </footer>
+          </div>
         )}
       </main>
-
-      <footer className="no-print border-t border-black/[0.09] mt-9 py-[18px] text-center text-[11px] text-kmuted font-mono">
-        KiosClub · Centro de Distribución · Sistema de Enrutamiento v4.3 · {Object.keys(tiendas).length} tiendas
-      </footer>
 
       <ParadasAdicionales
         isOpen={paradasOpen}
