@@ -656,7 +656,18 @@ export function StepForm() {
     const existing = items[t.cod] || [];
     const hasManualPreset = presets[t.cod] &&
       (presets[t.cod].pallets > 0 || presets[t.cod].bultos > 0 || (presets[t.cod].contenedores ?? 0) > 0 || (presets[t.cod].chocolates ?? 0) > 0);
-    if (!hasManualPreset && existing.length === 0) {
+    if (existing.length > 0) {
+      // Bug A fix: when re-opening a store with existing items, initialise the preset bar
+      // to reflect the counts already saved so the inputs show the correct numbers.
+      const existP  = existing.filter(i => i.tipo === 'Pallet').length;
+      const existB  = existing.filter(i => i.tipo === 'Bulto').length;
+      const existC  = existing.filter(i => i.tipo === 'Contenedor').length;
+      const existCH = existing.filter(i => i.tipo === 'Chocolate').length;
+      setPresets(prev => ({
+        ...prev,
+        [t.cod]: { pallets: existP, bultos: existB, contenedores: existC, chocolates: existCH },
+      }));
+    } else if (!hasManualPreset) {
       const slots = pickingSlots[t.cod] ?? [];
       const pkP   = slots.filter(s => s.tipo === 'P').length;
       const pkC   = slots.filter(s => s.tipo === 'C').length;
@@ -887,8 +898,10 @@ export function StepForm() {
     }
     const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
     const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
-    const savedRows = formRows.filter(r => r.tipo === tipo2 && r.saved).length;
-    const delta = (Math.max(0, n - existing - savedRows)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
+    // Bug B fix: saved form rows are already counted in `existing` (ADD_ITEM was dispatched
+    // when they were saved), so subtracting savedRows would double-count them and force the
+    // user to enter N + (N+1) instead of just N+1 to open one extra form row.
+    const delta = (Math.max(0, n - existing)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
     if (delta > 0) {
       const newRows: FormRow[] = [];
       for (let i = 0; i < delta; i++)
