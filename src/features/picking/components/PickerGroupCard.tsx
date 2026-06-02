@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
@@ -65,34 +66,28 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     setSelectedIndices(new Set());
   };
 
-  const borderColor = allDone || isPrinted ? 'rgba(22,163,74,0.45)' : 'rgba(26,37,80,0.12)';
-  const shadow      = allDone || isPrinted ? '0 2px 16px rgba(22,163,74,0.14)' : '0 1px 8px rgba(26,37,80,0.07)';
+  const borderColor = allDone || isPrinted ? '#BBF7D0' : '#E2E8F0';
+  const shadow      = '0 1px 3px rgba(0,0,0,0.06)';
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
       {/* Card header */}
-      <div className="px-5 py-3 border-b flex items-center justify-between"
-        style={{
-          background:  allDone || isPrinted ? 'rgba(22,163,74,0.05)' : 'rgba(26,37,80,0.02)',
-          borderColor: allDone || isPrinted ? 'rgba(22,163,74,0.18)' : '#F0F2F5',
-        }}>
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="font-mono text-[14px] font-bold text-navy bg-[rgba(26,37,80,0.09)] px-3 py-1 rounded-lg shrink-0">{group.key}</span>
-          {displayName && <span className="text-[16px] font-semibold text-text truncate">{displayName}</span>}
-          {allDone && <span className="text-[13px] font-bold text-[#16A34A] shrink-0">✓ Realizado</span>}
-          {isPrinted && (
-            <span className="text-[12px] font-bold shrink-0 px-2.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.35)' }}>
-              🖨 Ya impreso
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {allCategories.map(c => (
-            <span key={c} className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-[rgba(26,37,80,0.07)] text-navy">{c}</span>
-          ))}
-          <span className="text-[13px] text-text-3">{group.operations.length} op.</span>
-        </div>
+      <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: '#E2E8F0', background: '#fff' }}>
+        <span className="font-mono text-[12px] font-semibold shrink-0 px-2 py-0.5 rounded"
+          style={{ background: '#F1F5F9', color: '#475569' }}>{group.key}</span>
+        {displayName && <span className="text-[14px] font-semibold text-slate-700 truncate flex-1">{displayName}</span>}
+        {!displayName && <span className="flex-1" />}
+        {allCategories.map(c => (
+          <span key={c} className="text-[11px] font-medium px-2 py-0.5 rounded shrink-0"
+            style={{ background: '#F1F5F9', color: '#64748B' }}>{c}</span>
+        ))}
+        <span className="text-[11px] text-slate-400 shrink-0">{group.operations.length} op.</span>
+        {(allDone || isPrinted) && (
+          <span className="text-[11px] font-medium shrink-0 px-2 py-0.5 rounded"
+            style={{ background: '#DCFCE7', color: '#16A34A' }}>
+            {isPrinted ? 'Impreso' : 'Realizado'}
+          </span>
+        )}
       </div>
 
       {/* Split body */}
@@ -133,9 +128,9 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 </div>
                 {op.state !== 'done' && (
                   <button onClick={() => onRefreshOp(op)} disabled={refreshingId === op.id}
-                    className="text-[13px] shrink-0 border rounded-full px-2.5 py-1.5 cursor-pointer disabled:opacity-40"
-                    style={{ borderColor: 'rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                    {refreshingId === op.id ? '⏳' : '↻'}
+                    className="shrink-0 border rounded p-1.5 cursor-pointer disabled:opacity-40"
+                    style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                    <RotateCcw size={12} className={refreshingId === op.id ? 'animate-spin' : ''} />
                   </button>
                 )}
               </div>
@@ -159,35 +154,36 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
           {/* Contadores P / C / B / CH */}
           <div>
-            <label className="text-[10px] font-black text-text-3 uppercase tracking-[1.5px] block mb-2">Unidades a despachar</label>
+            <label className="text-[11px] font-medium text-slate-400 block mb-2">Unidades a despachar</label>
             <div className="flex gap-2">
               {([
-                { tipo: 'P'  as PickerType, label: 'PALLETS',      color: '#1E3A8A' },
-                { tipo: 'C'  as PickerType, label: 'CONTENEDORES', color: '#6B21A8' },
-                { tipo: 'B'  as PickerType, label: 'BULTOS',       color: '#065F46' },
-                { tipo: 'CH' as PickerType, label: 'CHOCOLATES',   color: '#92400E' },
-              ]).map(({ tipo, label, color }) => {
-                const count = palletsByTipo[tipo] ?? 0;
+                { tipo: 'P'  as PickerType, label: 'Pallets'       },
+                { tipo: 'C'  as PickerType, label: 'Contenedores'  },
+                { tipo: 'B'  as PickerType, label: 'Bultos'        },
+                { tipo: 'CH' as PickerType, label: 'Chocolates'    },
+              ]).map(({ tipo, label }) => {
+                const count  = palletsByTipo[tipo] ?? 0;
+                const active = count > 0;
                 return (
-                  <div key={tipo} className="flex-1 flex flex-col items-center gap-2 py-3 px-1.5 rounded-2xl border-2 transition-all"
+                  <div key={tipo}
+                    className="flex-1 flex flex-col items-center gap-2 py-2.5 px-1.5 rounded border transition-all"
                     style={{
-                      borderColor: count > 0 ? color : 'rgba(26,37,80,0.09)',
-                      background:  count > 0 ? `linear-gradient(160deg, ${color}12 0%, ${color}06 100%)` : 'rgba(249,250,251,0.7)',
-                      boxShadow:   count > 0 ? `0 4px 14px ${color}22, inset 0 1px 0 rgba(255,255,255,0.8)` : '0 1px 3px rgba(0,0,0,0.04)',
+                      borderColor: active ? '#1E40AF' : '#E2E8F0',
+                      background: '#fff',
                     }}>
                     <div className="text-center leading-none">
-                      <div className="text-[14px] font-black leading-none" style={{ color: count > 0 ? color : '#CBD5E1' }}>{tipo}</div>
-                      <div className="text-[8px] font-black uppercase tracking-wide mt-0.5" style={{ color: count > 0 ? `${color}99` : '#CBD5E1' }}>{label}</div>
+                      <div className="text-[13px] font-bold" style={{ color: active ? '#1E40AF' : '#CBD5E1' }}>{tipo}</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5">{label}</div>
                     </div>
-                    <div className="flex items-center gap-1.5 w-full justify-center">
+                    <div className="flex items-center gap-1 w-full justify-center">
                       <button onClick={() => onTipoPalletsChange(tipo, Math.max(0, count - 1))}
-                        className="w-8 h-8 rounded-full font-bold text-[18px] flex items-center justify-center cursor-pointer transition-all active:scale-95"
-                        style={{ border: '1.5px solid rgba(26,37,80,0.14)', color: '#6B7280', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>−</button>
-                      <span className="w-8 text-center text-[26px] font-barlow-condensed font-black leading-none"
-                        style={{ color: count > 0 ? color : '#D1D5DB' }}>{count}</span>
+                        className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer border"
+                        style={{ borderColor: '#E2E8F0', color: '#94A3B8', background: '#F8FAFC' }}>−</button>
+                      <span className="w-8 text-center text-[22px] font-bold leading-none"
+                        style={{ color: active ? '#1E293B' : '#CBD5E1' }}>{count}</span>
                       <button onClick={() => onTipoPalletsChange(tipo, count + 1)}
-                        className="w-8 h-8 rounded-full font-bold text-[18px] flex items-center justify-center cursor-pointer transition-all active:scale-95"
-                        style={{ border: `1.5px solid ${color}`, color: '#fff', background: color, boxShadow: `0 2px 8px ${color}50` }}>+</button>
+                        className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer"
+                        style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>+</button>
                     </div>
                   </div>
                 );
@@ -201,8 +197,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
           {!allDone ? (
             <div className="h-full min-h-[180px] flex flex-col gap-3">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[13px] font-bold text-amber-700">⚠ Operaciones pendientes</span>
-                <span className="text-[11px] text-text-3">Completa todas para generar etiquetas</span>
+                <AlertTriangle size={13} className="text-slate-400 shrink-0" />
+                <span className="text-[12px] font-medium text-slate-500">Operaciones pendientes — completa todas para imprimir</span>
               </div>
               {group.operations.map(op => {
                 const info = STATE_INFO[op.state] ?? STATE_INFO.draft;
@@ -255,23 +251,24 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   {selectedIndices.size > 0 && (
                     <>
                       <button onClick={() => setSelectedIndices(new Set())}
-                        className="text-[12px] cursor-pointer px-3 py-1.5 rounded-xl border transition-all"
-                        style={{ borderColor: 'rgba(37,99,235,0.3)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                        ✕ Limpiar
+                        className="text-[12px] cursor-pointer px-2.5 py-1.5 rounded border transition-all"
+                        style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                        Limpiar
                       </button>
                       <button onClick={handlePrintSelected}
-                        className="flex items-center gap-1.5 text-[13px] font-bold cursor-pointer px-3 py-1.5 rounded-xl transition-all active:scale-95"
-                        style={{ background: 'linear-gradient(135deg, #1E3A8A, #2563EB)', color: '#fff' }}>
-                        🖨 Imprimir {selectedIndices.size}
+                        className="flex items-center gap-1.5 text-[12px] font-medium cursor-pointer px-3 py-1.5 rounded transition-all active:scale-95"
+                        style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>
+                        <Printer size={13} /> {selectedIndices.size}
                       </button>
                     </>
                   )}
                   <button onClick={onPrint}
-                    className="flex items-center gap-1.5 text-[14px] font-bold cursor-pointer px-4 py-2 rounded-xl transition-all active:scale-95"
+                    className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer px-3.5 py-1.5 rounded transition-all active:scale-95"
                     style={isPrinted
-                      ? { background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.4)' }
-                      : { background: 'linear-gradient(135deg, #78350F, #D97706)', color: '#fff' }}>
-                    {isPrinted ? '↺ Re-imprimir todas' : selectedIndices.size > 0 ? '🖨 Todas' : '🖨 Imprimir'}
+                      ? { background: '#fff', color: '#16A34A', border: '1px solid #BBF7D0' }
+                      : { background: '#1E40AF', color: '#fff', border: 'none' }}>
+                    <Printer size={13} />
+                    {isPrinted ? 'Re-imprimir' : selectedIndices.size > 0 ? 'Todas' : 'Imprimir'}
                   </button>
                 </div>
               </div>

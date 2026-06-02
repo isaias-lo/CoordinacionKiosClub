@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
+import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
@@ -793,42 +794,43 @@ export function PickingScreen() {
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 print:hidden"
-        style={{ background: 'linear-gradient(135deg, #78350F 0%, #D97706 100%)', boxShadow: '0 2px 16px rgba(217,119,6,0.35)' }}>
-        <button className="lg:hidden border-none bg-white/15 text-white text-[14px] cursor-pointer font-barlow px-3 py-2 rounded-full"
+      <div className="flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
+        style={{ background: '#1E293B', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <button className="lg:hidden border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
+          style={{ background: 'rgba(255,255,255,0.07)' }}
           onClick={() => panelView === 'planilla' ? setPanelView('stores') : router.push('/')}>
           {panelView === 'planilla' ? '← Tiendas' : '← Inicio'}
         </button>
-        <button className="hidden lg:inline-flex border-none bg-white/15 text-white text-[14px] cursor-pointer font-barlow px-3 py-2 rounded-full"
+        <button className="hidden lg:inline-flex border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
+          style={{ background: 'rgba(255,255,255,0.07)' }}
           onClick={() => router.push('/')}>← Inicio</button>
 
         <div className="flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[24px] font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
-          <div className="text-[12px] text-white/50 uppercase tracking-widest truncate">
-            {selectedCods.length > 0
-              ? `${selectedCods.join(' · ')} · ${todayLabel}`
-              : `Supervisión · ${profile?.full_name ?? ''}`}
+          <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight tracking-wide">
+            Picking
+            {selectedCods.length > 0 && (
+              <span className="ml-2 text-[13px] font-normal text-white/40 tracking-normal">{selectedCods.join(' · ')}</span>
+            )}
           </div>
+          {!selectedCods.length && (
+            <div className="text-[11px] text-white/35 truncate">{profile?.full_name ?? ''} · {todayLabel}</div>
+          )}
         </div>
 
-        {/* Auto-refresh indicator */}
-        {selectedCods.length > 0 && (
-          <div className="hidden lg:flex items-center gap-1 text-[11px] text-white/40 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            auto ↻3min
+        {selectedCods.length > 0 && lastRefresh && (
+          <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/30 shrink-0">
+            <RefreshCw size={11} />
+            {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
 
         {hasBarcodes && (
           <button onClick={printAll}
-            className="border-none bg-white/20 text-white font-bold text-[15px] cursor-pointer px-4 py-2 rounded-xl flex items-center gap-2 shrink-0">
-            🖨 Imprimir {printableLabels.length} etiqueta{printableLabels.length !== 1 ? 's' : ''}
+            className="flex items-center gap-2 border-none cursor-pointer font-semibold text-[13px] px-3.5 py-1.5 rounded shrink-0"
+            style={{ background: '#2563EB', color: '#fff' }}>
+            <Printer size={14} />
+            Imprimir {printableLabels.length}
           </button>
-        )}
-        {lastRefresh && (
-          <div className="text-[11px] text-white/50 hidden lg:block shrink-0">
-            ↻ {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
-          </div>
         )}
         <ProfilePill />
       </div>
@@ -837,15 +839,15 @@ export function PickingScreen() {
       {notifCount > 0 && (
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 print:hidden"
           style={{ background: 'rgba(255,149,0,0.10)', borderBottom: '1px solid rgba(255,149,0,0.25)' }}>
-          <span style={{ fontSize: 16, flexShrink: 0 }}>🔔</span>
-          <div className="flex-1 text-[12px]" style={{ color: '#D97706', fontWeight: 600 }}>
-            Control Interno realizó {notifCount} cambio{notifCount !== 1 ? 's' : ''} al calendario — revisalos en Config. Tiendas
+          <Bell size={14} className="text-amber-600 shrink-0" />
+          <div className="flex-1 text-[12px] text-amber-700 font-medium">
+            Control Interno realizó {notifCount} cambio{notifCount !== 1 ? 's' : ''} al calendario
           </div>
           <button
             onClick={() => router.push('/despacho/config-tiendas')}
-            className="text-[11px] font-bold px-3 py-1.5 rounded-lg shrink-0 cursor-pointer"
-            style={{ background: 'rgba(255,149,0,0.18)', border: '1px solid rgba(255,149,0,0.40)', color: '#D97706' }}>
-            Ver
+            className="text-[12px] font-semibold px-3 py-1 rounded shrink-0 cursor-pointer border"
+            style={{ borderColor: 'rgba(217,119,6,0.35)', color: '#92400E', background: 'transparent' }}>
+            Revisar
           </button>
         </div>
       )}
@@ -892,10 +894,10 @@ export function PickingScreen() {
               dragStartWidthRef.current = leftWidth;
             }}
           >
-            <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
+            <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
             <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => (
-                <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#D97706' }} />
+                <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
               ))}
             </div>
           </div>
@@ -909,36 +911,34 @@ export function PickingScreen() {
 
           {/* Offline banner */}
           {!isOnline && (
-            <div className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-amber-800 bg-amber-50 border-b border-amber-200 print:hidden flex-shrink-0">
-              <span>⚠ Sin conexión — los cambios no se están guardando</span>
+            <div className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-amber-800 bg-amber-50 border-b border-amber-200 print:hidden flex-shrink-0">
+              <AlertTriangle size={13} className="shrink-0" />
+              <span>Sin conexión — los cambios no se están guardando</span>
             </div>
           )}
 
           {/* ── Tab bar ── */}
-          <div className="px-4 py-2.5 flex-shrink-0 print:hidden"
-            style={{ background: '#fff', borderBottom: '1.5px solid #F0F2F5' }}>
-            <div className="flex gap-1 p-1 rounded-[14px]" style={{ background: '#F3F4F6' }}>
-              {([
-                { key: 'monitoreo',     label: 'MONITOREO'   },
-                { key: 'actividad',     label: 'ACTIVIDAD'   },
-                { key: 'historial',     label: 'HISTORIAL'   },
-                { key: 'estadisticas',  label: 'ESTADÍSTICAS'},
-                { key: 'configuracion', label: 'CONFIG'      },
-              ] as { key: typeof rightTab; label: string }[]).map(tab => {
-                const active = rightTab === tab.key;
-                return (
-                  <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                    className="flex-1 flex items-center justify-center py-2 px-1 text-[10px] font-black tracking-[0.4px] cursor-pointer transition-all rounded-[10px]"
-                    style={{
-                      background: active ? '#fff' : 'transparent',
-                      color: active ? '#D97706' : '#9CA3AF',
-                      boxShadow: active ? '0 1px 5px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04)' : 'none',
-                    }}>
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="flex flex-shrink-0 print:hidden"
+            style={{ background: '#fff', borderBottom: '1px solid #E2E8F0' }}>
+            {([
+              { key: 'monitoreo',     label: 'Monitoreo'   },
+              { key: 'actividad',     label: 'Actividad'   },
+              { key: 'historial',     label: 'Historial'   },
+              { key: 'estadisticas',  label: 'Estadísticas'},
+              { key: 'configuracion', label: 'Config'      },
+            ] as { key: typeof rightTab; label: string }[]).map(tab => {
+              const active = rightTab === tab.key;
+              return (
+                <button key={tab.key} onClick={() => setRightTab(tab.key)}
+                  className="flex-1 py-2.5 text-[12px] font-medium cursor-pointer transition-colors border-none bg-transparent"
+                  style={{
+                    color: active ? '#1E40AF' : '#64748B',
+                    borderBottom: active ? '2px solid #1E40AF' : '2px solid transparent',
+                  }}>
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
           {/* ── Tab content: Estadísticas ── */}
@@ -952,8 +952,8 @@ export function PickingScreen() {
               <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
               {Object.keys(otherSupervisors).length === 0 && nameChanges.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-text-3">
-                  <div className="text-[48px] mb-3 opacity-30">👥</div>
-                  <div className="text-[15px] font-semibold">Sin actividad registrada hoy</div>
+                  <div className="mb-4 opacity-20"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                  <div className="text-[14px] font-medium text-slate-400">Sin actividad registrada hoy</div>
                 </div>
               )}
             </div>
@@ -979,10 +979,10 @@ export function PickingScreen() {
           {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
-                <div className="text-[56px] mb-4">🏪</div>
-                <div className="font-barlow-condensed text-[24px] font-bold text-text-2 mb-2">Selecciona una o más tiendas</div>
-                <div className="text-[15px] text-text-3 max-w-sm mx-auto">
-                  Selecciona varias tiendas para gestionar sus operaciones en conjunto. El estado se guarda durante la sesión.
+                <div className="mb-4 text-slate-200"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+                <div className="text-[16px] font-semibold text-slate-500 mb-1.5">Selecciona una o más tiendas</div>
+                <div className="text-[13px] text-slate-400 max-w-sm mx-auto">
+                  Elige las tiendas del panel izquierdo para gestionar sus operaciones.
                 </div>
                 {!hasOdoo && (
                   <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-xl px-4 py-3 text-[14px] text-red text-left inline-block">
@@ -1004,19 +1004,19 @@ export function PickingScreen() {
               {/* Filtro de sección + columnas por fila */}
               <div className="mt-4 mb-3 print:hidden flex flex-wrap items-end gap-6">
                 <div>
-                  <div className="text-[11px] font-bold text-text-3 uppercase tracking-widest mb-2">Sección del supervisor</div>
-                  <div className="flex gap-2">
+                  <div className="text-[11px] font-medium text-slate-400 mb-2">Sección</div>
+                  <div className="flex gap-1.5">
                     {([
                       { key: 'all',         label: 'Todas' },
                       { key: 'aseo-comida', label: 'Aseo y Comida' },
                       { key: 'hogar',       label: 'Hogar' },
                     ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
                       <button key={key} onClick={() => setSectionFilter(key)}
-                        className="px-4 py-2 rounded-xl text-[13px] font-bold cursor-pointer transition-all active:scale-95"
+                        className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
                         style={{
-                          background: sectionFilter === key ? 'linear-gradient(135deg, #78350F, #D97706)' : 'rgba(26,37,80,0.06)',
-                          color: sectionFilter === key ? '#fff' : '#6B7280',
-                          border: `1px solid ${sectionFilter === key ? 'rgba(217,119,6,0.5)' : 'rgba(26,37,80,0.12)'}`,
+                          background: sectionFilter === key ? '#1E40AF' : '#fff',
+                          color:      sectionFilter === key ? '#fff'    : '#64748B',
+                          borderColor: sectionFilter === key ? '#1E40AF' : '#E2E8F0',
                         }}>
                         {label}
                       </button>
@@ -1042,9 +1042,10 @@ export function PickingScreen() {
                 <button
                   onClick={() => selectedCods.forEach(cod => void fetchOpsForStore(cod))}
                   disabled={loadingCods.length > 0}
-                  className="text-[14px] font-semibold cursor-pointer border rounded-full px-4 py-2 transition-all disabled:opacity-40"
-                  style={{ borderColor: 'rgba(217,119,6,0.4)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>
-                  {loadingCods.length > 0 ? '⏳ Cargando…' : '↻ Actualizar todo'}
+                  className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer border rounded px-3 py-1.5 transition-all disabled:opacity-40"
+                  style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                  <RefreshCw size={12} className={loadingCods.length > 0 ? 'animate-spin' : ''} />
+                  {loadingCods.length > 0 ? 'Cargando…' : 'Actualizar'}
                 </button>
               </div>
 
@@ -1056,7 +1057,7 @@ export function PickingScreen() {
                 return (
                   <div key={cod} className="mb-8">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
-                      <span className="font-barlow-condensed text-[20px] font-bold text-navy uppercase tracking-wide">{cod}</span>
+                      <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
                       <span className="text-[16px] text-text-2 font-semibold">{getStoreName(cod)}</span>
                       {allDoneStore && (
                         <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"

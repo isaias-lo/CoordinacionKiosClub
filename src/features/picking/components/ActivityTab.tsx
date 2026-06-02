@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Users, ChevronDown, ChevronUp, Tag } from 'lucide-react';
 import type { SupervisorPresence, PickerNameChange, PickerGroup } from '../picking-types';
 import { TIPO_LABEL, relativeTime } from '../picking-utils';
 
@@ -19,40 +20,33 @@ export function SupervisorActivityPanel({ supervisors, now, nameChanges }: Activ
   if (list.length === 0 && nameChanges.length === 0) return null;
 
   return (
-    <div className="mx-4 mt-4 rounded-2xl overflow-hidden print:hidden"
-      style={{
-        background: 'linear-gradient(135deg, rgba(37,99,235,0.07) 0%, rgba(37,99,235,0.02) 100%)',
-        boxShadow: '0 4px 20px rgba(37,99,235,0.10), inset 0 1px 0 rgba(255,255,255,0.85)',
-        border: '1px solid rgba(37,99,235,0.18)',
-      }}>
+    <div className="mx-4 mt-4 rounded overflow-hidden print:hidden"
+      style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
       <button type="button" onClick={() => setCollapsed(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 cursor-pointer border-none bg-transparent">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-[12px] flex items-center justify-center text-[22px] flex-shrink-0"
-            style={{ background: 'rgba(37,99,235,0.13)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 2px 6px rgba(37,99,235,0.18)' }}>
-            👥
+          <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0"
+            style={{ background: '#F1F5F9' }}>
+            <Users size={16} className="text-slate-500" />
           </div>
           <div className="text-left">
-            <div className="text-[10px] font-black uppercase tracking-[1.5px] leading-none mb-0.5" style={{ color: 'rgba(37,99,235,0.55)' }}>EN TURNO</div>
-            <div className="font-black text-[17px] leading-tight" style={{ color: '#1E3A8A' }}>
-              {list.length === 0
-                ? 'Sin supervisores activos'
-                : list.length === 1 ? '1 Supervisor Activo' : `${list.length} Supervisores Activos`}
+            <div className="text-[11px] text-slate-400 leading-none mb-0.5">En turno</div>
+            <div className="font-semibold text-[14px] text-slate-700">
+              {list.length === 0 ? 'Sin supervisores activos' : list.length === 1 ? '1 supervisor activo' : `${list.length} supervisores activos`}
             </div>
           </div>
           <div className="flex gap-1.5 ml-1 flex-wrap">
             {list.map(s => (
               <span key={s.userId}
-                className="inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1 rounded-full"
-                style={{ background: 'rgba(37,99,235,0.13)', color: '#1D4ED8', boxShadow: '0 1px 4px rgba(37,99,235,0.18)' }}>
-                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0 inline-block"
-                  style={{ boxShadow: '0 0 0 3px rgba(34,197,94,0.25)' }} />
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded"
+                style={{ background: '#EFF6FF', color: '#1E40AF' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0 inline-block" />
                 {s.name.split(' ')[0]}
               </span>
             ))}
           </div>
         </div>
-        <span className="text-[15px] text-[#9CA3AF] ml-2">{collapsed ? '⌄' : '⌃'}</span>
+        {collapsed ? <ChevronDown size={15} className="text-slate-400 ml-2" /> : <ChevronUp size={15} className="text-slate-400 ml-2" />}
       </button>
 
       {!collapsed && (
@@ -95,11 +89,13 @@ export function SupervisorActivityPanel({ supervisors, now, nameChanges }: Activ
       {nameChanges.length > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(37,99,235,0.12)' }}>
           <button type="button" onClick={() => setNamesCollapsed(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-2.5 cursor-pointer border-none bg-transparent">
-            <div className="text-[10px] font-black uppercase tracking-[1.2px]" style={{ color: 'rgba(37,99,235,0.55)' }}>
-              Cambios de nombre hoy · {nameChanges.length}
+            className="w-full flex items-center justify-between px-4 py-2.5 cursor-pointer border-none"
+            style={{ background: '#F8FAFC' }}>
+            <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
+              <Tag size={12} />
+              Cambios de nombre · {nameChanges.length}
             </div>
-            <span className="text-[12px] text-[#9CA3AF]">{namesCollapsed ? '⌄' : '⌃'}</span>
+            {namesCollapsed ? <ChevronDown size={13} className="text-slate-400" /> : <ChevronUp size={13} className="text-slate-400" />}
           </button>
           {!namesCollapsed && (
             <div className="px-4 pb-3 flex flex-col gap-1.5">
@@ -140,8 +136,8 @@ export function TurnoSummary({ allGroups, pickerPallets, printedKeys, selectedCo
   if (totalPickers === 0) return null;
 
   return (
-    <div className="mx-4 mt-3 mb-1 rounded-2xl overflow-hidden print:hidden flex-shrink-0"
-      style={{ background: '#fff', border: '1px solid rgba(26,37,80,0.1)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+    <div className="mx-4 mt-3 mb-1 rounded overflow-hidden print:hidden flex-shrink-0"
+      style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
       <div className="flex items-center gap-4 px-4 pt-3 pb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1.5">
@@ -154,7 +150,7 @@ export function TurnoSummary({ allGroups, pickerPallets, printedKeys, selectedCo
             <div className="h-full rounded-full transition-all duration-700"
               style={{
                 width: `${pct}%`,
-                background: pct === 100 ? 'linear-gradient(90deg,#16A34A,#22C55E)' : 'linear-gradient(90deg,#D97706,#F59E0B)',
+                background: pct === 100 ? '#16A34A' : '#1E40AF',
               }} />
           </div>
         </div>
