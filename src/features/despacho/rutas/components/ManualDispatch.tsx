@@ -283,26 +283,39 @@ export default function ManualDispatch({
       {tiendasCount > 0 && (
         <div
           data-dropzone="pool"
-          className={`rounded-kios border-[1.5px] transition-all mb-3 ${dragOver === 'pool' ? 'border-kred bg-kred/[0.04] shadow-[0_0_0_2px_rgba(212,43,43,0.1)]' : 'border-black/[0.09] bg-kbg'}`}
+          style={{
+            boxShadow: dragOver === 'pool'
+              ? '0 0 0 2px rgba(212,43,43,0.25), 0 2px 12px rgba(212,43,43,0.10)'
+              : '0 1px 3px rgba(0,0,0,0.06)',
+          }}
+          className={`rounded-[14px] border-[1.5px] transition-all mb-4 ${dragOver === 'pool' ? 'border-kred bg-kred/[0.03]' : 'border-black/[0.09] bg-white'}`}
           onDragOver={e => { e.preventDefault(); setDragOver('pool'); }}
           onDrop={e => { e.preventDefault(); if (dragging) ejecutarDrop('pool', dragging); }}
           onDragLeave={handleDragLeave}
           onClick={() => { if (dragging) ejecutarDrop('pool', dragging); }}
         >
-          <div className="px-3 py-2 border-b border-black/[0.06] flex items-center gap-2">
-            <span className="text-[12px] font-bold text-ktext">Tiendas sin asignar</span>
-            {dragging && <span className="text-[10px] text-kred font-semibold">← Suelta aquí</span>}
-            <span className="text-[11px] text-kmuted ml-auto">{pool.length > 0 ? `${pool.length} restantes` : '¡Todas asignadas!'}</span>
+          <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3">
+            <div className="flex-1">
+              <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
+              {dragging && <span className="ml-2 text-[12px] text-kred font-semibold animate-pulse">← Suelta aquí</span>}
+            </div>
+            <span className={`text-[13px] font-bold ${pool.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+              {pool.length > 0 ? `${pool.length} restantes` : '✓ Todas asignadas'}
+            </span>
           </div>
-          <div className="p-3 flex flex-wrap gap-[6px] min-h-[52px]">
+          <div className="p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start">
             {pool.length === 0 && paradasPool.length === 0 ? (
-              <span className="text-[12px] text-green-600 font-semibold">✓ Todo asignado</span>
+              <div className="flex items-center gap-2 text-green-600">
+                <span className="text-[18px]">✓</span>
+                <span className="text-[13px] font-semibold">Todo asignado</span>
+              </div>
             ) : (
               <>
                 {pool.map(t => (
                   <StoreTagComp
                     key={t.c} store={t} tiendas={tiendas}
-                    isDragging={dragging?.c === t.c}                    onDragStart={e => handleDragStart(e, t, 'pool')}
+                    isDragging={dragging?.c === t.c}
+                    onDragStart={e => handleDragStart(e, t, 'pool')}
                     onDragEnd={handleDragEnd}
                     onTouchStart={e => handleTouchStart(e, t, 'pool')}
                     onRemove={null}
@@ -311,7 +324,8 @@ export default function ManualDispatch({
                 {paradasPool.map(p => (
                   <ParadaTagComp
                     key={p.id} parada={p}
-                    isDragging={dragging?.c === p.id}                    onDragStart={e => handleDragStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
+                    isDragging={dragging?.c === p.id}
+                    onDragStart={e => handleDragStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
                     onDragEnd={handleDragEnd}
                     onTouchStart={e => handleTouchStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
                     onRemove={onEliminarParada ? () => onEliminarParada(p.id) : null}
@@ -340,21 +354,30 @@ export default function ManualDispatch({
             <div
               key={v.p}
               data-dropzone={v.p}
-              className={`rounded-kios border-[1.5px] transition-all bg-white flex flex-col ${isOver ? 'border-kred shadow-[0_0_0_3px_rgba(212,43,43,0.15)]' : m.overCap ? 'border-amber-400' : 'border-black/[0.09]'}`}
+              style={{
+                boxShadow: isOver
+                  ? '0 0 0 2px rgba(212,43,43,0.25), 0 4px 20px rgba(212,43,43,0.12)'
+                  : m.overCap
+                    ? '0 2px 10px rgba(245,158,11,0.18)'
+                    : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
+              }}
+              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver ? 'border-kred' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
               onClick={() => { if (isSelected && dragging) ejecutarDrop(v.p, dragging); }}
             >
               {/* ── Cabecera: patente + conductor ── */}
-              <div className="px-2.5 pt-2.5 pb-2 border-b border-black/[0.06]">
-                <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                  <span className="font-mono font-bold text-[15px] text-ktext leading-none">{v.p}</span>
-                  {v.tlbd      && <span className="text-[8px] bg-purple-50 text-purple-600 px-1 py-px rounded-full font-bold leading-none">2ª v.</span>}
-                  {v.porton    && <span className="text-[8px] bg-blue-50 text-blue-600 px-1 py-px rounded-full font-semibold leading-none">Portón</span>}
-                  {v.refrigerado && <span className="text-[8px] bg-cyan-50 text-cyan-600 px-1 py-px rounded-full font-semibold leading-none">Frío</span>}
+              <div className="px-3 pt-3 pb-2.5 border-b border-black/[0.06]">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <span className="font-mono font-bold text-[20px] text-ktext leading-none tracking-tight">{v.p}</span>
+                  <div className="flex gap-1 flex-wrap justify-end mt-0.5">
+                    {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded-full font-bold">2ª v.</span>}
+                    {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded-full font-semibold">Portón</span>}
+                    {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded-full font-semibold">❄ Frío</span>}
+                  </div>
                 </div>
-                {v.t && <div className="text-[9px] text-kmuted/50 mb-1.5 truncate">{v.t}</div>}
+                {v.t && <div className="text-[10px] text-kmuted/60 mb-2 truncate">{v.t}</div>}
                 {conductorEditando === v.p ? (
                   <div className="flex flex-col gap-1">
                     <select
@@ -398,53 +421,55 @@ export default function ManualDispatch({
                 ) : (
                   <button
                     onClick={() => setConductorEditando(v.p)}
-                    className="flex items-center gap-1.5 w-full text-left group"
+                    className="flex items-center gap-2 w-full text-left group rounded-[8px] py-1 hover:bg-kred/[0.05] transition-colors"
                   >
-                    <span className="text-[10px] text-kmuted/40 shrink-0">👤</span>
-                    <span className="text-[11px] font-semibold text-kmuted group-hover:text-kred truncate transition-colors">
-                      {v.ch || 'Sin conductor'}
+                    <span className="text-[13px] shrink-0">👤</span>
+                    <span className="text-[12px] font-semibold text-kmuted group-hover:text-kred truncate transition-colors">
+                      {v.ch || 'Asignar conductor'}
                     </span>
                   </button>
                 )}
               </div>
 
               {/* ── Métricas: carga + km ── */}
-              <div className="px-2.5 py-2 border-b border-black/[0.06] space-y-2">
+              <div className="px-3 py-2.5 border-b border-black/[0.06] space-y-2.5">
                 {/* Capacidad */}
                 <div>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <div className="flex items-baseline gap-1">
-                      <span className={`text-[16px] font-bold leading-none ${m.overCap ? 'text-red-500' : 'text-ktext'}`}>{m.tp}</span>
-                      <span className="text-[10px] text-kmuted">/ {v.c} p</span>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-[22px] font-bold leading-none ${m.overCap ? 'text-red-500' : 'text-ktext'}`}>{m.tp}</span>
+                      <span className="text-[12px] text-kmuted font-semibold">/ {v.c} p</span>
                     </div>
-                    <span className={`text-[11px] font-bold ${m.overCap ? 'text-red-500' : m.pct > 0.85 ? 'text-amber-500' : 'text-green-600'}`}>
+                    <span className={`text-[13px] font-bold ${m.overCap ? 'text-red-500' : m.pct > 0.85 ? 'text-amber-500' : 'text-green-600'}`}>
                       {Math.round(m.pct * 100)}%{m.overCap && ' ⚠'}
                     </span>
                   </div>
-                  <div className="h-[5px] bg-kbg rounded-full overflow-hidden mb-1">
+                  <div className="h-[7px] bg-kbg rounded-full overflow-hidden mb-1.5">
                     <div className={`h-full rounded-full transition-all duration-300 ${pctColor}`} style={{ width: `${Math.min(m.pct * 100, 100)}%` }} />
                   </div>
-                  {m.tb > 0 && <div className="text-[9px] text-kmuted">{m.tb} bulto{m.tb !== 1 ? 's' : ''}</div>}
+                  {m.tb > 0 && <div className="text-[11px] text-kmuted">{m.tb} bulto{m.tb !== 1 ? 's' : ''}</div>}
                 </div>
                 {/* KM estimado */}
-                <div className="flex items-baseline gap-1">
+                <div className="flex items-center gap-2">
                   {m.kmEst > 0 ? (
                     <>
-                      <span className="text-[14px] font-bold text-ktext leading-none">~{m.kmEst}</span>
-                      <span className="text-[10px] text-kmuted">km · {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
+                      <span className="text-[15px] font-bold text-ktext leading-none">~{m.kmEst} km</span>
+                      <span className="text-[11px] text-kmuted">· {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
                     </>
                   ) : (
-                    <span className="text-[10px] text-kmuted/40 italic">Sin tiendas aún</span>
+                    <span className="text-[11px] text-kmuted/40 italic">Sin tiendas aún</span>
                   )}
                 </div>
               </div>
 
               {/* ── Tiendas asignadas ── */}
-              <div className="px-2.5 pb-2.5 pt-2 flex flex-wrap gap-[4px] min-h-[40px] flex-1">
+              <div className="px-3 pb-3 pt-2.5 flex flex-wrap gap-[5px] min-h-[56px] flex-1">
                 {stores.length === 0 ? (
-                  <span className={`text-[10px] italic transition-colors ${isOver ? 'text-kred/70' : 'text-kmuted/40'}`}>
-                    {isOver || isSelected ? '↓ Suelta aquí' : 'Arrastra aquí'}
-                  </span>
+                  <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[44px] ${isOver ? 'border-kred/50 bg-kred/[0.04]' : 'border-black/[0.12]'}`}>
+                    <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-kred' : 'text-kmuted/50'}`}>
+                      {isOver || isSelected ? '↓ Suelta aquí' : 'Arrastra tiendas aquí'}
+                    </span>
+                  </div>
                 ) : (
                   stores.map(t => {
                     const parada = paradas.find(p => p.id === t.c);
@@ -477,7 +502,10 @@ export default function ManualDispatch({
       )}
 
       {issues.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-kios2 px-3 py-2.5 text-[12px] text-amber-800 leading-relaxed">
+        <div
+          style={{ boxShadow: '0 1px 4px rgba(245,158,11,0.15)' }}
+          className="bg-amber-50 border border-amber-200 rounded-[12px] px-4 py-3 text-[13px] text-amber-800 leading-relaxed"
+        >
           ⚠️ {issues.join(' · ')}
         </div>
       )}
@@ -506,12 +534,17 @@ export default function ManualDispatch({
             onCalcular();
           }}
           disabled={issues.some(i => i.includes('excede'))}
-          className={`w-full h-[50px] rounded-kios2 text-[15px] font-bold transition-all flex items-center justify-center gap-2
+          style={!issues.some(i => i.includes('excede')) ? {
+            boxShadow: pendientesTotal > 0
+              ? '0 4px 16px rgba(245,158,11,0.35)'
+              : '0 4px 16px rgba(212,43,43,0.32)',
+          } : undefined}
+          className={`w-full h-[56px] rounded-[14px] text-[16px] font-bold transition-all flex items-center justify-center gap-2 mt-1
             ${issues.some(i => i.includes('excede'))
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
               : pendientesTotal > 0
-                ? 'bg-amber-500 text-white shadow-[0_4px_14px_rgba(245,158,11,0.35)] active:scale-[0.98]'
-                : 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)] active:scale-[0.98]'}`}
+                ? 'bg-amber-500 text-white active:scale-[0.98]'
+                : 'bg-kred text-white active:scale-[0.98]'}`}
         >
           {pendientesTotal > 0
             ? `⚠️ Calcular ruta parcial (${pendientesTotal} sin asignar)`
@@ -564,19 +597,20 @@ function StoreTagComp({ store, tiendas, isDragging, onDragStart, onDragEnd, onTo
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
-      className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] touch-manipulation ${isDragging
+      style={!isDragging ? { boxShadow: '0 1px 3px rgba(212,43,43,0.15)' } : undefined}
+      className={`flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] cursor-grab select-none transition-all border min-h-[38px] touch-manipulation ${isDragging
         ? 'opacity-30 scale-95 bg-kred/[0.05] border-kred/20'
-        : 'bg-kred/[0.07] border-kred/25 text-kred active:bg-kred/[0.15]'}`}
+        : 'bg-kred/[0.07] border-kred/[0.25] text-kred active:bg-kred/[0.15]'}`}
       title={info ? `${info.n} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b` : `${store.c} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b`}
     >
-      <span className="font-mono font-bold text-[12px]">{formatCod(store.c)}</span>
-      <span className="text-[10px] text-kred/60">{store.p}p</span>
+      <span className="font-mono font-bold text-[13px]">{formatCod(store.c)}</span>
+      <span className="text-[11px] text-kred/60 font-semibold">{store.p}p</span>
       {(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 && (
-        <span className="text-[10px] text-kred/50">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
+        <span className="text-[11px] text-kred/50 font-semibold">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
       )}
       {onRemove && (
         <button onClick={e => { e.stopPropagation(); onRemove(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          className="text-[11px] text-kred/40 hover:text-kred font-bold leading-none ml-0.5 w-[14px] h-[14px] flex items-center justify-center">×</button>
+          className="text-[13px] text-kred/40 hover:text-kred font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center">×</button>
       )}
     </div>
   );
