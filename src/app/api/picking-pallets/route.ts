@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 
 const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at';
+const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const idParam = request.nextUrl.searchParams.get('id');
   if (idParam) {
     const { data, error } = await supabaseServer()
@@ -39,6 +42,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as {
     date: string; store_cod: string; state_key: string; picker_label: string; tipo: string; contenido?: string; refs?: string;
   };
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as { id: number; tipo: string };
   const { error } = await supabaseServer()
     .from('picking_pallets')
@@ -70,6 +75,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as { id: number };
   const { error } = await supabaseServer()
     .from('picking_pallets')

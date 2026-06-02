@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { ProfilePill } from '@/components/ProfilePill';
@@ -9,6 +9,7 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, BarcodeCard, PropRow } from '@/features/despacho/shared/BarcodeCard';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { supabase } from '@/lib/supabase';
 import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
 
@@ -97,7 +98,7 @@ const SESSION_KEY         = 'picking_session_v2';
 const SECTION_FILTER_KEY  = 'picking_section_filter';
 const COLS_PER_ROW_KEY    = 'picking_cols_per_row';
 const STATS_CACHE_KEY     = 'picking_stats_cache_v1';
-const PICKER_TYPES_KEY    = `picking_types_v1_${new Date().toISOString().slice(0, 10)}`;
+
 const LABEL_CONFIG_KEY    = 'picking_label_config_v1';
 const CANONICAL_NAMES_KEY = 'picking_canonical_names_v1';
 
@@ -554,7 +555,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 
 // ─── Picker Group Card (split: form izquierda | barcodes derecha) ─────────────
 
-function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow }: {
+const PickerGroupCard = React.memo(function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums, isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow }: {
   group: PickerGroup; displayName: string; palletsByTipo: Record<string, number>;
   onNameChange: (v: string) => void; onTipoPalletsChange: (tipo: PickerType, n: number) => void;
   onRefreshOp: (op: PickingOperation) => void; onPrint: () => void; refreshingId: number | null;
@@ -881,11 +882,11 @@ function PickerGroupCard({ group, displayName, palletsByTipo, onNameChange, onTi
       </div>
     </div>
   );
-}
+});
 
 // ─── Store List Panel ─────────────────────────────────────────────────────────
 
-function StoreListPanel({ selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore }: {
+const StoreListPanel = React.memo(function StoreListPanel({ selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore }: {
   selectedCods: string[]; loadingCods: string[]; errorCods: string[];
   opsMap: Record<string, PickingOperation[]>;
   todayStores: TodayStore[]; storesLoading: boolean;
@@ -1030,7 +1031,7 @@ function StoreListPanel({ selectedCods, loadingCods, errorCods, opsMap, todaySto
       </div>
     </div>
   );
-}
+});
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
 
@@ -1319,27 +1320,21 @@ function TurnoSummary({
 
 // ─── HistorialTab ──────────────────────────────────────────────────────────────
 
-function HistorialTab({ allGroups, nameChanges }: { allGroups: PickerGroup[]; nameChanges: PickerNameChange[] }) {
-  const [records, setRecords]   = useState<PrintRecord[]>([]);
+function HistorialTab({ allGroups, nameChanges, records, onRefresh }: {
+  allGroups: PickerGroup[];
+  nameChanges: PickerNameChange[];
+  records: PrintRecord[];
+  onRefresh: () => void;
+}) {
   const [loading, setLoading]   = useState(false);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const res  = await fetch(`/api/picking-prints?date=${todayISO()}`);
-      const json = await res.json() as { data?: PrintRecord[] };
-      const sorted = [...(json.data ?? [])].sort(
-        (a, b) => new Date(a.printed_at).getTime() - new Date(b.printed_at).getTime()
-      );
-      setRecords(sorted);
-      setLoadedAt(new Date());
-    } catch { /* silent */ }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-  useRealtimeRefresh('picking_prints', load);
+    onRefresh();
+    setLoadedAt(new Date());
+    setLoading(false);
+  }, [onRefresh]);
 
   // Lookup categorías desde allGroups (cargados en memoria esta sesión)
   const catsByKey = useMemo(() => {
@@ -1838,6 +1833,26 @@ export function PickingScreen() {
   const odooConfig: OdooConfig = getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' };
   const hasOdoo = !!odooConfig.url;
 
+  // Auth token for authenticated picking API calls
+  const tokenRef = useRef<string>('');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { tokenRef.current = data.session?.access_token ?? ''; });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      tokenRef.current = s?.access_token ?? '';
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const pickingFetch = useCallback((url: string, init: RequestInit = {}): Promise<Response> =>
+    fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers as Record<string, string> | undefined),
+        Authorization: `Bearer ${tokenRef.current}`,
+      },
+    }), []);
+
   const [notifCount, setNotifCount] = useState(0);
   useEffect(() => {
     fetchNotificacionesPendientes().then(n => setNotifCount(n.length));
@@ -1859,6 +1874,19 @@ export function PickingScreen() {
   const dragStartXRef     = useRef(0);
   const dragStartWidthRef = useRef(0);
 
+  // Online/offline detection
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  useEffect(() => {
+    const handleOnline  = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online',  handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online',  handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Restaurar sesión al montar
   const session = useMemo(() => loadSession(), []);
 
@@ -1870,21 +1898,9 @@ export function PickingScreen() {
   const [todayStores, setTodayStores]   = useState<TodayStore[]>([]);
   const [storesLoading, setStoresLoading] = useState(false);
 
-  const [sectionFilter, setSectionFilter] = useState<SectionFilter>(() => {
-    if (typeof window === 'undefined') return 'all';
-    return (localStorage.getItem(SECTION_FILTER_KEY) as SectionFilter) ?? 'all';
-  });
+  const [sectionFilter, setSectionFilter] = useLocalStorage<SectionFilter>(SECTION_FILTER_KEY, 'all');
+  const [colsPerRow, setColsPerRow]       = useLocalStorage<number>(COLS_PER_ROW_KEY, 3);
 
-  const [colsPerRow, setColsPerRow] = useState<number>(() => {
-    if (typeof window === 'undefined') return 3;
-    return Number(localStorage.getItem(COLS_PER_ROW_KEY) ?? '3');
-  });
-
-  const [pickerTypes] = useState<Record<string, PickerType>>(() => {
-    if (typeof window === 'undefined') return {};
-    try { return JSON.parse(localStorage.getItem(PICKER_TYPES_KEY) ?? '{}') as Record<string, PickerType>; }
-    catch { return {}; }
-  });
 
   const [pickerDisplayNames, setPickerDisplayNames] = useState<Record<string, string>>(() => {
     const fromSession = session.pickerDisplayNames;
@@ -1961,16 +1977,8 @@ export function PickingScreen() {
 
   const [errorCods, setErrorCods]         = useState<string[]>([]);
 
-  const [labelConfig, setLabelConfig] = useState<LabelConfig>(() => {
-    if (typeof window === 'undefined') return DEFAULT_LABEL_CONFIG;
-    try { return { ...DEFAULT_LABEL_CONFIG, ...JSON.parse(localStorage.getItem(LABEL_CONFIG_KEY) ?? '{}') }; }
-    catch { return DEFAULT_LABEL_CONFIG; }
-  });
-  const [canonicalNames, setCanonicalNames] = useState<Record<string, string>>(() => {
-    if (typeof window === 'undefined') return {};
-    try { return JSON.parse(localStorage.getItem(CANONICAL_NAMES_KEY) ?? '{}') as Record<string, string>; }
-    catch { return {}; }
-  });
+  const [labelConfig, setLabelConfig]     = useLocalStorage<LabelConfig>(LABEL_CONFIG_KEY, DEFAULT_LABEL_CONFIG);
+  const [canonicalNames, setCanonicalNames] = useLocalStorage<Record<string, string>>(CANONICAL_NAMES_KEY, {});
 
   // ── Shared session state: picker names + types visible across all supervisor desktops ──
   const [sessionStateRows, setSessionStateRows] = useState<SessionStateRow[]>([]);
@@ -1979,7 +1987,7 @@ export function PickingScreen() {
 
   const loadSessionState = useCallback(async () => {
     try {
-      const res  = await fetch(`/api/picking-session-state?date=${todayISO()}`);
+      const res  = await pickingFetch(`/api/picking-session-state?date=${todayISO()}`);
       if (!res.ok) return;
       const json = await res.json() as { data?: SessionStateRow[] };
       setSessionStateRows(json.data ?? []);
@@ -2006,9 +2014,8 @@ export function PickingScreen() {
     dirtyStateKeys.current.add(stateKey);
     clearTimeout(upsertTimers.current[stateKey]);
     upsertTimers.current[stateKey] = setTimeout(() => {
-      void fetch('/api/picking-session-state', {
+      void pickingFetch('/api/picking-session-state', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state_key: stateKey, date: todayISO(), picker_label: pickerLabel, tipo }),
       }).then(() => { dirtyStateKeys.current.delete(stateKey); });
     }, 500);
@@ -2018,8 +2025,9 @@ export function PickingScreen() {
   const [doPrint, setDoPrint]                 = useState(false);
   const [selectionPrint, setSelectionPrint]   = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
 
-  // Cross-desktop print visibility — tracks which stateKeys were printed today
-  const [printedKeys, setPrintedKeys] = useState<Set<string>>(new Set());
+  // Cross-desktop print visibility — single source of truth for both printedKeys and HistorialTab
+  const [printRecords, setPrintRecords] = useState<PrintRecord[]>([]);
+  const printedKeys = useMemo(() => new Set(printRecords.map(r => r.state_key)), [printRecords]);
 
   // ── Supervisor presence — quién más está activo y qué está imprimiendo ──────
   const [otherSupervisors, setOtherSupervisors] = useState<Record<string, SupervisorPresence>>({});
@@ -2061,24 +2069,27 @@ export function PickingScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
-  const loadPrintStatus = useCallback(async () => {
+  const loadPrintRecords = useCallback(async () => {
     try {
-      const res  = await fetch(`/api/picking-prints?date=${todayISO()}`);
+      const res  = await pickingFetch(`/api/picking-prints?date=${todayISO()}`);
       if (!res.ok) return;
-      const json = await res.json() as { data?: { state_key: string }[] };
-      setPrintedKeys(new Set((json.data ?? []).map(r => r.state_key)));
+      const json = await res.json() as { data?: PrintRecord[] };
+      const sorted = [...(json.data ?? [])].sort(
+        (a, b) => new Date(a.printed_at).getTime() - new Date(b.printed_at).getTime()
+      );
+      setPrintRecords(sorted);
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { void loadPrintStatus(); }, [loadPrintStatus]);
-  useRealtimeRefresh('picking_prints', loadPrintStatus);
+  useEffect(() => { void loadPrintRecords(); }, [loadPrintRecords]);
+  useRealtimeRefresh('picking_prints', loadPrintRecords);
 
   // ── Name change history ────────────────────────────────────────────────────
   const [nameChanges, setNameChanges] = useState<PickerNameChange[]>([]);
 
   const loadNameChanges = useCallback(async () => {
     try {
-      const res  = await fetch(`/api/picker-name-changes?date=${todayISO()}`);
+      const res  = await pickingFetch(`/api/picker-name-changes?date=${todayISO()}`);
       if (!res.ok) return;
       const json = await res.json() as { data?: PickerNameChange[] };
       setNameChanges(json.data ?? []);
@@ -2091,7 +2102,7 @@ export function PickingScreen() {
   // ── Pallet slots: DB-backed, real-time ──────────────────────────────────────
   const loadPalletSlots = useCallback(async () => {
     try {
-      const res  = await fetch(`/api/picking-pallets?date=${todayISO()}`);
+      const res  = await pickingFetch(`/api/picking-pallets?date=${todayISO()}`);
       if (!res.ok) return;
       const json = await res.json() as { data?: PalletSlot[] };
       setPalletSlots(json.data ?? []);
@@ -2103,9 +2114,8 @@ export function PickingScreen() {
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
     try {
-      const res = await fetch('/api/picking-pallets', {
+      const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs }),
       });
       if (!res.ok) {
@@ -2117,9 +2127,8 @@ export function PickingScreen() {
       if (json.data) {
         setPalletSlots(prev => [...prev, json.data!]);
         // Register partial despacho record for traceability — fire and forget
-        fetch('/api/despacho-picking', {
+        pickingFetch('/api/despacho-picking', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date: todayISO() }),
         }).catch(err => console.error('[picking] despacho-picking error', err));
       }
@@ -2129,6 +2138,7 @@ export function PickingScreen() {
   }, []);
 
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
+    if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
     // Read from ref (avoids stale closure) and skip pending deletes; filters by tipo for 3-counter accuracy
     const slot = palletSlotsRef.current
       .filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo && !pendingDeleteIds.current.has(s.id))
@@ -2137,9 +2147,8 @@ export function PickingScreen() {
     pendingDeleteIds.current.add(slot.id);
     setPalletSlots(prev => prev.filter(s => s.id !== slot.id));
     try {
-      const res = await fetch('/api/picking-pallets', {
+      const res = await pickingFetch('/api/picking-pallets', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: slot.id }),
       });
       if (!res.ok) setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
@@ -2150,28 +2159,18 @@ export function PickingScreen() {
     }
   }, []);
 
-  // Persistir filtro de sección en localStorage
-  useEffect(() => {
-    localStorage.setItem(SECTION_FILTER_KEY, sectionFilter);
-  }, [sectionFilter]);
-
-  // Persistir labelConfig en localStorage
-  useEffect(() => {
-    localStorage.setItem(LABEL_CONFIG_KEY, JSON.stringify(labelConfig));
-  }, [labelConfig]);
+  // sectionFilter y labelConfig persistidos automáticamente por useLocalStorage
 
   // ── Canonical names: shared across all supervisor desktops ────────────────────
   const loadCanonicalNames = useCallback(async () => {
     try {
-      const res  = await fetch('/api/picker-canonical-names');
+      const res  = await pickingFetch('/api/picker-canonical-names');
       if (!res.ok) return;
       const json = await res.json() as { data?: { key: string; display_name: string }[] };
       if (!json.data?.length) return;
-      setCanonicalNames(prev => {
-        const next = { ...prev };
-        for (const r of json.data!) if (r.display_name) next[r.key] = r.display_name;
-        return next;
-      });
+      const next: Record<string, string> = {};
+      for (const r of json.data) if (r.display_name) next[r.key] = r.display_name;
+      setCanonicalNames(next);
     } catch { /* silent */ }
   }, []);
 
@@ -2179,21 +2178,18 @@ export function PickingScreen() {
   useRealtimeRefresh('picker_canonical_names', loadCanonicalNames);
 
   const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => {
-    setCanonicalNames(names);
-    localStorage.setItem(CANONICAL_NAMES_KEY, JSON.stringify(names));
+    setCanonicalNames(names); // persisted automatically by useLocalStorage
     if (changedKey !== undefined) {
-      void fetch('/api/picker-canonical-names', {
+      void pickingFetch('/api/picker-canonical-names', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: changedKey, display_name: changedVal ?? '', updated_by_name: byName ?? '' }),
       });
     }
   }, []);
 
   const handleColsPerRowChange = useCallback((n: number) => {
-    setColsPerRow(n);
-    localStorage.setItem(COLS_PER_ROW_KEY, String(n));
-  }, []);
+    setColsPerRow(n); // persisted automatically by useLocalStorage
+  }, [setColsPerRow]);
 
   // Case-insensitive lookup: Odoo may return "pickers 3" while canonical key is "Pickers 3"
   const getCanonicalName = useCallback((key: string): string => {
@@ -2415,21 +2411,33 @@ export function PickingScreen() {
     return map;
   }, [filteredGroups]);
 
-  const recordPrints = useCallback((groups: PickerGroup[]) => {
+  const recordPrints = useCallback(async (groups: PickerGroup[]) => {
     const date = todayISO();
-    const newPrints: SupervisorPrint[] = [];
-    for (const group of groups) {
-      const pallets = pickerPallets[group.stateKey] ?? 0;
-      if (pallets === 0) continue;
-      const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-      const tipo        = pickerTypes[group.stateKey] ?? 'P';
-      void fetch('/api/picking-prints', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date }),
-      });
-      newPrints.push({ storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() });
-    }
+    const candidates = groups.filter(group => (pickerPallets[group.stateKey] ?? 0) > 0);
+    if (candidates.length === 0) return;
+
+    const results = await Promise.allSettled(
+      candidates.map(group => {
+        const pallets     = pickerPallets[group.stateKey] ?? 0;
+        const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+        const tipo        = (group.operations[0] && slotsByStateKey[group.stateKey]?.[0]?.tipo) ?? 'P';
+        return pickingFetch('/api/picking-prints', {
+          method: 'POST',
+          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date }),
+        }).then(res => {
+          if (!res.ok) throw new Error(`picking-prints ${res.status}`);
+          return { storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() } satisfies SupervisorPrint;
+        });
+      })
+    );
+
+    const newPrints = results
+      .filter((r): r is PromiseFulfilledResult<SupervisorPrint> => r.status === 'fulfilled')
+      .map(r => r.value);
+    const failures = results.filter(r => r.status === 'rejected').length;
+
+    if (failures > 0) console.error(`[picking] ${failures} registro(s) de impresión no guardados`);
+
     if (newPrints.length > 0 && channelRef.current) {
       const updated: SupervisorPresence = {
         ...presenceRef.current,
@@ -2439,13 +2447,13 @@ export function PickingScreen() {
       presenceRef.current = updated;
       void channelRef.current.track(updated);
     }
-  }, [pickerPallets, pickerDisplayNames, pickerTypes, getCanonicalName]);
+  }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline]);
 
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);
     setPrintOnlyStore(cod);
     setDoPrint(true);
-    recordPrints(groupedByStore[cod] ?? []);
+    void recordPrints(groupedByStore[cod] ?? []);
   }, [groupedByStore, recordPrints]);
 
   const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
@@ -2457,7 +2465,7 @@ export function PickingScreen() {
   const printAll = useCallback(() => {
     setPrintOnlyStore(null);
     setDoPrint(true);
-    for (const cod of selectedCods) recordPrints(groupedByStore[cod] ?? []);
+    for (const cod of selectedCods) void recordPrints(groupedByStore[cod] ?? []);
   }, [selectedCods, groupedByStore, recordPrints]);
 
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -2499,7 +2507,7 @@ export function PickingScreen() {
         const label = pickerDisplayNames[group.stateKey] || groupSlots[0]?.picker_label || getCanonicalName(group.key) || group.key;
         for (const slot of groupSlots) {
           const pNum  = palletNumsBySlotId[slot.id];
-          const tipo  = (slot.tipo as PickerType) ?? pickerTypes[group.stateKey] ?? 'P';
+          const tipo  = (slot.tipo as PickerType) ?? 'P';
           const total = totalByTipo[tipo] ?? 1;
           labels.push({
             value: `${group.storeCod};${sanitizeForBarcode(label)};${refs};${tipo}${pNum};${cats}`,
@@ -2519,7 +2527,7 @@ export function PickingScreen() {
       }
     }
     return labels;
-  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, pickerTypes, getCanonicalName]); // pickerTypes kept for fallback
+  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, getCanonicalName]);
 
   const hasBarcodes = printableLabels.length > 0;
 
@@ -2670,6 +2678,13 @@ export function PickingScreen() {
           panelView === 'stores' ? 'hidden lg:flex' : 'flex',
         ].join(' ')}>
 
+          {/* Offline banner */}
+          {!isOnline && (
+            <div className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-amber-800 bg-amber-50 border-b border-amber-200 print:hidden flex-shrink-0">
+              <span>⚠ Sin conexión — los cambios no se están guardando</span>
+            </div>
+          )}
+
           {/* ── Tab bar ── */}
           <div className="px-4 py-2.5 flex-shrink-0 print:hidden"
             style={{ background: '#fff', borderBottom: '1.5px solid #F0F2F5' }}>
@@ -2716,7 +2731,7 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Historial ── */}
-          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} />}
+          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} onRefresh={loadPrintRecords} />}
 
           {/* ── Tab content: Configuración ── */}
           {rightTab === 'configuracion' && (
