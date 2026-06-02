@@ -109,15 +109,7 @@ export async function POST(request: NextRequest) {
     const auth = await getAuth();
     const gs   = google.sheets({ version: 'v4', auth });
 
-    await gs.spreadsheets.values.append({
-      spreadsheetId:    SPREADSHEET_ID,
-      range:            `${sheet}!A1`,
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody:      { values: rows },
-    });
-
-    // Mirror to Supabase
+    // ── DESPACHO RM / REGIONES: split enrutador vs bodega paths ──────
     if (sheet === 'DESPACHO RM' || sheet === 'DESPACHO REGIONES') {
       const sb      = supabaseServer();
       const table   = sheet === 'DESPACHO RM' ? 'despacho_rm' : 'despacho_regiones';
@@ -129,24 +121,83 @@ export async function POST(request: NextRequest) {
       const hasDims = records.some(r => (r as Record<string,unknown>).peso_kg !== null);
 
       if (!hasDims) {
-        // Enrutador: bulk-update routing fields for all records with matching (fecha, cod).
-        // IDs from Enrutador differ from Picking/Bodega IDs, so match by date + store code.
-        const seen = new Set<string>();
+        // ── Enrutador path: UPDATE existing rows — no append ──────────
+        // Santiago/Bodega already wrote the rows with P-prefix IDs.
+        // We find those rows by (fecha, cod) and update only routing columns:
+        // G=transporte, H=patente, S=estado, V=conductor, W=ruta, X=supervisor
+
+        // 1. Read sheet to map (fecha::cod) → sheet row numbers (1-indexed)
+        const readRes = await gs.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range:         `${sheet}!A:X`,
+        });
+        const sheetRows = readRes.data.values || [];
+
+        const rowMap = new Map<string, number[]>();
+        for (let i = 0; i < sheetRows.length; i++) {
+          const r = sheetRows[i];
+          if (!r || !r[1] || !r[2]) continue;
+          // Skip header-like rows (fecha column should look like DD/MM/YYYY)
+          if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(r[1]))) continue;
+          const key = `${String(r[1])}::${String(r[2])}`;
+          if (!rowMap.has(key)) rowMap.set(key, []);
+          rowMap.get(key)!.push(i + 1); // Sheets rows are 1-indexed
+        }
+
+        // 2. Build batchUpdate for matching rows
+        const updateData: { range: string; values: string[][] }[] = [];
+        const seenSheets = new Set<string>();
+
         for (const r of records) {
           const key = `${r.fecha}::${r.cod}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
+          if (seenSheets.has(key)) continue;
+          seenSheets.add(key);
+          const rm = r as Record<string, string | null>;
+          for (const rowNum of rowMap.get(key) ?? []) {
+            // G:H = transporte, patente
+            updateData.push({ range: `${sheet}!G${rowNum}:H${rowNum}`, values: [[rm.transporte ?? '', rm.patente ?? '']] });
+            // S = estado
+            updateData.push({ range: `${sheet}!S${rowNum}`, values: [[rm.estado ?? '']] });
+            // V:X = conductor, ruta, supervisor
+            updateData.push({ range: `${sheet}!V${rowNum}:X${rowNum}`, values: [[rm.conductor ?? '', rm.ruta ?? '', rm.supervisor ?? '']] });
+          }
+        }
+
+        if (updateData.length > 0) {
+          await gs.spreadsheets.values.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody:   { valueInputOption: 'USER_ENTERED', data: updateData },
+          });
+        }
+
+        // 3. Mirror to Supabase — UPDATE by (fecha, cod)
+        const seenSupa = new Set<string>();
+        for (const r of records) {
+          const key = `${r.fecha}::${r.cod}`;
+          if (seenSupa.has(key)) continue;
+          seenSupa.add(key);
           const rm = r as Record<string, unknown>;
           const { error } = await sb.from(table)
             .update({ conductor: rm.conductor, ruta: rm.ruta, supervisor: rm.supervisor,
                       transporte: rm.transporte, patente: rm.patente, estado: rm.estado, ventana: rm.ventana })
             .eq('fecha', r.fecha)
             .eq('cod', r.cod)
-            .eq('conductor_modificado', false); // guard: never overwrite manual reassignments
+            .eq('conductor_modificado', false);
           if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
+
+        return NextResponse.json({ ok: true, updated: updateData.length > 0 ? seenSheets.size : 0 });
+
       } else {
-        // Bodega: insert new records; update existing (Picking-created) records with confirmed dims.
+        // ── Bodega path: append new rows to Sheets + upsert Supabase ──
+        await gs.spreadsheets.values.append({
+          spreadsheetId:    SPREADSHEET_ID,
+          range:            `${sheet}!A1`,
+          valueInputOption: 'USER_ENTERED',
+          insertDataOption: 'INSERT_ROWS',
+          requestBody:      { values: rows },
+        });
+
         const ids = records.map(r => r.id);
         const { data: existing } = await sb.from(table).select('id').in('id', ids);
         const existingIds = new Set((existing ?? []).map((e: { id: string }) => e.id));
@@ -173,8 +224,19 @@ export async function POST(request: NextRequest) {
           const { error } = await sb.from(table).update(updateObj).eq('id', r.id);
           if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
+
+        return NextResponse.json({ ok: true, written: rows.length });
       }
     }
+
+    // ── Other allowed sheets (RECEPCIÓN TIENDA etc.) — always append ──
+    await gs.spreadsheets.values.append({
+      spreadsheetId:    SPREADSHEET_ID,
+      range:            `${sheet}!A1`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody:      { values: rows },
+    });
 
     return NextResponse.json({ ok: true, written: rows.length });
   } catch (err) {
