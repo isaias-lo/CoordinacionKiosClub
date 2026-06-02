@@ -40,13 +40,17 @@ function todayISO() {
 /* ── Page ───────────────────────────────────────────────── */
 export default function ConductorHubPage() {
   const router = useRouter();
-  const [patente,  setPatente]  = useState('');
-  const [input,    setInput]    = useState('');
-  const [rutas,    setRutas]    = useState<RutaData[]>([]);
-  const [loading,  setLoading]  = useState(false);
-  const [offline,  setOffline]  = useState(false);
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [tab,      setTab]      = useState<'ruta' | 'recepcion'>('ruta');
+  const [patente,      setPatente]      = useState('');
+  const [input,        setInput]        = useState('');
+  const [rutas,        setRutas]        = useState<RutaData[]>([]);
+  const [loading,      setLoading]      = useState(false);
+  const [offline,      setOffline]      = useState(false);
+  const [expanded,     setExpanded]     = useState<number | null>(null);
+  const [tab,          setTab]          = useState<'ruta' | 'recepcion'>('ruta');
+  // Confirmar salida CD (PUNTO 2 trazabilidad)
+  const [salidaId,     setSalidaId]     = useState<number | null>(null);  // ruta_id en confirmación
+  const [salidaTemp,   setSalidaTemp]   = useState('');
+  const [salidaLoading, setSalidaLoading] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(PATENTE_KEY);
@@ -96,6 +100,40 @@ export default function ConductorHubPage() {
     setTab('ruta');
     localStorage.removeItem(PATENTE_KEY);
     localStorage.removeItem(CACHE_KEY);
+  }
+
+  async function confirmarSalida(rutaId: number) {
+    setSalidaLoading(true);
+    try {
+      // 1. Actualizar estado de la ruta a en_camino
+      await fetch('/api/rutas-despacho', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rutaId, estado: 'en_camino' }),
+      });
+
+      // 2. Registrar PUNTO 2 en trazabilidad
+      await fetch('/api/trazabilidad', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          punto:              'despacho',
+          ruta_id:            rutaId,
+          usuario_despacho:   patente,
+          temperatura_salida: salidaTemp ? parseFloat(salidaTemp) : undefined,
+        }),
+      });
+
+      // Actualización optimista local
+      setRutas(prev => prev.map(r => r.id === rutaId ? { ...r, estado: 'en_camino' } : r));
+      setSalidaId(null);
+      setSalidaTemp('');
+    } catch {
+      // silencioso — los datos se recargan en background
+    } finally {
+      setSalidaLoading(false);
+      void cargar(patente);
+    }
   }
 
   /* ── Login ──────────────────────────────────────────── */
@@ -327,6 +365,63 @@ export default function ConductorHubPage() {
                         ))}
                       </div>
                     )}
+
+                    {/* ── PUNTO 2: Confirmar Salida del CD ────────── */}
+                    <div style={{ padding: '0 16px 16px' }}>
+                      {r.estado === 'pendiente' ? (
+                        salidaId === r.id ? (
+                          // Panel de confirmación activo
+                          <div style={{ background: 'rgba(251,146,60,0.10)', border: '1px solid rgba(251,146,60,0.35)', borderRadius: 14, padding: '14px 14px 10px' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+                              🚀 Confirmar salida del CD
+                            </div>
+                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 12, lineHeight: 1.6 }}>
+                              Opcional: registra la temperatura si la carga es refrigerada o congelada.
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                              <input
+                                type="number"
+                                step="0.1"
+                                inputMode="decimal"
+                                placeholder="Temp. °C (opcional)"
+                                value={salidaTemp}
+                                onChange={e => setSalidaTemp(e.target.value)}
+                                style={{
+                                  flex: 1, padding: '9px 12px', borderRadius: 10,
+                                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                                  color: '#fff', fontSize: 14, outline: 'none',
+                                }}
+                              />
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                onClick={() => { setSalidaId(null); setSalidaTemp(''); }}
+                                style={{ flex: 1, padding: '10px 0', borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => void confirmarSalida(r.id)}
+                                disabled={salidaLoading}
+                                style={{ flex: 2, padding: '10px 0', borderRadius: 10, background: salidaLoading ? 'rgba(251,146,60,0.3)' : 'rgba(251,146,60,0.85)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 800, cursor: salidaLoading ? 'not-allowed' : 'pointer' }}>
+                                {salidaLoading ? 'Registrando…' : '✓ Confirmar salida'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          // Botón para abrir el panel
+                          <button
+                            onClick={() => { setSalidaId(r.id); setSalidaTemp(''); }}
+                            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: 'rgba(251,146,60,0.12)', border: '1.5px solid rgba(251,146,60,0.4)', color: 'rgba(251,146,60,0.9)', fontSize: 13, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1 }}>
+                            🚀 Confirmar salida del CD
+                          </button>
+                        )
+                      ) : r.estado === 'en_camino' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'rgba(0,122,255,0.10)', border: '1px solid rgba(0,122,255,0.25)', borderRadius: 12 }}>
+                          <span style={{ fontSize: 16 }}>🚚</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#60A5FA' }}>Salida registrada — en ruta</span>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </div>

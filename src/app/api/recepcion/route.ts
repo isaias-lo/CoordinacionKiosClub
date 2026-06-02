@@ -19,7 +19,6 @@ interface RecepcionBody {
   signatureDataUrl: string;
   observaciones?: string;
   selloEstado?: string;
-  // New trazabilidad fields
   selloLlegadaUrl?: string;
   selloLlegadaHora?: string;
   selloSalidaUrl?: string;
@@ -29,6 +28,11 @@ interface RecepcionBody {
   estadoFotoUrls?: string[];
   codigoVerificacion?: string;
   canonicalId?: string;
+  // Trazabilidad PUNTO 3
+  tipoIncidencia?: string;
+  temperaturaLlegada?: number;
+  usuarioRecepcion?: string;
+  regimen?: string;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -176,6 +180,55 @@ export async function POST(request: NextRequest) {
       (body.estadoFotoUrls ?? []).length.toString(),   // N° Fotos Estado
       body.observaciones      ?? '',                   // Observaciones
     ]);
+
+    // ── PUNTO 3: actualizar trazabilidad_unidades ─────────────────────
+    // Usamos canonicalId si existe; sino buscamos por store_cod + EN_RUTA
+    if (body.canonicalId || body.cod) {
+      const hayIncidencia = !!(
+        body.tipoIncidencia ||
+        (body.selloEstado && body.selloEstado !== 'intacto') ||
+        body.palletsSent !== body.palletsRecibidos ||
+        body.bultosSent  !== body.bultosRecibidos
+      );
+
+      const trazUpdate: Record<string, unknown> = {
+        fecha_hora_real_llegada: body.selloLlegadaHora ?? new Date().toISOString(),
+        estado_actual:           hayIncidencia ? 'RECIBIDO_INCIDENCIA' : 'RECIBIDO_CONFORME',
+        usuario_recepcion:       body.usuarioRecepcion ?? body.receptor ?? null,
+        observaciones:           body.observaciones ?? null,
+        links_evidencia:         [
+          body.selloLlegadaUrl,
+          body.selloSalidaUrl,
+          body.cdSalidaUrl,
+          ...(body.estadoFotoUrls ?? []),
+        ].filter(Boolean) as string[],
+      };
+      if (body.tipoIncidencia)      trazUpdate.tipo_incidencia        = body.tipoIncidencia;
+      if (body.temperaturaLlegada !== undefined) trazUpdate.temperatura_llegada = body.temperaturaLlegada;
+      if (hayIncidencia)            trazUpdate.estado_resolucion      = 'PENDIENTE';
+
+      if (body.canonicalId) {
+        // Upsert por canonical ID (el barcode escaneado)
+        void sb.from('trazabilidad_unidades').upsert({
+          id_unidad_logistica: body.canonicalId,
+          codigo_tienda:       body.cod,
+          tienda_destino:      body.tienda,
+          direccion_tienda:    body.direccion,
+          transportista:       body.conductor ?? null,
+          tipo_unidad:         'Pallet',
+          regimen:             body.regimen ?? null,
+          ...trazUpdate,
+        }, { onConflict: 'id_unidad_logistica' });
+      } else {
+        // Actualizar la primera unidad EN_RUTA para esta tienda
+        void sb.from('trazabilidad_unidades')
+          .update(trazUpdate)
+          .eq('codigo_tienda', body.cod)
+          .in('estado_actual', ['EN_RUTA', 'CREADO'])
+          .order('fecha_hora_creacion', { ascending: true })
+          .limit(1);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

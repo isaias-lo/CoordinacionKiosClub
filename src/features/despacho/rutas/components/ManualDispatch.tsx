@@ -484,15 +484,37 @@ export default function ManualDispatch({
 
       {tiendasCount > 0 && (
         <button
-          onClick={onCalcular}
-          disabled={pendientesTotal > 0 || issues.some(i => i.includes('excede'))}
+          onClick={() => {
+            if (pendientesTotal > 0) {
+              const ok = confirm(
+                `Quedan ${pendientesTotal} parada${pendientesTotal > 1 ? 's' : ''} sin asignar.\n\n` +
+                `¿Calcular ruta parcial con lo asignado hasta ahora?\n\n` +
+                `Las paradas sin asignar quedarán guardadas para el día siguiente.`
+              );
+              if (!ok) return;
+              // Guardar tiendas pendientes para el día siguiente
+              try {
+                localStorage.setItem('despacho_pendientes', JSON.stringify({
+                  savedAt: new Date().toISOString().split('T')[0],
+                  stores: pool.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
+                }));
+              } catch {}
+            } else {
+              // Todo asignado: limpiar pendientes anteriores si los hubiera
+              try { localStorage.removeItem('despacho_pendientes'); } catch {}
+            }
+            onCalcular();
+          }}
+          disabled={issues.some(i => i.includes('excede'))}
           className={`w-full h-[50px] rounded-kios2 text-[15px] font-bold transition-all flex items-center justify-center gap-2
-            ${pendientesTotal > 0 || issues.some(i => i.includes('excede'))
+            ${issues.some(i => i.includes('excede'))
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-              : 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)] active:scale-[0.98]'}`}
+              : pendientesTotal > 0
+                ? 'bg-amber-500 text-white shadow-[0_4px_14px_rgba(245,158,11,0.35)] active:scale-[0.98]'
+                : 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)] active:scale-[0.98]'}`}
         >
           {pendientesTotal > 0
-            ? `Asigna ${pendientesTotal} parada${pendientesTotal > 1 ? 's' : ''} restante${pendientesTotal > 1 ? 's' : ''} para continuar`
+            ? `⚠️ Calcular ruta parcial (${pendientesTotal} sin asignar)`
             : '🔍 Calcular y Comparar Rutas'}
         </button>
       )}

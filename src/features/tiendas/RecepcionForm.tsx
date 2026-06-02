@@ -15,6 +15,7 @@ interface Props {
   cdFoto: FotoRegistro | null;
   onDone: () => void;
   onBack: () => void;
+  regimen?: string;
 }
 
 type Phase = 'filling' | 'verifying' | 'sello-salida';
@@ -42,7 +43,7 @@ async function uploadPhoto(file: File, path: string): Promise<string> {
   return publicUrl;
 }
 
-export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, cdFoto, onDone, onBack }: Props) {
+export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, cdFoto, onDone, onBack, regimen }: Props) {
   const { cod, palletsSent, bultosSent, contenedoresSent, guias, driveFileId } = qrData;
   const store = TIENDAS_INICIAL[cod];
 
@@ -67,6 +68,10 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
 
   // Sello salida (capturado después de verificación)
   const [selloSalida, setSelloSalida] = useState<FotoRegistro | null>(null);
+
+  // Trazabilidad PUNTO 3
+  const [tipoIncidencia,    setTipoIncidencia]    = useState('');
+  const [temperaturaLlegada, setTemperaturaLlegada] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -251,6 +256,9 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
           estadoFotoUrls,    signatureDataUrl,
           codigoVerificacion: code,
           canonicalId:       canonicalId ?? undefined,
+          tipoIncidencia:    tipoIncidencia || undefined,
+          temperaturaLlegada: temperaturaLlegada ? parseFloat(temperaturaLlegada) : undefined,
+          regimen:           regimen || undefined,
         }),
       });
       const data = await res.json();
@@ -471,6 +479,46 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
               <label style={S.label}>RUT <span style={{ color: '#EF4444' }}>*</span></label>
               <input type="text" value={rut} onChange={e => setRut(formatRut(e.target.value))} placeholder="12.345.678-9" inputMode="text" autoComplete="off" style={{ ...S.input, fontFamily: 'monospace' }} />
             </div>
+          </div>
+        </div>
+
+        {/* Incidencia + Temperatura */}
+        <div style={S.card}>
+          <p style={S.sectionTitle}>Trazabilidad de entrega</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            {/* Tipo de incidencia */}
+            <div>
+              <label style={S.label}>Tipo de incidencia <span style={{ fontWeight: 400, color: '#9CA3AF' }}>— si corresponde</span></label>
+              <select
+                value={tipoIncidencia}
+                onChange={e => setTipoIncidencia(e.target.value)}
+                style={{ ...S.input, appearance: 'none', background: 'white', color: tipoIncidencia ? '#1F2937' : '#9CA3AF' }}>
+                <option value="">Sin incidencia</option>
+                <option value="Faltante">Faltante</option>
+                <option value="Daño">Daño en mercadería</option>
+                <option value="Temperatura">Temperatura fuera de rango</option>
+                <option value="Sello roto">Sello roto</option>
+                <option value="Exceso">Exceso</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+
+            {/* Temperatura — solo para camiones refrigerados (regimen Congelado) */}
+            {regimen === 'Congelado' && (
+              <div>
+                <label style={S.label}>Temperatura al llegar °C</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  inputMode="decimal"
+                  value={temperaturaLlegada}
+                  onChange={e => setTemperaturaLlegada(e.target.value)}
+                  placeholder="Ej: -18.0"
+                  style={{ ...S.input, fontFamily: 'monospace' }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
