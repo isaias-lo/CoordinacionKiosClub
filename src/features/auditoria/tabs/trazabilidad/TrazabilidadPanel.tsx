@@ -209,7 +209,7 @@ export function TrazabilidadPanel({
     { id: 'n',         header: 'N°',                   accessorKey: 'n',            size: 48,  enableSorting: false, cell: ({ row }) => row.original.isFirstOfEntry ? <span className="text-[11px] font-bold text-text-3">{row.original.n}</span> : '' },
     { id: 'fecha',     header: 'Fecha',                 accessorKey: 'fecha',        size: 96,  cell: ({ getValue }) => <span className="font-mono text-[12px]">{getValue() as string}</span> },
     { id: 'mes',       header: 'Mes',                   accessorKey: 'mesNombre',    size: 110 },
-    { id: 'año',       header: 'Año',                   accessorKey: 'year',         size: 60  },
+    { id: 'año',       header: 'Año',                   size: 60, accessorFn: (row: FlatRow) => row.fecha.split('/')[2] ?? '' },
     { id: 'entryDateTs', header: '', accessorKey: 'entryDateTs', size: 0, enableHiding: true },
     { id: 'picker',    header: 'Responsable',           accessorKey: 'picker',       size: 150, cell: ({ getValue }) => <div className="truncate font-semibold text-[12px]" style={{ maxWidth: 150 }}>{getValue() as string}</div> },
     { id: 'tienda',    header: 'Tienda',                accessorKey: 'tiendaCod',    size: 88,  cell: ({ getValue }) => <span className="font-mono font-bold text-[12px]">{getValue() as string}</span> },

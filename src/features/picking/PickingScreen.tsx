@@ -76,6 +76,15 @@ interface SupervisorPrint {
   printedAt: string;
 }
 
+interface PickerNameChange {
+  id: number;
+  picker_key: string;
+  old_name: string;
+  new_name: string;
+  changed_by_name: string;
+  changed_at: string;
+}
+
 interface SupervisorPresence {
   name: string;
   userId: string;
@@ -1056,6 +1065,12 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
 
   const save = () => {
     if (!isDirty) return;
+    const oldLabel = savedValue || pickerKey;
+    const newLabel = draft.trim() || '(sin nombre)';
+    const confirmed = window.confirm(
+      `¿Cambiar nombre del picker?\n\n${pickerKey}\n"${oldLabel}"  →  "${newLabel}"\n\nEste cambio será visible para todos los usuarios.`
+    );
+    if (!confirmed) return;
     onSave(pickerKey, draft);
     setStatus('saved');
     setTimeout(() => setStatus('idle'), 2000);
@@ -1103,10 +1118,11 @@ function relativeTime(isoStr: string, nowMs: number): string {
 }
 
 function SupervisorActivityPanel({
-  supervisors, now,
+  supervisors, now, nameChanges,
 }: {
   supervisors: Record<string, SupervisorPresence>;
   now: number;
+  nameChanges: PickerNameChange[];
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const list = Object.values(supervisors);
@@ -1199,6 +1215,27 @@ function SupervisorActivityPanel({
           ))}
         </div>
       )}
+
+      {/* Cambios de nombres hoy */}
+      {nameChanges.length > 0 && (
+        <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(37,99,235,0.12)' }}>
+          <div className="text-[10px] font-black uppercase tracking-[1.2px] mb-2" style={{ color: 'rgba(37,99,235,0.45)' }}>
+            Cambios de nombre hoy ({nameChanges.length})
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {nameChanges.slice(0, 8).map(c => (
+              <div key={c.id} className="flex items-center gap-2 text-[12px]">
+                <span className="font-mono font-bold text-navy bg-[rgba(26,37,80,0.06)] px-1.5 py-0.5 rounded text-[11px] flex-shrink-0">{c.picker_key}</span>
+                <span className="text-text-3 flex-shrink-0 text-[10px]">«{c.old_name || '—'}»</span>
+                <span className="text-[10px] text-text-3 flex-shrink-0">→</span>
+                <span className="font-semibold text-navy flex-1 truncate">«{c.new_name || '—'}»</span>
+                <span className="flex-shrink-0 text-[11px] text-text-3">{c.changed_by_name}</span>
+                <span className="flex-shrink-0 text-[10px] text-text-3">{new Date(c.changed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1273,7 +1310,7 @@ function TurnoSummary({
 
 // ─── HistorialTab ──────────────────────────────────────────────────────────────
 
-function HistorialTab({ allGroups }: { allGroups: PickerGroup[] }) {
+function HistorialTab({ allGroups, nameChanges }: { allGroups: PickerGroup[]; nameChanges: PickerNameChange[] }) {
   const [records, setRecords]   = useState<PrintRecord[]>([]);
   const [loading, setLoading]   = useState(false);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
@@ -1528,6 +1565,41 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
           </div>
           </>
         )}
+
+        {/* ── Cambios de nombres del día ── */}
+        {nameChanges.length > 0 && (
+          <div className="mt-5 mb-2">
+            <div className="text-[12px] font-bold uppercase tracking-widest mb-2" style={{ color: '#9CA3AF' }}>
+              Cambios de nombre · hoy
+            </div>
+            <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(26,37,80,0.1)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'linear-gradient(135deg,#1B2A6B,#2563EB)', color: '#fff' }}>
+                    <th className="text-left px-4 py-2.5 font-bold">Hora</th>
+                    <th className="text-left px-4 py-2.5 font-bold">Picker</th>
+                    <th className="text-left px-4 py-2.5 font-bold">Nombre anterior</th>
+                    <th className="text-left px-4 py-2.5 font-bold">Nombre nuevo</th>
+                    <th className="text-left px-4 py-2.5 font-bold">Modificado por</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...nameChanges].sort((a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime()).map((c, i) => (
+                    <tr key={c.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFBFF', borderBottom: '1px solid #F1F5F9' }}>
+                      <td className="px-4 py-2 font-mono text-[11px]" style={{ color: '#9CA3AF' }}>
+                        {new Date(c.changed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-2 font-mono font-bold" style={{ color: '#1A2550' }}>{c.picker_key}</td>
+                      <td className="px-4 py-2" style={{ color: '#9CA3AF' }}>{c.old_name || '—'}</td>
+                      <td className="px-4 py-2 font-semibold" style={{ color: '#1A2550' }}>{c.new_name || '—'}</td>
+                      <td className="px-4 py-2" style={{ color: '#4B5563' }}>{c.changed_by_name || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1537,13 +1609,14 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 
 // ─── ConfigTab ─────────────────────────────────────────────────────────────────
 
-function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange }: {
+function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange, currentUserName }: {
   labelConfig: LabelConfig;
   onLabelConfigChange: (cfg: LabelConfig) => void;
   canonicalNames: Record<string, string>;
-  onCanonicalNamesChange: (names: Record<string, string>, changedKey?: string, changedVal?: string) => void;
+  onCanonicalNamesChange: (names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => void;
   colsPerRow: number;
   onColsPerRowChange: (n: number) => void;
+  currentUserName: string;
 }) {
   const previewScale = 0.50;
   const previewH = Math.round(600 * previewScale);
@@ -1588,7 +1661,7 @@ function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonic
   const handleNameSave = (key: string, val: string) => {
     const next = { ...canonicalNames };
     if (val.trim()) next[key] = val.trim(); else delete next[key];
-    onCanonicalNamesChange(next, key, val.trim());
+    onCanonicalNamesChange(next, key, val.trim(), currentUserName);
   };
 
   return (
@@ -1991,6 +2064,21 @@ export function PickingScreen() {
   useEffect(() => { void loadPrintStatus(); }, [loadPrintStatus]);
   useRealtimeRefresh('picking_prints', loadPrintStatus);
 
+  // ── Name change history ────────────────────────────────────────────────────
+  const [nameChanges, setNameChanges] = useState<PickerNameChange[]>([]);
+
+  const loadNameChanges = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/picker-name-changes?date=${todayISO()}`);
+      if (!res.ok) return;
+      const json = await res.json() as { data?: PickerNameChange[] };
+      setNameChanges(json.data ?? []);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { void loadNameChanges(); }, [loadNameChanges]);
+  useRealtimeRefresh('picker_name_changes', loadNameChanges);
+
   // ── Pallet slots: DB-backed, real-time ──────────────────────────────────────
   const loadPalletSlots = useCallback(async () => {
     try {
@@ -2081,14 +2169,14 @@ export function PickingScreen() {
   useEffect(() => { void loadCanonicalNames(); }, [loadCanonicalNames]);
   useRealtimeRefresh('picker_canonical_names', loadCanonicalNames);
 
-  const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string) => {
+  const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => {
     setCanonicalNames(names);
     localStorage.setItem(CANONICAL_NAMES_KEY, JSON.stringify(names));
     if (changedKey !== undefined) {
       void fetch('/api/picker-canonical-names', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: changedKey, display_name: changedVal ?? '' }),
+        body: JSON.stringify({ key: changedKey, display_name: changedVal ?? '', updated_by_name: byName ?? '' }),
       });
     }
   }, []);
@@ -2606,7 +2694,7 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Historial ── */}
-          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} />}
+          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} />}
 
           {/* ── Tab content: Configuración ── */}
           {rightTab === 'configuracion' && (
@@ -2617,13 +2705,14 @@ export function PickingScreen() {
               onCanonicalNamesChange={handleCanonicalNamesChange}
               colsPerRow={colsPerRow}
               onColsPerRowChange={handleColsPerRowChange}
+              currentUserName={profile?.full_name ?? ''}
             />
           )}
 
           {/* ── Tab content: Monitoreo ── */}
           {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
-              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} />
+              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="text-[56px] mb-4">🏪</div>
                 <div className="font-barlow-condensed text-[24px] font-bold text-text-2 mb-2">Selecciona una o más tiendas</div>
@@ -2639,7 +2728,7 @@ export function PickingScreen() {
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto min-h-0">
-            <SupervisorActivityPanel supervisors={otherSupervisors} now={now} />
+            <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
             <TurnoSummary
               allGroups={allGroups}
               pickerPallets={pickerPallets}
