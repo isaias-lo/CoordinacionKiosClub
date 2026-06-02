@@ -81,8 +81,8 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
   };
 }
 
-/* ── Print helper ───────────────────────────────────────── */
-function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: string) {
+/* ── Print helper (single) ──────────────────────────────── */
+function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: string): string {
   const qrUrl = m.token_qr ? `${origin}/r/${m.token_qr}` : `${origin}/despacho/estado`;
   const fechaLabel = new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
   const genLabel   = new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -97,50 +97,7 @@ function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: strin
     </tr>`
   ).join('');
 
-  const html = `<!DOCTYPE html><html lang="es"><head>
-<meta charset="UTF-8"/>
-<title>Manifiesto ${m.codigo_ruta}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18px 20px;max-width:780px;margin:auto}
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
-.logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
-.logo-sub{font-size:9px;color:#555;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
-.title{font-size:20px;font-weight:900;color:#1a2550;text-align:right}
-.code{font-size:13px;font-weight:700;color:#C62828;text-align:right;margin-top:2px}
-.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#f0f2f5;padding:10px 14px;border-radius:6px;margin-bottom:14px}
-.mi label{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.4px;display:block;font-weight:600}
-.mi span{font-size:13px;font-weight:700;color:#111}
-.sec{font-size:9px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:7px}
-table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px}
-th{background:#1a2550;color:#fff;padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
-td{padding:5px 8px;border-bottom:1px solid #eee;color:#222}
-tr:nth-child(even) td{background:#f8f8f8}
-.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
-.tc{background:#1a2550;color:#fff;padding:8px;border-radius:5px;text-align:center}
-.tc .n{font-size:26px;font-weight:900;line-height:1}
-.tc .l{font-size:9px;text-transform:uppercase;opacity:.8;margin-top:2px}
-.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:18px}
-.qr-info h3{font-size:13px;font-weight:700;color:#1a2550;margin-bottom:3px}
-.qr-info p{font-size:10px;color:#444;line-height:1.5}
-.qr-url{font-size:8px;color:#888;font-family:monospace;margin-top:5px;word-break:break-all}
-.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:#FF9500;color:#fff;margin-bottom:4px}
-.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:14px}
-.firma-section{margin-top:18px}
-.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-.firma{border:1.5px solid #bbb;border-radius:6px;overflow:hidden}
-.firma-hdr{background:#1a2550;color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:7px 10px;text-align:center}
-.firma-space{height:88px;background:#fafafa}
-.firma-fields{border-top:1.5px solid #ccc;padding:10px 12px 12px}
-.firma-field{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dotted #bbb}
-.firma-field:last-child{border-bottom:none}
-.firma-field-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;min-width:46px;flex-shrink:0}
-.firma-field-val{font-size:12px;font-weight:800;color:#1a2550;letter-spacing:.4px}
-.firma-field-blank{flex:1;min-height:16px}
-@media print{body{padding:8px 10px}}
-</style>
-</head><body>
-
+  return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
     <div class="logo">KIOSClub</div>
@@ -226,8 +183,60 @@ tr:nth-child(even) td{background:#f8f8f8}
 <div class="footer">
   KiosClub · Centro de Distribución · Generado ${genLabel} · Sistema de Despacho v5.0
 </div>
+</div>`;
+}
 
-<script>window.onload = () => { setTimeout(() => window.print(), 600); };</script>
+const PRINT_STYLES = `
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18px 20px;max-width:780px;margin:auto}
+.manifiesto-page{page-break-after:always}
+.manifiesto-page:last-child{page-break-after:auto}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
+.logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
+.logo-sub{font-size:9px;color:#555;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.title{font-size:20px;font-weight:900;color:#1a2550;text-align:right}
+.code{font-size:13px;font-weight:700;color:#C62828;text-align:right;margin-top:2px}
+.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#f0f2f5;padding:10px 14px;border-radius:6px;margin-bottom:14px}
+.mi label{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.4px;display:block;font-weight:600}
+.mi span{font-size:13px;font-weight:700;color:#111}
+.sec{font-size:9px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:7px}
+table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px}
+th{background:#1a2550;color:#fff;padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
+td{padding:5px 8px;border-bottom:1px solid #eee;color:#222}
+tr:nth-child(even) td{background:#f8f8f8}
+.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tc{background:#1a2550;color:#fff;padding:8px;border-radius:5px;text-align:center}
+.tc .n{font-size:26px;font-weight:900;line-height:1}
+.tc .l{font-size:9px;text-transform:uppercase;opacity:.8;margin-top:2px}
+.qr-box{display:flex;align-items:center;gap:14px;border:2px solid #1a2550;padding:12px 14px;border-radius:8px;margin-bottom:18px}
+.qr-info h3{font-size:13px;font-weight:700;color:#1a2550;margin-bottom:3px}
+.qr-info p{font-size:10px;color:#444;line-height:1.5}
+.qr-url{font-size:8px;color:#888;font-family:monospace;margin-top:5px;word-break:break-all}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:#FF9500;color:#fff;margin-bottom:4px}
+.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:14px}
+.firma-section{margin-top:18px}
+.firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.firma{border:1.5px solid #bbb;border-radius:6px;overflow:hidden}
+.firma-hdr{background:#1a2550;color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:7px 10px;text-align:center}
+.firma-space{height:88px;background:#fafafa}
+.firma-fields{border-top:1.5px solid #ccc;padding:10px 12px 12px}
+.firma-field{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dotted #bbb}
+.firma-field:last-child{border-bottom:none}
+.firma-field-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;min-width:46px;flex-shrink:0}
+.firma-field-val{font-size:12px;font-weight:800;color:#1a2550;letter-spacing:.4px}
+.firma-field-blank{flex:1;min-height:16px}
+@media print{body{padding:8px 10px}}
+`;
+
+function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: string) {
+  const body = buildManifiestoHTML(m, supervisor, origin);
+  const html = `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8"/>
+<title>Manifiesto ${m.codigo_ruta}</title>
+<style>${PRINT_STYLES}</style>
+</head><body>
+${body}
+<script>window.onload = () => { setTimeout(() => window.print(), 600); };<\/script>
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=850,height=700');
@@ -241,10 +250,21 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
   const [saved,   setSaved]   = useState<Record<number, boolean>>({});
   const [toast,   setToast]   = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // Selección masiva
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const allSelected = manifiestos.length > 0 && selected.size === manifiestos.length;
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(Array.from({ length: manifiestos.length }, (_, i) => i)));
+  const toggleOne = (i: number) => setSelected(prev => {
+    const s = new Set(prev);
+    s.has(i) ? s.delete(i) : s.add(i);
+    return s;
+  });
+
   // Rebuild whenever rutas changes (e.g. chofer re-assigned)
   useEffect(() => {
     setManifiestos(rutas.map((r, i) => fromRuta(r, i, fecha, tiendas)));
     setSaved({});
+    setSelected(new Set());
   }, [rutas, fecha, tiendas]);
 
   // Lock body scroll while panel is open
@@ -320,6 +340,33 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     imprimirManifiesto(manifiestos[idx], supervisor, window.location.origin);
   }, [manifiestos, supervisor]);
 
+  const imprimirSeleccionados = useCallback(() => {
+    const idxs = Array.from(selected);
+    if (idxs.length === 0) return;
+    const origin = window.location.origin;
+    const bodies = idxs.map(i => buildManifiestoHTML(manifiestos[i], supervisor, origin)).join('\n');
+    const titulo = idxs.length === 1
+      ? `Manifiesto ${manifiestos[idxs[0]].codigo_ruta}`
+      : `Manifiestos (${idxs.length})`;
+    const html = `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8"/>
+<title>${titulo}</title>
+<style>${PRINT_STYLES}</style>
+</head><body>
+${bodies}
+<script>window.onload = () => { setTimeout(() => window.print(), 600); };<\/script>
+</body></html>`;
+    const win = window.open('', '_blank', 'width=850,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  }, [selected, manifiestos, supervisor]);
+
+  const guardarSeleccionados = useCallback(async () => {
+    const idxs = Array.from(selected);
+    for (const i of idxs) {
+      await guardar(i);
+    }
+  }, [selected, guardar]);
+
   if (!isOpen) return null;
 
   return (
@@ -351,130 +398,170 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
-        {manifiestos.map((m, idx) => {
-          const qrUrl     = m.token_qr ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${m.token_qr}` : '';
-          const estadoCol = ESTADO_COLOR[m.estado] ?? '#8E8E93';
-          const isSaved   = saved[idx];
-          const isSaving  = saving[idx];
+      {/* Barra de acciones masivas */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-white/10 flex-shrink-0 text-sm bg-white/3">
+        <label className="flex items-center gap-2 cursor-pointer text-text-2">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleAll}
+            className="w-4 h-4 rounded"
+          />
+          <span>Todos</span>
+        </label>
+        <span className="text-text-3">{selected.size} de {manifiestos.length}</span>
+        <div className="flex-1" />
+        <button
+          onClick={imprimirSeleccionados}
+          disabled={selected.size === 0}
+          className="px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-40 bg-white/10 hover:bg-white/15"
+        >
+          🖨 Imprimir ({selected.size})
+        </button>
+        <button
+          onClick={() => void guardarSeleccionados()}
+          disabled={selected.size === 0}
+          className="px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-40 bg-navy/60 hover:bg-navy/80 text-white"
+        >
+          💾 Guardar ({selected.size})
+        </button>
+      </div>
 
-          return (
-            <div key={idx} className="bg-white rounded-2xl shadow-xl overflow-hidden">
+      {/* Content — grid multi-columna */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {manifiestos.map((m, idx) => {
+            const qrUrl     = m.token_qr ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${m.token_qr}` : '';
+            const estadoCol = ESTADO_COLOR[m.estado] ?? '#8E8E93';
+            const isSaved   = saved[idx];
+            const isSaving  = saving[idx];
+            const isChecked = selected.has(idx);
 
-              {/* Manifiesto header */}
-              <div className="flex items-start justify-between px-5 py-4"
-                style={{ borderBottom: '1px solid #f0f0f0' }}>
-                <div>
-                  <div className="font-barlow-condensed text-[22px] font-bold text-knavy tracking-wide leading-tight">
-                    {m.codigo_ruta}
-                  </div>
-                  <div className="text-[12px] text-gray-400 mt-0.5">
-                    {m.chofer} · {m.patente} · {m.bodega_origen}
-                  </div>
-                </div>
-                <span className="px-3 py-1 rounded-full text-[11px] font-bold text-white mt-0.5"
-                  style={{ background: estadoCol }}>
-                  {ESTADO_LABEL[m.estado] ?? m.estado}
-                </span>
-              </div>
+            return (
+              <div key={idx} className="bg-white rounded-2xl shadow-xl overflow-hidden">
 
-              {/* Stats row */}
-              <div className="grid grid-cols-3 divide-x" style={{ background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
-                {([[ m.tiendas.length, 'Tiendas' ], [ m.total_pallets, 'Pallets' ], [ m.total_bultos, 'Bultos' ]] as [number, string][]).map(([n, l]) => (
-                  <div key={l} className="py-3 text-center">
-                    <div className="text-[26px] font-extrabold leading-none" style={{ color: '#C62828' }}>{n}</div>
-                    <div className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">{l}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Tiendas list */}
-              <div className="px-5 py-4">
-                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-                  Tiendas destino · orden de entrega
-                </div>
-                <div className="space-y-0.5">
-                  {m.tiendas.map((t) => (
-                    <div key={t.store_cod} className="flex items-center justify-between py-1.5"
-                      style={{ borderBottom: '1px solid #f5f5f5' }}>
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
-                          style={{ background: '#1a2550' }}>
-                          {t.orden}
-                        </span>
-                        <div>
-                          <div className="text-[13px] font-semibold text-gray-800 leading-tight">{t.nombre}</div>
-                          <div className="text-[10px] text-gray-400">{t.store_cod} · {t.ventana}</div>
-                        </div>
+                {/* Manifiesto header */}
+                <div className="flex items-start justify-between px-5 py-4"
+                  style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleOne(idx)}
+                      className="w-4 h-4 rounded mt-1 flex-shrink-0"
+                    />
+                    <div>
+                      <div className="font-barlow-condensed text-[22px] font-bold text-knavy tracking-wide leading-tight">
+                        {m.codigo_ruta}
                       </div>
-                      <div className="text-[11px] font-mono text-gray-500">
-                        {t.pallets > 0 && <span className="mr-1">{t.pallets}P</span>}
-                        {t.bultos > 0  && <span>{t.bultos}B</span>}
+                      <div className="text-[12px] text-gray-400 mt-0.5">
+                        {m.chofer} · {m.patente} · {m.bodega_origen}
                       </div>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-[11px] font-bold text-white mt-0.5 flex-shrink-0"
+                    style={{ background: estadoCol }}>
+                    {ESTADO_LABEL[m.estado] ?? m.estado}
+                  </span>
+                </div>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-3 divide-x" style={{ background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                  {([[ m.tiendas.length, 'Tiendas' ], [ m.total_pallets, 'Pallets' ], [ m.total_bultos, 'Bultos' ]] as [number, string][]).map(([n, l]) => (
+                    <div key={l} className="py-3 text-center">
+                      <div className="text-[26px] font-extrabold leading-none" style={{ color: '#C62828' }}>{n}</div>
+                      <div className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">{l}</div>
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/* QR preview (only after saving) */}
-              {m.token_qr && (
-                <div className="mx-5 mb-4 flex items-center gap-4 rounded-xl px-4 py-3"
-                  style={{ background: 'rgba(26,37,80,0.04)', border: '1.5px solid rgba(26,37,80,0.1)' }}>
-                  <div className="flex-shrink-0">
-                    <QRCodeSVG value={qrUrl} size={72} level="M" />
+                {/* Tiendas list */}
+                <div className="px-5 py-4">
+                  <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                    Tiendas destino · orden de entrega
                   </div>
-                  <div>
-                    <div className="text-[12px] font-bold text-knavy">QR Maestro de Ruta</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
-                      Escanear para ver guías, estado y productos<br/>— funciona para fiscalización rápida
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Estado buttons (only when saved) */}
-              {isSaved && (
-                <div className="px-5 pb-3">
-                  <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Actualizar estado</div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {Object.entries(ESTADO_LABEL).map(([key, label]) => (
-                      <button key={key}
-                        onClick={() => void actualizarEstado(idx, key)}
-                        className="px-3 py-1 rounded-full text-[10px] font-bold border transition-all"
-                        style={m.estado === key
-                          ? { background: ESTADO_COLOR[key], color: '#fff', borderColor: ESTADO_COLOR[key] }
-                          : { background: '#fff', color: '#666', borderColor: '#e0e0e0' }}>
-                        {label}
-                      </button>
+                  <div className="space-y-0.5">
+                    {m.tiendas.map((t) => (
+                      <div key={t.store_cod} className="flex items-center justify-between py-1.5"
+                        style={{ borderBottom: '1px solid #f5f5f5' }}>
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
+                            style={{ background: '#1a2550' }}>
+                            {t.orden}
+                          </span>
+                          <div>
+                            <div className="text-[13px] font-semibold text-gray-800 leading-tight">{t.nombre}</div>
+                            <div className="text-[10px] text-gray-400">{t.store_cod} · {t.ventana}</div>
+                          </div>
+                        </div>
+                        <div className="text-[11px] font-mono text-gray-500">
+                          {t.pallets > 0 && <span className="mr-1">{t.pallets}P</span>}
+                          {t.bultos > 0  && <span>{t.bultos}B</span>}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Actions */}
-              <div className="flex gap-2 px-5 pb-5">
-                {!isSaved ? (
-                  <button onClick={() => void guardar(idx)} disabled={isSaving}
-                    className="flex-1 h-10 rounded-xl text-white text-[13px] font-bold transition-opacity disabled:opacity-50"
-                    style={{ background: '#1a2550' }}>
-                    {isSaving ? '⏳ Guardando…' : '💾 Guardar en Sistema'}
-                  </button>
-                ) : (
-                  <div className="flex-1 h-10 rounded-xl text-[13px] font-bold flex items-center justify-center"
-                    style={{ background: '#EAF7EE', color: '#34C759', border: '1px solid #34C75940' }}>
-                    ✓ Guardado en Sistema
+                {/* QR preview (only after saving) */}
+                {m.token_qr && (
+                  <div className="mx-5 mb-4 flex items-center gap-4 rounded-xl px-4 py-3"
+                    style={{ background: 'rgba(26,37,80,0.04)', border: '1.5px solid rgba(26,37,80,0.1)' }}>
+                    <div className="flex-shrink-0">
+                      <QRCodeSVG value={qrUrl} size={72} level="M" />
+                    </div>
+                    <div>
+                      <div className="text-[12px] font-bold text-knavy">QR Maestro de Ruta</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                        Escanear para ver guías, estado y productos<br/>— funciona para fiscalización rápida
+                      </div>
+                    </div>
                   </div>
                 )}
-                <button onClick={() => imprimir(idx)}
-                  className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
-                  style={{ background: '#f5f5f5', color: '#444', border: '1px solid #e0e0e0' }}>
-                  🖨️ Imprimir
-                </button>
+
+                {/* Estado buttons (only when saved) */}
+                {isSaved && (
+                  <div className="px-5 pb-3">
+                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Actualizar estado</div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {Object.entries(ESTADO_LABEL).map(([key, label]) => (
+                        <button key={key}
+                          onClick={() => void actualizarEstado(idx, key)}
+                          className="px-3 py-1 rounded-full text-[10px] font-bold border transition-all"
+                          style={m.estado === key
+                            ? { background: ESTADO_COLOR[key], color: '#fff', borderColor: ESTADO_COLOR[key] }
+                            : { background: '#fff', color: '#666', borderColor: '#e0e0e0' }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2 px-5 pb-5">
+                  {!isSaved ? (
+                    <button onClick={() => void guardar(idx)} disabled={isSaving}
+                      className="flex-1 h-10 rounded-xl text-white text-[13px] font-bold transition-opacity disabled:opacity-50"
+                      style={{ background: '#1a2550' }}>
+                      {isSaving ? '⏳ Guardando…' : '💾 Guardar en Sistema'}
+                    </button>
+                  ) : (
+                    <div className="flex-1 h-10 rounded-xl text-[13px] font-bold flex items-center justify-center"
+                      style={{ background: '#EAF7EE', color: '#34C759', border: '1px solid #34C75940' }}>
+                      ✓ Guardado en Sistema
+                    </div>
+                  )}
+                  <button onClick={() => imprimir(idx)}
+                    className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
+                    style={{ background: '#f5f5f5', color: '#444', border: '1px solid #e0e0e0' }}>
+                    🖨️ Imprimir
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Footer hint */}
