@@ -130,8 +130,6 @@ export default function RutasScreen() {
   const [supervisor, setSupervisor] = useState('');
   const [fecha,      setFecha]      = useState(todayStr);
   const [manualText, setManualText] = useState('');
-  const setManualTextRef = useRef(setManualText);
-  useEffect(() => { setManualTextRef.current = setManualText; }, [setManualText]);
   const [errors, setErrors] = useState<string[]>([]);
 
   const [results, setResults]           = useState<Results | null>(null);
@@ -535,23 +533,8 @@ export default function RutasScreen() {
   }, [calT, cal, fecha]);
 
   // ── Sync calT → manual text ───────────────────────────────────────
-  useEffect(() => {
-    if (modo !== 'man') return;
-    const stores = Object.keys(sortedCalT).filter(cod => {
-      const grupo = sortedCalT[cod]?.g;
-      return grupo === 'rm' || grupo === 'costa' || grupo === 'fal';
-    });
-    if (stores.length === 0) return;
-    const newText = stores.map(cod => {
-      const data = sortedCalT[cod];
-      const p = data.p ? `${data.p}P` : '';
-      const b = data.b ? `${data.b}B` : '';
-      const counts = [p, b].filter(Boolean).join(' ');
-      return counts ? `${cod}: ${counts}` : `${cod}:`;
-    }).join('\n');
-    if (manualText !== newText) setManualTextRef.current(newText);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedCalT, modo]);
+  // La generación del texto (con tabs RM/COSTA/REGIONES, CH y totales)
+  // ahora vive en ManualMode, que recibe sortedCalT como prop.
 
   // ── Calendar handlers ─────────────────────────────────────────────
   function handleToggleGroup(gid: string) {

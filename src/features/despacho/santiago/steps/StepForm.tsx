@@ -1513,7 +1513,7 @@ export function StepForm() {
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
                       <span className={`font-barlow-condensed text-[17px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>
-                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[13px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[15px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
                       </span>
                       <div className="flex gap-1">
                         <button onClick={() => editSavedRow(row.id)} className="text-[15px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
@@ -1541,7 +1541,7 @@ export function StepForm() {
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
-                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[12px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
                     </span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
