@@ -197,6 +197,7 @@ export function TiendasPage() {
   const [multiDragOver,     setMultiDragOver]      = useState(false);
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
   const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
   const [formRows,              setFormRows]              = useState<FormRow[]>([]);
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
@@ -336,17 +337,29 @@ export function TiendasPage() {
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('store_cod,tipo,contenido')
-        .eq('date', dateStr);
+        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active')
+        .eq('date', dateStr)
+        .eq('is_active', true)
+        .order('id', { ascending: true });
       if (!data) return;
       const slots: Record<string, { tipo: string; contenido: string }[]> = {};
+      const full:  Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
       for (const row of data) {
-        const name = COD_TO_TIENDA_NAME[row.store_cod];
+        const name = COD_TO_TIENDA_NAME[row.store_cod as string];
         if (!name) continue;
-        if (!slots[name]) slots[name] = [];
-        slots[name].push({ tipo: row.tipo || 'P', contenido: row.contenido || 'hogar' });
+        if (!slots[name]) { slots[name] = []; full[name] = []; }
+        slots[name].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
+        full[name].push({
+          id: row.id as number, tipo: (row.tipo as string) || 'P',
+          contenido: (row.contenido as string) || 'hogar',
+          seq: row.seq as number | null, canonical_id: row.canonical_id as string | null,
+          peso_kg: row.peso_kg as number | null, alto: row.alto as number | null,
+          largo: row.largo as number | null, ancho: row.ancho as number | null,
+          peso_v: row.peso_v as number | null,
+        });
       }
       setPickingSlots(slots);
+      setPickingSlotsFull(full);
     };
 
     load();
@@ -874,6 +887,17 @@ export function TiendasPage() {
     const pkSlots        = pickingSlots[selectedTienda] ?? [];
     const pickingRef     = { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length };
     const hasPickingRef  = pickingRef.p > 0 || pickingRef.c > 0 || pickingRef.b > 0 || pickingRef.ch > 0;
+    const fullSlotsRegion = pickingSlotsFull[selectedTienda] ?? [];
+    const tiendaCodRegion = TIENDAS[selectedTienda]?.cod ?? '';
+    const refreshFullSlotsRegion = async () => {
+      const d = new Date();
+      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const { data } = await supabase.from('picking_pallets').select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active').eq('date',ds).eq('is_active',true).order('id',{ascending:true});
+      if (!data) return;
+      const full: Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
+      for (const row of data) { const name = COD_TO_TIENDA_NAME[row.store_cod as string]; if (!name) continue; if (!full[name]) full[name] = []; full[name].push({ id: row.id as number, tipo: (row.tipo as string)||'P', contenido:(row.contenido as string)||'hogar', seq:row.seq as number|null, canonical_id:row.canonical_id as string|null, peso_kg:row.peso_kg as number|null, alto:row.alto as number|null, largo:row.largo as number|null, ancho:row.ancho as number|null, peso_v:row.peso_v as number|null }); }
+      setPickingSlotsFull(full);
+    };
 
     /* Inline P/B/C quantity setter — shown in both modes */
     const presetBar = (
@@ -953,9 +977,21 @@ export function TiendasPage() {
         </div>
       );
 
+      const PickingSlotCardsRegiones = require('../../../despacho/santiago/components/PickingSlotCards').default as typeof import('../../../despacho/santiago/components/PickingSlotCards').default;
+
       return (
         <div className="flex-1 flex flex-col overflow-hidden">
           {header}
+          {/* Slots de Picking — formularios enlazados por ID */}
+          {fullSlotsRegion.length > 0 && tiendaCodRegion && (
+            <PickingSlotCardsRegiones
+              slots={fullSlotsRegion}
+              storeCod={tiendaCodRegion}
+              date={new Date().toISOString().slice(0, 10)}
+              onRefresh={refreshFullSlotsRegion}
+              onCombined={() => { }}
+            />
+          )}
           {presetBar}
           {pdfStrip}
           <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">

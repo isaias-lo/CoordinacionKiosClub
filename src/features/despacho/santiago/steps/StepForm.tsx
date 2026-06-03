@@ -9,6 +9,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
+import PickingSlotCards, { type PickingSlot } from '../components/PickingSlotCards';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
@@ -264,6 +265,7 @@ export function StepForm() {
   const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
   const [formRows,             setFormRows]             = useState<FormRow[]>([]);
   const [pickingSlots,         setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  const [pickingSlotsFull,     setPickingSlotsFull]      = useState<Record<string, PickingSlot[]>>({});
   const [consumedSlotsSant,    setConsumedSlotsSant]     = useState<ConsumedSlotsS>(() => typeof window === 'undefined' ? {} : loadConsumedSlotsS());
 
   const [showTodas, setShowTodas] = useState(false);
@@ -524,16 +526,32 @@ export function StepForm() {
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('store_cod,tipo,contenido')
-        .eq('date', dateStr);
+        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active')
+        .eq('date', dateStr)
+        .eq('is_active', true)
+        .order('id', { ascending: true });
       if (!data) return;
       const slots: Record<string, { tipo: string; contenido: string }[]> = {};
+      const full:  Record<string, PickingSlot[]> = {};
       for (const row of data) {
-        const cod = row.store_cod;
-        if (!slots[cod]) slots[cod] = [];
-        slots[cod].push({ tipo: row.tipo || 'P', contenido: row.contenido || 'hogar' });
+        const cod = row.store_cod as string;
+        if (!slots[cod]) { slots[cod] = []; full[cod] = []; }
+        slots[cod].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
+        full[cod].push({
+          id:           row.id as number,
+          tipo:         (row.tipo as string) || 'P',
+          contenido:    (row.contenido as string) || 'hogar',
+          seq:          row.seq as number | null,
+          canonical_id: row.canonical_id as string | null,
+          peso_kg:      row.peso_kg as number | null,
+          alto:         row.alto as number | null,
+          largo:        row.largo as number | null,
+          ancho:        row.ancho as number | null,
+          peso_v:       row.peso_v as number | null,
+        });
       }
       setPickingSlots(slots);
+      setPickingSlotsFull(full);
     };
 
     load();
@@ -1492,9 +1510,30 @@ export function StepForm() {
     const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
     const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
+    const fullSlots = pickingSlotsFull[currentTienda.cod] ?? [];
+    const refreshFullSlots = () => {
+      const d = new Date();
+      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      supabase.from('picking_pallets').select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active').eq('date',ds).eq('is_active',true).order('id',{ascending:true}).then(({data})=>{
+        if(!data)return; const full:Record<string,PickingSlot[]>={};
+        for(const row of data){const cod=row.store_cod as string;if(!full[cod])full[cod]=[];full[cod].push({id:row.id as number,tipo:(row.tipo as string)||'P',contenido:(row.contenido as string)||'hogar',seq:row.seq as number|null,canonical_id:row.canonical_id as string|null,peso_kg:row.peso_kg as number|null,alto:row.alto as number|null,largo:row.largo as number|null,ancho:row.ancho as number|null,peso_v:row.peso_v as number|null});}
+        setPickingSlotsFull(full);
+      });
+    };
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
+
+        {/* Slots de Picking — formularios enlazados por ID (renderMultiForm) */}
+        {fullSlots.length > 0 && (
+          <PickingSlotCards
+            slots={fullSlots}
+            storeCod={currentTienda.cod}
+            date={new Date().toISOString().slice(0, 10)}
+            onRefresh={refreshFullSlots}
+            onCombined={() => { showToast('Pallets combinados — reimprimir etiqueta en Seguimiento', '#2563EB'); }}
+          />
+        )}
 
         <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
@@ -1769,9 +1808,30 @@ export function StepForm() {
     const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
     const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
+    const fullSlotsSingle = pickingSlotsFull[currentTienda.cod] ?? [];
+    const refreshFullSlotsSingle = () => {
+      const d = new Date();
+      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      supabase.from('picking_pallets').select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active').eq('date',ds).eq('is_active',true).order('id',{ascending:true}).then(({data})=>{
+        if(!data)return; const full:Record<string,PickingSlot[]>={};
+        for(const row of data){const cod=row.store_cod as string;if(!full[cod])full[cod]=[];full[cod].push({id:row.id as number,tipo:(row.tipo as string)||'P',contenido:(row.contenido as string)||'hogar',seq:row.seq as number|null,canonical_id:row.canonical_id as string|null,peso_kg:row.peso_kg as number|null,alto:row.alto as number|null,largo:row.largo as number|null,ancho:row.ancho as number|null,peso_v:row.peso_v as number|null});}
+        setPickingSlotsFull(full);
+      });
+    };
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
+
+        {/* Slots de Picking — formularios enlazados por ID (renderSingleForm) */}
+        {fullSlotsSingle.length > 0 && (
+          <PickingSlotCards
+            slots={fullSlotsSingle}
+            storeCod={currentTienda.cod}
+            date={new Date().toISOString().slice(0, 10)}
+            onRefresh={refreshFullSlotsSingle}
+            onCombined={() => { showToast('Pallets combinados — reimprimir etiqueta en Seguimiento', '#2563EB'); }}
+          />
+        )}
 
         <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
