@@ -232,6 +232,24 @@ export function AuditoriaScreen() {
   const auditStartTimeRef  = useRef('');
   auditStartTimeRef.current = auditStartTime;
 
+  // Token de sesión para llamadas a APIs protegidas con verifyAuth (/api/picking-pallets, etc.)
+  // Usar authedFetch en lugar de fetch() directo para cualquier ruta API que requiera auth.
+  const tokenRef = useRef<string>('');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      tokenRef.current = session?.access_token ?? '';
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, session) => {
+      tokenRef.current = session?.access_token ?? '';
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  const authedFetch = useCallback((url: string, init: RequestInit = {}) =>
+    fetch(url, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${tokenRef.current}` },
+    }), []);
+
   // Set initial view once profile loads + kick off history load with correct user context
   useEffect(() => {
     if (!authLoading && !viewInit) {
@@ -604,11 +622,7 @@ export function AuditoriaScreen() {
     store_cod: string; picker_label: string; picker_key: string;
     codeBySubtipo: Partial<Record<SubTipo, string>>;
   } | null> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token ?? '';
-    const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res  = await authedFetch(`/api/picking-pallets?id=${idStr.trim()}`);
     const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; contenido: string; refs: string }; error?: string };
     if (!res.ok || !json.data) return null;
     const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
