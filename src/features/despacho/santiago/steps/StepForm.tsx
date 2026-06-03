@@ -9,7 +9,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
-import PickingSlotCards, { type PickingSlot } from '../components/PickingSlotCards';
+import { type PickingSlot } from '../components/PickingSlotCards';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
@@ -64,6 +64,7 @@ interface FormRow {
   ancho: string;
   saved?: boolean;
   savedItem?: SantiagoItem;
+  pickingSlotId?: number;  // FK a picking_pallets.id
 }
 
 /* ── Resumen inline state type ── */
@@ -568,11 +569,13 @@ export function StepForm() {
   const formScrollRef        = useRef<HTMLDivElement>(null);
   const formScrollDesktopRef = useRef<HTMLDivElement>(null);
   const pickingSlotsRef      = useRef(pickingSlots);
+  const pickingSlotsFullRef  = useRef(pickingSlotsFull);
   const sheetRef             = useRef<HTMLDivElement>(null);
   const sheetDrag            = useRef({ start: 0, delta: 0 });
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
-  useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
+  useEffect(() => { pickingSlotsRef.current     = pickingSlots;     }, [pickingSlots]);
+  useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
 
   /* ── Derived ── */
   const localTodayCods  = getTiendasSantiagoHoy().map(t => t.cod);
@@ -711,12 +714,22 @@ export function StepForm() {
       };
 
       if (existing.length === 0 && slots.length > 0) {
-        // Build rows from picking slots with contenido pre-filled
-        const allRows: FormRow[] = slots.map((s, i) => ({
+        // Use full slot data (id, seq, peso_kg, alto...) when available
+        const fullSlots = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
+        const baseSlots = fullSlots.length > 0
+          ? fullSlots
+          : slots.map(s => ({ id: 0, tipo: s.tipo, contenido: s.contenido,
+              seq: null, canonical_id: null, peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null }));
+        const allRows: FormRow[] = baseSlots.map((s, i) => ({
           id:       `pick-${s.tipo}-${i}-${Date.now()}`,
           tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
           contenido: mapearCont(s.contenido),
-          peso: '', alto: '', largo: '', ancho: '',
+          // Pre-llenar si hay dimensiones ya guardadas
+          peso:  s.peso_kg != null ? String(s.peso_kg) : '',
+          alto:  s.alto    != null ? String(s.alto)    : '',
+          largo: s.largo   != null ? String(s.largo)   : '',
+          ancho: s.ancho   != null ? String(s.ancho)   : '',
+          pickingSlotId: (s as { id?: number }).id || undefined,
         }));
         const chocRows = allRows.filter(r => r.tipo === 'Chocolate');
         const nonChocRows = allRows.filter(r => r.tipo !== 'Chocolate');
@@ -982,6 +995,16 @@ export function StepForm() {
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
+
+    // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
+    if (row.pickingSlotId) {
+      supabase.from('picking_pallets').update({
+        peso_kg: p, alto: a, ancho: fA, largo: fL,
+        peso_v: Math.round((a * fL * fA) / 6000 * 10) / 10 || null,
+      }).eq('id', row.pickingSlotId).then(({ error }) => {
+        if (error) console.error('[picking_pallets update]', error.message);
+      });
+    }
   };
 
   const editSavedRow = (rowId: string) => {
@@ -1510,30 +1533,9 @@ export function StepForm() {
     const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
     const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
-    const fullSlots = pickingSlotsFull[currentTienda.cod] ?? [];
-    const refreshFullSlots = () => {
-      const d = new Date();
-      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      supabase.from('picking_pallets').select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active').eq('date',ds).eq('is_active',true).order('id',{ascending:true}).then(({data})=>{
-        if(!data)return; const full:Record<string,PickingSlot[]>={};
-        for(const row of data){const cod=row.store_cod as string;if(!full[cod])full[cod]=[];full[cod].push({id:row.id as number,tipo:(row.tipo as string)||'P',contenido:(row.contenido as string)||'hogar',seq:row.seq as number|null,canonical_id:row.canonical_id as string|null,peso_kg:row.peso_kg as number|null,alto:row.alto as number|null,largo:row.largo as number|null,ancho:row.ancho as number|null,peso_v:row.peso_v as number|null});}
-        setPickingSlotsFull(full);
-      });
-    };
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        {/* Slots de Picking — formularios enlazados por ID (renderMultiForm) */}
-        {fullSlots.length > 0 && (
-          <PickingSlotCards
-            slots={fullSlots}
-            storeCod={currentTienda.cod}
-            date={new Date().toISOString().slice(0, 10)}
-            onRefresh={refreshFullSlots}
-            onCombined={() => { showToast('Pallets combinados — reimprimir etiqueta en Seguimiento', '#2563EB'); }}
-          />
-        )}
 
         <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
@@ -1808,30 +1810,9 @@ export function StepForm() {
     const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
     const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
-    const fullSlotsSingle = pickingSlotsFull[currentTienda.cod] ?? [];
-    const refreshFullSlotsSingle = () => {
-      const d = new Date();
-      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      supabase.from('picking_pallets').select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active').eq('date',ds).eq('is_active',true).order('id',{ascending:true}).then(({data})=>{
-        if(!data)return; const full:Record<string,PickingSlot[]>={};
-        for(const row of data){const cod=row.store_cod as string;if(!full[cod])full[cod]=[];full[cod].push({id:row.id as number,tipo:(row.tipo as string)||'P',contenido:(row.contenido as string)||'hogar',seq:row.seq as number|null,canonical_id:row.canonical_id as string|null,peso_kg:row.peso_kg as number|null,alto:row.alto as number|null,largo:row.largo as number|null,ancho:row.ancho as number|null,peso_v:row.peso_v as number|null});}
-        setPickingSlotsFull(full);
-      });
-    };
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        {/* Slots de Picking — formularios enlazados por ID (renderSingleForm) */}
-        {fullSlotsSingle.length > 0 && (
-          <PickingSlotCards
-            slots={fullSlotsSingle}
-            storeCod={currentTienda.cod}
-            date={new Date().toISOString().slice(0, 10)}
-            onRefresh={refreshFullSlotsSingle}
-            onCombined={() => { showToast('Pallets combinados — reimprimir etiqueta en Seguimiento', '#2563EB'); }}
-          />
-        )}
 
         <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
