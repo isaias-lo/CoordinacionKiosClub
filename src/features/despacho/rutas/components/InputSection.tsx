@@ -145,12 +145,17 @@ export default function InputSection({
     return Number(localStorage.getItem('enrutador_sidebar_width') ?? '300');
   });
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isMobile,  setIsMobile]  = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<'sidebar' | 'right'>('sidebar');
   const isResizingRef     = useRef(false);
   const dragStartXRef     = useRef(0);
   const dragStartWidthRef = useRef(0);
 
   useEffect(() => {
-    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    const checkDesktop = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+      setIsMobile(window.innerWidth < 768);
+    };
     checkDesktop();
     window.addEventListener('resize', checkDesktop);
 
@@ -199,6 +204,129 @@ export default function InputSection({
 
   const sidebarStyle = isDesktop ? { width: leftWidth, flexShrink: 0 } : undefined;
   const sidebarClass = isDesktop ? '' : 'w-[260px] md:w-[290px]';
+
+  // En mobile mostramos solo un panel a la vez
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        {mobilePanel === 'sidebar' ? (
+          <>
+            {/* Sidebar stores — mobile full width */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              {/* Header + Paradas */}
+              <div className="px-4 py-3 border-b border-black/[0.08] flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wider mb-0.5 truncate">
+                    {dnom[getDia(fecha)] || 'Hoy'} · {totalStores} tiendas
+                  </div>
+                  <div className="text-[15px] font-bold text-ktext leading-tight">
+                    {activeCount > 0 ? `${activeCount} con carga` : 'Sin carga asignada'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onOpenParadas}
+                    style={{ boxShadow: '0 1px 4px rgba(212,43,43,0.18)' }}
+                    className="flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-kred text-white text-[12px] font-bold"
+                  >
+                    <span className="text-[16px] leading-none">+</span>
+                    <span>Parada</span>
+                    {paradasAdicionales.length > 0 && (
+                      <span className="bg-white/30 text-[9px] font-extrabold w-[16px] h-[16px] rounded-full flex items-center justify-center">
+                        {paradasAdicionales.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setMobilePanel('right')}
+                    className="h-[32px] px-3 rounded-[10px] bg-knavy text-white text-[12px] font-bold flex items-center gap-1"
+                  >
+                    Rutas →
+                  </button>
+                </div>
+              </div>
+              {/* Supervisor + Date */}
+              <div className="px-4 pt-3 pb-2 border-b border-black/[0.08] space-y-2">
+                <input type="text" value={supervisor} onChange={e => onSupervisor(e.target.value)} placeholder="Supervisor"
+                  className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none" />
+                <input type="date" value={fecha} onChange={e => onFecha(e.target.value)}
+                  className="w-full h-[36px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-kred focus:outline-none" />
+              </div>
+              {/* Group toggles */}
+              <div className="px-3 pt-2 pb-1 flex gap-2">
+                <GroupBadge active={grps.has('rm')}    label="RM"       onClick={() => onToggleGroup('rm')} />
+                <GroupBadge active={grps.has('costa')} label="COSTA"    onClick={() => onToggleGroup('costa')} />
+                <GroupBadge active={grps.has('fal')}   label="REGIONES" onClick={() => onToggleGroup('fal')} />
+              </div>
+              {/* Store list */}
+              <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-[5px]">
+                {Object.entries(filteredCalT).map(([cod, data]) => (
+                  <SidebarRow key={cod} cod={cod} data={data} onToggle={onToggleChip} onUpdate={onUpdateChip} />
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Right panel — mobile full width */}
+            <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <button onClick={() => setMobilePanel('sidebar')}
+                  className="h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0">
+                  ← Tiendas
+                </button>
+                <div className="flex bg-kbg rounded-[10px] p-[3px] gap-0.5 flex-1">
+                  {([['drag','🎯','DESPACHO'],['cal','🚛','CALCULAR'],['man','✏️','MANUAL']] as [string,string,string][]).map(([id,icon,label]) => (
+                    <button key={id} onClick={() => onModo(id)}
+                      className={`flex-1 h-[30px] rounded-[8px] text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all
+                        ${modo === id ? 'bg-white shadow-sm text-ktext' : 'text-kmuted'}`}>
+                      <span>{icon}</span><span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={onLimpiar} className="h-[36px] px-2 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[11px] font-semibold flex-shrink-0">
+                  Limpiar
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden bg-kbg">
+              {rightPanelContent ? (
+                <div className="h-full overflow-hidden">{rightPanelContent}</div>
+              ) : (
+                <div className="h-full overflow-y-auto">
+                  {modo === 'drag' && (
+                    <div className="p-3">
+                      <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                        paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
+                        onCalcular={onCalcularManual} conductores={conductores} onConductorChange={onConductorChange}
+                        onAgregarConductor={onAgregarConductor} onEliminarParada={onEliminarParada} />
+                    </div>
+                  )}
+                  {modo === 'cal' && (
+                    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                      <div style={{ background: 'linear-gradient(145deg,#1B2A6B,#2D3FA0)', boxShadow: '0 8px 32px rgba(27,42,107,0.12)' }}
+                        className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center text-[30px] mb-5">🚛</div>
+                      <div className="text-[20px] font-bold text-ktext mb-2">Calcular rutas</div>
+                      <div className="text-[13px] text-kmuted mb-8 max-w-xs leading-relaxed">Configura tiendas y cantidades en el panel izquierdo.</div>
+                      <button onClick={onCalcular} style={{ boxShadow: '0 6px 20px rgba(212,43,43,0.32)' }}
+                        className="h-[52px] px-10 rounded-[14px] bg-kred text-white text-[16px] font-bold transition-all active:scale-[0.97] flex items-center gap-2">
+                        🚛 Calcular Rutas
+                      </button>
+                    </div>
+                  )}
+                  {modo === 'man' && (
+                    <div className="p-4">
+                      <ManualMode value={manualText} onChange={onManual} calT={calT} modo={modo} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -356,62 +484,56 @@ export default function InputSection({
       ═══════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col overflow-hidden bg-kbg min-w-0">
 
+        {/* ── Mode tab bar — SIEMPRE visible ── */}
+        <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1">
+              {([
+                ['drag', '🎯', 'DESPACHO', '#FF5252', '#C42020', 'rgba(196,32,32,0.4)'],
+                ['cal',  '🚛', 'CALCULAR', '#3D52CC', '#1B2A6B', 'rgba(27,42,107,0.45)'],
+                ['man',  '✏️', 'MANUAL',   '#8E8E93', '#636366', 'rgba(99,99,102,0.35)'],
+              ] as [string, string, string, string, string, string][]).map(([id, icon, label, from, to, shadow]) => (
+                <button
+                  key={id}
+                  onClick={() => { if (!rightPanelContent) onModo(id); }}
+                  style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
+                  className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
+                    ${rightPanelContent ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
+                >
+                  <TabIcon3D emoji={icon} from={from} to={to} shadow={shadow} />
+                  <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
+                    ${modo === id ? 'text-ktext' : 'text-kmuted'}`}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="flex-1" />
+            {!rightPanelContent && modo !== 'drag' && (
+              <button
+                onClick={onCalcular}
+                style={{ boxShadow: '0 3px 12px rgba(212,43,43,0.28)' }}
+                className="h-[40px] px-6 rounded-[12px] bg-kred text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-2"
+              >
+                🚛 <span>Calcular Rutas</span>
+              </button>
+            )}
+            <button
+              onClick={onLimpiar}
+              className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        {/* ── Content area ── */}
         {rightPanelContent ? (
-          /* ── Results / Comparison override ── */
           <div className="flex-1 overflow-hidden">
             {rightPanelContent}
           </div>
         ) : (
-          <>
-            {/* ── Mode tab bar ── */}
-            <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
-              <div className="flex items-center gap-2 px-4 py-2.5">
-                {/* Mode tabs */}
-                <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1">
-                  {([
-                    ['drag', '🎯', 'DESPACHO', '#FF5252', '#C42020', 'rgba(196,32,32,0.4)'],
-                    ['cal',  '🚛', 'CALCULAR', '#3D52CC', '#1B2A6B', 'rgba(27,42,107,0.45)'],
-                    ['man',  '✏️', 'MANUAL',   '#8E8E93', '#636366', 'rgba(99,99,102,0.35)'],
-                  ] as [string, string, string, string, string, string][]).map(([id, icon, label, from, to, shadow]) => (
-                    <button
-                      key={id}
-                      onClick={() => onModo(id)}
-                      style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
-                      className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
-                        ${modo === id ? '' : 'hover:bg-white/60'}`}
-                    >
-                      <TabIcon3D emoji={icon} from={from} to={to} shadow={shadow} />
-                      <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
-                        ${modo === id ? 'text-ktext' : 'text-kmuted'}`}>
-                        {label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex-1" />
-
-                {/* Action buttons */}
-                {modo !== 'drag' && (
-                  <button
-                    onClick={onCalcular}
-                    style={{ boxShadow: '0 3px 12px rgba(212,43,43,0.28)' }}
-                    className="h-[40px] px-6 rounded-[12px] bg-kred text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-2"
-                  >
-                    🚛 <span>Calcular Rutas</span>
-                  </button>
-                )}
-                <button
-                  onClick={onLimpiar}
-                  className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
-                >
-                  Limpiar
-                </button>
-              </div>
-            </div>
-
-            {/* ── Content area ── */}
-            <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto">
 
               {/* 🎯 DESPACHO MODE */}
               {modo === 'drag' && (
@@ -470,8 +592,7 @@ export default function InputSection({
                 </div>
               )}
             </div>
-          </>
-        )}
+          )}
       </div>
     </div>
   );

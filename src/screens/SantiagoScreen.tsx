@@ -108,7 +108,7 @@ function SantiagoContent() {
                  }}>
               <Check size={14} color="#fff" strokeWidth={2} />
             </div>
-            <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">TERMINAR</span>
+            <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">REGISTRAR</span>
           </button>
         )}
 

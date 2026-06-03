@@ -9,6 +9,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
+import { type PickingSlot } from '../components/PickingSlotCards';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
@@ -63,6 +64,7 @@ interface FormRow {
   ancho: string;
   saved?: boolean;
   savedItem?: SantiagoItem;
+  pickingSlotId?: number;  // FK a picking_pallets.id
 }
 
 /* ── Resumen inline state type ── */
@@ -264,6 +266,7 @@ export function StepForm() {
   const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
   const [formRows,             setFormRows]             = useState<FormRow[]>([]);
   const [pickingSlots,         setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  const [pickingSlotsFull,     setPickingSlotsFull]      = useState<Record<string, PickingSlot[]>>({});
   const [consumedSlotsSant,    setConsumedSlotsSant]     = useState<ConsumedSlotsS>(() => typeof window === 'undefined' ? {} : loadConsumedSlotsS());
 
   const [showTodas, setShowTodas] = useState(false);
@@ -524,16 +527,32 @@ export function StepForm() {
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('store_cod,tipo,contenido')
-        .eq('date', dateStr);
+        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active')
+        .eq('date', dateStr)
+        .eq('is_active', true)
+        .order('id', { ascending: true });
       if (!data) return;
       const slots: Record<string, { tipo: string; contenido: string }[]> = {};
+      const full:  Record<string, PickingSlot[]> = {};
       for (const row of data) {
-        const cod = row.store_cod;
-        if (!slots[cod]) slots[cod] = [];
-        slots[cod].push({ tipo: row.tipo || 'P', contenido: row.contenido || 'hogar' });
+        const cod = row.store_cod as string;
+        if (!slots[cod]) { slots[cod] = []; full[cod] = []; }
+        slots[cod].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
+        full[cod].push({
+          id:           row.id as number,
+          tipo:         (row.tipo as string) || 'P',
+          contenido:    (row.contenido as string) || 'hogar',
+          seq:          row.seq as number | null,
+          canonical_id: row.canonical_id as string | null,
+          peso_kg:      row.peso_kg as number | null,
+          alto:         row.alto as number | null,
+          largo:        row.largo as number | null,
+          ancho:        row.ancho as number | null,
+          peso_v:       row.peso_v as number | null,
+        });
       }
       setPickingSlots(slots);
+      setPickingSlotsFull(full);
     };
 
     load();
@@ -550,11 +569,13 @@ export function StepForm() {
   const formScrollRef        = useRef<HTMLDivElement>(null);
   const formScrollDesktopRef = useRef<HTMLDivElement>(null);
   const pickingSlotsRef      = useRef(pickingSlots);
+  const pickingSlotsFullRef  = useRef(pickingSlotsFull);
   const sheetRef             = useRef<HTMLDivElement>(null);
   const sheetDrag            = useRef({ start: 0, delta: 0 });
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
-  useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
+  useEffect(() => { pickingSlotsRef.current     = pickingSlots;     }, [pickingSlots]);
+  useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
 
   /* ── Derived ── */
   const localTodayCods  = getTiendasSantiagoHoy().map(t => t.cod);
@@ -693,12 +714,22 @@ export function StepForm() {
       };
 
       if (existing.length === 0 && slots.length > 0) {
-        // Build rows from picking slots with contenido pre-filled
-        const allRows: FormRow[] = slots.map((s, i) => ({
+        // Use full slot data (id, seq, peso_kg, alto...) when available
+        const fullSlots = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
+        const baseSlots = fullSlots.length > 0
+          ? fullSlots
+          : slots.map(s => ({ id: 0, tipo: s.tipo, contenido: s.contenido,
+              seq: null, canonical_id: null, peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null }));
+        const allRows: FormRow[] = baseSlots.map((s, i) => ({
           id:       `pick-${s.tipo}-${i}-${Date.now()}`,
           tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
           contenido: mapearCont(s.contenido),
-          peso: '', alto: '', largo: '', ancho: '',
+          // Pre-llenar si hay dimensiones ya guardadas
+          peso:  s.peso_kg != null ? String(s.peso_kg) : '',
+          alto:  s.alto    != null ? String(s.alto)    : '',
+          largo: s.largo   != null ? String(s.largo)   : '',
+          ancho: s.ancho   != null ? String(s.ancho)   : '',
+          pickingSlotId: (s as { id?: number }).id || undefined,
         }));
         const chocRows = allRows.filter(r => r.tipo === 'Chocolate');
         const nonChocRows = allRows.filter(r => r.tipo !== 'Chocolate');
@@ -850,55 +881,6 @@ export function StepForm() {
     setCombineModal(null);
   };
 
-  /* ── Preset bar ── */
-  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores' | 'chocolates', value: string) => {
-    if (!currentTienda) return;
-    const cod = currentTienda.cod;
-    const n   = Math.max(0, parseInt(value) || 0);
-    const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
-    setPresets(prev => ({ ...prev, [cod]: { ...curr, [field]: n } }));
-    if (field === 'chocolates') {
-      const currentItems = items[cod] || [];
-      const existingChocCount = currentItems.filter(i => i.tipo === 'Chocolate').length;
-      if (n > existingChocCount) {
-        const newChocItems: SantiagoItem[] = Array.from({ length: n - existingChocCount }, (_, i) => ({
-          id: `ch-${Date.now()}-${i}`, tiendaCod: cod,
-          tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
-          peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
-          pesoVolumetrico: 0, regimen: state.regimen!, orden: `CH${existingChocCount + i + 1}`, estado: ESTADO_DEFAULT,
-        }));
-        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: [...currentItems, ...newChocItems] });
-      } else if (n < existingChocCount) {
-        let toRemove = existingChocCount - n;
-        const newItems = [...currentItems];
-        for (let i = newItems.length - 1; i >= 0 && toRemove > 0; i--)
-          if (newItems[i].tipo === 'Chocolate') { newItems.splice(i, 1); toRemove--; }
-        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: newItems });
-      }
-      setFormRows(prev => prev.filter(r => r.tipo !== 'Chocolate'));
-      return;
-    }
-    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
-    const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
-    // Bug B fix: saved form rows are already counted in `existing` (ADD_ITEM was dispatched
-    // when they were saved), so subtracting savedRows would double-count them and force the
-    // user to enter N + (N+1) instead of just N+1 to open one extra form row.
-    const delta = (Math.max(0, n - existing)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
-    if (delta > 0) {
-      const newRows: FormRow[] = [];
-      for (let i = 0; i < delta; i++)
-        newRows.push({ id: `row-${Date.now()}-${i}`, tipo: tipo2, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '', saved: false });
-      setFormRows(prev => [...prev, ...newRows]);
-    } else if (delta < 0) {
-      let toRemove = Math.abs(delta);
-      setFormRows(prev => {
-        const result = [...prev];
-        for (let i = result.length - 1; i >= 0 && toRemove > 0; i--)
-          if (result[i].tipo === tipo2 && !result[i].saved) { result.splice(i, 1); toRemove--; }
-        return result;
-      });
-    }
-  };
 
   const onSheetDragStart = (e: React.TouchEvent) => {
     sheetDrag.current = { start: e.touches[0].clientY, delta: 0 };
@@ -964,6 +946,16 @@ export function StepForm() {
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
+
+    // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
+    if (row.pickingSlotId) {
+      supabase.from('picking_pallets').update({
+        peso_kg: p, alto: a, ancho: fA, largo: fL,
+        peso_v: Math.round((a * fL * fA) / 6000 * 10) / 10 || null,
+      }).eq('id', row.pickingSlotId).then(({ error }) => {
+        if (error) console.error('[picking_pallets update]', error.message);
+      });
+    }
   };
 
   const editSavedRow = (rowId: string) => {
@@ -1487,56 +1479,11 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderMultiForm = (isMobile = false) => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
-    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
-    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
-          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
-          {hasPickingRef && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B ` : ''}{pkRef.ch > 0 ? `${pkRef.ch}CH` : ''}
-            </span>
-          )}
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.pallets || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('pallets', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-info [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#6B21A8' }}>C</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.contenedores || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('contenedores', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#6B21A8' }} />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-warn">B</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.bultos || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('bultos', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#92400E' }}>CH</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.chocolates || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('chocolates', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#92400E' }} />
-            </div>
-          </div>
-        </div>
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
@@ -1565,13 +1512,15 @@ export function StepForm() {
                 return (
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
+                      <span className={`font-barlow-condensed text-[17px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>
+                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[13px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                      </span>
                       <div className="flex gap-1">
-                        <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
-                        <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
+                        <button onClick={() => editSavedRow(row.id)} className="text-[15px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
+                        <button onClick={() => deleteSavedRow(row.id)} className="text-[15px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
                       </div>
                     </div>
-                    <div className="text-[12px] text-text-2 space-y-0.5 mb-2">
+                    <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
                       <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
                       <div className="text-text-3">{row.savedItem.contenido}</div>
                     </div>
@@ -1591,14 +1540,16 @@ export function StepForm() {
               return (
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
+                    <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
+                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[12px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                    </span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
                   {!isContRow && !isChocTipo && (
                   <div className="flex gap-0.5 mb-2">
                     {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
                       <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
-                        className={`flex-1 py-1 rounded border text-[9px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
+                        className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
                         {c.slice(0, 3)}
                       </button>
                     ))}
@@ -1606,17 +1557,17 @@ export function StepForm() {
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
-                      <label className="text-[9px] text-text-3 uppercase block mb-0.5">peso</label>
+                      <label className="text-[11px] text-text-3 uppercase block mb-0.5">peso</label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
                         placeholder="kg" inputMode="decimal"
-                        className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && !isChocTipo && (
                       <div>
-                        <label className="text-[9px] text-text-3 uppercase block mb-0.5">alto</label>
+                        <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
                           placeholder="cm" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
                       </div>
                     )}
                   </div>
@@ -1624,34 +1575,34 @@ export function StepForm() {
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       {(['largo', 'ancho'] as const).map(f => (
                         <div key={f}>
-                          <label className="text-[9px] text-text-3 uppercase block mb-0.5">{f}</label>
+                          <label className="text-[11px] text-text-3 uppercase block mb-0.5">{f}</label>
                           <input type="number" value={row[f]} onChange={e => updateRow(row.id, f, e.target.value)}
                             placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
                       ))}
                     </div>
                   )}
                   {row.tipo === 'Pallet' && (
-                    <div className="mb-1.5 text-[9px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
+                    <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
                   {isChocRow && (
-                    <div className="mb-1.5 text-[9px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
+                    <div className="mb-1.5 text-[11px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
                       {CHOCOLATE_DIMS.alto}×{CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho} cm · fijas
                     </div>
                   )}
                   {isContRow && (
-                    <div className="mb-1.5 text-[9px] text-[#6B21A8] bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.15)] rounded px-1.5 py-1">
+                    <div className="mb-1.5 text-[11px] text-[#6B21A8] bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.15)] rounded px-1.5 py-1">
                       110×80×150 cm · fijas
                     </div>
                   )}
                   {isChocTipo && (
-                    <div className="mb-1.5 text-[9px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
+                    <div className="mb-1.5 text-[11px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
                       {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas · máx {CHOCOLATE_DIMS.pesoMax} kg
                     </div>
                   )}
                   <button onClick={() => saveRow(row)} disabled={!canSaveRow}
-                    className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
+                    className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     + Agregar
                   </button>
                   {(() => {
@@ -1764,56 +1715,10 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderSingleForm = (isMobile = false) => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
-    const pkSlots = pickingSlots[currentTienda.cod] ?? [];
-    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
-    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
-          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
-          {hasPickingRef && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B ` : ''}{pkRef.ch > 0 ? `${pkRef.ch}CH` : ''}
-            </span>
-          )}
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.pallets || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('pallets', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-info [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#6B21A8' }}>C</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.contenedores || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('contenedores', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#6B21A8' }} />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-warn">B</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.bultos || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('bultos', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#92400E' }}>CH</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.chocolates || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('chocolates', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#92400E' }} />
-            </div>
-          </div>
-        </div>
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
           {editingIdx !== null && (

@@ -368,6 +368,7 @@ export default function CalendarioColumnas({
     table { border-collapse: collapse; width: 100%; table-layout: fixed; }
     th { background: #111A3E; color: #fff; font-weight: 800; padding: 8px 4px; border: 1px solid #333; text-align: center; font-size: 13px; letter-spacing: 0.05em; }
     td { border: 1px solid #E2E8F0; padding: 4px 3px; height: 26px; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     @media print {
       @page { size: A4 portrait; margin: 0.7cm; }
       body { margin: 0; font-size: 10px; }

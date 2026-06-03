@@ -662,6 +662,32 @@ export function PickingScreen() {
     return map;
   }, [filteredGroups]);
 
+  // Guarda seq y canonical_id en picking_pallets al momento de imprimir
+  // Solo actualiza slots que aún no tienen canonical_id (idempotente en re-impresión)
+  const assignCanonicalIds = useCallback(async (groups: PickerGroup[]) => {
+    const date = todayISO();
+    const slots: { id: number; seq: number; canonical_id: string }[] = [];
+    for (const group of groups) {
+      const groupSlots = slotsByStateKey[group.stateKey] ?? [];
+      for (const slot of groupSlots) {
+        if (!slot.id) continue;
+        const pNum = palletNumsBySlotId[slot.id];
+        if (pNum === undefined) continue;
+        const tipo = (slot.tipo as PickerType) ?? 'P';
+        slots.push({
+          id:           slot.id,
+          seq:          pNum,
+          canonical_id: buildCanonicalId(tipo, pNum, group.storeCod, date),
+        });
+      }
+    }
+    if (!slots.length) return;
+    await pickingFetch('/api/picking-pallets', {
+      method: 'PATCH',
+      body:   JSON.stringify({ slots }),
+    }).catch(() => {});
+  }, [slotsByStateKey, palletNumsBySlotId, pickingFetch]);
+
   const recordPrints = useCallback(async (groups: PickerGroup[]): Promise<number> => {
     const date = todayISO();
     const candidates = groups.filter(group => (pickerPallets[group.stateKey] ?? 0) > 0);
@@ -726,23 +752,29 @@ export function PickingScreen() {
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);
     setPrintOnlyStore(cod);
-    pendingPrintRef.current = recordPrints(groupedByStore[cod] ?? []);
+    const groups = groupedByStore[cod] ?? [];
+    pendingPrintRef.current = recordPrints(groups);
+    void assignCanonicalIds(groups);
     setDoPrint(true);
-  }, [groupedByStore, recordPrints]);
+  }, [groupedByStore, recordPrints, assignCanonicalIds]);
 
   const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
     setSelectionPrint({ stateKey, palletNums });
     setPrintOnlyStore(null);
     setDoPrint(true);
-  }, []);
+    // Asignar canonical_id para los slots seleccionados
+    const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
+    void assignCanonicalIds(allGroups);
+  }, [groupedByStore, assignCanonicalIds]);
 
   const printAll = useCallback(() => {
     setPrintOnlyStore(null);
     pendingPrintRef.current = Promise.all(
       selectedCods.map(cod => recordPrints(groupedByStore[cod] ?? []))
     ).then(counts => counts.reduce((s, n) => s + n, 0));
+    for (const cod of selectedCods) void assignCanonicalIds(groupedByStore[cod] ?? []);
     setDoPrint(true);
-  }, [selectedCods, groupedByStore, recordPrints]);
+  }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds]);
 
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
   // Datos de impresión — una etiqueta por slot, sección activa del supervisor

@@ -95,7 +95,7 @@ export function FinishModal({ open, onClose }: Props) {
       <div className="bg-white rounded-t-[20px] px-4 pb-9 pt-6 w-full max-h-[80vh] overflow-y-auto"
            style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.2)' }}>
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
-        <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1 tracking-wide">Terminar despacho del día</h3>
+        <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1 tracking-wide">Registrar despacho del día — NACIONAL</h3>
         <p className="text-sm text-text-2 mb-4">
           {dispatchDate} · {withItems.length} tiendas · {tp} pallets · {tb} bultos{tc > 0 ? ` · ${tc} contenedores` : ''}
         </p>

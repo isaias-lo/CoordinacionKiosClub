@@ -21,7 +21,6 @@ import { pushSessionState, fetchSessionState, subscribeToSessionState } from '..
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
-import { buildDespachoRMRecords } from './utils/sheets';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
@@ -519,17 +518,18 @@ export default function RutasScreen() {
   const sortedCalT = useMemo(() => {
     const dia    = getDia(fecha);
     const calDia = cal[dia] || cal.LU || {};
+    // Orden igual al Calendario de Despacho: Regiones → Costa → RM
     const canonical: string[] = [
-      ...((calDia as Record<string, string[]>).rm    || []),
-      ...((calDia as Record<string, string[]>).costa || []),
       ...((calDia as Record<string, string[]>).fal   || []),
+      ...((calDia as Record<string, string[]>).costa || []),
+      ...((calDia as Record<string, string[]>).rm    || []),
     ];
     const result: Record<string, CalData> = {};
     canonical.forEach(c => { if (calT[c]) result[c] = calT[c]; });
-    const groupOrder: Record<string, number> = { rm: 0, costa: 1, fal: 2 };
+    const groupOrder: Record<string, number> = { fal: 0, costa: 1, rm: 2 };
     const extras = Object.keys(calT)
       .filter(c => !result[c])
-      .sort((a, b) => (groupOrder[calT[a].g || 'rm'] ?? 0) - (groupOrder[calT[b].g || 'rm'] ?? 0));
+      .sort((a, b) => (groupOrder[calT[a].g || 'fal'] ?? 0) - (groupOrder[calT[b].g || 'fal'] ?? 0));
     extras.forEach(c => { result[c] = calT[c]; });
     return result;
   }, [calT, cal, fecha]);
@@ -932,20 +932,21 @@ export default function RutasScreen() {
     // Escribe en Google Sheets (historial/auditoría)
     guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
 
-    // Escribe DIRECTAMENTE en Supabase con seguimiento = 'En camino'.
-    // Evita la race condition anterior donde el PATCH se disparaba antes de
-    // que el sync Sheets→Supabase terminara (dejando los registros como
-    // 'Registrado'). Ahora llegan a Supabase de inmediato con el estado
-    // correcto; si ya existen en estado final (Entregado/Recibido/Diferencia)
-    // el endpoint los protege y no los sobreescribe.
-    const rmRecords = buildDespachoRMRecords({
-      fecha, supervisor, rutas: results.rutas, tiendas, seguimiento: 'En camino',
+    // Actualiza routing en Supabase (conductor, patente, ruta, supervisor)
+    // en las filas existentes de despacho_rm y picking_pallets usando (fecha, cod).
+    // NO crea registros nuevos — evita duplicados con prefijo R que existían antes.
+    const routingUpdates = results.rutas.flatMap((ruta, ri) => {
+      const conductor = ruta._choferAsignado || ruta.v.ch || '';
+      const patente   = ruta.v.p;
+      const empresa   = ruta.v.empresa || 'Luis Fica';
+      const rutaNum   = String(ri + 1);
+      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor }));
     });
-    if (rmRecords.length > 0) {
+    if (routingUpdates.length > 0) {
       fetch('/api/despacho-records', {
-        method:  'POST',
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ table: 'despacho_rm', records: rmRecords }),
+        body:    JSON.stringify({ fecha, updates: routingUpdates }),
       }).catch(() => {});
     }
 

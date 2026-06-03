@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import { CombineAlertsPanel } from './CombineAlertsPanel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SubTab = 'rm' | 'regiones' | 'recepcion';
@@ -482,6 +483,9 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-bg">
+
+      {/* Alertas de combinación de pallets — reimpresión */}
+      <CombineAlertsPanel />
 
       {/* Sub-tabs */}
       <div className="flex-shrink-0 flex gap-2 px-4 pt-3 pb-2 border-b border-border bg-white">

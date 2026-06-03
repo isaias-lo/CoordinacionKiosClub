@@ -71,7 +71,7 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
         <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
 
         <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1 tracking-wide">
-          Registrar despacho del día
+          Registrar despacho del día — METROPOLITANA / COSTA
         </h3>
         <p className="text-sm text-text-2 mb-4">
           {withItems.length} tiendas · {tp} pallets · {tb} bultos

@@ -65,7 +65,26 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
-  const body = await request.json() as { id: number; tipo?: string; contenido?: string };
+  const body = await request.json() as
+    | { id: number; tipo?: string; contenido?: string }
+    | { slots: { id: number; seq: number; canonical_id: string }[] };
+
+  // Batch: asignar seq + canonical_id a múltiples slots al imprimir
+  if ('slots' in body) {
+    const sb = supabaseServer();
+    const errs: string[] = [];
+    for (const slot of body.slots) {
+      const { error } = await sb
+        .from('picking_pallets')
+        .update({ seq: slot.seq, canonical_id: slot.canonical_id })
+        .eq('id', slot.id)
+        .is('canonical_id', null);
+      if (error) errs.push(error.message);
+    }
+    if (errs.length) return NextResponse.json({ error: errs.join('; ') }, { status: 500 });
+    return NextResponse.json({ ok: true, updated: body.slots.length });
+  }
+
   const update: Record<string, unknown> = {};
   if (body.tipo      !== undefined) update.tipo      = body.tipo;
   if (body.contenido !== undefined) update.contenido = body.contenido;
