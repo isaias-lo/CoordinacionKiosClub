@@ -943,7 +943,7 @@ export function PickingScreen() {
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
-            <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} />
+            <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} canonicalNames={canonicalNames} />
           )}
 
           {/* ── Tab content: Actividad ── */}

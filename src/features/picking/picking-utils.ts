@@ -128,11 +128,11 @@ export const GROUP_LABELS: Record<StoreGroupKey, string> = { region: 'Regiones',
 export const TIPO_LABEL: Record<string, string> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chico' };
 
 export const STAT_COLS: { key: keyof PickerStatRow; label: string; hint: string; right?: boolean }[] = [
-  { key: 'name',             label: 'Nombre',           hint: 'Responsable de la operación' },
-  { key: 'ops',              label: 'Ops',              hint: 'Operaciones completadas',        right: true },
-  { key: 'totalMinutes',     label: 'T. Total',         hint: 'Tiempo total trabajado',         right: true },
-  { key: 'avgMinutesPerOp',  label: 'Prom / Op',        hint: 'Tiempo promedio por operación',  right: true },
-  { key: 'units',            label: 'Unidades',         hint: 'Unidades movidas (qty done)',    right: true },
-  { key: 'avgSecondsPerLine',label: 'Prom / Pistolaz.', hint: 'Tiempo promedio entre pistolazos (total_time / líneas)', right: true },
-  { key: 'cph',              label: 'CPH',              hint: 'Casos por hora',                 right: true },
+  { key: 'name',              label: 'Nombre',            hint: 'Responsable (Odoo) + nombre configurado' },
+  { key: 'ops',               label: 'Ops',               hint: 'Operaciones completadas',                right: true },
+  { key: 'avgMinutesPerOp',   label: 'Prom / Op',         hint: 'Tiempo promedio por operación',          right: true },
+  { key: 'lineCount',         label: 'Cant. SKU',         hint: 'Cantidad de SKUs / líneas escaneadas',   right: true },
+  { key: 'avgSecondsPerLine', label: 'T. Prom / SKU',     hint: 'Tiempo promedio por SKU escaneado',      right: true },
+  { key: 'units',             label: 'Unidades',          hint: 'Unidades movidas (qty done)',             right: true },
+  { key: 'avgMinutesPerOp',   label: 'T. Prom / Pedido',  hint: 'Tiempo promedio por pedido completo',    right: true },
 ];
