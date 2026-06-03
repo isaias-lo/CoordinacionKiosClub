@@ -65,10 +65,14 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
-  const body = await request.json() as { id: number; tipo: string };
+  const body = await request.json() as { id: number; tipo?: string; contenido?: string };
+  const update: Record<string, unknown> = {};
+  if (body.tipo      !== undefined) update.tipo      = body.tipo;
+  if (body.contenido !== undefined) update.contenido = body.contenido;
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
   const { error } = await supabaseServer()
     .from('picking_pallets')
-    .update({ tipo: body.tipo })
+    .update(update)
     .eq('id', body.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
