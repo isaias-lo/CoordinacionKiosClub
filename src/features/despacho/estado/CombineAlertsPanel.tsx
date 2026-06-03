@@ -26,6 +26,17 @@ function saveDismissed(ids: Set<number>) {
   } catch {}
 }
 
+interface ReprintSlot {
+  id:           number;
+  seq:          number;
+  canonical_id: string;
+  tipo:         string;
+  storeCod:     string;
+  pickerLabel:  string;
+  refs:         string;
+  cats:         string[];
+}
+
 interface CombinedGroup {
   newId:         number;
   newSeq:        number | null;
@@ -33,7 +44,7 @@ interface CombinedGroup {
   newTipo:       string;
   storeCod:      string;
   merged:        { id: number; seq: number | null }[];
-  reprints:      { id: number; seq: number; canonical_id: string; tipo: string; storeCod: string }[];
+  reprints:      ReprintSlot[];
 }
 
 function buildCanonical(tipo: string, seq: number, cod: string, stamp: string): string {
@@ -81,7 +92,7 @@ export function CombineAlertsPanel() {
 
     const { data: siblings } = await supabase
       .from('picking_pallets')
-      .select('id, tipo, seq, canonical_id, store_cod')
+      .select('id, tipo, seq, canonical_id, store_cod, picker_label, refs, contenido')
       .eq('date', today)
       .eq('is_active', true)
       .in('store_cod', [...new Set((newSlots ?? []).map(s => s.store_cod as string))]);
@@ -99,9 +110,9 @@ export function CombineAlertsPanel() {
       // Slots que cambiaron de seq (activos de la misma tienda+tipo)
       const storeActive = (siblings ?? []).filter(s =>
         s.store_cod === storeCod && s.tipo === tipo
-      ) as { id: number; seq: number | null; canonical_id: string | null; store_cod: string; tipo: string }[];
+      ) as { id: number; seq: number | null; canonical_id: string | null; store_cod: string; tipo: string; picker_label: string | null; refs: string | null; contenido: string | null }[];
 
-      const reprints = storeActive
+      const reprints: ReprintSlot[] = storeActive
         .filter(s => s.seq != null)
         .map(s => ({
           id:           s.id,
@@ -109,6 +120,9 @@ export function CombineAlertsPanel() {
           canonical_id: s.canonical_id ?? buildCanonical(tipo, s.seq!, storeCod, stamp),
           tipo,
           storeCod,
+          pickerLabel:  s.picker_label ?? '—',
+          refs:         s.refs ?? '',
+          cats:         s.contenido ? [s.contenido] : [],
         }));
 
       result.push({
@@ -220,13 +234,13 @@ export function CombineAlertsPanel() {
             </div>
             <div className="p-4">
               <BarcodeCard
-                value={printSlot.canonical_id}
+                value={`${printSlot.storeCod};${printSlot.pickerLabel};${printSlot.refs};${printSlot.tipo}${printSlot.seq};${printSlot.cats.join(',')}`}
                 palletNum={printSlot.seq}
                 total={1}
                 storeCod={printSlot.storeCod}
-                pickerLabel="—"
+                pickerLabel={printSlot.pickerLabel}
                 responsibleKey=""
-                allCategories={[]}
+                allCategories={printSlot.cats}
                 totalPickers={0}
                 tipo={printSlot.tipo}
                 slotId={printSlot.id}

@@ -734,6 +734,45 @@ export function TiendasPage() {
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
+  // Unificación de dos form rows. Si ambos provienen de Picking, combina los
+  // slots en la BD (genera nuevo ID) para Seguimiento + código nuevo en el form.
+  const PKG_TO_CODE: Record<string, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
+  const handleFormMergeConfirm = async (peso: number, alto: number) => {
+    if (!formMergeState?.targetId || !selectedTienda) { setFormMergeState(null); return; }
+    const sourceRow = formRows.find(r => r.id === formMergeState.sourceId);
+    const targetRow = formRows.find(r => r.id === formMergeState.targetId);
+    if (!sourceRow || !targetRow) { setFormMergeState(null); return; }
+    const srcId = formMergeState.sourceId;
+    const tgtId = formMergeState.targetId;
+    const cod   = TIENDAS[selectedTienda]?.cod ?? '';
+
+    if (sourceRow.pickingSlotId && targetRow.pickingSlotId && cod) {
+      const date = new Date().toISOString().slice(0, 10);
+      const tipo = PKG_TO_CODE[sourceRow.pkg] ?? 'P';
+      try {
+        const res  = await fetch('/api/picking-pallets/combine', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ ids: [sourceRow.pickingSlotId, targetRow.pickingSlotId], date, store_cod: cod, tipo }),
+        });
+        const json = await res.json() as { newId?: number };
+        setFormRows(prev => prev
+          .filter(r => r.id !== tgtId)
+          .map(r => r.id === srcId ? { ...r, peso: String(peso), alto: String(alto), pickingSlotId: json.newId ?? r.pickingSlotId } : r));
+        showToast('Pallets unificados — nuevo código generado', '#2563EB');
+      } catch {
+        setFormRows(prev => prev
+          .filter(r => r.id !== tgtId)
+          .map(r => r.id === srcId ? { ...r, peso: String(peso), alto: String(alto) } : r));
+      }
+    } else {
+      setFormRows(prev => prev
+        .filter(r => r.id !== tgtId)
+        .map(r => r.id === srcId ? { ...r, peso: String(peso), alto: String(alto) } : r));
+    }
+    setFormMergeState(null);
+  };
+
   const absorbPickingSlot = (tiendaName: string, type: 'p' | 'b' | 'c' | 'ch') => {
     setConsumedPickingSlots(prev => {
       const cur = prev[tiendaName] || { p: 0, b: 0, c: 0, ch: 0 };
@@ -1697,12 +1736,7 @@ export function TiendasPage() {
             pkgLabel={sourceRow.pkg === 'pallet' ? 'Pallets' : sourceRow.pkg === 'box' ? 'Bultos' : 'Contenedores'}
             srcLabel={getLabel(sourceRow)}
             tgtLabel={getLabel(targetRow)}
-            onConfirm={(peso, alto) => {
-              updateRow(formMergeState.sourceId, 'peso', String(peso));
-              updateRow(formMergeState.sourceId, 'alto', String(alto));
-              setFormRows(prev => prev.filter(r => r.id !== formMergeState.targetId));
-              setFormMergeState(null);
-            }}
+            onConfirm={(peso, alto) => { void handleFormMergeConfirm(peso, alto); }}
             onCancel={() => setFormMergeState(null)}
           />
         );
