@@ -687,56 +687,6 @@ export function TiendasPage() {
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
 
-  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores' | 'chocolates', value: string) => {
-    if (!selectedTienda) return;
-    const n = Math.max(0, parseInt(value) || 0);
-    const current = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
-    setPresets(prev => ({ ...prev, [selectedTienda]: { ...current, [field]: n } }));
-    if (field === 'chocolates') {
-      const currentItems = dispatchData[selectedTienda] || [];
-      const existingChocCount = currentItems.filter(i => i.pkg === 'chocolate').length;
-      if (n > existingChocCount) {
-        const newItems = [...currentItems, ...Array.from({ length: n - existingChocCount }, (_, i) => ({
-          orden: `CH${existingChocCount + i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
-          peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
-        }))];
-        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems });
-      } else if (n < existingChocCount) {
-        let toRemove = existingChocCount - n;
-        const newItems = [...currentItems];
-        for (let i = newItems.length - 1; i >= 0 && toRemove > 0; i--)
-          if (newItems[i].pkg === 'chocolate') { newItems.splice(i, 1); toRemove--; }
-        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems });
-      }
-      setFormRows(prev => prev.filter(r => r.pkg !== 'chocolate'));
-      return;
-    }
-    const pkg: TipoPaquete = field === 'pallets' ? 'pallet' : field === 'contenedores' ? 'contenedor' : 'box';
-    const existing = (dispatchData[selectedTienda] || []).filter(i => i.pkg === pkg).length;
-    const savedRowCount = formRows.filter(r => r.pkg === pkg && r.saved).length;
-    const needed = Math.max(0, n - existing - savedRowCount);
-    const unsavedForPkg = formRows.filter(r => r.pkg === pkg && !r.saved);
-    const delta = needed - unsavedForPkg.length;
-    if (delta > 0) {
-      const newRows: FormRow[] = [];
-      for (let i = 0; i < delta; i++)
-        newRows.push({ id: `row-${Date.now()}-${i}`, pkg, tipo: 'hogar', peso: '',
-          alto:  '',
-          ancho: pkg === 'pallet' ? '100' : '',
-          largo: pkg === 'pallet' ? '120' : '',
-          guia: '', valor: '', saved: false });
-      setFormRows(prev => [...prev, ...newRows]);
-    } else if (delta < 0) {
-      let toRemove = Math.abs(delta);
-      setFormRows(prev => {
-        const result = [...prev];
-        for (let i = result.length - 1; i >= 0 && toRemove > 0; i--) {
-          if (result[i].pkg === pkg && !result[i].saved) { result.splice(i, 1); toRemove--; }
-        }
-        return result;
-      });
-    }
-  };
 
   const editSavedRow = (rowId: string) => {
     if (!selectedTienda) return;
@@ -883,10 +833,6 @@ export function TiendasPage() {
       </div>
     );
 
-    const currentPreset  = presets[selectedTienda] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
-    const pkSlots        = pickingSlots[selectedTienda] ?? [];
-    const pickingRef     = { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length };
-    const hasPickingRef  = pickingRef.p > 0 || pickingRef.c > 0 || pickingRef.b > 0 || pickingRef.ch > 0;
     const fullSlotsRegion = pickingSlotsFull[selectedTienda] ?? [];
     const tiendaCodRegion = TIENDAS[selectedTienda]?.cod ?? '';
     const refreshFullSlotsRegion = async () => {
@@ -900,51 +846,6 @@ export function TiendasPage() {
     };
 
     /* Inline P/B/C quantity setter — shown in both modes */
-    const presetBar = (
-      <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
-        <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cant.</span>
-        {hasPickingRef && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-            style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-            picking {pickingRef.p}P {pickingRef.c > 0 ? `${pickingRef.c}C ` : ''}{pickingRef.b > 0 ? `${pickingRef.b}B ` : ''}{pickingRef.ch > 0 ? `${pickingRef.ch}CH` : ''}
-          </span>
-        )}
-        <div className="flex items-center gap-1.5 ml-auto">
-          <span className="font-barlow-condensed text-[12px] font-bold text-info">P</span>
-          <input type="number" min="0" max="20"
-            value={currentPreset.pallets || ''}
-            placeholder="0" inputMode="numeric"
-            onChange={e => updateInlinePreset('pallets', e.target.value)}
-            className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none focus:border-info [-webkit-appearance:none]" />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="font-barlow-condensed text-[12px] font-bold" style={{ color: '#6B21A8' }}>C</span>
-          <input type="number" min="0" max="20"
-            value={currentPreset.contenedores || ''}
-            placeholder="0" inputMode="numeric"
-            onChange={e => updateInlinePreset('contenedores', e.target.value)}
-            className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none [-webkit-appearance:none]"
-            style={{ outlineColor: '#6B21A8' }} />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="font-barlow-condensed text-[12px] font-bold text-warn">B</span>
-          <input type="number" min="0" max="20"
-            value={currentPreset.bultos || ''}
-            placeholder="0" inputMode="numeric"
-            onChange={e => updateInlinePreset('bultos', e.target.value)}
-            className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none focus:border-warn [-webkit-appearance:none]" />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="font-barlow-condensed text-[12px] font-bold" style={{ color: '#92400E' }}>CH</span>
-          <input type="number" min="0" max="20"
-            value={currentPreset.chocolates || ''}
-            placeholder="0" inputMode="numeric"
-            onChange={e => updateInlinePreset('chocolates', e.target.value)}
-            className="w-10 border border-border rounded-btn px-1.5 py-1.5 text-center font-barlow text-[14px] outline-none [-webkit-appearance:none]"
-            style={{ outlineColor: '#92400E' }} />
-        </div>
-      </div>
-    );
 
     /* ── Multi-form (preset) mode ── */
     if (formRows.length > 0) {
