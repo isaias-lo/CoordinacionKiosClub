@@ -26,6 +26,7 @@
     "@vercel/blob": "^2.3.3",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
     "googleapis": "^171.4.0",

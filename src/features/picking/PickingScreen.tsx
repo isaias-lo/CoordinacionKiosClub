@@ -263,10 +263,6 @@ export function PickingScreen() {
   const [otherSupervisors, setOtherSupervisors] = useState<Record<string, SupervisorPresence>>({});
   const presenceRef  = useRef<SupervisorPresence>({ name: '', userId: '', recentPrints: [], lastActive: '' });
   const channelRef   = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  // Clock que se actualiza cada 30 s para los "hace X min" en el panel
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
-
   useEffect(() => {
     if (!profile?.id) return;
     const myId  = profile.id;
