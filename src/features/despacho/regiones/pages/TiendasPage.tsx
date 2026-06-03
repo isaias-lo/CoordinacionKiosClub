@@ -992,7 +992,6 @@ export function TiendasPage() {
               onCombined={() => { }}
             />
           )}
-          {presetBar}
           {pdfStrip}
           <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
             {(() => {
@@ -1256,7 +1255,6 @@ export function TiendasPage() {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
-        {presetBar}
         {/* PDF compact strip — outside scroll */}
         <div className="flex-shrink-0 px-2.5 py-1.5 border-b border-border hidden lg:flex items-center gap-2 bg-bg"
           onDragOver={e => e.preventDefault()}
