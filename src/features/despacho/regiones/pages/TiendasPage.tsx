@@ -921,7 +921,7 @@ export function TiendasPage() {
                     <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-barlow-condensed text-[14px] font-extrabold" style={{ color: rowColor.text }}>
-                          {rowLabel}
+                          {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[11px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
                         </span>
                         <div className="flex gap-0.5">
                           <button onClick={() => editSavedRow(row.id)} title="Editar"
@@ -953,7 +953,7 @@ export function TiendasPage() {
                   <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: rowColor.text }}>
-                        {rowLabel}
+                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[10px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
                       </span>
                       <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))}
                         className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>

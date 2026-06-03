@@ -881,55 +881,6 @@ export function StepForm() {
     setCombineModal(null);
   };
 
-  /* ── Preset bar ── */
-  const updateInlinePreset = (field: 'pallets' | 'bultos' | 'contenedores' | 'chocolates', value: string) => {
-    if (!currentTienda) return;
-    const cod = currentTienda.cod;
-    const n   = Math.max(0, parseInt(value) || 0);
-    const curr = presets[cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
-    setPresets(prev => ({ ...prev, [cod]: { ...curr, [field]: n } }));
-    if (field === 'chocolates') {
-      const currentItems = items[cod] || [];
-      const existingChocCount = currentItems.filter(i => i.tipo === 'Chocolate').length;
-      if (n > existingChocCount) {
-        const newChocItems: SantiagoItem[] = Array.from({ length: n - existingChocCount }, (_, i) => ({
-          id: `ch-${Date.now()}-${i}`, tiendaCod: cod,
-          tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
-          peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
-          pesoVolumetrico: 0, regimen: state.regimen!, orden: `CH${existingChocCount + i + 1}`, estado: ESTADO_DEFAULT,
-        }));
-        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: [...currentItems, ...newChocItems] });
-      } else if (n < existingChocCount) {
-        let toRemove = existingChocCount - n;
-        const newItems = [...currentItems];
-        for (let i = newItems.length - 1; i >= 0 && toRemove > 0; i--)
-          if (newItems[i].tipo === 'Chocolate') { newItems.splice(i, 1); toRemove--; }
-        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: newItems });
-      }
-      setFormRows(prev => prev.filter(r => r.tipo !== 'Chocolate'));
-      return;
-    }
-    const tipo2: TipoCargamento = field === 'pallets' ? 'Pallet' : field === 'contenedores' ? 'Contenedor' : 'Bulto';
-    const existing = (items[cod] || []).filter(i => i.tipo === tipo2).length;
-    // Bug B fix: saved form rows are already counted in `existing` (ADD_ITEM was dispatched
-    // when they were saved), so subtracting savedRows would double-count them and force the
-    // user to enter N + (N+1) instead of just N+1 to open one extra form row.
-    const delta = (Math.max(0, n - existing)) - formRows.filter(r => r.tipo === tipo2 && !r.saved).length;
-    if (delta > 0) {
-      const newRows: FormRow[] = [];
-      for (let i = 0; i < delta; i++)
-        newRows.push({ id: `row-${Date.now()}-${i}`, tipo: tipo2, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '', saved: false });
-      setFormRows(prev => [...prev, ...newRows]);
-    } else if (delta < 0) {
-      let toRemove = Math.abs(delta);
-      setFormRows(prev => {
-        const result = [...prev];
-        for (let i = result.length - 1; i >= 0 && toRemove > 0; i--)
-          if (result[i].tipo === tipo2 && !result[i].saved) { result.splice(i, 1); toRemove--; }
-        return result;
-      });
-    }
-  };
 
   const onSheetDragStart = (e: React.TouchEvent) => {
     sheetDrag.current = { start: e.touches[0].clientY, delta: 0 };
@@ -1528,56 +1479,11 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderMultiForm = (isMobile = false) => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
     const pkSlots = pickingSlots[currentTienda.cod] ?? [];
-    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
-    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
-          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
-          {hasPickingRef && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B ` : ''}{pkRef.ch > 0 ? `${pkRef.ch}CH` : ''}
-            </span>
-          )}
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.pallets || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('pallets', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-info [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#6B21A8' }}>C</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.contenedores || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('contenedores', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#6B21A8' }} />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-warn">B</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.bultos || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('bultos', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#92400E' }}>CH</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.chocolates || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('chocolates', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#92400E' }} />
-            </div>
-          </div>
-        </div>
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
@@ -1606,7 +1512,9 @@ export function StepForm() {
                 return (
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
+                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>
+                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[11px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                      </span>
                       <div className="flex gap-1">
                         <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
                         <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
@@ -1632,7 +1540,9 @@ export function StepForm() {
               return (
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>{rowLabel}</span>
+                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
+                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[10px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                    </span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
                   {!isContRow && !isChocTipo && (
@@ -1805,56 +1715,10 @@ export function StepForm() {
   ════════════════════════════════════ */
   const renderSingleForm = (isMobile = false) => {
     if (!currentTienda) return null;
-    const currentPreset = presets[currentTienda.cod] || { pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 };
-    const pkSlots = pickingSlots[currentTienda.cod] ?? [];
-    const pkRef = pkSlots.length > 0 ? { p: pkSlots.filter(s => s.tipo === 'P').length, c: pkSlots.filter(s => s.tipo === 'C').length, b: pkSlots.filter(s => s.tipo === 'B').length, ch: pkSlots.filter(s => s.tipo === 'CH').length } : null;
-    const hasPickingRef = pkRef && (pkRef.p > 0 || pkRef.c > 0 || pkRef.b > 0 || pkRef.ch > 0);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        <div className="px-3 py-2 bg-bg border-b border-border flex-shrink-0 flex items-center gap-2 flex-wrap">
-          <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3">Cantidad</span>
-          {hasPickingRef && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(26,37,80,0.07)', color: 'rgba(26,37,80,0.45)' }}>
-              picking {pkRef.p}P {pkRef.c > 0 ? `${pkRef.c}C ` : ''}{pkRef.b > 0 ? `${pkRef.b}B ` : ''}{pkRef.ch > 0 ? `${pkRef.ch}CH` : ''}
-            </span>
-          )}
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-info">P</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.pallets || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('pallets', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-info [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#6B21A8' }}>C</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.contenedores || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('contenedores', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#6B21A8' }} />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold text-warn">B</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.bultos || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('bultos', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none focus:border-warn [-webkit-appearance:none]" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-barlow-condensed text-[13px] font-bold" style={{ color: '#92400E' }}>CH</span>
-              <input type="number" min="0" max="30"
-                value={currentPreset.chocolates || ''} placeholder="0" inputMode="numeric"
-                onChange={e => updateInlinePreset('chocolates', e.target.value)}
-                className="w-12 border-2 border-border rounded-btn px-1.5 py-2 text-center font-barlow text-[15px] outline-none [-webkit-appearance:none]"
-                style={{ outlineColor: '#92400E' }} />
-            </div>
-          </div>
-        </div>
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
           {editingIdx !== null && (
