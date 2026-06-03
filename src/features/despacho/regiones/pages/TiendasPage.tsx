@@ -79,6 +79,7 @@ interface FormRow {
   valor: string;
   saved?: boolean;
   savedItem?: DispatchItem;
+  pickingSlotId?: number;  // FK a picking_pallets.id para guardar dimensiones
 }
 
 /* ── Compact 3-column grid card ── */
@@ -238,6 +239,7 @@ export function TiendasPage() {
   const formScrollRef        = useRef<HTMLDivElement>(null);
   const formScrollDesktopRef = useRef<HTMLDivElement>(null);
   const pickingSlotsRef      = useRef(pickingSlots);
+  const pickingSlotsFullRef  = useRef(pickingSlotsFull);
 
   /* Combine items (drag-to-merge) */
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
@@ -374,6 +376,7 @@ export function TiendasPage() {
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
   useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
+  useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
 
   const baseTodayCods = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
@@ -437,16 +440,24 @@ export function TiendasPage() {
       }
 
       if (existingItems.length === 0 && hasPickingData) {
-        // Build form rows from picking slots — one row per slot with its contenido
-        const allRows: FormRow[] = slots.map((s, i) => {
+        // Build form rows from picking slots — uses full slot data (id, seq, dimensions)
+        const fullSlots = pickingSlotsFullRef.current[selectedTienda] ?? [];
+        const baseSlots = fullSlots.length > 0 ? fullSlots : slots.map(s => ({
+          id: 0, tipo: s.tipo, contenido: s.contenido, seq: null, canonical_id: null,
+          peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null,
+        }));
+        const allRows: FormRow[] = baseSlots.map((s, i) => {
           const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
           const tipo = mapearContenido(s.contenido);
           return {
-            id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo, peso: '',
-            alto:  pkg === 'pallet' ? '' : '',
-            ancho: pkg === 'pallet' ? '100' : '',
-            largo: pkg === 'pallet' ? '120' : '',
+            id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo,
+            // Pre-llenar dimensiones si ya se guardaron en picking_pallets
+            peso:  s.peso_kg != null ? String(s.peso_kg) : '',
+            alto:  s.alto    != null ? String(s.alto)    : '',
+            ancho: s.ancho   != null ? String(s.ancho)   : (pkg === 'pallet' ? '100' : ''),
+            largo: s.largo   != null ? String(s.largo)   : (pkg === 'pallet' ? '120' : ''),
             guia: '', valor: '',
+            pickingSlotId: (s as { id?: number }).id || undefined,
           };
         });
         const chocSlots = allRows.filter(r => r.pkg === 'chocolate');
@@ -685,6 +696,16 @@ export function TiendasPage() {
     const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${orden} agregado`, '#16A34A');
+
+    // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
+    if (row.pickingSlotId) {
+      const pesoV = Math.round((a * aw * l) / 6000 * 10) / 10 || null;
+      supabase.from('picking_pallets').update({
+        peso_kg: p, alto: a, ancho: aw, largo: l, peso_v: pesoV,
+      }).eq('id', row.pickingSlotId).then(({ error }) => {
+        if (error) console.error('[picking_pallets update]', error.message);
+      });
+    }
   };
 
 
@@ -833,20 +854,6 @@ export function TiendasPage() {
       </div>
     );
 
-    const fullSlotsRegion = pickingSlotsFull[selectedTienda] ?? [];
-    const tiendaCodRegion = TIENDAS[selectedTienda]?.cod ?? '';
-    const refreshFullSlotsRegion = async () => {
-      const d = new Date();
-      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      const { data } = await supabase.from('picking_pallets').select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active').eq('date',ds).eq('is_active',true).order('id',{ascending:true});
-      if (!data) return;
-      const full: Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
-      for (const row of data) { const name = COD_TO_TIENDA_NAME[row.store_cod as string]; if (!name) continue; if (!full[name]) full[name] = []; full[name].push({ id: row.id as number, tipo: (row.tipo as string)||'P', contenido:(row.contenido as string)||'hogar', seq:row.seq as number|null, canonical_id:row.canonical_id as string|null, peso_kg:row.peso_kg as number|null, alto:row.alto as number|null, largo:row.largo as number|null, ancho:row.ancho as number|null, peso_v:row.peso_v as number|null }); }
-      setPickingSlotsFull(full);
-    };
-
-    /* Inline P/B/C quantity setter — shown in both modes */
-
     /* ── Multi-form (preset) mode ── */
     if (formRows.length > 0) {
       const pdfStrip = (
@@ -878,21 +885,9 @@ export function TiendasPage() {
         </div>
       );
 
-      const PickingSlotCardsRegiones = require('../../../despacho/santiago/components/PickingSlotCards').default as typeof import('../../../despacho/santiago/components/PickingSlotCards').default;
-
       return (
         <div className="flex-1 flex flex-col overflow-hidden">
           {header}
-          {/* Slots de Picking — formularios enlazados por ID */}
-          {fullSlotsRegion.length > 0 && tiendaCodRegion && (
-            <PickingSlotCardsRegiones
-              slots={fullSlotsRegion}
-              storeCod={tiendaCodRegion}
-              date={new Date().toISOString().slice(0, 10)}
-              onRefresh={refreshFullSlotsRegion}
-              onCombined={() => { }}
-            />
-          )}
           {pdfStrip}
           <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
             {(() => {
