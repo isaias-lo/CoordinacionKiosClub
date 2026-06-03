@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { RotateCcw, Printer } from 'lucide-react';
 import type { PickerGroup, PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
+import { TipoBadge } from './TipoBadge';
 
 const CAT_COLOR: Record<string, { bg: string; color: string; border: string }> = {
   Comida: { bg: 'rgba(22,163,74,0.08)',  color: '#15803D', border: 'rgba(22,163,74,0.25)' },
@@ -27,29 +28,6 @@ function CatPills({ cats }: { cats: string[] }) {
   );
 }
 
-function TipoBadge({ tipos }: { tipos: string[] }) {
-  const hasP  = tipos.includes('P');
-  const hasB  = tipos.includes('B');
-  const hasC  = tipos.includes('C');
-  const hasCH = tipos.includes('CH');
-  const parts: string[] = [];
-  if (hasP)  parts.push('Pallet');
-  if (hasB)  parts.push('Bulto');
-  if (hasC)  parts.push('Cont.');
-  if (hasCH) parts.push('Choc.');
-  const label = parts.join(' + ') || '—';
-  const isMulti = parts.length > 1;
-  return (
-    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold"
-      style={{
-        background: isMulti ? '#EFF6FF' : hasB ? '#F0FDF4' : hasC ? '#FAF5FF' : '#EFF6FF',
-        color:      isMulti ? '#1E40AF' : hasB ? '#15803D' : hasC ? '#6B21A8' : '#1E40AF',
-        border:     `1px solid ${isMulti ? '#BFDBFE' : hasB ? '#BBF7D0' : hasC ? '#E9D5FF' : '#BFDBFE'}`,
-      }}>
-      {label}
-    </span>
-  );
-}
 
 interface Props {
   allGroups:   PickerGroup[];
@@ -250,7 +228,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                     const u    = unitsByKey[r.state_key];
                     const tipos = u?.tipos ?? [r.tipo];
                     return (
-                      <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
+                      <tr key={r.state_key + r.printed_at} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
                         <td className="px-4 py-2.5 font-mono text-[12px]" style={{ color: '#94A3B8' }}>
                           {new Date(r.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
                         </td>

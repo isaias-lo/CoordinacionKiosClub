@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         .eq('date', slotDate)
         .neq('refs', '')
         .limit(1)
-        .single();
+        .maybeSingle();
       if (sibling?.refs) data.refs = sibling.refs;
     }
     return NextResponse.json({ data });

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
-import type { PickerGroup, PickingOperation, PalletSlot, PickerType } from '../picking-types';
+import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 
 // ─── StateBadge ───────────────────────────────────────────────────────────────
@@ -36,12 +36,15 @@ interface Props {
   onPrintSelected: (palletNums: Set<number>) => void;
   slots: PalletSlot[];
   stickerBelow?: boolean;
+  lastPrint?: PrintRecord;   // último registro de impresión para mostrar advertencia de reimpresión
+  myName?: string;           // nombre del supervisor actual para detectar impresiones propias vs ajenas
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
   group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange,
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
+  lastPrint, myName,
 }: Props) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -50,7 +53,9 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
 
-  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [selectedIndices, setSelectedIndices]             = useState<Set<number>>(new Set());
+  // Confirm inline al decrementar un pallet que ya fue impreso
+  const [pendingDecrementTipo, setPendingDecrementTipo]   = useState<PickerType | null>(null);
 
   const toggleIndex = (i: number) => {
     setSelectedIndices(prev => {
@@ -176,7 +181,15 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                       <div className="text-[9px] text-slate-300 mt-0.5">{label}</div>
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
-                      <button onClick={() => onTipoPalletsChange(tipo, Math.max(0, count - 1))}
+                      <button
+                        onClick={() => {
+                          if (isPrinted && count > 0) {
+                            // Si ya fue impreso, pedir confirmación antes de decrementar
+                            setPendingDecrementTipo(tipo);
+                          } else {
+                            onTipoPalletsChange(tipo, Math.max(0, count - 1));
+                          }
+                        }}
                         className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer border"
                         style={{ borderColor: '#E2E8F0', color: '#94A3B8', background: '#F8FAFC' }}>−</button>
                       <span className="w-8 text-center text-[22px] font-bold leading-none"
@@ -189,6 +202,42 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 );
               })}
             </div>
+
+            {/* Confirm inline — aparece cuando se intenta decrementar un pallet ya impreso */}
+            {pendingDecrementTipo && (
+              <div className="mt-3 rounded px-3 py-2.5 flex items-center gap-3"
+                style={{ background: '#FFF1F2', border: '1px solid rgba(220,38,38,0.3)' }}>
+                <AlertTriangle size={14} style={{ color: '#DC2626', flexShrink: 0 }} />
+                <div className="flex-1 text-[12px]" style={{ color: '#991B1B' }}>
+                  Este pallet ya fue impreso. ¿Eliminar igual?
+                </div>
+                <button onClick={() => setPendingDecrementTipo(null)}
+                  className="text-[12px] font-medium px-2.5 py-1 rounded border cursor-pointer"
+                  style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                  Cancelar
+                </button>
+                <button onClick={() => {
+                  const count = palletsByTipo[pendingDecrementTipo] ?? 0;
+                  onTipoPalletsChange(pendingDecrementTipo, Math.max(0, count - 1));
+                  setPendingDecrementTipo(null);
+                }}
+                  className="text-[12px] font-semibold px-2.5 py-1 rounded border-none cursor-pointer"
+                  style={{ background: '#DC2626', color: '#fff' }}>
+                  Eliminar
+                </button>
+              </div>
+            )}
+
+            {/* Advertencia de reimpresión — impreso por otro supervisor */}
+            {isPrinted && lastPrint?.printed_by_name && lastPrint.printed_by_name !== myName && (
+              <div className="mt-3 rounded px-3 py-2 flex items-center gap-2"
+                style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <span className="text-[11px]" style={{ color: '#92400E' }}>
+                  ⚠ Impreso por <strong>{lastPrint.printed_by_name}</strong>
+                  {' · '}{new Date(lastPrint.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

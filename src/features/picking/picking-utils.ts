@@ -125,7 +125,7 @@ export const STATE_INFO: Record<string, { label: string; color: string; bg: stri
 
 export const GROUP_LABELS: Record<StoreGroupKey, string> = { region: 'Regiones', costa: 'Costa', santiago: 'Santiago' };
 
-export const TIPO_LABEL: Record<string, string> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chico' };
+export const TIPO_LABEL: Record<string, string> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolates' };
 
 export const STAT_COLS: { key: keyof PickerStatRow; label: string; hint: string; right?: boolean }[] = [
   { key: 'name',              label: 'Nombre',            hint: 'Responsable (Odoo) + nombre configurado' },

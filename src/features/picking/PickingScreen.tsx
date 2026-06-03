@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { useApp } from '@/context/AppContext';
 import { ProfilePill } from '@/components/ProfilePill';
 import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
@@ -34,6 +35,7 @@ import { SupervisorActivityPanel } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
+import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -59,6 +61,7 @@ function saveSession(data: PickingSession): void {
 export function PickingScreen() {
   const router = useRouter();
   const { profile } = useAuth();
+  const { showToast } = useApp();
 
   const odooConfig: OdooConfig = getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' };
   const hasOdoo = !!odooConfig.url;
@@ -104,10 +107,16 @@ export function PickingScreen() {
   const dragStartXRef     = useRef(0);
   const dragStartWidthRef = useRef(0);
 
-  // Online/offline detection
+  // Online/offline detection + flush de cola offline al reconectar
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   useEffect(() => {
-    const handleOnline  = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Flush cualquier operación encolada mientras estaba offline
+      void flushPickingQueue(pickingFetch, (count) => {
+        showToast(`✓ ${count} acción${count !== 1 ? 'es' : ''} sincronizada${count !== 1 ? 's' : ''} al reconectar`, '#16A34A');
+      });
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online',  handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -115,7 +124,7 @@ export function PickingScreen() {
       window.removeEventListener('online',  handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [pickingFetch, showToast]);
 
   // Restaurar sesión al montar
   const session = useMemo(() => loadSession(), []);
@@ -257,7 +266,11 @@ export function PickingScreen() {
 
   // Cross-desktop print visibility — single source of truth for both printedKeys and HistorialTab
   const [printRecords, setPrintRecords] = useState<PrintRecord[]>([]);
-  const printedKeys = useMemo(() => new Set(printRecords.map(r => r.state_key)), [printRecords]);
+  const printedKeys       = useMemo(() => new Set(printRecords.map(r => r.state_key)), [printRecords]);
+  // Map state_key → last PrintRecord — para mostrar advertencia "ya impreso por X" en cada card
+  const printRecordByKey  = useMemo(() => new Map(printRecords.map(r => [r.state_key, r])), [printRecords]);
+  // Ref que guarda la promesa de recordPrints en vuelo — el efecto doPrint la espera antes de llamar window.print()
+  const pendingPrintRef   = useRef<Promise<number> | null>(null);
 
   // ── Supervisor presence — quién más está activo y qué está imprimiendo ──────
   const [otherSupervisors, setOtherSupervisors] = useState<Record<string, SupervisorPresence>>({});
@@ -336,32 +349,36 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
-  useRealtimeRefresh('picking_pallets', loadPalletSlots);
+  useRealtimeRefresh('picking_pallets', loadPalletSlots, true, 15000, 800);
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
+    const date = todayISO();
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date: todayISO(), store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
+        // Encolar para reintentar al reconectar
+        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
       if (json.data) {
         setPalletSlots(prev => [...prev, json.data!]);
-        // Register partial despacho record for traceability — fire and forget
         pickingFetch('/api/despacho-picking', {
           method: 'POST',
-          body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date: todayISO() }),
+          body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date }),
         }).catch(err => console.error('[picking] despacho-picking error', err));
       }
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
+      // Sin red: encolar para reintentar al reconectar
+      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
     }
-  }, []);
+  }, [pickingFetch]);
 
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
     if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
@@ -435,18 +452,26 @@ export function PickingScreen() {
     saveSession({ date: todayISO(), selectedCods, opsMap, pickerDisplayNames });
   }, [selectedCods, opsMap, pickerDisplayNames]);
 
-  // Disparar impresión después del re-render (para que el DOM refleje el filtro)
+  // Disparar impresión después del re-render — espera a que recordPrints termine antes de abrir el diálogo
   useEffect(() => {
     if (!doPrint) return;
     setDoPrint(false);
-    const handleAfterPrint = () => {
-      setPrintOnlyStore(null);
-      setSelectionPrint(null);
-      window.removeEventListener('afterprint', handleAfterPrint);
-    };
-    window.addEventListener('afterprint', handleAfterPrint);
-    window.print();
-  }, [doPrint]);
+    void (async () => {
+      // Si hay una promesa de registro pendiente, esperarla antes de imprimir
+      if (pendingPrintRef.current) {
+        const failures = await pendingPrintRef.current;
+        pendingPrintRef.current = null;
+        if (failures > 0) showToast(`⚠ ${failures} etiqueta(s) no se pudieron registrar`, '#D97706');
+      }
+      const handleAfterPrint = () => {
+        setPrintOnlyStore(null);
+        setSelectionPrint(null);
+        window.removeEventListener('afterprint', handleAfterPrint);
+      };
+      window.addEventListener('afterprint', handleAfterPrint);
+      window.print();
+    })();
+  }, [doPrint, showToast]);
 
   // Cargar tiendas del calendario (bust caché para evitar datos viejos del merge)
   const applyCalendar = useCallback((cal: Record<string, { rm: string[]; costa: string[]; fal: string[] }>) => {
@@ -637,16 +662,21 @@ export function PickingScreen() {
     return map;
   }, [filteredGroups]);
 
-  const recordPrints = useCallback(async (groups: PickerGroup[]) => {
+  const recordPrints = useCallback(async (groups: PickerGroup[]): Promise<number> => {
     const date = todayISO();
     const candidates = groups.filter(group => (pickerPallets[group.stateKey] ?? 0) > 0);
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) return 0;
 
     const results = await Promise.allSettled(
       candidates.map(group => {
         const pallets     = pickerPallets[group.stateKey] ?? 0;
         const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-        const tipo        = (group.operations[0] && slotsByStateKey[group.stateKey]?.[0]?.tipo) ?? 'P';
+        // Tipo dominante entre todos los slots del picker (evita perder grupos mixtos P+B)
+        const slotTipos = (slotsByStateKey[group.stateKey] ?? []).map(s => s.tipo || 'P');
+        const tipo = slotTipos.length === 0 ? 'P' :
+          slotTipos.reduce((acc, t) =>
+            slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
+          , slotTipos[0]);
         return pickingFetch('/api/picking-prints', {
           method: 'POST',
           body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '' }),
@@ -662,7 +692,23 @@ export function PickingScreen() {
       .map(r => r.value);
     const failures = results.filter(r => r.status === 'rejected').length;
 
-    if (failures > 0) console.error(`[picking] ${failures} registro(s) de impresión no guardados`);
+    if (failures > 0) {
+      console.error(`[picking] ${failures} registro(s) de impresión no guardados`);
+      // Encolar prints fallidos para reintentar al reconectar
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          const group     = candidates[i];
+          const pallets   = pickerPallets[group.stateKey] ?? 0;
+          const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+          const slotTipos = (slotsByStateKey[group.stateKey] ?? []).map(s => s.tipo || 'P');
+          const tipo = slotTipos.length === 0 ? 'P' :
+            slotTipos.reduce((acc, t) =>
+              slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
+            , slotTipos[0]);
+          enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '' });
+        }
+      });
+    }
 
     if (newPrints.length > 0 && channelRef.current) {
       const updated: SupervisorPresence = {
@@ -673,13 +719,15 @@ export function PickingScreen() {
       presenceRef.current = updated;
       void channelRef.current.track(updated);
     }
+
+    return failures;
   }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline]);
 
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);
     setPrintOnlyStore(cod);
+    pendingPrintRef.current = recordPrints(groupedByStore[cod] ?? []);
     setDoPrint(true);
-    void recordPrints(groupedByStore[cod] ?? []);
   }, [groupedByStore, recordPrints]);
 
   const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
@@ -690,8 +738,10 @@ export function PickingScreen() {
 
   const printAll = useCallback(() => {
     setPrintOnlyStore(null);
+    pendingPrintRef.current = Promise.all(
+      selectedCods.map(cod => recordPrints(groupedByStore[cod] ?? []))
+    ).then(counts => counts.reduce((s, n) => s + n, 0));
     setDoPrint(true);
-    for (const cod of selectedCods) void recordPrints(groupedByStore[cod] ?? []);
   }, [selectedCods, groupedByStore, recordPrints]);
 
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -701,7 +751,7 @@ export function PickingScreen() {
       value: string; palletNum: number; total: number;
       storeCod: string; pickerLabel: string; responsibleKey: string;
       allCategories: string[]; totalPickers: number; stateKey: string; tipo: string; slotId: number;
-      canonicalId: string;
+      canonicalId: string; footerExtra?: string;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -748,6 +798,7 @@ export function PickingScreen() {
             tipo,
             slotId: slot.id,
             canonicalId: buildCanonicalId(tipo, pNum, group.storeCod, todayISO()),
+            footerExtra: slot.refs || undefined,
           });
         }
       }
@@ -938,12 +989,6 @@ export function PickingScreen() {
           {rightTab === 'actividad' && (
             <div className="flex-1 overflow-y-auto min-h-0 py-2">
               <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} supervisors={otherSupervisors} />
-              {Object.keys(otherSupervisors).length === 0 && nameChanges.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-text-3">
-                  <div className="mb-4 opacity-20"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-                  <div className="text-[14px] font-medium text-slate-400">Sin actividad registrada hoy</div>
-                </div>
-              )}
             </div>
           )}
 
@@ -1133,6 +1178,8 @@ export function PickingScreen() {
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
                               slots={slotsByStateKey[group.stateKey] ?? []}
                               stickerBelow={stickerBelow}
+                              lastPrint={printRecordByKey.get(group.stateKey)}
+                              myName={profile?.full_name ?? ''}
                             />
                           );
                         };

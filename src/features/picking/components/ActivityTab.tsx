@@ -3,35 +3,10 @@
 import { useMemo } from 'react';
 import { Printer, Tag, User, Wifi } from 'lucide-react';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
+import { TipoBadge } from './TipoBadge';
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
-}
-
-function TipoBadge({ tipos }: { tipos: string[] }) {
-  const hasP  = tipos.includes('P');
-  const hasB  = tipos.includes('B');
-  const hasC  = tipos.includes('C');
-  const hasCH = tipos.includes('CH');
-  const parts: string[] = [];
-  if (hasP)  parts.push('Pallet');
-  if (hasB)  parts.push('Bulto');
-  if (hasC)  parts.push('Cont.');
-  if (hasCH) parts.push('Choc.');
-  const label   = parts.join(' + ') || '—';
-  const isMulti = parts.length > 1;
-  return (
-    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold"
-      style={{
-        background: isMulti ? '#EFF6FF' : hasB ? '#F0FDF4' : hasC ? '#FAF5FF' : '#EFF6FF',
-        color:      isMulti ? '#1E40AF' : hasB ? '#15803D' : hasC ? '#6B21A8' : '#1E40AF',
-        border:     `1px solid ${isMulti ? '#BFDBFE' : hasB ? '#BBF7D0' : hasC ? '#E9D5FF' : '#BFDBFE'}`,
-      }}>
-      {label}
-    </span>
-  );
 }
 
 // ─── tipos internos ───────────────────────────────────────────────────────────
@@ -229,8 +204,8 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
 
           {/* Eventos */}
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {sec.events.map((ev, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+            {sec.events.map((ev) => (
+              <div key={ev.at + ev.kind + (ev.kind === 'print' ? ev.storeCod + ev.pickerLabel : ev.pickerKey)} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#94A3B8', minWidth: 36 }}>
                   {fmtTime(ev.at)}
                 </span>

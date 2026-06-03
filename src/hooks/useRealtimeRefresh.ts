@@ -9,20 +9,26 @@ import { supabase } from '@/lib/supabase';
  *
  * Usage:
  *   useRealtimeRefresh('despacho_rm,despacho_regiones', myRefetchFn);
+ *   useRealtimeRefresh('picking_pallets', myRefetchFn, true, 15000, 800);
  *
- * @param tableKey  Comma-separated table name(s), stable between renders.
- * @param onRefresh Callback invoked on any data change. Keep it stable (useCallback).
- * @param enabled   Pass false to pause the subscription (e.g. while the component is hidden).
+ * @param tableKey    Comma-separated table name(s), stable between renders.
+ * @param onRefresh   Callback invoked on any data change. Keep it stable (useCallback).
+ * @param enabled     Pass false to pause the subscription (e.g. while the component is hidden).
+ * @param pollMs      Polling fallback interval in ms (default 15 000).
+ * @param debounceMs  Debounce realtime events in ms (default 0 = no debounce).
+ *                    Useful for tables that receive bursts of writes (e.g. picking_pallets):
+ *                    prevents N refetches when a supervisor adds 10 pallets quickly.
  */
 export function useRealtimeRefresh(
   tableKey: string,
   onRefresh: () => void,
   enabled = true,
   pollMs = 15000,
+  debounceMs = 0,
 ): void {
-  // Always-current ref so changing onRefresh never causes re-subscription
-  const cbRef = useRef(onRefresh);
-  cbRef.current = onRefresh;
+  const cbRef    = useRef(onRefresh);
+  cbRef.current  = onRefresh;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!enabled || !tableKey) return;
@@ -30,16 +36,20 @@ export function useRealtimeRefresh(
     const tables = tableKey.split(',').map(t => t.trim()).filter(Boolean);
     if (tables.length === 0) return;
 
-    // Realtime subscription (instant when WebSocket works)
+    const fire = () => {
+      if (debounceMs > 0) {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => cbRef.current(), debounceMs);
+      } else {
+        cbRef.current();
+      }
+    };
+
     const channelId = `rt-${tables.join('-')}-${Math.random().toString(36).slice(2, 7)}`;
     let ch = supabase.channel(channelId);
 
     for (const table of tables) {
-      ch = ch.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table },
-        () => cbRef.current(),
-      );
+      ch = ch.on('postgres_changes', { event: '*', schema: 'public', table }, fire);
     }
 
     ch.subscribe();
@@ -50,7 +60,8 @@ export function useRealtimeRefresh(
     return () => {
       supabase.removeChannel(ch);
       clearInterval(pollId);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableKey, enabled, pollMs]);
+  }, [tableKey, enabled, pollMs, debounceMs]);
 }
