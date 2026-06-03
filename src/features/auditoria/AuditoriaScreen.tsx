@@ -663,6 +663,11 @@ export function AuditoriaScreen() {
         const st = TIPO_TO_SUBTIPOS[fallbackTipo][i];
         if (st) codeBySubtipo[st] = code;
       });
+      // Si refs estaba vacío, igual fijar subtipos desde contenido con código en blanco.
+      // Sin esto, codeBySubtipo queda vacío y handlePalletIdLookup defaultea todo a 'comida'.
+      if (Object.keys(codeBySubtipo).length === 0) {
+        for (const st of TIPO_TO_SUBTIPOS[fallbackTipo]) codeBySubtipo[st] = '';
+      }
     }
 
     return { store_cod, picker_label, picker_key, codeBySubtipo };
