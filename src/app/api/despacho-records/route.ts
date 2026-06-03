@@ -86,3 +86,88 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
+
+/**
+ * PATCH /api/despacho-records
+ * Body: { fecha: string, updates: { cod, conductor, patente, transporte, ruta, supervisor }[] }
+ *
+ * Actualiza routing info (conductor, patente, ruta) en despacho_rm Y picking_pallets
+ * usando (fecha, cod) como llave — nunca crea registros nuevos.
+ * Reemplaza el flujo anterior que insertaba registros con IDs R{ruta}{cod}{stamp}.
+ * Protege filas en estados finales (Entregado/Recibido/Diferencia).
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json() as {
+      fecha: string;
+      updates: { cod: string; conductor: string; patente: string; transporte: string; ruta: string; supervisor: string }[];
+    };
+
+    if (!body.fecha || !Array.isArray(body.updates) || body.updates.length === 0) {
+      return NextResponse.json({ error: 'fecha y updates requeridos' }, { status: 400 });
+    }
+
+    const sb = supabaseServer();
+    const estadosFinales = new Set(['Entregado', 'Recibido', 'Diferencia']);
+    let updatedDespacho = 0;
+    let updatedPicking  = 0;
+
+    // Deduplicar por cod (tomar el primer registro si hay múltiples del mismo cod)
+    const seen = new Set<string>();
+    for (const upd of body.updates) {
+      if (seen.has(upd.cod)) continue;
+      seen.add(upd.cod);
+
+      // 1. Actualizar despacho_rm por (fecha, cod) — solo filas no finalizadas
+      const { data: rmRows } = await sb
+        .from('despacho_rm')
+        .select('id, seguimiento')
+        .eq('fecha', body.fecha)
+        .eq('cod', upd.cod);
+
+      const idsActualizables = ((rmRows ?? []) as { id: string; seguimiento: string }[])
+        .filter(r => !estadosFinales.has(r.seguimiento))
+        .map(r => r.id);
+
+      if (idsActualizables.length > 0) {
+        const { error } = await sb
+          .from('despacho_rm')
+          .update({
+            conductor:   upd.conductor,
+            patente:     upd.patente,
+            transporte:  upd.transporte,
+            ruta:        upd.ruta,
+            supervisor:  upd.supervisor,
+            estado:      'Listo para despachar',
+          })
+          .in('id', idsActualizables);
+        if (error) console.error('[despacho-records PATCH] despacho_rm:', error.message);
+        else updatedDespacho += idsActualizables.length;
+      }
+
+      // 2. Actualizar picking_pallets activos por (date≈fecha, store_cod, is_active)
+      // Convertir fecha DD/MM/YYYY → YYYY-MM-DD para la tabla picking_pallets
+      const parts = body.fecha.split('/');
+      const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : body.fecha;
+
+      const { error: pkErr } = await sb
+        .from('picking_pallets')
+        .update({
+          conductor:  upd.conductor,
+          patente:    upd.patente,
+          ruta:       upd.ruta,
+          supervisor: upd.supervisor,
+        })
+        .eq('date', isoDate)
+        .eq('store_cod', upd.cod)
+        .eq('is_active', true);
+
+      if (pkErr) console.error('[despacho-records PATCH] picking_pallets:', pkErr.message);
+      else updatedPicking++;
+    }
+
+    return NextResponse.json({ ok: true, updatedDespacho, updatedPicking });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}

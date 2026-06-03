@@ -21,7 +21,6 @@ import { pushSessionState, fetchSessionState, subscribeToSessionState } from '..
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
-import { buildDespachoRMRecords } from './utils/sheets';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
@@ -932,20 +931,21 @@ export default function RutasScreen() {
     // Escribe en Google Sheets (historial/auditoría)
     guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
 
-    // Escribe DIRECTAMENTE en Supabase con seguimiento = 'En camino'.
-    // Evita la race condition anterior donde el PATCH se disparaba antes de
-    // que el sync Sheets→Supabase terminara (dejando los registros como
-    // 'Registrado'). Ahora llegan a Supabase de inmediato con el estado
-    // correcto; si ya existen en estado final (Entregado/Recibido/Diferencia)
-    // el endpoint los protege y no los sobreescribe.
-    const rmRecords = buildDespachoRMRecords({
-      fecha, supervisor, rutas: results.rutas, tiendas, seguimiento: 'En camino',
+    // Actualiza routing en Supabase (conductor, patente, ruta, supervisor)
+    // en las filas existentes de despacho_rm y picking_pallets usando (fecha, cod).
+    // NO crea registros nuevos — evita duplicados con prefijo R que existían antes.
+    const routingUpdates = results.rutas.flatMap((ruta, ri) => {
+      const conductor = ruta._choferAsignado || ruta.v.ch || '';
+      const patente   = ruta.v.p;
+      const empresa   = ruta.v.empresa || 'Luis Fica';
+      const rutaNum   = String(ri + 1);
+      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor }));
     });
-    if (rmRecords.length > 0) {
+    if (routingUpdates.length > 0) {
       fetch('/api/despacho-records', {
-        method:  'POST',
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ table: 'despacho_rm', records: rmRecords }),
+        body:    JSON.stringify({ fecha, updates: routingUpdates }),
       }).catch(() => {});
     }
 
