@@ -30,7 +30,7 @@ import {
 } from './picking-utils';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
-import { SupervisorActivityPanel, TurnoSummary } from './components/ActivityTab';
+import { SupervisorActivityPanel } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
@@ -653,7 +653,7 @@ export function PickingScreen() {
         const tipo        = (group.operations[0] && slotsByStateKey[group.stateKey]?.[0]?.tipo) ?? 'P';
         return pickingFetch('/api/picking-prints', {
           method: 'POST',
-          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date }),
+          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '' }),
         }).then(res => {
           if (!res.ok) throw new Error(`picking-prints ${res.status}`);
           return { storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() } satisfies SupervisorPrint;
@@ -949,7 +949,7 @@ export function PickingScreen() {
           {/* ── Tab content: Actividad ── */}
           {rightTab === 'actividad' && (
             <div className="flex-1 overflow-y-auto min-h-0 py-2">
-              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
+              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} />
               {Object.keys(otherSupervisors).length === 0 && nameChanges.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-text-3">
                   <div className="mb-4 opacity-20"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
@@ -960,7 +960,7 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Historial ── */}
-          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} onRefresh={loadPrintRecords} />}
+          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} palletSlots={palletSlots} onRefresh={loadPrintRecords} />}
 
           {/* ── Tab content: Configuración ── */}
           {rightTab === 'configuracion' && (
@@ -993,12 +993,6 @@ export function PickingScreen() {
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto min-h-0">
-            <TurnoSummary
-              allGroups={allGroups}
-              pickerPallets={pickerPallets}
-              printedKeys={printedKeys}
-              selectedCods={selectedCods}
-            />
             <div className="px-4 pb-10">
 
               {/* Filtro de sección + columnas por fila */}

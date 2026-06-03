@@ -42,6 +42,7 @@ export interface PrintRecord {
   picker_label: string;
   pallets: number;
   tipo: string;
+  printed_by_name?: string;
 }
 
 export interface SessionStateRow {
