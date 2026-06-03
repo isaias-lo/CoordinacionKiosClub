@@ -930,7 +930,7 @@ export function TiendasPage() {
                             className="text-[11px] text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✕</button>
                         </div>
                       </div>
-                      <div className="text-[11px] text-text-2 space-y-0.5 mb-1.5">
+                      <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
                         <div className="font-semibold">{row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}</div>
                         {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
                         {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
@@ -962,7 +962,7 @@ export function TiendasPage() {
                       <div className="flex gap-0.5 mb-1.5">
                         {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
                           <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
-                            className={`flex-1 py-0.5 rounded border text-[9px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
+                            className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
                             {t === 'comida' ? 'Com' : t === 'hogar' ? 'Hog' : 'Mix'}
                           </button>
                         ))}
@@ -996,15 +996,15 @@ export function TiendasPage() {
                         </div>
                       </div>
                     ) : isContRow ? (
-                      <div className="mb-1.5 text-[9px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>
+                      <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>
                         80 × 110 cm · alto 150 cm — fijo
                       </div>
                     ) : isChocRow ? (
-                      <div className="mb-1.5 text-[9px] rounded px-1.5 py-1" style={{ color: '#92400E', background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.15)' }}>
+                      <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#92400E', background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.15)' }}>
                         56 × 80 cm · alto 42 cm — fijo
                       </div>
                     ) : (
-                      <div className="mb-1.5 text-[9px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">
+                      <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">
                         120 × 100 cm fijos
                       </div>
                     )}
@@ -1028,7 +1028,7 @@ export function TiendasPage() {
                       </div>
                     )}
                     <button onClick={() => saveRow(row)} disabled={!canSave}
-                      className="w-full py-1.5 text-white border-none rounded font-barlow-condensed text-[12px] font-bold cursor-pointer disabled:opacity-30 transition-all"
+                      className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 transition-all"
                       style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
                       + Agregar
                     </button>
