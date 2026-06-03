@@ -1512,15 +1512,15 @@ export function StepForm() {
                 return (
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`font-barlow-condensed text-[15px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>
-                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[11px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                      <span className={`font-barlow-condensed text-[17px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>
+                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[13px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
                       </span>
                       <div className="flex gap-1">
-                        <button onClick={() => editSavedRow(row.id)} className="text-[13px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
-                        <button onClick={() => deleteSavedRow(row.id)} className="text-[13px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
+                        <button onClick={() => editSavedRow(row.id)} className="text-[15px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
+                        <button onClick={() => deleteSavedRow(row.id)} className="text-[15px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
                       </div>
                     </div>
-                    <div className="text-[12px] text-text-2 space-y-0.5 mb-2">
+                    <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
                       <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
                       <div className="text-text-3">{row.savedItem.contenido}</div>
                     </div>
@@ -1540,8 +1540,8 @@ export function StepForm() {
               return (
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[13px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
-                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[10px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
+                    <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
+                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[12px] font-mono text-text-3 font-normal">#{row.pickingSlotId}</span> : null}
                     </span>
                     <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
@@ -1549,7 +1549,7 @@ export function StepForm() {
                   <div className="flex gap-0.5 mb-2">
                     {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
                       <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
-                        className={`flex-1 py-1 rounded border text-[9px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
+                        className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
                         {c.slice(0, 3)}
                       </button>
                     ))}
@@ -1557,17 +1557,17 @@ export function StepForm() {
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
-                      <label className="text-[9px] text-text-3 uppercase block mb-0.5">peso</label>
+                      <label className="text-[11px] text-text-3 uppercase block mb-0.5">peso</label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
                         placeholder="kg" inputMode="decimal"
-                        className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && !isChocTipo && (
                       <div>
-                        <label className="text-[9px] text-text-3 uppercase block mb-0.5">alto</label>
+                        <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
                           placeholder="cm" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
                       </div>
                     )}
                   </div>
@@ -1575,34 +1575,34 @@ export function StepForm() {
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       {(['largo', 'ancho'] as const).map(f => (
                         <div key={f}>
-                          <label className="text-[9px] text-text-3 uppercase block mb-0.5">{f}</label>
+                          <label className="text-[11px] text-text-3 uppercase block mb-0.5">{f}</label>
                           <input type="number" value={row[f]} onChange={e => updateRow(row.id, f, e.target.value)}
                             placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-1.5 py-1.5 text-text font-barlow text-[13px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
                       ))}
                     </div>
                   )}
                   {row.tipo === 'Pallet' && (
-                    <div className="mb-1.5 text-[9px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
+                    <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
                   {isChocRow && (
-                    <div className="mb-1.5 text-[9px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
+                    <div className="mb-1.5 text-[11px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
                       {CHOCOLATE_DIMS.alto}×{CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho} cm · fijas
                     </div>
                   )}
                   {isContRow && (
-                    <div className="mb-1.5 text-[9px] text-[#6B21A8] bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.15)] rounded px-1.5 py-1">
+                    <div className="mb-1.5 text-[11px] text-[#6B21A8] bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.15)] rounded px-1.5 py-1">
                       110×80×150 cm · fijas
                     </div>
                   )}
                   {isChocTipo && (
-                    <div className="mb-1.5 text-[9px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
+                    <div className="mb-1.5 text-[11px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
                       {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas · máx {CHOCOLATE_DIMS.pesoMax} kg
                     </div>
                   )}
                   <button onClick={() => saveRow(row)} disabled={!canSaveRow}
-                    className={`w-full py-2 text-white border-none rounded font-barlow-condensed text-[13px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
+                    className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     + Agregar
                   </button>
                   {(() => {

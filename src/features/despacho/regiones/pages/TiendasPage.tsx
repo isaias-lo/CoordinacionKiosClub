@@ -970,29 +970,29 @@ export function TiendasPage() {
                     )}
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       <div>
-                        <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
+                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
                         <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
                       </div>
                       {!isChocRow && !isContRow && (
                         <div>
-                          <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
+                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
                           <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
                       )}
                     </div>
                     {row.pkg === 'box' ? (
                       <div className="grid grid-cols-2 gap-1 mb-1.5">
                         <div>
-                          <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
+                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
                           <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)} placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
                         <div>
-                          <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
+                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
                           <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
                       </div>
                     ) : isContRow ? (
@@ -1011,14 +1011,14 @@ export function TiendasPage() {
                     {!hasPdf && (
                       <div className="grid grid-cols-2 gap-1 mb-1.5">
                         <div>
-                          <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">Guía</label>
+                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Guía</label>
                           <input type="text" value={row.guia} onChange={e => updateRow(row.id, 'guia', e.target.value)}
-                            className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red" />
                         </div>
                         <div>
-                          <label className="text-[9px] text-text-3 uppercase tracking-wide block mb-0.5">$ Total</label>
+                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">$ Total</label>
                           <input type="number" value={row.valor} onChange={e => updateRow(row.id, 'valor', e.target.value)}
-                            className="w-full bg-white border border-border rounded px-1.5 py-1 text-text font-barlow text-[12px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
                         </div>
                       </div>
                     )}
