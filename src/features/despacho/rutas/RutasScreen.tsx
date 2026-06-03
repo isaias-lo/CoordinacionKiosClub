@@ -518,17 +518,18 @@ export default function RutasScreen() {
   const sortedCalT = useMemo(() => {
     const dia    = getDia(fecha);
     const calDia = cal[dia] || cal.LU || {};
+    // Orden igual al Calendario de Despacho: Regiones → Costa → RM
     const canonical: string[] = [
-      ...((calDia as Record<string, string[]>).rm    || []),
-      ...((calDia as Record<string, string[]>).costa || []),
       ...((calDia as Record<string, string[]>).fal   || []),
+      ...((calDia as Record<string, string[]>).costa || []),
+      ...((calDia as Record<string, string[]>).rm    || []),
     ];
     const result: Record<string, CalData> = {};
     canonical.forEach(c => { if (calT[c]) result[c] = calT[c]; });
-    const groupOrder: Record<string, number> = { rm: 0, costa: 1, fal: 2 };
+    const groupOrder: Record<string, number> = { fal: 0, costa: 1, rm: 2 };
     const extras = Object.keys(calT)
       .filter(c => !result[c])
-      .sort((a, b) => (groupOrder[calT[a].g || 'rm'] ?? 0) - (groupOrder[calT[b].g || 'rm'] ?? 0));
+      .sort((a, b) => (groupOrder[calT[a].g || 'fal'] ?? 0) - (groupOrder[calT[b].g || 'fal'] ?? 0));
     extras.forEach(c => { result[c] = calT[c]; });
     return result;
   }, [calT, cal, fecha]);
