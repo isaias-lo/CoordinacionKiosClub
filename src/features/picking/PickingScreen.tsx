@@ -820,14 +820,6 @@ export function PickingScreen() {
           </div>
         )}
 
-        {hasBarcodes && (
-          <button onClick={printAll}
-            className="flex items-center gap-2 border-none cursor-pointer font-semibold text-[13px] px-3.5 py-1.5 rounded shrink-0"
-            style={{ background: '#2563EB', color: '#fff' }}>
-            <Printer size={14} />
-            Imprimir {printableLabels.length}
-          </button>
-        )}
         <ProfilePill />
       </div>
 
@@ -945,7 +937,7 @@ export function PickingScreen() {
           {/* ── Tab content: Actividad ── */}
           {rightTab === 'actividad' && (
             <div className="flex-1 overflow-y-auto min-h-0 py-2">
-              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} />
+              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} supervisors={otherSupervisors} />
               {Object.keys(otherSupervisors).length === 0 && nameChanges.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-text-3">
                   <div className="mb-4 opacity-20"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
@@ -992,7 +984,7 @@ export function PickingScreen() {
             <div className="px-4 pb-10">
 
               {/* Filtro de sección + columnas por fila */}
-              <div className="mt-4 mb-3 print:hidden flex flex-wrap items-end gap-6">
+              <div className="mt-4 mb-3 print:hidden flex flex-wrap items-center gap-4">
                 <div>
                   <div className="text-[11px] font-medium text-slate-400 mb-2">Sección</div>
                   <div className="flex gap-1.5">
@@ -1013,7 +1005,16 @@ export function PickingScreen() {
                     ))}
                   </div>
                 </div>
-
+                <div className="ml-auto">
+                  {hasBarcodes && (
+                    <button onClick={printAll}
+                      className="flex items-center gap-2 border-none cursor-pointer font-semibold text-[13px] px-3.5 py-1.5 rounded"
+                      style={{ background: '#2563EB', color: '#fff' }}>
+                      <Printer size={14} />
+                      Imprimir {printableLabels.length}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="mb-4 flex items-center justify-between print:hidden">

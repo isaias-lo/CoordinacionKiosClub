@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Printer, Tag, User } from 'lucide-react';
-import type { PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
+import { Printer, Tag, User, Wifi } from 'lucide-react';
+import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -15,16 +15,13 @@ function TipoBadge({ tipos }: { tipos: string[] }) {
   const hasB  = tipos.includes('B');
   const hasC  = tipos.includes('C');
   const hasCH = tipos.includes('CH');
-
   const parts: string[] = [];
   if (hasP)  parts.push('Pallet');
   if (hasB)  parts.push('Bulto');
   if (hasC)  parts.push('Cont.');
   if (hasCH) parts.push('Choc.');
-
-  const label = parts.join(' + ') || '—';
+  const label   = parts.join(' + ') || '—';
   const isMulti = parts.length > 1;
-
   return (
     <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold"
       style={{
@@ -37,111 +34,166 @@ function TipoBadge({ tipos }: { tipos: string[] }) {
   );
 }
 
-// ─── types ────────────────────────────────────────────────────────────────────
+// ─── tipos internos ───────────────────────────────────────────────────────────
 
-type PrintEvent = {
-  kind: 'print';
-  at: string;
-  storeCod: string;
-  pickerLabel: string;
-  pallets: number;
-  bultos: number;
+type PrintEv = {
+  kind:           'print';
+  at:             string;
+  storeCod:       string;
+  pickerLabel:    string;
+  pallets:        number;
+  bultos:         number;
   tiposPresentes: string[];
+  fromPresence:   boolean; // true = dato de Presence (tiempo real, no persistido aún)
 };
 
-type NameEvent = {
-  kind: 'name';
-  at: string;
+type NameEv = {
+  kind:      'name';
+  at:        string;
   pickerKey: string;
-  oldName: string;
-  newName: string;
+  oldName:   string;
+  newName:   string;
 };
 
-type AnyEvent = PrintEvent | NameEvent;
+type AnyEv = PrintEv | NameEv;
 
-interface SupervisorSection {
-  name: string;
-  events: AnyEvent[];
+interface Section {
+  name:         string;
+  isLive:       boolean; // tiene datos de Presence
+  events:       AnyEv[];
 }
 
-// ─── SupervisorActivityPanel ──────────────────────────────────────────────────
+// ─── componente principal ─────────────────────────────────────────────────────
 
 interface Props {
   printRecords: PrintRecord[];
   nameChanges:  PickerNameChange[];
   palletSlots:  PalletSlot[];
+  supervisors:  Record<string, SupervisorPresence>; // otros supervisores en tiempo real
 }
 
-export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots }: Props) {
+export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots, supervisors }: Props) {
 
-  // Pallets y bultos reales por state_key desde picking_pallets
+  // Pallets y bultos reales desde picking_pallets
   const unitsByKey = useMemo(() => {
     const map: Record<string, { pallets: number; bultos: number; tipos: string[] }> = {};
     for (const s of palletSlots) {
       if (!map[s.state_key]) map[s.state_key] = { pallets: 0, bultos: 0, tipos: [] };
-      if (s.tipo === 'P')  { map[s.state_key].pallets++; }
-      if (s.tipo === 'B')  { map[s.state_key].bultos++;  }
+      if (s.tipo === 'P') map[s.state_key].pallets++;
+      if (s.tipo === 'B') map[s.state_key].bultos++;
       if (!map[s.state_key].tipos.includes(s.tipo)) map[s.state_key].tipos.push(s.tipo);
     }
     return map;
   }, [palletSlots]);
 
-  // Construir secciones por supervisor
-  const sections = useMemo(() => {
-    const byName: Record<string, AnyEvent[]> = {};
+  const sections = useMemo<Section[]>(() => {
+    const byName: Record<string, { dbPrints: PrintRecord[]; presencePrints: SupervisorPrint[]; nameEvs: PickerNameChange[]; isLive: boolean }> = {};
 
-    const addTo = (name: string, ev: AnyEvent) => {
-      if (!byName[name]) byName[name] = [];
-      byName[name].push(ev);
+    const ensure = (name: string) => {
+      if (!byName[name]) byName[name] = { dbPrints: [], presencePrints: [], nameEvs: [], isLive: false };
     };
 
+    // 1. Datos de DB: registros con printed_by_name
     for (const r of printRecords) {
-      const sup = r.printed_by_name?.trim() || 'Sin atribución';
-      const units = unitsByKey[r.state_key];
-      addTo(sup, {
-        kind:           'print',
-        at:             r.printed_at,
-        storeCod:       r.state_key.split('__')[0],
-        pickerLabel:    r.picker_label,
-        pallets:        units?.pallets ?? r.pallets,
-        bultos:         units?.bultos  ?? 0,
-        tiposPresentes: units?.tipos   ?? [r.tipo],
-      });
+      const name = r.printed_by_name?.trim() || 'Sin atribución';
+      ensure(name);
+      byName[name].dbPrints.push(r);
     }
 
+    // 2. Datos de DB: cambios de nombre con changed_by_name
     for (const c of nameChanges) {
-      const sup = c.changed_by_name?.trim() || 'Sin atribución';
-      addTo(sup, {
-        kind:      'name',
-        at:        c.changed_at,
-        pickerKey: c.picker_key,
-        oldName:   c.old_name,
-        newName:   c.new_name,
-      });
+      const name = c.changed_by_name?.trim() || 'Sin atribución';
+      ensure(name);
+      byName[name].nameEvs.push(c);
     }
 
-    // Ordenar eventos de cada supervisor cronológicamente
-    const result: SupervisorSection[] = Object.entries(byName)
-      .map(([name, events]) => ({
-        name,
-        events: [...events].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()),
-      }))
+    // 3. Datos de Presence: supervisores conectados en tiempo real.
+    //    Agregar sus recentPrints que NO estén ya en los registros de DB de ese supervisor.
+    //    Esto cubre a supervisores que no recargaron la página (su printed_by_name = null).
+    for (const sup of Object.values(supervisors)) {
+      const name = sup.name.trim();
+      if (!name) continue;
+      ensure(name);
+      byName[name].isLive = true;
+
+      // Keys ya cubiertos por DB para este supervisor
+      const dbCovered = new Set(byName[name].dbPrints.map(r => r.state_key));
+
+      for (const p of sup.recentPrints) {
+        // Construir una key aproximada desde storeCod + pickerLabel
+        // Si algún DB record tiene el mismo storeCod (primeras letras del state_key) Y pickerLabel, ya está cubierto
+        const alreadyCovered = byName[name].dbPrints.some(
+          r => r.state_key.startsWith(p.storeCod + '__') && r.picker_label === p.pickerLabel
+        );
+        if (!alreadyCovered) {
+          byName[name].presencePrints.push(p);
+        }
+        void dbCovered; // suppress unused warning
+      }
+    }
+
+    // 4. Construir eventos combinados por supervisor
+    return Object.entries(byName)
+      .map(([name, data]): Section => {
+        const events: AnyEv[] = [];
+
+        // Eventos de print de DB
+        for (const r of data.dbPrints) {
+          const units = unitsByKey[r.state_key];
+          events.push({
+            kind:           'print',
+            at:             r.printed_at,
+            storeCod:       r.state_key.split('__')[0],
+            pickerLabel:    r.picker_label,
+            pallets:        units?.pallets ?? r.pallets,
+            bultos:         units?.bultos  ?? 0,
+            tiposPresentes: units?.tipos   ?? [r.tipo],
+            fromPresence:   false,
+          });
+        }
+
+        // Eventos de print de Presence (no están en DB aún o sin atribución en DB)
+        for (const p of data.presencePrints) {
+          // Buscar state_key aproximado para obtener unidades reales
+          const matchKey = Object.keys(unitsByKey).find(k =>
+            k.startsWith(p.storeCod + '__') &&
+            palletSlots.find(s => s.state_key === k)?.picker_label === p.pickerLabel
+          );
+          const units = matchKey ? unitsByKey[matchKey] : null;
+          events.push({
+            kind:           'print',
+            at:             p.printedAt,
+            storeCod:       p.storeCod,
+            pickerLabel:    p.pickerLabel,
+            pallets:        units?.pallets ?? p.pallets,
+            bultos:         units?.bultos  ?? 0,
+            tiposPresentes: units?.tipos   ?? [p.tipo],
+            fromPresence:   true,
+          });
+        }
+
+        // Cambios de nombre
+        for (const c of data.nameEvs) {
+          events.push({ kind: 'name', at: c.changed_at, pickerKey: c.picker_key, oldName: c.old_name, newName: c.new_name });
+        }
+
+        // Ordenar cronológicamente
+        events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+        return { name, isLive: data.isLive, events };
+      })
+      .filter(s => s.events.length > 0)
       .sort((a, b) => {
-        // "Sin atribución" al final
         if (a.name === 'Sin atribución') return 1;
         if (b.name === 'Sin atribución') return -1;
         return a.name.localeCompare(b.name);
       });
-
-    return result;
-  }, [printRecords, nameChanges, unitsByKey]);
+  }, [printRecords, nameChanges, palletSlots, supervisors, unitsByKey]);
 
   if (sections.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center px-8">
-        <div className="mb-4 opacity-20">
-          <User size={48} strokeWidth={1.5} className="text-slate-400" />
-        </div>
+        <div className="mb-4 opacity-20"><User size={48} strokeWidth={1.5} className="text-slate-400" /></div>
         <div className="text-[14px] font-medium text-slate-400">Sin actividad registrada hoy</div>
       </div>
     );
@@ -162,6 +214,13 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
               <User size={14} style={{ color: '#1E40AF' }} />
             </div>
             <span className="font-semibold text-[14px]" style={{ color: '#1E293B' }}>{sec.name}</span>
+            {sec.isLive && (
+              <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded"
+                style={{ background: '#DCFCE7', color: '#15803D' }}>
+                <Wifi size={10} />
+                En línea
+              </span>
+            )}
             <span className="ml-auto text-[11px] font-medium px-2 py-0.5 rounded"
               style={{ background: '#F1F5F9', color: '#64748B' }}>
               {sec.events.length} acción{sec.events.length !== 1 ? 'es' : ''}
@@ -172,38 +231,36 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {sec.events.map((ev, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-
-                {/* Hora */}
                 <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#94A3B8', minWidth: 36 }}>
                   {fmtTime(ev.at)}
                 </span>
 
                 {ev.kind === 'print' ? (
                   <>
-                    <Printer size={13} className="flex-shrink-0" style={{ color: '#64748B' }} />
-                    {/* Tienda */}
+                    <Printer size={13} className="flex-shrink-0" style={{ color: ev.fromPresence ? '#15803D' : '#64748B' }} />
                     <span className="font-mono font-bold text-[12px] flex-shrink-0 px-1.5 py-0.5 rounded"
                       style={{ background: '#F1F5F9', color: '#334155' }}>
                       {ev.storeCod}
                     </span>
-                    {/* Picker */}
                     <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#334155' }}>
                       {ev.pickerLabel}
                     </span>
-                    {/* Pallets */}
                     {ev.pallets > 0 && (
                       <span className="flex-shrink-0 text-[12px] font-bold" style={{ color: '#1E40AF' }}>
                         {ev.pallets}P
                       </span>
                     )}
-                    {/* Bultos */}
                     {ev.bultos > 0 && (
                       <span className="flex-shrink-0 text-[12px] font-bold" style={{ color: '#15803D' }}>
                         {ev.bultos}B
                       </span>
                     )}
-                    {/* Tipo badge */}
                     <TipoBadge tipos={ev.tiposPresentes} />
+                    {ev.fromPresence && (
+                      <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: '#94A3B8' }}>
+                        tiempo real
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>
