@@ -604,7 +604,11 @@ export function AuditoriaScreen() {
     store_cod: string; picker_label: string; picker_key: string;
     codeBySubtipo: Partial<Record<SubTipo, string>>;
   } | null> => {
-    const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? '';
+    const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; contenido: string; refs: string }; error?: string };
     if (!res.ok || !json.data) return null;
     const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
