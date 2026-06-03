@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as
-    | { id: number; tipo: string }
+    | { id: number; tipo?: string; contenido?: string }
     | { slots: { id: number; seq: number; canonical_id: string }[] };
 
   // Batch: asignar seq + canonical_id a múltiples slots al imprimir
@@ -74,7 +74,6 @@ export async function PATCH(request: NextRequest) {
     const sb = supabaseServer();
     const errs: string[] = [];
     for (const slot of body.slots) {
-      // Solo actualiza si canonical_id aún no está asignado (idempotente en re-impresión)
       const { error } = await sb
         .from('picking_pallets')
         .update({ seq: slot.seq, canonical_id: slot.canonical_id })
@@ -86,10 +85,13 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true, updated: body.slots.length });
   }
 
-  // Single: cambio de tipo (comportamiento existente)
+  const update: Record<string, unknown> = {};
+  if (body.tipo      !== undefined) update.tipo      = body.tipo;
+  if (body.contenido !== undefined) update.contenido = body.contenido;
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
   const { error } = await supabaseServer()
     .from('picking_pallets')
-    .update({ tipo: body.tipo })
+    .update(update)
     .eq('id', body.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

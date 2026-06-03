@@ -212,6 +212,8 @@ export function AuditoriaScreen() {
   // canonical_id del pallet escaneado (P/B/CH/C{...}). Se resuelve via /api/pallet-lookup
   // y se persiste en audit_entries para cruzar trazabilidad con despacho_rm/regiones.
   const [scannedCanonicalId, setScannedCanonicalId] = useState<string | null>(null);
+  // IDs numéricos de picking_pallets usados en el lookup — para corregir contenido al hacer submit
+  const [resolvedPalletIds, setResolvedPalletIds] = useState<number[]>([]);
   // Clave incremental para forzar re-mount de inputs de foto en iOS (fix: onChange stale tras cámara)
   const [photoInputVer,   setPhotoInputVer]   = useState(0);
   const bumpPhotoInput = () => setPhotoInputVer(v => v + 1);
@@ -231,6 +233,24 @@ export function AuditoriaScreen() {
   const timerIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const auditStartTimeRef  = useRef('');
   auditStartTimeRef.current = auditStartTime;
+
+  // Token de sesión para llamadas a APIs protegidas con verifyAuth (/api/picking-pallets, etc.)
+  // Usar authedFetch en lugar de fetch() directo para cualquier ruta API que requiera auth.
+  const tokenRef = useRef<string>('');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      tokenRef.current = session?.access_token ?? '';
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, session) => {
+      tokenRef.current = session?.access_token ?? '';
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  const authedFetch = useCallback((url: string, init: RequestInit = {}) =>
+    fetch(url, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${tokenRef.current}` },
+    }), []);
 
   // Set initial view once profile loads + kick off history load with correct user context
   useEffect(() => {
@@ -604,7 +624,7 @@ export function AuditoriaScreen() {
     store_cod: string; picker_label: string; picker_key: string;
     codeBySubtipo: Partial<Record<SubTipo, string>>;
   } | null> => {
-    const res  = await fetch(`/api/picking-pallets?id=${idStr.trim()}`);
+    const res  = await authedFetch(`/api/picking-pallets?id=${idStr.trim()}`);
     const json = await res.json() as { data?: { store_cod: string; state_key: string; picker_label: string; contenido: string; refs: string }; error?: string };
     if (!res.ok || !json.data) return null;
     const { store_cod, state_key, picker_label, contenido, refs: rawRefs } = json.data;
@@ -645,6 +665,11 @@ export function AuditoriaScreen() {
         const st = TIPO_TO_SUBTIPOS[fallbackTipo][i];
         if (st) codeBySubtipo[st] = code;
       });
+      // Si refs estaba vacío, igual fijar subtipos desde contenido con código en blanco.
+      // Sin esto, codeBySubtipo queda vacío y handlePalletIdLookup defaultea todo a 'comida'.
+      if (Object.keys(codeBySubtipo).length === 0) {
+        for (const st of TIPO_TO_SUBTIPOS[fallbackTipo]) codeBySubtipo[st] = '';
+      }
     }
 
     return { store_cod, picker_label, picker_key, codeBySubtipo };
@@ -733,6 +758,7 @@ export function AuditoriaScreen() {
       const pickerLabel = involvedPickers.length > 1 ? involvedPickers.join(' + ') : (involvedPickers[0] ?? '');
       showToast(`✓ ${idLabel} · ${p1.store_cod} · ${pickerLabel} · ${newTipo.toUpperCase()}`, '#16A34A');
       setTipoLocked(true);
+      setResolvedPalletIds([Number(trimId1), ...(trimId2 ? [Number(trimId2)] : [])]);
       setPalletIdInput(''); setPalletIdInput2(''); setShowPalletId2(false);
       setFormPhase('setup');
     } catch {
@@ -889,7 +915,7 @@ export function AuditoriaScreen() {
     setPalletIdInput(''); setPalletIdError('');
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
-    setScannedCanonicalId(null);
+    setScannedCanonicalId(null); setResolvedPalletIds([]);
   };
 
   // Cancela auditoría en ejecución: borra fotos subidas, limpia sesión y estado
@@ -915,7 +941,7 @@ export function AuditoriaScreen() {
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
-    setScannedCanonicalId(null);
+    setScannedCanonicalId(null); setResolvedPalletIds([]);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));
@@ -1059,6 +1085,21 @@ export function AuditoriaScreen() {
             }
           })();
         }
+
+        // Fire-and-forget: corregir contenido en picking_pallets con el tipo confirmado por el auditor.
+        // Soluciona datos históricos incorrectos (aseo guardado como hogar, etc.).
+        if (resolvedPalletIds.length > 0) {
+          const correctContenido = entry.tipo;
+          void Promise.all(
+            resolvedPalletIds.map(id =>
+              authedFetch('/api/picking-pallets', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, contenido: correctContenido }),
+              }).catch(() => {})
+            )
+          );
+        }
       }
     }
     try { const prev = JSON.parse(localStorage.getItem('auditHistory') || '[]') as AuditEntry[]; prev.push(entry); localStorage.setItem('auditHistory', JSON.stringify(prev.slice(-200))); } catch { /* empty */ }
@@ -1073,7 +1114,7 @@ export function AuditoriaScreen() {
     setPalletIdInput2(''); setPalletIdError2(''); setShowPalletId2(false);
     setTipoLocked(false); setShowSecondScan(false); setFirstScanDone(false); firstScanRef.current = null;
     setTieneErrores(null); setTiposError([]); setProductos([]); setObservaciones(''); setReauditoriaOrigen(null);
-    setScannedCanonicalId(null);
+    setScannedCanonicalId(null); setResolvedPalletIds([]);
     Object.values(palletPreviews).forEach(url => URL.revokeObjectURL(url));
     setPalletFiles({}); setPalletPreviews({}); setPalletWarnings({}); setPalletStorageUrls({});
     fotoPreviews.forEach(url => URL.revokeObjectURL(url));

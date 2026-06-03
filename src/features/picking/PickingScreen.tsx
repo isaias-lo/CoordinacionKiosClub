@@ -30,7 +30,7 @@ import {
 } from './picking-utils';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
-import { SupervisorActivityPanel, TurnoSummary } from './components/ActivityTab';
+import { SupervisorActivityPanel } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
@@ -263,10 +263,6 @@ export function PickingScreen() {
   const [otherSupervisors, setOtherSupervisors] = useState<Record<string, SupervisorPresence>>({});
   const presenceRef  = useRef<SupervisorPresence>({ name: '', userId: '', recentPrints: [], lastActive: '' });
   const channelRef   = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  // Clock que se actualiza cada 30 s para los "hace X min" en el panel
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
-
   useEffect(() => {
     if (!profile?.id) return;
     const myId  = profile.id;
@@ -679,7 +675,7 @@ export function PickingScreen() {
         const tipo        = (group.operations[0] && slotsByStateKey[group.stateKey]?.[0]?.tipo) ?? 'P';
         return pickingFetch('/api/picking-prints', {
           method: 'POST',
-          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date }),
+          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '' }),
         }).then(res => {
           if (!res.ok) throw new Error(`picking-prints ${res.status}`);
           return { storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() } satisfies SupervisorPrint;
@@ -859,14 +855,6 @@ export function PickingScreen() {
           </div>
         )}
 
-        {hasBarcodes && (
-          <button onClick={printAll}
-            className="flex items-center gap-2 border-none cursor-pointer font-semibold text-[13px] px-3.5 py-1.5 rounded shrink-0"
-            style={{ background: '#2563EB', color: '#fff' }}>
-            <Printer size={14} />
-            Imprimir {printableLabels.length}
-          </button>
-        )}
         <ProfilePill />
       </div>
 
@@ -978,13 +966,13 @@ export function PickingScreen() {
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
-            <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} />
+            <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} canonicalNames={canonicalNames} />
           )}
 
           {/* ── Tab content: Actividad ── */}
           {rightTab === 'actividad' && (
             <div className="flex-1 overflow-y-auto min-h-0 py-2">
-              <SupervisorActivityPanel supervisors={otherSupervisors} now={now} nameChanges={nameChanges} />
+              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} supervisors={otherSupervisors} />
               {Object.keys(otherSupervisors).length === 0 && nameChanges.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-text-3">
                   <div className="mb-4 opacity-20"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
@@ -995,7 +983,7 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Historial ── */}
-          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} onRefresh={loadPrintRecords} />}
+          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} palletSlots={palletSlots} onRefresh={loadPrintRecords} />}
 
           {/* ── Tab content: Configuración ── */}
           {rightTab === 'configuracion' && (
@@ -1028,16 +1016,10 @@ export function PickingScreen() {
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto min-h-0">
-            <TurnoSummary
-              allGroups={allGroups}
-              pickerPallets={pickerPallets}
-              printedKeys={printedKeys}
-              selectedCods={selectedCods}
-            />
             <div className="px-4 pb-10">
 
               {/* Filtro de sección + columnas por fila */}
-              <div className="mt-4 mb-3 print:hidden flex flex-wrap items-end gap-6">
+              <div className="mt-4 mb-3 print:hidden flex flex-wrap items-center gap-4">
                 <div>
                   <div className="text-[11px] font-medium text-slate-400 mb-2">Sección</div>
                   <div className="flex gap-1.5">
@@ -1058,7 +1040,16 @@ export function PickingScreen() {
                     ))}
                   </div>
                 </div>
-
+                <div className="ml-auto">
+                  {hasBarcodes && (
+                    <button onClick={printAll}
+                      className="flex items-center gap-2 border-none cursor-pointer font-semibold text-[13px] px-3.5 py-1.5 rounded"
+                      style={{ background: '#2563EB', color: '#fff' }}>
+                      <Printer size={14} />
+                      Imprimir {printableLabels.length}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="mb-4 flex items-center justify-between print:hidden">
