@@ -260,9 +260,10 @@ export function PickingScreen() {
     }, 500);
   }, []);
 
-  const [printOnlyStore, setPrintOnlyStore]   = useState<string | null>(null);
-  const [doPrint, setDoPrint]                 = useState(false);
-  const [selectionPrint, setSelectionPrint]   = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
+  const [printOnlyStore, setPrintOnlyStore]       = useState<string | null>(null);
+  const [printOnlyStateKey, setPrintOnlyStateKey] = useState<string | null>(null);
+  const [doPrint, setDoPrint]                     = useState(false);
+  const [selectionPrint, setSelectionPrint]       = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
 
   // Cross-desktop print visibility — single source of truth for both printedKeys and HistorialTab
   const [printRecords, setPrintRecords] = useState<PrintRecord[]>([]);
@@ -417,7 +418,8 @@ export function PickingScreen() {
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { void loadCanonicalNames(); }, [loadCanonicalNames]);
+  // Cargar canonical names una vez que el token esté disponible (profile cargado)
+  useEffect(() => { if (profile) void loadCanonicalNames(); }, [loadCanonicalNames, profile]);
   useRealtimeRefresh('picker_canonical_names', loadCanonicalNames);
 
   const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => {
@@ -465,6 +467,7 @@ export function PickingScreen() {
       }
       const handleAfterPrint = () => {
         setPrintOnlyStore(null);
+        setPrintOnlyStateKey(null);
         setSelectionPrint(null);
         window.removeEventListener('afterprint', handleAfterPrint);
       };
@@ -749,8 +752,20 @@ export function PickingScreen() {
     return failures;
   }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline]);
 
+  // Imprime y registra SOLO los labels de un picker específico.
+  // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
+  const printGroupLabels = useCallback((group: PickerGroup) => {
+    setSelectionPrint(null);
+    setPrintOnlyStore(null);
+    setPrintOnlyStateKey(group.stateKey);
+    pendingPrintRef.current = recordPrints([group]);
+    void assignCanonicalIds([group]);
+    setDoPrint(true);
+  }, [recordPrints, assignCanonicalIds]);
+
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);
+    setPrintOnlyStateKey(null);
     setPrintOnlyStore(cod);
     const groups = groupedByStore[cod] ?? [];
     pendingPrintRef.current = recordPrints(groups);
@@ -769,6 +784,7 @@ export function PickingScreen() {
 
   const printAll = useCallback(() => {
     setPrintOnlyStore(null);
+    setPrintOnlyStateKey(null);
     pendingPrintRef.current = Promise.all(
       selectedCods.map(cod => recordPrints(groupedByStore[cod] ?? []))
     ).then(counts => counts.reduce((s, n) => s + n, 0));
@@ -811,8 +827,8 @@ export function PickingScreen() {
         const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
         const refs  = group.operations.map(o => o.name).join('+');
         const cats  = allCategories.join(',');
-        // Prefer name typed by supervisor (local state), fall back to slot label stored in DB
-        const label = pickerDisplayNames[group.stateKey] || groupSlots[0]?.picker_label || getCanonicalName(group.key) || group.key;
+        // Prioridad: 1) nombre del supervisor en esta sesión, 2) canónico de Supabase, 3) label del slot (histórico), 4) clave Odoo
+        const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || groupSlots[0]?.picker_label || group.key;
         for (const slot of groupSlots) {
           const pNum  = palletNumsBySlotId[slot.id];
           const tipo  = (slot.tipo as PickerType) ?? 'P';
@@ -862,9 +878,11 @@ export function PickingScreen() {
     <div className="picking-print-root" style={{ display: 'none' }}>
       {(selectionPrint
         ? printableLabels.filter(l => l.stateKey === selectionPrint.stateKey && selectionPrint.palletNums.has(l.palletNum))
-        : printOnlyStore
-          ? printableLabels.filter(l => l.storeCod === printOnlyStore)
-          : printableLabels
+        : printOnlyStateKey
+          ? printableLabels.filter(l => l.stateKey === printOnlyStateKey)
+          : printOnlyStore
+            ? printableLabels.filter(l => l.storeCod === printOnlyStore)
+            : printableLabels
       ).map((label, idx) => (
         <BarcodeCard key={idx} {...label} labelConfig={labelConfig} />
       ))}
@@ -1201,7 +1219,7 @@ export function PickingScreen() {
                                 }
                               }}
                               onRefreshOp={(op) => void refreshOp(op, cod)}
-                              onPrint={() => printStoreLabels(cod)}
+                              onPrint={() => printGroupLabels(group)}
                               refreshingId={refreshingId}
                               totalPickers={allStore.length}
                               assignedNums={nums}
