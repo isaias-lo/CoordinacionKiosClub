@@ -450,36 +450,71 @@ export function TiendasPage() {
         setPresets(prev => ({ ...prev, [selectedTienda]: { pallets: pickingP, bultos: pickingB, contenedores: pickingC, chocolates: pickingCH } }));
       }
 
-      if (existingItems.length === 0 && hasPickingData) {
-        // Build form rows from picking slots — uses full slot data (id, seq, dimensions)
-        const fullSlots = pickingSlotsFullRef.current[selectedTienda] ?? [];
-        const baseSlots = fullSlots.length > 0 ? fullSlots : slots.map(s => ({
-          id: 0, tipo: s.tipo, contenido: s.contenido, seq: null, canonical_id: null,
-          peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null,
-        }));
-        const allRows: FormRow[] = baseSlots.map((s, i) => {
-          const pkg  = PICKING_PKG[s.tipo]  ?? 'pallet';
-          const tipo = mapearContenido(s.contenido);
-          return {
-            id: `pick-${s.tipo}-${i}-${Date.now()}`, pkg, tipo,
-            // Pre-llenar dimensiones si ya se guardaron en picking_pallets
-            peso:  s.peso_kg != null ? String(s.peso_kg) : '',
-            alto:  s.alto    != null ? String(s.alto)    : '',
-            ancho: s.ancho   != null ? String(s.ancho)   : (pkg === 'pallet' ? '100' : ''),
-            largo: s.largo   != null ? String(s.largo)   : (pkg === 'pallet' ? '120' : ''),
-            guia: '', valor: '',
-            pickingSlotId: (s as { id?: number }).id || undefined,
-          };
-        });
-        const chocSlots = allRows.filter(r => r.pkg === 'chocolate');
-        const nonChocRows = allRows.filter(r => r.pkg !== 'chocolate');
-        if (chocSlots.length > 0) {
-          dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: chocSlots.map((_, i) => ({
-            orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
-            peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
-          })) });
+      const fullSlotsR = pickingSlotsFullRef.current[selectedTienda] ?? [];
+      const baseSlotsR = fullSlotsR.length > 0 ? fullSlotsR : slots.map(s => ({
+        id: 0, tipo: s.tipo, contenido: s.contenido, seq: null, canonical_id: null,
+        peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null,
+      }));
+
+      if (hasPickingData) {
+        // ── Reconstrucción determinista: un row por slot de picking ──
+        // CH: auto-crear items en la primera visita (dims fijas, no son form rows)
+        if (existingItems.length === 0) {
+          const chSlots = baseSlotsR.filter(s => s.tipo === 'CH');
+          if (chSlots.length > 0) {
+            dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: chSlots.map((s, i) => ({
+              orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+              peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
+              pickingSlotId: (s as { id?: number }).id || undefined,
+            })) });
+          }
         }
-        setFormRows(nonChocRows);
+
+        // Indexar items guardados por su slot de picking
+        const savedBySlot = new Map<number, DispatchItem>();
+        const savedNoSlot: DispatchItem[] = [];
+        for (const it of existingItems) {
+          if (it.pkg === 'chocolate') continue;        // CH no son form rows
+          if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
+          else savedNoSlot.push(it);
+        }
+
+        const rows: FormRow[] = [];
+        baseSlotsR.filter(s => s.tipo !== 'CH').forEach((s, i) => {
+          const sid = (s as { id?: number }).id || 0;
+          const pkg = PICKING_PKG[s.tipo] ?? 'pallet';
+          const saved = sid ? savedBySlot.get(sid) : undefined;
+          if (saved) {
+            savedBySlot.delete(sid);
+            rows.push({
+              id: `saved-${sid || i}-${Date.now()}`, pkg: saved.pkg, tipo: saved.tipo,
+              peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+              ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
+              guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
+              saved: true, savedItem: saved, pickingSlotId: sid || undefined,
+            });
+          } else {
+            rows.push({
+              id: `pick-${sid || i}-${Date.now()}`, pkg, tipo: mapearContenido(s.contenido),
+              peso:  s.peso_kg != null ? String(s.peso_kg) : '',
+              alto:  s.alto    != null ? String(s.alto)    : '',
+              ancho: s.ancho   != null ? String(s.ancho)   : (pkg === 'pallet' ? '100' : ''),
+              largo: s.largo   != null ? String(s.largo)   : (pkg === 'pallet' ? '120' : ''),
+              guia: '', valor: '', pickingSlotId: sid || undefined,
+            });
+          }
+        });
+        // Items guardados sin slot vigente (manuales o slot eliminado) → al final
+        for (const it of [...savedBySlot.values(), ...savedNoSlot]) {
+          rows.push({
+            id: `savedm-${it.orden}-${Date.now()}`, pkg: it.pkg, tipo: it.tipo,
+            peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+            ancho: String(it.ancho ?? ''), largo: String(it.largo ?? ''),
+            guia: it.guia || '', valor: it.valor ? String(it.valor) : '',
+            saved: true, savedItem: it, pickingSlotId: it.pickingSlotId,
+          });
+        }
+        setFormRows(rows);
       } else if (existingItems.length === 0) {
         // No picking data — fall back to manual preset if set
         const preset = presets[selectedTienda];
@@ -502,7 +537,7 @@ export function TiendasPage() {
           setFormRows([]);
         }
       } else {
-        // Returning to a store with existing items — show them as saved cards (multi-form)
+        // Sin picking pero con items guardados → tarjetas guardadas (recuperan #id)
         const savedRows: FormRow[] = existingItems
           .filter(item => item.pkg !== 'chocolate')
           .map((item, i) => ({
@@ -517,6 +552,7 @@ export function TiendasPage() {
             valor: item.valor ? String(item.valor) : '',
             saved: true,
             savedItem: item,
+            pickingSlotId: item.pickingSlotId,
           }));
         setFormRows(savedRows);
       }
@@ -698,13 +734,13 @@ export function TiendasPage() {
     const orden = row.pkg === 'pallet' ? `pallet${pc}` : isCont ? `contenedor${cc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[currentItems.length]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
-    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor } });
+    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId } });
     if (hasPdf && pdfInfo) {
-      const newItems = [...currentItems, { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: 0 }];
+      const newItems = [...currentItems, { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: 0, pickingSlotId: row.pickingSlotId }];
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor };
+    const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${orden} agregado`, '#16A34A');
 

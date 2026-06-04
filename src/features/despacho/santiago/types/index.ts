@@ -31,6 +31,7 @@ export interface SantiagoItem {
   regimen: RegimenCarga;
   orden: string;
   estado: EstadoItem;
+  pickingSlotId?: number;  // FK a picking_pallets.id (trazabilidad)
 }
 
 export type SantiagoStep = 'regimen' | 'form';

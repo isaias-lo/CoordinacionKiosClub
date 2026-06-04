@@ -27,6 +27,7 @@ export interface DispatchItem {
   alto: number;
   ancho: number;
   largo: number;
+  pickingSlotId?: number;  // FK a picking_pallets.id (trazabilidad)
 }
 
 export interface PdfGuia {

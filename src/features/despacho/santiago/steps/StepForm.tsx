@@ -723,37 +723,75 @@ export function StepForm() {
         return 'Hogar';
       };
 
-      if (existing.length === 0 && slots.length > 0) {
-        // Use full slot data (id, seq, peso_kg, alto...) when available
-        const fullSlots = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
-        const baseSlots = fullSlots.length > 0
-          ? fullSlots
-          : slots.map(s => ({ id: 0, tipo: s.tipo, contenido: s.contenido,
-              seq: null, canonical_id: null, peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null }));
-        const allRows: FormRow[] = baseSlots.map((s, i) => ({
-          id:       `pick-${s.tipo}-${i}-${Date.now()}`,
-          tipo:     SANT_TIPO[s.tipo]    ?? 'Pallet',
-          contenido: mapearCont(s.contenido),
-          // Pre-llenar si hay dimensiones ya guardadas
-          peso:  s.peso_kg != null ? String(s.peso_kg) : '',
-          alto:  s.alto    != null ? String(s.alto)    : '',
-          largo: s.largo   != null ? String(s.largo)   : '',
-          ancho: s.ancho   != null ? String(s.ancho)   : '',
-          pickingSlotId: (s as { id?: number }).id || undefined,
-        }));
-        const chocRows = allRows.filter(r => r.tipo === 'Chocolate');
-        const nonChocRows = allRows.filter(r => r.tipo !== 'Chocolate');
-        if (chocRows.length > 0 && state.regimen) {
-          const regimen = state.regimen;
-          const chocItems: SantiagoItem[] = chocRows.map((_, i) => ({
-            id: `ch-pick-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
-            tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
-            peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
-            pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
-          }));
-          dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
+      const fullSlots = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
+      const baseSlots = fullSlots.length > 0
+        ? fullSlots
+        : slots.map(s => ({ id: 0, tipo: s.tipo, contenido: s.contenido,
+            seq: null, canonical_id: null, peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null }));
+      const hasPicking = baseSlots.length > 0;
+
+      if (hasPicking) {
+        // ── Reconstrucción determinista: un row por slot de picking ──
+        // CH: auto-crear items en la primera visita (dims fijas, no son form rows)
+        if (existing.length === 0 && state.regimen) {
+          const chSlots = baseSlots.filter(s => s.tipo === 'CH');
+          if (chSlots.length > 0) {
+            const regimen = state.regimen;
+            const chocItems: SantiagoItem[] = chSlots.map((s, i) => ({
+              id: `ch-pick-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
+              tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+              peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
+              pickingSlotId: (s as { id?: number }).id || undefined,
+            }));
+            dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
+          }
         }
-        setFormRows(nonChocRows);
+
+        // Indexar items guardados por su slot de picking
+        const savedBySlot = new Map<number, SantiagoItem>();
+        const savedNoSlot: SantiagoItem[] = [];
+        for (const it of existing) {
+          if (it.tipo === 'Chocolate') continue;       // CH no son form rows
+          if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
+          else savedNoSlot.push(it);
+        }
+
+        const rows: FormRow[] = [];
+        // Un row por cada slot P/B/C: tarjeta guardada si ya se llenó, si no formulario vacío
+        baseSlots.filter(s => s.tipo !== 'CH').forEach((s, i) => {
+          const sid = (s as { id?: number }).id || 0;
+          const saved = sid ? savedBySlot.get(sid) : undefined;
+          if (saved) {
+            savedBySlot.delete(sid);
+            rows.push({
+              id: `saved-${sid || i}-${Date.now()}`, tipo: saved.tipo, contenido: saved.contenido,
+              peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+              largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
+              saved: true, savedItem: saved, pickingSlotId: sid || undefined,
+            });
+          } else {
+            rows.push({
+              id: `pick-${sid || i}-${Date.now()}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet',
+              contenido: mapearCont(s.contenido),
+              peso:  s.peso_kg != null ? String(s.peso_kg) : '',
+              alto:  s.alto    != null ? String(s.alto)    : '',
+              largo: s.largo   != null ? String(s.largo)   : '',
+              ancho: s.ancho   != null ? String(s.ancho)   : '',
+              pickingSlotId: sid || undefined,
+            });
+          }
+        });
+        // Items guardados sin slot vigente (manuales o slot eliminado) → al final
+        for (const it of [...savedBySlot.values(), ...savedNoSlot]) {
+          rows.push({
+            id: `savedm-${it.id}`, tipo: it.tipo, contenido: it.contenido,
+            peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+            largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
+            saved: true, savedItem: it, pickingSlotId: it.pickingSlotId,
+          });
+        }
+        setFormRows(rows);
       } else if (existing.length === 0) {
         const preset = presets[currentTienda.cod];
         if (preset) {
@@ -780,19 +818,15 @@ export function StepForm() {
           setFormRows([]);
         }
       } else {
-        // Returning to a store with existing items — show them as saved cards (multi-form)
+        // Sin picking pero con items guardados → tarjetas guardadas (recuperan #id)
         const savedRows: FormRow[] = existing
           .filter(item => item.tipo !== 'Chocolate')
           .map((item, i) => ({
             id: `saved-${i}-${item.tipo}-${Date.now()}`,
-            tipo: item.tipo,
-            contenido: item.contenido,
-            peso: String(item.peso ?? ''),
-            alto: String(item.alto ?? ''),
-            largo: String(item.largo ?? ''),
-            ancho: String(item.ancho ?? ''),
-            saved: true,
-            savedItem: item,
+            tipo: item.tipo, contenido: item.contenido,
+            peso: String(item.peso ?? ''), alto: String(item.alto ?? ''),
+            largo: String(item.largo ?? ''), ancho: String(item.ancho ?? ''),
+            saved: true, savedItem: item, pickingSlotId: item.pickingSlotId,
           }));
         setFormRows(savedRows);
       }
@@ -952,6 +986,7 @@ export function StepForm() {
       pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
       orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : row.tipo === 'Chocolate' ? `CH${chc}` : `${bc}B`,
       estado: ESTADO_DEFAULT,
+      pickingSlotId: row.pickingSlotId,  // persistir vínculo al slot de picking
     };
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
