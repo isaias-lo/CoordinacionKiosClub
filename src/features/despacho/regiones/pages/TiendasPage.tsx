@@ -13,6 +13,7 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
+import { usePickingReady } from '../../shared/usePickingReady';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -97,10 +98,11 @@ interface GridCardProps {
   pickingCH?: number;
   preset?: { pallets: number; bultos: number };
   hasPdf?: boolean;
+  pickingReady?: boolean;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, pickingReady, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -123,6 +125,14 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
+      {/* Indicador Picking terminado — esquina superior izquierda */}
+      {pickingReady && (
+        <span
+          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
+          style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
+          title="✓ Picking terminado — todos los pallets listos"
+        />
+      )}
       <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
@@ -188,6 +198,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
   const router = useRouter();
+  const pickingReady = usePickingReady();  // tiendas con picking terminado hoy
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
@@ -1474,6 +1485,7 @@ export function TiendasPage() {
                       pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
+                      pickingReady={pickingReady.has(TIENDAS[t.name]?.cod ?? '')}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)} />
                   );
@@ -1521,6 +1533,7 @@ export function TiendasPage() {
                         pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
                         pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                         hasPdf={!!state.pdfData[t.name]}
+                        pickingReady={pickingReady.has(TIENDAS[t.name]?.cod ?? '')}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />
                     );

@@ -10,6 +10,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
+import { usePickingReady } from '../../shared/usePickingReady';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
@@ -85,13 +86,13 @@ interface ResumenEditState {
 ═══════════════════════════════════════ */
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
-  despachoP, despachoB, despachoC, hasGuide,
+  despachoP, despachoB, despachoC, hasGuide, pickingReady,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number;
-  hasGuide?: boolean;
+  hasGuide?: boolean; pickingReady?: boolean;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -116,6 +117,14 @@ function TiendaGridCard({
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border active:bg-bg'
         }`}>
+      {/* Indicador Picking terminado — esquina superior izquierda */}
+      {pickingReady && (
+        <span
+          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
+          style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
+          title="✓ Picking terminado — todos los pallets listos"
+        />
+      )}
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-warn bg-[rgba(217,119,6,0.15)] rounded-full cursor-pointer border-none leading-none"
@@ -226,6 +235,7 @@ export function StepForm() {
   const { state, dispatch, flushPending } = useSantiago();
   const { showToast } = useApp();
   const { currentTienda, items, regimen } = state;
+  const pickingReady = usePickingReady();  // tiendas con picking terminado hoy
 
   /* Mobile view */
   const [view, setView] = useState<'list' | 'form' | 'resumen'>('list');
@@ -1082,7 +1092,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
-                  hasGuide={!!guides[t.cod]}
+                  hasGuide={!!guides[t.cod]} pickingReady={pickingReady.has(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -1118,7 +1128,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
-                  hasGuide={!!guides[t.cod]}
+                  hasGuide={!!guides[t.cod]} pickingReady={pickingReady.has(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
