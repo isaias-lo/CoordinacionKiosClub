@@ -702,14 +702,35 @@ export function TiendasPage() {
   };
 
   /* Multi-form row helpers */
-  const addFormRow = (pkg: TipoPaquete) => {
+  const addFormRow = async (pkg: TipoPaquete) => {
+    const rowId = `row-${Date.now()}`;
     setFormRows(prev => [...prev, {
-      id: `row-${Date.now()}`, pkg, tipo: 'hogar', peso: '',
+      id: rowId, pkg, tipo: 'hogar', peso: '',
       alto:  pkg === 'chocolate' ? '42'  : '',
       ancho: pkg === 'pallet'   ? '100' : pkg === 'chocolate' ? '56' : '',
       largo: pkg === 'pallet'   ? '120' : pkg === 'chocolate' ? '80' : '',
       guia: '', valor: '',
     }]);
+    const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
+    if (!cod || !selectedTienda) return;
+    const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
+    const date = new Date().toISOString().slice(0, 10);
+    try {
+      const res  = await fetch('/api/picking-pallets/create-bodega', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ date, store_cod: cod, tipo: PKG_CODE[pkg], contenido: 'hogar' }),
+      });
+      const json = await res.json() as { data?: import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot };
+      const slot = json.data;
+      if (!slot) return;
+      setPickingSlotsFull(prev => {
+        const next = { ...prev };
+        next[selectedTienda] = [...(next[selectedTienda] ?? []), slot];
+        return next;
+      });
+      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+    } catch { /* fallback: el row queda sin slot */ }
   };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
@@ -768,6 +789,20 @@ export function TiendasPage() {
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
   };
 
+  // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull
+  const deletePickingSlot = (slotId?: number) => {
+    if (!slotId || !selectedTienda) return;
+    const name = selectedTienda;
+    supabase.from('picking_pallets').delete().eq('id', slotId).then(({ error }) => {
+      if (error) console.error('[picking_pallets delete]', error.message);
+    });
+    setPickingSlotsFull(prev => {
+      const next = { ...prev };
+      if (next[name]) next[name] = next[name].filter(s => s.id !== slotId);
+      return next;
+    });
+  };
+
   const deleteSavedRow = (rowId: string) => {
     if (!selectedTienda) return;
     const row = formRows.find(r => r.id === rowId);
@@ -778,6 +813,13 @@ export function TiendasPage() {
       );
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
     }
+    deletePickingSlot(row?.pickingSlotId ?? row?.savedItem?.pickingSlotId);
+    setFormRows(prev => prev.filter(r => r.id !== rowId));
+  };
+
+  const removeUnsavedRow = (rowId: string) => {
+    const row = formRows.find(r => r.id === rowId);
+    deletePickingSlot(row?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
@@ -1041,7 +1083,7 @@ export function TiendasPage() {
                       <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
                         {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
                       </span>
-                      <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))}
+                      <button onClick={() => removeUnsavedRow(row.id)}
                         className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
                     </div>
                     {row.pkg === 'pallet' && (

@@ -1012,6 +1012,20 @@ export function StepForm() {
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
   };
 
+  // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull
+  const deletePickingSlot = (slotId?: number) => {
+    if (!slotId || !currentTienda) return;
+    const cod = currentTienda.cod;
+    supabase.from('picking_pallets').delete().eq('id', slotId).then(({ error }) => {
+      if (error) console.error('[picking_pallets delete]', error.message);
+    });
+    setPickingSlotsFull(prev => {
+      const next = { ...prev };
+      if (next[cod]) next[cod] = next[cod].filter(s => s.id !== slotId);
+      return next;
+    });
+  };
+
   const deleteSavedRow = (rowId: string) => {
     if (!currentTienda) return;
     const row = formRows.find(r => r.id === rowId);
@@ -1019,6 +1033,14 @@ export function StepForm() {
       const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
     }
+    deletePickingSlot(row?.pickingSlotId ?? row?.savedItem?.pickingSlotId);
+    setFormRows(prev => prev.filter(r => r.id !== rowId));
+  };
+
+  // Quitar un form row sin guardar (✕) — también borra su slot
+  const removeUnsavedRow = (rowId: string) => {
+    const row = formRows.find(r => r.id === rowId);
+    deletePickingSlot(row?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
@@ -1071,8 +1093,33 @@ export function StepForm() {
     });
   };
 
-  const addFormRow = (t: TipoCargamento) =>
-    setFormRows(prev => [...prev, { id: `row-${Date.now()}`, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
+  const addFormRow = async (t: TipoCargamento) => {
+    const cod = currentTienda?.cod;
+    const rowId = `row-${Date.now()}`;
+    // Agregar el form row de inmediato (respuesta visual), luego vincular el slot
+    setFormRows(prev => [...prev, { id: rowId, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
+    if (!cod) return;
+    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
+    const date = new Date().toISOString().slice(0, 10);
+    try {
+      const res  = await fetch('/api/picking-pallets/create-bodega', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ date, store_cod: cod, tipo: TIPO_CODE[t], contenido: 'hogar' }),
+      });
+      const json = await res.json() as { data?: PickingSlot };
+      const slot = json.data;
+      if (!slot) return;
+      // Reflejar el slot nuevo en pickingSlotsFull (consistencia al re-renderizar)
+      setPickingSlotsFull(prev => {
+        const next = { ...prev };
+        next[cod] = [...(next[cod] ?? []), slot];
+        return next;
+      });
+      // Vincular el slot al form row recién creado
+      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+    } catch { /* fallback: el row queda sin slot */ }
+  };
 
   /* ── Resumen editing ── */
   const rStartEdit = (cod: string, idx: number) => {
@@ -1628,7 +1675,7 @@ export function StepForm() {
                     <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
                       {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
                     </span>
-                    <button onClick={() => setFormRows(prev => prev.filter(r => r.id !== row.id))} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
+                    <button onClick={() => removeUnsavedRow(row.id)} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
                   {!isContRow && !isChocTipo && (
                   <div className="flex gap-0.5 mb-2">
