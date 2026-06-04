@@ -862,6 +862,23 @@ export function TiendasPage() {
     setFormMergeState(null);
   };
 
+  // Sumar un Bulto/Chocolate a un Pallet: el bulto se elimina (item + slot),
+  // el pallet permanece (lo absorbe físicamente).
+  const sumarBultoAPallet = (bultoRowId: string, palletLabel: string) => {
+    if (!selectedTienda) return;
+    const bultoRow = formRows.find(r => r.id === bultoRowId);
+    if (!bultoRow) return;
+    deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
+    if (bultoRow.savedItem) {
+      const currentItems = dispatchData[selectedTienda] || [];
+      const idx = currentItems.findIndex(i => i.pkg === bultoRow.savedItem!.pkg && i.orden === bultoRow.savedItem!.orden);
+      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
+    }
+    setFormRows(prev => prev.filter(r => r.id !== bultoRowId));
+    setFormMergeState(null);
+    showToast(`Sumado a ${palletLabel}`, '#2563EB');
+  };
+
   const absorbPickingSlot = (tiendaName: string, type: 'p' | 'b' | 'c' | 'ch') => {
     setConsumedPickingSlots(prev => {
       const cur = prev[tiendaName] || { p: 0, b: 0, c: 0, ch: 0 };
@@ -1161,9 +1178,14 @@ export function TiendasPage() {
                       + Agregar
                     </button>
                     {(() => {
-                      if (row.pkg === 'chocolate') return null;
-                      const otherRows = formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg);
-                      if (otherRows.length === 0) return null;
+                      const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
+                      const combineTargets = (row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')
+                        ? formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg)
+                        : [];
+                      const palletTargets = esBultoOChoc
+                        ? formRows.filter(r => r.id !== row.id && r.pkg === 'pallet')
+                        : [];
+                      if (combineTargets.length === 0 && palletTargets.length === 0) return null;
                       const gcStyle = row.pkg === 'pallet'
                         ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
                         : row.pkg === 'contenedor'
@@ -1178,9 +1200,19 @@ export function TiendasPage() {
                         <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
                           {isExpanded ? (
                             <div className="flex flex-col gap-1">
-                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">¿Combinar con…?</div>
+                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">
+                                {palletTargets.length > 0 ? 'Sumar a Pallet / combinar…' : '¿Combinar con…?'}
+                              </div>
                               <div className="flex flex-wrap gap-1">
-                                {otherRows.map(other => (
+                                {palletTargets.map(pl => (
+                                  <button key={`sum-${pl.id}`}
+                                    onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl))}
+                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                    style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                                    → {getRowLabel(pl)}
+                                  </button>
+                                ))}
+                                {combineTargets.map(other => (
                                   <button key={other.id}
                                     onClick={() => setFormMergeState({ sourceId: row.id, targetId: other.id })}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
@@ -1198,7 +1230,7 @@ export function TiendasPage() {
                               onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
                               className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
                               style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
-                              UNIFICAR
+                              {palletTargets.length > 0 ? 'SUMAR / UNIFICAR' : 'UNIFICAR'}
                             </button>
                           )}
                         </div>
