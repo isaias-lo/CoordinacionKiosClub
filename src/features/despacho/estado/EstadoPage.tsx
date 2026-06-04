@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BarcodeCard, LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, PropRow, ToggleRow } from '@/features/despacho/shared/BarcodeCard';
 import { TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { TIENDAS } from '../regiones/data/tiendas';
 import { processPdf } from '../regiones/utils/pdfUtils';
 import { formatCod } from '../rutas/utils/helpers';
+import { TIENDAS_INICIAL } from '../rutas/data/tiendas';
+import { getTiendasDelDia } from '../utils/useCalendario';
+import { usePickingReady } from '../shared/usePickingReady';
 import { useApp } from '../../../context/AppContext';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { supabase } from '@/lib/supabase';
@@ -87,7 +90,7 @@ function saveGuides(g: Record<string, GuideEntry>) {
 
 /* ── Store card ── */
 function StoreCard({
-  store, isSelected, onClick, checked, onCheck, audited = false,
+  store, isSelected, onClick, checked, onCheck, audited = false, pickingReady = false,
 }: {
   store: StoreLabel;
   isSelected: boolean;
@@ -95,16 +98,31 @@ function StoreCard({
   checked: boolean;
   onCheck: (v: boolean) => void;
   audited?: boolean;
+  pickingReady?: boolean;
 }) {
   const pallets      = store.items.filter(i => i.tipo === 'Pallet').length;
   const bultos       = store.items.filter(i => i.tipo === 'Bulto').length;
   const contenedores = store.items.filter(i => i.tipo === 'Contenedor').length;
   const hasGuides = store.items.some(i => i.guias.length > 0);
+  const empty = store.items.length === 0;
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px]
-        ${isSelected ? 'bg-[rgba(27,42,107,0.06)] border-l-navy' : 'bg-white hover:bg-bg border-l-transparent'}`}>
+      className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px]
+        ${isSelected
+          ? 'bg-[rgba(27,42,107,0.06)] border-l-navy'
+          : pickingReady
+          ? 'bg-[rgba(22,163,74,0.04)] border-l-success'
+          : `${empty ? 'bg-bg/40' : 'bg-white'} hover:bg-bg border-l-transparent`}`}>
+
+      {/* Indicador Picking terminado — esquina superior derecha */}
+      {pickingReady && (
+        <span
+          className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
+          style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
+          title="✓ Picking terminado"
+        />
+      )}
 
       {/* Checkbox para selección de impresión */}
       <input
@@ -112,7 +130,8 @@ function StoreCard({
         checked={checked}
         onChange={e => onCheck(e.target.checked)}
         onClick={e => e.stopPropagation()}
-        className="w-4 h-4 flex-shrink-0 cursor-pointer accent-navy rounded"
+        disabled={empty}
+        className="w-4 h-4 flex-shrink-0 cursor-pointer accent-navy rounded disabled:opacity-30"
       />
 
       <div className="flex-1 min-w-0">
@@ -161,8 +180,28 @@ function StoreCard({
 /* ═══════════════════════════════════════
    MAIN
 ═══════════════════════════════════════ */
+type GroupKey = 'region' | 'santiago' | 'costa';
+const GROUP_META: { key: GroupKey; label: string; bg: string; color: string }[] = [
+  { key: 'region',   label: 'REGIONES', bg: 'rgba(37,99,235,0.07)',  color: '#1D4ED8' },
+  { key: 'costa',    label: 'COSTA',    bg: 'rgba(16,185,129,0.07)', color: '#059669' },
+  { key: 'santiago', label: 'SANTIAGO', bg: 'rgba(26,37,80,0.05)',   color: '#374151' },
+];
+
 export function EstadoPage() {
   const { state: appState } = useApp();
+  const pickingReady = usePickingReady();  // tiendas con picking terminado hoy
+
+  // Tiendas del día por grupo (fal→REGIONES, costa→COSTA, rm→SANTIAGO)
+  const [calGroups, setCalGroups] = useState<Record<GroupKey, string[]>>({ region: [], costa: [], santiago: [] });
+  useEffect(() => {
+    let alive = true;
+    Promise.all([getTiendasDelDia('fal'), getTiendasDelDia('costa'), getTiendasDelDia('rm')])
+      .then(([fal, costa, rm]) => {
+        if (alive) setCalGroups({ region: fal, costa, santiago: rm });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const [stores,        setStores]        = useState<StoreLabel[]>([]);
   const [guides,        setGuides]        = useState<Record<string, GuideEntry>>({});
@@ -537,6 +576,36 @@ export function EstadoPage() {
     .filter(s => printCods.has(s.cod))
     .reduce((n, s) => n + s.items.length, 0);
 
+  // Tiendas del día agrupadas (REGIONES / COSTA / SANTIAGO) — fusiona el
+  // calendario con las tiendas ya registradas; las no registradas aparecen
+  // como placeholder (sin items) para reflejar el calendario completo.
+  const displayGroups = useMemo(() => {
+    const byCod = new Map(stores.map(s => [s.cod, s]));
+    const used  = new Set<string>();
+    const result: Record<GroupKey, StoreLabel[]> = { region: [], costa: [], santiago: [] };
+
+    (['region', 'costa', 'santiago'] as GroupKey[]).forEach(g => {
+      for (const cod of calGroups[g]) {
+        if (used.has(cod)) continue;
+        const reg = byCod.get(cod);
+        if (reg) result[g].push(reg);
+        else {
+          const source: 'santiago' | 'regiones' = g === 'region' ? 'regiones' : 'santiago';
+          result[g].push({ source, cod, name: TIENDAS_INICIAL[cod]?.n ?? cod, address: '', ventana: '', items: [] });
+        }
+        used.add(cod);
+      }
+    });
+
+    // Registradas que no están en el calendario de hoy → ubicar por fuente
+    for (const s of stores) {
+      if (used.has(s.cod)) continue;
+      result[s.source === 'regiones' ? 'region' : 'santiago'].push(s);
+      used.add(s.cod);
+    }
+    return result;
+  }, [calGroups, stores]);
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html:
@@ -698,40 +767,59 @@ export function EstadoPage() {
             </button>
           </div>
 
-          {/* Store list */}
+          {/* Store list — agrupada por REGIONES / COSTA / SANTIAGO */}
           <div className="flex-1 overflow-y-auto">
-            {stores.length === 0 ? (
+            {GROUP_META.every(g => displayGroups[g.key].length === 0) ? (
               <div className="py-20 text-center px-6">
                 <div className="text-5xl mb-4 opacity-10">📦</div>
-                <p className="text-[15px] text-text-2 font-bold mb-1">Sin datos de despacho</p>
+                <p className="text-[15px] text-text-2 font-bold mb-1">Sin tiendas para hoy</p>
                 <p className="text-[13px] text-text-3 leading-snug">
-                  Registra pallets o bultos en Bodega Santiago o Bodega Regiones
+                  Revisa el calendario o registra despacho en Bodega Santiago / Regiones
                 </p>
               </div>
             ) : (
-              stores.map(s => {
-                const storeAudited = s.items.some(i =>
-                  auditedIds.has(buildCanonicalId(i.tipo, i.itemNum, s.cod)),
-                );
+              GROUP_META.map(g => {
+                const list = displayGroups[g.key];
+                if (list.length === 0) return null;
+                const readyCount = list.filter(s => pickingReady.has(s.cod)).length;
                 return (
-                  <StoreCard
-                    key={s.cod}
-                    store={s}
-                    isSelected={selected === s.cod}
-                    onClick={() => setSelected(s.cod)}
-                    checked={printCods.has(s.cod)}
-                    audited={storeAudited}
-                    onCheck={v => {
-                      // Registrar intención del usuario antes de actualizar el set
-                      if (!v) userUncheckedRef.current.add(s.cod);
-                      else userUncheckedRef.current.delete(s.cod);
-                      setPrintCods(prev => {
-                        const next = new Set(prev);
-                        v ? next.add(s.cod) : next.delete(s.cod);
-                        return next;
-                      });
-                    }}
-                  />
+                  <div key={g.key}>
+                    <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-widest sticky top-0 z-10 flex items-center gap-2"
+                      style={{ background: g.bg, color: g.color, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                      {g.label} ({list.length})
+                      {readyCount > 0 && (
+                        <span className="ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A' }}>
+                          ✓ {readyCount} listo{readyCount !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {list.map(s => {
+                      const storeAudited = s.items.some(i =>
+                        auditedIds.has(buildCanonicalId(i.tipo, i.itemNum, s.cod)),
+                      );
+                      return (
+                        <StoreCard
+                          key={s.cod}
+                          store={s}
+                          isSelected={selected === s.cod}
+                          pickingReady={pickingReady.has(s.cod)}
+                          onClick={() => setSelected(s.cod)}
+                          checked={printCods.has(s.cod)}
+                          audited={storeAudited}
+                          onCheck={v => {
+                            if (!v) userUncheckedRef.current.add(s.cod);
+                            else userUncheckedRef.current.delete(s.cod);
+                            setPrintCods(prev => {
+                              const next = new Set(prev);
+                              v ? next.add(s.cod) : next.delete(s.cod);
+                              return next;
+                            });
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
                 );
               })
             )}
