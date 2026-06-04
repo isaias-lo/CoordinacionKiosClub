@@ -20,10 +20,11 @@ interface Props {
   todayStores: TodayStore[];
   storesLoading: boolean;
   onToggleStore: (cod: string) => void;
+  tiendaOverrides?: Record<string, string>; // nombres desde Supabase (override del hardcoded)
 }
 
 export const StoreListPanel = React.memo(function StoreListPanel({
-  selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore,
+  selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore, tiendaOverrides = {},
 }: Props) {
   const [q, setQ] = useState('');
 
@@ -33,27 +34,29 @@ export const StoreListPanel = React.memo(function StoreListPanel({
     let fallback = false;
 
     if (todayStores.length > 0) {
+      // Aplicar overrides a los nombres de todayStores antes de filtrar
+      const withOverrides = todayStores.map(s => ({ ...s, name: tiendaOverrides[s.cod] || s.name }));
       const filtered = upper
-        ? todayStores.filter(s => s.cod.includes(upper) || s.name.toUpperCase().includes(upper))
-        : todayStores;
+        ? withOverrides.filter(s => s.cod.includes(upper) || s.name.toUpperCase().includes(upper))
+        : withOverrides;
       if (filtered.length > 0) { source = filtered; }
       else {
         source = Object.entries(TIENDAS_INICIAL)
-          .filter(([cod, info]) => !upper || cod.includes(upper) || info.n.toUpperCase().includes(upper))
-          .map(([cod, info]) => ({ cod, name: info.n, sources: [] as ('rm' | 'regiones')[] }));
+          .filter(([cod, info]) => !upper || cod.includes(upper) || (tiendaOverrides[cod] || info.n).toUpperCase().includes(upper))
+          .map(([cod, info]) => ({ cod, name: tiendaOverrides[cod] || info.n, sources: [] as ('rm' | 'regiones')[] }));
         fallback = true;
       }
     } else {
       source = Object.entries(TIENDAS_INICIAL)
-        .filter(([cod, info]) => !upper || cod.includes(upper) || info.n.toUpperCase().includes(upper))
-        .map(([cod, info]) => ({ cod, name: info.n, sources: [] as ('rm' | 'regiones')[] }));
+        .filter(([cod, info]) => !upper || cod.includes(upper) || (tiendaOverrides[cod] || info.n).toUpperCase().includes(upper))
+        .map(([cod, info]) => ({ cod, name: tiendaOverrides[cod] || info.n, sources: [] as ('rm' | 'regiones')[] }));
       fallback = true;
     }
 
     const groups: Record<StoreGroupKey, TodayStore[]> = { region: [], costa: [], santiago: [] };
     for (const store of source) groups[getStoreGroup(store)].push(store);
     return { grouped: groups, isFallback: fallback };
-  }, [q, todayStores]);
+  }, [q, todayStores, tiendaOverrides]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

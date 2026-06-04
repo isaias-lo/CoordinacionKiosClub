@@ -134,8 +134,10 @@ export function PickingScreen() {
   const [loadingCods, setLoadingCods]   = useState<string[]>([]);
   const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
-  const [todayStores, setTodayStores]   = useState<TodayStore[]>([]);
+  const [todayStores, setTodayStores]     = useState<TodayStore[]>([]);
   const [storesLoading, setStoresLoading] = useState(false);
+  // Nombres de tiendas desde Supabase — sobreescriben el hardcoded TIENDAS_INICIAL
+  const [tiendaOverrides, setTiendaOverrides] = useState<Record<string, string>>({});
 
   const [sectionFilter, setSectionFilter] = useLocalStorage<SectionFilter>(SECTION_FILTER_KEY, 'all');
   const [colsPerRow, setColsPerRow]       = useLocalStorage<number>(COLS_PER_ROW_KEY, 3);
@@ -422,6 +424,28 @@ export function PickingScreen() {
   useEffect(() => { if (profile) void loadCanonicalNames(); }, [loadCanonicalNames, profile]);
   useRealtimeRefresh('picker_canonical_names', loadCanonicalNames);
 
+  // Cargar nombres de tiendas desde Supabase — mismo patrón que CalendarioColumnas.
+  // Sobreescribe TIENDAS_INICIAL con los datos editados en /admin/tiendas.
+  const loadTiendaOverrides = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tiendas');
+      if (!res.ok) return;
+      const json = await res.json() as { tiendas?: { codigo: string; nombre: string }[] };
+      const overrides: Record<string, string> = {};
+      for (const t of json.tiendas ?? []) {
+        if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
+      }
+      setTiendaOverrides(overrides);
+    } catch { /* silent */ }
+  }, []);
+  useEffect(() => { void loadTiendaOverrides(); }, [loadTiendaOverrides]);
+  useRealtimeRefresh('tiendas', loadTiendaOverrides);
+  // Cuando los overrides cargan (puede ser después del calendario), re-aplicar nombres
+  useEffect(() => {
+    if (Object.keys(tiendaOverrides).length === 0) return;
+    setTodayStores(prev => prev.map(s => ({ ...s, name: tiendaOverrides[s.cod] || getStoreName(s.cod) })));
+  }, [tiendaOverrides]);
+
   const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => {
     setCanonicalNames(names); // persisted automatically by useLocalStorage
     if (changedKey !== undefined) {
@@ -477,17 +501,21 @@ export function PickingScreen() {
   }, [doPrint, showToast]);
 
   // Cargar tiendas del calendario (bust caché para evitar datos viejos del merge)
+  // Nombre de tienda: Supabase override primero, luego hardcoded
+  const nameFor = useCallback((cod: string): string =>
+    tiendaOverrides[cod] || getStoreName(cod), [tiendaOverrides]);
+
   const applyCalendar = useCallback((cal: Record<string, { rm: string[]; costa: string[]; fal: string[] }>) => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
     const today = DAY_CODES[new Date().getDay()];
     const day = cal[today];
     if (!day) return;
     setTodayStores([
-      ...day.fal.map(cod   => ({ cod, name: getStoreName(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
-      ...day.costa.map(cod => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
-      ...day.rm.map(cod    => ({ cod, name: getStoreName(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+      ...day.fal.map(cod   => ({ cod, name: nameFor(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
+      ...day.costa.map(cod => ({ cod, name: nameFor(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+      ...day.rm.map(cod    => ({ cod, name: nameFor(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
     ]);
-  }, []);
+  }, [nameFor]);
 
   // ── Resizable divider: mouse/touch listeners + window resize ─────────────
   useEffect(() => {
@@ -961,6 +989,7 @@ export function PickingScreen() {
             todayStores={todayStores}
             storesLoading={storesLoading}
             onToggleStore={handleToggleStore}
+            tiendaOverrides={tiendaOverrides}
           />
         </div>
 
@@ -1144,7 +1173,7 @@ export function PickingScreen() {
                   <div key={cod} className="mb-8">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
                       <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
-                      <span className="text-[16px] text-text-2 font-semibold">{getStoreName(cod)}</span>
+                      <span className="text-[16px] text-text-2 font-semibold">{nameFor(cod)}</span>
                       {allDoneStore && (
                         <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
                           style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
