@@ -214,10 +214,10 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
               <div className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: '#94A3B8' }}>
                 Resumen por día
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                 {Object.entries(byStore).map(([cod, { pallets, bultos, cats }]) => (
-                  <div key={cod} className="rounded px-3 py-2.5"
-                    style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div key={cod} className="rounded-xl px-3.5 py-3"
+                    style={{ background: '#fff', border: '1.5px solid #CBD5E1', boxShadow: '0 2px 6px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04)' }}>
                     <div className="flex items-baseline justify-between gap-2 mb-1">
                       <span className="font-mono font-black text-[14px]" style={{ color: '#1E293B' }}>{cod}</span>
                       <div className="flex items-baseline gap-1.5">
