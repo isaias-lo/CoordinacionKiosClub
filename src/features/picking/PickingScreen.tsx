@@ -33,6 +33,7 @@ import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
 import { SupervisorActivityPanel } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
+import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
@@ -93,7 +94,7 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion'>('monitoreo');
+  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario'>('monitoreo');
 
   // Resizable left panel
   const [leftWidth, setLeftWidth] = useState<number>(() => {
@@ -1044,6 +1045,7 @@ export function PickingScreen() {
               { key: 'historial',     label: 'Historial'   },
               { key: 'estadisticas',  label: 'Estadísticas'},
               { key: 'configuracion', label: 'Config'      },
+              { key: 'calendario',    label: 'Calendario'  },
             ] as { key: typeof rightTab; label: string }[]).map(tab => {
               const active = rightTab === tab.key;
               return (
@@ -1085,6 +1087,13 @@ export function PickingScreen() {
               onColsPerRowChange={handleColsPerRowChange}
               currentUserName={profile?.full_name ?? ''}
             />
+          )}
+
+          {/* ── Tab content: Calendario (general, solo lectura) ── */}
+          {rightTab === 'calendario' && (
+            <div className="flex-1 overflow-y-auto min-h-0 p-3">
+              <CalendarioColumnas readOnly forceGeneral />
+            </div>
           )}
 
           {/* ── Tab content: Monitoreo ── */}

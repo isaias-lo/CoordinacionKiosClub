@@ -52,16 +52,18 @@ function displayCode(cod: string): string {
 export default function CalendarioColumnas({
   readOnly = false,
   source   = 'despacho',
+  forceGeneral = false,   // muestra solo la vista General y oculta el selector de grupos
 }: {
   readOnly?: boolean;
   source?:   'despacho' | 'armado';
+  forceGeneral?: boolean;
 }) {
   const [cal, setCal]               = useState<CalRecord | null>(null);
   const [local, setLocal]           = useState<CalRecord | null>(null);
   const [loading, setLoading]       = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [lastSaved, setLastSaved]   = useState<string | null>(null);
-  const [grp, setGrp]               = useState('rm');
+  const [grp, setGrp]               = useState(forceGeneral ? 'general' : 'rm');
   const [search, setSearch]         = useState('');
   const [suggest, setSuggest]       = useState<string[]>([]);
   const [showSug, setShowSug]       = useState(false);
@@ -456,7 +458,7 @@ export default function CalendarioColumnas({
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-        {GRUPOS.map(([id, lb]) => {
+        {!forceGeneral && GRUPOS.map(([id, lb]) => {
           const active = grp === id;
           const parts = lb.split(' ');
           const icon = parts[0];
