@@ -177,8 +177,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                       background: '#fff',
                     }}>
                     <div className="text-center leading-none">
-                      <div className="text-[13px] font-bold" style={{ color: active ? '#1E40AF' : '#CBD5E1' }}>{tipo}</div>
-                      <div className="text-[9px] text-slate-300 mt-0.5">{label}</div>
+                      <div className="text-[14px] font-extrabold" style={{ color: active ? '#1E40AF' : '#64748B' }}>{tipo}</div>
+                      <div className="text-[9px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
                       <button
