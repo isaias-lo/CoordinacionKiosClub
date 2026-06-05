@@ -6,6 +6,7 @@ import { ChevronLeft, Check } from 'lucide-react';
 import { SantiagoProvider, useSantiago, SANTIAGO_TERMINADO_KEY } from '../features/despacho/santiago/context/SantiagoContext';
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { SantiagoFinishModal } from '../features/despacho/santiago/components/SantiagoFinishModal';
+import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
 import { ProfilePill } from '../components/ProfilePill';
 import { useAuth } from '../components/AuthProvider';
 
@@ -114,6 +115,8 @@ function SantiagoContent() {
 
         <ProfilePill />
       </div>
+
+      <PendingDraftBanner fuente="santiago" />
 
       <SantiagoPage />
 
