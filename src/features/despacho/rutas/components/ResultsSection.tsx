@@ -16,6 +16,7 @@ interface Props {
   gps: Record<string, number[]>;
   cd: number[];
   flota: Vehiculo[];
+  conductores: string[];
   onLimpiar: () => void;
   onVolver: () => void;
   onGenerarPDF: () => void;
@@ -28,7 +29,7 @@ interface Props {
 }
 
 export default function ResultsSection({
-  results, supervisor, fecha, tiendas, gps, cd, flota,
+  results, supervisor, fecha, tiendas, gps, cd, flota, conductores,
   onLimpiar, onVolver, onGenerarPDF, onGuardarHistorial,
   onChoferChange, historialStatus, historialMsg,
   onKmTotalReal, onCdUpdate,
@@ -37,10 +38,11 @@ export default function ResultsSection({
   const tp = ts.reduce((s, t) => s + t.p, 0);
   const tb = ts.reduce((s, t) => s + t.b, 0);
 
-  const conductores = [
-    ...new Set(flota.filter(v => v.ch?.trim()).map(v => v.ch!.trim())),
+  const conductoresConExterno = [...new Set([
+    ...flota.filter(v => v.ch?.trim()).map(v => v.ch!.trim()),
+    ...conductores,
     'Conductor externo',
-  ];
+  ])];
 
   const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
   const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
@@ -108,7 +110,7 @@ export default function ResultsSection({
           tiendas={tiendas}
           gps={gps}
           cd={cd}
-          conductores={conductores}
+          conductores={conductoresConExterno}
           onChoferChange={onChoferChange}
           kmReal={kmPorRuta[ri]}
           legData={legDataPorRuta[ri]}

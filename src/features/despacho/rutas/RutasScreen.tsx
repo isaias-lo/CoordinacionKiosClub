@@ -15,7 +15,7 @@ import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarFlotaFn, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
 import type { SesionRow } from '../../../lib/despachoSesion';
@@ -120,9 +120,7 @@ export default function RutasScreen() {
     } catch {}
     return JSON.parse(JSON.stringify(CAL_INICIAL));
   });
-  const [conductores, setConductores] = useState<string[]>(() =>
-    [...new Set(FLOTA_INICIAL.map(v => v.ch).filter((c): c is string => Boolean(c)))]
-  );
+  const [conductores, setConductores] = useState<string[]>([]);
 
   const [modo,       setModo]       = useState('cal');
   const [grps,       setGrps]       = useState(new Set(['rm']));
@@ -395,11 +393,6 @@ export default function RutasScreen() {
       .then((json: { flota: Vehiculo[] } | null) => {
         if (json?.flota && json.flota.length > 0) {
           setFlota(json.flota);
-          setConductores(prev => {
-            const names = json.flota.map(v => v.ch).filter((c): c is string => Boolean(c));
-            const merged = [...new Set([...prev, ...names])];
-            return merged;
-          });
         } else if (json?.flota && json.flota.length === 0) {
           // Table is empty — seed it with FLOTA_INICIAL
           FLOTA_INICIAL.forEach(v => {
@@ -410,10 +403,21 @@ export default function RutasScreen() {
             }).catch(() => {});
           });
         }
-        // If fetch fails entirely, keep the hard-coded FLOTA_INICIAL (already in state)
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Load conductores catalog from Supabase ───────────────────────
+  useEffect(() => {
+    fetch('/api/conductores')
+      .then(r => r.ok ? r.json() : null)
+      .then((json: { conductores: { nombre: string }[] } | null) => {
+        if (json?.conductores?.length) {
+          setConductores(json.conductores.map(c => c.nombre));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // ── Load sheets data ──────────────────────────────────────────────
@@ -579,65 +583,72 @@ export default function RutasScreen() {
     const n = nombre.trim();
     if (!n) return;
     setConductores(prev => prev.includes(n) ? prev : [...prev, n]);
+    fetch('/api/conductores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: n }),
+    }).catch(() => {});
   }
   function handleAgregarVehiculo(vehiculo: Vehiculo) {
-    setFlota(prev => {
-      const newFlota = [...prev, vehiculo];
-      // Mirror to Apps Script (legacy compatibility)
-      guardarFlotaFn({
-        flota: newFlota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
-        onStart:   () => setFlotaStatus('saving'),
-        onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
-        onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
-      });
-      // Persist to Supabase (source of truth)
-      fetch('/api/flota', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(vehiculo),
-      }).then(r => {
-        if (r.status === 409) {
-          // Already exists — update instead
-          return fetch('/api/flota', {
-            method:  'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify(vehiculo),
-          });
-        }
-      }).catch(() => {});
-      return newFlota;
+    setFlota(prev => [...prev, vehiculo]);
+    setFlotaStatus('saving');
+    // Persist to Supabase + sync to Sheets
+    fetch('/api/flota', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(vehiculo),
+    }).then(async r => {
+      if (r.status === 409) {
+        // Already exists — update instead
+        await fetch('/api/flota', {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(vehiculo),
+        });
+      } else if (!r.ok) {
+        throw new Error(`Error ${r.status}`);
+      }
+      // Sync fleet to Google Sheets
+      return fetch('/api/flota/export-sheets', { method: 'POST' });
+    }).then(r => {
+      if (r && !r.ok) throw new Error('Error sincronizando Sheets');
+      setFlotaStatus('success');
+      setTimeout(() => setFlotaStatus('idle'), 3000);
+    }).catch(e => {
+      console.error('[handleAgregarVehiculo]', e);
+      setFlotaStatus('error');
+      setTimeout(() => setFlotaStatus('idle'), 4000);
     });
   }
   function handleEliminarVehiculo(idx: number) {
     setFlota(prev => {
       const vehiculoEliminado = prev[idx];
       const newFlota = prev.filter((_, i) => i !== idx);
-      // Mirror to Apps Script (legacy compatibility)
-      guardarFlotaFn({
-        flota: newFlota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
-        onStart:   () => setFlotaStatus('saving'),
-        onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
-        onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
-      });
-      // Soft-delete in Supabase (source of truth)
       if (vehiculoEliminado?.p) {
-        fetch(`/api/flota?patente=${encodeURIComponent(vehiculoEliminado.p)}`, {
-          method: 'DELETE',
-        }).catch(() => {});
+        setFlotaStatus('saving');
+        fetch(`/api/flota?patente=${encodeURIComponent(vehiculoEliminado.p)}`, { method: 'DELETE' })
+          .then(r => { if (!r.ok) throw new Error(`Error ${r.status}`); return fetch('/api/flota/export-sheets', { method: 'POST' }); })
+          .then(r => { if (r && !r.ok) throw new Error('Error sincronizando Sheets'); setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); })
+          .catch(e => { console.error('[handleEliminarVehiculo]', e); setFlotaStatus('error'); setTimeout(() => setFlotaStatus('idle'), 4000); });
       }
       return newFlota;
     });
   }
   const handleActualizarVehiculoRef = useRef<((v: Partial<Vehiculo> & { p: string }) => void) | null>(null);
   handleActualizarVehiculoRef.current = function handleActualizarVehiculo(vehiculo: Partial<Vehiculo> & { p: string }) {
+    setFlotaStatus('saving');
     setFlota(prev => prev.map(v => v.p === vehiculo.p ? { ...v, ...vehiculo } : v));
-    // Persist update to Supabase
     fetch('/api/flota', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(vehiculo),
-    }).catch(() => {});
+    }).then(r => { if (!r.ok) throw new Error(`Error ${r.status}`); return fetch('/api/flota/export-sheets', { method: 'POST' }); })
+      .then(() => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); })
+      .catch(e => { console.error('[handleActualizarVehiculo]', e); setFlotaStatus('error'); setTimeout(() => setFlotaStatus('idle'), 4000); });
   };
+  function handleActualizarVehiculo(patente: string, updates: Partial<Vehiculo>) {
+    handleActualizarVehiculoRef.current?.({ p: patente, ...updates });
+  }
 
   // ── Manual text parser ────────────────────────────────────────────
   function parseManual(txt: string): { ts: StoreItem[]; errs: string[] } {
@@ -883,12 +894,10 @@ export default function RutasScreen() {
 
   // ── Save fleet ────────────────────────────────────────────────────
   function handleGuardarFlota() {
-    guardarFlotaFn({
-      flota, sheetsWebAppUrl: SHEETS_WEB_APP_URL,
-      onStart:   () => setFlotaStatus('saving'),
-      onSuccess: () => { setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); },
-      onError:   () => { setFlotaStatus('error');   setTimeout(() => setFlotaStatus('idle'), 4000); },
-    });
+    setFlotaStatus('saving');
+    fetch('/api/flota/export-sheets', { method: 'POST' })
+      .then(r => { if (!r.ok) throw new Error('Error sincronizando Sheets'); setFlotaStatus('success'); setTimeout(() => setFlotaStatus('idle'), 3000); })
+      .catch(e => { console.error('[handleGuardarFlota]', e); setFlotaStatus('error'); setTimeout(() => setFlotaStatus('idle'), 4000); });
   }
 
   // ── Save history ──────────────────────────────────────────────────
@@ -983,22 +992,12 @@ export default function RutasScreen() {
         tiendas={tiendas}
         onUpdate={handleActualizarDatos}
         onOpenConfig={handleOpenConfig}
-        flotaStatus={flotaStatus}
-        onGuardarFlota={handleGuardarFlota}
         onBack={() => {
           const from = sessionStorage.getItem('despacho_from');
           sessionStorage.removeItem('despacho_from');
           router.push(from || '/despacho/santiago');
         }}
         onSignOut={async () => { await signOut(); router.push('/login'); }}
-        flota={flota}
-        conductores={conductores}
-        onToggleFlota={handleToggleFlota}
-        onToggleTlbd={handleToggleTlbd}
-        onConductorChange={handleConductorChange}
-        onAgregarConductor={handleAgregarConductor}
-        onAgregarVehiculo={handleAgregarVehiculo}
-        onEliminarVehiculo={handleEliminarVehiculo}
       />
 
       {/* Pill de pendientes del día anterior */}
@@ -1101,8 +1100,15 @@ export default function RutasScreen() {
           onToggleGroup={handleToggleGroup}
           onToggleChip={handleToggleChip}
           onUpdateChip={handleUpdateChip}
+          flotaStatus={flotaStatus}
           onConductorChange={handleConductorChange}
           onAgregarConductor={handleAgregarConductor}
+          onToggleFlota={handleToggleFlota}
+          onToggleTlbd={handleToggleTlbd}
+          onAgregarVehiculo={handleAgregarVehiculo}
+          onEliminarVehiculo={handleEliminarVehiculo}
+          onActualizarVehiculo={handleActualizarVehiculo}
+          onGuardarFlota={handleGuardarFlota}
           onSupervisor={setSupervisor}
           onFecha={setFecha}
           onManual={setManualText}
@@ -1123,6 +1129,7 @@ export default function RutasScreen() {
                     gps={results.extGps || gps}
                     cd={cdRef.current}
                     flota={flota}
+                    conductores={conductores}
                     onLimpiar={handleLimpiar}
                     onVolver={handleVolverAEdicion}
                     onGenerarPDF={handleGenerarPDF}

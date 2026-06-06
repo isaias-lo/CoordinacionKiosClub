@@ -62,12 +62,21 @@ function timeAgo(iso: string): string {
 }
 
 // ── Sub-component: Gestionar Pionetas ─────────────────────────────────────────
+function syncPersonal() {
+  fetch('/api/personal/export-sheets', { method: 'POST' }).catch(() => {});
+}
+
 function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRefresh: () => void }) {
   const [nombre,   setNombre]   = useState('');
   const [telefono, setTelefono] = useState('');
   const [empresa,  setEmpresa]  = useState('');
   const [adding,   setAdding]   = useState(false);
   const [error,    setError]    = useState('');
+  const [editingId,    setEditingId]    = useState<string | null>(null);
+  const [editNombre,   setEditNombre]   = useState('');
+  const [editTelefono, setEditTelefono] = useState('');
+  const [editEmpresa,  setEditEmpresa]  = useState('');
+  const [saving,       setSaving]       = useState(false);
 
   async function handleAdd() {
     if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
@@ -81,7 +90,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
       const json = await res.json() as { error?: string };
       if (!res.ok) throw new Error(json.error ?? 'Error al agregar');
       setNombre(''); setTelefono(''); setEmpresa('');
-      onRefresh();
+      onRefresh(); syncPersonal();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error');
     } finally { setAdding(false); }
@@ -90,7 +99,37 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
   async function handleDelete(id: string, nombre: string) {
     if (!confirm(`¿Eliminar a "${nombre}" del catálogo?`)) return;
     await fetch(`/api/pionetas?id=${id}`, { method: 'DELETE' });
-    onRefresh();
+    onRefresh(); syncPersonal();
+  }
+
+  function startEdit(p: Pioneta) {
+    setEditingId(p.id);
+    setEditNombre(p.nombre);
+    setEditTelefono(p.telefono ?? '');
+    setEditEmpresa(p.empresa ?? '');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditNombre(''); setEditTelefono(''); setEditEmpresa('');
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editNombre.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/pionetas', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, nombre: editNombre.trim(), telefono: editTelefono || null, empresa: editEmpresa || null }),
+      });
+      const json = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar');
+      cancelEdit();
+      onRefresh(); syncPersonal();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error al guardar');
+    } finally { setSaving(false); }
   }
 
   return (
@@ -113,20 +152,46 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
           </div>
         )}
         {pionetas.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#F1F5F9' }}>{p.nombre}</div>
-              {(p.telefono || p.empresa) && (
-                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
-                  {[p.telefono, p.empresa].filter(Boolean).join(' · ')}
+          <div key={p.id}>
+            {editingId === p.id ? (
+              <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <input value={editNombre}   onChange={e => setEditNombre(e.target.value)}   placeholder="Nombre *"  style={inputStyle} />
+                  <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono"  style={inputStyle} />
+                  <input value={editEmpresa}  onChange={e => setEditEmpresa(e.target.value)}  placeholder="Empresa"   style={inputStyle} />
                 </div>
-              )}
-            </div>
-            <button
-              onClick={() => handleDelete(p.id, p.nombre)}
-              style={{ background: 'rgba(239,68,68,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#F87171', display: 'flex', alignItems: 'center' }}>
-              <Trash2 size={14} />
-            </button>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={cancelEdit} style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <X size={12} /> Cancelar
+                  </button>
+                  <button onClick={() => void handleSaveEdit(p.id)} disabled={saving || !editNombre.trim()}
+                    style={{ ...btnSuccess, opacity: saving || !editNombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Save size={12} /> {saving ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#F1F5F9' }}>{p.nombre}</div>
+                  {(p.telefono || p.empresa) && (
+                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
+                      {[p.telefono, p.empresa].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => startEdit(p)}
+                  style={{ background: 'rgba(59,130,246,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#60A5FA', display: 'flex', alignItems: 'center' }}>
+                  <Edit2 size={14} />
+                </button>
+                <button
+                  onClick={() => void handleDelete(p.id, p.nombre)}
+                  style={{ background: 'rgba(239,68,68,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#F87171', display: 'flex', alignItems: 'center' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -136,7 +201,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           <input
             value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
-            style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} />
+            style={inputStyle} onKeyDown={e => e.key === 'Enter' && void handleAdd()} />
           <input
             value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
             style={inputStyle} />
@@ -146,7 +211,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
         </div>
         {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
         <button
-          onClick={handleAdd} disabled={adding || !nombre.trim()}
+          onClick={() => void handleAdd()} disabled={adding || !nombre.trim()}
           style={{ ...btnPrimary, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
           <Plus size={14} />
           {adding ? 'Agregando…' : 'Agregar Pioneta'}
@@ -181,7 +246,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
       const json = await res.json() as { error?: string };
       if (!res.ok) throw new Error(json.error ?? 'Error al agregar');
       setNombre(''); setTelefono(''); setEmpresa('');
-      onRefresh();
+      onRefresh(); syncPersonal();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error');
     } finally { setAdding(false); }
@@ -190,7 +255,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
   async function handleDelete(id: number, nombre: string) {
     if (!confirm(`¿Eliminar a "${nombre}" del catálogo de conductores?`)) return;
     await fetch(`/api/conductores?id=${id}`, { method: 'DELETE' });
-    onRefresh();
+    onRefresh(); syncPersonal();
   }
 
   function startEdit(c: Conductor) {
@@ -217,7 +282,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
       const json = await res.json() as { error?: string };
       if (!res.ok) throw new Error(json.error ?? 'Error al guardar');
       cancelEdit();
-      onRefresh();
+      onRefresh(); syncPersonal();
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Error al guardar');
     } finally { setSaving(false); }
@@ -621,10 +686,19 @@ export function ControlFlotaPanel() {
 
       {/* Empty state */}
       {!loading && rutas.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '64px 24px' }}>
-          <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.2 }}>🚚</div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#E2E8F0', marginBottom: 4 }}>Sin rutas para esta fecha</div>
-          <div style={{ fontSize: 13, color: '#64748B' }}>No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
+        <div style={{ textAlign: 'center', padding: '72px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+            <div style={{
+              width: 68, height: 68, borderRadius: 20,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Truck size={30} color="rgba(148,163,184,0.38)" strokeWidth={1.4} />
+            </div>
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#E2E8F0', marginBottom: 6 }}>Sin rutas para esta fecha</div>
+          <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
         </div>
       )}
 

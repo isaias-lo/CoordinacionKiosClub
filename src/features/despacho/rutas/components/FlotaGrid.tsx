@@ -5,12 +5,15 @@ import type { Vehiculo } from '../data/flota';
 interface Props {
   flota: Vehiculo[];
   conductores: string[];
+  flotaStatus?: string;
   onToggle: (idx: number) => void;
   onToggleTlbd: (idx: number) => void;
   onConductorChange: (idx: number, nombre: string) => void;
   onAgregarConductor: (nombre: string) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
   onEliminarVehiculo: (idx: number) => void;
+  onActualizarVehiculo?: (patente: string, updates: Partial<Vehiculo>) => void;
+  onGuardarFlota?: () => void;
 }
 
 const NUEVO_KEY = '__nuevo__';
@@ -31,7 +34,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-kred bg-white";
 
-export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo }: Props) {
+export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [nuevoVehiculo, setNuevoVehiculo] = useState<NuevoVehiculoState>({
@@ -77,12 +80,24 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
           <div className="text-[11px] font-semibold text-kmuted uppercase tracking-widest mb-0.5">Vehículos registrados</div>
           <div className="text-[15px] font-bold text-ktext">{flota.filter(v => v.on).length} activos · {flota.length} en total</div>
         </div>
-        <button
-          onClick={() => { setShowAgregar(!showAgregar); setError(''); }}
-          className={`h-[36px] px-4 rounded-[9px] text-[13px] font-bold transition-all border-2 ${showAgregar ? 'bg-kbg border-black/[0.12] text-kmuted' : 'bg-kred border-kred text-white'}`}
-        >
-          {showAgregar ? '✕ Cancelar' : '＋ Nuevo vehículo'}
-        </button>
+        <div className="flex items-center gap-2">
+          {onGuardarFlota && (
+            <button
+              onClick={onGuardarFlota}
+              disabled={flotaStatus === 'saving'}
+              className={`h-[36px] px-3 rounded-[9px] text-[13px] font-bold transition-all border-2 border-knavy/[0.3]
+                ${flotaStatus === 'success' ? 'text-[#34C759] border-[#34C759]/30' : flotaStatus === 'error' ? 'text-kred border-kred/30' : 'text-knavy'}`}
+            >
+              {flotaStatus === 'saving' ? '⏳' : flotaStatus === 'success' ? '✓ Guardado' : flotaStatus === 'error' ? '⚠️ Error' : '💾 Guardar'}
+            </button>
+          )}
+          <button
+            onClick={() => { setShowAgregar(!showAgregar); setError(''); }}
+            className={`h-[36px] px-4 rounded-[9px] text-[13px] font-bold transition-all border-2 ${showAgregar ? 'bg-kbg border-black/[0.12] text-kmuted' : 'bg-kred border-kred text-white'}`}
+          >
+            {showAgregar ? '✕ Cancelar' : '＋ Nuevo vehículo'}
+          </button>
+        </div>
       </div>
 
       {/* ── Formulario nuevo vehículo ── */}
@@ -135,7 +150,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
 
           <div className="flex flex-wrap gap-4 text-[13px] text-ktext mb-4">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" className="w-4 h-4" checked={nv.porton === true} onChange={e => setNv({ porton: e.target.checked ? true : null })} />
+              <input type="checkbox" className="w-4 h-4" checked={nv.porton === true} onChange={e => setNv({ porton: e.target.checked ? true : false })} />
               <span>Portón hidráulico</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -171,6 +186,7 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
             onConductorChange={onConductorChange}
             onAgregarConductor={onAgregarConductor}
             onEliminar={onEliminarVehiculo}
+            onActualizar={onActualizarVehiculo}
           />
         ))}
       </div>
@@ -178,19 +194,44 @@ export default function FlotaGrid({ flota, conductores, onToggle, onToggleTlbd, 
   );
 }
 
-function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onEliminar }: {
+interface EditVehiculoState {
+  t: string; c: string; b: string; empresa: string;
+  porton: boolean | null; refrigerado: boolean;
+}
+
+function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onEliminar, onActualizar }: {
   v: Vehiculo; idx: number; conductores: string[];
   onToggle: (i: number) => void;
   onToggleTlbd: (i: number) => void;
   onConductorChange: (i: number, n: string) => void;
   onAgregarConductor: (n: string) => void;
   onEliminar: (i: number) => void;
+  onActualizar?: (patente: string, updates: Partial<Vehiculo>) => void;
 }) {
   const [modoNuevo, setModoNuevo]         = useState(false);
   const [nuevoNombre, setNuevoNombre]     = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showTel, setShowTel]             = useState(false);
+  const [editOpen, setEditOpen]           = useState(false);
+  const [editState, setEditState]         = useState<EditVehiculoState>({ t: '', c: '', b: '', empresa: '', porton: null, refrigerado: false });
   const inputRef = useRef<HTMLInputElement>(null);
+
+  function openEdit() {
+    setEditState({ t: v.t, c: String(v.c), b: String(v.b), empresa: v.empresa ?? '', porton: v.porton, refrigerado: v.refrigerado });
+    setEditOpen(true);
+  }
+
+  function saveEdit() {
+    onActualizar?.(v.p, {
+      t:          editState.t || v.t,
+      c:          parseInt(editState.c) || v.c,
+      b:          parseInt(editState.b) || v.b,
+      empresa:    editState.empresa,
+      porton:     editState.porton,
+      refrigerado: editState.refrigerado,
+    });
+    setEditOpen(false);
+  }
 
   useEffect(() => {
     if (modoNuevo && inputRef.current) inputRef.current.focus();
@@ -209,6 +250,8 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
   }
 
   function cancelarNuevo() { setModoNuevo(false); setNuevoNombre(''); }
+
+  const eInputCls = "w-full text-[13px] px-2.5 h-[34px] rounded-[7px] border border-black/[0.15] text-ktext focus:outline-none focus:border-knavy bg-white";
 
   return (
     <div className={`rounded-[14px] border-2 bg-white transition-all overflow-hidden
@@ -262,9 +305,9 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
       {/* ── Bottom: conductor + acciones ── */}
       <div className="px-4 pb-4 pt-3 border-t border-black/[0.06]" onClick={e => e.stopPropagation()}>
 
-        {/* Conductor */}
+        {/* Conductor dropdown */}
         <div className="mb-2.5">
-          <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1.5">Conductor</div>
+          <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1.5">Conductor (ruta)</div>
           {modoNuevo ? (
             <div className="flex gap-1.5">
               <input
@@ -296,6 +339,47 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
           )}
         </div>
 
+        {/* Edit form inline */}
+        {editOpen && (
+          <div className="mb-3 bg-kbg border border-black/[0.10] rounded-[10px] p-3">
+            <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-2">Editar vehículo</div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-kmuted uppercase mb-0.5">Tipo</label>
+                <input type="text" value={editState.t} onChange={e => setEditState(s => ({ ...s, t: e.target.value }))} className={eInputCls} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-kmuted uppercase mb-0.5">Empresa</label>
+                <input type="text" value={editState.empresa} onChange={e => setEditState(s => ({ ...s, empresa: e.target.value }))} className={eInputCls} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-kmuted uppercase mb-0.5">Cap. Pallets</label>
+                <input type="number" value={editState.c} onChange={e => setEditState(s => ({ ...s, c: e.target.value }))} className={eInputCls} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-kmuted uppercase mb-0.5">Cap. Bultos</label>
+                <input type="number" value={editState.b} onChange={e => setEditState(s => ({ ...s, b: e.target.value }))} className={eInputCls} />
+              </div>
+            </div>
+            <div className="flex gap-4 text-[12px] text-ktext mb-3">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={editState.porton === true} onChange={e => setEditState(s => ({ ...s, porton: e.target.checked ? true : false }))} />
+                Portón
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={editState.refrigerado} onChange={e => setEditState(s => ({ ...s, refrigerado: e.target.checked }))} />
+                Refrigerado
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveEdit} className="flex-1 h-[32px] rounded-[7px] bg-knavy text-white text-[12px] font-bold">Guardar</button>
+              <button onClick={() => setEditOpen(false)} className="h-[32px] px-3 rounded-[7px] border border-black/[0.10] text-kmuted text-[12px]">Cancelar</button>
+            </div>
+          </div>
+        )}
+
         {/* Botones de acción */}
         <div className="flex gap-2">
           <button
@@ -305,6 +389,16 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
           >
             {v.tlbd ? '✓ 2ª Vuelta' : '2ª Vuelta'}
           </button>
+
+          {onActualizar && (
+            <button
+              onClick={() => editOpen ? setEditOpen(false) : openEdit()}
+              className={`h-[32px] px-3 rounded-[7px] text-[12px] border transition-all
+                ${editOpen ? 'border-knavy/[0.4] text-knavy bg-knavy/[0.07]' : 'border-black/[0.09] text-kmuted hover:border-knavy/[0.4] hover:text-knavy'}`}
+            >
+              ✏️
+            </button>
+          )}
 
           {confirmDelete ? (
             <div className="flex gap-1.5 flex-1">

@@ -8,7 +8,7 @@ export async function GET() {
     .eq('activo', true)
     .order('nombre');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ conductores: data });
+  return NextResponse.json({ conductores: data ?? [] });
 }
 
 export async function POST(request: NextRequest) {

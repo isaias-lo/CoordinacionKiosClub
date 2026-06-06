@@ -81,7 +81,6 @@ export function parseFSheet(t: any, flota: Vehiculo[]) {
       if (r.c[3]?.v) existente.t = String(r.c[3].v);
       if (r.c[6]?.v) existente.on = String(r.c[6].v).toUpperCase() === 'SI';
       if (r.c[7]?.v) existente.tlbd = String(r.c[7].v).toUpperCase() === 'SI';
-      if (r.c[8]?.v) existente.ch = String(r.c[8].v);
     }
   });
 }
@@ -148,7 +147,7 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
   if (!values || values.length < 3) return;
 
   // Col layout: 0=Patente, 1=CapP, 2=CapB, 3=Tipo, 4=Portón, 5=Refrigerado,
-  //             6=Activo, 7=TLBD, 8=Chofer, 9=Teléfono (no usado), 10=Empresa
+  //             6=Activo, 7=TLBD, 8=Empresa, 9=Pioneta 1, 10=Pioneta 2
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
     if (!row || row.length < 1) continue;
@@ -165,9 +164,7 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
       if (row[5]) existente.refrigerado = row[5].toUpperCase() === 'SI';
       if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
       if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
-      if (row[8])  existente.ch  = row[8];
-      if (row[9])  existente.tel = row[9];
-      if (row[10]) existente.empresa = row[10];
+      if (row[8]) existente.empresa = row[8];
     } else {
       // Vehículo en Sheets que no está en FLOTA_INICIAL → agregar
       flota.push({
@@ -179,9 +176,7 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
         refrigerado: row[5] ? row[5].toUpperCase() === 'SI' : false,
         on:          row[6] ? row[6].toUpperCase() === 'SI' : true,
         tlbd:        row[7] ? row[7].toUpperCase() === 'SI' : false,
-        ch:          row[8] || '',
-        tel:         row[9] || '',
-        empresa:     row[10] || '',
+        empresa:     row[8] || '',
       });
     }
   }

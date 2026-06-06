@@ -2,29 +2,16 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { TiendaInfo } from '../data/tiendas';
-import type { Vehiculo } from '../data/flota';
-import FlotaGrid from './FlotaGrid';
 
 interface Props {
   updateStatus: string;
   tiendas: Record<string, TiendaInfo>;
   onUpdate: () => void;
   onOpenConfig: () => void;
-  flotaStatus: string;
-  onGuardarFlota: () => void;
   onBack?: () => void;
   onSignOut?: () => void;
-  flota: Vehiculo[];
-  conductores: string[];
-  onToggleFlota: (idx: number) => void;
-  onToggleTlbd: (idx: number) => void;
-  onConductorChange: (idx: number, nombre: string) => void;
-  onAgregarConductor: (nombre: string) => void;
-  onAgregarVehiculo: (v: Vehiculo) => void;
-  onEliminarVehiculo: (idx: number) => void;
 }
 
-/* ── Icon 3D container ─────────────────────────────────────────── */
 function Icon3D({ emoji, from, to, shadow }: { emoji: string; from: string; to: string; shadow: string }) {
   return (
     <span
@@ -39,7 +26,6 @@ function Icon3D({ emoji, from, to, shadow }: { emoji: string; from: string; to: 
   );
 }
 
-/* ── Generic menu button ───────────────────────────────────────── */
 function MenuItem({ children, onClick, disabled = false }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
@@ -53,22 +39,14 @@ function MenuItem({ children, onClick, disabled = false }: { children: React.Rea
   );
 }
 
-export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, flotaStatus, onGuardarFlota, onBack, onSignOut, flota, conductores, onToggleFlota, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo }: Props) {
-  const [menuOpen,  setMenuOpen]  = useState(false);
-  const [flotaOpen, setFlotaOpen] = useState(false);
+export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, onBack, onSignOut }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const total = Object.keys(tiendas).length;
 
   const updLabel = updateStatus === 'loading' ? 'Actualizando...'
     : updateStatus === 'success' ? `${total} tiendas · OK`
     : updateStatus === 'error'   ? 'Error — reintentar'
     : 'Actualizar datos';
-
-  const saveIcon = flotaStatus === 'saving' ? '⏳'
-    : flotaStatus === 'success' ? '✓'
-    : flotaStatus === 'error'   ? '⚠️'
-    : '💾';
-
-  const activosCount = flota.filter(v => v.on).length;
 
   useEffect(() => {
     const handler = () => setMenuOpen(true);
@@ -78,13 +56,11 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
 
   return (
     <>
-      {/* ── Hamburger menu ─────────────────────────────────────────── */}
       {menuOpen && createPortal(
         <>
           <div className="fixed inset-0 z-[200]" onClick={() => setMenuOpen(false)} />
           <div className="fixed right-0 top-0 z-[201] w-[min(300px,92vw)] lg:w-[400px] h-full bg-[#F2F2F7] flex flex-col overflow-y-auto">
 
-            {/* Header panel */}
             <div
               style={{ background: 'linear-gradient(160deg, #1B2A6B 0%, #2D3FA0 100%)' }}
               className="px-5 pt-5 pb-6 flex-shrink-0"
@@ -104,10 +80,8 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
               </div>
             </div>
 
-            {/* Menu items */}
             <div className="p-4 space-y-2.5 flex-1">
 
-              {/* ── Volver ── */}
               {onBack && (
                 <MenuItem onClick={() => { onBack(); setMenuOpen(false); }}>
                   <Icon3D emoji="←" from="#8E8E93" to="#636366" shadow="rgba(99,99,102,0.35)" />
@@ -118,7 +92,6 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                 </MenuItem>
               )}
 
-              {/* ── Configurar Calendario ── */}
               <MenuItem onClick={() => { onOpenConfig(); setMenuOpen(false); }}>
                 <Icon3D emoji="📅" from="#FF5252" to="#C42020" shadow="rgba(196,32,32,0.4)" />
                 <div className="flex-1 text-left">
@@ -128,35 +101,6 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                 <span className="text-[16px] text-black/20 font-light">›</span>
               </MenuItem>
 
-              {/* ── Flota (split: abrir panel | guardar) ── */}
-              <div
-                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(0,0,0,0.04)' }}
-                className="flex rounded-[13px] bg-white border border-black/[0.07] overflow-hidden"
-              >
-                <button
-                  onClick={() => { setMenuOpen(false); setFlotaOpen(true); }}
-                  className="flex-1 h-[54px] px-3.5 flex items-center gap-3 transition-all active:scale-[0.98] hover:bg-kbg"
-                >
-                  <Icon3D emoji="🚛" from="#3D52CC" to="#1B2A6B" shadow="rgba(27,42,107,0.45)" />
-                  <div className="flex-1 text-left">
-                    <div className="text-[14px] font-semibold text-ktext">Flota</div>
-                    <div className="text-[11px] text-kmuted">{activosCount} activos · {flota.length} total</div>
-                  </div>
-                  <span className="text-[16px] text-black/20 font-light">›</span>
-                </button>
-                <div className="w-px bg-black/[0.07] my-3 flex-shrink-0" />
-                <button
-                  onClick={onGuardarFlota}
-                  disabled={flotaStatus === 'saving'}
-                  title="Guardar Flota"
-                  className={`w-[54px] flex items-center justify-center text-[19px] transition-all active:scale-95 disabled:opacity-50
-                    ${flotaStatus === 'success' ? 'text-[#34C759]' : flotaStatus === 'error' ? 'text-kred' : 'text-knavy'}`}
-                >
-                  {saveIcon}
-                </button>
-              </div>
-
-              {/* ── Actualizar datos ── */}
               <MenuItem
                 onClick={() => { onUpdate(); setMenuOpen(false); }}
                 disabled={updateStatus === 'loading'}
@@ -175,7 +119,6 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
                 </div>
               </MenuItem>
 
-              {/* ── Cerrar sesión ── */}
               {onSignOut && (
                 <MenuItem onClick={() => { setMenuOpen(false); onSignOut(); }}>
                   <Icon3D emoji="🚪" from="#FF6B6B" to="#C42020" shadow="rgba(196,32,32,0.35)" />
@@ -186,65 +129,8 @@ export default function Header({ updateStatus, tiendas, onUpdate, onOpenConfig, 
               )}
             </div>
 
-            {/* Footer */}
             <div className="px-5 pb-6 pt-2 text-center">
               <span className="text-[10px] text-kmuted font-mono">KiosClub · Enrutamiento v4.3</span>
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
-
-      {/* ── Panel Flota (overlay completo) ─────────────────────────── */}
-      {flotaOpen && createPortal(
-        <>
-          <div
-            className="fixed inset-0 bg-black/[0.42] z-[900] backdrop-blur-sm"
-            onClick={() => setFlotaOpen(false)}
-          />
-          <div className="fixed top-0 right-0 w-[min(390px,100%)] lg:w-[620px] h-full bg-white z-[901] overflow-y-auto flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.14)]">
-
-            {/* Panel header */}
-            <div
-              style={{ background: 'linear-gradient(160deg, #1B2A6B 0%, #2D3FA0 100%)' }}
-              className="px-[18px] py-[18px] flex items-start justify-between sticky top-0 z-10 flex-shrink-0"
-            >
-              <div>
-                <div className="text-[10px] font-semibold text-white/60 uppercase tracking-[1px]">CONFIGURACIÓN</div>
-                <div className="text-[17px] font-bold text-white mt-0.5">🚛 Flota</div>
-                <div className="text-[12px] text-white/60 mt-0.5">{activosCount} activos · {flota.length} en total</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onGuardarFlota}
-                  disabled={flotaStatus === 'saving'}
-                  className={`h-[30px] px-3 rounded-[7px] bg-white/[0.18] text-[12px] font-bold flex items-center gap-1.5 hover:bg-white/[0.28] transition-all disabled:opacity-50
-                    ${flotaStatus === 'success' ? 'text-[#34C759]' : flotaStatus === 'error' ? 'text-red-300' : 'text-white'}`}
-                >
-                  <span>{saveIcon}</span>
-                  <span>{flotaStatus === 'saving' ? 'Guardando' : flotaStatus === 'success' ? 'Guardado' : flotaStatus === 'error' ? 'Error' : 'Guardar'}</span>
-                </button>
-                <button
-                  onClick={() => setFlotaOpen(false)}
-                  className="w-[30px] h-[30px] rounded-[7px] bg-white/[0.18] text-white text-[13px] flex items-center justify-center hover:bg-white/[0.28] transition-all"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* FlotaGrid */}
-            <div className="px-3 py-3 flex-1">
-              <FlotaGrid
-                flota={flota}
-                conductores={conductores}
-                onToggle={onToggleFlota}
-                onToggleTlbd={onToggleTlbd}
-                onConductorChange={onConductorChange}
-                onAgregarConductor={onAgregarConductor}
-                onAgregarVehiculo={onAgregarVehiculo}
-                onEliminarVehiculo={onEliminarVehiculo}
-              />
             </div>
           </div>
         </>,
