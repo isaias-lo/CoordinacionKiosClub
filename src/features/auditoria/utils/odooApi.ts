@@ -1,10 +1,12 @@
 import type { OdooConfig, OperacionOdoo, ProductoOdoo } from '../types';
 
-export async function buscarOperaciones(config: OdooConfig, query: string): Promise<OperacionOdoo[]> {
+// config parameter kept for API compatibility but credentials are NOT sent to the server —
+// the /api/odoo proxy reads them from server-side env vars only.
+export async function buscarOperaciones(_config: OdooConfig, query: string): Promise<OperacionOdoo[]> {
   const res = await fetch('/api/odoo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'search_operations', config, query }),
+    body: JSON.stringify({ action: 'search_operations', query }),
   });
   const data = (await res.json()) as { operations?: OperacionOdoo[]; error?: string };
   if (!res.ok) throw new Error(data.error || 'Error al consultar Odoo');
@@ -12,27 +14,23 @@ export async function buscarOperaciones(config: OdooConfig, query: string): Prom
 }
 
 export async function buscarProducto(
-  config: OdooConfig,
+  _config: OdooConfig,
   codigo: string,
   pickings?: string[],
 ): Promise<ProductoOdoo | null> {
   const res = await fetch('/api/odoo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'search_product', config, query: codigo, pickings }),
+    body: JSON.stringify({ action: 'search_product', query: codigo, pickings }),
   });
   const data = (await res.json()) as { productos?: ProductoOdoo[]; error?: string };
   if (!res.ok) throw new Error(data.error || 'Error al buscar producto');
   return data.productos?.[0] ?? null;
 }
 
-export function getOdooConfig(): OdooConfig | null {
-  const url      = process.env.NEXT_PUBLIC_ODOO_URL      ?? '';
-  const db       = process.env.NEXT_PUBLIC_ODOO_DB       ?? '';
-  const username = process.env.NEXT_PUBLIC_ODOO_USERNAME ?? '';
-  const apiKey   = process.env.NEXT_PUBLIC_ODOO_API_KEY  ?? '';
-  if (!url || !db || !username || !apiKey) return null;
-  return { url, db, username, apiKey };
+/** @deprecated Credentials are now server-side only. Returns a placeholder to avoid breaking callers. */
+export function getOdooConfig(): OdooConfig {
+  return { url: '', db: '', username: '', apiKey: '' };
 }
 
 export interface PickerOdooStats {
@@ -47,13 +45,13 @@ export interface PickerOdooStats {
 }
 
 export async function getPickerOdooStats(
-  config: OdooConfig,
+  _config: OdooConfig,
   pickerName: string,
 ): Promise<PickerOdooStats | null> {
   const res = await fetch('/api/odoo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'get_picker_stats', config, query: pickerName }),
+    body: JSON.stringify({ action: 'get_picker_stats', query: pickerName }),
   });
   const data = (await res.json()) as { stats?: PickerOdooStats | null; error?: string };
   if (!res.ok) throw new Error(data.error || 'Error al obtener stats de picker');

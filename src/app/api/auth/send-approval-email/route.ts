@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { verifyAdmin } from '@/lib/apiAuth';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -18,6 +19,9 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+
   const { email, full_name, password, role } = await request.json() as {
     email: string;
     full_name: string;

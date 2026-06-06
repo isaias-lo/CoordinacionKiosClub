@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdmin } from '@/lib/apiAuth';
 
 const URL_  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SRK   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function adminSb() {
   return createClient(URL_, SRK, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-async function verifyAdmin(request: NextRequest): Promise<boolean> {
-  const auth = request.headers.get('authorization');
-  if (!auth?.startsWith('Bearer ')) return false;
-  const token = auth.slice(7);
-  const sb = createClient(URL_, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { data: { user } } = await sb.auth.getUser(token);
-  return user?.user_metadata?.role === 'admin';
 }
 
 export async function GET(request: NextRequest) {

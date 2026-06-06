@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { createOtpToken } from '../../../lib/otpToken';
 
+// Rate limit: 5 requests per 10 min per email
+const rl = new Map<string, number[]>();
+function checkRateLimit(email: string): boolean {
+  const now  = Date.now();
+  const hits = (rl.get(email) ?? []).filter(t => now - t < 600_000);
+  if (hits.length >= 5) return false;
+  rl.set(email, [...hits, now]);
+  return true;
+}
+
 function getTransporter() {
   return nodemailer.createTransport({
     service: 'gmail',
@@ -22,6 +32,9 @@ export async function POST(request: NextRequest) {
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Email inválido' }, { status: 400 });
+    }
+    if (!checkRateLimit(email)) {
+      return NextResponse.json({ error: 'Demasiados intentos. Espera 10 minutos.' }, { status: 429 });
     }
 
     const otp   = Math.floor(100000 + Math.random() * 900000).toString();

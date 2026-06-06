@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Credentials are read from server-side env vars only — never from the request body.
+// Prefer ODOO_* (no NEXT_PUBLIC_) so the API key is not compiled into the browser bundle.
+const SRV_URL      = process.env.ODOO_URL      ?? process.env.NEXT_PUBLIC_ODOO_URL      ?? '';
+const SRV_DB       = process.env.ODOO_DB       ?? process.env.NEXT_PUBLIC_ODOO_DB       ?? '';
+const SRV_USERNAME = process.env.ODOO_USERNAME ?? process.env.NEXT_PUBLIC_ODOO_USERNAME ?? '';
+const SRV_API_KEY  = process.env.ODOO_API_KEY  ?? process.env.NEXT_PUBLIC_ODOO_API_KEY  ?? '';
+
 interface OdooRpcParams {
   service: string;
   method: string;
@@ -51,30 +58,41 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
       action: string;
-      config: { url: string; db: string; username: string; apiKey: string };
       query?: string;
       pickings?: string[];
+      dateFrom?: string;
+      dateTo?: string;
+      // config.url accepted only for list_databases; all auth credentials ignored from client
+      config?: { url?: string };
     };
-    const { action, config, query = '', pickings = [] } = body;
-    const dateFrom = (body as { dateFrom?: string }).dateFrom ?? '2026-05-01';
-    const dateTo   = (body as { dateTo?:   string }).dateTo   ?? '2026-05-31';
-    let { url } = config;
-    const { db, username, apiKey } = config;
+    const { action, query = '', pickings = [] } = body;
+    const dateFrom = body.dateFrom ?? '2026-05-01';
+    const dateTo   = body.dateTo   ?? '2026-05-31';
 
-    // Auto-prepend https:// if the user forgot the protocol
+    // Use server-side credentials exclusively
+    let url      = SRV_URL;
+    const db       = SRV_DB;
+    const username = SRV_USERNAME;
+    const apiKey   = SRV_API_KEY;
+
+    // Auto-prepend https:// if needed
     if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
 
-    /* ── list_databases: no credentials needed ── */
+    /* ── list_databases: allow URL override, no auth needed ── */
     if (action === 'list_databases') {
-      if (!url) return NextResponse.json({ error: 'Ingresa la URL del servidor primero.' }, { status: 400 });
-      const dbs = (await odooRpc(url, { service: 'db', method: 'list', args: [] })) as string[];
+      let targetUrl = (body.config?.url ?? url);
+      if (targetUrl && !targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://' + targetUrl;
+      }
+      if (!targetUrl) return NextResponse.json({ error: 'Ingresa la URL del servidor primero.' }, { status: 400 });
+      const dbs = (await odooRpc(targetUrl, { service: 'db', method: 'list', args: [] })) as string[];
       return NextResponse.json({ databases: dbs });
     }
 
     if (!url || !db || !username || !apiKey) {
-      return NextResponse.json({ error: 'Configuración Odoo incompleta. Rellena URL, base de datos, usuario y contraseña/API key.' }, { status: 400 });
+      return NextResponse.json({ error: 'Configuración Odoo no disponible en el servidor.' }, { status: 503 });
     }
 
     // Authenticate — returns uid (number) or false if wrong credentials
