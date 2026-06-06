@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Truck, Users, Plus, Trash2, Save, X, ChevronDown, ChevronUp, AlertCircle, Edit2 } from 'lucide-react';
+import { Truck, Users, Plus, Trash2, Save, X, AlertCircle, Edit2 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Pioneta { id: string; nombre: string; telefono?: string; empresa?: string; }
@@ -72,6 +72,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
   const [empresa,  setEmpresa]  = useState('');
   const [adding,   setAdding]   = useState(false);
   const [error,    setError]    = useState('');
+  const [showAddForm,  setShowAddForm]  = useState(false);
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [editNombre,   setEditNombre]   = useState('');
   const [editTelefono, setEditTelefono] = useState('');
@@ -90,6 +91,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
       const json = await res.json() as { error?: string };
       if (!res.ok) throw new Error(json.error ?? 'Error al agregar');
       setNombre(''); setTelefono(''); setEmpresa('');
+      setShowAddForm(false);
       onRefresh(); syncPersonal();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error');
@@ -133,7 +135,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
   }
 
   return (
-    <div style={{ background: '#1e293b', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 20 }}>
+    <div style={{ background: 'white', borderRadius: 16, border: '1px solid rgba(0,0,0,0.09)', overflow: 'hidden', marginBottom: 20, boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
       <div style={{ background: 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Users size={18} color="rgba(255,255,255,0.8)" />
         <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 15, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
@@ -142,6 +144,12 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
         <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, color: '#fff' }}>
           {pionetas.length}
         </span>
+        <button
+          onClick={() => { setShowAddForm(v => !v); setError(''); }}
+          style={{ background: showAddForm ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {showAddForm ? <X size={12} /> : <Plus size={12} />}
+          {showAddForm ? 'Cancelar' : 'Agregar'}
+        </button>
       </div>
 
       {/* List */}
@@ -154,7 +162,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
         {pionetas.map(p => (
           <div key={p.id}>
             {editingId === p.id ? (
-              <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                   <input value={editNombre}   onChange={e => setEditNombre(e.target.value)}   placeholder="Nombre *"  style={inputStyle} />
                   <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono"  style={inputStyle} />
@@ -171,11 +179,11 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F9FAFB', borderRadius: 10, padding: '8px 12px', border: '1px solid rgba(0,0,0,0.06)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#F1F5F9' }}>{p.nombre}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>{p.nombre}</div>
                   {(p.telefono || p.empresa) && (
-                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>
                       {[p.telefono, p.empresa].filter(Boolean).join(' · ')}
                     </div>
                   )}
@@ -196,27 +204,29 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
         ))}
       </div>
 
-      {/* Add form */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <input
-            value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
-            style={inputStyle} onKeyDown={e => e.key === 'Enter' && void handleAdd()} />
-          <input
-            value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
-            style={inputStyle} />
-          <input
-            value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
-            style={inputStyle} />
+      {/* Add form - collapsible */}
+      {showAddForm && (
+        <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <input
+              value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
+              style={inputStyle} onKeyDown={e => e.key === 'Enter' && void handleAdd()} autoFocus />
+            <input
+              value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
+              style={inputStyle} />
+            <input
+              value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
+              style={inputStyle} />
+          </div>
+          {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
+          <button
+            onClick={() => void handleAdd()} disabled={adding || !nombre.trim()}
+            style={{ ...btnPrimary, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <Plus size={14} />
+            {adding ? 'Agregando…' : 'Agregar Pioneta'}
+          </button>
         </div>
-        {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
-        <button
-          onClick={() => void handleAdd()} disabled={adding || !nombre.trim()}
-          style={{ ...btnPrimary, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-          <Plus size={14} />
-          {adding ? 'Agregando…' : 'Agregar Pioneta'}
-        </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -228,6 +238,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
   const [empresa,   setEmpresa]   = useState('');
   const [adding,    setAdding]    = useState(false);
   const [error,     setError]     = useState('');
+  const [showAddForm,  setShowAddForm]  = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editNombre,   setEditNombre]   = useState('');
   const [editTelefono, setEditTelefono] = useState('');
@@ -246,6 +257,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
       const json = await res.json() as { error?: string };
       if (!res.ok) throw new Error(json.error ?? 'Error al agregar');
       setNombre(''); setTelefono(''); setEmpresa('');
+      setShowAddForm(false);
       onRefresh(); syncPersonal();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error');
@@ -289,7 +301,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
   }
 
   return (
-    <div style={{ background: '#1e293b', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 20 }}>
+    <div style={{ background: 'white', borderRadius: 16, border: '1px solid rgba(0,0,0,0.09)', overflow: 'hidden', marginBottom: 20, boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
       <div style={{ background: 'linear-gradient(135deg,#064E3B,#065F46)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Truck size={18} color="rgba(255,255,255,0.8)" />
         <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 15, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
@@ -298,6 +310,12 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
         <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, color: '#fff' }}>
           {conductores.length}
         </span>
+        <button
+          onClick={() => { setShowAddForm(v => !v); setError(''); }}
+          style={{ background: showAddForm ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {showAddForm ? <X size={12} /> : <Plus size={12} />}
+          {showAddForm ? 'Cancelar' : 'Agregar'}
+        </button>
       </div>
 
       {/* List */}
@@ -310,7 +328,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
         {conductores.map(c => (
           <div key={c.id}>
             {editingId === c.id ? (
-              <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                   <input value={editNombre} onChange={e => setEditNombre(e.target.value)} placeholder="Nombre *" style={inputStyle} />
                   <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono" style={inputStyle} />
@@ -327,11 +345,11 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F9FAFB', borderRadius: 10, padding: '8px 12px', border: '1px solid rgba(0,0,0,0.06)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#F1F5F9' }}>{c.nombre}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>{c.nombre}</div>
                   {(c.telefono || c.empresa) && (
-                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>
                       {[c.telefono, c.empresa].filter(Boolean).join(' · ')}
                     </div>
                   )}
@@ -352,27 +370,29 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
         ))}
       </div>
 
-      {/* Add form */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <input
-            value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
-            style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} />
-          <input
-            value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
-            style={inputStyle} />
-          <input
-            value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
-            style={inputStyle} />
+      {/* Add form - collapsible */}
+      {showAddForm && (
+        <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <input
+              value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
+              style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
+            <input
+              value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
+              style={inputStyle} />
+            <input
+              value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
+              style={inputStyle} />
+          </div>
+          {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
+          <button
+            onClick={handleAdd} disabled={adding || !nombre.trim()}
+            style={{ ...btnSuccess, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <Plus size={14} />
+            {adding ? 'Agregando…' : 'Agregar Conductor'}
+          </button>
         </div>
-        {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
-        <button
-          onClick={handleAdd} disabled={adding || !nombre.trim()}
-          style={{ ...btnSuccess, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-          <Plus size={14} />
-          {adding ? 'Agregando…' : 'Agregar Conductor'}
-        </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -394,8 +414,8 @@ function RutaCard({
 
   return (
     <div style={{
-      background: '#1e293b', borderRadius: 18, border: `2px solid ${modified ? 'rgba(249,115,22,0.45)' : 'rgba(255,255,255,0.08)'}`,
-      overflow: 'hidden', boxShadow: modified ? '0 4px 20px rgba(249,115,22,0.15)' : '0 2px 12px rgba(0,0,0,0.2)',
+      background: 'white', borderRadius: 18, border: `2px solid ${modified ? 'rgba(249,115,22,0.55)' : 'rgba(0,0,0,0.09)'}`,
+      overflow: 'hidden', boxShadow: modified ? '0 4px 20px rgba(249,115,22,0.12)' : '0 2px 8px rgba(0,0,0,0.07)',
     }}>
       {/* Card header */}
       <div style={{ background: modified ? 'linear-gradient(135deg,#EA580C,#F97316)' : 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -405,14 +425,14 @@ function RutaCard({
             <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 18, fontWeight: 900, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
               {ruta.codigo_ruta}
             </span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>{ruta.patente}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'monospace' }}>{ruta.patente}</span>
             {modified && (
               <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,0.2)', borderRadius: 20, padding: '2px 8px', color: '#fff' }}>
                 ● Modificado {ruta.flota_modificada_at ? timeAgo(ruta.flota_modificada_at) : ''}
               </span>
             )}
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
             {ruta.ruta_tiendas.length} tienda{ruta.ruta_tiendas.length !== 1 ? 's' : ''} · {totalUnidades(ruta.ruta_tiendas)}
           </div>
         </div>
@@ -420,9 +440,9 @@ function RutaCard({
 
       {/* Tiendas chips */}
       {ruta.ruta_tiendas.length > 0 && (
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(0,0,0,0.06)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[...ruta.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => (
-            <span key={t.store_cod} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(45,63,140,0.35)', color: '#93C5FD', fontFamily: 'monospace' }}>
+            <span key={t.store_cod} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff', fontFamily: 'monospace', border: '1px solid rgba(255,255,255,0.3)' }}>
               {t.store_cod}
             </span>
           ))}
@@ -436,8 +456,8 @@ function RutaCard({
         <div>
           <label style={labelStyle}>Conductor</label>
           {modified && ruta.chofer_original && ruta.chofer_original !== edit.chofer && (
-            <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>
-              Original: <span style={{ color: '#CBD5E1', fontWeight: 600 }}>{ruta.chofer_original}</span>
+            <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 4 }}>
+              Original: <span style={{ color: '#374151', fontWeight: 600 }}>{ruta.chofer_original}</span>
             </div>
           )}
           <select
@@ -496,8 +516,8 @@ function RutaCard({
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13, color: '#F1F5F9',
-  border: '1.5px solid rgba(255,255,255,0.12)', outline: 'none', background: 'rgba(255,255,255,0.06)', boxSizing: 'border-box',
+  width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13, color: '#111827',
+  border: '1.5px solid rgba(0,0,0,0.12)', outline: 'none', background: 'white', boxSizing: 'border-box',
 };
 
 const selectStyle: React.CSSProperties = {
@@ -506,7 +526,7 @@ const selectStyle: React.CSSProperties = {
 };
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 10, fontWeight: 700, color: '#94A3B8',
+  display: 'block', fontSize: 10, fontWeight: 700, color: '#6B7280',
   textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5,
 };
 
@@ -521,8 +541,8 @@ const btnSuccess: React.CSSProperties = {
 };
 
 const btnGray: React.CSSProperties = {
-  padding: '8px 14px', borderRadius: 10, border: '1.5px solid rgba(255,255,255,0.12)',
-  background: 'rgba(255,255,255,0.06)', color: '#CBD5E1', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  padding: '8px 14px', borderRadius: 10, border: '1.5px solid rgba(0,0,0,0.12)',
+  background: 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer',
 };
 
 // ── Density toggle ─────────────────────────────────────────────────────────────
@@ -537,8 +557,8 @@ function DensityToggle({ value, onChange }: { value: Density; onChange: (d: Dens
         <button key={d} onClick={() => onChange(d)}
           style={{
             width: 28, height: 28, borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-            background: value === d ? '#2563EB' : 'rgba(255,255,255,0.06)',
-            color: value === d ? '#fff' : '#94A3B8',
+            background: value === d ? '#1B2A6B' : 'rgba(0,0,0,0.06)',
+            color: value === d ? '#fff' : '#6B7280',
             transition: 'all 0.15s',
           }}>
           {d}
@@ -556,7 +576,6 @@ export function ControlFlotaPanel() {
   const [conductores,  setConductores] = useState<Conductor[]>([]);
   const [edits,        setEdits]       = useState<Record<number, EditState>>({});
   const [loading,      setLoading]     = useState(false);
-  const [showGestion,  setShowGestion] = useState(false);
   const [density,      setDensity]     = useState<Density>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(DENSITY_KEY);
@@ -639,47 +658,29 @@ export function ControlFlotaPanel() {
     : 'repeat(4, 1fr)';
 
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: '#0f172a', padding: '16px 16px 32px' }}>
+    <div className="flex-1 overflow-y-auto" style={{ background: 'white', padding: '16px 16px 32px' }}>
 
       {/* Top bar */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fecha</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fecha</span>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
             style={{ ...inputStyle, width: 'auto', padding: '7px 12px' }} />
         </div>
         {modifiedCount > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(249,115,22,0.12)', borderRadius: 20, padding: '4px 12px', border: '1px solid rgba(249,115,22,0.30)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(249,115,22,0.10)', borderRadius: 20, padding: '4px 12px', border: '1px solid rgba(249,115,22,0.25)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F97316', display: 'inline-block' }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#FB923C' }}>{modifiedCount} modificada{modifiedCount !== 1 ? 's' : ''}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#EA580C' }}>{modifiedCount} modificada{modifiedCount !== 1 ? 's' : ''}</span>
           </div>
         )}
 
         {/* Density selector */}
         <DensityToggle value={density} onChange={handleDensity} />
-
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setShowGestion(v => !v)}
-            style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Users size={14} />
-            Gestionar
-            {showGestion ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </button>
-        </div>
       </div>
-
-      {/* Gestión (collapsible) — Pionetas + Conductores */}
-      {showGestion && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 4 }}>
-          <GestionarPionetas pionetas={pionetas} onRefresh={loadPionetas} />
-          <GestionarConductores conductores={conductores} onRefresh={loadConductores} />
-        </div>
-      )}
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#64748B', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontSize: 14 }}>
           Cargando rutas…
         </div>
       )}
@@ -690,15 +691,15 @@ export function ControlFlotaPanel() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
             <div style={{
               width: 68, height: 68, borderRadius: 20,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(0,0,0,0.03)',
+              border: '1px solid rgba(0,0,0,0.08)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Truck size={30} color="rgba(148,163,184,0.38)" strokeWidth={1.4} />
+              <Truck size={30} color="rgba(0,0,0,0.18)" strokeWidth={1.4} />
             </div>
           </div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#E2E8F0', marginBottom: 6 }}>Sin rutas para esta fecha</div>
-          <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#111827', marginBottom: 6 }}>Sin rutas para esta fecha</div>
+          <div style={{ fontSize: 13, color: '#9CA3AF', lineHeight: 1.5 }}>No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
         </div>
       )}
 
@@ -719,6 +720,34 @@ export function ControlFlotaPanel() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Catálogo de Personal (conductores + pionetas) ─────────────────────────────
+export function PersonalCatalogPanel() {
+  const [pionetas,    setPionetas]    = useState<Pioneta[]>([]);
+  const [conductores, setConductores] = useState<Conductor[]>([]);
+
+  const loadPionetas = useCallback(async () => {
+    const res  = await fetch('/api/pionetas');
+    const json = await res.json() as { data?: Pioneta[] };
+    setPionetas(json.data ?? []);
+  }, []);
+
+  const loadConductores = useCallback(async () => {
+    const res  = await fetch('/api/conductores');
+    const json = await res.json() as { conductores?: Conductor[] };
+    setConductores(json.conductores ?? []);
+  }, []);
+
+  useEffect(() => { loadPionetas();    }, [loadPionetas]);
+  useEffect(() => { loadConductores(); }, [loadConductores]);
+
+  return (
+    <div style={{ background: 'white', padding: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+      <GestionarConductores conductores={conductores} onRefresh={loadConductores} />
+      <GestionarPionetas    pionetas={pionetas}       onRefresh={loadPionetas}    />
     </div>
   );
 }

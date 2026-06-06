@@ -1,11 +1,11 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Target, Calculator, PenLine, Truck, Users } from 'lucide-react';
+import { Target, Calculator, PenLine, Truck, Users, ClipboardList } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
 import FlotaGrid      from './FlotaGrid';
-import { ControlFlotaPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
+import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import { getDia, formatCod } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -164,7 +164,7 @@ export default function InputSection({
 }: Props) {
   const dia = getDia(fecha);
   const [sidebarFilter, setSidebarFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
-  const [flotaSubTab, setFlotaSubTab]     = useState<'personal' | 'vehiculos'>('personal');
+  const [flotaSubTab, setFlotaSubTab]     = useState<'personal' | 'gestionar' | 'vehiculos'>('gestionar');
 
   /* ── Resizable sidebar ── */
   const [leftWidth, setLeftWidth] = useState<number>(() => {
@@ -335,19 +335,26 @@ export default function InputSection({
                 <div className="h-full flex flex-col overflow-hidden">
                   {/* Sub-tab bar */}
                   <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
-                    <button onClick={() => setFlotaSubTab('personal')}
-                      className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
-                        ${flotaSubTab === 'personal' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
-                      <Users size={13} strokeWidth={2} /><span>Personal</span>
-                    </button>
                     <button onClick={() => setFlotaSubTab('vehiculos')}
                       className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
                         ${flotaSubTab === 'vehiculos' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
                       <Truck size={13} strokeWidth={2} /><span>Vehículos</span>
                     </button>
+                    <button onClick={() => setFlotaSubTab('personal')}
+                      className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
+                        ${flotaSubTab === 'personal' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+                      <Users size={13} strokeWidth={2} /><span>Personal</span>
+                    </button>
+                    <button onClick={() => setFlotaSubTab('gestionar')}
+                      className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
+                        ${flotaSubTab === 'gestionar' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+                      <ClipboardList size={13} strokeWidth={2} /><span>Gestionar</span>
+                    </button>
                   </div>
                   <div className="flex-1 overflow-y-auto">
                     {flotaSubTab === 'personal' ? (
+                      <PersonalCatalogPanel />
+                    ) : flotaSubTab === 'gestionar' ? (
                       <ControlFlotaPanel />
                     ) : (
                       <div className="px-3 py-3">
@@ -586,19 +593,26 @@ export default function InputSection({
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Sub-tab bar */}
             <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
-              <button onClick={() => setFlotaSubTab('personal')}
-                className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
-                  ${flotaSubTab === 'personal' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
-                <Users size={13} strokeWidth={2} /><span>Personal</span>
-              </button>
               <button onClick={() => setFlotaSubTab('vehiculos')}
                 className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
                   ${flotaSubTab === 'vehiculos' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
                 <Truck size={13} strokeWidth={2} /><span>Vehículos</span>
               </button>
+              <button onClick={() => setFlotaSubTab('personal')}
+                className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
+                  ${flotaSubTab === 'personal' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+                <Users size={13} strokeWidth={2} /><span>Personal</span>
+              </button>
+              <button onClick={() => setFlotaSubTab('gestionar')}
+                className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
+                  ${flotaSubTab === 'gestionar' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+                <ClipboardList size={13} strokeWidth={2} /><span>Gestionar</span>
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto">
               {flotaSubTab === 'personal' ? (
+                <PersonalCatalogPanel />
+              ) : flotaSubTab === 'gestionar' ? (
                 <ControlFlotaPanel />
               ) : (
                 <div className="px-3 py-3">
