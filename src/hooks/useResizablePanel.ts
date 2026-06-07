@@ -7,6 +7,8 @@ interface UseResizablePanelOpts {
   max?: number;
   /** Breakpoint (px) above which the panel is shown. Default 1024. */
   desktopBreakpoint?: number;
+  /** When true, dragging right shrinks the panel (right-side dividers). */
+  inverted?: boolean;
 }
 
 interface UseResizablePanelReturn {
@@ -27,6 +29,7 @@ export function useResizablePanel({
   min = 180,
   max = 480,
   desktopBreakpoint = 1024,
+  inverted = false,
 }: UseResizablePanelOpts): UseResizablePanelReturn {
   const [width, setWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return defaultWidth;
@@ -47,7 +50,8 @@ export function useResizablePanel({
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isResizingRef.current) return;
-      const next = Math.min(max, Math.max(min, dragStartWidthRef.current + e.clientX - dragStartXRef.current));
+      const delta = e.clientX - dragStartXRef.current;
+      const next = Math.min(max, Math.max(min, dragStartWidthRef.current + (inverted ? -delta : delta)));
       setWidth(next);
     };
     const onMouseUp = () => {
@@ -59,7 +63,8 @@ export function useResizablePanel({
     };
     const onTouchMove = (e: TouchEvent) => {
       if (!isResizingRef.current) return;
-      const next = Math.min(max, Math.max(min, dragStartWidthRef.current + e.touches[0].clientX - dragStartXRef.current));
+      const delta = e.touches[0].clientX - dragStartXRef.current;
+      const next = Math.min(max, Math.max(min, dragStartWidthRef.current + (inverted ? -delta : delta)));
       setWidth(next);
     };
     const onTouchEnd = () => {
@@ -79,7 +84,7 @@ export function useResizablePanel({
       document.removeEventListener('touchmove',  onTouchMove);
       document.removeEventListener('touchend',   onTouchEnd);
     };
-  }, [storageKey, min, max, desktopBreakpoint]);
+  }, [storageKey, min, max, desktopBreakpoint, inverted]);
 
   function startResize(clientX: number) {
     isResizingRef.current     = true;

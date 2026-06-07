@@ -16,6 +16,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { processPdf } from '../../regiones/utils/pdfUtils';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -300,56 +301,10 @@ export function StepForm() {
   const guideFileRef = useRef<HTMLInputElement>(null);
 
   /* ── Resizable panels (left + right, center takes flex-1) ── */
-  const [leftWidth, setLeftWidth] = useState<number>(() => {
-    if (typeof window === 'undefined') return 320;
-    return parseInt(localStorage.getItem('santiago_left_panel_width') || '320', 10);
-  });
-  const [rightWidth, setRightWidth] = useState<number>(() => {
-    if (typeof window === 'undefined') return 300;
-    return parseInt(localStorage.getItem('santiago_right_panel_width') || '300', 10);
-  });
-  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.innerWidth >= 1024
-  );
-  const resizingPanelRef = useRef<'left' | 'right' | null>(null);
-  const dragStartXRef    = useRef(0);
-  const dragStartWRef    = useRef(0);
-  useEffect(() => {
-    const onMove = (x: number) => {
-      if (!resizingPanelRef.current) return;
-      const delta = x - dragStartXRef.current;
-      if (resizingPanelRef.current === 'left') {
-        setLeftWidth(Math.min(520, Math.max(200, dragStartWRef.current + delta)));
-      } else {
-        // Right divider: moving right shrinks the right panel
-        setRightWidth(Math.min(520, Math.max(200, dragStartWRef.current - delta)));
-      }
-    };
-    const onUp = () => {
-      if (!resizingPanelRef.current) return;
-      const panel = resizingPanelRef.current;
-      resizingPanelRef.current = null;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      if (panel === 'left')  setLeftWidth(w  => { localStorage.setItem('santiago_left_panel_width',  String(w)); return w; });
-      if (panel === 'right') setRightWidth(w => { localStorage.setItem('santiago_right_panel_width', String(w)); return w; });
-    };
-    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
-    const onTouchMove = (e: TouchEvent) => onMove(e.touches[0].clientX);
-    const onResize    = () => setIsDesktop(window.innerWidth >= 1024);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup',   onUp);
-    document.addEventListener('touchmove', onTouchMove, { passive: true });
-    document.addEventListener('touchend',  onUp);
-    window.addEventListener('resize', onResize);
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup',   onUp);
-      document.removeEventListener('touchmove', onTouchMove);
-      document.removeEventListener('touchend',  onUp);
-      window.removeEventListener('resize', onResize);
-    };
-  }, []);
+  const { width: leftWidth, isDesktop, handleMouseDown: handleLeftMouseDown, handleTouchStart: handleLeftTouchStart } =
+    useResizablePanel({ storageKey: 'santiago_left_panel_width',  defaultWidth: 320, min: 200, max: 520 });
+  const { width: rightWidth, handleMouseDown: handleRightMouseDown, handleTouchStart: handleRightTouchStart } =
+    useResizablePanel({ storageKey: 'santiago_right_panel_width', defaultWidth: 300, min: 200, max: 520, inverted: true });
 
   /* Calendar from Sheets */
   const [sheetsTodayGrouped, setSheetsTodayGrouped] = useState<{ rm: string[]; costa: string[] }>(getCalendarioSantiagoInicialHoy);
@@ -2161,8 +2116,8 @@ export function StepForm() {
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
           style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
-          onMouseDown={e => { resizingPanelRef.current = 'left'; dragStartXRef.current = e.clientX; dragStartWRef.current = leftWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
-          onTouchStart={e => { resizingPanelRef.current = 'left'; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = leftWidth; }}
+          onMouseDown={handleLeftMouseDown}
+          onTouchStart={handleLeftTouchStart}
         >
           <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -2190,8 +2145,8 @@ export function StepForm() {
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
           style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
-          onMouseDown={e => { resizingPanelRef.current = 'right'; dragStartXRef.current = e.clientX; dragStartWRef.current = rightWidth; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); }}
-          onTouchStart={e => { resizingPanelRef.current = 'right'; dragStartXRef.current = e.touches[0].clientX; dragStartWRef.current = rightWidth; }}
+          onMouseDown={handleRightMouseDown}
+          onTouchStart={handleRightTouchStart}
         >
           <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
