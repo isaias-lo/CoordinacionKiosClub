@@ -6,12 +6,13 @@ import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
 import { ProfilePill } from '@/components/ProfilePill';
 import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
-import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
+import { getOdooConfig } from '@/features/auditoria/utils/odooApi'; // deprecated — config now server-side
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { supabase } from '@/lib/supabase';
 import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
 
@@ -99,16 +100,8 @@ export function PickingScreen() {
   const [movNuevos, setMovNuevos] = useState(0);  // movimientos Odoo nuevos/manuales sin atender (badge)
 
   // Resizable left panel
-  const [leftWidth, setLeftWidth] = useState<number>(() => {
-    if (typeof window === 'undefined') return 288;
-    return Number(localStorage.getItem('picking_left_panel_width') ?? '288');
-  });
-  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.innerWidth >= 1024
-  );
-  const isResizingRef     = useRef(false);
-  const dragStartXRef     = useRef(0);
-  const dragStartWidthRef = useRef(0);
+  const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =
+    useResizablePanel({ storageKey: 'picking_left_panel_width', defaultWidth: 288, min: 180, max: 480 });
 
   // Online/offline detection + flush de cola offline al reconectar
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -531,46 +524,7 @@ export function PickingScreen() {
     ]);
   }, [nameFor]);
 
-  // ── Resizable divider: mouse/touch listeners + window resize ─────────────
-  useEffect(() => {
-    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
-    window.addEventListener('resize', checkDesktop);
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const next = Math.min(480, Math.max(180, dragStartWidthRef.current + e.clientX - dragStartXRef.current));
-      setLeftWidth(next);
-    };
-    const onMouseUp = () => {
-      if (!isResizingRef.current) return;
-      isResizingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setLeftWidth(w => { localStorage.setItem('picking_left_panel_width', String(w)); return w; });
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isResizingRef.current) return;
-      const next = Math.min(480, Math.max(180, dragStartWidthRef.current + e.touches[0].clientX - dragStartXRef.current));
-      setLeftWidth(next);
-    };
-    const onTouchEnd = () => {
-      if (!isResizingRef.current) return;
-      isResizingRef.current = false;
-      setLeftWidth(w => { localStorage.setItem('picking_left_panel_width', String(w)); return w; });
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup',   onMouseUp);
-    document.addEventListener('touchmove', onTouchMove, { passive: true });
-    document.addEventListener('touchend',  onTouchEnd);
-    return () => {
-      window.removeEventListener('resize', checkDesktop);
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup',   onMouseUp);
-      document.removeEventListener('touchmove', onTouchMove);
-      document.removeEventListener('touchend',  onTouchEnd);
-    };
-  }, []);
+  // Resizable divider logic is handled by useResizablePanel hook above.
 
   useEffect(() => {
     setStoresLoading(true);
@@ -1030,19 +984,8 @@ export function PickingScreen() {
           <div
             className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
             style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
-            onMouseDown={e => {
-              isResizingRef.current  = true;
-              dragStartXRef.current  = e.clientX;
-              dragStartWidthRef.current = leftWidth;
-              document.body.style.cursor = 'col-resize';
-              document.body.style.userSelect = 'none';
-              e.preventDefault();
-            }}
-            onTouchStart={e => {
-              isResizingRef.current  = true;
-              dragStartXRef.current  = e.touches[0].clientX;
-              dragStartWidthRef.current = leftWidth;
-            }}
+            onMouseDown={handlePanelMouseDown}
+            onTouchStart={handlePanelTouchStart}
           >
             <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
             <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">

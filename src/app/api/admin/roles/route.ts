@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdmin } from '@/lib/apiAuth';
+import { parseBody, CreateRoleSchema, UpdateRoleSchema } from '@/lib/schemas';
 
 const URL_  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SRK   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -23,11 +24,9 @@ export async function POST(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
-  const { id, label, color, home_path, allowed_paths } = await request.json() as {
-    id: string; label: string; color?: string; home_path?: string; allowed_paths?: string[]; permissions?: Record<string, string>;
-  };
-  if (!id || !label)
-    return NextResponse.json({ error: 'ID y etiqueta son requeridos' }, { status: 400 });
+  const parsed = parseBody(CreateRoleSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const { id, label, color, home_path, allowed_paths } = parsed.data;
 
   const sb = adminSb();
   const { data, error } = await sb.from('roles').insert({
@@ -47,11 +46,9 @@ export async function PATCH(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
-  const body = await request.json() as {
-    id: string; label?: string; color?: string; home_path?: string; allowed_paths?: string[]; permissions?: Record<string, string>;
-  };
-  if (!body.id)
-    return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+  const parsed = parseBody(UpdateRoleSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const updates: Record<string, unknown> = {};
   if (body.label         !== undefined) updates.label         = body.label;

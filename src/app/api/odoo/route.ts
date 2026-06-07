@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 
 // Credentials are read from server-side env vars only — never from the request body.
 // Prefer ODOO_* (no NEXT_PUBLIC_) so the API key is not compiled into the browser bundle.
@@ -55,6 +56,9 @@ async function odooRpc(baseUrl: string, params: OdooRpcParams): Promise<unknown>
 }
 
 export async function POST(req: NextRequest) {
+  if (!checkRateLimit(`odoo:${getClientIp(req)}`, { max: 30, windowMs: 60_000 }))
+    return tooManyRequests();
+
   try {
     const body = (await req.json()) as {
       action: string;
