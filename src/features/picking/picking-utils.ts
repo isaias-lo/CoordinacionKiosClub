@@ -49,9 +49,10 @@ export function getStoreGroup(store: TodayStore): StoreGroupKey {
 
 // ─── Odoo origin parsing ──────────────────────────────────────────────────────
 const ABAST_KEYWORDS = [
-  { kw: 'Abastecimiento Comida', cat: 'Comida' },
-  { kw: 'Abastecimiento Aseo',   cat: 'Aseo' },
-  { kw: 'Abastecimiento Hogar',  cat: 'Hogar' },
+  { kw: 'Abastecimiento Comida',     cat: 'Comida'     },
+  { kw: 'Abastecimiento Aseo',       cat: 'Aseo'       },
+  { kw: 'Abastecimiento Hogar',      cat: 'Hogar'      },
+  { kw: 'Abastecimiento Chocolate',  cat: 'Chocolate'  },
 ] as const;
 
 export { ABAST_KEYWORDS };

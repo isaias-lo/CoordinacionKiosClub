@@ -60,7 +60,7 @@ function saveSession(data: PickingSession): void {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-export function PickingScreen() {
+export function PickingScreen({ mode = 'picking' }: { mode?: 'picking' | 'chocolates' }) {
   const router = useRouter();
   const { profile } = useAuth();
   const { showToast } = useApp();
@@ -169,30 +169,36 @@ export function PickingScreen() {
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
 
+  // Filter slots by mode: chocolates shows only CH, picking shows everything else
+  const modeFilteredSlots = useMemo(() =>
+    palletSlots.filter(s => mode === 'chocolates' ? (s.tipo || 'P') === 'CH' : (s.tipo || 'P') !== 'CH'),
+    [palletSlots, mode]
+  );
+
   // Derived: count per state_key
   const pickerPallets = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const s of palletSlots) map[s.state_key] = (map[s.state_key] ?? 0) + 1;
+    for (const s of modeFilteredSlots) map[s.state_key] = (map[s.state_key] ?? 0) + 1;
     return map;
-  }, [palletSlots]);
+  }, [modeFilteredSlots]);
 
   // Derived: count per (state_key, tipo) — feeds the 3 independent counters
   const palletsByTipoAndStateKey = useMemo(() => {
     const result: Record<string, Record<string, number>> = {};
-    for (const s of palletSlots) {
+    for (const s of modeFilteredSlots) {
       const t = s.tipo || 'P';
       if (!result[s.state_key]) result[s.state_key] = {};
       result[s.state_key][t] = (result[s.state_key][t] ?? 0) + 1;
     }
     return result;
-  }, [palletSlots]);
+  }, [modeFilteredSlots]);
 
   // Derived: pallet_num for each slot = its rank (1-based) within (store_cod, tipo) independently.
   // P slots count P-1, P-2...; C slots count C-1, C-2...; B slots count B-1, B-2...
   const palletNumsBySlotId = useMemo(() => {
     const result: Record<number, number> = {};
     const byStoreTipo: Record<string, PalletSlot[]> = {};
-    for (const s of palletSlots) {
+    for (const s of modeFilteredSlots) {
       const key = `${s.store_cod}::${s.tipo || 'P'}`;
       if (!byStoreTipo[key]) byStoreTipo[key] = [];
       byStoreTipo[key].push(s);
@@ -201,12 +207,12 @@ export function PickingScreen() {
       slots.forEach((s, idx) => { result[s.id] = idx + 1; });
     }
     return result;
-  }, [palletSlots]);
+  }, [modeFilteredSlots]);
 
   // Derived: sorted list of pallet numbers per state_key
   const assignedNumsByStateKey = useMemo(() => {
     const result: Record<string, number[]> = {};
-    for (const s of palletSlots) {
+    for (const s of modeFilteredSlots) {
       const num = palletNumsBySlotId[s.id];
       if (num !== undefined) {
         if (!result[s.state_key]) result[s.state_key] = [];
@@ -215,12 +221,12 @@ export function PickingScreen() {
     }
     for (const key of Object.keys(result)) result[key].sort((a, b) => a - b);
     return result;
-  }, [palletSlots, palletNumsBySlotId]);
+  }, [modeFilteredSlots, palletNumsBySlotId]);
 
   // Slots per state_key sorted by pallet number (same order as assignedNumsByStateKey)
   const slotsByStateKey = useMemo(() => {
     const result: Record<string, PalletSlot[]> = {};
-    for (const s of palletSlots) {
+    for (const s of modeFilteredSlots) {
       if (!result[s.state_key]) result[s.state_key] = [];
       result[s.state_key].push(s);
     }
@@ -228,7 +234,7 @@ export function PickingScreen() {
       result[key].sort((a, b) => (palletNumsBySlotId[a.id] ?? 0) - (palletNumsBySlotId[b.id] ?? 0));
     }
     return result;
-  }, [palletSlots, palletNumsBySlotId]);
+  }, [modeFilteredSlots, palletNumsBySlotId]);
 
   const [errorCods, setErrorCods]         = useState<string[]>([]);
 
@@ -393,6 +399,35 @@ export function PickingScreen() {
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
       // Sin red: encolar para reintentar al reconectar
+      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
+    }
+  }, [pickingFetch]);
+
+  const addPalletSlotWithPeso = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, refs: string, peso: number) => {
+    const date = todayISO();
+    const tipo = 'CH';
+    const contenido = 'chocolate';
+    try {
+      const res = await pickingFetch('/api/picking-pallets', {
+        method: 'POST',
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs, peso_kg: peso }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        console.error('[picking] addPalletSlotWithPeso error', res.status, err.error ?? '');
+        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
+        return;
+      }
+      const json = await res.json() as { data?: PalletSlot };
+      if (json.data) {
+        setPalletSlots(prev => [...prev, json.data!]);
+        pickingFetch('/api/despacho-picking', {
+          method: 'POST',
+          body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date }),
+        }).catch(err => console.error('[picking] despacho-picking error', err));
+      }
+    } catch (e) {
+      console.error('[picking] addPalletSlotWithPeso network error', e);
       enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
     }
   }, [pickingFetch]);
@@ -650,7 +685,11 @@ export function PickingScreen() {
         .map(p => {
           const { categories, storeCode, originDate } = parseOrigin(p.origin);
           return { ...p, categories, storeCodeFromOrigin: storeCode, originDate };
-        });
+        })
+        .filter(p => mode === 'chocolates'
+          ? p.categories.includes('Chocolate')
+          : !p.categories.includes('Chocolate') || p.categories.length > 1
+        );
       setOpsMap(prev => ({ ...prev, [cod]: parsed }));
       setErrorCods(prev => prev.filter(c => c !== cod));
       setLastRefresh(new Date());
@@ -1289,6 +1328,7 @@ export function PickingScreen() {
                               group={group}
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
+                              mode={mode}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
@@ -1305,6 +1345,11 @@ export function PickingScreen() {
                                 } else if (delta < 0) {
                                   for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo);
                                 }
+                              }}
+                              onAddChSlot={(peso) => {
+                                const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+                                const groupRefs = group.operations.map(o => o.name).join('+');
+                                void addPalletSlotWithPeso(group.stateKey, cod, label, groupRefs, peso);
                               }}
                               onRefreshOp={(op) => void refreshOp(op, cod)}
                               onPrint={() => printGroupLabels(group)}

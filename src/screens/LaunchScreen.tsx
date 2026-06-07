@@ -399,14 +399,14 @@ export function LaunchScreen() {
         ) : isSupervisorPick ? (
           <div className="ls-cards-outer w-full max-w-sm mb-8">
             <button
-              onClick={() => router.push('/picking')}
+              onClick={() => router.push('/abastecimiento')}
               className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
               style={{ height: 140, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
               <div className="ls-card-icon mb-2.5 flex">
                 <Layers size={28} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
               </div>
-              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
-              <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
+              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Abastecimiento</div>
+              <div className="text-xs text-white/60 mt-1">Picking · Chocolates</div>
             </button>
           </div>
         ) : (() => {
@@ -442,9 +442,9 @@ export function LaunchScreen() {
               bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.40)', shadow: 'rgba(16,185,129,0.18)',
               cardClass: 'ls-card-1',
             } : null,
-            canSee('/picking') ? {
-              key: 'picking', path: '/picking',
-              label: 'Picking', sub: 'Supervisión de operaciones',
+            (canSee('/picking') || canSee('/abastecimiento')) ? {
+              key: 'abastecimiento', path: '/abastecimiento',
+              label: 'Abastecimiento', sub: 'Picking · Chocolates',
               Icon: Layers,    iconColor: 'rgba(234,179,8,0.9)',
               bg: 'rgba(234,179,8,0.14)', border: 'rgba(234,179,8,0.50)', shadow: 'rgba(234,179,8,0.25)',
               cardClass: 'ls-card-2',

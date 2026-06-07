@@ -26,6 +26,7 @@ interface Props {
   palletsByTipo: Record<string, number>;
   onNameChange: (v: string) => void;
   onTipoPalletsChange: (tipo: PickerType, n: number) => void;
+  onAddChSlot?: (peso: number) => void;
   onRefreshOp: (op: PickingOperation) => void;
   onPrint: () => void;
   refreshingId: number | null;
@@ -36,15 +37,16 @@ interface Props {
   onPrintSelected: (palletNums: Set<number>) => void;
   slots: PalletSlot[];
   stickerBelow?: boolean;
-  lastPrint?: PrintRecord;   // último registro de impresión para mostrar advertencia de reimpresión
-  myName?: string;           // nombre del supervisor actual para detectar impresiones propias vs ajenas
+  lastPrint?: PrintRecord;
+  myName?: string;
+  mode?: 'picking' | 'chocolates';
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
   group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange,
-  onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
+  onAddChSlot, onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
-  lastPrint, myName,
+  lastPrint, myName, mode = 'picking',
 }: Props) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -54,8 +56,9 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
 
   const [selectedIndices, setSelectedIndices]             = useState<Set<number>>(new Set());
-  // Confirm inline al decrementar un pallet que ya fue impreso
   const [pendingDecrementTipo, setPendingDecrementTipo]   = useState<PickerType | null>(null);
+  const [pendingChAdd, setPendingChAdd]                   = useState(false);
+  const [chPesoInput, setChPesoInput]                     = useState('');
 
   const toggleIndex = (i: number) => {
     setSelectedIndices(prev => {
@@ -157,34 +160,37 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
             )}
           </div>
 
-          {/* Contadores P / C / B / CH */}
+          {/* Contadores — modo picking: P/C/B · modo chocolates: solo CH */}
           <div>
             <label className="text-[11px] font-medium text-slate-400 block mb-2">Unidades a despachar</label>
             <div className="flex gap-2">
-              {([
-                { tipo: 'P'  as PickerType, label: 'Pallets'       },
-                { tipo: 'C'  as PickerType, label: 'Contenedores'  },
-                { tipo: 'B'  as PickerType, label: 'Bultos'        },
-                { tipo: 'CH' as PickerType, label: 'Chocolates'    },
-              ]).map(({ tipo, label }) => {
+              {(mode === 'chocolates'
+                ? [{ tipo: 'CH' as PickerType, label: 'Chocolates' }]
+                : [
+                    { tipo: 'P'  as PickerType, label: 'Pallets'      },
+                    { tipo: 'C'  as PickerType, label: 'Contenedores' },
+                    { tipo: 'B'  as PickerType, label: 'Bultos'       },
+                  ]
+              ).map(({ tipo, label }) => {
                 const count  = palletsByTipo[tipo] ?? 0;
                 const active = count > 0;
+                const isCh   = tipo === 'CH';
+                const accent = isCh ? '#92400E' : '#1E40AF';
                 return (
                   <div key={tipo}
                     className="flex-1 flex flex-col items-center gap-2 py-2.5 px-1.5 rounded border transition-all"
                     style={{
-                      borderColor: active ? '#1E40AF' : '#E2E8F0',
+                      borderColor: active ? accent : '#E2E8F0',
                       background: '#fff',
                     }}>
                     <div className="text-center leading-none">
-                      <div className="text-[14px] font-extrabold" style={{ color: active ? '#1E40AF' : '#64748B' }}>{tipo}</div>
+                      <div className="text-[14px] font-extrabold" style={{ color: active ? accent : '#64748B' }}>{tipo}</div>
                       <div className="text-[9px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
                       <button
                         onClick={() => {
                           if (isPrinted && count > 0) {
-                            // Si ya fue impreso, pedir confirmación antes de decrementar
                             setPendingDecrementTipo(tipo);
                           } else {
                             onTipoPalletsChange(tipo, Math.max(0, count - 1));
@@ -194,14 +200,67 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                         style={{ borderColor: '#E2E8F0', color: '#94A3B8', background: '#F8FAFC' }}>−</button>
                       <span className="w-8 text-center text-[22px] font-bold leading-none"
                         style={{ color: active ? '#1E293B' : '#CBD5E1' }}>{count}</span>
-                      <button onClick={() => onTipoPalletsChange(tipo, count + 1)}
+                      <button
+                        onClick={() => {
+                          if (isCh && mode === 'chocolates') {
+                            setPendingChAdd(true);
+                            setChPesoInput('');
+                          } else {
+                            onTipoPalletsChange(tipo, count + 1);
+                          }
+                        }}
                         className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer"
-                        style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>+</button>
+                        style={{ background: accent, color: '#fff', border: 'none' }}>+</button>
                     </div>
                   </div>
                 );
               })}
             </div>
+
+            {/* Peso input — aparece al agregar bulto CH en modo chocolates */}
+            {pendingChAdd && (
+              <div className="mt-3 rounded-xl px-3 py-3 flex flex-col gap-2"
+                style={{ background: '#FFF7ED', border: '1px solid rgba(146,64,14,0.3)' }}>
+                <div className="text-[12px] font-bold" style={{ color: '#92400E' }}>
+                  Peso del bulto chocolate (kg)
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min="0" step="0.1"
+                    value={chPesoInput}
+                    onChange={e => setChPesoInput(e.target.value)}
+                    placeholder="ej. 12.5"
+                    className="flex-1 border rounded-lg px-3 py-2 text-[14px] outline-none"
+                    style={{ borderColor: 'rgba(146,64,14,0.4)', color: '#1C1917' }}
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const peso = parseFloat(chPesoInput);
+                        if (peso > 0) { onAddChSlot?.(peso); setPendingChAdd(false); setChPesoInput(''); }
+                      }
+                      if (e.key === 'Escape') { setPendingChAdd(false); setChPesoInput(''); }
+                    }}
+                  />
+                  <button
+                    onClick={() => { setPendingChAdd(false); setChPesoInput(''); }}
+                    className="px-3 py-2 rounded-lg text-[12px] cursor-pointer border"
+                    style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                    Cancelar
+                  </button>
+                  <button
+                    disabled={!chPesoInput || parseFloat(chPesoInput) <= 0}
+                    onClick={() => {
+                      const peso = parseFloat(chPesoInput);
+                      if (peso > 0) { onAddChSlot?.(peso); setPendingChAdd(false); setChPesoInput(''); }
+                    }}
+                    className="px-3 py-2 rounded-lg text-[12px] font-bold cursor-pointer disabled:opacity-40"
+                    style={{ background: '#92400E', color: '#fff', border: 'none' }}>
+                    Agregar
+                  </button>
+                </div>
+                <div className="text-[10px]" style={{ color: '#A16207' }}>Presiona Enter para confirmar · Esc para cancelar</div>
+              </div>
+            )}
 
             {/* Confirm inline — aparece cuando se intenta decrementar un pallet ya impreso */}
             {pendingDecrementTipo && (
