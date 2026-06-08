@@ -14,7 +14,7 @@ function MobileMenuButton() {
       style={{ background: 'rgba(17,30,56,0.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.12)' }}
       aria-label="Abrir menú"
     >
-      <PanelLeft size={16} color="white" strokeWidth={1.8} />
+      <PanelLeft size={16} color="white" strokeWidth={1.8} aria-hidden="true" />
     </button>
   );
 }
@@ -29,6 +29,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         within this area instead of the full viewport.
       */}
       <main
+        id="main-content"
         className="flex-1 min-w-0 overflow-hidden relative bg-kbg"
         style={{ transform: 'translateZ(0)' }}
       >

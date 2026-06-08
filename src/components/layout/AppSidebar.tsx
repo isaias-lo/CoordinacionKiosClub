@@ -67,6 +67,8 @@ function NavItem({
 
   return (
     <Link href={path}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
       title={collapsed ? label : undefined}
       className={[
         'group relative flex items-center gap-2.5 rounded-lg mx-2 transition-all duration-150 select-none',
@@ -78,10 +80,10 @@ function NavItem({
     >
       {/* active bar */}
       {active && (
-        <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-kred" />
+        <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-kred" aria-hidden="true" />
       )}
 
-      <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className="flex-shrink-0" />
+      <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className="flex-shrink-0" aria-hidden="true" />
 
       <AnimatePresence initial={false}>
         {!collapsed && (
@@ -144,6 +146,8 @@ function NavGroup({
       {/* Group header */}
       <button
         onClick={toggle}
+        aria-expanded={open}
+        aria-controls={`nav-group-${group.id}`}
         className="w-full flex items-center gap-2 px-4 py-1.5 mt-2 mb-0.5 cursor-pointer select-none group"
       >
         <span className="text-[10px] font-bold tracking-[0.14em] uppercase text-white/35 group-hover:text-white/55 transition-colors flex-1 text-left">
@@ -151,6 +155,7 @@ function NavGroup({
         </span>
         <ChevronDown
           size={12}
+          aria-hidden="true"
           className={`text-white/25 transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
         />
       </button>
@@ -159,6 +164,7 @@ function NavGroup({
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
+            id={`nav-group-${group.id}`}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -246,12 +252,14 @@ export function AppSidebar() {
 
         <button
           onClick={toggleCollapsed}
+          aria-label={isCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+          aria-expanded={!isCollapsed}
           className="w-7 h-7 rounded-md flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/[0.07] transition-all flex-shrink-0"
           title={isCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
         >
           {isCollapsed
-            ? <ChevronRight size={14} strokeWidth={2} />
-            : <ChevronLeft  size={14} strokeWidth={2} />
+            ? <ChevronRight size={14} strokeWidth={2} aria-hidden="true" />
+            : <ChevronLeft  size={14} strokeWidth={2} aria-hidden="true" />
           }
         </button>
       </div>
@@ -265,6 +273,7 @@ export function AppSidebar() {
       <div className="px-2 pb-1">
         <button
           onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+          aria-label="Abrir búsqueda (⌘K)"
           title="Buscar (⌘K)"
           className={[
             'w-full flex items-center rounded-lg transition-all hover:bg-white/[0.06] active:scale-[0.98]',
@@ -290,7 +299,7 @@ export function AppSidebar() {
       </div>
 
       {/* ── Module Groups ── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-1 no-scrollbar">
+      <nav aria-label="Navegación principal" className="flex-1 overflow-y-auto overflow-x-hidden py-1 no-scrollbar">
         {MODULE_GROUPS.map(group => {
           const accessibleRoutes = group.routes.filter(r => canSee(r.path));
           if (!accessibleRoutes.length) return null;
@@ -325,6 +334,9 @@ export function AppSidebar() {
       <div className="flex-shrink-0 p-2 relative">
         <button
           onClick={() => setUserMenuOpen(v => !v)}
+          aria-label={`Menú de usuario: ${profile?.full_name ?? 'Usuario'}`}
+          aria-expanded={userMenuOpen}
+          aria-haspopup="menu"
           className={[
             'w-full flex items-center rounded-lg transition-all hover:bg-white/[0.07] active:scale-[0.98]',
             isCollapsed ? 'justify-center p-2' : 'gap-2.5 px-2.5 py-2',
@@ -410,6 +422,7 @@ export function AppSidebar() {
             className="fixed inset-0 z-[55] lg:hidden"
             style={{ background: 'rgba(0,0,0,0.55)' }}
             onClick={closeMobile}
+            aria-hidden="true"
           />
         )}
       </AnimatePresence>
@@ -418,6 +431,9 @@ export function AppSidebar() {
       <AnimatePresence>
         {isMobileOpen && (
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menú de navegación"
             initial={{ x: -220 }}
             animate={{ x: 0 }}
             exit={{ x: -220 }}

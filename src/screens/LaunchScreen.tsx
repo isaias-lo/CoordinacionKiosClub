@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
@@ -13,11 +13,9 @@ import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Truck, ClipboardList, Layers, Store, ClipboardCheck, Shield,
-  BarChart3, TrendingUp, Package, ArrowRight, Bell,
+  TrendingUp, Package, ArrowRight, Bell,
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-} from 'recharts';
+const DispatchChartLazy = lazy(() => import('../components/charts/DispatchChart'));
 
 /* ── Types ──────────────────────────────────────────────────────── */
 interface QuickTile {
@@ -42,65 +40,8 @@ function greeting(): string {
   return 'Buenas noches';
 }
 
-/* ── Dispatch chart ──────────────────────────────────────────────── */
+/* ── Dispatch chart types ────────────────────────────────────────── */
 interface ChartData { day: string; fullDate: string; pallets: number; bultos: number }
-
-function DispatchChart({ data, loading }: { data: ChartData[]; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-5 h-5 rounded-full border-2 border-knavy/30 border-t-knavy animate-spin" />
-      </div>
-    );
-  }
-
-  if (!data.length) {
-    return (
-      <EmptyState
-        icon={BarChart3}
-        title="Sin datos de despacho"
-        description="Aún no hay registros para los últimos 7 días."
-        variant="inline"
-      />
-    );
-  }
-
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} barGap={4} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
-        <XAxis
-          dataKey="day"
-          tick={{ fontSize: 11, fill: '#8E8E93', fontFamily: 'Barlow, sans-serif' }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fontSize: 11, fill: '#8E8E93', fontFamily: 'Barlow, sans-serif' }}
-          axisLine={false}
-          tickLine={false}
-          allowDecimals={false}
-        />
-        <Tooltip
-          contentStyle={{
-            background: '#fff',
-            border: '1px solid #E8E8ED',
-            borderRadius: 10,
-            fontSize: 12,
-            fontFamily: 'Barlow, sans-serif',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-          }}
-          formatter={(value, name) => [
-            Number(value).toLocaleString('es-CL'),
-            name === 'pallets' ? 'Pallets' : 'Bultos',
-          ]}
-          labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate ?? label}
-        />
-        <Bar dataKey="pallets" fill="#1B2A6B" radius={[4, 4, 0, 0]} maxBarSize={28} />
-        <Bar dataKey="bultos"  fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={28} opacity={0.7} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
 
 /* ── Main Dashboard ──────────────────────────────────────────────── */
 export function LaunchScreen() {
@@ -327,7 +268,9 @@ export function LaunchScreen() {
               </div>
             </div>
             <div style={{ height: 180 }}>
-              <DispatchChart data={chartData} loading={statsLoading} />
+              <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="w-5 h-5 rounded-full border-2 border-knavy/30 border-t-knavy animate-spin" /></div>}>
+                <DispatchChartLazy data={chartData} loading={statsLoading} />
+              </Suspense>
             </div>
           </div>
 

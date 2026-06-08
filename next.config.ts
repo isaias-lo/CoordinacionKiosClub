@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
@@ -29,4 +30,19 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Only activate Sentry when DSN is present
+  silent: !process.env.NEXT_PUBLIC_SENTRY_DSN,
+  disableLogger: true,
+
+  // Don't widen the bundle — only instrument when DSN is set
+  widenClientFileUpload: false,
+
+  // Source maps upload (requires SENTRY_AUTH_TOKEN + SENTRY_ORG + SENTRY_PROJECT)
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+
+  // Automatically instrument Next.js data fetching methods
+  autoInstrumentServerFunctions: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+  autoInstrumentMiddleware: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+  autoInstrumentAppDirectory: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+});
