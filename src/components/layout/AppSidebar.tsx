@@ -43,13 +43,6 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/picking':                 PackageCheck,
 };
 
-const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {
-  despacho:         { Icon: Truck,         color: '#3B82F6' },
-  'control-interno':{ Icon: Shield,        color: '#10B981' },
-  auditoria:        { Icon: ClipboardCheck,color: '#9333EA' },
-  picking:          { Icon: PackageCheck,  color: '#F59E0B' },
-};
-
 /* ── Helpers ────────────────────────────────────────────────────── */
 function isActive(pathname: string | null, path: string) {
   if (!pathname) return false;
@@ -110,8 +103,6 @@ function NavGroup({
   collapsed: boolean;
   routes: { path: string; label: string }[];
 }) {
-  const pathname  = usePathname() as string | null;
-  const anyActive = routes.some(r => isActive(pathname, r.path));
   const [open, setOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     const stored = localStorage.getItem(`sg_${group.id}`);
@@ -126,17 +117,13 @@ function NavGroup({
     });
   }, [group.id]);
 
-  const { Icon, color } = GROUP_META[group.id] ?? { Icon: LayoutDashboard, color: '#6B7280' };
-
   if (collapsed) {
+    // En modo colapsado muestra las rutas individuales como iconos con tooltip nativo
     return (
-      <div className="mx-2 my-0.5" title={group.label}>
-        <div className={[
-          'flex items-center justify-center rounded-lg py-2.5 transition-all',
-          anyActive ? 'text-white' : 'text-white/40 hover:text-white/70',
-        ].join(' ')}>
-          <Icon size={16} strokeWidth={1.8} style={{ color: anyActive ? color : undefined }} />
-        </div>
+      <div className="mb-1">
+        {routes.map(r => (
+          <NavItem key={r.path} path={r.path} label={r.label} collapsed={true} />
+        ))}
       </div>
     );
   }
