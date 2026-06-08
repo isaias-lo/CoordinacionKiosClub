@@ -12,8 +12,6 @@ interface FlotaRow {
   refrigerado: boolean;
   activo: boolean;
   es_tlbd: boolean;
-  chofer: string;
-  telefono: string;
   empresa: string;
 }
 
@@ -27,8 +25,6 @@ function rowToVehiculo(row: FlotaRow): Vehiculo {
     refrigerado:row.refrigerado,
     on:         row.activo,
     tlbd:       row.es_tlbd,
-    ch:         row.chofer ?? '',
-    tel:        row.telefono ?? '',
     empresa:    row.empresa ?? '',
   };
 }
@@ -43,8 +39,6 @@ function vehiculoToRow(v: Vehiculo): Omit<FlotaRow, never> {
     refrigerado: v.refrigerado,
     activo:      v.on,
     es_tlbd:     v.tlbd,
-    chofer:      v.ch ?? '',
-    telefono:    v.tel ?? '',
     empresa:     v.empresa ?? '',
   };
 }
@@ -53,7 +47,7 @@ function vehiculoToRow(v: Vehiculo): Omit<FlotaRow, never> {
 export async function GET() {
   const { data, error } = await supabaseServer()
     .from('flota_vehiculos')
-    .select('patente,capacidad_p,capacidad_b,tipo,porton,refrigerado,activo,es_tlbd,chofer,telefono,empresa')
+    .select('patente,capacidad_p,capacidad_b,tipo,porton,refrigerado,activo,es_tlbd,empresa')
     .eq('activo', true)
     .order('created_at', { ascending: true });
 
@@ -69,12 +63,10 @@ export async function POST(request: NextRequest) {
   if (!body.p) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
 
   const row = vehiculoToRow(body);
-  const { error } = await supabaseServer()
-    .from('flota_vehiculos')
-    .insert(row);
+  const sb = supabaseServer();
+  const { error } = await sb.from('flota_vehiculos').insert(row);
 
   if (error) {
-    // 23505 = unique_violation (patente already exists)
     if (error.code === '23505') {
       return NextResponse.json({ error: 'Ya existe', code: 'DUPLICATE' }, { status: 409 });
     }
@@ -91,27 +83,22 @@ export async function PATCH(request: NextRequest) {
 
   // Build only the fields that were sent
   const updates: Partial<FlotaRow> = {};
-  if (body.c          !== undefined) updates.capacidad_p  = body.c;
-  if (body.b          !== undefined) updates.capacidad_b  = body.b;
-  if (body.t          !== undefined) updates.tipo         = body.t;
-  if (body.porton     !== undefined) updates.porton       = body.porton;
-  if (body.refrigerado !== undefined) updates.refrigerado = body.refrigerado;
-  if (body.on         !== undefined) updates.activo       = body.on;
-  if (body.tlbd       !== undefined) updates.es_tlbd      = body.tlbd;
-  if (body.ch         !== undefined) updates.chofer       = body.ch;
-  if (body.tel        !== undefined) updates.telefono     = body.tel;
-  if (body.empresa    !== undefined) updates.empresa      = body.empresa;
+  if (body.c           !== undefined) updates.capacidad_p  = body.c;
+  if (body.b           !== undefined) updates.capacidad_b  = body.b;
+  if (body.t           !== undefined) updates.tipo         = body.t;
+  if (body.porton      !== undefined) updates.porton       = body.porton;
+  if (body.refrigerado !== undefined) updates.refrigerado  = body.refrigerado;
+  if (body.on          !== undefined) updates.activo       = body.on;
+  if (body.tlbd        !== undefined) updates.es_tlbd      = body.tlbd;
+  if (body.empresa     !== undefined) updates.empresa      = body.empresa;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ ok: true, cambios: 0 });
   }
 
-  const { error } = await supabaseServer()
-    .from('flota_vehiculos')
-    .update(updates)
-    .eq('patente', body.p);
-
+  const { error } = await supabaseServer().from('flota_vehiculos').update(updates).eq('patente', body.p);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
   return NextResponse.json({ ok: true });
 }
 

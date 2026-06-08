@@ -25,6 +25,28 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ data });
 }
 
+export async function PATCH(request: NextRequest) {
+  const body = await request.json() as { id?: string; nombre?: string; telefono?: string; empresa?: string };
+  if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
+
+  const upd: Record<string, unknown> = {};
+  if (body.nombre   !== undefined) upd.nombre   = body.nombre.trim();
+  if (body.telefono !== undefined) upd.telefono = body.telefono || null;
+  if (body.empresa  !== undefined) upd.empresa  = body.empresa  || null;
+
+  if (!Object.keys(upd).length)
+    return NextResponse.json({ error: 'sin campos a actualizar' }, { status: 400 });
+
+  const { data, error } = await supabaseServer()
+    .from('pionetas')
+    .update(upd)
+    .eq('id', body.id)
+    .select('id, nombre, telefono, empresa')
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data });
+}
+
 export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
