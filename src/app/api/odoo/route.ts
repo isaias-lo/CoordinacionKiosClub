@@ -275,7 +275,6 @@ export async function POST(req: NextRequest) {
         ['scheduled_date', '>=', todayStr + ' 00:00:00'],
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
         ['origin', 'not ilike', 'AUDITORIA'],
-        ['origin', 'not ilike', 'congelado'],
       ];
       if (pickingTypeIds.length > 0) {
         domain.push(['picking_type_id', 'in', pickingTypeIds]);

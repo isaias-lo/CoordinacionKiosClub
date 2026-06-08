@@ -22,9 +22,9 @@ interface Props {
   seenIdsRef: RefObject<Set<number>>;
 }
 
-const CATEGORIAS = ['Comida', 'Aseo', 'Hogar', 'Chocolate'] as const;
+const CATEGORIAS = ['Comida', 'Aseo', 'Hogar', 'Chocolates', 'Congelados'] as const;
 const CAT_COLOR: Record<string, string> = {
-  Comida: '#D97706', Aseo: '#0891B2', Hogar: '#7C3AED', Chocolate: '#92400E',
+  Comida: '#D97706', Aseo: '#0891B2', Hogar: '#7C3AED', Chocolates: '#92400E', Congelados: '#6366F1',
 };
 
 export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd, onNewCountChange, seenIdsRef }: Props) {
@@ -40,6 +40,7 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
   const [adding,    setAdding]    = useState<{ p: RawPicking; cod: string; cats: Set<string> } | null>(null);
   const [searchQ,   setSearchQ]   = useState('');
   const [sortBy,    setSortBy]    = useState<'hora' | 'tienda'>('hora');
+  const [catFilter, setCatFilter] = useState<string>('Todas');
 
   const load = useCallback(async () => {
     if (!hasOdoo) { setError('Configura Odoo primero (pestaña Config).'); return; }
@@ -112,6 +113,23 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
   const filteredMovs = useMemo(() => {
     const q = searchQ.trim().toUpperCase();
     let list = movs;
+    // Filtro por categoría
+    if (catFilter !== 'Todas') {
+      if (catFilter === 'Congelados') {
+        list = list.filter(p => p.origin.toUpperCase().includes('CONGELADO'));
+      } else if (catFilter === 'Sin categoría') {
+        list = list.filter(p => {
+          const { categories } = parseOrigin(p.origin);
+          return categories.length === 0 && !p.origin.toUpperCase().includes('CONGELADO');
+        });
+      } else {
+        list = list.filter(p => {
+          const { categories } = parseOrigin(p.origin);
+          return categories.some(c => c === catFilter);
+        });
+      }
+    }
+    // Filtro por búsqueda
     if (q) {
       list = list.filter(p => {
         const { storeCode } = parseOrigin(p.origin);
@@ -131,7 +149,7 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
     }
     // Default 'hora' is already sorted by scheduledDate from Odoo
     return list;
-  }, [movs, searchQ, sortBy]);
+  }, [movs, searchQ, sortBy, catFilter]);
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -198,13 +216,29 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
         </div>
       </div>
 
+      {/* Category filter pills */}
+      <div className="flex-shrink-0 px-3 pb-2 flex items-center gap-1.5 overflow-x-auto">
+        {['Todas', ...CATEGORIAS, 'Sin categoría'].map(cat => (
+          <button key={cat} onClick={() => setCatFilter(cat)}
+            className="px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all border"
+            style={{
+              background: catFilter === cat ? (cat === 'Todas' ? '#1E40AF' : (CAT_COLOR[cat] ?? '#64748B')) : '#fff',
+              color: catFilter === cat ? '#fff' : (CAT_COLOR[cat] ?? '#64748B'),
+              borderColor: catFilter === cat ? 'transparent' : (CAT_COLOR[cat] ?? '#E2E8F0'),
+              opacity: catFilter === cat ? 1 : 0.7,
+            }}>
+            {cat}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-2">
         {loading && movs.length === 0 && <div className="text-center py-10 text-[13px] text-slate-400">Cargando movimientos…</div>}
         {!loading && movs.length === 0 && !error && (
           <div className="text-center py-10 text-[13px] text-slate-400">Sin movimientos hoy</div>
         )}
-        {!loading && movs.length > 0 && filteredMovs.length === 0 && searchQ && (
-          <div className="text-center py-10 text-[13px] text-slate-400">Sin resultados para "{searchQ}"</div>
+        {!loading && movs.length > 0 && filteredMovs.length === 0 && (searchQ || catFilter !== 'Todas') && (
+          <div className="text-center py-10 text-[13px] text-slate-400">Sin resultados para los filtros seleccionados</div>
         )}
 
         {filteredMovs.map(p => {
