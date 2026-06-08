@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
+import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
 
 const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -44,9 +45,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
-  const body = await request.json() as {
-    date: string; store_cod: string; state_key: string; picker_label: string; tipo: string; contenido?: string; refs?: string;
-  };
+  const parsed = parseBody(CreatePickingPalletSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   const { data, error } = await supabaseServer()
     .from('picking_pallets')
     .insert({

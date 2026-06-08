@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardList, Camera, BarChart3 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../components/AuthProvider';
-import { ProfilePill } from '../../components/ProfilePill';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { getPickerDisplay } from '../../features/auditoria/data/pickerNames';
 import { rowToEntry } from '../../features/auditoria/utils/converters';
 import type { AuditEntry, CorreccionAuditoria } from '../../features/auditoria/types';
@@ -193,10 +194,46 @@ function EntryCard({ entry, onOpenLightbox }: {
   );
 }
 
+/* ── Virtualized list ─────────────────────────────────────────── */
+function VirtualizedEntryList({
+  entries,
+  parentRef,
+  onOpenLightbox,
+}: {
+  entries: AuditEntry[];
+  parentRef: React.RefObject<HTMLDivElement | null>;
+  onOpenLightbox: (photos: { url: string; label?: string }[], startIdx: number) => void;
+}) {
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 180,
+    overscan: 5,
+  });
+
+  return (
+    <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+      {virtualizer.getVirtualItems().map(vItem => (
+        <div
+          key={vItem.key}
+          data-index={vItem.index}
+          ref={virtualizer.measureElement}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vItem.start}px)` }}
+        >
+          <EntryCard
+            entry={entries[vItem.index]}
+            onOpenLightbox={onOpenLightbox}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════
    MAIN PAGE
 ════════════════════════════════════════ */
-export default function AuditoriaAdminPage() {
+function AuditoriaAdminContent() {
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -209,6 +246,7 @@ export default function AuditoriaAdminPage() {
   const [carouselPhotos,  setCarouselPhotos]  = useState<{ url: string; label?: string }[] | null>(null);
   const [carouselIdx,     setCarouselIdx]     = useState(0);
   const [tab,             setTab]             = useState<'lista' | 'fotos' | 'stats'>('lista');
+  const listParentRef = useRef<HTMLDivElement>(null);
 
   function openLightbox(photos: { url: string; label?: string }[], startIdx: number) {
     setCarouselPhotos(photos);
@@ -304,7 +342,6 @@ export default function AuditoriaAdminPage() {
             {profile?.full_name ?? 'Admin'} · {filtered.length} registros
           </div>
         </div>
-        <ProfilePill />
       </div>
 
       {/* Filters */}
@@ -361,7 +398,10 @@ export default function AuditoriaAdminPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div
+        ref={tab === 'lista' ? listParentRef : undefined}
+        className="flex-1 overflow-y-auto p-4"
+      >
         {loading && (
           <div className="text-center py-16 text-text-3 text-[14px]">Cargando registros…</div>
         )}
@@ -373,10 +413,14 @@ export default function AuditoriaAdminPage() {
           </div>
         )}
 
-        {/* Lista */}
-        {!loading && tab === 'lista' && filtered.map(e => (
-          <EntryCard key={e.id} entry={e} onOpenLightbox={openLightbox} />
-        ))}
+        {/* Lista — virtualizada */}
+        {!loading && tab === 'lista' && (
+          <VirtualizedEntryList
+            entries={filtered}
+            parentRef={listParentRef}
+            onOpenLightbox={openLightbox}
+          />
+        )}
 
         {/* Fotos */}
         {!loading && tab === 'fotos' && (
@@ -610,5 +654,13 @@ export default function AuditoriaAdminPage() {
         <LightboxCarousel photos={carouselPhotos} startIdx={carouselIdx} onClose={closeLightbox} />
       )}
     </div>
+  );
+}
+
+export default function AuditoriaAdminPage() {
+  return (
+    <ErrorBoundary module="Admin Auditoría">
+      <AuditoriaAdminContent />
+    </ErrorBoundary>
   );
 }

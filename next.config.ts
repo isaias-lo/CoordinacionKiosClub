@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
@@ -30,4 +31,13 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  silent: !process.env.NEXT_PUBLIC_SENTRY_DSN,
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+  webpack: {
+    treeshake: { removeDebugLogging: true },
+    autoInstrumentServerFunctions: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+    autoInstrumentMiddleware: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+    autoInstrumentAppDirectory: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+  },
+});

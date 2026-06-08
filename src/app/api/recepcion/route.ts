@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
+import { verifyOtpToken } from '@/lib/otpToken';
+import { verifyAnyUser } from '@/lib/apiAuth';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
+import { parseBody, RecepcionSchema } from '@/lib/schemas';
 
 interface RecepcionBody {
   cod: string;
@@ -18,6 +22,9 @@ interface RecepcionBody {
   receptor: string;
   rut: string;
   signatureDataUrl: string;
+  // Auth fields for conductor OTP flow
+  otpToken?: string;
+  otpEmail?: string;
   observaciones?: string;
   selloEstado?: string;
   selloLlegadaUrl?: string;
@@ -66,9 +73,34 @@ async function writeToSheet(row: (string | number)[]) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!checkRateLimit(`recepcion:${getClientIp(request)}`, { max: 20, windowMs: 600_000 }))
+    return tooManyRequests();
+
   try {
-    const body = await request.json() as RecepcionBody;
+    const parsed = parseBody(RecepcionSchema, await request.json());
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data as RecepcionBody;
     const sb = supabaseServer();
+
+    // Auth: accept OTP verification, Bearer token, or a cod with an active dispatch today
+    const hasOtp = body.otpToken && body.otpEmail && body.codigoVerificacion;
+    if (hasOtp) {
+      if (!verifyOtpToken(body.otpToken!, body.otpEmail!, body.codigoVerificacion!)) {
+        return NextResponse.json({ error: 'Código de verificación inválido o expirado' }, { status: 401 });
+      }
+    } else if (await verifyAnyUser(request)) {
+      // Authenticated app user — allow
+    } else {
+      // Conductor QR flow: validate cod has an active dispatch for today
+      const fechaHoy = todayFecha();
+      const [{ data: rm }, { data: reg }] = await Promise.all([
+        sb.from('despacho_rm').select('cod').eq('cod', body.cod).eq('fecha', fechaHoy).limit(1).maybeSingle(),
+        sb.from('despacho_regiones').select('cod').eq('cod', body.cod).eq('fecha', fechaHoy).limit(1).maybeSingle(),
+      ]);
+      if (!rm && !reg) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+      }
+    }
 
     // Upload signature to Supabase Storage
     const base64Data = body.signatureDataUrl.replace(/^data:image\/png;base64,/, '');

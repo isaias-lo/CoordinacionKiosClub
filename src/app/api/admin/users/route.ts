@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdmin } from '@/lib/apiAuth';
+import { parseBody, CreateUserSchema, UpdateUserSchema } from '@/lib/schemas';
 
 const URL_  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SRK   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function adminSb() {
   return createClient(URL_, SRK, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-async function verifyAdmin(request: NextRequest): Promise<boolean> {
-  const auth = request.headers.get('authorization');
-  if (!auth?.startsWith('Bearer ')) return false;
-  const token = auth.slice(7);
-  const sb = createClient(URL_, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { data: { user } } = await sb.auth.getUser(token);
-  return user?.user_metadata?.role === 'admin';
 }
 
 /* ── GET: list users ── */
@@ -44,11 +36,9 @@ export async function POST(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
-  const { email, password, full_name, role } = await request.json() as {
-    email: string; password: string; full_name: string; role: string;
-  };
-  if (!email || !password || !role)
-    return NextResponse.json({ error: 'Email, contraseña y rol son requeridos' }, { status: 400 });
+  const parsed = parseBody(CreateUserSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const { email, password, full_name, role } = parsed.data;
 
   const sb = adminSb();
 
@@ -92,10 +82,9 @@ export async function PATCH(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
-  const { id, role, full_name, password } = await request.json() as {
-    id: string; role?: string; full_name?: string; password?: string;
-  };
-  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+  const parsed = parseBody(UpdateUserSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const { id, role, full_name, password } = parsed.data;
 
   const sb = adminSb();
   const { data: { user: existing } } = await sb.auth.admin.getUserById(id);

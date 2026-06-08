@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import { Providers } from './providers';
 import '../index.css';
 
+// Auth-protected app — disable static prerendering for all routes
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'KiosClub Despacho',
   description: 'Sistema de despacho KiosClub',

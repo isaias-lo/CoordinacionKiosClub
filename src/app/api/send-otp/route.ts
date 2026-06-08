@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { createOtpToken } from '../../../lib/otpToken';
+import { checkRateLimit, tooManyRequests } from '../../../lib/rateLimit';
+import { parseBody, SendOtpSchema } from '../../../lib/schemas';
 
 function getTransporter() {
   return nodemailer.createTransport({
@@ -20,9 +22,10 @@ export async function POST(request: NextRequest) {
       tienda: string;
     };
 
-    if (!email || !email.includes('@')) {
-      return NextResponse.json({ error: 'Email inválido' }, { status: 400 });
-    }
+    const parsed = parseBody(SendOtpSchema, { email, cod, tienda });
+    if (!parsed.ok) return parsed.response;
+    if (!checkRateLimit(`otp:${email}`, { max: 5, windowMs: 600_000 }))
+      return tooManyRequests();
 
     const otp   = Math.floor(100000 + Math.random() * 900000).toString();
     const token = createOtpToken(email, otp);

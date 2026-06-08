@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
+import { parseBody, RegisterSchema } from '@/lib/schemas';
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SRK  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -10,8 +12,13 @@ function adminSb() {
 
 /* POST: create pending user */
 export async function POST(request: NextRequest) {
-  const { full_name, email } = await request.json() as { full_name: string; email: string };
-  if (!email || !full_name) return NextResponse.json({ error: 'Nombre y correo requeridos' }, { status: 400 });
+  if (!checkRateLimit(`register:${getClientIp(request)}`, { max: 5, windowMs: 3_600_000 }))
+    return tooManyRequests();
+
+  const raw = await request.json();
+  const parsed = parseBody(RegisterSchema, raw);
+  if (!parsed.ok) return parsed.response;
+  const { full_name, email } = parsed.data;
 
   const sb = adminSb();
 

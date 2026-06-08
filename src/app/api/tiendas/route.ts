@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAdmin } from '@/lib/apiAuth';
+import { parseBody, CreateTiendaSchema } from '@/lib/schemas';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 const SHEET_TIENDAS  = 'TIENDAS';
@@ -120,11 +122,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+
   try {
-    const body = await request.json() as TiendaBody;
-    if (!body.codigo || !body.nombre) {
-      return NextResponse.json({ error: 'codigo y nombre son requeridos' }, { status: 400 });
-    }
+    const parsed = parseBody(CreateTiendaSchema, await request.json());
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data as TiendaBody;
 
     const sb = supabaseServer();
     const { data, error } = await sb

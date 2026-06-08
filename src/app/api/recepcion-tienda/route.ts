@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAnyUser } from '@/lib/apiAuth';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
+import { parseBody, RecepcionTiendaSchema } from '@/lib/schemas';
 
 interface RecepcionTiendaBody {
   cod: string;
@@ -54,8 +57,16 @@ async function writeToSheet(row: (string | number)[]) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAnyUser(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+
+  if (!checkRateLimit(`recepcion-tienda:${getClientIp(request)}`, { max: 20, windowMs: 600_000 }))
+    return tooManyRequests();
+
   try {
-    const body = await request.json() as RecepcionTiendaBody;
+    const parsed = parseBody(RecepcionTiendaSchema, await request.json());
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data as RecepcionTiendaBody;
     const sb = supabaseServer();
 
     // Upload signature

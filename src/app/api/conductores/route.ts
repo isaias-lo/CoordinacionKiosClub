@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAdmin } from '@/lib/apiAuth';
+import { parseBody, CreateConductorSchema, UpdateConductorSchema } from '@/lib/schemas';
 
 export async function GET() {
   const { data, error } = await supabaseServer()
@@ -12,9 +14,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json() as { nombre?: string; telefono?: string; empresa?: string };
-  if (!body.nombre?.trim())
-    return NextResponse.json({ error: 'nombre requerido' }, { status: 400 });
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+
+  const parsed = parseBody(CreateConductorSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const { data, error } = await supabaseServer()
     .from('conductores')
@@ -26,11 +31,15 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const body = await request.json() as { id?: number; nombre?: string; telefono?: string; empresa?: string };
-  if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+
+  const parsed = parseBody(UpdateConductorSchema, await request.json());
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const upd: Record<string, unknown> = {};
-  if (body.nombre   !== undefined) upd.nombre   = body.nombre.trim();
+  if (body.nombre   !== undefined) upd.nombre   = body.nombre!.trim();
   if (body.telefono !== undefined) upd.telefono = body.telefono || null;
   if (body.empresa  !== undefined) upd.empresa  = body.empresa  || null;
 
