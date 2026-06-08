@@ -13,7 +13,6 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
-import { usePickingReady } from '../../shared/usePickingReady';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
@@ -208,7 +207,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
   const router = useRouter();
-  const odooProgress = useOdooProgress();  // progreso de Odoo por tienda
+  const odooProgress = new Map<string, { status: 'none' | 'partial' | 'complete'; done: number; total: number }>();
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
