@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
@@ -277,6 +278,7 @@ export function PickingScreen() {
   const [printOnlyStateKey, setPrintOnlyStateKey] = useState<string | null>(null);
   const [doPrint, setDoPrint]                     = useState(false);
   const [selectionPrint, setSelectionPrint]       = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
+  const [mounted, setMounted]                     = useState(false);
 
   // Cross-desktop print visibility — single source of truth for both printedKeys and HistorialTab
   const [printRecords, setPrintRecords] = useState<PrintRecord[]>([]);
@@ -336,6 +338,7 @@ export function PickingScreen() {
 
   useEffect(() => { void loadPrintRecords(); }, [loadPrintRecords]);
   useRealtimeRefresh('picking_prints', loadPrintRecords);
+  useEffect(() => { setMounted(true); }, []);
 
   // ── Name change history ────────────────────────────────────────────────────
   const [nameChanges, setNameChanges] = useState<PickerNameChange[]>([]);
@@ -489,12 +492,13 @@ export function PickingScreen() {
     saveSession({ date: todayISO(), selectedCods, opsMap, pickerDisplayNames });
   }, [selectedCods, opsMap, pickerDisplayNames]);
 
-  // Disparar impresión después del re-render — espera a que recordPrints termine antes de abrir el diálogo
+  // Disparar impresión después del re-render:
+  // 1) espera a que recordPrints termine (registro en Supabase)
+  // 2) doble rAF para que JsBarcode (dynamic import) haya pintado los SVG
   useEffect(() => {
     if (!doPrint) return;
     setDoPrint(false);
     void (async () => {
-      // Si hay una promesa de registro pendiente, esperarla antes de imprimir
       if (pendingPrintRef.current) {
         const failures = await pendingPrintRef.current;
         pendingPrintRef.current = null;
@@ -507,7 +511,9 @@ export function PickingScreen() {
         window.removeEventListener('afterprint', handleAfterPrint);
       };
       window.addEventListener('afterprint', handleAfterPrint);
-      window.print();
+      // Double rAF: primer frame aplica el render de React, segundo frame
+      // garantiza que JsBarcode (dynamic import async) terminó de dibujar los SVG
+      requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
     })();
   }, [doPrint, showToast]);
 
@@ -895,13 +901,11 @@ export function PickingScreen() {
     <style dangerouslySetInnerHTML={{ __html:
       '@media print{' +
       '@page{size:landscape;margin:0}' +
-      'html,body{width:100%;height:100%;margin:0;padding:0;overflow:visible!important}' +
-      /* visibility:hidden en vez de display:none — permite que hijos lo anulen con visibility:visible */
-      'body *{visibility:hidden}' +
-      '.picking-print-root{visibility:visible!important;display:block!important;' +
-      'position:absolute!important;top:0!important;left:0!important;' +
-      'width:100%!important;background:white!important}' +
-      '.picking-print-root *{visibility:visible!important}' +
+      'html,body{width:100%;height:100%;margin:0;padding:0}' +
+      // El portal renderiza #picking-print-root como hijo directo de body.
+      // body>* oculta todo; el selector de ID tiene mayor especificidad y gana.
+      'body>*{display:none!important}' +
+      '#picking-print-root{display:block!important;width:100%;height:auto}' +
       '.picking-label{display:flex!important;flex-direction:column!important;' +
       'width:100vw!important;height:100vh!important;max-width:100vw!important;' +
       'border-radius:0!important;margin:0!important;border:none!important;' +
@@ -912,19 +916,23 @@ export function PickingScreen() {
       '.picking-label:last-child{break-after:avoid;page-break-after:avoid}}'
     }} />
 
-    {/* Vista print-only: solo etiquetas, sin chrome */}
-    <div className="picking-print-root" style={{ display: 'none' }}>
-      {(selectionPrint
-        ? printableLabels.filter(l => l.stateKey === selectionPrint.stateKey && selectionPrint.palletNums.has(l.palletNum))
-        : printOnlyStateKey
-          ? printableLabels.filter(l => l.stateKey === printOnlyStateKey)
-          : printOnlyStore
-            ? printableLabels.filter(l => l.storeCod === printOnlyStore)
-            : printableLabels
-      ).map((label, idx) => (
-        <BarcodeCard key={idx} {...label} labelConfig={labelConfig} />
-      ))}
-    </div>
+    {/* Portal a document.body — escapa AppShell (overflow:hidden + transform:translateZ)
+        y permite que break-after:page funcione con múltiples etiquetas */}
+    {mounted && createPortal(
+      <div id="picking-print-root" style={{ display: 'none' }}>
+        {(selectionPrint
+          ? printableLabels.filter(l => l.stateKey === selectionPrint.stateKey && selectionPrint.palletNums.has(l.palletNum))
+          : printOnlyStateKey
+            ? printableLabels.filter(l => l.stateKey === printOnlyStateKey)
+            : printOnlyStore
+              ? printableLabels.filter(l => l.storeCod === printOnlyStore)
+              : printableLabels
+        ).map((label, idx) => (
+          <BarcodeCard key={idx} {...label} labelConfig={labelConfig} />
+        ))}
+      </div>,
+      document.body
+    )}
 
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
 
