@@ -43,11 +43,14 @@ export async function middleware(request: NextRequest) {
 
   let user = null;
   try {
-    const { data } = await supabase.auth.getUser();
-    user = data?.user ?? null;
+    const result = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('auth_timeout')), 12_000)
+      ),
+    ]);
+    user = result.data?.user ?? null;
   } catch {
-    // Cookies malformadas o token expirado sin posibilidad de refresh.
-    // Purga todas las cookies sb-* y redirige al login para empezar sesión limpia.
     const cleanResp = NextResponse.redirect(new URL('/login', request.url));
     request.cookies.getAll()
       .filter(c => c.name.startsWith('sb-'))
