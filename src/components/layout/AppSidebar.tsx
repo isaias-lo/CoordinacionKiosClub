@@ -213,14 +213,14 @@ export function AppSidebar() {
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
       className="flex flex-col h-full overflow-hidden flex-shrink-0"
       style={{
-        background: 'linear-gradient(180deg, #0D1829 0%, #111E38 100%)',
+        background: 'var(--gradient-dark)',
         borderRight: '1px solid rgba(255,255,255,0.07)',
       }}
     >
       {/* ── Logo ── */}
       <div
         className="flex items-center justify-between px-3 flex-shrink-0"
-        style={{ height: 56, borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+        style={{ height: 56, borderBottom: '1px solid var(--sidebar-border)' }}
       >
         <AnimatePresence initial={false}>
           {!isCollapsed && (
@@ -328,7 +328,7 @@ export function AppSidebar() {
       </nav>
 
       {/* ── Divider ── */}
-      <div className="mx-3 my-1" style={{ height: 1, background: 'rgba(255,255,255,0.07)' }} />
+      <div className="mx-3 my-1" style={{ height: 1, background: 'var(--sidebar-border)' }} />
 
       {/* ── User footer ── */}
       <div className="flex-shrink-0 p-2 relative">
@@ -380,7 +380,7 @@ export function AppSidebar() {
                 exit={{ opacity: 0, y: 4, scale: 0.97 }}
                 transition={{ duration: 0.15 }}
                 className="absolute bottom-full left-2 right-2 mb-1 rounded-xl overflow-hidden z-[70]"
-                style={{ background: '#1a2845', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+                style={{ background: 'var(--sidebar-dropdown)', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
               >
                 <button
                   onClick={() => { setUserMenuOpen(false); router.push('/perfil'); }}

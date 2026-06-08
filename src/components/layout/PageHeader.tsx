@@ -37,8 +37,8 @@ export function PageHeader({
       className={`flex items-center gap-3 px-4 flex-shrink-0 ${className}`}
       style={{
         height: 56,
-        background: 'linear-gradient(90deg, #0D1829 0%, #111E38 100%)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--gradient-dark-h)',
+        borderBottom: '1px solid var(--border-subtle)',
       }}
     >
       {(backHref || onBack) && (
