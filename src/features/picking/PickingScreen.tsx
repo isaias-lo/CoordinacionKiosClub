@@ -1233,17 +1233,30 @@ export function PickingScreen() {
               {selectedCods.map(cod => {
                 const storeGroups = groupedByStore[cod] ?? [];
                 const isLoading   = loadingCods.includes(cod);
-                const ops         = opsMap[cod];
-                const allDoneStore = ops && ops.length > 0 && ops.every(o => o.state === 'done');
+                const ops         = opsMap[cod] ?? [];
+                // Check completion of the 4 Abastecimiento categories
+                const REQUIRED_CATS = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
+                const doneCats = new Set(
+                  ops.filter(o => o.state === 'done').flatMap(o => o.categories)
+                );
+                const completedCount = REQUIRED_CATS.filter(c => doneCats.has(c)).length;
+                const storeStatus: 'none' | 'partial' | 'complete' =
+                  completedCount === 0 ? 'none' : completedCount >= 4 ? 'complete' : 'partial';
                 return (
                   <div key={cod} className="mb-8">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
                       <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
                       <span className="text-[16px] text-text-2 font-semibold">{nameFor(cod)}</span>
-                      {allDoneStore && (
+                      {storeStatus === 'complete' && (
                         <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
                           style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
                           ✓ Todo realizado
+                        </span>
+                      )}
+                      {storeStatus === 'partial' && (
+                        <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
+                          style={{ background: 'rgba(234,179,8,0.12)', color: '#D97706', border: '1px solid rgba(234,179,8,0.3)' }}>
+                          {completedCount}/4 categorías
                         </span>
                       )}
                       {isLoading && <span className="text-[14px] text-text-3">Cargando…</span>}
