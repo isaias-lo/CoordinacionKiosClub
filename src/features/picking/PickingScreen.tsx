@@ -895,9 +895,13 @@ export function PickingScreen() {
     <style dangerouslySetInnerHTML={{ __html:
       '@media print{' +
       '@page{size:landscape;margin:0}' +
-      'html,body{width:100%;height:100%;margin:0;padding:0}' +
-      'body>*{display:none!important}' +
-      '.picking-print-root{display:block!important;width:100%;height:100%}' +
+      'html,body{width:100%;height:100%;margin:0;padding:0;overflow:visible!important}' +
+      /* visibility:hidden en vez de display:none — permite que hijos lo anulen con visibility:visible */
+      'body *{visibility:hidden}' +
+      '.picking-print-root{visibility:visible!important;display:block!important;' +
+      'position:absolute!important;top:0!important;left:0!important;' +
+      'width:100%!important;background:white!important}' +
+      '.picking-print-root *{visibility:visible!important}' +
       '.picking-label{display:flex!important;flex-direction:column!important;' +
       'width:100vw!important;height:100vh!important;max-width:100vw!important;' +
       'border-radius:0!important;margin:0!important;border:none!important;' +
