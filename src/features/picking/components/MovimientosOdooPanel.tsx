@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useEffect, useState, useCallback, type RefObject } from 'react';
+import { RefreshCw, CheckCheck } from 'lucide-react';
 import type { OdooConfig } from '../picking-types';
 import { parseOrigin, isAbastecimientoOp, getStoreName } from '../picking-utils';
 
@@ -19,6 +19,7 @@ interface Props {
   selectedCods: string[];
   onAdd: (picking: RawPicking, cod: string, categories: string[]) => void;
   onNewCountChange?: (n: number) => void;
+  seenIdsRef: RefObject<Set<number>>;
 }
 
 const CATEGORIAS = ['Comida', 'Aseo', 'Hogar', 'Chocolate'] as const;
@@ -26,12 +27,15 @@ const CAT_COLOR: Record<string, string> = {
   Comida: '#D97706', Aseo: '#0891B2', Hogar: '#7C3AED', Chocolate: '#92400E',
 };
 
-export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd, onNewCountChange }: Props) {
+export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd, onNewCountChange, seenIdsRef }: Props) {
   const [movs,      setMovs]      = useState<RawPicking[]>([]);
   const [productos, setProductos] = useState<Record<number, Producto[]>>({});
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [loadedAt,  setLoadedAt]  = useState<Date | null>(null);
+  // IDs de pickings "nuevos" en la lista actual (subconjunto de movs que el usuario aún no ha visto).
+  // El `seenIdsRef` (vive en PickingScreen) acumula todos los IDs que alguna vez aparecieron.
+  const [newIdsByLoad, setNewIdsByLoad] = useState<Set<number>>(new Set());
   // Modal de agregar: movimiento + categorías elegidas
   const [adding,    setAdding]    = useState<{ p: RawPicking; cod: string; cats: Set<string> } | null>(null);
 
@@ -49,6 +53,16 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
       setMovs(list);
       setLoadedAt(new Date());
 
+      // Diff contra seenIdsRef: los IDs que no se habían visto antes son "nuevos en esta carga".
+      // Independientemente del diff, todos los IDs actuales quedan marcados como vistos.
+      const seen  = seenIdsRef.current;
+      const fresh = new Set<number>();
+      for (const p of list) {
+        if (!seen.has(p.id)) fresh.add(p.id);
+        seen.add(p.id);
+      }
+      setNewIdsByLoad(fresh);
+
       // Traer primeras líneas de producto por movimiento
       const ids = list.map(p => String(p.id));
       if (ids.length) {
@@ -64,22 +78,14 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
     } finally {
       setLoading(false);
     }
-  }, [hasOdoo, odooConfig]);
+  }, [hasOdoo, odooConfig, seenIdsRef]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Movimientos "nuevos / manuales": sin categoría reconocida y tienda aún no seleccionada
-  const esManual = useCallback((p: RawPicking) => {
-    const { storeCode } = parseOrigin(p.origin);
-    const sinCategoria  = !isAbastecimientoOp(p.origin);
-    const noSeleccionada = !!storeCode && !selectedCods.includes(storeCode);
-    return sinCategoria || noSeleccionada;
-  }, [selectedCods]);
-
+  // Reporta al padre el conteo de nuevos para alimentar el badge del tab.
   useEffect(() => {
-    const n = movs.filter(esManual).length;
-    onNewCountChange?.(n);
-  }, [movs, esManual, onNewCountChange]);
+    onNewCountChange?.(newIdsByLoad.size);
+  }, [newIdsByLoad, onNewCountChange]);
 
   const abrirAgregar = (p: RawPicking) => {
     const { storeCode, categories } = parseOrigin(p.origin);
@@ -95,23 +101,43 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
     setError('');
   };
 
+  const handleMarcarVistos = () => {
+    setNewIdsByLoad(new Set());
+    onNewCountChange?.(0);
+  };
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b flex items-center justify-between" style={{ borderColor: '#E2E8F0' }}>
-        <div>
+      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b flex items-center justify-between gap-2" style={{ borderColor: '#E2E8F0' }}>
+        <div className="min-w-0">
           <div className="text-[15px] font-semibold" style={{ color: '#1E293B' }}>Movimientos del día (Odoo)</div>
-          <div className="text-[12px] mt-0.5" style={{ color: '#94A3B8' }}>
+          <div className="text-[12px] mt-0.5 truncate" style={{ color: '#94A3B8' }}>
             {movs.length} movimiento{movs.length !== 1 ? 's' : ''}
+            {newIdsByLoad.size > 0 && (
+              <span className="ml-1.5 font-bold" style={{ color: '#CA8A04' }}>
+                · {newIdsByLoad.size} nuevo{newIdsByLoad.size !== 1 ? 's' : ''}
+              </span>
+            )}
             {loadedAt ? ` · ${loadedAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </div>
         </div>
-        <button onClick={() => void load()} disabled={loading}
-          className="flex items-center gap-1.5 text-[13px] font-medium border rounded px-3 py-1.5 cursor-pointer disabled:opacity-40"
-          style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          Actualizar
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {newIdsByLoad.size > 0 && (
+            <button onClick={handleMarcarVistos}
+              className="flex items-center gap-1.5 text-[12px] font-medium border rounded px-2.5 py-1.5 cursor-pointer"
+              style={{ borderColor: '#EAB308', color: '#92400E', background: 'rgba(234,179,8,0.10)' }}>
+              <CheckCheck size={12} />
+              Marcar vistos
+            </button>
+          )}
+          <button onClick={() => void load()} disabled={loading}
+            className="flex items-center gap-1.5 text-[13px] font-medium border rounded px-3 py-1.5 cursor-pointer disabled:opacity-40"
+            style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -121,12 +147,12 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
       <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
         {loading && movs.length === 0 && <div className="text-center py-10 text-[13px] text-slate-400">Cargando movimientos…</div>}
         {!loading && movs.length === 0 && !error && (
-          <div className="text-center py-10 text-[13px] text-slate-400">Sin movimientos de Abastecimiento hoy</div>
+          <div className="text-center py-10 text-[13px] text-slate-400">Sin movimientos hoy</div>
         )}
 
         {movs.map(p => {
           const { storeCode, categories } = parseOrigin(p.origin);
-          const manual    = esManual(p);
+          const isNew     = newIdsByLoad.has(p.id);
           const yaEnPanel = !!storeCode && selectedCods.includes(storeCode);
           const prods     = (productos[p.id] ?? []).slice(0, 5);
           const sinCat    = !isAbastecimientoOp(p.origin);
@@ -134,14 +160,22 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
             <div key={p.id}
               className="rounded-lg border p-3"
               style={{
-                borderColor: manual ? 'rgba(217,119,6,0.45)' : '#E2E8F0',
-                background:  manual ? 'rgba(217,119,6,0.05)' : '#fff',
+                borderColor: isNew ? '#EAB308' :
+                             sinCat ? 'rgba(217,119,6,0.45)' : '#E2E8F0',
+                background:  isNew ? 'rgba(234,179,8,0.10)' :
+                             sinCat ? 'rgba(217,119,6,0.05)' : '#fff',
+                boxShadow:   isNew ? '0 0 0 2px rgba(234,179,8,0.25)' : 'none',
+                transition:  'box-shadow 200ms, background 200ms, border-color 200ms',
               }}>
               <div className="flex items-start justify-between gap-2 mb-1.5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[14px] font-extrabold" style={{ color: '#1E293B' }}>{storeCode || '??'}</span>
                     <span className="text-[12px] text-slate-500 truncate">{storeCode ? getStoreName(storeCode) : ''}</span>
+                    {isNew && (
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider"
+                        style={{ background: '#EAB308', color: '#1E293B' }}>NUEVO</span>
+                    )}
                     {sinCat
                       ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(217,119,6,0.18)', color: '#92400E' }}>SIN CATEGORÍA</span>
                       : categories.map(c => (
