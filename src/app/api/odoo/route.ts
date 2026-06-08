@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
           fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
                    'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
-          limit: 100,
+          limit: 500,
           order: 'scheduled_date asc',
         }],
       })) as Array<{

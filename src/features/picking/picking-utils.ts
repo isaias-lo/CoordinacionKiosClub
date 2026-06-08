@@ -40,6 +40,11 @@ export function categoriesToContenido(cats: string[]): string {
 // ─── Store helpers ────────────────────────────────────────────────────────────
 export function getStoreName(cod: string): string { return TIENDAS_INICIAL[cod]?.n ?? cod; }
 
+// Reverse map: store name (uppercase) → store code, for matching Odoo origins that use names instead of codes
+const STORE_NAME_TO_CODE: Record<string, string> = Object.fromEntries(
+  Object.entries(TIENDAS_INICIAL).map(([cod, info]) => [info.n.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), cod])
+);
+
 export function getStoreGroup(store: TodayStore): StoreGroupKey {
   const z = TIENDAS_INICIAL[store.cod]?.z ?? '';
   if (z === 'Región' || store.sources.includes('regiones')) return 'region';
@@ -64,9 +69,22 @@ export function parseOrigin(origin: string): { categories: string[]; storeCode: 
     const m = origin.match(/\(([^)]+)\)/);
     if (m) m[1].split(',').forEach(c => { const t = c.trim(); if (t) categories.push(t); });
   }
+  // 1) Try code pattern: 2 digits + 2-4 uppercase letters (e.g. "29CFL", "09LEO")
   const storeMatch = origin.match(/\b(\d{2}[A-Z]{2,4})\b/);
+  let storeCode = storeMatch?.[1] ?? '';
+  // 2) Fallback: match store name from TIENDAS_INICIAL (e.g. "Maipu POS 2/..." → "17MAI")
+  if (!storeCode) {
+    const originNorm = origin.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    let bestLen = 0;
+    for (const [nameNorm, cod] of Object.entries(STORE_NAME_TO_CODE)) {
+      if (nameNorm.length > bestLen && originNorm.includes(nameNorm)) {
+        storeCode = cod;
+        bestLen = nameNorm.length;
+      }
+    }
+  }
   const dateMatch  = origin.match(/Fecha\((\d{2}\/\d{2}\/\d{4})\)/) ?? origin.match(/(\d{2}\/\d{2}\/\d{4})/);
-  return { categories, storeCode: storeMatch?.[1] ?? '', originDate: dateMatch?.[1] ?? '' };
+  return { categories, storeCode, originDate: dateMatch?.[1] ?? '' };
 }
 
 export function isAbastecimientoOp(origin: string): boolean {
