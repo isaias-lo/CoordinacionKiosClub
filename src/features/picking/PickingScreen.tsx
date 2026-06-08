@@ -1236,10 +1236,10 @@ export function PickingScreen() {
                 const ops         = opsMap[cod] ?? [];
                 // Check completion of the 4 Abastecimiento categories
                 const REQUIRED_CATS = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
-                const doneCats = new Set(
-                  ops.filter(o => o.state === 'done').flatMap(o => o.categories)
-                );
-                const completedCount = REQUIRED_CATS.filter(c => doneCats.has(c)).length;
+                const completedCount = REQUIRED_CATS.filter(cat => {
+                  const catOps = ops.filter(o => o.categories.includes(cat));
+                  return catOps.length > 0 && catOps.every(o => o.state === 'done');
+                }).length;
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   completedCount === 0 ? 'none' : completedCount >= 4 ? 'complete' : 'partial';
                 return (
