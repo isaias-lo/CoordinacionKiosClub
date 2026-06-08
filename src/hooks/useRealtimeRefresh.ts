@@ -7,17 +7,12 @@ import { supabase } from '@/lib/supabase';
  * Subscribes to INSERT / UPDATE / DELETE on one or more Supabase tables
  * and calls onRefresh() whenever a change is detected.
  *
- * Usage:
- *   useRealtimeRefresh('despacho_rm,despacho_regiones', myRefetchFn);
- *   useRealtimeRefresh('picking_pallets', myRefetchFn, true, 15000, 800);
- *
- * @param tableKey    Comma-separated table name(s), stable between renders.
+ * @param tableKey    Comma-separated "table:filter" or just "table" entries.
+ *                    e.g. "picking_pallets:date=eq.2026-06-08,despacho_rm"
  * @param onRefresh   Callback invoked on any data change. Keep it stable (useCallback).
- * @param enabled     Pass false to pause the subscription (e.g. while the component is hidden).
+ * @param enabled     Pass false to pause the subscription.
  * @param pollMs      Polling fallback interval in ms (default 15 000).
  * @param debounceMs  Debounce realtime events in ms (default 0 = no debounce).
- *                    Useful for tables that receive bursts of writes (e.g. picking_pallets):
- *                    prevents N refetches when a supervisor adds 10 pallets quickly.
  */
 export function useRealtimeRefresh(
   tableKey: string,
@@ -33,8 +28,8 @@ export function useRealtimeRefresh(
   useEffect(() => {
     if (!enabled || !tableKey) return;
 
-    const tables = tableKey.split(',').map(t => t.trim()).filter(Boolean);
-    if (tables.length === 0) return;
+    const entries = tableKey.split(',').map(t => t.trim()).filter(Boolean);
+    if (entries.length === 0) return;
 
     const fire = () => {
       if (debounceMs > 0) {
@@ -45,16 +40,22 @@ export function useRealtimeRefresh(
       }
     };
 
-    const channelId = `rt-${tables.join('-')}-${Math.random().toString(36).slice(2, 7)}`;
+    const channelId = `rt-${entries.join('-')}-${Math.random().toString(36).slice(2, 7)}`;
     let ch = supabase.channel(channelId);
 
-    for (const table of tables) {
-      ch = ch.on('postgres_changes', { event: '*', schema: 'public', table }, fire);
+    for (const entry of entries) {
+      const colonIdx = entry.indexOf(':');
+      const table = colonIdx > 0 ? entry.slice(0, colonIdx) : entry;
+      const filter = colonIdx > 0 ? entry.slice(colonIdx + 1) : undefined;
+      const opts = filter
+        ? { event: '*' as const, schema: 'public' as const, table, filter }
+        : { event: '*' as const, schema: 'public' as const, table };
+      ch = ch.on('postgres_changes', opts, fire);
     }
 
     ch.subscribe();
 
-    // Polling fallback — fires onRefresh every pollMs even if Realtime drops
+    // Polling fallback
     const pollId = setInterval(() => cbRef.current(), pollMs);
 
     return () => {

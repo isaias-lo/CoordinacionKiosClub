@@ -57,7 +57,7 @@ export async function POST() {
     const sb = supabaseServer();
     const { data: tiendas, error } = await sb
       .from('tiendas')
-      .select('*');
+      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, activo');
     if (error) throw error;
 
     if (!tiendas || tiendas.length === 0) {

@@ -365,7 +365,7 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
-  useRealtimeRefresh('picking_pallets', loadPalletSlots, true, 15000, 800);
+  useRealtimeRefresh(`picking_pallets:date=eq.${todayISO()}`, loadPalletSlots, true, 15000, 800);
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
     const date = todayISO();

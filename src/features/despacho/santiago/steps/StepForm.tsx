@@ -529,9 +529,10 @@ export function StepForm() {
 
     load();
 
+    const today = new Date().toISOString().slice(0, 10);
     const channel = supabase
       .channel('picking-pallets-santiago')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, () => load())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };

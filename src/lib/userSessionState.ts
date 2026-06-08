@@ -52,13 +52,10 @@ export function subscribeToSessionState(
     .channel(channelId)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'shared_session_state' },
+      { event: '*', schema: 'public', table: 'shared_session_state', filter: `fecha=eq.${fecha},fuente=eq.${fuente}` },
       (payload) => {
-        const row = payload.new as { fecha: string; fuente: string; state: unknown } | null;
-        // Filter in callback — more reliable than Supabase-side filter
-        if (row?.fecha === fecha && row?.fuente === fuente) {
-          onState(row.state);
-        }
+        const row = payload.new as { state: unknown } | null;
+        if (row?.state) onState(row.state);
       },
     )
     .subscribe();

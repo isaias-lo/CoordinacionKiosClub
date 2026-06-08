@@ -31,7 +31,7 @@ function useHistData() {
     const loadHistory = () => {
       supabase
         .from('dispatch_history')
-        .select('*')
+        .select('id, created_at, date, total_pallets, total_bultos, tiendas')
         .order('created_at', { ascending: false })
         .limit(150)
         .then(({ data, error }) => {

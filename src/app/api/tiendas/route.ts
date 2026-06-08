@@ -111,7 +111,7 @@ export async function GET() {
     const sb = supabaseServer();
     const { data, error } = await sb
       .from('tiendas')
-      .select('*')
+      .select('codigo, nombre, region, comuna, direccion, sector_comuna, area, tipo, condicion, telefono, responsable, activa, notas, Sheets_Modified, calendario')
       .order('codigo');
     if (error) throw error;
     return NextResponse.json({ tiendas: data });

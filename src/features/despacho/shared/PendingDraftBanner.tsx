@@ -80,7 +80,8 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
       .select('fecha, state')
       .eq('fuente', fuente)
       .lt('fecha', todayISO())
-      .order('fecha', { ascending: false });
+      .order('fecha', { ascending: false })
+      .limit(30);
     if (error || !data) return;
 
     const result: PendingDraft[] = [];

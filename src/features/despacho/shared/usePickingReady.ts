@@ -44,9 +44,10 @@ export function usePickingReady(): Set<string> {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
     const channel = supabase
       .channel('picking-ready-shared')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [load]);

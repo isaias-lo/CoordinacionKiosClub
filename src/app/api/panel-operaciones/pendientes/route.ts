@@ -45,10 +45,12 @@ export async function GET(request: NextRequest) {
     const [rmRes, regRes] = await Promise.all([
       sb.from('despacho_rm')
         .select('cod, tienda, seguimiento, tipo, n_pallet_bulto, conductor, ventana, ruta')
-        .eq('fecha', fechaFiltro),
+        .eq('fecha', fechaFiltro)
+        .limit(500),
       sb.from('despacho_regiones')
         .select('cod, tienda, seguimiento, tipo, n_pallet_bulto, conductor, ventana, ruta')
-        .eq('fecha', fechaFiltro),
+        .eq('fecha', fechaFiltro)
+        .limit(500),
     ]);
 
     const rmRows    = (rmRes.data    ?? []) as { cod: string; tienda: string; seguimiento: string | null; tipo: string; n_pallet_bulto: string | null; conductor: string | null; ventana: string | null; ruta: string | null }[];
@@ -61,7 +63,8 @@ export async function GET(request: NextRequest) {
       .from('recepcion')
       .select('cod')
       .gte('created_at', desde)
-      .lte('created_at', hasta);
+      .lte('created_at', hasta)
+      .limit(500);
 
     const receivedCods = new Set((recRows ?? []).map((r: { cod: string }) => r.cod));
 

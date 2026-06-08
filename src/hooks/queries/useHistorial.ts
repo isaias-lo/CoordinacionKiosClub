@@ -17,10 +17,11 @@ async function fetchHistorial(days = 30): Promise<HistorialEntry[]> {
   const since = format(subDays(new Date(), days), 'yyyy-MM-dd');
   const { data, error } = await supabase
     .from('dispatch_history')
-    .select('*')
+    .select('id, fecha, region, total_tiendas, total_pallets, total_bultos, created_at, user_id')
     .gte('fecha', since)
     .order('fecha', { ascending: false })
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(500);
   if (error) throw new Error(error.message);
   return data ?? [];
 }
