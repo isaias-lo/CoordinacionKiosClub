@@ -675,6 +675,21 @@ export function PickingScreen() {
     return () => clearInterval(id);
   }, [selectedCods, fetchOpsForStore]);
 
+  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it
+  useEffect(() => {
+    const entries = Object.entries(opsMap).map(([cod, ops]) => ({
+      cod,
+      total: ops.length,
+      done: ops.filter(o => o.state === 'done').length,
+    }));
+    if (entries.length === 0) return;
+    fetch('/api/picking-store-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stores: entries }),
+    }).catch(e => console.error('[picking] sync progress:', e));
+  }, [opsMap]);
+
   const handleToggleStore = useCallback(async (cod: string) => {
     const isSelected = selectedCods.includes(cod);
     if (isSelected) {

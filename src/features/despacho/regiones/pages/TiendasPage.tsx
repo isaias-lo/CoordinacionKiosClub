@@ -13,7 +13,7 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
-import { usePickingReady } from '../../shared/usePickingReady';
+import { useOdooProgress } from '../../shared/useOdooProgress';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -98,11 +98,13 @@ interface GridCardProps {
   pickingCH?: number;
   preset?: { pallets: number; bultos: number };
   hasPdf?: boolean;
-  pickingReady?: boolean;
+  storeStatus?: 'none' | 'partial' | 'complete';
+  storeDoneOps?: number;
+  storeTotalOps?: number;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, pickingReady, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeStatus = 'none', storeDoneOps = 0, storeTotalOps = 0, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -125,12 +127,19 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      {/* Indicador Picking terminado — esquina superior izquierda */}
-      {pickingReady && (
+      {/* Indicador progreso Odoo — esquina superior izquierda */}
+      {storeStatus === 'complete' && (
         <span
           className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
           style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
-          title="✓ Picking terminado — todos los pallets listos"
+          title="✓ Todos los movimientos realizados"
+        />
+      )}
+      {storeStatus === 'partial' && (
+        <span
+          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
+          style={{ background: '#D97706', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(217,119,6,0.6)' }}
+          title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
         />
       )}
       <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
@@ -198,7 +207,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
   const router = useRouter();
-  const pickingReady = usePickingReady();  // tiendas con picking terminado hoy
+  const odooProgress = useOdooProgress();  // progreso de Odoo por tienda
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
@@ -580,6 +589,7 @@ export function TiendasPage() {
   const allDispatchItems = Object.values(dispatchData).flat();
   const statP = allDispatchItems.filter(i => i.pkg === 'pallet').length;
   const statB = allDispatchItems.filter(i => i.pkg === 'box').length;
+  const statCH = allDispatchItems.filter(i => i.pkg === 'chocolate').length;
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
 
   const select  = (name: string) => dispatch({ type: 'SET_TIENDA', payload: selectedTienda === name ? null : name });
@@ -1595,7 +1605,9 @@ export function TiendasPage() {
                       pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
-                      pickingReady={pickingReady.has(TIENDAS[t.name]?.cod ?? '')}
+                      storeStatus={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.status ?? 'none'}
+                      storeDoneOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.done ?? 0}
+                      storeTotalOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.total ?? 0}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)} />
                   );
@@ -1643,7 +1655,9 @@ export function TiendasPage() {
                         pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
                         pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                         hasPdf={!!state.pdfData[t.name]}
-                        pickingReady={pickingReady.has(TIENDAS[t.name]?.cod ?? '')}
+                        storeStatus={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.status ?? 'none'}
+                        storeDoneOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.done ?? 0}
+                        storeTotalOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.total ?? 0}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />
                     );
@@ -1663,16 +1677,20 @@ export function TiendasPage() {
         {/* Stats bar + actions */}
         <div className="flex-shrink-0 bg-navy border-t-4 border-red">
           <div className="flex">
-            {[
-              { v: statP, l: 'Pallets', color: '#93C5FD' },
-              { v: statB, l: 'Bultos',  color: '#FCD34D' },
-              { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
-            ].map(({ v, l, color }, i) => (
-              <div key={l} className={`flex-1 py-2.5 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
-                <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-              </div>
-            ))}
+            {(() => {
+              const stats = [
+                { v: statP, l: 'Pallets', color: '#93C5FD' },
+                { v: statB, l: 'Bultos',  color: '#FCD34D' },
+                ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []),
+                { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
+              ];
+              return stats.map(({ v, l, color }, i) => (
+                <div key={l} className={`flex-1 py-2.5 text-center ${i < stats.length - 1 ? 'border-r border-white/10' : ''}`}>
+                  <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
+                  <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
+                </div>
+              ));
+            })()}
           </div>
           <div className="px-3 pb-3 pt-1 flex gap-2">
             <button

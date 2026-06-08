@@ -484,6 +484,63 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    /* ── store_movement_status ── */
+    if (action === 'store_movement_status') {
+      const now = new Date();
+      const todayStr = localDateStr(now);
+
+      let pickingTypeIds: number[] = [];
+      try {
+        const ptRows = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+            [[['name', 'ilike', 'Despacho Tiendas']]],
+            { fields: ['id'], limit: 10 },
+          ],
+        })) as Array<{ id: number }>;
+        pickingTypeIds = ptRows.map(r => r.id);
+      } catch { /* skip */ }
+
+      const domain: unknown[] = [
+        ['state', 'not in', ['draft', 'cancel']],
+        ['scheduled_date', '>=', todayStr + ' 00:00:00'],
+        ['scheduled_date', '<=', todayStr + ' 23:59:59'],
+        ['origin', 'not ilike', 'AUDITORIA'],
+      ];
+      if (pickingTypeIds.length > 0) {
+        domain.push(['picking_type_id', 'in', pickingTypeIds]);
+      } else {
+        domain.push(['origin', 'ilike', 'Abastecimiento']);
+      }
+
+      const pickings = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
+          fields: ['origin', 'state'],
+          limit: 500,
+        }],
+      })) as Array<{ origin: string | false; state: string }>;
+
+      const byStore: Record<string, { total: number; done: number }> = {};
+      const storeNameRe = /Abastecimiento\s+\S+\s+(\S+)/i;
+      for (const p of pickings) {
+        const origin = typeof p.origin === 'string' ? p.origin : '';
+        const m = origin.match(storeNameRe);
+        const cod = m ? m[1].toUpperCase().replace(/[^A-Z0-9]/g, '') : origin.replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase();
+        if (!cod) continue;
+        if (!byStore[cod]) byStore[cod] = { total: 0, done: 0 };
+        byStore[cod].total++;
+        if (p.state === 'done') byStore[cod].done++;
+      }
+
+      const result = Object.entries(byStore).map(([cod, { total, done }]) => ({
+        cod, total, done,
+        status: total === 0 ? 'none' as const : done === total ? 'complete' as const : 'partial' as const,
+      }));
+      return NextResponse.json({ stores: result });
+    }
+
     return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 });
 
   } catch (err) {

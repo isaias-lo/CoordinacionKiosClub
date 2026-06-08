@@ -10,7 +10,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
-import { usePickingReady } from '../../shared/usePickingReady';
+import { useOdooProgress } from '../../shared/useOdooProgress';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
@@ -86,13 +86,13 @@ interface ResumenEditState {
 ═══════════════════════════════════════ */
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
-  despachoP, despachoB, despachoC, hasGuide, pickingReady,
+  despachoP, despachoB, despachoC, hasGuide, storeStatus = 'none', storeDoneOps = 0, storeTotalOps = 0,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number;
-  hasGuide?: boolean; pickingReady?: boolean;
+  hasGuide?: boolean; storeStatus?: 'none' | 'partial' | 'complete'; storeDoneOps?: number; storeTotalOps?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -117,12 +117,19 @@ function TiendaGridCard({
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border active:bg-bg'
         }`}>
-      {/* Indicador Picking terminado — esquina superior izquierda */}
-      {pickingReady && (
+      {/* Indicador progreso Odoo — esquina superior izquierda */}
+      {storeStatus === 'complete' && (
         <span
           className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
           style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
-          title="✓ Picking terminado — todos los pallets listos"
+          title="✓ Todos los movimientos realizados"
+        />
+      )}
+      {storeStatus === 'partial' && (
+        <span
+          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
+          style={{ background: '#D97706', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(217,119,6,0.6)' }}
+          title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
         />
       )}
       {isToday && onRemoveFromToday && (
@@ -235,7 +242,7 @@ export function StepForm() {
   const { state, dispatch, flushPending } = useSantiago();
   const { showToast } = useApp();
   const { currentTienda, items, regimen } = state;
-  const pickingReady = usePickingReady();  // tiendas con picking terminado hoy
+  const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
 
   /* Mobile view */
   const [view, setView] = useState<'list' | 'form' | 'resumen'>('list');
@@ -609,6 +616,7 @@ export function StepForm() {
   const allItems           = Object.values(items).flat();
   const statP              = allItems.filter(i => i.tipo === 'Pallet').length;
   const statB              = allItems.filter(i => i.tipo === 'Bulto').length;
+  const statCH             = allItems.filter(i => i.tipo === 'Chocolate').length;
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
   const activeTiendas      = [
     ...allTodayCods.filter(c => (items[c] || []).length > 0).map(c => [c, items[c]] as [string, typeof items[string]]),
@@ -1190,7 +1198,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
-                  hasGuide={!!guides[t.cod]} pickingReady={pickingReady.has(t.cod)}
+                  hasGuide={!!guides[t.cod]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -1226,7 +1234,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
-                  hasGuide={!!guides[t.cod]} pickingReady={pickingReady.has(t.cod)}
+                  hasGuide={!!guides[t.cod]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
@@ -1247,16 +1255,20 @@ export function StepForm() {
   const renderStatsBar = () => (
     <div className="flex-shrink-0 bg-navy border-t-4 border-red">
       <div className="flex">
-        {[
-          { v: statP, l: 'Pallets', color: '#93C5FD' },
-          { v: statB, l: 'Bultos',  color: '#FCD34D' },
-          { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
-        ].map(({ v, l, color }, i) => (
-          <div key={l} className={`flex-1 py-2.5 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
-            <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-            <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-          </div>
-        ))}
+        {(() => {
+          const stats = [
+            { v: statP, l: 'Pallets', color: '#93C5FD' },
+            { v: statB, l: 'Bultos',  color: '#FCD34D' },
+            ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []),
+            { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
+          ];
+          return stats.map(({ v, l, color }, i) => (
+            <div key={l} className={`flex-1 py-2.5 text-center ${i < stats.length - 1 ? 'border-r border-white/10' : ''}`}>
+              <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
+              <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
+            </div>
+          ));
+        })()}
       </div>
       <div className="px-3 pb-3 pt-1 flex gap-2">
         <button onClick={goToResumen}
