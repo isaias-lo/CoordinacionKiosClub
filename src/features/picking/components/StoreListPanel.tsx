@@ -106,13 +106,10 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const hasError    = errorCods.includes(store.cod);
                 const ops         = opsMap[store.cod] ?? [];
                 // Check completion of the 4 Abastecimiento categories
-                const REQUIRED_CATS = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
-                const completedCount = REQUIRED_CATS.filter(cat => {
-                  const catOps = ops.filter(o => o.categories.includes(cat));
-                  return catOps.length > 0 && catOps.every(o => o.state === 'done');
-                }).length;
+                const totalOps = ops.length;
+                const doneOps = ops.filter(o => o.state === 'done').length;
                 const storeStatus: 'none' | 'partial' | 'complete' =
-                  completedCount === 0 ? 'none' : completedCount >= 4 ? 'complete' : 'partial';
+                  totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 const pickerCount = isSelected && ops.length > 0 ? new Set(ops.map(o => o.responsible || 'Sin asignar')).size : 0;
                 const opCount     = ops.length;
                 return (
@@ -144,7 +141,7 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                     {storeStatus === 'partial' && (
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
                         style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', border: '1px solid rgba(245,158,11,0.3)' }}>
-                        {completedCount}/4
+                        {doneOps}/{totalOps}
                       </span>
                     )}
                     {isSelected && !isLoading && storeStatus !== 'complete' && opCount > 0 && (

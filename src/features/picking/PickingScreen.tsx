@@ -1234,14 +1234,10 @@ export function PickingScreen() {
                 const storeGroups = groupedByStore[cod] ?? [];
                 const isLoading   = loadingCods.includes(cod);
                 const ops         = opsMap[cod] ?? [];
-                // Check completion of the 4 Abastecimiento categories
-                const REQUIRED_CATS = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
-                const completedCount = REQUIRED_CATS.filter(cat => {
-                  const catOps = ops.filter(o => o.categories.includes(cat));
-                  return catOps.length > 0 && catOps.every(o => o.state === 'done');
-                }).length;
+                const totalOps = ops.length;
+                const doneOps = ops.filter(o => o.state === 'done').length;
                 const storeStatus: 'none' | 'partial' | 'complete' =
-                  completedCount === 0 ? 'none' : completedCount >= 4 ? 'complete' : 'partial';
+                  totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 return (
                   <div key={cod} className="mb-8">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
@@ -1256,7 +1252,7 @@ export function PickingScreen() {
                       {storeStatus === 'partial' && (
                         <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
                           style={{ background: 'rgba(234,179,8,0.12)', color: '#D97706', border: '1px solid rgba(234,179,8,0.3)' }}>
-                          {completedCount}/4 categorías
+                          {doneOps}/{totalOps} ops
                         </span>
                       )}
                       {isLoading && <span className="text-[14px] text-text-3">Cargando…</span>}
