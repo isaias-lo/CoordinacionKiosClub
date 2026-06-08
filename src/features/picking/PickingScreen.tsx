@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { ProfilePill } from '@/components/ProfilePill';
 import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi'; // deprecated — config now server-side
 
@@ -938,7 +937,7 @@ export function PickingScreen() {
 
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight tracking-wide">
-            Picking
+            Abastecimiento
             {selectedCods.length > 0 && (
               <span className="ml-2 text-[13px] font-normal text-white/40 tracking-normal">{selectedCods.join(' · ')}</span>
             )}
@@ -955,7 +954,6 @@ export function PickingScreen() {
           </div>
         )}
 
-        <ProfilePill />
       </div>
 
       {/* ── Alerta cambios calendario ── */}

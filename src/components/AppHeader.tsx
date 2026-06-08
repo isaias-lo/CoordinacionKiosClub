@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { ProfilePill } from './ProfilePill';
 import { REGIONES_TERMINADO_KEY } from './modals/FinishModal';
 
 interface AppHeaderProps {
@@ -12,7 +11,7 @@ interface AppHeaderProps {
   backTo?: string;
 }
 
-export function AppHeader({ onFinish, backTo = '/despacho-hub' }: AppHeaderProps) {
+export function AppHeader({ onFinish, backTo = '/despacho' }: AppHeaderProps) {
   const { state, flushPending } = useApp();
   const router = useRouter();
   const [terminated, setTerminated] = useState(false);
@@ -93,8 +92,6 @@ export function AppHeader({ onFinish, backTo = '/despacho-hub' }: AppHeaderProps
           <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">REGISTRAR</span>
         </button>
       )}
-
-      <ProfilePill />
     </div>
   );
 }

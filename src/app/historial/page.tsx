@@ -1,7 +1,5 @@
-export const dynamic = 'force-dynamic';
-
-import { HistScreen } from '../../screens/HistScreen';
+import { redirect } from 'next/navigation';
 
 export default function HistorialPage() {
-  return <HistScreen />;
+  redirect('/registros');
 }

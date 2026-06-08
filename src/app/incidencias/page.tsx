@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { ProfilePill } from '@/components/ProfilePill';
 import type { TrazabilidadUnidad, TrazabilidadEstadoResolucion } from '@/lib/trazabilidad.types';
 
 const ESTADO_COLOR: Record<string, string> = {
@@ -74,7 +73,7 @@ export default function IncidenciasPage() {
 
   const paths = profile?.allowedPaths ?? [];
   function goBack() {
-    if (paths.includes('*') || paths.includes('/despacho-hub')) { router.push('/despacho-hub'); return; }
+    if (paths.includes('*') || paths.includes('/despacho')) { router.push('/despacho'); return; }
     router.push('/');
   }
 
@@ -91,7 +90,6 @@ export default function IncidenciasPage() {
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Trazabilidad</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: 0.5 }}>Incidencias</div>
         </div>
-        <ProfilePill />
       </div>
 
       {/* Filtros */}

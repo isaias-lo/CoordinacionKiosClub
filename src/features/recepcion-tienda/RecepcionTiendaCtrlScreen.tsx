@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { ProfilePill } from '@/components/ProfilePill';
 import { QRScanner } from '@/features/tiendas/QRScanner';
 import { RecepcionTiendaCtrlForm } from './RecepcionTiendaCtrlForm';
 
@@ -129,7 +128,6 @@ export function RecepcionTiendaCtrlScreen() {
           <div style={{ color: '#fff', fontWeight: 800, fontSize: 17, letterSpacing: '0.02em' }}>Recepción / Tienda</div>
           {profile && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 1 }}>{profile.full_name ?? profile.id}</div>}
         </div>
-        <ProfilePill />
       </div>
 
       {/* Content */}

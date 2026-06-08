@@ -27,7 +27,7 @@ interface QuickTile {
 const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría',
   despachador: 'Despachador', admin: 'Administrador',
-  'recepcion-tienda': 'Recepción', 'supervisor-picking': 'Sup. Picking',
+  'recepcion-tienda': 'Recepción', 'supervisor-picking': 'Sup. Abastecimiento',
   'asistente-despacho': 'Asistente', 'coordinador-flota': 'Coord. Flota',
   supervisor: 'Supervisor',
 };
@@ -101,8 +101,8 @@ export function LaunchScreen() {
 
   /* Quick tiles */
   const potentialTiles: (QuickTile | null)[] = [
-    canSee('/despacho-hub') ? {
-      key: 'despacho', path: '/despacho-hub', label: 'Despacho', sub: 'Enrutador · Flota · Estado',
+    canSee('/despacho') ? {
+      key: 'despacho', path: '/despacho', label: 'Despacho', sub: 'Enrutador · Flota · Estado',
       Icon: Truck, color: '#2563EB', bg: 'rgba(37,99,235,0.08)',
     } : null,
     canSee('/despacho/regiones') ? {
@@ -118,7 +118,7 @@ export function LaunchScreen() {
       Icon: ClipboardCheck, color: '#9333EA', bg: 'rgba(147,51,234,0.08)',
     } : null,
     canSee('/picking') ? {
-      key: 'picking', path: '/picking', label: 'Picking', sub: 'Supervisión',
+      key: 'picking', path: '/picking', label: 'Abastecimiento', sub: 'Supervisión',
       Icon: Layers, color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',
     } : null,
     canSee('/control-interno') ? {
@@ -171,7 +171,7 @@ export function LaunchScreen() {
             <Layers size={28} style={{ color: '#F59E0B' }} strokeWidth={1.6} />
           </div>
           <div className="text-center">
-            <div className="font-barlow-condensed text-lg font-bold text-text uppercase tracking-wide">Picking</div>
+            <div className="font-barlow-condensed text-lg font-bold text-text uppercase tracking-wide">Abastecimiento</div>
             <div className="text-[12px] text-text-3 mt-0.5">Supervisión de operaciones</div>
           </div>
           <ArrowRight size={16} className="text-text-3" />
@@ -236,7 +236,7 @@ export function LaunchScreen() {
             loading={statsLoading}
           />
           <KpiCard
-            label="Picking hoy"
+            label="Abastecimiento hoy"
             value={pallets.length}
             icon={Layers}
             color="#F59E0B"
@@ -245,7 +245,7 @@ export function LaunchScreen() {
           />
         </div>
 
-        {/* ── Chart + Picking status ── */}
+        {/* ── Chart + Abastecimiento status ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Dispatch chart */}
           <div className="md:col-span-2 bg-card rounded-card shadow-card border border-border/60 p-5">
@@ -274,11 +274,11 @@ export function LaunchScreen() {
             </div>
           </div>
 
-          {/* Picking status */}
+          {/* Abastecimiento status */}
           <div className="bg-card rounded-card shadow-card border border-border/60 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-barlow-condensed font-bold text-[15px] uppercase tracking-wide text-text">
-                Picking hoy
+                Abastecimiento hoy
               </h2>
               {canSee('/picking') && (
                 <button

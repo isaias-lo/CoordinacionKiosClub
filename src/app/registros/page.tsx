@@ -2,23 +2,25 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Truck, MapPin, Store, X } from 'lucide-react';
-import { ProfilePill } from '@/components/ProfilePill';
+import { ChevronLeft, Truck, MapPin, Store, X, History } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import { HistContent } from '@/screens/HistScreen';
 import type { LucideIcon } from 'lucide-react';
 
-type TabKey = 'rm' | 'regiones' | 'recepcion';
+type TabKey = 'rm' | 'regiones' | 'recepcion' | 'historial';
 
 const TABS: { key: TabKey; label: string; table: string; Icon: LucideIcon }[] = [
   { key: 'rm',        label: 'Despacho RM',       table: 'despacho_rm',       Icon: Truck },
   { key: 'regiones',  label: 'Despacho Regiones',  table: 'despacho_regiones', Icon: MapPin },
   { key: 'recepcion', label: 'Recepción Tienda',   table: 'recepcion',         Icon: Store },
+  { key: 'historial', label: 'Historial',           table: '',                  Icon: History },
 ];
 
 const TAB_COLORS: Record<TabKey, { bg: string; border: string; text: string }> = {
   rm:        { bg: 'rgba(37,99,235,0.15)',   border: 'rgba(37,99,235,0.4)',   text: '#3B82F6' },
   regiones:  { bg: 'rgba(211,47,47,0.15)',   border: 'rgba(211,47,47,0.4)',   text: '#EF4444' },
   recepcion: { bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.4)',  text: '#10B981' },
+  historial: { bg: 'rgba(124,58,237,0.15)',  border: 'rgba(124,58,237,0.4)',  text: '#7C3AED' },
 };
 
 const SEGUIMIENTO_STYLE: Record<string, { bg: string; color: string }> = {
@@ -43,6 +45,7 @@ const TABLE_COLS: Record<TabKey, string[]> = {
     'created_at','cod','tienda','pallets_sent','bultos_sent',
     'pallets_recibidos','bultos_recibidos','conductor','receptor','rut',
   ],
+  historial: [],
 };
 
 const COL_LABEL: Record<string, string> = {
@@ -295,7 +298,7 @@ export default function RegistrosPage() {
   }, [tabCfg.table]);
 
   const syncFromSheets = useCallback(async () => {
-    if (tabCfg.key === 'recepcion') return;
+    if (tabCfg.key === 'recepcion' || tabCfg.key === 'historial') return;
     setSyncing(true);
     try {
       await fetch('/api/sync-despacho', { method: 'POST' });
@@ -305,6 +308,7 @@ export default function RegistrosPage() {
 
   const didAutoSync = useRef<Record<string, boolean>>({});
   useEffect(() => {
+    if (tab === 'historial') return;
     loadData(tabCfg.table).then(loaded => {
       if (loaded.length === 0 && tabCfg.key !== 'recepcion' && !didAutoSync.current[tabCfg.key]) {
         didAutoSync.current[tabCfg.key] = true;
@@ -313,7 +317,7 @@ export default function RegistrosPage() {
     });
   }, [tab, tabCfg.table, tabCfg.key, loadData, syncFromSheets]);
 
-  useRealtimeRefresh(tabCfg.table, silentRefresh);
+  useRealtimeRefresh(tab === 'historial' ? '' : tabCfg.table, silentRefresh);
 
   const filtered = search.trim()
     ? rows.filter(r => cols.some(c => String(r[c] ?? '').toLowerCase().includes(search.toLowerCase())))
@@ -326,7 +330,7 @@ export default function RegistrosPage() {
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
            style={{ background: 'rgba(26,37,80,0.8)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <button onClick={() => router.push('/despacho-hub')}
+        <button onClick={() => router.push('/despacho')}
           className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
           style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
@@ -335,18 +339,19 @@ export default function RegistrosPage() {
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Registros de Despacho</div>
           <div className="text-[11px] text-white/40 uppercase tracking-widest">{loading ? 'Cargando…' : `${filtered.length} registros`}</div>
         </div>
-        {tab !== 'recepcion' && (
+        {tab !== 'recepcion' && tab !== 'historial' && (
           <button onClick={syncFromSheets} disabled={syncing}
             className="px-3 py-1.5 rounded-xl text-[13px] cursor-pointer hover:bg-white/10 transition-colors border border-white/10 disabled:opacity-50"
             style={{ color: '#10B981' }}>
             {syncing ? 'Sincronizando…' : '⇅ Sheets'}
           </button>
         )}
+        {tab !== 'historial' && (
         <button onClick={() => loadData(tabCfg.table)}
           className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
           ↺ Actualizar
         </button>
-        <ProfilePill />
+        )}
       </div>
 
       {/* Tabs */}
@@ -364,7 +369,7 @@ export default function RegistrosPage() {
       </div>
 
       {/* Seguimiento legend */}
-      {tab !== 'recepcion' && (
+      {tab !== 'recepcion' && tab !== 'historial' && (
         <div className="flex-shrink-0 flex gap-2 px-4 py-2 flex-wrap">
           {Object.entries(SEGUIMIENTO_STYLE).map(([estado, s]) => (
             <span key={estado} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color }}>
@@ -383,15 +388,22 @@ export default function RegistrosPage() {
       )}
 
       {/* Search */}
+      {tab !== 'historial' && (
       <div className="flex-shrink-0 px-4 py-2">
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por tienda, cod, estado…"
           className="w-full px-3 py-2 rounded-xl text-[14px] text-white placeholder:text-white/30 focus:outline-none border border-white/10 focus:border-white/25 transition-colors"
           style={{ background: 'rgba(255,255,255,0.07)' }} />
       </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-4 pb-4">
+        {tab === 'historial' ? (
+          <div className="h-full overflow-y-auto">
+            <HistContent />
+          </div>
+        ) : (<>
         {loading && <div className="text-center text-white/40 py-16 text-sm">Cargando datos…</div>}
         {error && <div className="text-sm text-red-400 text-center py-4 rounded-xl mb-4" style={{ background: 'rgba(211,47,47,0.1)' }}>{error}</div>}
         {!loading && !error && filtered.length === 0 && (
@@ -437,6 +449,7 @@ export default function RegistrosPage() {
             </div>
           </div>
         )}
+        </>)}
       </div>
 
       {/* Detail modal */}

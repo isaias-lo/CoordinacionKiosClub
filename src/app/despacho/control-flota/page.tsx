@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
-import { ProfilePill } from '@/components/ProfilePill';
 import { ControlFlotaPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
 
 export default function ControlFlotaPage() {
@@ -14,7 +13,7 @@ export default function ControlFlotaPage() {
       <div className="flex-shrink-0 bg-navy" style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <div className="flex items-center px-4 pt-3 pb-3 gap-3">
           <button
-            onClick={() => router.push('/despacho-hub')}
+            onClick={() => router.push('/despacho')}
             className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
             style={{
               width: 36, height: 36,
@@ -28,7 +27,6 @@ export default function ControlFlotaPage() {
             <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
             <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Control de Flota</div>
           </div>
-          <ProfilePill />
         </div>
       </div>
 

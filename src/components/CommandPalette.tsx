@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, LayoutDashboard, Truck, ClipboardCheck, PackageCheck,
   Shield, Map, Globe, MapPin, BarChart3, Activity, Monitor, Store,
-  History, FileText, AlertTriangle, Inbox, CheckSquare, Settings2,
+  FileText, AlertTriangle, Inbox, CheckSquare, Settings2,
   Users, CalendarDays, LogOut, RefreshCw, Navigation as NavIcon,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -16,7 +16,6 @@ import { MODULE_GROUPS } from '@/config/routes';
 /* ── Icon registry ─────────────────────────────────────────────── */
 const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/':                        LayoutDashboard,
-  '/despacho-hub':            LayoutDashboard,
   '/despacho':                Map,
   '/despacho/regiones':       Globe,
   '/despacho/santiago':       MapPin,
@@ -27,7 +26,6 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/conductor-hub':           NavIcon,
   '/panel-operaciones':       Monitor,
   '/tiendas':                 Store,
-  '/historial':               History,
   '/registros':               FileText,
   '/incidencias':             AlertTriangle,
   '/control-interno':         Shield,

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, Users, UserCheck, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
-import { ProfilePill } from '../../../../components/ProfilePill';
 import { fetchParametros, saveParametros, calcMinimo } from '../../utils/metricas';
 import type { Parametros } from '../../utils/metricas';
 
@@ -94,7 +93,6 @@ export function ConfigPanel({ onBack, onSaved, userRole }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳ Guardando…' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
-        <ProfilePill />
       </div>
 
       {/* Body */}

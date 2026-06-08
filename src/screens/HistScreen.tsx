@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { ProfilePill } from '../components/ProfilePill';
 import { supabase } from '../lib/supabase';
 import { exportToTemplate } from '../features/despacho/regiones/utils/exportUtils';
 import type { HistoryEntry } from '../types';
@@ -128,7 +127,7 @@ export function HistScreen() {
   return (
     <div className="fixed inset-0 bg-bg overflow-y-auto">
       <div className="bg-navy px-4 py-3.5 flex items-center gap-3.5 sticky top-0 z-10">
-        <button onClick={() => router.push('/despacho-hub')}
+        <button onClick={() => router.push('/despacho')}
           className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
           style={{
             width: 36, height: 36,
@@ -139,7 +138,6 @@ export function HistScreen() {
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div className="font-barlow-condensed text-xl font-bold text-white tracking-wide flex-1">Historial</div>
-        <ProfilePill />
       </div>
       <HistEntries history={history} loading={loading} redownload={redownload} />
     </div>

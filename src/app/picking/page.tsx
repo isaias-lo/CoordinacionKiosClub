@@ -3,7 +3,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function PickingPage() {
   return (
-    <ErrorBoundary module="Picking">
+    <ErrorBoundary module="Abastecimiento">
       <PickingScreen />
     </ErrorBoundary>
   );

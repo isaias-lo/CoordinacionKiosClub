@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git branch *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git merge *)",
+      "Bash(git commit -m ' *)",
+      "Bash(Get-Content \"src\\\\features\\\\picking\\\\PickingScreen.tsx\")",
+      "Bash(Select-String -Pattern \"tab|Monitoreo|counter|Bultos|Contenedor\")",
+      "Bash(Select-Object -First 30)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(awk '{print $9, \"—\", $5}')",
+      "Bash(xargs grep -l \"readOnly\")",
+      "Bash(git commit -m 'fix: log save errors to console for easier debugging *)"
+    ]
+  }
+}

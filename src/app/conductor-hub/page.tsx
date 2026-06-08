@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
-import { ProfilePill } from '@/components/ProfilePill';
 import { useAuth } from '@/components/AuthProvider';
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -47,7 +46,7 @@ export default function ConductorHubPage() {
 
   const esConductor = !!(profile?.allowedPaths ?? []).includes('/panel-choferes')
     && !(profile?.allowedPaths ?? []).includes('*')
-    && !(profile?.allowedPaths ?? []).includes('/despacho-hub');
+    && !(profile?.allowedPaths ?? []).includes('/despacho');
   const [patente,      setPatente]      = useState('');
   const [input,        setInput]        = useState('');
   const [rutas,        setRutas]        = useState<RutaData[]>([]);
@@ -250,7 +249,6 @@ export default function ConductorHubPage() {
               </div>
             </div>
           </div>
-          <ProfilePill />
         </div>
 
         {offline && (

@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
-import { ProfilePill } from '@/components/ProfilePill';
 import ControlCruceContent from '@/features/control-interno/ControlCruceContent';
 
 export default function ControlCrucePage() {
@@ -44,7 +43,6 @@ export default function ControlCrucePage() {
           </div>
         </div>
 
-        <ProfilePill />
       </div>
 
       {/* Contenido */}

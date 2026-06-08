@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SantiagoProvider } from '../../features/despacho/santiago/context/SantiagoContext';
-import { ProfilePill } from '../../components/ProfilePill';
 import { useAuth } from '@/components/AuthProvider';
 
 function RutasScreenWrapper({ onBack }: { onBack: () => void }) {
@@ -104,8 +103,8 @@ function DespachoContent() {
     }
     // Navegar al hub si el usuario tiene acceso, de lo contrario al inicio de sesión
     const paths = profile?.allowedPaths ?? [];
-    const dest = paths.includes('*') || paths.includes('/despacho-hub')
-      ? '/despacho-hub'
+    const dest = paths.includes('*') || paths.includes('/despacho')
+      ? '/despacho'
       : '/';
     router.push(dest);
   }, [router, profile]);
@@ -155,7 +154,6 @@ function DespachoContent() {
             <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
             <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
           </button>
-          <ProfilePill />
         </div>
       </div>
       <div className="despacho-content flex-1 overflow-hidden">

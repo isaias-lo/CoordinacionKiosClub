@@ -7,7 +7,6 @@ import { SantiagoProvider, useSantiago, SANTIAGO_TERMINADO_KEY } from '../featur
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { SantiagoFinishModal } from '../features/despacho/santiago/components/SantiagoFinishModal';
 import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
-import { ProfilePill } from '../components/ProfilePill';
 import { useAuth } from '../components/AuthProvider';
 
 function SantiagoContent() {
@@ -40,7 +39,7 @@ function SantiagoContent() {
     } else {
       const paths = profile?.allowedPaths ?? [];
       const hasConteo = paths.includes('*') || paths.includes('/despacho/conteo');
-      router.push(hasConteo ? '/despacho/conteo' : '/despacho-hub');
+      router.push(hasConteo ? '/despacho/conteo' : '/');
     }
   };
 
@@ -113,7 +112,6 @@ function SantiagoContent() {
           </button>
         )}
 
-        <ProfilePill />
       </div>
 
       <PendingDraftBanner fuente="santiago" />

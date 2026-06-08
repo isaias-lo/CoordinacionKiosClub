@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
-import { ProfilePill } from '@/components/ProfilePill';
 import { MODULE_GROUPS, HOME_OPTIONS, ALL_MODULE_PATHS, type ModuleGroup } from '@/config/routes';
 
 /* ─── Types ─────────────────────────────────────────────────── */
@@ -576,7 +575,6 @@ export default function UsuariosPage() {
           </button>
         )}
 
-        <ProfilePill compact />
       </div>
 
       {/* Bell dropdown */}

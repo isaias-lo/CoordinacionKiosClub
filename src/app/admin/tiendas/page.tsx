@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { ProfilePill } from '@/components/ProfilePill';
 import TiendasAdminContent from '@/features/control-interno/TiendasAdminContent';
 
 export default function TiendasAdminPage() {
@@ -31,7 +30,6 @@ export default function TiendasAdminPage() {
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, flex: 1 }}>Gestión de Tiendas</div>
-        <ProfilePill compact />
       </div>
 
       <TiendasAdminContent source="armado" />

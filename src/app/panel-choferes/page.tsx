@@ -1,7 +1,6 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { ProfilePill } from '@/components/ProfilePill';
 
 export default function PanelChoferesPage() {
   const router = useRouter();
@@ -12,10 +11,9 @@ export default function PanelChoferesPage() {
 
   const esConductor = !!(profile?.allowedPaths ?? []).includes('/panel-choferes')
     && !(profile?.allowedPaths ?? []).includes('*')
-    && !(profile?.allowedPaths ?? []).includes('/despacho-hub');
+    && !(profile?.allowedPaths ?? []).includes('/despacho');
 
   function goBack() {
-    if (canSee('/despacho-hub')) { router.push('/despacho-hub'); return; }
     if (canSee('/despacho'))     { router.push('/despacho');     return; }
     router.push('/');
   }
@@ -37,11 +35,6 @@ export default function PanelChoferesPage() {
           ‹
         </button>
       )}
-
-      {/* Profile pill */}
-      <div style={{ position: 'absolute', top: 16, right: 16 }}>
-        <ProfilePill />
-      </div>
 
       {/* Branding */}
       <div style={{ textAlign: 'center', marginBottom: 36 }}>

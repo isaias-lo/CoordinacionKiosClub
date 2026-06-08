@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, Radio, TableProperties } from 'lucide-react';
-import { ProfilePill } from '../../../../components/ProfilePill';
 import { motion } from 'framer-motion';
 
 interface HubCard {
@@ -83,7 +82,6 @@ export function HubView({ userRole, onNavigate }: {
               <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Auditoría</div>
             </div>
           </div>
-          <ProfilePill compact />
         </div>
 
         {/* Desktop grid */}

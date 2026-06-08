@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
-import { ProfilePill } from '../../../../components/ProfilePill';
 import { todayISO as metricasTodayISO } from '../../utils/metricas';
 
 export function ProduccionPanel({ onBack, pickerNombresList }: {
@@ -72,7 +71,6 @@ export function ProduccionPanel({ onBack, pickerNombresList }: {
           style={{ background: saved ? 'rgba(22,163,74,0.9)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
           {saving ? '⏳' : saved ? '✓ Guardado' : 'Guardar'}
         </button>
-        <ProfilePill />
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">

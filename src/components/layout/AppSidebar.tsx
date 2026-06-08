@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Truck, ClipboardCheck, PackageCheck, Shield,
   Map, Globe, MapPin, BarChart3, Activity, Navigation as NavIcon,
-  Monitor, Store, History, FileText, AlertTriangle, Inbox,
+  Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   LogOut, Users, CalendarDays, Search,
 } from 'lucide-react';
@@ -18,7 +18,6 @@ import { MODULE_GROUPS } from '@/config/routes';
 /* ── Icon registry ─────────────────────────────────────────────── */
 const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/':                        LayoutDashboard,
-  '/despacho-hub':            LayoutDashboard,
   '/despacho':                Map,
   '/despacho/regiones':       Globe,
   '/despacho/santiago':       MapPin,
@@ -29,7 +28,6 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/conductor-hub':           NavIcon,
   '/panel-operaciones':       Monitor,
   '/tiendas':                 Store,
-  '/historial':               History,
   '/registros':               FileText,
   '/incidencias':             AlertTriangle,
   '/control-interno':         Shield,
@@ -45,9 +43,11 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
 
 const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {
   despacho:         { Icon: Truck,         color: '#3B82F6' },
+  flota:            { Icon: NavIcon,        color: '#EA580C' },
+  seguimiento:      { Icon: Activity,      color: '#D97706' },
   'control-interno':{ Icon: Shield,        color: '#10B981' },
   auditoria:        { Icon: ClipboardCheck,color: '#9333EA' },
-  picking:          { Icon: PackageCheck,  color: '#F59E0B' },
+  abastecimiento:   { Icon: PackageCheck,  color: '#F59E0B' },
 };
 
 /* ── Helpers ────────────────────────────────────────────────────── */
@@ -200,7 +200,7 @@ export function AppSidebar() {
   const roleLabel: Record<string, string> = {
     auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría',
     despachador: 'Despachador', admin: 'Admin',
-    'recepcion-tienda': 'Recepción', 'supervisor-picking': 'Sup. Picking',
+    'recepcion-tienda': 'Recepción',     'supervisor-picking': 'Sup. Abastecimiento',
     'asistente-despacho': 'Asistente', 'coordinador-flota': 'Coord. Flota',
     supervisor: 'Supervisor',
   };

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { ChevronLeft, LayoutDashboard, Trophy } from 'lucide-react';
-import { ProfilePill } from '../../../../components/ProfilePill';
 import { DashboardContent } from '../dashboard/DashboardContent';
 import { RankingContent } from '../dashboard/RankingContent';
 import type { AuditEntry, OdooConfig } from '../../types';
@@ -21,7 +20,6 @@ export function AdminAudStats({ history, today, odooConfig, onBack, pickerNames 
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase flex-1">Estadísticas</div>
-        <ProfilePill />
       </div>
       <div className="flex border-b border-border bg-white flex-shrink-0">
         {([

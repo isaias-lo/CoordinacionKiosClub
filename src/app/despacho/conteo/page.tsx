@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, MapPin, Building2 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
-import { ProfilePill } from '../../../components/ProfilePill';
 
 export default function ConteoPage() {
   const router = useRouter();
@@ -48,7 +47,7 @@ export default function ConteoPage() {
       <div className="flex items-center gap-3 mb-10 px-6">
         <div className="flex items-center gap-3 flex-1">
           <button
-            onClick={() => router.push('/despacho-hub')}
+            onClick={() => router.push('/despacho')}
             className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
             style={{
               width: 36, height: 36,
@@ -63,7 +62,6 @@ export default function ConteoPage() {
             <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Conteo / Consolidación</div>
           </div>
         </div>
-        <ProfilePill />
       </div>
 
       {/* Cards */}

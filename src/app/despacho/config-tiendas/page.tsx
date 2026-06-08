@@ -3,7 +3,6 @@
 import { useRouter }          from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ChevronLeft }        from 'lucide-react';
-import { ProfilePill }        from '@/components/ProfilePill';
 import { useAuth }            from '@/components/AuthProvider';
 import TiendasAdminContent    from '@/features/control-interno/TiendasAdminContent';
 
@@ -102,7 +101,7 @@ export default function DespachoConfigTiendasPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <button
-          onClick={() => router.push('/despacho-hub')}
+          onClick={() => router.push('/despacho')}
           style={{
             width: 36, height: 36, flexShrink: 0, cursor: 'pointer',
             background: 'linear-gradient(145deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))',
@@ -113,7 +112,6 @@ export default function DespachoConfigTiendasPage() {
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
         <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, flex: 1 }}>Config. Tiendas</div>
-        <ProfilePill compact />
       </div>
 
       <TiendasAdminContent

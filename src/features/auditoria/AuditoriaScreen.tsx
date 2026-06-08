@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, History, Radio, TableProperties } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
-import { ProfilePill } from '../../components/ProfilePill';
 import { supabase } from '../../lib/supabase';
 import { entryToRow, rowToEntry } from './utils/converters';
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
@@ -1219,7 +1218,6 @@ export function AuditoriaScreen() {
                 <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Auditoría</div>
               </div>
             </div>
-            <ProfilePill compact />
           </div>
 
           {/* Desktop grid */}
@@ -1290,7 +1288,6 @@ export function AuditoriaScreen() {
             <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Revisión Auditoría</div>
             <div className="text-[11px] text-white/40 uppercase tracking-widest">{userRole === 'admin' ? 'Admin' : 'Admin Auditoría'}</div>
           </div>
-          <ProfilePill />
         </div>
         <HistoryContent history={history} today={today} onReaudit={e => { iniciarReauditoria(e); setView('form'); }} onExportPDF={exportarPDF} onRefresh={loadHistory} pickerNames={PICKER_NAMES} />
       </div>
@@ -1355,11 +1352,9 @@ export function AuditoriaScreen() {
         {/* Mobile: hamburger + profile */}
         <div className="flex md:hidden items-center gap-1">
           {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>}
-          <ProfilePill compact />
         </div>
         {/* Desktop: profile */}
         <div className="hidden md:flex items-center gap-1">
-          <ProfilePill />
         </div>
       </div>
 
