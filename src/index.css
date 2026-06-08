@@ -86,7 +86,28 @@
   .print-flex { display: flex !important; }
   body { overflow: visible !important; height: auto !important; }
   @page { size: A4; margin: 15mm; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Utility button classes ────────────────────────────────────── */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-barlow-condensed font-bold uppercase tracking-wider
+           rounded-lg px-4 py-2 text-[13px] transition-all cursor-pointer select-none
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-kred text-white hover:brightness-110 active:scale-[0.97];
+  }
+  .btn-secondary {
+    @apply btn bg-white/8 text-white/70 border border-white/10 hover:bg-white/12 hover:text-white active:scale-[0.97];
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-white/50 hover:bg-white/8 hover:text-white active:scale-[0.97];
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 active:scale-[0.97];
+  }
+}
   /* Despacho page: reset fixed/overflow for print */
   .despacho-root {
     position: static !important;
