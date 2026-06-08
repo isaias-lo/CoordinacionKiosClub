@@ -429,6 +429,388 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    /* ── debug_activities — diagnóstico completo ── */
+    if (action === 'debug_activities') {
+      // A. Todos los tipos registrados en mail.activity.type
+      const allTypes = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'mail.activity.type', 'search_read',
+          [[]],
+          { fields: ['id', 'name'], limit: 50 },
+        ],
+      })) as Array<Record<string, unknown>>;
+
+      // B. Actividades PENDIENTES en stock.picking (mail.activity)
+      const pending = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'mail.activity', 'search_read',
+          [[['res_model', '=', 'stock.picking']]],
+          {
+            fields: ['id', 'res_name', 'user_id', 'activity_type_id', 'summary', 'date_deadline'],
+            limit: 100,
+            order: 'id desc',
+          },
+        ],
+      })) as Array<Record<string, unknown>>;
+
+      // C. Actividades COMPLETADAS — mail.message con body
+      let done: Array<Record<string, unknown>> = [];
+      try {
+        done = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'mail.message', 'search_read',
+            [[
+              ['model', '=', 'stock.picking'],
+              ['mail_activity_type_id', '!=', false],
+            ]],
+            {
+              fields: ['id', 'res_id', 'record_name', 'author_id',
+                       'mail_activity_type_id', 'date', 'body'],
+              limit: 100,
+              order: 'id desc',
+            },
+          ],
+        })) as Array<Record<string, unknown>>;
+      } catch { done = [{ error: 'mail.message no accesible' }]; }
+
+      // D. Verificar nombres reales de los tipos 26, 27, 28
+      let typeDetail: Array<Record<string, unknown>> = [];
+      try {
+        typeDetail = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'mail.activity.type', 'search_read',
+            [[['id', 'in', [26, 27, 28]]]],
+            { fields: ['id', 'name', 'summary', 'category', 'res_model'], limit: 10 },
+          ],
+        })) as Array<Record<string, unknown>>;
+      } catch { typeDetail = [{ error: 'No se pudo leer mail.activity.type para esos IDs' }]; }
+
+      return NextResponse.json({ allTypes, pending, done, typeDetail });
+    }
+
+    /* ── debug_responsable — traza la cadena de un INT picking específico ── */
+    if (action === 'debug_responsable') {
+      // query = nombre del picking INT, ej: "20CTC/INT/03084"
+      if (!query) return NextResponse.json({ error: 'Pasa el nombre del picking en query' }, { status: 400 });
+
+      // 1. Obtener el picking INT
+      const intPick = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read',
+          [[['name', '=', query]]],
+          { fields: ['id', 'name', 'origin', 'user_id', 'picking_type_id', 'group_id'], limit: 1 },
+        ],
+      })) as Array<Record<string, unknown>>;
+
+      if (!intPick.length) return NextResponse.json({ error: `Picking "${query}" no encontrado` });
+
+      const pickId = intPick[0].id as number;
+
+      // 2. Moves del picking
+      const moves = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.move', 'search_read',
+          [[['picking_id', '=', pickId]]],
+          { fields: ['id', 'name', 'move_orig_ids', 'picking_id'], limit: 20 },
+        ],
+      })) as Array<Record<string, unknown>>;
+
+      // 3. move_orig_ids detail
+      const origMoveIds = moves.flatMap(m => (m.move_orig_ids as number[]) ?? []);
+      let origMoves: Array<Record<string, unknown>> = [];
+      let origPickings: Array<Record<string, unknown>> = [];
+      if (origMoveIds.length) {
+        origMoves = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.move', 'read',
+            [origMoveIds],
+            { fields: ['id', 'name', 'picking_id', 'state'] },
+          ],
+        })) as Array<Record<string, unknown>>;
+
+        const origPickIds = [...new Set(origMoves
+          .map(m => Array.isArray(m.picking_id) ? (m.picking_id as [number,string])[0] : null)
+          .filter((x): x is number => x !== null))];
+
+        if (origPickIds.length) {
+          origPickings = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.picking', 'read',
+              [origPickIds],
+              { fields: ['id', 'name', 'user_id', 'picking_type_id', 'origin', 'state'] },
+            ],
+          })) as Array<Record<string, unknown>>;
+        }
+      }
+
+      // 4. Pickings con el mismo origen (misma referencia de abastecimiento)
+      const origin = intPick[0].origin as string | false;
+      let sameOriginPickings: Array<Record<string, unknown>> = [];
+      if (origin) {
+        sameOriginPickings = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'search_read',
+            [[['origin', '=', origin], ['id', '!=', pickId]]],
+            { fields: ['id', 'name', 'user_id', 'picking_type_id', 'state'], limit: 10 },
+          ],
+        })) as Array<Record<string, unknown>>;
+      }
+
+      // Parseo de referencias del origin (igual que en get_control_activities)
+      const rawOrigin = (intPick[0].origin as string) ?? '';
+      const parsedRefs = rawOrigin.match(/[A-Z0-9]+(?:\/[A-Z0-9]+)+/g)
+        ?? rawOrigin.split(',').map(r => r.trim()).filter(Boolean);
+
+      // Buscar esos pickings por name
+      let parentByName: Array<Record<string, unknown>> = [];
+      if (parsedRefs.length) {
+        parentByName = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'search_read',
+            [[['name', 'in', parsedRefs]]],
+            {
+              fields: ['id', 'name', 'state', 'user_id', 'responsible_id', 'owner_id',
+                       'date_done', 'location_id', 'location_dest_id', 'picking_type_id'],
+              limit: 20,
+            },
+          ],
+        })) as Array<Record<string, unknown>>;
+      }
+
+      return NextResponse.json({
+        intPick: intPick[0], rawOrigin, parsedRefs,
+        parentByName, moves, origMoves, origPickings, sameOriginPickings,
+      });
+    }
+
+    /* ── get_control_activities ── */
+    // Fuente: mail.message (actividades COMPLETADAS por Control Interno en stock.picking).
+    // El body HTML contiene: tipo (<span>Faltantes|Sobrantes|Merma</span>)
+    //                        y el movimiento de ajuste (línea tras "Ajuste Realizado").
+    if (action === 'get_control_activities') {
+
+      // Helpers de parseo de body ──────────────────────────────────────────
+      function stripHtml(html: string): string {
+        return html.replace(/<[^>]*>/g, '\n')
+                   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+                   .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                   .replace(/\n+/g, '\n').trim();
+      }
+
+      function parseDetalle(body: string): string {
+        const m = body.match(/<span>(Faltantes|Sobrantes|Merma)<\/span>/i);
+        return m ? m[1] : '';
+      }
+
+      function parseMovAjuste(body: string): string {
+        const text = stripHtml(body);
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        const idx = lines.findIndex(l => /ajuste\s*(realizado)?|ajustado/i.test(l));
+        if (idx >= 0) {
+          for (let i = idx + 1; i < Math.min(idx + 4, lines.length); i++) {
+            if (/[A-Z0-9]+\/[A-Z]+\/\d+/i.test(lines[i])) return lines[i].trim();
+          }
+        }
+        return '';
+      }
+      // ────────────────────────────────────────────────────────────────────
+
+      // 1. Resolver IDs de autores (Control Interno)
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const oneMonthAgoStr = oneMonthAgo.toISOString().replace('T', ' ').substring(0, 19);
+
+      const msgDomain: unknown[] = [
+        ['model', '=', 'stock.picking'],
+        ['mail_activity_type_id', '!=', false],
+        ['date', '>=', oneMonthAgoStr],
+      ];
+      if (query && query.trim()) {
+        const authors = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'res.users', 'search_read',
+            [[['name', 'ilike', query.trim()]]],
+            { fields: ['id'], limit: 10 },
+          ],
+        })) as Array<{ id: number }>;
+        // author_id en mail.message es res.partner, no res.users
+        // Obtenemos el partner_id de cada usuario
+        if (authors.length) {
+          const partnerIds = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'res.users', 'read',
+              [authors.map(a => a.id)],
+              { fields: ['partner_id'] },
+            ],
+          })) as Array<{ id: number; partner_id: [number, string] | false }>;
+          const pids = partnerIds
+            .map(u => Array.isArray(u.partner_id) ? u.partner_id[0] : null)
+            .filter((id): id is number => id !== null);
+          if (pids.length) msgDomain.push(['author_id', 'in', pids]);
+        }
+      }
+
+      // 2. Leer mail.message con body
+      const messages = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'mail.message', 'search_read',
+          [msgDomain],
+          {
+            fields: ['id', 'res_id', 'record_name', 'author_id',
+                     'mail_activity_type_id', 'date', 'body'],
+            limit: 2000,
+            order: 'id desc',
+          },
+        ],
+      })) as Array<{
+        id: number; res_id: number; record_name: string;
+        author_id: [number, string] | false;
+        mail_activity_type_id: [number, string] | false;
+        date: string; body: string;
+      }>;
+
+      // 3. Filtrar solo Faltantes/Sobrantes/Merma y parsear body
+      type ParsedMsg = {
+        msgId: number; pickingId: number; pickingName: string;
+        storeCod: string; fechaDeclaracion: string;
+        detalle: string; movAjuste: string;
+        authorName: string;
+      };
+      const parsed: ParsedMsg[] = [];
+      for (const msg of messages) {
+        const detalle = parseDetalle(msg.body ?? '');
+        if (!detalle) continue; // descartar si no es Faltantes/Sobrantes/Merma
+        const movAjuste  = parseMovAjuste(msg.body ?? '');
+        const pickingName = msg.record_name ?? '';
+        const storeCod    = pickingName.split('/')[0] ?? '';
+        parsed.push({
+          msgId:            msg.id,
+          pickingId:        msg.res_id,
+          pickingName,
+          storeCod,
+          fechaDeclaracion: msg.date,
+          detalle,
+          movAjuste,
+          authorName: Array.isArray(msg.author_id) ? msg.author_id[1] : '',
+        });
+      }
+
+      if (!parsed.length) return NextResponse.json({ rows: [] });
+
+      // 4. Batch fetch pickings para Responsable Armado y Fecha Armado
+      const pickingIds = [...new Set(parsed.map(m => m.pickingId))];
+      const pickingRecords = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read',
+          [[['id', 'in', pickingIds]]],
+          {
+            fields: ['id', 'name', 'scheduled_date', 'create_date', 'user_id', 'origin', 'state'],
+            limit: 1000,
+          },
+        ],
+      })) as Array<{
+        id: number; name: string;
+        scheduled_date: string | false; create_date: string;
+        user_id: [number, string] | false;
+        origin: string | false; state: string;
+      }>;
+      const pickingMap = new Map(pickingRecords.map(p => [p.id, p]));
+
+      // 5. Responsable Armado — cadena: INT picking → stock.move (move_orig_ids) →
+      //    picking padre (ej: 99REC/DT/97060) → user_id del picker.
+      //    El campo origin contiene nombres de stock.move (OP/xxx), NO nombres de picking,
+      //    por lo que buscar stock.picking by name no funciona. El path correcto es move_orig_ids.
+      const respMap = new Map<number, string>(); // pickingId → nombre responsable armado
+      try {
+        // 5a. Solo moves con move_orig_ids (filtro en dominio evita traer miles de moves vacíos)
+        const intMoves = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.move', 'search_read',
+            [[['picking_id', 'in', pickingIds], ['move_orig_ids', '!=', false]]],
+            { fields: ['id', 'picking_id', 'move_orig_ids'], limit: 99999 },
+          ],
+        })) as Array<{ id: number; picking_id: [number, string] | false; move_orig_ids: number[] }>;
+
+        // Mapa: pickingId → lista de move_orig_ids
+        const origIdsByPicking = new Map<number, number[]>();
+        for (const m of intMoves) {
+          if (!Array.isArray(m.move_orig_ids) || !m.move_orig_ids.length) continue;
+          const pid = Array.isArray(m.picking_id) ? m.picking_id[0] : null;
+          if (!pid) continue;
+          origIdsByPicking.set(pid, (origIdsByPicking.get(pid) ?? []).concat(m.move_orig_ids));
+        }
+
+        const allOrigIds = [...new Set([...origIdsByPicking.values()].flat())];
+        if (allOrigIds.length) {
+          // 5b. Leer moves origen para obtener picking_id padre
+          const origMoves = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.move', 'read',
+              [allOrigIds],
+              { fields: ['id', 'picking_id'] },
+            ],
+          })) as Array<{ id: number; picking_id: [number, string] | false }>;
+
+          const origMoveToParentPick = new Map<number, number>();
+          for (const om of origMoves) {
+            if (Array.isArray(om.picking_id)) origMoveToParentPick.set(om.id, om.picking_id[0]);
+          }
+
+          const parentPickingIds = [...new Set(origMoveToParentPick.values())];
+          if (parentPickingIds.length) {
+            // 5c. Leer pickings padre para obtener user_id
+            const parentPickings = (await odooRpc(url, {
+              service: 'object', method: 'execute_kw',
+              args: [db, uid, apiKey, 'stock.picking', 'read',
+                [parentPickingIds],
+                { fields: ['id', 'name', 'user_id'] },
+              ],
+            })) as Array<{ id: number; name: string; user_id: [number, string] | false }>;
+
+            const parentPickMap = new Map(parentPickings.map(pp => [pp.id, pp]));
+
+            // 5d. Asignar responsable — saltar si el padre es INT
+            for (const [pickId, origIds] of origIdsByPicking) {
+              for (const oid of origIds) {
+                const parentPickId = origMoveToParentPick.get(oid);
+                if (!parentPickId) continue;
+                const pp = parentPickMap.get(parentPickId);
+                if (!pp || !Array.isArray(pp.user_id)) continue;
+                if (pp.name.includes('/INT/')) continue;
+                respMap.set(pickId, pp.user_id[1]);
+                break;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[get_control_activities] error en paso 5 (move_orig_ids):', err);
+      }
+
+      // 6. Construir filas finales
+      const rows = parsed.map(m => {
+        const p = pickingMap.get(m.pickingId);
+        const responsableArmado =
+          respMap.get(m.pickingId)                                        // PICK picker (ideal)
+          ?? (p && Array.isArray(p.user_id) ? p.user_id[1] : '');        // fallback: INT user_id
+        return {
+          activityId:         m.msgId,
+          pickingId:          m.pickingId,
+          pickingName:        m.pickingName,
+          storeCod:           m.storeCod,
+          responsableArmado,
+          fechaArmado:        p ? (typeof p.scheduled_date === 'string' ? p.scheduled_date : p.create_date) : '',
+          fechaDeclaracion:   m.fechaDeclaracion,
+          detalle:            m.detalle,
+          movAjuste:          m.movAjuste,
+          origin:             p && typeof p.origin === 'string' ? p.origin : '',
+          state:              p?.state ?? '',
+        };
+      });
+
+      return NextResponse.json({ rows, total: rows.length });
+    }
+
     return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 });
 
   } catch (err) {
