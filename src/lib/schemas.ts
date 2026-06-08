@@ -25,12 +25,12 @@ export const CreateUserSchema = z.object({
   email:     z.string().email('Email inválido'),
   password:  z.string().min(8, 'Contraseña de mínimo 8 caracteres'),
   full_name: z.string().min(2).max(100),
-  role:      z.string().min(1),
+  role:      z.enum(VALID_ROLES),
 });
 
 export const UpdateUserSchema = z.object({
   id:        z.string().uuid('ID de usuario inválido'),
-  role:      z.string().min(1).optional(),
+  role:      z.enum(VALID_ROLES).optional(),
   full_name: z.string().min(2).max(100).optional(),
   password:  z.string().min(8).optional(),
 });
@@ -43,7 +43,7 @@ export const CreateRoleSchema = z.object({
   color:         z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   home_path:     z.string().startsWith('/').optional(),
   allowed_paths: z.array(z.string()).optional(),
-  permissions:   z.record(z.string()).optional(),
+  permissions:   z.record(z.string(), z.string()).optional(),
 });
 
 export const UpdateRoleSchema = z.object({
@@ -52,7 +52,7 @@ export const UpdateRoleSchema = z.object({
   color:         z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   home_path:     z.string().startsWith('/').optional(),
   allowed_paths: z.array(z.string()).optional(),
-  permissions:   z.record(z.string()).optional(),
+  permissions:   z.record(z.string(), z.string()).optional(),
 });
 
 // ── Tiendas ────────────────────────────────────────────────────────────────
@@ -183,6 +183,6 @@ export function parseBody<T>(schema: ZodSchema<T>, body: unknown):
   | { ok: false; response: ReturnType<typeof NextResponse.json> } {
   const result = schema.safeParse(body);
   if (result.success) return { ok: true, data: result.data };
-  const message = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+  const message = result.error.issues.map(e => `${e.path.map(String).join('.')}: ${e.message}`).join('; ');
   return { ok: false, response: NextResponse.json({ error: message }, { status: 400 }) };
 }

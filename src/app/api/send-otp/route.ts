@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { createOtpToken } from '../../../lib/otpToken';
-import { checkRateLimit, getClientIp, tooManyRequests } from '../../../lib/rateLimit';
+import { checkRateLimit, tooManyRequests } from '../../../lib/rateLimit';
 import { parseBody, SendOtpSchema } from '../../../lib/schemas';
 
 function getTransporter() {
