@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
+
   serverExternalPackages: ['xlsx', 'nodemailer'],
   webpack: (config, { isServer }) => {
     config.resolve.alias = {

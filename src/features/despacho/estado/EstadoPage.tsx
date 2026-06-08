@@ -107,19 +107,30 @@ function StoreCard({
   const contenedores = store.items.filter(i => i.tipo === 'Contenedor').length;
   const hasGuides = store.items.some(i => i.guias.length > 0);
   const empty = store.items.length === 0;
+  const cardBg = isSelected
+    ? 'bg-[rgba(27,42,107,0.06)]'
+    : storeStatus === 'complete'
+    ? 'bg-[rgba(22,163,74,0.04)]'
+    : storeStatus === 'partial'
+    ? 'bg-[rgba(217,119,6,0.04)]'
+    : storeStatus === 'pending'
+    ? 'bg-[rgba(156,163,175,0.04)]'
+    : empty
+    ? 'bg-bg/40'
+    : 'bg-white hover:bg-bg';
+  const cardBorder = isSelected
+    ? 'border-l-navy'
+    : storeStatus === 'complete'
+    ? 'border-l-success'
+    : storeStatus === 'partial'
+    ? 'border-l-[#D97706]'
+    : storeStatus === 'pending'
+    ? 'border-l-[#9CA3AF]'
+    : 'border-l-transparent';
   return (
     <div
       onClick={onClick}
-      className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px]
-        ${isSelected
-          ? 'bg-[rgba(27,42,107,0.06)] border-l-navy'
-          : storeStatus === 'complete'
-          ? 'bg-[rgba(22,163,74,0.04)] border-l-success'
-          : storeStatus === 'partial'
-          ? 'bg-[rgba(217,119,6,0.04)] border-l-[#D97706]'
-          : storeStatus === 'pending'
-          ? 'bg-[rgba(156,163,175,0.04)] border-l-[#9CA3AF]'
-          : `${empty ? 'bg-bg/40' : 'bg-white'} hover:bg-bg border-l-transparent}`}>
+      className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px] ${cardBg} ${cardBorder}`}>
 
       {/* Indicador progreso Odoo */}
       {storeStatus === 'pending' && (
@@ -157,8 +168,7 @@ function StoreCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <span className="font-barlow-condensed text-[18px] font-extrabold text-navy leading-none">{formatCod(store.cod)}</span>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide
-            ${store.source === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${store.source === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
             {store.source === 'santiago' ? 'Santiago' : 'Regiones'}
           </span>
           {hasGuides && (
