@@ -83,7 +83,7 @@ export interface PickerStatRow {
 export interface StatsCache { cachedAt: string; rows: PickerStatRow[]; }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH';
-export type SectionFilter = 'all' | 'aseo-comida' | 'hogar';
+export type SectionFilter = 'all' | 'aseo-comida' | 'hogar' | 'chocolates';
 
 // ─── localStorage keys ────────────────────────────────────────────────────────
 export const SAVED_NAMES_KEY     = 'picking_saved_picker_names';

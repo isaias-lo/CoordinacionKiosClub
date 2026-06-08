@@ -104,19 +104,23 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const isSelected  = selectedCods.includes(store.cod);
                 const isLoading   = loadingCods.includes(store.cod);
                 const hasError    = errorCods.includes(store.cod);
-                const ops         = opsMap[store.cod];
-                const allDone     = ops && ops.length > 0 && ops.every(o => o.state === 'done');
-                const pickerCount = isSelected && ops ? new Set(ops.map(o => o.responsible || 'Sin asignar')).size : 0;
-                const opCount     = ops?.length ?? 0;
+                const ops         = opsMap[store.cod] ?? [];
+                // Check completion of the 4 Abastecimiento categories
+                const totalOps = ops.length;
+                const doneOps = ops.filter(o => o.state === 'done').length;
+                const storeStatus: 'none' | 'partial' | 'complete' =
+                  totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
+                const pickerCount = isSelected && ops.length > 0 ? new Set(ops.map(o => o.responsible || 'Sin asignar')).size : 0;
+                const opCount     = ops.length;
                 return (
                   <button key={store.cod} onClick={() => onToggleStore(store.cod)} disabled={isLoading}
                     className="w-full flex items-center gap-2.5 px-4 py-3 border-b border-border cursor-pointer text-left transition-all disabled:cursor-wait"
                     style={{
                       background:  isSelected ? 'rgba(217,119,6,0.09)' : 'transparent',
-                      borderLeft: `4px solid ${allDone ? '#16A34A' : isSelected ? '#D97706' : 'transparent'}`,
+                      borderLeft: `4px solid ${storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'transparent'}`,
                     }}>
                     <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all"
-                      style={{ borderColor: allDone ? '#16A34A' : isSelected ? '#D97706' : 'rgba(26,37,80,0.2)', background: isSelected ? (allDone ? '#16A34A' : '#D97706') : 'transparent' }}>
+                      style={{ borderColor: storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'rgba(26,37,80,0.2)', background: isSelected ? (storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : '#D97706') : 'transparent' }}>
                       {isSelected && <span className="text-white text-[11px] font-bold leading-none">✓</span>}
                     </div>
                     <span className="font-mono text-[13px] font-bold shrink-0 px-2 py-0.5 rounded-lg"
@@ -128,13 +132,19 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                     </span>
                     {isLoading && <span className="text-[14px] shrink-0">⏳</span>}
                     {hasError && !isLoading && <span className="text-[13px] shrink-0" title="Error al cargar — haz clic para reintentar">⚠️</span>}
-                    {allDone && (
+                    {storeStatus === 'complete' && (
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
                         style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
                         ✓ Listo
                       </span>
                     )}
-                    {isSelected && !isLoading && !allDone && opCount > 0 && (
+                    {storeStatus === 'partial' && (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', border: '1px solid rgba(245,158,11,0.3)' }}>
+                        {doneOps}/{totalOps}
+                      </span>
+                    )}
+                    {isSelected && !isLoading && storeStatus !== 'complete' && opCount > 0 && (
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
                         style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
                         {pickerCount}p · {opCount}op

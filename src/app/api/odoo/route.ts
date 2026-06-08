@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Formatea una Date como 'YYYY-MM-DD' usando la hora LOCAL (no UTC). */
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 interface OdooRpcParams {
   service: string;
   method: string;
@@ -198,7 +203,7 @@ export async function POST(req: NextRequest) {
       const pickerUserId = users[0].id;
 
       const since = new Date(); since.setDate(since.getDate() - 90);
-      const sinceStr = since.toISOString().slice(0, 10) + ' 00:00:00';
+      const sinceStr = localDateStr(since) + ' 00:00:00';
 
       const [pickingGroups, doneThisWeek, discrepancias] = await Promise.all([
         odooRpc(url, {
@@ -213,7 +218,7 @@ export async function POST(req: NextRequest) {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'stock.picking', 'search_count',
             [[['user_id', '=', pickerUserId], ['state', '=', 'done'],
-              ['date_done', '>=', new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10) + ' 00:00:00']]],
+              ['date_done', '>=', localDateStr(new Date(Date.now() - 7 * 864e5)) + ' 00:00:00']]],
           ],
         }) as Promise<number>,
 
@@ -247,20 +252,38 @@ export async function POST(req: NextRequest) {
     if (action === 'picking_today_operations') {
       const storeCod = (query || '').trim().toUpperCase();
 
-      // Build today's date range in UTC (Odoo stores datetimes in UTC)
+      // Build today's date range using local date (not UTC) to avoid missing pickings
+      // after ~20:00 in negative-UTC timezones like Chile (UTC-3/-4)
       const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10);
+      const todayStr = localDateStr(now);
+
+      // Find picking_type IDs for "Despacho Tiendas" — query first, then filter by ID
+      let pickingTypeIds: number[] = [];
+      try {
+        const ptRows = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+            [[['name', 'ilike', 'Despacho Tiendas']]],
+            { fields: ['id'], limit: 10 },
+          ],
+        })) as Array<{ id: number }>;
+        pickingTypeIds = ptRows.map(r => r.id);
+      } catch { /* if this fails, skip the filter and return all */ }
+
       const domain: unknown[] = [
         ['state', 'not in', ['draft', 'cancel']],
         ['scheduled_date', '>=', todayStr + ' 00:00:00'],
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
-        ['origin', 'ilike', 'Abastecimiento'],
         ['origin', 'not ilike', 'AUDITORIA'],
       ];
+      // Filter by picking type if found; fallback to origin containing "Abastecimiento"
+      if (pickingTypeIds.length > 0) {
+        domain.push(['picking_type_id', 'in', pickingTypeIds]);
+      } else {
+        domain.push(['origin', 'ilike', 'Abastecimiento']);
+      }
       if (storeCod) {
         domain.push(['origin', 'ilike', storeCod]);
-      } else {
-        domain.push(['picking_type_id.name', 'ilike', 'pick']);
       }
 
       const pickings = (await odooRpc(url, {
@@ -269,7 +292,7 @@ export async function POST(req: NextRequest) {
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
           fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
                    'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
-          limit: 50,
+          limit: 500,
           order: 'scheduled_date asc',
         }],
       })) as Array<{
@@ -323,6 +346,38 @@ export async function POST(req: NextRequest) {
           lineCount: linesByPicking[p.id] ?? 0,
         })),
       });
+    }
+
+    /* ── picking_move_products: primeras líneas de producto por movimiento ── */
+    if (action === 'picking_move_products') {
+      const ids = pickings.map(n => Number(n)).filter(n => !isNaN(n));
+      if (ids.length === 0) return NextResponse.json({ products: {} });
+
+      const moves = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.move', 'search_read',
+          [[['picking_id', 'in', ids]]],
+          { fields: ['picking_id', 'product_id', 'product_uom_qty'], limit: 1000, order: 'id asc' },
+        ],
+      })) as Array<{
+        picking_id: [number, string] | false;
+        product_id: [number, string] | false;
+        product_uom_qty: number;
+      }>;
+
+      // Agrupar por picking_id → lista de { nombre, qty }
+      const products: Record<number, { nombre: string; qty: number }[]> = {};
+      for (const mv of moves) {
+        if (!Array.isArray(mv.picking_id)) continue;
+        const pid = mv.picking_id[0];
+        if (!products[pid]) products[pid] = [];
+        products[pid].push({
+          nombre: Array.isArray(mv.product_id) ? mv.product_id[1] : '—',
+          qty:    typeof mv.product_uom_qty === 'number' ? mv.product_uom_qty : 0,
+        });
+      }
+      return NextResponse.json({ products });
     }
 
     /* ── picking_stats_range ── */
@@ -809,6 +864,63 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ rows, total: rows.length });
+    }
+
+    /* ── store_movement_status ── */
+    if (action === 'store_movement_status') {
+      const now = new Date();
+      const todayStr = localDateStr(now);
+
+      let pickingTypeIds: number[] = [];
+      try {
+        const ptRows = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+            [[['name', 'ilike', 'Despacho Tiendas']]],
+            { fields: ['id'], limit: 10 },
+          ],
+        })) as Array<{ id: number }>;
+        pickingTypeIds = ptRows.map(r => r.id);
+      } catch { /* skip */ }
+
+      const domain: unknown[] = [
+        ['state', 'not in', ['draft', 'cancel']],
+        ['scheduled_date', '>=', todayStr + ' 00:00:00'],
+        ['scheduled_date', '<=', todayStr + ' 23:59:59'],
+        ['origin', 'not ilike', 'AUDITORIA'],
+      ];
+      if (pickingTypeIds.length > 0) {
+        domain.push(['picking_type_id', 'in', pickingTypeIds]);
+      } else {
+        domain.push(['origin', 'ilike', 'Abastecimiento']);
+      }
+
+      const pickings = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
+          fields: ['origin', 'state'],
+          limit: 500,
+        }],
+      })) as Array<{ origin: string | false; state: string }>;
+
+      const byStore: Record<string, { total: number; done: number }> = {};
+      const storeNameRe = /Abastecimiento\s+\S+\s+(\S+)/i;
+      for (const p of pickings) {
+        const origin = typeof p.origin === 'string' ? p.origin : '';
+        const m = origin.match(storeNameRe);
+        const cod = m ? m[1].toUpperCase().replace(/[^A-Z0-9]/g, '') : origin.replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase();
+        if (!cod) continue;
+        if (!byStore[cod]) byStore[cod] = { total: 0, done: 0 };
+        byStore[cod].total++;
+        if (p.state === 'done') byStore[cod].done++;
+      }
+
+      const result = Object.entries(byStore).map(([cod, { total, done }]) => ({
+        cod, total, done,
+        status: total === 0 ? 'none' as const : done === total ? 'complete' as const : 'partial' as const,
+      }));
+      return NextResponse.json({ stores: result });
     }
 
     return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 });

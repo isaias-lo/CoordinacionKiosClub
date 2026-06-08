@@ -28,6 +28,7 @@ function buildLine(cod: string, d: CalData): string {
 
 export default function ManualMode({ value, onChange, calT, modo }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [copied, setCopied] = useState(false);
 
   // Filtro de grupos — multi-selección, por defecto los tres activos
   const [activeGroups, setActiveGroups] = useState<Set<Grupo>>(new Set(['rm', 'costa', 'fal']));
@@ -84,11 +85,20 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
     );
   }, [visibleStores, calT]);
 
+  // En Manual, el TOTAL combina Bultos + Chocolates en un solo total de Bultos
+  const totalBcombinado = totals.b + totals.ch;
   const totalParts = [
-    totals.p  ? `${totals.p}P`   : '',
-    totals.b  ? `${totals.b}B`   : '',
-    totals.ch ? `${totals.ch}CH` : '',
+    totals.p        ? `${totals.p}P`        : '',
+    totalBcombinado ? `${totalBcombinado}B` : '',
   ].filter(Boolean).join(' - ') || '0';
+
+  const handleCopy = () => {
+    const texto = `${value.trim()}\n\nTOTAL: ${totalParts}`;
+    navigator.clipboard?.writeText(texto).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
 
   return (
     <div>
@@ -121,8 +131,19 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
         className="w-full min-h-[160px] px-3 py-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 resize-none overflow-hidden text-[14px] font-mono text-ktext leading-[1.8] transition-colors focus:border-kred focus:outline-none"
       />
 
+      {/* ── Botón copiar (para WhatsApp / Email) ── */}
+      <button
+        onClick={handleCopy}
+        className="mt-3 w-full h-[40px] rounded-[12px] flex items-center justify-center gap-2 text-[13px] font-bold transition-all active:scale-[0.98]"
+        style={copied
+          ? { background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1.5px solid rgba(22,163,74,0.35)' }
+          : { background: 'white', color: '#1B2A6B', border: '1.5px solid rgba(27,42,107,0.20)', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+      >
+        {copied ? '✓ Copiado al portapapeles' : '📋 Copiar todo (texto + total)'}
+      </button>
+
       {/* ── Resumen de totales ── */}
-      <div className="mt-3 flex items-center justify-between px-3.5 py-2.5 rounded-[12px] bg-knavy text-white"
+      <div className="mt-2 flex items-center justify-between px-3.5 py-2.5 rounded-[12px] bg-knavy text-white"
         style={{ boxShadow: '0 2px 10px rgba(27,42,107,0.20)' }}>
         <span className="text-[11px] font-bold uppercase tracking-widest text-white/60">Total</span>
         <span className="font-mono text-[15px] font-extrabold">{totalParts}</span>

@@ -67,3 +67,7 @@ Required in `.env.local`:
 - `GOOGLE_SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`
 - `NEXT_PUBLIC_ODOO_URL`, `NEXT_PUBLIC_ODOO_DB`, `NEXT_PUBLIC_ODOO_USERNAME`, `NEXT_PUBLIC_ODOO_API_KEY`
 - `OTP_SECRET`, `GMAIL_USER`, `GMAIL_APP_PASS`
+
+## Instrucción de sesión
+Al iniciar cada sesión, lee TRABAJO.md y resume brevemente en qué estamos.
+Al terminar cualquier tarea importante, actualiza TRABAJO.md con el estado actual sin que te lo pida.

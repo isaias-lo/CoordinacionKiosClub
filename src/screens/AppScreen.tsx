@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { FinishModal } from '../components/modals/FinishModal';
 import { TiendasPage } from '../features/despacho/regiones/pages/TiendasPage';
+import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
 
 export function AppScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
@@ -11,6 +12,8 @@ export function AppScreen() {
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <AppHeader onFinish={() => setFinishOpen(true)} backTo="/despacho/conteo" />
+
+      <PendingDraftBanner fuente="regiones" />
 
       <div className="flex-1 overflow-hidden flex flex-col">
         <TiendasPage />

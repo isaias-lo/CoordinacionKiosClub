@@ -33,6 +33,8 @@ import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
 import { SupervisorActivityPanel } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
+import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
+import { MovimientosOdooPanel } from './components/MovimientosOdooPanel';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
@@ -93,7 +95,8 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion'>('monitoreo');
+  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario' | 'movimientos'>('monitoreo');
+  const [movNuevos, setMovNuevos] = useState(0);  // movimientos Odoo nuevos/manuales sin atender (badge)
 
   // Resizable left panel
   const [leftWidth, setLeftWidth] = useState<number>(() => {
@@ -129,8 +132,19 @@ export function PickingScreen() {
   // Restaurar sesión al montar
   const session = useMemo(() => loadSession(), []);
 
-  const [selectedCods, setSelectedCods] = useState<string[]>(session.selectedCods ?? []);
+  const [selectedCods, setSelectedCods] = useState<string[]>([]);
   const [opsMap, setOpsMap]             = useState<Record<string, PickingOperation[]>>(session.opsMap ?? {});
+  // Movimientos agregados manualmente desde el panel Movimientos (sobreviven al auto-refresh)
+  const [manualOps, setManualOps]       = useState<Record<string, PickingOperation[]>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = sessionStorage.getItem(`picking_manual_ops_${todayISO()}`);
+      return raw ? JSON.parse(raw) as Record<string, PickingOperation[]> : {};
+    } catch { return {}; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(`picking_manual_ops_${todayISO()}`, JSON.stringify(manualOps)); } catch {}
+  }, [manualOps]);
   const [loadingCods, setLoadingCods]   = useState<string[]>([]);
   const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
@@ -154,6 +168,10 @@ export function PickingScreen() {
   const palletSlotsRef = useRef<PalletSlot[]>([]);
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
+
+  // IDs de movimientos Odoo ya vistos en esta sesión (sobrevive cambios de tab).
+  // Vive en PickingScreen (no en el panel) para que switchear de tab no resete "nuevos".
+  const seenMovIdsRef = useRef<Set<number>>(new Set());
 
   // Derived: count per state_key
   const pickerPallets = useMemo(() => {
@@ -579,7 +597,8 @@ export function PickingScreen() {
   const allGroups = useMemo((): PickerGroup[] => {
     const result: PickerGroup[] = [];
     for (const cod of selectedCods) {
-      const ops = opsMap[cod] ?? [];
+      // Fusiona ops de Odoo + movimientos agregados manualmente (que el auto-refresh no trae)
+      const ops = [...(opsMap[cod] ?? []), ...(manualOps[cod] ?? [])];
       // Group by normalized (lowercase/trim) name → same picker regardless of casing entered on each desktop
       const map: Record<string, { displayKey: string; ops: PickingOperation[] }> = {};
       for (const op of ops) {
@@ -593,7 +612,24 @@ export function PickingScreen() {
       }
     }
     return result;
-  }, [selectedCods, opsMap]);
+  }, [selectedCods, opsMap, manualOps]);
+
+  // Inyecta un movimiento de Odoo manualmente con su categoría elegida por el supervisor.
+  // Aparece en Monitoreo como cualquier otra tienda y sobrevive al auto-refresh.
+  const addManualMovement = useCallback((picking: { id: number; name: string; origin: string; partner: string; fromLocation: string; toLocation: string; state: string; scheduledDate: string; dateDone: string | null; pickingType: string; responsible: string; responsibleId: number | null; lineCount: number }, cod: string, categories: string[]) => {
+    const op: PickingOperation = {
+      ...picking,
+      categories,
+      storeCodeFromOrigin: cod,
+      originDate: parseOrigin(picking.origin).originDate,
+    };
+    setManualOps(prev => {
+      const list = prev[cod] ?? [];
+      if (list.some(o => o.id === op.id)) return prev;  // ya agregado
+      return { ...prev, [cod]: [...list, op] };
+    });
+    setSelectedCods(prev => prev.includes(cod) ? prev : [...prev, cod]);
+  }, []);
 
   const fetchOpsForStore = useCallback(async (cod: string) => {
     if (!hasOdoo) return;
@@ -639,6 +675,21 @@ export function PickingScreen() {
     return () => clearInterval(id);
   }, [selectedCods, fetchOpsForStore]);
 
+  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it
+  useEffect(() => {
+    const entries = Object.entries(opsMap).map(([cod, ops]) => ({
+      cod,
+      total: ops.length,
+      done: ops.filter(o => o.state === 'done').length,
+    }));
+    if (entries.length === 0) return;
+    fetch('/api/picking-store-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stores: entries }),
+    }).catch(e => console.error('[picking] sync progress:', e));
+  }, [opsMap]);
+
   const handleToggleStore = useCallback(async (cod: string) => {
     const isSelected = selectedCods.includes(cod);
     if (isSelected) {
@@ -676,6 +727,7 @@ export function PickingScreen() {
     return allGroups.filter(g => {
       const cats = new Set(g.operations.flatMap(o => o.categories));
       if (sectionFilter === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
+      if (sectionFilter === 'chocolates')  return cats.has('Chocolates');
       return cats.has('Hogar');
     });
   }, [allGroups, sectionFilter]);
@@ -1044,16 +1096,25 @@ export function PickingScreen() {
               { key: 'historial',     label: 'Historial'   },
               { key: 'estadisticas',  label: 'Estadísticas'},
               { key: 'configuracion', label: 'Config'      },
+              { key: 'movimientos',   label: 'Movimientos' },
+              { key: 'calendario',    label: 'Calendario'  },
             ] as { key: typeof rightTab; label: string }[]).map(tab => {
               const active = rightTab === tab.key;
+              const showBadge = tab.key === 'movimientos' && movNuevos > 0;
               return (
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                  className="flex-1 py-2.5 text-[12px] font-medium cursor-pointer transition-colors border-none bg-transparent"
+                  className="relative flex-1 py-2.5 text-[12px] font-medium cursor-pointer transition-colors border-none bg-transparent"
                   style={{
                     color: active ? '#1E40AF' : '#64748B',
                     borderBottom: active ? '2px solid #1E40AF' : '2px solid transparent',
                   }}>
                   {tab.label}
+                  {showBadge && (
+                    <span className="absolute top-1.5 right-2 min-w-[16px] h-[16px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
+                      style={{ background: '#D97706' }}>
+                      {movNuevos}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -1087,6 +1148,25 @@ export function PickingScreen() {
             />
           )}
 
+          {/* ── Tab content: Calendario (general, solo lectura) ── */}
+          {rightTab === 'calendario' && (
+            <div className="flex-1 overflow-y-auto min-h-0 p-3">
+              <CalendarioColumnas readOnly forceGeneral />
+            </div>
+          )}
+
+          {/* ── Tab content: Movimientos (Odoo del día) ── */}
+          {rightTab === 'movimientos' && (
+            <MovimientosOdooPanel
+              odooConfig={odooConfig}
+              hasOdoo={hasOdoo}
+              selectedCods={selectedCods}
+              onAdd={addManualMovement}
+              onNewCountChange={setMovNuevos}
+              seenIdsRef={seenMovIdsRef}
+            />
+          )}
+
           {/* ── Tab content: Monitoreo ── */}
           {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
@@ -1116,6 +1196,7 @@ export function PickingScreen() {
                       { key: 'all',         label: 'Todas' },
                       { key: 'aseo-comida', label: 'Aseo y Comida' },
                       { key: 'hogar',       label: 'Hogar' },
+                      { key: 'chocolates',  label: 'Chocolates' },
                     ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
@@ -1167,17 +1248,26 @@ export function PickingScreen() {
               {selectedCods.map(cod => {
                 const storeGroups = groupedByStore[cod] ?? [];
                 const isLoading   = loadingCods.includes(cod);
-                const ops         = opsMap[cod];
-                const allDoneStore = ops && ops.length > 0 && ops.every(o => o.state === 'done');
+                const ops         = opsMap[cod] ?? [];
+                const totalOps = ops.length;
+                const doneOps = ops.filter(o => o.state === 'done').length;
+                const storeStatus: 'none' | 'partial' | 'complete' =
+                  totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 return (
                   <div key={cod} className="mb-8">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
                       <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
                       <span className="text-[16px] text-text-2 font-semibold">{nameFor(cod)}</span>
-                      {allDoneStore && (
+                      {storeStatus === 'complete' && (
                         <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
                           style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
                           ✓ Todo realizado
+                        </span>
+                      )}
+                      {storeStatus === 'partial' && (
+                        <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
+                          style={{ background: 'rgba(234,179,8,0.12)', color: '#D97706', border: '1px solid rgba(234,179,8,0.3)' }}>
+                          {doneOps}/{totalOps} ops
                         </span>
                       )}
                       {isLoading && <span className="text-[14px] text-text-3">Cargando…</span>}
@@ -1230,6 +1320,7 @@ export function PickingScreen() {
                               group={group}
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
+                              sectionFilter={sectionFilter}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
@@ -1268,10 +1359,11 @@ export function PickingScreen() {
                           return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
                         }
 
-                        // "Todas": grid de 2 columnas fijas, siempre visibles
+                        // "Todas": grid de 3 columnas fijas, siempre visibles
                         const SECTION_META = {
                           'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
                           hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
+                          chocolates:    { label: 'Chocolates',    color: '#92400E', bg: 'rgba(146,64,14,0.06)', border: 'rgba(146,64,14,0.22)' },
                           mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
                         } as const;
 
@@ -1279,7 +1371,9 @@ export function PickingScreen() {
                           const cats = new Set(g.operations.flatMap(o => o.categories));
                           const hasHogar      = cats.has('Hogar');
                           const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
+                          const hasChoco      = cats.has('Chocolates');
                           if (hasHogar && hasAseoComida) return 'mixto';
+                          if (hasChoco) return 'chocolates';
                           if (hasAseoComida) return 'aseo-comida';
                           return 'hogar';
                         };
@@ -1289,6 +1383,7 @@ export function PickingScreen() {
 
                         const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
                         const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
+                        const chocoGroups      = storeGroups.filter(g => getSection(g) === 'chocolates');
                         const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
                         const mixtoTotal       = countSlots(mixtoGroups);
 
@@ -1315,12 +1410,13 @@ export function PickingScreen() {
                         const columns: Array<{ key: keyof typeof SECTION_META; groups: PickerGroup[] }> = [
                           { key: 'aseo-comida', groups: aseoComidaGroups },
                           { key: 'hogar',       groups: hogarGroups },
+                          { key: 'chocolates',  groups: chocoGroups },
                         ];
 
                         return (
                           <div className="space-y-4">
-                            {/* Grid de 2 columnas fijas — ambas siempre visibles */}
-                            <div className="grid grid-cols-2 gap-4 items-start">
+                            {/* Grid de 3 columnas fijas — todas siempre visibles */}
+                            <div className="grid grid-cols-3 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];

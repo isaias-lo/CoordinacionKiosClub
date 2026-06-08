@@ -44,11 +44,13 @@ function canonicalId(pkg: string, orden: string, cod: string, stamp: string): st
 function buildRows(
   dispatchData: Record<string, DispatchItem[]>,
   regimen: string,
+  fechaISO?: string,   // YYYY-MM-DD — registra con esta fecha en vez de hoy (recuperación)
 ): (string | number)[][] {
   const now   = new Date();
-  const dd    = String(now.getDate()).padStart(2, '0');
-  const mm    = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy  = String(now.getFullYear());
+  const [yISO, mISO, dISO] = (fechaISO ?? '').split('-');
+  const dd    = fechaISO ? dISO : String(now.getDate()).padStart(2, '0');
+  const mm    = fechaISO ? mISO : String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy  = fechaISO ? yISO : String(now.getFullYear());
   const stamp = `${dd}${mm}${yyyy}`;
   const fecha = `${dd}/${mm}/${yyyy}`;
   const transporte = regimen === 'Falabella' ? 'Falabella' : 'Carga';
@@ -102,8 +104,9 @@ function buildRows(
 export function sheetsRegionesWrite(
   dispatchData: Record<string, DispatchItem[]>,
   regimen = 'Carga',
+  fechaISO?: string,
 ): void {
-  const rows = buildRows(dispatchData, regimen);
+  const rows = buildRows(dispatchData, regimen, fechaISO);
   if (!rows.length) return;
 
   fetch('/api/sheets-write', {

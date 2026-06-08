@@ -14,11 +14,13 @@ const URBAN_COMMUNES = new Set([
 function buildRows(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
+  fechaISO?: string,   // YYYY-MM-DD — registra con esta fecha en vez de hoy (recuperación)
 ): (string | number)[][] {
   const now   = new Date();
-  const dd    = String(now.getDate()).padStart(2, '0');
-  const mm    = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy  = String(now.getFullYear());
+  const [yISO, mISO, dISO] = (fechaISO ?? '').split('-');
+  const dd    = fechaISO ? dISO : String(now.getDate()).padStart(2, '0');
+  const mm    = fechaISO ? mISO : String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy  = fechaISO ? yISO : String(now.getFullYear());
   const stamp = `${dd}${mm}${yyyy}`;
   const fecha = `${dd}/${mm}/${yyyy}`;
 
@@ -69,8 +71,9 @@ function buildRows(
 export function sheetsSantiagoWrite(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
+  fechaISO?: string,
 ): void {
-  const rows = buildRows(items, regimen);
+  const rows = buildRows(items, regimen, fechaISO);
   if (!rows.length) return;
 
   fetch('/api/sheets-write', {

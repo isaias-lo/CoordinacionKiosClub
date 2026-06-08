@@ -9,7 +9,7 @@ import { processPdf } from '../regiones/utils/pdfUtils';
 import { formatCod } from '../rutas/utils/helpers';
 import { TIENDAS_INICIAL } from '../rutas/data/tiendas';
 import { getTiendasDelDia } from '../utils/useCalendario';
-import { usePickingReady } from '../shared/usePickingReady';
+import { useOdooProgress } from '../shared/useOdooProgress';
 import { useApp } from '../../../context/AppContext';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { supabase } from '@/lib/supabase';
@@ -90,7 +90,7 @@ function saveGuides(g: Record<string, GuideEntry>) {
 
 /* ── Store card ── */
 function StoreCard({
-  store, isSelected, onClick, checked, onCheck, audited = false, pickingReady = false,
+  store, isSelected, onClick, checked, onCheck, audited = false, storeStatus = 'none', storeDoneOps = 0, storeTotalOps = 0,
 }: {
   store: StoreLabel;
   isSelected: boolean;
@@ -98,29 +98,60 @@ function StoreCard({
   checked: boolean;
   onCheck: (v: boolean) => void;
   audited?: boolean;
-  pickingReady?: boolean;
+  storeStatus?: 'none' | 'pending' | 'partial' | 'complete';
+  storeDoneOps?: number;
+  storeTotalOps?: number;
 }) {
   const pallets      = store.items.filter(i => i.tipo === 'Pallet').length;
   const bultos       = store.items.filter(i => i.tipo === 'Bulto').length;
   const contenedores = store.items.filter(i => i.tipo === 'Contenedor').length;
   const hasGuides = store.items.some(i => i.guias.length > 0);
   const empty = store.items.length === 0;
+  const cardBg = isSelected
+    ? 'bg-[rgba(27,42,107,0.06)]'
+    : storeStatus === 'complete'
+    ? 'bg-[rgba(22,163,74,0.04)]'
+    : storeStatus === 'partial'
+    ? 'bg-[rgba(217,119,6,0.04)]'
+    : storeStatus === 'pending'
+    ? 'bg-[rgba(156,163,175,0.04)]'
+    : empty
+    ? 'bg-bg/40'
+    : 'bg-white hover:bg-bg';
+  const cardBorder = isSelected
+    ? 'border-l-navy'
+    : storeStatus === 'complete'
+    ? 'border-l-success'
+    : storeStatus === 'partial'
+    ? 'border-l-[#D97706]'
+    : storeStatus === 'pending'
+    ? 'border-l-[#9CA3AF]'
+    : 'border-l-transparent';
   return (
     <div
       onClick={onClick}
-      className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px]
-        ${isSelected
-          ? 'bg-[rgba(27,42,107,0.06)] border-l-navy'
-          : pickingReady
-          ? 'bg-[rgba(22,163,74,0.04)] border-l-success'
-          : `${empty ? 'bg-bg/40' : 'bg-white'} hover:bg-bg border-l-transparent`}`}>
+      className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-border transition-all border-l-[3px] ${cardBg} ${cardBorder}`}>
 
-      {/* Indicador Picking terminado — esquina superior derecha */}
-      {pickingReady && (
+      {/* Indicador progreso Odoo */}
+      {storeStatus === 'pending' && (
+        <span
+          className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
+          style={{ background: '#9CA3AF', boxShadow: '0 0 0 2px #fff' }}
+          title="Pendiente"
+        />
+      )}
+      {storeStatus === 'complete' && (
         <span
           className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
           style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
-          title="✓ Picking terminado"
+          title="✓ Todos los movimientos realizados"
+        />
+      )}
+      {storeStatus === 'partial' && (
+        <span
+          className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
+          style={{ background: '#D97706', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(217,119,6,0.6)' }}
+          title={storeDoneOps + '/' + storeTotalOps + ' movimientos realizados'}
         />
       )}
 
@@ -137,8 +168,7 @@ function StoreCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <span className="font-barlow-condensed text-[18px] font-extrabold text-navy leading-none">{formatCod(store.cod)}</span>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide
-            ${store.source === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${store.source === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
             {store.source === 'santiago' ? 'Santiago' : 'Regiones'}
           </span>
           {hasGuides && (
@@ -189,7 +219,7 @@ const GROUP_META: { key: GroupKey; label: string; bg: string; color: string }[] 
 
 export function EstadoPage() {
   const { state: appState } = useApp();
-  const pickingReady = usePickingReady();  // tiendas con picking terminado hoy
+  const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
 
   // Tiendas del día por grupo (fal→REGIONES, costa→COSTA, rm→SANTIAGO)
   const [calGroups, setCalGroups] = useState<Record<GroupKey, string[]>>({ region: [], costa: [], santiago: [] });
@@ -781,7 +811,7 @@ export function EstadoPage() {
               GROUP_META.map(g => {
                 const list = displayGroups[g.key];
                 if (list.length === 0) return null;
-                const readyCount = list.filter(s => pickingReady.has(s.cod)).length;
+                const readyCount = list.filter(s => odooProgress.get(s.cod)?.status === 'complete').length;
                 return (
                   <div key={g.key}>
                     <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-widest sticky top-0 z-10 flex items-center gap-2"
@@ -803,7 +833,9 @@ export function EstadoPage() {
                           key={s.cod}
                           store={s}
                           isSelected={selected === s.cod}
-                          pickingReady={pickingReady.has(s.cod)}
+                          storeStatus={odooProgress.get(s.cod)?.status ?? 'none'}
+                          storeDoneOps={odooProgress.get(s.cod)?.done ?? 0}
+                          storeTotalOps={odooProgress.get(s.cod)?.total ?? 0}
                           onClick={() => setSelected(s.cod)}
                           checked={printCods.has(s.cod)}
                           audited={storeAudited}
