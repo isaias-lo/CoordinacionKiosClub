@@ -110,8 +110,6 @@ function NavGroup({
   collapsed: boolean;
   routes: { path: string; label: string }[];
 }) {
-  const pathname  = usePathname() as string | null;
-  const anyActive = routes.some(r => isActive(pathname, r.path));
   const [open, setOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     const stored = localStorage.getItem(`sg_${group.id}`);
@@ -126,20 +124,18 @@ function NavGroup({
     });
   }, [group.id]);
 
-  const { Icon, color } = GROUP_META[group.id] ?? { Icon: LayoutDashboard, color: '#6B7280' };
-
   if (collapsed) {
+    // En modo colapsado muestra las rutas individuales como iconos con tooltip nativo
     return (
-      <div className="mx-2 my-0.5" title={group.label}>
-        <div className={[
-          'flex items-center justify-center rounded-lg py-2.5 transition-all',
-          anyActive ? 'text-white' : 'text-white/40 hover:text-white/70',
-        ].join(' ')}>
-          <Icon size={16} strokeWidth={1.8} style={{ color: anyActive ? color : undefined }} />
-        </div>
+      <div className="mb-1">
+        {routes.map(r => (
+          <NavItem key={r.path} path={r.path} label={r.label} collapsed={true} />
+        ))}
       </div>
     );
   }
+
+  const { color: accent } = GROUP_META[group.id] ?? { Icon: LayoutDashboard, color: '#6B7280' };
 
   return (
     <div className="mb-1">
@@ -150,7 +146,10 @@ function NavGroup({
         aria-controls={`nav-group-${group.id}`}
         className="w-full flex items-center gap-2 px-4 py-1.5 mt-2 mb-0.5 cursor-pointer select-none group"
       >
-        <span className="text-[10px] font-bold tracking-[0.14em] uppercase text-white/35 group-hover:text-white/55 transition-colors flex-1 text-left">
+        <span
+          className="text-[10px] font-bold tracking-[0.14em] uppercase group-hover:opacity-80 transition-opacity flex-1 text-left"
+          style={{ color: open ? accent : 'rgba(255,255,255,0.35)' }}
+        >
           {group.label}
         </span>
         <ChevronDown

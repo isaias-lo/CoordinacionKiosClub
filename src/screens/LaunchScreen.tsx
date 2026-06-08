@@ -15,6 +15,7 @@ import {
   Truck, ClipboardList, Layers, Store, ClipboardCheck, Shield,
   TrendingUp, Package, ArrowRight, Bell,
 } from 'lucide-react';
+import { FEATURE_COLORS, featureBg } from '../config/features';
 const DispatchChartLazy = lazy(() => import('../components/charts/DispatchChart'));
 
 /* ── Types ──────────────────────────────────────────────────────── */
@@ -46,7 +47,7 @@ interface ChartData { day: string; fullDate: string; pallets: number; bultos: nu
 /* ── Main Dashboard ──────────────────────────────────────────────── */
 export function LaunchScreen() {
   const router  = useRouter();
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
 
   const isAdmin          = profile?.role === 'admin';
@@ -100,37 +101,41 @@ export function LaunchScreen() {
   });
 
   /* Quick tiles */
+  const hasControlInterno = canSee('/control-interno');
+
   const potentialTiles: (QuickTile | null)[] = [
     canSee('/despacho') ? {
       key: 'despacho', path: '/despacho', label: 'Despacho', sub: 'Enrutador · Flota · Estado',
-      Icon: Truck, color: '#2563EB', bg: 'rgba(37,99,235,0.08)',
+      Icon: Truck, color: FEATURE_COLORS.despacho, bg: featureBg('despacho'),
     } : null,
+    // Solo mostrar si el usuario tiene acceso directo (sin hub intermedio)
     canSee('/despacho/regiones') ? {
       key: 'nacional', path: '/despacho/regiones', label: 'Nacional', sub: 'Regiones',
-      Icon: Store, color: '#0891B2', bg: 'rgba(8,145,178,0.08)',
+      Icon: Store, color: FEATURE_COLORS.nacional, bg: featureBg('nacional'),
     } : null,
     canSee('/despacho/santiago') ? {
       key: 'rm', path: '/despacho/santiago', label: 'RM / Costa', sub: 'Santiago',
-      Icon: ClipboardList, color: '#7C3AED', bg: 'rgba(124,58,237,0.08)',
+      Icon: ClipboardList, color: FEATURE_COLORS.rmCosta, bg: featureBg('rmCosta'),
     } : null,
     canSee('/auditoria') ? {
       key: 'auditoria', path: '/auditoria', label: 'Auditoría', sub: 'Bodega · Control',
-      Icon: ClipboardCheck, color: '#9333EA', bg: 'rgba(147,51,234,0.08)',
+      Icon: ClipboardCheck, color: FEATURE_COLORS.auditoria, bg: featureBg('auditoria'),
     } : null,
     canSee('/picking') ? {
       key: 'picking', path: '/picking', label: 'Abastecimiento', sub: 'Supervisión',
-      Icon: Layers, color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',
+      Icon: Layers, color: FEATURE_COLORS.picking, bg: featureBg('picking'),
     } : null,
-    canSee('/control-interno') ? {
+    hasControlInterno ? {
       key: 'ci', path: '/control-interno', label: 'Control Interno', sub: 'Tiendas · Recepción',
-      Icon: Shield, color: '#10B981', bg: 'rgba(16,185,129,0.08)',
+      Icon: Shield, color: FEATURE_COLORS.controlInterno, bg: featureBg('controlInterno'),
     } : null,
-    canSee('/panel-operaciones') ? {
+    // Solo mostrar Operaciones si el usuario no tiene el hub de Control Interno
+    !hasControlInterno && canSee('/panel-operaciones') ? {
       key: 'ops', path: '/panel-operaciones', label: 'Operaciones', sub: 'Panel central',
-      Icon: TrendingUp, color: '#D97706', bg: 'rgba(217,119,6,0.08)',
+      Icon: TrendingUp, color: FEATURE_COLORS.operaciones, bg: featureBg('operaciones'),
     } : null,
   ];
-  const allTiles = potentialTiles.filter(Boolean) as QuickTile[];
+  const allTiles = authLoading ? [] : potentialTiles.filter(Boolean) as QuickTile[];
 
   /* Picking quick stats */
   const pickingPendiente  = pallets.filter(p => !p.picker_label).length;
@@ -218,28 +223,28 @@ export function LaunchScreen() {
             label="Días despachados"
             value={stats.dias}
             icon={Truck}
-            color="#1B2A6B"
+            color={FEATURE_COLORS.admin}
             loading={statsLoading}
           />
           <KpiCard
             label="Pallets totales"
             value={stats.pallets}
             icon={Package}
-            color="#2563EB"
+            color={FEATURE_COLORS.despacho}
             loading={statsLoading}
           />
           <KpiCard
             label="Bultos totales"
             value={stats.bultos}
             icon={ClipboardList}
-            color="#7C3AED"
+            color={FEATURE_COLORS.rmCosta}
             loading={statsLoading}
           />
           <KpiCard
             label="Abastecimiento hoy"
             value={pallets.length}
             icon={Layers}
-            color="#F59E0B"
+            color={FEATURE_COLORS.picking}
             loading={palletsLoading}
             onClick={canSee('/picking') ? () => router.push('/picking') : undefined}
           />
@@ -334,54 +339,46 @@ export function LaunchScreen() {
         </div>
 
         {/* ── Quick access tiles ── */}
-        {allTiles.length > 0 && (
-          <div>
-            <h2 className="font-barlow-condensed font-bold text-[13px] uppercase tracking-widest text-text-3 mb-3">
-              Acceso rápido
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {allTiles.map(t => (
-                <button
-                  key={t.key}
-                  onClick={() => router.push(t.path)}
-                  className="flex items-center gap-3 p-4 bg-card rounded-card shadow-card border border-border/60 hover:shadow-card2 hover:border-border transition-all active:scale-[0.97] text-left group"
-                >
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
-                    style={{ background: t.bg }}
-                  >
-                    <t.Icon size={16} strokeWidth={1.8} style={{ color: t.color }} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-bold text-text truncate leading-tight group-hover:text-knavy transition-colors">
-                      {t.label}
+        <div>
+          <h2 className="font-barlow-condensed font-bold text-[13px] uppercase tracking-widest text-text-3 mb-3">
+            Acceso rápido
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {authLoading
+              ? Array.from({ length: 4 }, (_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-4 bg-card rounded-card border border-border/60">
+                    <div className="w-9 h-9 rounded-xl bg-border/40 animate-pulse flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-border/40 rounded animate-pulse w-3/4" />
+                      <div className="h-2.5 bg-border/30 rounded animate-pulse w-1/2" />
                     </div>
-                    <div className="text-[11px] text-text-3 truncate leading-tight mt-0.5">{t.sub}</div>
                   </div>
-                  <ArrowRight size={12} className="text-text-3 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
-                </button>
-              ))}
-            </div>
+                ))
+              : allTiles.map(t => (
+                  <button
+                    key={t.key}
+                    onClick={() => router.push(t.path)}
+                    className="flex items-center gap-3 p-4 bg-card rounded-card shadow-card border border-border/60 hover:shadow-card2 hover:border-border transition-all active:scale-[0.97] text-left group"
+                  >
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
+                      style={{ background: t.bg }}
+                    >
+                      <t.Icon size={16} strokeWidth={1.8} style={{ color: t.color }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-bold text-text truncate leading-tight group-hover:text-knavy transition-colors">
+                        {t.label}
+                      </div>
+                      <div className="text-[11px] text-text-3 truncate leading-tight mt-0.5">{t.sub}</div>
+                    </div>
+                    <ArrowRight size={12} className="text-text-3 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
+                  </button>
+                ))
+            }
           </div>
-        )}
-
-        {/* ── Footer stats ── */}
-        <div
-          className="flex items-center justify-center gap-8 py-4 rounded-card border border-border/60 bg-card"
-        >
-          {[
-            { label: 'Días activos', value: stats.dias },
-            { label: 'Pallets totales', value: stats.pallets.toLocaleString('es-CL') },
-            { label: 'Bultos totales', value: stats.bultos.toLocaleString('es-CL') },
-          ].map((s, i) => (
-            <div key={i} className="text-center">
-              <div className="font-barlow-condensed text-[22px] font-bold text-text leading-none">
-                {statsLoading ? '—' : s.value}
-              </div>
-              <div className="text-[10px] text-text-3 uppercase tracking-wider mt-0.5">{s.label}</div>
-            </div>
-          ))}
         </div>
+
       </div>
     </div>
   );
