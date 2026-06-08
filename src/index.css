@@ -4,6 +4,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design tokens ──────────────────────────────────────────────── */
+:root {
+  --sidebar-w:        220px;
+  --sidebar-w-sm:     64px;
+  --header-h:         56px;
+
+  /* Brand */
+  --color-primary:    #D42B2B;
+  --color-secondary:  #1B2A6B;
+
+  /* Surface */
+  --color-bg:         #F2F2F7;
+  --color-card:       #FFFFFF;
+  --color-border:     #D8DCE6;
+
+  /* Text */
+  --color-text:       #1C1C1E;
+  --color-text-2:     #3A3A3C;
+  --color-text-3:     #8E8E93;
+
+  /* Status */
+  --color-success:    #34C759;
+  --color-warning:    #FF9500;
+  --color-info:       #2563EB;
+  --color-danger:     #D42B2B;
+
+  /* Sidebar */
+  --sidebar-bg:       #0D1829;
+  --sidebar-border:   rgba(255,255,255,0.07);
+
+  /* Elevation */
+  --shadow-sm:        0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:        0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.07);
+  --shadow-lg:        0 8px 32px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.10);
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -14,11 +50,21 @@
     overflow: hidden;
     font-family: 'Barlow', sans-serif;
     font-size: 15px;
+    color: var(--color-text);
+    background: var(--color-bg);
   }
-  ::-webkit-scrollbar { width: 3px; }
-  ::-webkit-scrollbar-thumb { background: #C8CDD8; border-radius: 2px; }
+  ::-webkit-scrollbar        { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track  { background: transparent; }
+  ::-webkit-scrollbar-thumb  { background: #C8CDD8; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #A0A8B8; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Focus ring */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 }
 
 /* ── Enrutador: print styles ── */
