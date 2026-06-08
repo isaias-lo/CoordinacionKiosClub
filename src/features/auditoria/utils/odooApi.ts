@@ -28,9 +28,18 @@ export async function buscarProducto(
   return data.productos?.[0] ?? null;
 }
 
-/** @deprecated Credentials are now server-side only. Returns a placeholder to avoid breaking callers. */
+/**
+ * Devuelve solo la URL pública de Odoo (no secreta) para que los componentes
+ * puedan verificar `hasOdoo = !!config.url` sin exponer credenciales al browser.
+ * Las credenciales reales las lee el servidor desde env vars ODOO_* / NEXT_PUBLIC_ODOO_*.
+ */
 export function getOdooConfig(): OdooConfig {
-  return { url: '', db: '', username: '', apiKey: '' };
+  return {
+    url:      process.env.NEXT_PUBLIC_ODOO_URL ?? '',
+    db:       '',
+    username: '',
+    apiKey:   '',
+  };
 }
 
 export interface PickerOdooStats {
