@@ -261,6 +261,8 @@ export async function POST(req: NextRequest) {
         ['scheduled_date', '>=', todayStr + ' 00:00:00'],
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
         ['origin', 'not ilike', 'AUDITORIA'],
+        ['origin', 'not ilike', 'congelado'],
+        ['picking_type_id.name', 'ilike', 'Despacho Tiendas'],
       ];
       if (storeCod) {
         domain.push(['origin', 'ilike', storeCod]);
