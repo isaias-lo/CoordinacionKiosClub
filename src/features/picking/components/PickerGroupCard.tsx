@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
-import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord } from '../picking-types';
+import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 
 // ─── StateBadge ───────────────────────────────────────────────────────────────
@@ -38,13 +38,14 @@ interface Props {
   stickerBelow?: boolean;
   lastPrint?: PrintRecord;   // último registro de impresión para mostrar advertencia de reimpresión
   myName?: string;           // nombre del supervisor actual para detectar impresiones propias vs ajenas
+  sectionFilter?: SectionFilter;
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
   group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange,
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
-  lastPrint, myName,
+  lastPrint, myName, sectionFilter,
 }: Props) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -166,7 +167,13 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 { tipo: 'C'  as PickerType, label: 'Contenedores'  },
                 { tipo: 'B'  as PickerType, label: 'Bultos'        },
                 { tipo: 'CH' as PickerType, label: 'Chocolates'    },
-              ]).map(({ tipo, label }) => {
+              ])
+              .filter(({ tipo }) => {
+                if (sectionFilter === 'chocolates') return tipo === 'CH';
+                if (sectionFilter === 'aseo-comida' || sectionFilter === 'hogar') return tipo !== 'CH';
+                return true; // 'all': show all
+              })
+              .map(({ tipo, label }) => {
                 const count  = palletsByTipo[tipo] ?? 0;
                 const active = count > 0;
                 return (

@@ -276,8 +276,11 @@ export async function POST(req: NextRequest) {
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
         ['origin', 'not ilike', 'AUDITORIA'],
       ];
+      // Filter by picking type if found; fallback to origin containing "Abastecimiento"
       if (pickingTypeIds.length > 0) {
         domain.push(['picking_type_id', 'in', pickingTypeIds]);
+      } else {
+        domain.push(['origin', 'ilike', 'Abastecimiento']);
       }
       if (storeCod) {
         domain.push(['origin', 'ilike', storeCod]);

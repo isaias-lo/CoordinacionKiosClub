@@ -712,6 +712,7 @@ export function PickingScreen() {
     return allGroups.filter(g => {
       const cats = new Set(g.operations.flatMap(o => o.categories));
       if (sectionFilter === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
+      if (sectionFilter === 'chocolates')  return cats.has('Chocolates');
       return cats.has('Hogar');
     });
   }, [allGroups, sectionFilter]);
@@ -1180,6 +1181,7 @@ export function PickingScreen() {
                       { key: 'all',         label: 'Todas' },
                       { key: 'aseo-comida', label: 'Aseo y Comida' },
                       { key: 'hogar',       label: 'Hogar' },
+                      { key: 'chocolates',  label: 'Chocolates' },
                     ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
@@ -1294,6 +1296,7 @@ export function PickingScreen() {
                               group={group}
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
+                              sectionFilter={sectionFilter}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
@@ -1332,10 +1335,11 @@ export function PickingScreen() {
                           return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
                         }
 
-                        // "Todas": grid de 2 columnas fijas, siempre visibles
+                        // "Todas": grid de 3 columnas fijas, siempre visibles
                         const SECTION_META = {
                           'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
                           hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
+                          chocolates:    { label: 'Chocolates',    color: '#92400E', bg: 'rgba(146,64,14,0.06)', border: 'rgba(146,64,14,0.22)' },
                           mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
                         } as const;
 
@@ -1343,7 +1347,9 @@ export function PickingScreen() {
                           const cats = new Set(g.operations.flatMap(o => o.categories));
                           const hasHogar      = cats.has('Hogar');
                           const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
+                          const hasChoco      = cats.has('Chocolates');
                           if (hasHogar && hasAseoComida) return 'mixto';
+                          if (hasChoco) return 'chocolates';
                           if (hasAseoComida) return 'aseo-comida';
                           return 'hogar';
                         };
@@ -1353,6 +1359,7 @@ export function PickingScreen() {
 
                         const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
                         const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
+                        const chocoGroups      = storeGroups.filter(g => getSection(g) === 'chocolates');
                         const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
                         const mixtoTotal       = countSlots(mixtoGroups);
 
@@ -1379,12 +1386,13 @@ export function PickingScreen() {
                         const columns: Array<{ key: keyof typeof SECTION_META; groups: PickerGroup[] }> = [
                           { key: 'aseo-comida', groups: aseoComidaGroups },
                           { key: 'hogar',       groups: hogarGroups },
+                          { key: 'chocolates',  groups: chocoGroups },
                         ];
 
                         return (
                           <div className="space-y-4">
-                            {/* Grid de 2 columnas fijas — ambas siempre visibles */}
-                            <div className="grid grid-cols-2 gap-4 items-start">
+                            {/* Grid de 3 columnas fijas — todas siempre visibles */}
+                            <div className="grid grid-cols-3 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];

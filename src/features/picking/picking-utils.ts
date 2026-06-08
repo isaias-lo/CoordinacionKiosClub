@@ -25,9 +25,11 @@ export function sanitizeForBarcode(s: string): string {
 
 export function categoriesToContenido(cats: string[]): string {
   const low = cats.map(c => c.toLowerCase());
-  const hasComida = low.some(c => c.includes('comida') || c.includes('food') || c.includes('aliment'));
-  const hasHogar  = low.some(c => c.includes('hogar') || c.includes('home') || c.includes('bazar'));
-  const hasAseo   = low.some(c => c.includes('aseo')  || c.includes('limpieza') || c.includes('clean'));
+  const hasComida    = low.some(c => c.includes('comida') || c.includes('food') || c.includes('aliment'));
+  const hasHogar     = low.some(c => c.includes('hogar') || c.includes('home') || c.includes('bazar'));
+  const hasAseo      = low.some(c => c.includes('aseo')  || c.includes('limpieza') || c.includes('clean'));
+  const hasChocolates = low.some(c => c.includes('chocolate'));
+  if (hasChocolates) return 'chocolate';
   if (hasComida && hasHogar && hasAseo) return 'completo';
   if (hasComida && hasAseo)  return 'comida-aseo';
   if (hasAseo   && hasHogar) return 'aseo-hogar';
