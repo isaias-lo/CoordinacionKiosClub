@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     .from('picking_pallets')
     .select(SELECT_COLS)
     .eq('date', date)
+    .eq('is_active', true)
     .order('created_at', { ascending: true })
     .order('id',          { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
