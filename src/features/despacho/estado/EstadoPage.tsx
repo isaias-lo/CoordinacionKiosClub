@@ -98,7 +98,7 @@ function StoreCard({
   checked: boolean;
   onCheck: (v: boolean) => void;
   audited?: boolean;
-  storeStatus?: 'none' | 'partial' | 'complete';
+  storeStatus?: 'none' | 'pending' | 'partial' | 'complete';
   storeDoneOps?: number;
   storeTotalOps?: number;
 }) {
@@ -117,9 +117,18 @@ function StoreCard({
           ? 'bg-[rgba(22,163,74,0.04)] border-l-success'
           : storeStatus === 'partial'
           ? 'bg-[rgba(217,119,6,0.04)] border-l-[#D97706]'
-          : `${empty ? 'bg-bg/40' : 'bg-white'} hover:bg-bg border-l-transparent`}`}>
+          : storeStatus === 'pending'
+          ? 'bg-[rgba(156,163,175,0.04)] border-l-[#9CA3AF]'
+          : `${empty ? 'bg-bg/40' : 'bg-white'} hover:bg-bg border-l-transparent}`}>
 
       {/* Indicador progreso Odoo */}
+      {storeStatus === 'pending' && (
+        <span
+          className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
+          style={{ background: '#9CA3AF', boxShadow: '0 0 0 2px #fff' }}
+          title="Pendiente"
+        />
+      )}
       {storeStatus === 'complete' && (
         <span
           className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
@@ -131,7 +140,7 @@ function StoreCard({
         <span
           className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full"
           style={{ background: '#D97706', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(217,119,6,0.6)' }}
-          title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
+          title={storeDoneOps + '/' + storeTotalOps + ' movimientos realizados'}
         />
       )}
 
