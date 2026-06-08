@@ -132,7 +132,7 @@ export function PickingScreen() {
   // Restaurar sesión al montar
   const session = useMemo(() => loadSession(), []);
 
-  const [selectedCods, setSelectedCods] = useState<string[]>(session.selectedCods ?? []);
+  const [selectedCods, setSelectedCods] = useState<string[]>([]);
   const [opsMap, setOpsMap]             = useState<Record<string, PickingOperation[]>>(session.opsMap ?? {});
   // Movimientos agregados manualmente desde el panel Movimientos (sobreviven al auto-refresh)
   const [manualOps, setManualOps]       = useState<Record<string, PickingOperation[]>>(() => {
@@ -168,6 +168,10 @@ export function PickingScreen() {
   const palletSlotsRef = useRef<PalletSlot[]>([]);
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
+
+  // IDs de movimientos Odoo ya vistos en esta sesión (sobrevive cambios de tab).
+  // Vive en PickingScreen (no en el panel) para que switchear de tab no resete "nuevos".
+  const seenMovIdsRef = useRef<Set<number>>(new Set());
 
   // Derived: count per state_key
   const pickerPallets = useMemo(() => {
@@ -1143,6 +1147,7 @@ export function PickingScreen() {
               selectedCods={selectedCods}
               onAdd={addManualMovement}
               onNewCountChange={setMovNuevos}
+              seenIdsRef={seenMovIdsRef}
             />
           )}
 

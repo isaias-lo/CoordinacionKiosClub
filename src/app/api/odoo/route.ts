@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Formatea una Date como 'YYYY-MM-DD' usando la hora LOCAL (no UTC). */
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 interface OdooRpcParams {
   service: string;
   method: string;
@@ -198,7 +203,7 @@ export async function POST(req: NextRequest) {
       const pickerUserId = users[0].id;
 
       const since = new Date(); since.setDate(since.getDate() - 90);
-      const sinceStr = since.toISOString().slice(0, 10) + ' 00:00:00';
+      const sinceStr = localDateStr(since) + ' 00:00:00';
 
       const [pickingGroups, doneThisWeek, discrepancias] = await Promise.all([
         odooRpc(url, {
@@ -213,7 +218,7 @@ export async function POST(req: NextRequest) {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'stock.picking', 'search_count',
             [[['user_id', '=', pickerUserId], ['state', '=', 'done'],
-              ['date_done', '>=', new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10) + ' 00:00:00']]],
+              ['date_done', '>=', localDateStr(new Date(Date.now() - 7 * 864e5)) + ' 00:00:00']]],
           ],
         }) as Promise<number>,
 
@@ -247,20 +252,18 @@ export async function POST(req: NextRequest) {
     if (action === 'picking_today_operations') {
       const storeCod = (query || '').trim().toUpperCase();
 
-      // Build today's date range in UTC (Odoo stores datetimes in UTC)
+      // Build today's date range using local date (not UTC) to avoid missing pickings
+      // after ~20:00 in negative-UTC timezones like Chile (UTC-3/-4)
       const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10);
+      const todayStr = localDateStr(now);
       const domain: unknown[] = [
         ['state', 'not in', ['draft', 'cancel']],
         ['scheduled_date', '>=', todayStr + ' 00:00:00'],
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
-        ['origin', 'ilike', 'Abastecimiento'],
         ['origin', 'not ilike', 'AUDITORIA'],
       ];
       if (storeCod) {
         domain.push(['origin', 'ilike', storeCod]);
-      } else {
-        domain.push(['picking_type_id.name', 'ilike', 'pick']);
       }
 
       const pickings = (await odooRpc(url, {
@@ -269,7 +272,7 @@ export async function POST(req: NextRequest) {
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
           fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
                    'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
-          limit: 50,
+          limit: 100,
           order: 'scheduled_date asc',
         }],
       })) as Array<{
