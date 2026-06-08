@@ -9,7 +9,7 @@ import {
   Map, Globe, MapPin, BarChart3, Activity, Navigation as NavIcon,
   Monitor, Store, History, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, CalendarDays,
+  LogOut, Users, CalendarDays, Search,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
@@ -259,6 +259,34 @@ export function AppSidebar() {
       {/* ── Inicio ── */}
       <div className="pt-2 px-0">
         <NavItem path="/" label="Inicio" collapsed={isCollapsed} />
+      </div>
+
+      {/* ── Command palette trigger ── */}
+      <div className="px-2 pb-1">
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+          title="Buscar (⌘K)"
+          className={[
+            'w-full flex items-center rounded-lg transition-all hover:bg-white/[0.06] active:scale-[0.98]',
+            isCollapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-2',
+          ].join(' ')}
+        >
+          <Search size={14} className="text-white/35 flex-shrink-0" strokeWidth={2} />
+          <AnimatePresence initial={false}>
+            {!isCollapsed && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={{ duration: 0.18 }}
+                className="flex-1 flex items-center justify-between overflow-hidden"
+              >
+                <span className="text-[12px] text-white/30 font-medium whitespace-nowrap">Buscar...</span>
+                <kbd className="text-[10px] text-white/20 font-mono bg-white/[0.06] px-1.5 py-0.5 rounded flex-shrink-0">⌘K</kbd>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </button>
       </div>
 
       {/* ── Module Groups ── */}
