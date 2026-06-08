@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, type RefObject } from 'react';
-import { RefreshCw, CheckCheck } from 'lucide-react';
+import { useEffect, useState, useCallback, useMemo, type RefObject } from 'react';
+import { RefreshCw, CheckCheck, Search } from 'lucide-react';
 import type { OdooConfig } from '../picking-types';
 import { parseOrigin, isAbastecimientoOp, getStoreName } from '../picking-utils';
 
@@ -38,6 +38,8 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
   const [newIdsByLoad, setNewIdsByLoad] = useState<Set<number>>(new Set());
   // Modal de agregar: movimiento + categorías elegidas
   const [adding,    setAdding]    = useState<{ p: RawPicking; cod: string; cats: Set<string> } | null>(null);
+  const [searchQ,   setSearchQ]   = useState('');
+  const [sortBy,    setSortBy]    = useState<'hora' | 'tienda'>('hora');
 
   const load = useCallback(async () => {
     if (!hasOdoo) { setError('Configura Odoo primero (pestaña Config).'); return; }
@@ -106,6 +108,31 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
     onNewCountChange?.(0);
   };
 
+  // Filtrado + orden
+  const filteredMovs = useMemo(() => {
+    const q = searchQ.trim().toUpperCase();
+    let list = movs;
+    if (q) {
+      list = list.filter(p => {
+        const { storeCode } = parseOrigin(p.origin);
+        const storeName = storeCode ? getStoreName(storeCode).toUpperCase() : '';
+        return storeCode.toUpperCase().includes(q)
+          || storeName.includes(q)
+          || p.origin.toUpperCase().includes(q)
+          || p.name.toUpperCase().includes(q);
+      });
+    }
+    if (sortBy === 'tienda') {
+      list = [...list].sort((a, b) => {
+        const ca = parseOrigin(a.origin).storeCode || 'ZZZ';
+        const cb = parseOrigin(b.origin).storeCode || 'ZZZ';
+        return ca.localeCompare(cb) || a.scheduledDate.localeCompare(b.scheduledDate);
+      });
+    }
+    // Default 'hora' is already sorted by scheduledDate from Odoo
+    return list;
+  }, [movs, searchQ, sortBy]);
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Header */}
@@ -144,13 +171,43 @@ export function MovimientosOdooPanel({ odooConfig, hasOdoo, selectedCods, onAdd,
         <div className="flex-shrink-0 px-4 py-2 text-[12px] text-red-600 bg-red-50 border-b border-red-200">⚠️ {error}</div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+      {/* Search + Sort bar */}
+      <div className="flex-shrink-0 px-3 pt-3 pb-2 flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 bg-[#F5F6FA] border border-[#E2E8F0] rounded-xl px-3 py-2">
+          <Search size={14} className="text-slate-400 shrink-0" />
+          <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)}
+            placeholder="Buscar tienda, código o documento…"
+            className="flex-1 bg-transparent border-none outline-none text-[13px] text-slate-700 min-w-0" />
+          {searchQ && <button onClick={() => setSearchQ('')} className="text-slate-400 border-none bg-transparent cursor-pointer text-[16px] leading-none">×</button>}
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          {([
+            { key: 'hora' as const, label: 'Hora' },
+            { key: 'tienda' as const, label: 'Tienda' },
+          ]).map(opt => (
+            <button key={opt.key} onClick={() => setSortBy(opt.key)}
+              className="px-2.5 py-1.5 rounded text-[11px] font-medium cursor-pointer transition-all border"
+              style={{
+                background: sortBy === opt.key ? '#1E40AF' : '#fff',
+                color: sortBy === opt.key ? '#fff' : '#64748B',
+                borderColor: sortBy === opt.key ? '#1E40AF' : '#E2E8F0',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-2">
         {loading && movs.length === 0 && <div className="text-center py-10 text-[13px] text-slate-400">Cargando movimientos…</div>}
         {!loading && movs.length === 0 && !error && (
           <div className="text-center py-10 text-[13px] text-slate-400">Sin movimientos hoy</div>
         )}
+        {!loading && movs.length > 0 && filteredMovs.length === 0 && searchQ && (
+          <div className="text-center py-10 text-[13px] text-slate-400">Sin resultados para "{searchQ}"</div>
+        )}
 
-        {movs.map(p => {
+        {filteredMovs.map(p => {
           const { storeCode, categories } = parseOrigin(p.origin);
           const isNew     = newIdsByLoad.has(p.id);
           const yaEnPanel = !!storeCode && selectedCods.includes(storeCode);

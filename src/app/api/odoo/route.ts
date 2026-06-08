@@ -256,14 +256,30 @@ export async function POST(req: NextRequest) {
       // after ~20:00 in negative-UTC timezones like Chile (UTC-3/-4)
       const now = new Date();
       const todayStr = localDateStr(now);
+
+      // Find picking_type IDs for "Despacho Tiendas" — query first, then filter by ID
+      let pickingTypeIds: number[] = [];
+      try {
+        const ptRows = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+            [[['name', 'ilike', 'Despacho Tiendas']]],
+            { fields: ['id'], limit: 10 },
+          ],
+        })) as Array<{ id: number }>;
+        pickingTypeIds = ptRows.map(r => r.id);
+      } catch { /* if this fails, skip the filter and return all */ }
+
       const domain: unknown[] = [
         ['state', 'not in', ['draft', 'cancel']],
         ['scheduled_date', '>=', todayStr + ' 00:00:00'],
         ['scheduled_date', '<=', todayStr + ' 23:59:59'],
         ['origin', 'not ilike', 'AUDITORIA'],
         ['origin', 'not ilike', 'congelado'],
-        ['picking_type_id.name', 'ilike', 'Despacho Tiendas'],
       ];
+      if (pickingTypeIds.length > 0) {
+        domain.push(['picking_type_id', 'in', pickingTypeIds]);
+      }
       if (storeCod) {
         domain.push(['origin', 'ilike', storeCod]);
       }
