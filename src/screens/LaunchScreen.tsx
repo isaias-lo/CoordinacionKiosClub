@@ -1,151 +1,120 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../components/AuthProvider';
 import { supabase } from '../lib/supabase';
-import { Settings, Users, Bell, LogOut, Truck, ClipboardList, Layers, Store } from 'lucide-react';
+import { KpiCard } from '../components/KpiCard';
+import { EmptyState } from '../components/ui/empty-state';
+import { StatusBadge } from '../components/ui/status-badge';
+import { useHistorialStats } from '../hooks/queries/useHistorial';
+import { useTodayPickingPallets } from '../hooks/queries/usePickingPallets';
+import { format, subDays } from 'date-fns';
+import { es } from 'date-fns/locale';
+import {
+  Truck, ClipboardList, Layers, Store, ClipboardCheck, Shield,
+  BarChart3, TrendingUp, Package, ArrowRight, Bell,
+} from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+} from 'recharts';
 
+/* ── Types ──────────────────────────────────────────────────────── */
+interface QuickTile {
+  key: string; path: string; label: string; sub: string;
+  Icon: React.ElementType; color: string; bg: string;
+}
+
+/* ── Role helpers ────────────────────────────────────────────────── */
 const ROLE_LABEL: Record<string, string> = {
-  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría', despachador: 'Despachador', admin: 'Admin', 'recepcion-tienda': 'Recepción Tienda', 'supervisor-picking': 'Supervisor Picking',
+  auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría',
+  despachador: 'Despachador', admin: 'Administrador',
+  'recepcion-tienda': 'Recepción', 'supervisor-picking': 'Sup. Picking',
+  'asistente-despacho': 'Asistente', 'coordinador-flota': 'Coord. Flota',
+  supervisor: 'Supervisor',
 };
 
-function AccountMenu({ onClose, isAdmin, pendingCount }: { onClose: () => void; isAdmin: boolean; pendingCount: number }) {
-  const router = useRouter();
-  const { profile, signOut } = useAuth();
-  const [email, setEmail] = useState('');
-  const menuRef = useRef<HTMLDivElement>(null);
+/* ── Greeting ────────────────────────────────────────────────────── */
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Buenos días';
+  if (h < 19) return 'Buenas tardes';
+  return 'Buenas noches';
+}
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email) setEmail(data.user.email);
-    });
-  }, []);
+/* ── Dispatch chart ──────────────────────────────────────────────── */
+interface ChartData { day: string; fullDate: string; pallets: number; bultos: number }
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
+function DispatchChart({ data, loading }: { data: ChartData[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="w-5 h-5 rounded-full border-2 border-knavy/30 border-t-knavy animate-spin" />
+      </div>
+    );
+  }
 
-  if (!profile) return null;
-  const initial = (profile.full_name ?? 'U')[0].toUpperCase();
-
-  type IconBg = { from: string; to: string; shadow: string };
-
-  const iconBox = (Icon: React.ElementType, bg: IconBg) => (
-    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-         style={{
-           background: `linear-gradient(145deg, ${bg.from}, ${bg.to})`,
-           boxShadow: `0 4px 12px ${bg.shadow}, inset 0 1px 0 rgba(255,255,255,0.25)`,
-         }}>
-      <Icon size={18} color="#fff" strokeWidth={1.8} />
-    </div>
-  );
-
-  const menuItem = (onClick: () => void, Icon: React.ElementType, bg: IconBg, label: string, badge?: number) => (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-2.5 text-white/85 cursor-pointer transition-all text-left"
-      style={{ background: 'transparent' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-      {iconBox(Icon, bg)}
-      <span className="text-[17px] font-medium flex-1">{label}</span>
-      {badge != null && badge > 0 && (
-        <span className="w-5 h-5 rounded-full text-[11px] font-bold text-black flex items-center justify-center flex-shrink-0"
-              style={{ background: '#EAB308' }}>
-          {badge}
-        </span>
-      )}
-    </button>
-  );
+  if (!data.length) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title="Sin datos de despacho"
+        description="Aún no hay registros para los últimos 7 días."
+        variant="inline"
+      />
+    );
+  }
 
   return (
-    <div ref={menuRef}
-         className="absolute top-full right-0 mt-2 w-72 rounded-2xl overflow-hidden shadow-2xl z-50"
-         style={{ background: '#162048', border: '1px solid rgba(255,255,255,0.12)' }}>
-
-      {/* Header */}
-      <div className="flex flex-col items-center pt-6 pb-4 px-4 gap-2"
-           style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-white"
-             style={{
-               background: 'linear-gradient(145deg, #3B6FE8, #1A3FAA)',
-               boxShadow: '0 8px 24px rgba(37,99,235,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
-             }}>
-          {initial}
-        </div>
-        <div className="text-white font-semibold text-[20px] text-center leading-tight">
-          {profile.full_name ?? 'Usuario'}
-        </div>
-        {email && (
-          <div className="text-white/45 text-[15px] text-center">{email}</div>
-        )}
-        <div className="text-[13px] text-white/30 uppercase tracking-widest mt-0.5">
-          {ROLE_LABEL[profile.role] ?? profile.role}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="py-3 flex flex-col gap-0.5">
-        {menuItem(() => { onClose(); router.push('/perfil'); },
-          Settings,
-          { from: '#6B7280', to: '#4B5563', shadow: 'rgba(107,114,128,0.4)' },
-          'Gestionar cuenta'
-        )}
-
-        {isAdmin && <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 16px' }} />}
-        {isAdmin && menuItem(() => { onClose(); router.push('/admin/usuarios'); },
-          Users,
-          { from: '#2563EB', to: '#1D4ED8', shadow: 'rgba(37,99,235,0.45)' },
-          'Usuarios'
-        )}
-        {isAdmin && menuItem(() => { onClose(); router.push('/admin/usuarios'); },
-          Bell,
-          { from: '#D97706', to: '#B45309', shadow: 'rgba(217,119,6,0.45)' },
-          'Pendientes',
-          pendingCount
-        )}
-
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 16px' }} />
-
-        <button
-          onClick={async () => { onClose(); await signOut(); router.push('/login'); }}
-          className="w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all text-left"
-          style={{ background: 'transparent' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-               style={{
-                 background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
-                 boxShadow: '0 4px 12px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
-               }}>
-            <LogOut size={18} color="#fff" strokeWidth={1.8} />
-          </div>
-          <span className="text-[17px] font-medium text-white/70">Cerrar sesión</span>
-        </button>
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} barGap={4} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+        <XAxis
+          dataKey="day"
+          tick={{ fontSize: 11, fill: '#8E8E93', fontFamily: 'Barlow, sans-serif' }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          tick={{ fontSize: 11, fill: '#8E8E93', fontFamily: 'Barlow, sans-serif' }}
+          axisLine={false}
+          tickLine={false}
+          allowDecimals={false}
+        />
+        <Tooltip
+          contentStyle={{
+            background: '#fff',
+            border: '1px solid #E8E8ED',
+            borderRadius: 10,
+            fontSize: 12,
+            fontFamily: 'Barlow, sans-serif',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+          }}
+          formatter={(value, name) => [
+            Number(value).toLocaleString('es-CL'),
+            name === 'pallets' ? 'Pallets' : 'Bultos',
+          ]}
+          labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate ?? label}
+        />
+        <Bar dataKey="pallets" fill="#1B2A6B" radius={[4, 4, 0, 0]} maxBarSize={28} />
+        <Bar dataKey="bultos"  fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={28} opacity={0.7} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 
+/* ── Main Dashboard ──────────────────────────────────────────────── */
 export function LaunchScreen() {
-  const router       = useRouter();
-  const { profile }  = useAuth();
-  const [stats, setStats]           = useState({ dias: 0, pallets: 0, bultos: 0 });
+  const router  = useRouter();
+  const { profile } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
-  const [showMenu, setShowMenu]     = useState(false);
-  const [isMobile, setIsMobile]           = useState(false);
-  const [skipAnim, setSkipAnim]           = useState(true);
 
   const isAdmin          = profile?.role === 'admin';
   const isRecepcion      = profile?.role === 'recepcion-tienda';
   const isSupervisorPick = profile?.role === 'supervisor-picking';
+
+  /* React Query hooks */
+  const { stats, isLoading: statsLoading } = useHistorialStats();
+  const { data: pallets = [], isLoading: palletsLoading } = useTodayPickingPallets();
 
   function canSee(path: string): boolean {
     const paths = profile?.allowedPaths ?? [];
@@ -153,22 +122,7 @@ export function LaunchScreen() {
     return paths.some(p => p === path || path.startsWith(p + '/'));
   }
 
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth <= 480);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-
-  useEffect(() => {
-    const already = sessionStorage.getItem('home_animated');
-    setSkipAnim(!!already);
-    if (!already) {
-      const t = setTimeout(() => sessionStorage.setItem('home_animated', '1'), 1200);
-      return () => clearTimeout(t);
-    }
-  }, []);
-
+  /* Pending approval count (admin only) */
   const loadPending = useCallback(async () => {
     if (!isAdmin) return;
     const { data: { session } } = await supabase.auth.getSession();
@@ -178,327 +132,314 @@ export function LaunchScreen() {
     });
     const data = await res.json() as { users?: { role: string }[] };
     if (data.users) {
-      setPendingCount(data.users.filter((u: { role: string }) => u.role === 'pending').length);
+      setPendingCount(data.users.filter(u => u.role === 'pending').length);
     }
   }, [isAdmin]);
 
   useEffect(() => {
     loadPending();
-    const interval = setInterval(loadPending, 30000);
-    return () => clearInterval(interval);
+    const t = setInterval(loadPending, 30_000);
+    return () => clearInterval(t);
   }, [loadPending]);
 
-  useEffect(() => {
-    supabase
-      .from('dispatch_history')
-      .select('total_pallets, total_bultos')
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          let pallets = 0, bultos = 0;
-          data.forEach((r: { total_pallets: number; total_bultos: number }) => {
-            pallets += r.total_pallets || 0;
-            bultos  += r.total_bultos  || 0;
-          });
-          setStats({ dias: data.length, pallets, bultos });
-        }
-      });
-  }, []);
+  /* Chart data — last 7 days from historial */
+  const { data: historialRaw = [] } = useHistorialStats() as unknown as { data?: { fecha: string; total_pallets: number; total_bultos: number }[] };
+  const chartData: ChartData[] = Array.from({ length: 7 }, (_, i) => {
+    const d = subDays(new Date(), 6 - i);
+    const key = format(d, 'yyyy-MM-dd');
+    // Find matching historial rows for this date
+    const rows = (historialRaw as { fecha?: string; total_pallets?: number; total_bultos?: number }[] ?? [])
+      .filter(r => r.fecha === key);
+    return {
+      day:      format(d, 'EEE', { locale: es }).replace('.', ''),
+      fullDate: format(d, "EEEE d 'de' MMMM", { locale: es }),
+      pallets:  rows.reduce((s, r) => s + (r.total_pallets ?? 0), 0),
+      bultos:   rows.reduce((s, r) => s + (r.total_bultos  ?? 0), 0),
+    };
+  });
 
-  const initial = (profile?.full_name ?? 'U')[0].toUpperCase();
+  /* Quick tiles */
+  const potentialTiles: (QuickTile | null)[] = [
+    canSee('/despacho-hub') ? {
+      key: 'despacho', path: '/despacho-hub', label: 'Despacho', sub: 'Enrutador · Flota · Estado',
+      Icon: Truck, color: '#2563EB', bg: 'rgba(37,99,235,0.08)',
+    } : null,
+    canSee('/despacho/regiones') ? {
+      key: 'nacional', path: '/despacho/regiones', label: 'Nacional', sub: 'Regiones',
+      Icon: Store, color: '#0891B2', bg: 'rgba(8,145,178,0.08)',
+    } : null,
+    canSee('/despacho/santiago') ? {
+      key: 'rm', path: '/despacho/santiago', label: 'RM / Costa', sub: 'Santiago',
+      Icon: ClipboardList, color: '#7C3AED', bg: 'rgba(124,58,237,0.08)',
+    } : null,
+    canSee('/auditoria') ? {
+      key: 'auditoria', path: '/auditoria', label: 'Auditoría', sub: 'Bodega · Control',
+      Icon: ClipboardCheck, color: '#9333EA', bg: 'rgba(147,51,234,0.08)',
+    } : null,
+    canSee('/picking') ? {
+      key: 'picking', path: '/picking', label: 'Picking', sub: 'Supervisión',
+      Icon: Layers, color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',
+    } : null,
+    canSee('/control-interno') ? {
+      key: 'ci', path: '/control-interno', label: 'Control Interno', sub: 'Tiendas · Recepción',
+      Icon: Shield, color: '#10B981', bg: 'rgba(16,185,129,0.08)',
+    } : null,
+    canSee('/panel-operaciones') ? {
+      key: 'ops', path: '/panel-operaciones', label: 'Operaciones', sub: 'Panel central',
+      Icon: TrendingUp, color: '#D97706', bg: 'rgba(217,119,6,0.08)',
+    } : null,
+  ];
+  const allTiles = potentialTiles.filter(Boolean) as QuickTile[];
 
-  const todayLabel = (() => {
-    const s = new Date().toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  })();
+  /* Picking quick stats */
+  const pickingPendiente  = pallets.filter(p => !p.picker_label).length;
+  const pickingCompletado = pallets.filter(p => !!p.picker_label).length;
+
+  const todayFull = format(new Date(), "EEEE d 'de' MMMM, yyyy", { locale: es });
+  const firstName = (profile?.full_name ?? 'Usuario').split(' ')[0];
+
+  /* Role-specific overrides */
+  if (isRecepcion) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 bg-kbg">
+        <button
+          onClick={() => router.push('/tiendas')}
+          className="flex flex-col items-center gap-3 p-8 bg-card rounded-kios shadow-card2 border border-border/60 hover:shadow-kios transition-all active:scale-[0.98] min-w-[220px]"
+        >
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.12)' }}>
+            <Store size={28} className="text-success" strokeWidth={1.6} />
+          </div>
+          <div className="text-center">
+            <div className="font-barlow-condensed text-lg font-bold text-text uppercase tracking-wide">Tiendas / Recepción</div>
+            <div className="text-[12px] text-text-3 mt-0.5">Confirmar recepción de despacho</div>
+          </div>
+          <ArrowRight size={16} className="text-text-3" />
+        </button>
+      </div>
+    );
+  }
+
+  if (isSupervisorPick) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 bg-kbg">
+        <button
+          onClick={() => router.push('/picking')}
+          className="flex flex-col items-center gap-3 p-8 bg-card rounded-kios shadow-card2 border border-border/60 hover:shadow-kios transition-all active:scale-[0.98] min-w-[220px]"
+        >
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.12)' }}>
+            <Layers size={28} style={{ color: '#F59E0B' }} strokeWidth={1.6} />
+          </div>
+          <div className="text-center">
+            <div className="font-barlow-condensed text-lg font-bold text-text uppercase tracking-wide">Picking</div>
+            <div className="text-[12px] text-text-3 mt-0.5">Supervisión de operaciones</div>
+          </div>
+          <ArrowRight size={16} className="text-text-3" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <style>{`
-        @keyframes ls-from-left   { from { opacity:0; transform: translateX(-60px); } to { opacity:1; transform: translateX(0); } }
-        @keyframes ls-from-right  { from { opacity:0; transform: translateX(60px);  } to { opacity:1; transform: translateX(0); } }
-        @keyframes ls-from-bottom { from { opacity:0; transform: translateY(50px);  } to { opacity:1; transform: translateY(0); } }
-        @keyframes ls-from-bottom2{ from { opacity:0; transform: translateY(70px);  } to { opacity:1; transform: translateY(0); } }
-        @keyframes ls-from-top    { from { opacity:0; transform: translateY(-50px); } to { opacity:1; transform: translateY(0); } }
-        @keyframes ls-logo-spring { from { opacity:0; transform: scale(0.75); }      to { opacity:1; transform: scale(1); } }
-        @keyframes ls-fade-in     { from { opacity:0; } to { opacity:1; } }
+    <div className="fixed inset-0 overflow-y-auto bg-kbg">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
-        @media (min-width: 481px) {
-          .ls-brand-main  { font-size: 52px !important; }
-          .ls-brand-sub   { font-size: 40px !important; }
-          .ls-brand-star  { font-size: 13px !important; }
-          .ls-logo        { margin-top: -100px !important; }
-        }
-        @media (max-width: 480px) {
-          .ls-animate .ls-mobile-hdr  { animation: ls-from-top    0.55s cubic-bezier(0.34,1.56,0.64,1) 0.35s both; }
-          .ls-animate .ls-logo        { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.05s both; }
-          .ls-animate .ls-tagline     { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.08s both; }
-          .ls-animate .ls-title       { animation: ls-logo-spring  0.7s  cubic-bezier(0.34,1.5,0.64,1)  0.11s both; }
-          .ls-animate .ls-card-0      { animation: ls-from-left    0.6s  cubic-bezier(0.34,1.56,0.64,1) 0.18s both; }
-          .ls-animate .ls-card-1      { animation: ls-from-right   0.6s  cubic-bezier(0.34,1.56,0.64,1) 0.18s both; }
-          .ls-animate .ls-card-2      { animation: ls-from-bottom  0.6s  cubic-bezier(0.34,1.56,0.64,1) 0.28s both; }
-          .ls-animate .ls-card-solo   { animation: ls-logo-spring  0.65s cubic-bezier(0.34,1.56,0.64,1) 0.15s both; }
-          .ls-animate .ls-stats-row   { animation: ls-from-bottom2 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.35s both; }
-
-          .ls-root {
-            justify-content: flex-start !important;
-            align-items: stretch !important;
-            overflow-y: auto !important;
-            padding: 0 !important;
-            min-height: 100dvh !important;
-          }
-          .ls-mobile-hdr { display: flex !important; }
-          .ls-avatar-float { display: none !important; }
-          .ls-logo {
-            margin-bottom: 4px !important;
-            padding: 6px 24px 0 !important;
-            justify-content: center !important;
-          }
-          .ls-tagline { margin-bottom: 2px !important; padding: 0 24px; }
-          .ls-title   { margin-bottom: 12px !important; padding: 0 24px; }
-          .ls-cards-outer {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 0 16px 8px !important;
-            box-sizing: border-box;
-          }
-          .ls-cards-outer > button {
-            height: 130px !important;
-          }
-          .ls-cards-grid {
-            grid-auto-rows: 130px !important;
-            margin-bottom: 0 !important;
-          }
-          .ls-nav-card {
-            align-items: center !important;
-            padding-left: 0 !important;
-            padding-top: 0 !important;
-            text-align: center !important;
-          }
-          .ls-stats-row {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr 1fr !important;
-            gap: 0 !important;
-            padding: 10px 24px 16px !important;
-            border-top: 1px solid rgba(255,255,255,0.08);
-            flex-shrink: 0;
-          }
-          .ls-stat-item {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-          }
-          .ls-stat-item + .ls-stat-item { border-left: 1px solid rgba(255,255,255,0.12); }
-        }
-      `}</style>
-
-      <div className={`ls-root${skipAnim ? '' : ' ls-animate'} fixed inset-0 flex flex-col items-center justify-center gap-0 px-6 py-10 overflow-y-auto`}
-           style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
-
-        {/* Mobile compact header — hidden on desktop via inline style, shown via CSS media query */}
-        <div className="ls-mobile-hdr"
-             style={{ display: 'none', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', flexShrink: 0 }}>
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, fontWeight: 600, letterSpacing: '0.02em' }}>
-            {todayLabel}
-          </span>
-          {profile && (
-            <div style={{ position: 'relative' }}>
+        {/* ── Header greeting ── */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-barlow-condensed text-[26px] font-bold text-text leading-none">
+              {greeting()}, {firstName}
+            </h1>
+            <p className="text-[13px] text-text-3 mt-1 capitalize">{todayFull}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isAdmin && pendingCount > 0 && (
               <button
-                onClick={() => setShowMenu(v => !v)}
-                style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(37,99,235,0.55)', border: '2px solid rgba(255,255,255,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{initial}</span>
-                {isAdmin && pendingCount > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: '50%', background: '#EAB308', fontSize: 10, fontWeight: 700, color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {pendingCount}
-                  </span>
-                )}
+                onClick={() => router.push('/admin/usuarios')}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-semibold text-white transition-all"
+                style={{ background: '#D97706' }}
+              >
+                <Bell size={12} strokeWidth={2.5} />
+                {pendingCount} pendiente{pendingCount > 1 ? 's' : ''}
               </button>
-              {showMenu && isMobile && (
-                <AccountMenu onClose={() => setShowMenu(false)} isAdmin={isAdmin} pendingCount={pendingCount} />
-              )}
+            )}
+            <div
+              className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white"
+              style={{ background: '#1B2A6B' }}
+            >
+              {ROLE_LABEL[profile?.role ?? ''] ?? profile?.role ?? 'Usuario'}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Profile — floating avatar, desktop only (hidden on mobile via CSS) */}
-        {profile && (
-          <div className="ls-avatar-float absolute top-4 right-4 z-20">
-            <div className="relative">
+        {/* ── KPI cards ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiCard
+            label="Días despachados"
+            value={stats.dias}
+            icon={Truck}
+            color="#1B2A6B"
+            loading={statsLoading}
+          />
+          <KpiCard
+            label="Pallets totales"
+            value={stats.pallets}
+            icon={Package}
+            color="#2563EB"
+            loading={statsLoading}
+          />
+          <KpiCard
+            label="Bultos totales"
+            value={stats.bultos}
+            icon={ClipboardList}
+            color="#7C3AED"
+            loading={statsLoading}
+          />
+          <KpiCard
+            label="Picking hoy"
+            value={pallets.length}
+            icon={Layers}
+            color="#F59E0B"
+            loading={palletsLoading}
+            onClick={canSee('/picking') ? () => router.push('/picking') : undefined}
+          />
+        </div>
 
-              {/* Desktop: pill con nombre */}
-              <button
-                onClick={() => setShowMenu(v => !v)}
-                className="hidden md:flex items-center gap-3 pl-1.5 pr-4 py-1.5 rounded-full cursor-pointer transition-all active:scale-95"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-[17px] font-bold text-white flex-shrink-0"
-                     style={{ background: 'rgba(37,99,235,0.55)' }}>
-                  {initial}
-                </div>
-                <div className="flex flex-col leading-none">
-                  <span className="text-white text-[17px] font-medium">{profile.full_name ?? 'Usuario'}</span>
-                  <span className="text-[13px] text-white/40 uppercase tracking-wider mt-[2px]">{ROLE_LABEL[profile.role] ?? profile.role}</span>
-                </div>
-                <span className="text-white/40 text-[12px] ml-1">{showMenu ? '▲' : '▼'}</span>
-              </button>
+        {/* ── Chart + Picking status ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Dispatch chart */}
+          <div className="md:col-span-2 bg-card rounded-card shadow-card border border-border/60 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-barlow-condensed font-bold text-[15px] uppercase tracking-wide text-text">
+                  Despachos últimos 7 días
+                </h2>
+                <p className="text-[11px] text-text-3 mt-0.5">Pallets y bultos por día</p>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-text-3">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#1B2A6B' }} />
+                  Pallets
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm inline-block opacity-70" style={{ background: '#3B82F6' }} />
+                  Bultos
+                </span>
+              </div>
+            </div>
+            <div style={{ height: 180 }}>
+              <DispatchChart data={chartData} loading={statsLoading} />
+            </div>
+          </div>
 
-              {/* Mobile: solo el círculo (sólo activo entre 481px–767px; en ≤480px usa el mobile header) */}
-              <button
-                onClick={() => setShowMenu(v => !v)}
-                className="md:hidden relative flex items-center justify-center w-11 h-11 rounded-full cursor-pointer transition-all active:scale-95"
-                style={{ background: 'rgba(37,99,235,0.55)', border: '2px solid rgba(255,255,255,0.15)' }}>
-                <span className="text-[18px] font-bold text-white">{initial}</span>
-                {isAdmin && pendingCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold text-black flex items-center justify-center"
-                        style={{ background: '#EAB308' }}>
-                    {pendingCount}
-                  </span>
-                )}
-              </button>
-
-              {showMenu && !isMobile && (
-                <AccountMenu onClose={() => setShowMenu(false)} isAdmin={isAdmin} pendingCount={pendingCount} />
+          {/* Picking status */}
+          <div className="bg-card rounded-card shadow-card border border-border/60 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-barlow-condensed font-bold text-[15px] uppercase tracking-wide text-text">
+                Picking hoy
+              </h2>
+              {canSee('/picking') && (
+                <button
+                  onClick={() => router.push('/picking')}
+                  className="text-[11px] text-knavy font-semibold hover:underline flex items-center gap-1"
+                >
+                  Ver todo <ArrowRight size={10} />
+                </button>
               )}
+            </div>
+
+            {palletsLoading ? (
+              <div className="space-y-2">
+                {[1,2,3].map(i => <div key={i} className="h-8 bg-border/40 rounded-lg animate-pulse" />)}
+              </div>
+            ) : pallets.length === 0 ? (
+              <EmptyState
+                icon={Layers}
+                title="Sin pallets hoy"
+                description="No hay operaciones de picking registradas."
+                variant="inline"
+              />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-kbg">
+                  <span className="text-[13px] font-medium text-text-2">Total</span>
+                  <span className="font-barlow-condensed text-[20px] font-bold text-text">{pallets.length}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-kbg">
+                  <StatusBadge status="pendiente" size="sm" label="Pendientes" />
+                  <span className="font-bold text-[16px] text-text">{pickingPendiente}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-kbg">
+                  <StatusBadge status="completado" size="sm" label="Asignados" />
+                  <span className="font-bold text-[16px] text-text">{pickingCompletado}</span>
+                </div>
+                {pallets.length > 0 && (
+                  <div className="mt-1">
+                    <div className="h-2 bg-border/50 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${(pickingCompletado / pallets.length) * 100}%`, background: '#34C759' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-text-3 mt-1 text-right">
+                      {Math.round((pickingCompletado / pallets.length) * 100)}% completado
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Quick access tiles ── */}
+        {allTiles.length > 0 && (
+          <div>
+            <h2 className="font-barlow-condensed font-bold text-[13px] uppercase tracking-widest text-text-3 mb-3">
+              Acceso rápido
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {allTiles.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => router.push(t.path)}
+                  className="flex items-center gap-3 p-4 bg-card rounded-card shadow-card border border-border/60 hover:shadow-card2 hover:border-border transition-all active:scale-[0.97] text-left group"
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
+                    style={{ background: t.bg }}
+                  >
+                    <t.Icon size={16} strokeWidth={1.8} style={{ color: t.color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-bold text-text truncate leading-tight group-hover:text-knavy transition-colors">
+                      {t.label}
+                    </div>
+                    <div className="text-[11px] text-text-3 truncate leading-tight mt-0.5">{t.sub}</div>
+                  </div>
+                  <ArrowRight size={12} className="text-text-3 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
+                </button>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Logo */}
-        <div className="ls-logo mb-2 flex items-center justify-center">
-          <div className="flex flex-col gap-[3px] leading-none">
-            <div className="flex items-baseline gap-[2px]">
-              <span className="ls-brand-main" style={{ fontSize: 28, fontWeight: 800, color: '#D42B2B', letterSpacing: '-0.5px', fontFamily: 'Barlow Condensed, sans-serif' }}>KIOS</span>
-              <span className="ls-brand-sub" style={{ fontSize: 22, fontStyle: 'italic', fontWeight: 700, color: '#D42B2B', fontFamily: 'Barlow Condensed, sans-serif' }}>Club</span>
-            </div>
-            <div className="flex gap-[3px] rounded-[2px] px-1.5 py-[3px]" style={{ background: '#1B2A6B' }}>
-              {[0,1,2,3,4].map(i => <span key={i} className="ls-brand-star" style={{ color: '#fff', fontSize: 8 }}>★</span>)}
-            </div>
-          </div>
-        </div>
-
-        <div className="ls-tagline font-barlow-condensed text-base font-bold tracking-widest uppercase text-white/60 mb-1 text-center">
-          Sistema Interno
-        </div>
-        <div className="ls-title font-barlow-condensed text-3xl font-bold text-white text-center mb-10 leading-tight">
-          ¿A dónde vas hoy?
-        </div>
-
-        {/* Vista recepcion-tienda */}
-        {isRecepcion ? (
-          <div className="ls-cards-outer w-full max-w-sm mb-8">
-            <button
-              onClick={() => router.push('/tiendas')}
-              className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(16,185,129,0.5)]"
-              style={{ height: 140, background: 'rgba(16,185,129,0.18)', boxShadow: '0 8px 24px rgba(16,185,129,0.25)' }}>
-              <div className="ls-card-icon mb-2.5 flex">
-                <Store size={28} color="rgba(52,211,153,0.9)" strokeWidth={1.6} />
+        {/* ── Footer stats ── */}
+        <div
+          className="flex items-center justify-center gap-8 py-4 rounded-card border border-border/60 bg-card"
+        >
+          {[
+            { label: 'Días activos', value: stats.dias },
+            { label: 'Pallets totales', value: stats.pallets.toLocaleString('es-CL') },
+            { label: 'Bultos totales', value: stats.bultos.toLocaleString('es-CL') },
+          ].map((s, i) => (
+            <div key={i} className="text-center">
+              <div className="font-barlow-condensed text-[22px] font-bold text-text leading-none">
+                {statsLoading ? '—' : s.value}
               </div>
-              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Tiendas / Recepción</div>
-              <div className="text-xs text-white/60 mt-1">Confirmar recepción de despacho</div>
-            </button>
-          </div>
-        ) : isSupervisorPick ? (
-          <div className="ls-cards-outer w-full max-w-sm mb-8">
-            <button
-              onClick={() => router.push('/picking')}
-              className="ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2 border-[rgba(234,179,8,0.5)]"
-              style={{ height: 140, background: 'rgba(234,179,8,0.14)', boxShadow: '0 8px 24px rgba(234,179,8,0.28)' }}>
-              <div className="ls-card-icon mb-2.5 flex">
-                <Layers size={28} color="rgba(234,179,8,0.9)" strokeWidth={1.6} />
-              </div>
-              <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">Picking</div>
-              <div className="text-xs text-white/60 mt-1">Supervisión de operaciones</div>
-            </button>
-          </div>
-        ) : (() => {
-          type MainTile = { key: string; path: string; label: string; sub: string; Icon: React.ElementType; iconColor: string; bg: string; border: string; shadow: string; cardClass: string };
-          const mainTiles: MainTile[] = ([
-            canSee('/despacho-hub') || canSee('/despacho') ? {
-              key: 'despacho', path: canSee('/despacho-hub') ? '/despacho-hub' : '/despacho',
-              label: 'Despacho', sub: 'Bodegas · Enrutador',
-              Icon: Truck,      iconColor: 'rgba(96,165,250,0.9)',
-              bg: 'rgba(37,99,235,0.18)', border: 'rgba(37,99,235,0.40)', shadow: 'rgba(37,99,235,0.22)',
-              cardClass: 'ls-card-0',
-            } : null,
-            // Panel Choferes solo visible si NO tiene acceso al hub completo de despacho
-            !canSee('/despacho-hub') && !canSee('/despacho') && canSee('/panel-choferes') ? {
-              key: 'panel-choferes', path: '/panel-choferes',
-              label: 'Panel Choferes', sub: 'Hub Conductor · Conductores',
-              Icon: Truck,      iconColor: 'rgba(251,146,60,0.9)',
-              bg: 'rgba(251,146,60,0.13)', border: 'rgba(251,146,60,0.40)', shadow: 'rgba(251,146,60,0.18)',
-              cardClass: 'ls-card-0',
-            } : null,
-            // Hub Conductor — solo si no tiene acceso al hub de despacho (rol puro de conductor)
-            !canSee('/despacho-hub') && !canSee('/despacho') && canSee('/conductor-hub') ? {
-              key: 'conductor-hub', path: '/conductor-hub',
-              label: 'Hub Conductor', sub: 'Mi ruta · Entregas · Escaneo',
-              Icon: Truck,      iconColor: 'rgba(251,146,60,0.9)',
-              bg: 'rgba(251,146,60,0.13)', border: 'rgba(251,146,60,0.40)', shadow: 'rgba(251,146,60,0.18)',
-              cardClass: 'ls-card-0',
-            } : null,
-            canSee('/control-interno') ? {
-              key: 'ci', path: '/control-interno',
-              label: 'Control Interno', sub: 'Tiendas · Auditoría',
-              Icon: ClipboardList, iconColor: 'rgba(52,211,153,0.9)',
-              bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.40)', shadow: 'rgba(16,185,129,0.18)',
-              cardClass: 'ls-card-1',
-            } : null,
-            canSee('/picking') ? {
-              key: 'picking', path: '/picking',
-              label: 'Picking', sub: 'Supervisión de operaciones',
-              Icon: Layers,    iconColor: 'rgba(234,179,8,0.9)',
-              bg: 'rgba(234,179,8,0.14)', border: 'rgba(234,179,8,0.50)', shadow: 'rgba(234,179,8,0.25)',
-              cardClass: 'ls-card-2',
-            } : null,
-          ] as (MainTile | null)[]).filter((t): t is MainTile => t !== null);
-
-          if (mainTiles.length === 1) {
-            const t = mainTiles[0];
-            return (
-              <div className="ls-cards-outer w-full max-w-sm mb-8">
-                <button
-                  onClick={() => router.push(t.path)}
-                  className={`ls-nav-card ls-card-solo w-full relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2`}
-                  style={{ height: 140, background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
-                  <div className="ls-card-icon mb-2.5 flex">
-                    <t.Icon size={28} color={t.iconColor} strokeWidth={1.6} />
-                  </div>
-                  <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-                  <div className="text-xs text-white/60 mt-1">{t.sub}</div>
-                </button>
-              </div>
-            );
-          }
-
-          return (
-            <div className="ls-cards-outer w-full max-w-sm">
-              <div className="ls-cards-grid grid grid-cols-2 gap-3 mb-10" style={{ gridAutoRows: '130px' }}>
-                {mainTiles.map(t => (
-                  <button key={t.key} onClick={() => router.push(t.path)}
-                    className={`ls-nav-card ${t.cardClass} relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95`}
-                    style={{ background: t.bg, border: `2px solid ${t.border}`, boxShadow: `0 8px 24px ${t.shadow}` }}>
-                    <div className="ls-card-icon mb-2.5 flex">
-                      <t.Icon size={24} color={t.iconColor} strokeWidth={1.6} />
-                    </div>
-                    <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-                    <div className="text-xs text-white/55 mt-1">{t.sub}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Stats */}
-        <div className="ls-stats-row flex gap-5">
-          {[['dias', 'días'], ['pallets', 'pallets'], ['bultos', 'bultos']].map(([k, l]) => (
-            <div key={k} className="ls-stat-item text-center">
-              <div className="font-mono text-2xl font-medium text-white">{stats[k as keyof typeof stats]}</div>
-              <div className="text-[11px] text-white/50 uppercase tracking-wider mt-0.5">{l}</div>
+              <div className="text-[10px] text-text-3 uppercase tracking-wider mt-0.5">{s.label}</div>
             </div>
           ))}
         </div>
-
       </div>
-    </>
+    </div>
   );
 }

@@ -2,13 +2,26 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Route, Activity, Users, Settings, ClipboardList, Truck } from 'lucide-react';
+import {
+  Route, Activity, Users, Settings, ClipboardList, Truck, ChevronRight,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { ProfilePill } from '../../components/ProfilePill';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/components/AuthProvider';
 import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/calendarioArmadoSync';
 
-export default function DespachoHubPage() {
+type HubModule = {
+  id: string;
+  path: string;
+  label: string;
+  sub: string;
+  color: string;
+  Icon: LucideIcon;
+  onClick: () => void;
+};
+
+function DespachoHubContent() {
   const router = useRouter();
   const { profile } = useAuth();
   const [notifCount, setNotifCount] = useState(0);
@@ -24,161 +37,116 @@ export default function DespachoHubPage() {
     return paths.includes(path);
   }
 
-  // Página de inicio para el botón "Volver" — usa la primera ruta accesible
-  function homeForBack(): string {
-    const paths = profile?.allowedPaths ?? [];
-    if (paths.includes('*') || paths.includes('/')) return '/';
-    return '/';
-  }
-
-  type HubTab = { id: string; path: string; label: React.ReactNode; sub: string; border: string; bg: string; shadow: string; onClick: () => void; Icon: LucideIcon; iconColor: string };
-  const allTabs: HubTab[] = [
+  const allModules: HubModule[] = [
     {
-      id: 'conteo', path: '/despacho/conteo', label: <>Conteo/<br />Consolidación</>, sub: 'Nacional · RM/Costa',
-      border: 'rgba(6,182,212,0.50)', bg: 'rgba(6,182,212,0.15)', shadow: 'rgba(6,182,212,0.20)',
+      id: 'conteo',
+      path: '/despacho/conteo',
+      label: 'Conteo / Consolidación',
+      sub: 'Nacional · RM / Costa',
+      color: '#0891B2',
+      Icon: ClipboardList,
       onClick: () => router.push('/despacho/conteo'),
-      Icon: ClipboardList, iconColor: 'rgba(103,232,249,0.9)',
     },
     {
-      id: 'enrutador', path: '/despacho', label: 'Enrutador', sub: 'Sistema de enrutamiento',
-      border: 'rgba(34,197,94,0.50)', bg: 'rgba(34,197,94,0.16)', shadow: 'rgba(34,197,94,0.20)',
+      id: 'enrutador',
+      path: '/despacho',
+      label: 'Enrutador',
+      sub: 'Sistema de enrutamiento de despacho',
+      color: '#16A34A',
+      Icon: Route,
       onClick: () => { sessionStorage.setItem('despacho_from', '/despacho-hub'); router.push('/despacho'); },
-      Icon: Route, iconColor: 'rgba(110,231,183,0.9)',
     },
     {
-      id: 'control-flota', path: '/despacho/control-flota', label: 'Control de Flota', sub: 'Conductor · Pionetas · Reasignar',
-      border: 'rgba(249,115,22,0.50)', bg: 'rgba(249,115,22,0.13)', shadow: 'rgba(249,115,22,0.18)',
+      id: 'control-flota',
+      path: '/despacho/control-flota',
+      label: 'Control de Flota',
+      sub: 'Conductor · Pionetas · Reasignación',
+      color: '#EA580C',
+      Icon: Truck,
       onClick: () => router.push('/despacho/control-flota'),
-      Icon: Truck, iconColor: 'rgba(253,186,116,0.9)',
     },
     {
-      id: 'panel-choferes', path: '/panel-choferes', label: 'Panel Choferes', sub: 'Hub Conductor · Recepción',
-      border: 'rgba(168,85,247,0.50)', bg: 'rgba(168,85,247,0.15)', shadow: 'rgba(168,85,247,0.20)',
+      id: 'panel-choferes',
+      path: '/panel-choferes',
+      label: 'Panel Choferes',
+      sub: 'Hub Conductor · Recepción en ruta',
+      color: '#7C3AED',
+      Icon: Users,
       onClick: () => router.push('/panel-choferes'),
-      Icon: Users, iconColor: 'rgba(216,180,254,0.9)',
     },
     {
-      id: 'estado', path: '/despacho/estado', label: 'Estado / Seguimiento', sub: 'Etiquetas · Guías · QR',
-      border: 'rgba(245,158,11,0.50)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.18)',
+      id: 'estado',
+      path: '/despacho/estado',
+      label: 'Estado / Seguimiento',
+      sub: 'Etiquetas · Guías · Escáner QR',
+      color: '#D97706',
+      Icon: Activity,
       onClick: () => router.push('/despacho/estado'),
-      Icon: Activity, iconColor: 'rgba(251,191,36,0.9)',
     },
     {
-      id: 'config-tiendas', path: '/despacho/config-tiendas', label: 'Config. Tiendas', sub: 'Gestión y calendario',
-      border: 'rgba(99,102,241,0.50)', bg: 'rgba(99,102,241,0.15)', shadow: 'rgba(99,102,241,0.20)',
+      id: 'config-tiendas',
+      path: '/despacho/config-tiendas',
+      label: 'Config. Tiendas',
+      sub: 'Gestión de tiendas y calendario',
+      color: '#4F46E5',
+      Icon: Settings,
       onClick: () => router.push('/despacho/config-tiendas'),
-      Icon: Settings, iconColor: 'rgba(165,180,252,0.9)',
     },
   ];
 
-  const tabs = profile ? allTabs.filter(t => canSee(t.path)) : allTabs;
+  const modules = profile ? allModules.filter(m => canSee(m.path)) : allModules;
 
   return (
-    <>
-      <style>{`
-        @media (max-width: 480px) {
-          .dh-root {
-            padding: 0 !important;
-            overflow: hidden !important;
-            height: 100dvh !important;
-            justify-content: flex-start !important;
-          }
-          .dh-header {
-            justify-content: space-between !important;
-            margin-bottom: 0 !important;
-            padding: 12px 20px !important;
-          }
-          .dh-mobile-cards {
-            flex: 1 !important;
-            display: flex !important;
-            flex-direction: column !important;
-            padding: 12px 16px 20px !important;
-            gap: 10px !important;
-            min-height: 0;
-          }
-          .dh-mobile-card {
-            flex: 1 !important;
-            height: auto !important;
-          }
-        }
-      `}</style>
+    <div className="h-full flex flex-col overflow-hidden">
+      <PageHeader title="Despacho" subtitle="Módulos del sistema de despacho" backHref="/" />
 
-      <div className="dh-root fixed inset-0 flex flex-col py-10 overflow-y-auto"
-           style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
-
-        {/* Header */}
-        <div className="dh-header flex items-center gap-3 mb-10 px-6">
-          <div className="flex items-center gap-3 flex-1">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-3xl">
+          {modules.map(m => (
             <button
-              onClick={() => router.push(homeForBack())}
-              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-              style={{
-                width: 36, height: 36,
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-                border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-            </button>
-            <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Despacho</div>
-          </div>
-          <ProfilePill />
-        </div>
-
-        {/* Desktop grid */}
-        <div className="px-6">
-          <div className="hidden md:grid md:grid-cols-2 md:gap-3 md:max-w-sm md:mx-auto" style={{ gridAutoRows: '130px' }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={t.onClick}
-                className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
-                style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
-                {t.id === 'config-tiendas' && notifCount > 0 && (
-                  <div style={{
-                    position: 'absolute', top: 8, right: 10,
-                    background: '#FF9500', borderRadius: 10,
-                    padding: '2px 7px', fontSize: 11, fontWeight: 800, color: '#fff',
-                    boxShadow: '0 2px 8px rgba(255,149,0,0.55)',
-                    lineHeight: 1.4,
-                  }}>{notifCount}</div>
-                )}
-                <t.Icon size={24} color={t.iconColor} strokeWidth={1.6} style={{ marginBottom: 10 }} />
-                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-                <div className="text-xs text-white/60 mt-1">{t.sub}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Mobile list */}
-        <div className="dh-mobile-cards flex md:hidden flex-col gap-3 px-6">
-          {tabs.map(t => (
-            <button key={t.id} onClick={t.onClick}
-              className="dh-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer transition-all active:scale-95 border-2 text-left"
-              style={{
-                height: 88,
-                background: t.bg,
-                borderColor: t.border,
-                boxShadow: `0 8px 24px ${t.shadow}`,
-              }}>
-              {t.id === 'config-tiendas' && notifCount > 0 && (
-                <div style={{
-                  position: 'absolute', top: 10, right: 14,
-                  background: '#FF9500', borderRadius: 10,
-                  padding: '2px 8px', fontSize: 11, fontWeight: 800, color: '#fff',
-                  boxShadow: '0 2px 8px rgba(255,149,0,0.55)',
-                  lineHeight: 1.4,
-                }}>{notifCount} pendiente{notifCount !== 1 ? 's' : ''}</div>
+              key={m.id}
+              onClick={m.onClick}
+              className="group relative bg-card rounded-card border border-border/60 p-4 text-left transition-all hover:shadow-card2 hover:-translate-y-0.5 active:scale-[0.99]"
+              style={{ borderLeftWidth: 3, borderLeftColor: m.color }}
+            >
+              {m.id === 'config-tiendas' && notifCount > 0 && (
+                <span
+                  className="absolute top-3 right-3 text-[11px] font-bold text-white px-2 py-0.5 rounded-full"
+                  style={{ background: '#FF9500' }}
+                >
+                  {notifCount}
+                </span>
               )}
-              <t.Icon size={22} color={t.iconColor} strokeWidth={1.6} style={{ flexShrink: 0 }} />
-              <div>
-                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-                <div className="text-xs text-white/60 mt-0.5">{t.sub}</div>
+
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
+                style={{ background: `${m.color}18` }}
+              >
+                <m.Icon size={18} strokeWidth={1.8} style={{ color: m.color }} />
               </div>
+
+              <div className="font-barlow-condensed text-[17px] font-bold text-text uppercase tracking-wide leading-tight pr-4">
+                {m.label}
+              </div>
+              <div className="text-[12px] text-text-3 mt-1 leading-snug">{m.sub}</div>
+
+              <ChevronRight
+                size={14}
+                className="absolute bottom-4 right-4 text-text-3 group-hover:text-text-2 transition-colors"
+                strokeWidth={2}
+              />
             </button>
           ))}
         </div>
-
       </div>
-    </>
+    </div>
+  );
+}
+
+export default function DespachoHubPage() {
+  return (
+    <ErrorBoundary module="Despacho Hub">
+      <DespachoHubContent />
+    </ErrorBoundary>
   );
 }

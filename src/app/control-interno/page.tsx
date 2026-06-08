@@ -1,12 +1,24 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ClipboardCheck, Search, Settings, PackageCheck, CheckSquare, Activity } from 'lucide-react';
+import {
+  ClipboardCheck, Search, PackageCheck, CheckSquare, Activity, Settings, ChevronRight,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '../../components/AuthProvider';
-import { ProfilePill } from '../../components/ProfilePill';
 
-export default function ControlInternoPage() {
+type HubModule = {
+  label: string;
+  sub: string;
+  path: string;
+  color: string;
+  Icon: LucideIcon;
+  onClick: () => void;
+};
+
+function ControlInternoContent() {
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -16,141 +28,99 @@ export default function ControlInternoPage() {
     return paths.some(p => p === path || path.startsWith(p + '/'));
   }
 
-  const tabs: { label: string; sub: string; border: string; bg: string; shadow: string; onClick: () => void; path: string; Icon: LucideIcon; iconColor: string }[] = [
+  const allModules: HubModule[] = [
     {
-      label: 'Auditoría', sub: 'Control de calidad pallets',
-      border: 'rgba(245,158,11,0.55)', bg: 'rgba(245,158,11,0.13)', shadow: 'rgba(245,158,11,0.20)',
-      onClick: () => router.push('/auditoria'), path: '/auditoria',
-      Icon: ClipboardCheck, iconColor: 'rgba(251,191,36,0.9)',
+      label: 'Auditoría',
+      sub: 'Control de calidad de pallets',
+      path: '/auditoria',
+      color: '#D97706',
+      Icon: ClipboardCheck,
+      onClick: () => router.push('/auditoria'),
     },
     {
-      label: 'Revisión Auditoría', sub: 'Revisión y seguimiento',
-      border: 'rgba(124,58,237,0.5)', bg: 'rgba(124,58,237,0.15)', shadow: 'rgba(124,58,237,0.22)',
-      onClick: () => router.push('/auditoria-admin'), path: '/auditoria-admin',
-      Icon: Search, iconColor: 'rgba(167,139,250,0.9)',
+      label: 'Revisión Auditoría',
+      sub: 'Revisión y seguimiento de auditorías',
+      path: '/auditoria-admin',
+      color: '#7C3AED',
+      Icon: Search,
+      onClick: () => router.push('/auditoria-admin'),
     },
     {
-      label: 'Recepción/Tienda', sub: 'Registro de entrega en tienda',
-      border: 'rgba(16,185,129,0.55)', bg: 'rgba(16,185,129,0.13)', shadow: 'rgba(16,185,129,0.20)',
-      onClick: () => router.push('/recepcion-tienda'), path: '/recepcion-tienda',
-      Icon: PackageCheck, iconColor: 'rgba(52,211,153,0.9)',
+      label: 'Recepción / Tienda',
+      sub: 'Registro de entrega en tienda',
+      path: '/recepcion-tienda',
+      color: '#059669',
+      Icon: PackageCheck,
+      onClick: () => router.push('/recepcion-tienda'),
     },
     {
-      label: 'Validación Tienda', sub: 'Confirmar entregas recibidas',
-      border: 'rgba(99,102,241,0.55)', bg: 'rgba(99,102,241,0.13)', shadow: 'rgba(99,102,241,0.20)',
-      onClick: () => router.push('/validacion-tienda'), path: '/validacion-tienda',
-      Icon: CheckSquare, iconColor: 'rgba(129,140,248,0.9)',
+      label: 'Validación Tienda',
+      sub: 'Confirmar entregas recibidas',
+      path: '/validacion-tienda',
+      color: '#4F46E5',
+      Icon: CheckSquare,
+      onClick: () => router.push('/validacion-tienda'),
     },
     {
-      label: 'Panel Operaciones', sub: 'Registro de entregas · Recepción tiendas',
-      border: 'rgba(6,182,212,0.55)', bg: 'rgba(6,182,212,0.13)', shadow: 'rgba(6,182,212,0.20)',
-      onClick: () => router.push('/panel-operaciones'), path: '/panel-operaciones',
-      Icon: Activity, iconColor: 'rgba(34,211,238,0.9)',
+      label: 'Panel Operaciones',
+      sub: 'Registro de entregas · Recepción tiendas',
+      path: '/panel-operaciones',
+      color: '#0891B2',
+      Icon: Activity,
+      onClick: () => router.push('/panel-operaciones'),
     },
     {
-      label: 'Config. Tiendas', sub: 'Gestión de tiendas · Calendario central',
-      border: 'rgba(211,47,47,0.55)', bg: 'rgba(211,47,47,0.18)', shadow: 'rgba(211,47,47,0.28)',
-      onClick: () => router.push('/admin/tiendas'), path: '/admin/tiendas',
-      Icon: Settings, iconColor: 'rgba(252,165,165,0.9)',
+      label: 'Config. Tiendas',
+      sub: 'Gestión de tiendas · Calendario central',
+      path: '/admin/tiendas',
+      color: '#D42B2B',
+      Icon: Settings,
+      onClick: () => router.push('/admin/tiendas'),
     },
-  ].filter(t => canSee(t.path));
+  ].filter(m => canSee(m.path));
 
   return (
-    <>
-      <style>{`
-        @media (max-width: 480px) {
-          .ci-root {
-            padding: 0 !important;
-            overflow: hidden !important;
-            height: 100dvh !important;
-            justify-content: flex-start !important;
-          }
-          .ci-header {
-            justify-content: space-between !important;
-            margin-bottom: 0 !important;
-            padding: 12px 20px !important;
-          }
-          .ci-avatar-hdr { display: block !important; }
-          .ci-mobile-cards {
-            flex: 1 !important;
-            display: flex !important;
-            flex-direction: column !important;
-            padding: 12px 16px 20px !important;
-            gap: 10px !important;
-            min-height: 0;
-          }
-          .ci-mobile-card {
-            flex: 1 !important;
-            height: auto !important;
-          }
-        }
-      `}</style>
+    <div className="h-full flex flex-col overflow-hidden">
+      <PageHeader title="Control Interno" subtitle="Módulos de control y auditoría" backHref="/" />
 
-      <div className="ci-root fixed inset-0 flex flex-col py-10 overflow-y-auto"
-           style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
-
-        {/* Header */}
-        <div className="ci-header flex items-center gap-3 mb-10 px-6">
-          {/* Left: back + title */}
-          <div className="flex items-center gap-3 flex-1">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-3xl">
+          {allModules.map(m => (
             <button
-              onClick={() => router.push('/')}
-              className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-              style={{
-                width: 36, height: 36,
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-                border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-            </button>
-            <div>
-              <div className="font-barlow-condensed text-[11px] font-bold tracking-[0.2em] uppercase text-white/35">Módulo</div>
-              <div className="font-barlow-condensed text-2xl font-bold text-white tracking-widest uppercase leading-none">Control Interno</div>
-            </div>
-          </div>
-
-          {/* Right: profile pill */}
-          <ProfilePill />
-        </div>
-
-        {/* Desktop grid */}
-        <div className="hidden md:block px-6">
-          <div className="grid gap-3 max-w-sm mx-auto"
-               style={{ gridTemplateColumns: tabs.length === 1 ? '1fr' : '1fr 1fr', gridAutoRows: '130px' }}>
-            {tabs.map(t => (
-              <button key={t.sub} onClick={t.onClick}
-                className="relative overflow-hidden rounded-2xl px-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all active:scale-95 border-2"
-                style={{ background: t.bg, borderColor: t.border, boxShadow: `0 8px 24px ${t.shadow}` }}>
-                <t.Icon size={24} color={t.iconColor} strokeWidth={1.6} style={{ marginBottom: 10 }} />
-                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-                <div className="text-xs text-white/60 mt-1">{t.sub}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Mobile list */}
-        <div className="ci-mobile-cards flex md:hidden flex-col gap-3 px-6">
-          {tabs.map(t => (
-            <button key={t.sub} onClick={t.onClick}
-              className="ci-mobile-card w-full relative overflow-hidden rounded-2xl flex items-center gap-4 px-5 cursor-pointer transition-all active:scale-95 border-2 text-left"
-              style={{
-                height: 88,
-                background: t.bg,
-                borderColor: t.border,
-                boxShadow: `0 8px 24px ${t.shadow}`,
-              }}>
-              <t.Icon size={22} color={t.iconColor} strokeWidth={1.6} style={{ flexShrink: 0 }} />
-              <div>
-                <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-tight">{t.label}</div>
-                <div className="text-xs text-white/60 mt-0.5">{t.sub}</div>
+              key={m.path}
+              onClick={m.onClick}
+              className="group relative bg-card rounded-card border border-border/60 p-4 text-left transition-all hover:shadow-card2 hover:-translate-y-0.5 active:scale-[0.99]"
+              style={{ borderLeftWidth: 3, borderLeftColor: m.color }}
+            >
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
+                style={{ background: `${m.color}18` }}
+              >
+                <m.Icon size={18} strokeWidth={1.8} style={{ color: m.color }} />
               </div>
+
+              <div className="font-barlow-condensed text-[17px] font-bold text-text uppercase tracking-wide leading-tight pr-4">
+                {m.label}
+              </div>
+              <div className="text-[12px] text-text-3 mt-1 leading-snug">{m.sub}</div>
+
+              <ChevronRight
+                size={14}
+                className="absolute bottom-4 right-4 text-text-3 group-hover:text-text-2 transition-colors"
+                strokeWidth={2}
+              />
             </button>
           ))}
         </div>
-
       </div>
-    </>
+    </div>
+  );
+}
+
+export default function ControlInternoPage() {
+  return (
+    <ErrorBoundary module="Control Interno">
+      <ControlInternoContent />
+    </ErrorBoundary>
   );
 }

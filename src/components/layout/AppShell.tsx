@@ -2,6 +2,7 @@
 
 import { AppSidebar } from './AppSidebar';
 import { SidebarProvider, useSidebar } from './SidebarContext';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { PanelLeft } from 'lucide-react';
 
 function MobileMenuButton() {
@@ -31,7 +32,9 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         className="flex-1 min-w-0 overflow-hidden relative bg-kbg"
         style={{ transform: 'translateZ(0)' }}
       >
-        {children}
+        <ErrorBoundary module="App">
+          {children}
+        </ErrorBoundary>
       </main>
       <MobileMenuButton />
     </div>

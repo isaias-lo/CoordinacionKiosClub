@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardList, Camera, BarChart3 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../components/AuthProvider';
-import { ProfilePill } from '../../components/ProfilePill';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { getPickerDisplay } from '../../features/auditoria/data/pickerNames';
 import { rowToEntry } from '../../features/auditoria/utils/converters';
 import type { AuditEntry, CorreccionAuditoria } from '../../features/auditoria/types';
@@ -196,7 +196,7 @@ function EntryCard({ entry, onOpenLightbox }: {
 /* ════════════════════════════════════════
    MAIN PAGE
 ════════════════════════════════════════ */
-export default function AuditoriaAdminPage() {
+function AuditoriaAdminContent() {
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -304,7 +304,6 @@ export default function AuditoriaAdminPage() {
             {profile?.full_name ?? 'Admin'} · {filtered.length} registros
           </div>
         </div>
-        <ProfilePill />
       </div>
 
       {/* Filters */}
@@ -610,5 +609,13 @@ export default function AuditoriaAdminPage() {
         <LightboxCarousel photos={carouselPhotos} startIdx={carouselIdx} onClose={closeLightbox} />
       )}
     </div>
+  );
+}
+
+export default function AuditoriaAdminPage() {
+  return (
+    <ErrorBoundary module="Admin Auditoría">
+      <AuditoriaAdminContent />
+    </ErrorBoundary>
   );
 }
