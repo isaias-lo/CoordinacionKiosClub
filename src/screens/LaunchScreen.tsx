@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 import { KpiCard } from '../components/KpiCard';
 import { EmptyState } from '../components/ui/empty-state';
 import { StatusBadge } from '../components/ui/status-badge';
-import { useHistorial, useHistorialStats } from '../hooks/queries/useHistorial';
+import { useHistorial, useHistorialStats, HistorialEntry } from '../hooks/queries/useHistorial';
 import { useTodayPickingPallets } from '../hooks/queries/usePickingPallets';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -42,7 +42,7 @@ function greeting(): string {
 }
 
 /* ── Dispatch chart types ────────────────────────────────────────── */
-interface ChartData { day: string; fullDate: string; pallets: number; bultos: number }
+interface ChartData { day: string; fullDate: string; pallets: number; bultos: number; contenedores: number; chocolates: number }
 
 /* ── Main Dashboard ──────────────────────────────────────────────── */
 export function LaunchScreen() {
@@ -86,17 +86,37 @@ export function LaunchScreen() {
 
   /* Chart data — last 7 days from historial */
   const { data: historialRaw = [] } = useHistorial(90);
+
+  function matchDate(entryDate: string, isoKey: string): boolean {
+    if (entryDate === isoKey) return true;
+    const months: Record<string, string> = {
+      'ene':'01','feb':'02','mar':'03','abr':'04','may':'05','jun':'06',
+      'jul':'07','ago':'08','sep':'09','oct':'10','nov':'11','dic':'12',
+    };
+    const parts = entryDate.split(' ');
+    if (parts.length >= 3) {
+      const month = months[parts[2]];
+      if (month) {
+        const day = parts[1].padStart(2, '0');
+        const year = isoKey.slice(0, 4);
+        return `${year}-${month}-${day}` === isoKey;
+      }
+    }
+    return false;
+  }
+
   const chartData: ChartData[] = Array.from({ length: 7 }, (_, i) => {
     const d = subDays(new Date(), 6 - i);
     const key = format(d, 'yyyy-MM-dd');
-    // Find matching historial rows for this date
-    const rows = (historialRaw as { date?: string; total_pallets?: number; total_bultos?: number }[] ?? [])
-      .filter(r => r.date === key);
+    const rows = (historialRaw as HistorialEntry[] ?? [])
+      .filter(r => matchDate(r.date, key));
     return {
-      day:      format(d, 'EEE', { locale: es }).replace('.', ''),
-      fullDate: format(d, "EEEE d 'de' MMMM", { locale: es }),
-      pallets:  rows.reduce((s, r) => s + (r.total_pallets ?? 0), 0),
-      bultos:   rows.reduce((s, r) => s + (r.total_bultos  ?? 0), 0),
+      day:          format(d, 'EEE', { locale: es }).replace('.', ''),
+      fullDate:     format(d, "EEEE d 'de' MMMM", { locale: es }),
+      pallets:      rows.reduce((s, r) => s + (r.total_pallets      ?? 0), 0),
+      bultos:       rows.reduce((s, r) => s + (r.total_bultos       ?? 0), 0),
+      contenedores: rows.reduce((s, r) => s + (r.total_contenedores ?? 0), 0),
+      chocolates:   rows.reduce((s, r) => s + (r.total_chocolates   ?? 0), 0),
     };
   });
 
@@ -261,7 +281,7 @@ export function LaunchScreen() {
                 </h2>
                 <p className="text-[11px] text-text-3 mt-0.5">Pallets y bultos por día</p>
               </div>
-              <div className="flex items-center gap-3 text-[11px] text-text-3">
+              <div className="flex items-center gap-3 text-[11px] text-text-3 flex-wrap">
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#1B2A6B' }} />
                   Pallets
@@ -269,6 +289,14 @@ export function LaunchScreen() {
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-sm inline-block opacity-70" style={{ background: '#3B82F6' }} />
                   Bultos
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#D97706' }} />
+                  Contenedores
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#9333EA' }} />
+                  Chocolates
                 </span>
               </div>
             </div>

@@ -6,10 +6,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Truck, ClipboardCheck, PackageCheck, Shield,
-  Map, Globe, MapPin, BarChart3, Activity, Navigation as NavIcon,
+  Map, Globe, MapPin, Activity, Navigation as NavIcon,
   Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, CalendarDays, Search,
+  LogOut, Users, Search,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
@@ -21,10 +21,8 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/despacho':                Map,
   '/despacho/regiones':       Globe,
   '/despacho/santiago':       MapPin,
-  '/despacho/conteo':         BarChart3,
   '/despacho/control-flota':  Truck,
   '/despacho/estado':         Activity,
-  '/panel-choferes':          Users,
   '/conductor-hub':           NavIcon,
   '/panel-operaciones':       Monitor,
   '/tiendas':                 Store,
@@ -34,8 +32,9 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/recepcion-tienda':        Inbox,
   '/validacion-tienda':       CheckSquare,
   '/admin/tiendas':           Settings2,
+  '/despacho/config-tiendas': Settings2,
   '/admin/usuarios':          Users,
-  '/admin/calendario':        CalendarDays,
+
   '/auditoria':               ClipboardCheck,
   '/auditoria-admin':         ClipboardCheck,
   '/picking':                 PackageCheck,
@@ -318,9 +317,9 @@ export function AppSidebar() {
             group={{ id: 'admin', label: 'Admin', color: '#6B7280', routes: [] }}
             collapsed={isCollapsed}
             routes={[
-              { path: '/admin/usuarios',   label: 'Usuarios'    },
-              { path: '/admin/tiendas',    label: 'Tiendas'     },
-              { path: '/admin/calendario', label: 'Calendario'  },
+              { path: '/admin/usuarios',          label: 'Usuarios'     },
+              { path: '/admin/tiendas',           label: 'Tiendas'      },
+              { path: '/despacho/config-tiendas', label: 'Config. Tiendas' },
             ]}
           />
         )}

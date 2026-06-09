@@ -1,23 +1,20 @@
 # TRABAJO — Estado actual
 
-## Sesión: Fix Dashboard + Polling + 401 API
+## Sesión: Calendario Central → CalendarioColumnas + build fixes
 
 ### Branch: `inicio`
 
-### Cambios realizados:
+### Cambios realizados (sesión actual):
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/hooks/queries/useHistorial.ts` | Corregidas columnas: `fecha`→`date`, eliminados `region`/`total_tiendas` (no existen en tabla `dispatch_history`) |
-| `src/screens/LaunchScreen.tsx` | Chart ahora usa `useHistorial(90)` en vez de `useHistorialStats()` (no exponía `data`); filtro usa `r.date` |
-| `src/hooks/queries/usePickingPallets.ts` | Eliminado `refetchInterval: 30_000` de `useTodayPickingPallets()`. **Fix 401**: `fetchPallets()` ahora envía `Authorization: Bearer <token>` igual que las mutations |
+| `src/app/admin/calendario/page.tsx` | Reemplazado `CalendarioCentral` por `CalendarioColumnas` con `source="despacho"` — ahora tiene selector de días (stepper 1–7), drag & drop posicional con indicadores azules, pestañas de grupos, selector multi-día al agregar tienda, guardado con Supabase + Sheets, y diseño completo estilo CalendarioArmado |
+| `src/features/control-interno/CalendarioCentral.tsx` | Fix: sintaxis JSX (comentario fuera de lugar, regex emoji roto, variable `i` no usada) — build compila |
+| `TRABAJO.md` | Actualizado |
 
 ### Pendiente
 - ⚠️ **CORS en Vercel** — Login bloqueado en `toolskios.vercel.app`. Solución: Cambiar Site URL en Supabase Dashboard → Configuration → API de `http://localhost:3000` a `https://toolskios.vercel.app`
-- Commit, push y deploy de rama `inicio` para llevar las correcciones a producción
-- Error 400 en `dispatch_history` (columnas viejas) se resolverá con el deploy
-- Error 401 en `/api/picking-pallets` corregido, requiere deploy
-- Revisar warning Recharts (width/height 0) en contenedor del chart
+- Commit, push y deploy de rama `inicio` para llevar los cambios a producción
 
 ### Commits recientes:
 | Commit | Descripción |
@@ -80,14 +77,13 @@
 ## Build Status
 - ✅ `npm run build` — Compila sin errores
 - ✅ TypeScript — Sin errores de tipo
-- ✅ 52 páginas generadas
 - ✅ `npm run lint` — Pasado
 
 ## Pendiente
 - ⚠️ **CORS en Vercel** — Login bloqueado en `toolskios.vercel.app`. **Solución**: Cambiar Site URL en Supabase Dashboard → Configuration → API de `http://localhost:3000` a `https://toolskios.vercel.app`
+- Los cambios de esta sesión están en rama `inicio`, sin commitear ni desplegar
 
 ## Próximos pasos posibles
 - Verificar login en Vercel tras cambio de Site URL
 - Monitorear I/O de Supabase tras optimizaciones
-- Migrar `picking_fetch` timeout de 15s → 10s
-- Consolidar patrones de tabs en componente TabBar reutilizable
+- Commit y push de rama `inicio` → PR a `main`

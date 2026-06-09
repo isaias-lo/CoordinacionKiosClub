@@ -61,9 +61,11 @@ export function FinishModal({ open, onClose }: Props) {
     };
     // Save to Supabase (without rows — too large)
     if (user) {
+      const isoDate = new Date().toISOString().split('T')[0];
       supabase.from('dispatch_history').insert({
-        user_id: user.id, date: entry.date,
-        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos, total_contenedores: entry.totalContenedores,
+        user_id: user.id, date: isoDate,
+        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos,
+        total_contenedores: entry.totalContenedores, total_chocolates: entry.totalChocolates,
         tiendas: entry.tiendas,
       }).then(({ error }) => { if (error) console.error('Dispatch save:', error.message); });
     }

@@ -113,7 +113,6 @@ function DespachoContent() {
     return (
       <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
         <div className="bg-navy px-4 py-3 flex items-center gap-2 flex-shrink-0">
-          <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub" />
           <div className="flex-1 text-center">
             <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
             <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
@@ -129,32 +128,22 @@ function DespachoContent() {
   return (
     <div className="despacho-root fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div
-        className="no-print flex items-center justify-between px-4 py-3 bg-navy gap-2 flex-shrink-0"
+        className="no-print flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-        <button
-          onClick={handleBack}
-          className="w-[34px] h-[34px] rounded-full cursor-pointer transition-all active:scale-95 flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}>
-          <span className="text-white text-[18px] leading-none">←</span>
-        </button>
-        <img src="/logo.png" className="h-7 brightness-0 invert" alt="KiosClub"
-             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         <div className="flex-1 text-center">
           <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
           <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent('open-enrutador-menu'))}
-            className="w-[34px] h-[34px] rounded-[8px] flex flex-col items-center justify-center gap-[5px] flex-shrink-0 transition-all active:scale-95"
-            style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}
-            aria-label="Menú"
-          >
-            <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
-            <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
-            <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
-          </button>
-        </div>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-enrutador-menu'))}
+          className="w-[34px] h-[34px] rounded-[8px] flex flex-col items-center justify-center gap-[5px] flex-shrink-0 transition-all active:scale-95"
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}
+          aria-label="Menú"
+        >
+          <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
+          <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
+          <span className="w-[15px] h-[1.5px] bg-white rounded-full" />
+        </button>
       </div>
       <div className="despacho-content flex-1 overflow-hidden">
         <RutasScreenWrapper onBack={handleBack} />

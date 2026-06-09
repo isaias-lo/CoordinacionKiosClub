@@ -25,15 +25,13 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { path: '/despacho',               label: 'Enrutador'              },
       { path: '/despacho/regiones',      label: 'Nacional'               },
       { path: '/despacho/santiago',      label: 'RM / Costa'             },
-      { path: '/despacho/conteo',        label: 'Conteo / Consolidación' },
     ],
   },
   {
     id: 'flota', label: 'Flota', color: '#EA580C',
     routes: [
       { path: '/despacho/control-flota', label: 'Control de Flota'       },
-      { path: '/panel-choferes',         label: 'Panel Choferes'         },
-      { path: '/conductor-hub',          label: 'Hub Conductor'          },
+      { path: '/conductor-hub',          label: 'Panel Conductor'        },
       { path: '/panel-operaciones',      label: 'Panel Operaciones'      },
       { path: '/tiendas',                label: 'Conductores / Tiendas'  },
     ],
@@ -78,7 +76,7 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
   { value: '/despacho',        label: 'Enrutador'        },
   { value: '/control-interno', label: 'Control Interno'  },
   { value: '/auditoria',       label: 'Auditoría'        },
-  { value: '/panel-choferes',  label: 'Panel Choferes'   },
+
   { value: '/tiendas',         label: 'Conductores'      },
   { value: '/picking',         label: 'Abastecimiento'    },
   { value: '/perfil',          label: 'Perfil'           },
@@ -110,9 +108,9 @@ export function isPathAllowed(allowed: string[], pathname: string): boolean {
 const DESPACHO_FULL = [
   '/', '/despacho', '/despacho/regiones', '/despacho/santiago',
   '/despacho/conteo', '/despacho/control-flota', '/despacho/estado',
-  '/panel-choferes', '/conductor-hub', '/panel-operaciones', '/registros',
-  '/tiendas', '/control-interno', '/recepcion-tienda', '/validacion-tienda',
-  '/incidencias', '/perfil',
+  '/despacho/config-tiendas', '/panel-choferes', '/conductor-hub',
+  '/panel-operaciones', '/registros', '/tiendas', '/control-interno',
+  '/recepcion-tienda', '/validacion-tienda', '/incidencias', '/perfil',
 ];
 
 export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
@@ -123,8 +121,8 @@ export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
   'recepcion-tienda':    ['/tiendas', '/recepcion-tienda', '/control-interno', '/validacion-tienda', '/perfil'],
   'supervisor-picking':  ['/picking', '/perfil'],
   'admin':               ['*'],
-  'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/perfil'],
-  'coordinador-flota':   ['/despacho', '/despacho/control-flota', '/panel-choferes', '/perfil'],
+  'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/perfil'],
+  'coordinador-flota':   ['/despacho', '/despacho/control-flota', '/despacho/config-tiendas', '/panel-choferes', '/perfil'],
 };
 
 export const SYSTEM_ROLE_HOME: Record<string, string> = {

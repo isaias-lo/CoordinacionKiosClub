@@ -55,8 +55,16 @@ function useHistData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+  function isoToSpanish(iso: string): string {
+    const d = new Date(iso + 'T12:00:00');
+    return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+  }
+
   const redownload = async (date: string) => {
-    const local = localEntries.find(e => e.date === date);
+    const local = localEntries.find(e => e.date === date) ?? localEntries.find(e => e.date === isoToSpanish(date));
     if (!local?.rows?.length) { showToast('Re-exportar no disponible en este dispositivo', '#D97706'); return; }
     await exportToTemplate(local.rows as never[], `despacho_${date.replace(/\s+/g, '_')}.xlsx`);
     showToast('Excel descargado ✓', '#16A34A');
@@ -70,6 +78,13 @@ function HistEntries({ history, loading, redownload }: {
   loading: boolean;
   redownload: (date: string) => void;
 }) {
+  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function isoToSpanish(iso: string): string {
+    const d = new Date(iso + 'T12:00:00');
+    return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+  }
+
   return (
     <div className="p-3.5">
       {loading && <div className="text-center py-16 text-text-3 text-sm">Cargando historial...</div>}
@@ -77,7 +92,9 @@ function HistEntries({ history, loading, redownload }: {
       {history.map((entry) => (
         <div key={entry.id} className="bg-white border-[1.5px] border-border rounded-card p-3.5 mb-3 shadow-card">
           <div className="flex items-center justify-between mb-2.5 flex-wrap gap-1.5">
-            <div className="font-barlow-condensed text-base font-bold text-navy">{entry.date}</div>
+            <div className="font-barlow-condensed text-base font-bold text-navy">
+              {entry.date.includes('-') ? isoToSpanish(entry.date) : entry.date}
+            </div>
             <div className="flex gap-1.5 flex-wrap">
               <span className="font-barlow-condensed text-xs font-bold px-2.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info">{entry.total_pallets}P</span>
               <span className="font-barlow-condensed text-xs font-bold px-2.5 py-0.5 rounded-full bg-[rgba(217,119,6,0.10)] text-warn">{entry.total_bultos}B</span>
