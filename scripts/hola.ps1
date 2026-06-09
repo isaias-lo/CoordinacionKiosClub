@@ -6,7 +6,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
 Write-Host ""
-Write-Host "==> HOLA  ·  rama actual: $branch" -ForegroundColor Cyan
+Write-Host "==> HOLA  -  rama actual: $branch" -ForegroundColor Cyan
 
 # Avisar si hay cambios locales sin guardar (para no perderlos con el pull)
 $dirty = (git status --porcelain)

@@ -6,7 +6,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
 Write-Host ""
-Write-Host "==> BYE  ·  rama actual: $branch" -ForegroundColor Cyan
+Write-Host "==> BYE  -  rama actual: $branch" -ForegroundColor Cyan
 
 # Seguridad: nunca subir un WIP directo a main
 if ($branch -eq "main") {
