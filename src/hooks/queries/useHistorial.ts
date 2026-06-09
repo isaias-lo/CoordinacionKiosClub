@@ -4,9 +4,7 @@ import { format, subDays } from 'date-fns';
 
 export interface HistorialEntry {
   id: number;
-  fecha: string;
-  region: string;
-  total_tiendas: number;
+  date: string;
   total_pallets: number;
   total_bultos: number;
   created_at: string;
@@ -17,9 +15,9 @@ async function fetchHistorial(days = 30): Promise<HistorialEntry[]> {
   const since = format(subDays(new Date(), days), 'yyyy-MM-dd');
   const { data, error } = await supabase
     .from('dispatch_history')
-    .select('id, fecha, region, total_tiendas, total_pallets, total_bultos, created_at, user_id')
-    .gte('fecha', since)
-    .order('fecha', { ascending: false })
+    .select('id, date, total_pallets, total_bultos, created_at, user_id')
+    .gte('date', since)
+    .order('date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(500);
   if (error) throw new Error(error.message);
@@ -43,7 +41,6 @@ export function useHistorialStats() {
     dias:    data.length,
     pallets: data.reduce((s, r) => s + (r.total_pallets ?? 0), 0),
     bultos:  data.reduce((s, r) => s + (r.total_bultos  ?? 0), 0),
-    tiendas: data.reduce((s, r) => s + (r.total_tiendas ?? 0), 0),
   };
   return { stats, ...rest };
 }
