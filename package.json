@@ -9,7 +9,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "hola": "powershell -ExecutionPolicy Bypass -File scripts/hola.ps1",
+    "bye": "powershell -ExecutionPolicy Bypass -File scripts/bye.ps1"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

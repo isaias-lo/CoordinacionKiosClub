@@ -71,3 +71,12 @@ Required in `.env.local`:
 ## Instrucción de sesión
 Al iniciar cada sesión, lee TRABAJO.md y resume brevemente en qué estamos.
 Al terminar cualquier tarea importante, actualiza TRABAJO.md con el estado actual sin que te lo pida.
+
+### Comandos "hola" / "bye" (continuidad entre PCs trabajo↔casa)
+El usuario trabaja desde dos equipos (trabajo y casa) sobre la MISMA rama. La guía completa está en FLUJO.md.
+- Cuando el usuario diga **"hola"** (o al iniciar): asegúrate de que esté al día — equivale a `npm run hola` (`git fetch` + `git pull --ff-only` de su rama). Avísale si hay cambios locales sin commitear.
+- Cuando el usuario diga **"bye"** (o "me voy"/"adiós"): ejecuta el cierre de jornada — actualiza TRABAJO.md y TRABAJO_<persona>.md, haz `git add -A` + commit (WIP si aplica) y `git push` de su rama. Nunca subas WIP directo a `main`.
+- También existen los atajos `npm run hola` y `npm run bye` (scripts en `scripts/`).
+
+### Flujo de ramas / deploy (vigente desde 2026-06-09)
+Trabajar en rama del día y **NO mergear directo a main**: abrir PR con `gh pr create` para que el usuario lo revise/mergee desde GitHub. Vercel solo despliega `main`.
