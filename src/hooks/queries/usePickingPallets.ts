@@ -18,16 +18,16 @@ function todayStr() {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
-async function fetchPallets(date: string): Promise<PickingPallet[]> {
-  const res = await fetch(`/api/picking-pallets?date=${date}`);
-  if (!res.ok) throw new Error('Error al cargar pallets');
-  const json = await res.json() as { data: PickingPallet[] };
-  return json.data ?? [];
-}
-
 async function authHeader() {
   const { data: { session } } = await supabase.auth.getSession();
   return { Authorization: `Bearer ${session?.access_token ?? ''}`, 'Content-Type': 'application/json' };
+}
+
+async function fetchPallets(date: string): Promise<PickingPallet[]> {
+  const res = await fetch(`/api/picking-pallets?date=${date}`, { headers: await authHeader() });
+  if (!res.ok) throw new Error('Error al cargar pallets');
+  const json = await res.json() as { data: PickingPallet[] };
+  return json.data ?? [];
 }
 
 export const PALLETS_KEY = (date: string) => ['picking-pallets', date] as const;
@@ -37,7 +37,6 @@ export function useTodayPickingPallets() {
   return useQuery({
     queryKey: PALLETS_KEY(date),
     queryFn:  () => fetchPallets(date),
-    refetchInterval: 30_000, // poll every 30s (supplement realtime)
   });
 }
 

@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 import { KpiCard } from '../components/KpiCard';
 import { EmptyState } from '../components/ui/empty-state';
 import { StatusBadge } from '../components/ui/status-badge';
-import { useHistorialStats } from '../hooks/queries/useHistorial';
+import { useHistorial, useHistorialStats } from '../hooks/queries/useHistorial';
 import { useTodayPickingPallets } from '../hooks/queries/usePickingPallets';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -85,13 +85,13 @@ export function LaunchScreen() {
   }, [loadPending]);
 
   /* Chart data — last 7 days from historial */
-  const { data: historialRaw = [] } = useHistorialStats() as unknown as { data?: { fecha: string; total_pallets: number; total_bultos: number }[] };
+  const { data: historialRaw = [] } = useHistorial(90);
   const chartData: ChartData[] = Array.from({ length: 7 }, (_, i) => {
     const d = subDays(new Date(), 6 - i);
     const key = format(d, 'yyyy-MM-dd');
     // Find matching historial rows for this date
-    const rows = (historialRaw as { fecha?: string; total_pallets?: number; total_bultos?: number }[] ?? [])
-      .filter(r => r.fecha === key);
+    const rows = (historialRaw as { date?: string; total_pallets?: number; total_bultos?: number }[] ?? [])
+      .filter(r => r.date === key);
     return {
       day:      format(d, 'EEE', { locale: es }).replace('.', ''),
       fullDate: format(d, "EEEE d 'de' MMMM", { locale: es }),
