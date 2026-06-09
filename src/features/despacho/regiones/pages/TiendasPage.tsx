@@ -33,6 +33,8 @@ function saveRemovedCods(cods: string[]) { localStorage.setItem(todayRemoveKey, 
 /* ── Consumed picking slots (physical pallet merges) ── */
 type ConsumedSlots = Record<string, { p: number; b: number; c: number; ch: number }>;
 const CONSUMED_SLOTS_KEY = `consumedPickingSlots_${_localDate}`;
+const CHOCOLATE_DIMS_R = { alto: 42, ancho: 56, largo: 80 };  // Dimensiones fijas del Chocolate
+const CHOCOLATE_DEFAULT_PESO = 20;                            // Peso por defecto al auto-agregar (editable, 1-25 kg)
 function loadConsumedSlots(): ConsumedSlots { try { return JSON.parse(localStorage.getItem(CONSUMED_SLOTS_KEY) || '{}'); } catch { return {}; } }
 function saveConsumedSlots(v: ConsumedSlots) { try { localStorage.setItem(CONSUMED_SLOTS_KEY, JSON.stringify(v)); } catch {} }
 
@@ -423,27 +425,54 @@ export function TiendasPage() {
 
       if (hasPickingData) {
         // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
-        // Indexar items guardados por su slot de picking
+        // Indexar items guardados: por slot (pickingSlotId) y un pool por pkg de respaldo.
         const savedBySlot = new Map<number, DispatchItem>();
-        const savedNoSlot: DispatchItem[] = [];
+        const leftoverByPkg = new Map<string, DispatchItem[]>();
         for (const it of existingItems) {
           if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
-          else savedNoSlot.push(it);
+          else {
+            const arr = leftoverByPkg.get(it.pkg) ?? [];
+            arr.push(it); leftoverByPkg.set(it.pkg, arr);
+          }
         }
+        // Toma un item guardado del pool por pkg (fallback cuando se perdió el vínculo al slot)
+        const takeLeftover = (pkg: TipoPaquete): DispatchItem | undefined => {
+          const pool = leftoverByPkg.get(pkg);
+          return pool && pool.length ? pool.shift() : undefined;
+        };
+
+        // Punto 2: chocolates de picking sin item guardado → auto-agregar como AGREGADOS (20 kg)
+        const chocToCreate: DispatchItem[] = [];
+        let chCount = existingItems.filter(i => i.pkg === 'chocolate').length;
 
         const rows: FormRow[] = [];
         baseSlotsR.forEach((s, i) => {
           const sid = (s as { id?: number }).id || 0;
           const pkg = PICKING_PKG[s.tipo] ?? 'pallet';
-          const saved = sid ? savedBySlot.get(sid) : undefined;
+          // 1) match por slot  2) fallback: item guardado del mismo pkg sin vínculo
+          let saved = sid ? savedBySlot.get(sid) : undefined;
+          if (saved) savedBySlot.delete(sid);
+          else saved = takeLeftover(pkg);
+
+          // 3) Chocolate sin guardar → materializar agregado con peso por defecto
+          if (!saved && pkg === 'chocolate') {
+            const newCh: DispatchItem = {
+              orden: `chocolate${++chCount}`, tipo: mapearContenido(s.contenido), pkg: 'chocolate',
+              peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+              guia: '', valor: 0, pickingSlotId: sid || undefined,
+            };
+            chocToCreate.push(newCh);
+            saved = newCh;
+          }
+
           if (saved) {
-            savedBySlot.delete(sid);
+            // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
             rows.push({
               id: `saved-${sid || i}-${Date.now()}`, pkg: saved.pkg, tipo: saved.tipo,
               peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
               ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
               guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
-              saved: true, savedItem: saved, pickingSlotId: sid || undefined,
+              saved: true, savedItem: saved, pickingSlotId: sid || saved.pickingSlotId,
             });
           } else {
             rows.push({
@@ -456,8 +485,10 @@ export function TiendasPage() {
             });
           }
         });
-        // Items guardados sin slot vigente (manuales o slot eliminado) → al final
-        for (const it of [...savedBySlot.values(), ...savedNoSlot]) {
+        // Items guardados sin slot vigente (manuales o slot eliminado) → al final, siempre como tarjeta
+        const remaining: DispatchItem[] = [...savedBySlot.values()];
+        for (const pool of leftoverByPkg.values()) remaining.push(...pool);
+        for (const it of remaining) {
           rows.push({
             id: `savedm-${it.orden}-${Date.now()}`, pkg: it.pkg, tipo: it.tipo,
             peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
@@ -467,6 +498,17 @@ export function TiendasPage() {
           });
         }
         setFormRows(rows);
+
+        // Persistir en el estado los chocolates auto-agregados + reflejar peso en picking_pallets
+        if (chocToCreate.length > 0) {
+          dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: [...existingItems, ...chocToCreate] });
+          for (const ch of chocToCreate) {
+            if (!ch.pickingSlotId) continue;
+            supabase.from('picking_pallets').update({
+              peso_kg: ch.peso, alto: ch.alto, ancho: ch.ancho, largo: ch.largo,
+            }).eq('id', ch.pickingSlotId).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
+          }
+        }
       } else if (existingItems.length === 0) {
         // No picking data — fall back to manual preset if set
         const preset = presets[selectedTienda];
@@ -655,18 +697,58 @@ export function TiendasPage() {
 
   /* Multi-form row helpers */
   const addFormRow = async (pkg: TipoPaquete) => {
+    const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
+    const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
+    const date = new Date().toISOString().slice(0, 10);
+
+    // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
+    if (pkg === 'chocolate') {
+      if (!cod || !selectedTienda) return;
+      let slot: import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot | undefined;
+      try {
+        const res = await fetch('/api/picking-pallets/create-bodega', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' }),
+        });
+        slot = (await res.json() as { data?: import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot }).data;
+      } catch { /* sin slot: queda como chocolate sin ID */ }
+      if (slot) {
+        const s = slot;
+        setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s] }));
+      }
+      const existing = dispatchData[selectedTienda] || [];
+      const chc = existing.filter(i => i.pkg === 'chocolate').length + 1;
+      const stamp = Date.now();
+      const item: DispatchItem = {
+        orden: `chocolate${chc}`, tipo: 'hogar', pkg: 'chocolate',
+        peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+        guia: '', valor: 0, pickingSlotId: slot?.id,
+      };
+      dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
+      setFormRows(prev => [...prev, {
+        id: `saved-chadd-${stamp}`, pkg: 'chocolate', tipo: 'hogar',
+        peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS_R.alto),
+        ancho: String(CHOCOLATE_DIMS_R.ancho), largo: String(CHOCOLATE_DIMS_R.largo),
+        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
+      }]);
+      if (slot?.id) {
+        supabase.from('picking_pallets').update({
+          peso_kg: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+        }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
+      }
+      showToast(`✓ ${item.orden} agregado`, '#16A34A');
+      return;
+    }
+
     const rowId = `row-${Date.now()}`;
     setFormRows(prev => [...prev, {
       id: rowId, pkg, tipo: 'hogar', peso: '',
-      alto:  pkg === 'chocolate' ? '42'  : '',
-      ancho: pkg === 'pallet'   ? '100' : pkg === 'chocolate' ? '56' : '',
-      largo: pkg === 'pallet'   ? '120' : pkg === 'chocolate' ? '80' : '',
+      alto:  '',
+      ancho: pkg === 'pallet' ? '100' : '',
+      largo: pkg === 'pallet' ? '120' : '',
       guia: '', valor: '',
     }]);
-    const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     if (!cod || !selectedTienda) return;
-    const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
-    const date = new Date().toISOString().slice(0, 10);
     try {
       const res  = await fetch('/api/picking-pallets/create-bodega', {
         method:  'POST',

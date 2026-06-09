@@ -35,7 +35,6 @@ import { HistorialTab }       from './components/HistorialTab';
 import { SupervisorActivityPanel } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
 import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
-import { MovimientosOdooPanel } from './components/MovimientosOdooPanel';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
@@ -96,8 +95,7 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario' | 'movimientos'>('monitoreo');
-  const [movNuevos, setMovNuevos] = useState(0);  // movimientos Odoo nuevos/manuales sin atender (badge)
+  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario'>('monitoreo');
 
   // Resizable left panel
   const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =
@@ -127,17 +125,6 @@ export function PickingScreen() {
 
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
   const [opsMap, setOpsMap]             = useState<Record<string, PickingOperation[]>>(session.opsMap ?? {});
-  // Movimientos agregados manualmente desde el panel Movimientos (sobreviven al auto-refresh)
-  const [manualOps, setManualOps]       = useState<Record<string, PickingOperation[]>>(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = sessionStorage.getItem(`picking_manual_ops_${todayISO()}`);
-      return raw ? JSON.parse(raw) as Record<string, PickingOperation[]> : {};
-    } catch { return {}; }
-  });
-  useEffect(() => {
-    try { sessionStorage.setItem(`picking_manual_ops_${todayISO()}`, JSON.stringify(manualOps)); } catch {}
-  }, [manualOps]);
   const [loadingCods, setLoadingCods]   = useState<string[]>([]);
   const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
@@ -161,10 +148,6 @@ export function PickingScreen() {
   const palletSlotsRef = useRef<PalletSlot[]>([]);
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
-
-  // IDs de movimientos Odoo ya vistos en esta sesión (sobrevive cambios de tab).
-  // Vive en PickingScreen (no en el panel) para que switchear de tab no resete "nuevos".
-  const seenMovIdsRef = useRef<Set<number>>(new Set());
 
   // Derived: count per state_key
   const pickerPallets = useMemo(() => {
@@ -360,7 +343,9 @@ export function PickingScreen() {
       const res  = await pickingFetch(`/api/picking-pallets?date=${todayISO()}`);
       if (!res.ok) return;
       const json = await res.json() as { data?: PalletSlot[] };
-      setPalletSlots(json.data ?? []);
+      // Excluir IDs creados desde Bodega (origen "<cod>__bodega") — solo viven en Bodega/Enrutador/Seguimiento
+      const slots = (json.data ?? []).filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
+      setPalletSlots(slots);
     } catch { /* silent */ }
   }, []);
 
@@ -556,8 +541,7 @@ export function PickingScreen() {
   const allGroups = useMemo((): PickerGroup[] => {
     const result: PickerGroup[] = [];
     for (const cod of selectedCods) {
-      // Fusiona ops de Odoo + movimientos agregados manualmente (que el auto-refresh no trae)
-      const ops = [...(opsMap[cod] ?? []), ...(manualOps[cod] ?? [])];
+      const ops = opsMap[cod] ?? [];
       // Group by normalized (lowercase/trim) name → same picker regardless of casing entered on each desktop
       const map: Record<string, { displayKey: string; ops: PickingOperation[] }> = {};
       for (const op of ops) {
@@ -571,24 +555,7 @@ export function PickingScreen() {
       }
     }
     return result;
-  }, [selectedCods, opsMap, manualOps]);
-
-  // Inyecta un movimiento de Odoo manualmente con su categoría elegida por el supervisor.
-  // Aparece en Monitoreo como cualquier otra tienda y sobrevive al auto-refresh.
-  const addManualMovement = useCallback((picking: { id: number; name: string; origin: string; partner: string; fromLocation: string; toLocation: string; state: string; scheduledDate: string; dateDone: string | null; pickingType: string; responsible: string; responsibleId: number | null; lineCount: number }, cod: string, categories: string[]) => {
-    const op: PickingOperation = {
-      ...picking,
-      categories,
-      storeCodeFromOrigin: cod,
-      originDate: parseOrigin(picking.origin).originDate,
-    };
-    setManualOps(prev => {
-      const list = prev[cod] ?? [];
-      if (list.some(o => o.id === op.id)) return prev;  // ya agregado
-      return { ...prev, [cod]: [...list, op] };
-    });
-    setSelectedCods(prev => prev.includes(cod) ? prev : [...prev, cod]);
-  }, []);
+  }, [selectedCods, opsMap]);
 
   const fetchOpsForStore = useCallback(async (cod: string) => {
     if (!hasOdoo) return;
@@ -1049,11 +1016,9 @@ export function PickingScreen() {
               { key: 'historial',     label: 'Historial'   },
               { key: 'estadisticas',  label: 'Estadísticas'},
               { key: 'configuracion', label: 'Config'      },
-              { key: 'movimientos',   label: 'Movimientos' },
               { key: 'calendario',    label: 'Calendario'  },
             ] as { key: typeof rightTab; label: string }[]).map(tab => {
               const active = rightTab === tab.key;
-              const showBadge = tab.key === 'movimientos' && movNuevos > 0;
               return (
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
                   className="relative flex-1 py-2.5 text-[12px] font-medium cursor-pointer transition-colors border-none bg-transparent"
@@ -1062,12 +1027,6 @@ export function PickingScreen() {
                     borderBottom: active ? '2px solid #1E40AF' : '2px solid transparent',
                   }}>
                   {tab.label}
-                  {showBadge && (
-                    <span className="absolute top-1.5 right-2 min-w-[16px] h-[16px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
-                      style={{ background: '#D97706' }}>
-                      {movNuevos}
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -1106,18 +1065,6 @@ export function PickingScreen() {
             <div className="flex-1 overflow-y-auto min-h-0 p-3">
               <CalendarioColumnas readOnly forceGeneral />
             </div>
-          )}
-
-          {/* ── Tab content: Movimientos (Odoo del día) ── */}
-          {rightTab === 'movimientos' && (
-            <MovimientosOdooPanel
-              odooConfig={odooConfig}
-              hasOdoo={hasOdoo}
-              selectedCods={selectedCods}
-              onAdd={addManualMovement}
-              onNewCountChange={setMovNuevos}
-              seenIdsRef={seenMovIdsRef}
-            />
           )}
 
           {/* ── Tab content: Monitoreo ── */}

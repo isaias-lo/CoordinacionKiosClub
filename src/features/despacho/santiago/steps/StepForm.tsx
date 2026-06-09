@@ -51,6 +51,11 @@ const ESTADOS: EstadoItem[] = [
 ];
 const CHOCOLATE_BULTO_DIMS = { alto: 38, largo: 78, ancho: 52, peso: 5 }; // Bulto con contenido Chocolate (legado)
 const CHOCOLATE_DIMS       = { alto: 42, largo: 80, ancho: 56, pesoMax: 25 }; // Tipo Chocolate CH (oficial)
+const CHOCOLATE_DEFAULT_PESO = 20; // Peso por defecto al auto-agregar un chocolate (editable en línea, 1-25 kg)
+
+// Alias de códigos que llegan distintos en las guías PDF (campo "SEÑOR (ES)") vs el código real.
+// Ej.: BUENAVENTURA 2 es 35BN2, pero en la guía aparece como 35BNT.
+const GUIDE_COD_ALIAS: Record<string, string> = { '35BNT': '35BN2' };
 const CONTENEDOR_LARGO = 110;
 const CONTENEDOR_ANCHO = 80;
 const CONTENEDOR_ALTO  = 150;
@@ -360,7 +365,8 @@ export function StepForm() {
       const clean = file.name.replace(/\.pdf$/i, '');
       const match = clean.match(/^(\d{1,2}[A-ZÁÉÍÓÚÑ]{2,4}\d?)/i);
       if (!match) { skipped++; continue; }
-      const rawCod = match[1].toUpperCase();
+      const rawCodMatch = match[1].toUpperCase();
+      const rawCod = GUIDE_COD_ALIAS[rawCodMatch] || rawCodMatch;  // resolver alias (ej. 35BNT → 35BN2)
       const norm   = rawCod.normalize('NFD').replace(/[̀-ͯ]/g, '');
       const storeCod = codMap[rawCod] || codMap[norm]
         || Object.keys(codMap).find(k => k.normalize('NFD').replace(/[̀-ͯ]/g, '') === norm);
@@ -696,30 +702,60 @@ export function StepForm() {
 
       if (hasPicking) {
         // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
-        // Indexar items guardados por su slot de picking
+        // Indexar items guardados: por slot (pickingSlotId) y un pool por tipo de respaldo.
         const savedBySlot = new Map<number, SantiagoItem>();
-        const savedNoSlot: SantiagoItem[] = [];
+        const leftoverByTipo = new Map<string, SantiagoItem[]>();
         for (const it of existing) {
           if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
-          else savedNoSlot.push(it);
+          else {
+            const arr = leftoverByTipo.get(it.tipo) ?? [];
+            arr.push(it); leftoverByTipo.set(it.tipo, arr);
+          }
         }
+        // Toma un item guardado del pool por tipo (fallback cuando se perdió el vínculo al slot)
+        const takeLeftover = (t: TipoCargamento): SantiagoItem | undefined => {
+          const pool = leftoverByTipo.get(t);
+          return pool && pool.length ? pool.shift() : undefined;
+        };
+
+        // Punto 2: chocolates de picking sin item guardado → auto-agregar como AGREGADOS (20 kg)
+        const chocToCreate: SantiagoItem[] = [];
+        let chCount = existing.filter(i => i.tipo === 'Chocolate').length;
 
         const rows: FormRow[] = [];
         // Un row por cada slot P/B/C/CH: tarjeta guardada si ya se llenó, si no formulario vacío
         baseSlots.forEach((s, i) => {
-          const sid = (s as { id?: number }).id || 0;
-          const saved = sid ? savedBySlot.get(sid) : undefined;
+          const sid  = (s as { id?: number }).id || 0;
+          const tipo = SANT_TIPO[s.tipo] ?? 'Pallet';
+          // 1) match por slot  2) fallback: item guardado del mismo tipo sin vínculo
+          let saved = sid ? savedBySlot.get(sid) : undefined;
+          if (saved) savedBySlot.delete(sid);
+          else saved = takeLeftover(tipo);
+
+          // 3) Chocolate sin guardar → materializar agregado con peso por defecto
+          if (!saved && tipo === 'Chocolate' && regimen) {
+            const newCh: SantiagoItem = {
+              id: `${currentTienda.cod}-chauto-${sid || i}-${Date.now()}`, tiendaCod: currentTienda.cod,
+              tipo: 'Chocolate', contenido: mapearCont(s.contenido),
+              peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              pesoVolumetrico: 0, regimen, orden: `CH${++chCount}`, estado: ESTADO_DEFAULT,
+              pickingSlotId: sid || undefined,
+            };
+            chocToCreate.push(newCh);
+            saved = newCh;
+          }
+
           if (saved) {
-            savedBySlot.delete(sid);
+            // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
             rows.push({
               id: `saved-${sid || i}-${Date.now()}`, tipo: saved.tipo, contenido: saved.contenido,
               peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
               largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
-              saved: true, savedItem: saved, pickingSlotId: sid || undefined,
+              saved: true, savedItem: saved, pickingSlotId: sid || saved.pickingSlotId,
             });
           } else {
             rows.push({
-              id: `pick-${sid || i}-${Date.now()}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet',
+              id: `pick-${sid || i}-${Date.now()}`, tipo,
               contenido: mapearCont(s.contenido),
               peso:  s.peso_kg != null ? String(s.peso_kg) : '',
               alto:  s.alto    != null ? String(s.alto)    : '',
@@ -729,8 +765,10 @@ export function StepForm() {
             });
           }
         });
-        // Items guardados sin slot vigente (manuales o slot eliminado) → al final
-        for (const it of [...savedBySlot.values(), ...savedNoSlot]) {
+        // Items guardados sin slot vigente (manuales o slot eliminado) → al final, siempre como tarjeta
+        const remaining: SantiagoItem[] = [...savedBySlot.values()];
+        for (const pool of leftoverByTipo.values()) remaining.push(...pool);
+        for (const it of remaining) {
           rows.push({
             id: `savedm-${it.id}`, tipo: it.tipo, contenido: it.contenido,
             peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
@@ -739,6 +777,18 @@ export function StepForm() {
           });
         }
         setFormRows(rows);
+
+        // Persistir en el estado los chocolates auto-agregados (una sola vez por visita)
+        if (chocToCreate.length > 0) {
+          dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: [...existing, ...chocToCreate] });
+          // Reflejar el peso por defecto en picking_pallets (Seguimiento/Enrutador)
+          for (const ch of chocToCreate) {
+            if (!ch.pickingSlotId) continue;
+            supabase.from('picking_pallets').update({
+              peso_kg: ch.peso, alto: ch.alto, ancho: ch.ancho, largo: ch.largo,
+            }).eq('id', ch.pickingSlotId).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
+          }
+        }
       } else if (existing.length === 0) {
         const preset = presets[currentTienda.cod];
         if (preset) {
@@ -1057,12 +1107,53 @@ export function StepForm() {
 
   const addFormRow = async (t: TipoCargamento) => {
     const cod = currentTienda?.cod;
+    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
+    const date = new Date().toISOString().slice(0, 10);
+
+    // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
+    if (t === 'Chocolate') {
+      if (!cod || !regimen) { showToast('Selecciona régimen', '#D97706'); return; }
+      // Crear el ID de bodega (canonical_id + seq) y vincularlo
+      let slot: PickingSlot | undefined;
+      try {
+        const res = await fetch('/api/picking-pallets/create-bodega', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' }),
+        });
+        slot = (await res.json() as { data?: PickingSlot }).data;
+      } catch { /* sin slot: queda como chocolate sin ID */ }
+      if (slot) {
+        setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
+      }
+      const existing = items[cod] || [];
+      const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
+      const stamp = Date.now();
+      const item: SantiagoItem = {
+        id: `${cod}-chadd-${stamp}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Hogar',
+        peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+        pesoVolumetrico: 0, regimen, orden: `CH${chc}`, estado: ESTADO_DEFAULT,
+        pickingSlotId: slot?.id,
+      };
+      dispatch({ type: 'ADD_ITEM', item });
+      setFormRows(prev => [...prev, {
+        id: `saved-chadd-${stamp}`, tipo: 'Chocolate', contenido: 'Hogar',
+        peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS.alto),
+        largo: String(CHOCOLATE_DIMS.largo), ancho: String(CHOCOLATE_DIMS.ancho),
+        saved: true, savedItem: item, pickingSlotId: slot?.id,
+      }]);
+      if (slot?.id) {
+        supabase.from('picking_pallets').update({
+          peso_kg: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, ancho: CHOCOLATE_DIMS.ancho, largo: CHOCOLATE_DIMS.largo,
+        }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
+      }
+      showToast(`✓ ${item.orden} agregado`, '#16A34A');
+      return;
+    }
+
     const rowId = `row-${Date.now()}`;
     // Agregar el form row de inmediato (respuesta visual), luego vincular el slot
     setFormRows(prev => [...prev, { id: rowId, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
     if (!cod) return;
-    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
-    const date = new Date().toISOString().slice(0, 10);
     try {
       const res  = await fetch('/api/picking-pallets/create-bodega', {
         method:  'POST',

@@ -370,38 +370,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    /* ── picking_move_products: primeras líneas de producto por movimiento ── */
-    if (action === 'picking_move_products') {
-      const ids = pickings.map(n => Number(n)).filter(n => !isNaN(n));
-      if (ids.length === 0) return NextResponse.json({ products: {} });
-
-      const moves = (await odooRpc(url, {
-        service: 'object',
-        method: 'execute_kw',
-        args: [db, uid, apiKey, 'stock.move', 'search_read',
-          [[['picking_id', 'in', ids]]],
-          { fields: ['picking_id', 'product_id', 'product_uom_qty'], limit: 1000, order: 'id asc' },
-        ],
-      })) as Array<{
-        picking_id: [number, string] | false;
-        product_id: [number, string] | false;
-        product_uom_qty: number;
-      }>;
-
-      // Agrupar por picking_id → lista de { nombre, qty }
-      const products: Record<number, { nombre: string; qty: number }[]> = {};
-      for (const mv of moves) {
-        if (!Array.isArray(mv.picking_id)) continue;
-        const pid = mv.picking_id[0];
-        if (!products[pid]) products[pid] = [];
-        products[pid].push({
-          nombre: Array.isArray(mv.product_id) ? mv.product_id[1] : '—',
-          qty:    typeof mv.product_uom_qty === 'number' ? mv.product_uom_qty : 0,
-        });
-      }
-      return NextResponse.json({ products });
-    }
-
     /* ── picking_stats_range ── */
     if (action === 'picking_stats_range') {
       const domainPick: unknown[] = [
