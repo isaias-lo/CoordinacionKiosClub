@@ -695,35 +695,18 @@ export function StepForm() {
       const hasPicking = baseSlots.length > 0;
 
       if (hasPicking) {
-        // ── Reconstrucción determinista: un row por slot de picking ──
-        // CH: auto-crear items en la primera visita (dims fijas, no son form rows)
-        if (existing.length === 0 && state.regimen) {
-          const chSlots = baseSlots.filter(s => s.tipo === 'CH');
-          if (chSlots.length > 0) {
-            const regimen = state.regimen;
-            const chocItems: SantiagoItem[] = chSlots.map((s, i) => ({
-              id: `ch-pick-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
-              tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
-              peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
-              pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
-              pickingSlotId: (s as { id?: number }).id || undefined,
-            }));
-            dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
-          }
-        }
-
+        // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
         // Indexar items guardados por su slot de picking
         const savedBySlot = new Map<number, SantiagoItem>();
         const savedNoSlot: SantiagoItem[] = [];
         for (const it of existing) {
-          if (it.tipo === 'Chocolate') continue;       // CH no son form rows
           if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
           else savedNoSlot.push(it);
         }
 
         const rows: FormRow[] = [];
-        // Un row por cada slot P/B/C: tarjeta guardada si ya se llenó, si no formulario vacío
-        baseSlots.filter(s => s.tipo !== 'CH').forEach((s, i) => {
+        // Un row por cada slot P/B/C/CH: tarjeta guardada si ya se llenó, si no formulario vacío
+        baseSlots.forEach((s, i) => {
           const sid = (s as { id?: number }).id || 0;
           const saved = sid ? savedBySlot.get(sid) : undefined;
           if (saved) {
@@ -784,7 +767,6 @@ export function StepForm() {
       } else {
         // Sin picking pero con items guardados → tarjetas guardadas (recuperan #id)
         const savedRows: FormRow[] = existing
-          .filter(item => item.tipo !== 'Chocolate')
           .map((item, i) => ({
             id: `saved-${i}-${item.tipo}-${Date.now()}`,
             tipo: item.tipo, contenido: item.contenido,

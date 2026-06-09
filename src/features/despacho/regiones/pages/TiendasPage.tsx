@@ -422,30 +422,17 @@ export function TiendasPage() {
       }));
 
       if (hasPickingData) {
-        // ── Reconstrucción determinista: un row por slot de picking ──
-        // CH: auto-crear items en la primera visita (dims fijas, no son form rows)
-        if (existingItems.length === 0) {
-          const chSlots = baseSlotsR.filter(s => s.tipo === 'CH');
-          if (chSlots.length > 0) {
-            dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: chSlots.map((s, i) => ({
-              orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
-              peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
-              pickingSlotId: (s as { id?: number }).id || undefined,
-            })) });
-          }
-        }
-
+        // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
         // Indexar items guardados por su slot de picking
         const savedBySlot = new Map<number, DispatchItem>();
         const savedNoSlot: DispatchItem[] = [];
         for (const it of existingItems) {
-          if (it.pkg === 'chocolate') continue;        // CH no son form rows
           if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
           else savedNoSlot.push(it);
         }
 
         const rows: FormRow[] = [];
-        baseSlotsR.filter(s => s.tipo !== 'CH').forEach((s, i) => {
+        baseSlotsR.forEach((s, i) => {
           const sid = (s as { id?: number }).id || 0;
           const pkg = PICKING_PKG[s.tipo] ?? 'pallet';
           const saved = sid ? savedBySlot.get(sid) : undefined;
@@ -504,7 +491,6 @@ export function TiendasPage() {
       } else {
         // Sin picking pero con items guardados → tarjetas guardadas (recuperan #id)
         const savedRows: FormRow[] = existingItems
-          .filter(item => item.pkg !== 'chocolate')
           .map((item, i) => ({
             id: `saved-${i}-${item.pkg}-${Date.now()}`,
             pkg: item.pkg,
