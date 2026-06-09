@@ -179,7 +179,7 @@ export default function ConductorHubPage() {
           KIOS<span style={{ fontStyle: 'italic' }}>Club</span>
         </div>
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 4, textTransform: 'uppercase', letterSpacing: 3 }}>
-          Hub Conductor
+          Panel Conductor
         </div>
       </div>
 
@@ -239,7 +239,7 @@ export default function ConductorHubPage() {
               </button>
             )}
             <div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Hub Conductor</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Panel Conductor</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: 2, marginTop: 2 }}>{patente}</div>
                 <button onClick={handleSalir}

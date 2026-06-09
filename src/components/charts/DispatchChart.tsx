@@ -9,6 +9,8 @@ export interface ChartData {
   fullDate: string;
   pallets: number;
   bultos: number;
+  contenedores: number;
+  chocolates: number;
 }
 
 export default function DispatchChart({ data, loading }: { data: ChartData[]; loading: boolean }) {
@@ -57,12 +59,16 @@ export default function DispatchChart({ data, loading }: { data: ChartData[]; lo
           }}
           formatter={(value, name) => [
             Number(value).toLocaleString('es-CL'),
-            name === 'pallets' ? 'Pallets' : 'Bultos',
+            name === 'pallets'     ? 'Pallets' :
+            name === 'bultos'      ? 'Bultos' :
+            name === 'contenedores' ? 'Contenedores' : 'Chocolates',
           ]}
           labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate ?? label}
         />
-        <Bar dataKey="pallets" fill="#1B2A6B" radius={[4, 4, 0, 0]} maxBarSize={28} />
-        <Bar dataKey="bultos"  fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={28} opacity={0.7} />
+        <Bar dataKey="pallets"      fill="#1B2A6B" radius={[4, 4, 0, 0]} maxBarSize={22} />
+        <Bar dataKey="bultos"       fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.7} />
+        <Bar dataKey="contenedores" fill="#D97706" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.85} />
+        <Bar dataKey="chocolates"   fill="#9333EA" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.8} />
       </BarChart>
     </ResponsiveContainer>
   );

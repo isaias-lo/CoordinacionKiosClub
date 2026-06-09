@@ -7,6 +7,8 @@ export interface HistorialEntry {
   date: string;
   total_pallets: number;
   total_bultos: number;
+  total_contenedores: number;
+  total_chocolates: number;
   created_at: string;
   user_id?: string;
 }
@@ -15,7 +17,7 @@ async function fetchHistorial(days = 30): Promise<HistorialEntry[]> {
   const since = format(subDays(new Date(), days), 'yyyy-MM-dd');
   const { data, error } = await supabase
     .from('dispatch_history')
-    .select('id, date, total_pallets, total_bultos, created_at, user_id')
+    .select('id, date, total_pallets, total_bultos, total_contenedores, total_chocolates, created_at, user_id')
     .gte('date', since)
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })

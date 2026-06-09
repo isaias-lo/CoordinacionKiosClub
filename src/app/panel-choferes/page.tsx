@@ -65,7 +65,7 @@ export default function PanelChoferesPage() {
               🚚
             </div>
             <div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#fff', marginBottom: 4 }}>Hub Conductor</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#fff', marginBottom: 4 }}>Panel Conductor</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.6 }}>
                 Mi ruta del día · Guías DTE<br/>Entregar en tienda · Escaneo
               </div>

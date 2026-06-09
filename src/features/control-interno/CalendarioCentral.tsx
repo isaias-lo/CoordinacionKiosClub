@@ -246,6 +246,24 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
     });
   }
 
+  // ── Store type classification (misma lógica que CalendarioArmado) ──
+  type StoreType = 'mall' | 'street' | 'costa' | 'region';
+  const TYPE_STYLE: Record<StoreType, { bg: string; text: string; border: string; label: string; shadow: string }> = {
+    mall:   { bg: '#EDE9FE', text: '#5B21B6', border: '#C4B5FD', label: 'MALL',          shadow: 'rgba(91,33,182,0.16)'  },
+    street: { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD', label: 'STREET CENTER', shadow: 'rgba(29,78,216,0.16)'  },
+    costa:  { bg: '#CCFBF1', text: '#0F766E', border: '#5EEAD4', label: 'COSTA',         shadow: 'rgba(15,118,110,0.16)' },
+    region: { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', label: 'REGIÓN',        shadow: 'rgba(194,65,12,0.16)'  },
+  };
+  function getTipo(cod: string): StoreType {
+    const inf = tiendas[cod];
+    if (!inf) return 'street';
+    if (inf.z === 'Región') return 'region';
+    if (inf.z === 'Costa')  return 'costa';
+    if (inf.v && /local/i.test(inf.v)) return 'mall';
+    return 'street';
+  }
+  const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE' };
+
   const grpInfo = GRUPOS.find(g => g[0] === grp);
   const saveLabel = saveStatus === 'saving'  ? '⏳ Guardando...'
     : saveStatus === 'success' ? '✓ Guardado en Sheets'
@@ -254,80 +272,157 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
     : 'Sin cambios';
 
   return (
-    <div className="max-w-[780px] mx-auto px-4 py-5 pb-10">
+    <div style={{ background: '#F2F2F7', borderRadius: 20, padding: '20px 16px 24px', maxWidth: 820, margin: '0 auto' }}>
 
       {/* ── Banner informativo ── */}
-      <div className="bg-knavy/[0.07] border border-knavy/[0.18] rounded-[12px] px-4 py-3 mb-5 flex gap-3 items-start">
-        <span className="text-[18px] flex-shrink-0 mt-0.5">📅</span>
-        <div className="text-[13px] text-ktext leading-relaxed">
-          <strong className="text-knavy">Calendario Central.</strong>{' '}
+      <div style={{
+        background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 14,
+        padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      }}>
+        <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>📅</span>
+        <div style={{ fontSize: 13, color: '#3C3C43', lineHeight: 1.6 }}>
+          <strong style={{ color: '#C12828' }}>Calendario Central.</strong>{' '}
           Los cambios aquí se propagan automáticamente a{' '}
-          <span className="font-semibold">Bodega Santiago, Bodega Regiones, Enrutador y Picking</span>.
+          <strong>Bodega Santiago, Bodega Regiones, Enrutador y Picking</strong>.
           RM y Costa siempre van a Bodega Santiago · Regiones siempre va a Bodega Regiones.
         </div>
       </div>
 
       {/* ── Grupo tabs + Guardar ── */}
-      <div className="flex flex-wrap gap-2 mb-1 items-center">
-        {GRUPOS.map(([id, lb]) => (
-          <button key={id} onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
-            className={`h-[40px] px-5 rounded-full text-[14px] font-bold border-2 transition-all
-              ${grp === id
-                ? 'bg-kred border-kred text-white shadow-md shadow-red-200'
-                : 'bg-white border-black/[0.12] text-kmuted hover:border-kred/[0.3]'}`}>
-            {lb}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        {GRUPOS.map(([id, lb]) => {
+          const active = grp === id;
+          const parts = lb.split(' ');
+          const icon = parts[0];
+          const label = parts.slice(1).join(' ');
+          return (
+            <button key={id}
+              onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
+              style={{
+                height: 42, padding: '0 18px', borderRadius: 100,
+                fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: active
+                  ? 'linear-gradient(175deg, #E53535 0%, #C12828 100%)'
+                  : '#FFFFFF',
+                color: active ? '#FFFFFF' : '#1C1C1E',
+                boxShadow: active
+                  ? '0 4px 18px rgba(193,40,40,0.38), 0 1px 0 rgba(255,255,255,0.2) inset'
+                  : '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
+                transition: 'all 0.17s cubic-bezier(0.34,1.56,0.64,1)',
+              }}>
+              <span style={{ fontSize: 17, lineHeight: 1 }}>{icon}</span>
+              {label}
+            </button>
+          );
+        })}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={handlePrint}
-            className="h-[40px] px-4 rounded-full text-[14px] font-bold border-2 transition-all bg-white border-black/[0.12] text-knavy hover:border-knavy/[0.4] flex items-center gap-1.5">
+            style={{
+              height: 42, padding: '0 18px', borderRadius: 100,
+              fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#FFFFFF', color: '#1C1C1E',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
+            }}>
             🖨 Imprimir
           </button>
           <button
             onClick={() => onSave(local)}
             disabled={saveStatus === 'saving' || !hasChanges}
-            className={`h-[40px] px-5 rounded-full text-[14px] font-bold border-2 transition-all
-              ${saveStatus === 'success' ? 'bg-[#25A244] border-[#25A244] text-white'
-              : saveStatus === 'error'   ? 'bg-kred border-kred text-white'
-              : hasChanges               ? 'bg-kred border-kred text-white shadow-md shadow-red-200'
-              : 'bg-kbg border-black/[0.10] text-kmuted cursor-not-allowed opacity-60'}`}>
+            style={{
+              height: 42, padding: '0 20px', borderRadius: 100,
+              fontSize: 14, fontWeight: 700, border: 'none',
+              cursor: hasChanges && saveStatus !== 'saving' ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: saveStatus === 'success'
+                ? 'linear-gradient(175deg, #30D158 0%, #25A244 100%)'
+                : saveStatus === 'error'
+                ? 'linear-gradient(175deg, #FF453A 0%, #CC2D22 100%)'
+                : hasChanges
+                ? 'linear-gradient(175deg, #0A84FF 0%, #0062CC 100%)'
+                : '#E5E5EA',
+              color: hasChanges || saveStatus !== 'idle' ? '#fff' : '#8E8E93',
+              boxShadow: hasChanges
+                ? '0 4px 18px rgba(0,98,204,0.36), inset 0 1px 0 rgba(255,255,255,0.2)'
+                : 'none',
+              opacity: saveStatus === 'saving' ? 0.7 : 1,
+              transition: 'all 0.17s ease',
+            }}>
             {saveLabel}
           </button>
         </div>
       </div>
 
       {grpInfo && (
-        <div className="text-[12px] text-kmuted mb-5 pl-1">{grpInfo[2]}</div>
+        <div style={{ fontSize: 12, color: '#8E8E93', marginBottom: 12, paddingLeft: 2 }}>
+          {grpInfo[2]}
+        </div>
       )}
 
       {/* ── Buscador (oculto en General) ── */}
       {grp !== 'general' && (
-        <div className="relative mb-6">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] pointer-events-none">🔍</span>
+        <div style={{ position: 'relative', marginBottom: 16 }}>
+          <span style={{
+            position: 'absolute', left: 14, top: '50%',
+            transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none',
+          }}>🔍</span>
           <input
             type="text" value={search}
             onChange={e => handleSearch(e.target.value)}
-            placeholder={`Buscar tienda para agregar al grupo ${grpInfo?.[1] || ''}...`}
-            className="w-full h-[44px] pl-10 pr-4 rounded-[12px] border-[1.5px] border-black/[0.10] bg-white text-[14px] text-ktext focus:border-kred focus:outline-none shadow-sm"
+            placeholder={'Buscar tienda para agregar — ' + (grpInfo?.[1]?.replace(/[^a-zA-Z0-9áéíóúñ\s]/g, '') || '') + '...'}
+            style={{
+              width: '100%', height: 46, paddingLeft: 42, paddingRight: 16,
+              borderRadius: 14, border: '1.5px solid rgba(0,0,0,0.09)',
+              background: '#FFFFFF', color: '#1C1C1E', fontSize: 14,
+              outline: 'none', boxSizing: 'border-box',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+            }}
           />
           {showSug && (
-            <div className="absolute top-[48px] left-0 right-0 bg-white border-[1.5px] border-black/[0.09] rounded-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.14)] z-[50] max-h-[260px] overflow-y-auto">
+            <div style={{
+              position: 'absolute', top: 50, left: 0, right: 0,
+              background: '#FFFFFF', border: '1.5px solid rgba(0,0,0,0.08)',
+              borderRadius: 16, boxShadow: '0 12px 36px rgba(0,0,0,0.14)',
+              zIndex: 50, maxHeight: 260, overflowY: 'auto',
+            }}>
               {suggest.map(c => {
                 const inf = tiendas[c];
                 const yaEsta = DIAS.some(d => local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(c));
                 return (
                   <div key={c} onClick={() => handleAgregar(c)}
-                    className="px-4 py-3 cursor-pointer border-b border-black/[0.07] last:border-0 flex items-center justify-between hover:bg-kbg transition-colors">
-                    <div>
-                      <span className="font-mono font-bold text-kred text-[15px]">{formatCod(c)}</span>
-                      <span className="text-[13px] text-ktext ml-2">{inf?.n || ''}</span>
-                      <span className="text-[11px] text-kmuted ml-2">{inf?.z || ''}</span>
+                    style={{
+                      padding: '11px 16px', cursor: 'pointer', display: 'flex',
+                      alignItems: 'center', justifyContent: 'space-between',
+                      borderBottom: '1px solid rgba(0,0,0,0.05)', transition: 'background 0.12s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#F2F2F7')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        fontFamily: 'monospace', fontSize: 15, fontWeight: 800,
+                        color: '#C12828', background: '#FEE2E2',
+                        padding: '3px 9px', borderRadius: 9,
+                        border: '1.5px solid #FECACA',
+                      }}>
+                        {formatCod(c)}
+                      </span>
+                      <span style={{ fontSize: 13, color: '#3C3C43' }}>{inf?.n || ''}</span>
+                      <span style={{ fontSize: 11, color: '#8E8E93' }}>{inf?.z || ''}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {yaEsta && <span className="text-[12px] text-kmuted italic">ya existe</span>}
-                      <span className="w-[26px] h-[26px] rounded-full bg-kred text-white text-[16px] font-bold flex items-center justify-center">+</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {yaEsta && <span style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic' }}>ya existe</span>}
+                      <div style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        background: 'linear-gradient(175deg, #E53535 0%, #C12828 100%)',
+                        color: '#fff', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: 18, fontWeight: 700,
+                        boxShadow: '0 3px 10px rgba(193,40,40,0.38)',
+                      }}>+</div>
                     </div>
                   </div>
                 );
@@ -346,139 +441,183 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
         };
         const falAll = allFor('fal'); const costaAll = allFor('costa'); const rmAll = allFor('rm');
         const sections: { label: string; g: 'fal'|'costa'|'rm'; stores: string[]; hdrBg: string; accent: string; evenBg: string; oddBg: string }[] = [
-          { label:'🏢 Regiones — Sur',      g:'fal',   stores:falAll.filter(c=>!ZONA_NORTE_FAL.has(c)), hdrBg:'#7B4F00', accent:'#D4A017', evenBg:'#FFFBF0', oddBg:'#FFF3CD' },
-          { label:'🏢 Regiones — Norte',    g:'fal',   stores:falAll.filter(c=> ZONA_NORTE_FAL.has(c)), hdrBg:'#1e3a5f', accent:'#F59E0B', evenBg:'#FFFDE7', oddBg:'#FEF9C3' },
-          { label:'🌊 Costa — V Región',    g:'costa', stores:costaAll,                                  hdrBg:'#0369A1', accent:'#0284C7', evenBg:'#F0F9FF', oddBg:'#DBEAFE' },
-          { label:'📦 RM — Malls',          g:'rm',    stores:rmAll.filter(c=> RM_MALLS.has(c)),         hdrBg:'#881337', accent:'#DB2777', evenBg:'#FFF0F6', oddBg:'#FFE4EC' },
-          { label:'📦 RM — Street Center',  g:'rm',    stores:rmAll.filter(c=>!RM_MALLS.has(c)),         hdrBg:'#374151', accent:'#6B7280', evenBg:'#F9FAFB', oddBg:'#F3F4F6' },
+          { label:'🏢 Regiones — Sur',      g:'fal',   stores:falAll.filter(c=>!ZONA_NORTE_FAL.has(c)), hdrBg:'#D4A017', accent:'#92400E', evenBg:'#FFFBEB', oddBg:'#FEF3C7' },
+          { label:'🏢 Regiones — Norte',    g:'fal',   stores:falAll.filter(c=> ZONA_NORTE_FAL.has(c)), hdrBg:'#F59E0B', accent:'#78350F', evenBg:'#FFFDE7', oddBg:'#FEF9C3' },
+          { label:'🌊 Costa — V Región',    g:'costa', stores:costaAll,                                  hdrBg:'#0284C7', accent:'#0F766E', evenBg:'#F0FDFA', oddBg:'#CCFBF1' },
+          { label:'📦 RM — Malls',          g:'rm',    stores:rmAll.filter(c=> RM_MALLS.has(c)),         hdrBg:'#DB2777', accent:'#9D174D', evenBg:'#FFF0F6', oddBg:'#FFE4EC' },
+          { label:'📦 RM — Street Center',  g:'rm',    stores:rmAll.filter(c=>!RM_MALLS.has(c)),         hdrBg:'#6B7280', accent:'#374151', evenBg:'#F9FAFB', oddBg:'#F3F4F6' },
         ];
         const hasAny = falAll.length + costaAll.length + rmAll.length > 0;
         return (
-          <div className="overflow-x-auto -mx-4 px-4">
-            <div style={{ minWidth: 540 }}>
-              <div className="rounded-[12px] overflow-hidden border border-black/[0.09] shadow-sm">
-                {/* Header de días */}
-                <div className="grid" style={{ gridTemplateColumns: 'minmax(170px,1fr) repeat(6,54px)', background: '#111A3E' }}>
-                  <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-white/50">Tienda</div>
-                  {DIAS.map(d => (
-                    <div key={d} className="py-3 text-center text-[12px] font-bold" style={{ color: DCOL[d] }}>
-                      {DNOM[d].slice(0, 2)}
-                    </div>
-                  ))}
+          <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', background: '#fff' }}>
+            <div className="grid" style={{ gridTemplateColumns: 'minmax(180px,1fr) repeat(6,56px)', background: '#1C1C1E' }}>
+              <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.5)' }}>Tienda</div>
+              {DIAS.map(d => (
+                <div key={d} style={{ padding: '12px 0', textAlign: 'center', fontSize: 12, fontWeight: 800, color: DCOL[d] }}>
+                  {DNOM[d].slice(0, 2)}
                 </div>
-                {!hasAny && (
-                  <div className="py-16 text-center text-[13px] italic text-kmuted bg-white">Sin tiendas asignadas</div>
-                )}
-                {sections.map(sec => sec.stores.length === 0 ? null : (
-                  <div key={sec.label}>
-                    <div className="flex items-center px-4 py-2 text-white text-[12px] font-bold" style={{ background: sec.hdrBg }}>
-                      <span>{sec.label}</span>
-                      <span className="ml-auto text-[10px] opacity-60">{sec.stores.length} tienda{sec.stores.length !== 1 ? 's' : ''}</span>
+              ))}
+            </div>
+            {!hasAny && (
+              <div style={{ padding: '48px 0', textAlign: 'center', fontSize: 13, fontStyle: 'italic', color: '#8E8E93', background: '#fff' }}>Sin tiendas asignadas</div>
+            )}
+            {sections.map(sec => sec.stores.length === 0 ? null : (
+              <div key={sec.label}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', color: '#fff', fontSize: 12, fontWeight: 700, background: sec.hdrBg }}>
+                  <span>{sec.label}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.7 }}>{sec.stores.length} tienda{sec.stores.length !== 1 ? 's' : ''}</span>
+                </div>
+                {sec.stores.map((cod, i) => (
+                  <div key={cod} className="grid items-center" style={{ gridTemplateColumns: 'minmax(180px,1fr) repeat(6,56px)', background: i % 2 === 0 ? sec.evenBg : sec.oddBg, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                    <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, flexShrink: 0, color: sec.accent }}>{formatCod(cod)}</span>
+                      <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tiendas[cod]?.n || ''}</span>
                     </div>
-                    {sec.stores.map((cod, i) => (
-                      <div key={cod} className="grid items-center border-b border-black/[0.06]"
-                           style={{ gridTemplateColumns: 'minmax(170px,1fr) repeat(6,54px)', background: i % 2 === 0 ? sec.evenBg : sec.oddBg }}>
-                        <div className="px-4 py-2.5 flex items-center gap-2 min-w-0">
-                          <span className="font-mono font-bold text-[13px] flex-shrink-0" style={{ color: sec.accent }}>{formatCod(cod)}</span>
-                          <span className="text-[11px] text-kmuted truncate">{tiendas[cod]?.n || ''}</span>
+                    {DIAS.map(d => {
+                      const on = !!(local[d]?.[sec.g]?.includes(cod));
+                      return (
+                        <div key={d} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 0' }}>
+                          {on
+                            ? <div style={{ width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, background: DCOL[d] }}>✓</div>
+                            : <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid rgba(0,0,0,0.12)' }} />
+                          }
                         </div>
-                        {DIAS.map(d => {
-                          const on = !!(local[d]?.[sec.g]?.includes(cod));
-                          return (
-                            <div key={d} className="flex items-center justify-center py-2.5">
-                              {on
-                                ? <div className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: DCOL[d] }}>✓</div>
-                                : <div className="w-[18px] h-[18px] rounded-full border border-black/[0.12]" />
-                              }
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))}
               </div>
-            </div>
+            ))}
           </div>
         );
       })() : (
-      /* ── Grid de días ── */
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {DIAS.map(dia => {
-          const ts = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
-          return (
-            <div key={dia}>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[16px] font-bold" style={{ color: DCOL[dia] }}>{DNOM[dia]}</span>
-                <span className="text-[13px] text-kmuted font-medium">{ts.length} tienda{ts.length !== 1 ? 's' : ''}</span>
-              </div>
-              <div
-                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-kred', 'bg-kred/[0.04]'); }}
-                onDragLeave={e => e.currentTarget.classList.remove('border-kred', 'bg-kred/[0.04]')}
-                onDrop={e => { e.currentTarget.classList.remove('border-kred', 'bg-kred/[0.04]'); onDrop(e, dia); }}
-                className="min-h-[56px] bg-white rounded-[12px] border-2 border-dashed border-black/[0.10] p-2.5 flex flex-wrap gap-1.5 transition-all shadow-sm"
-              >
-                {ts.map(cod => {
-                  const chipBg =
-                    grp === 'costa'              ? '#DBEAFE' :
-                    grp === 'fal' && !ZONA_NORTE_FAL.has(cod) ? '#FFF3CD' :
-                    grp === 'fal' &&  ZONA_NORTE_FAL.has(cod) ? '#FFFDE7' :
-                    RM_MALLS.has(cod)            ? '#FFE4EC' : '#F3F4F6';
-                  const chipBorder =
-                    grp === 'costa'              ? '#93C5FD' :
-                    grp === 'fal' && !ZONA_NORTE_FAL.has(cod) ? '#D4A017' :
-                    grp === 'fal' &&  ZONA_NORTE_FAL.has(cod) ? '#F59E0B' :
-                    RM_MALLS.has(cod)            ? '#F9A8D4' : '#D1D5DB';
-                  const chipText =
-                    grp === 'costa'              ? '#1E40AF' :
-                    grp === 'fal'                ? '#78350F' :
-                    RM_MALLS.has(cod)            ? '#9D174D' : '#374151';
-                  return (
-                    <div
-                      key={cod} draggable
-                      onDragStart={e => onDragStart(e, dia, cod)}
-                      title={tiendas[cod]?.n || cod}
-                      style={{ background: chipBg, borderColor: chipBorder, color: chipText }}
-                      className="h-8 px-2.5 rounded-[7px] border-[1.5px] font-mono text-[13px] font-bold cursor-grab flex items-center gap-1.5 shadow-sm select-none transition-colors"
-                    >
-                      {formatCod(cod)}
-                      <span onClick={() => cfgRm(dia, cod)}
-                        className="text-[12px] cursor-pointer opacity-50 hover:opacity-100 transition-opacity">✕</span>
+      <div>
+        {/* Leyenda de tipos */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+          {(Object.entries(TYPE_STYLE) as [StoreType, typeof TYPE_STYLE[StoreType]][]).map(([type, s]) => (
+            <div key={type} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 13px', borderRadius: 100,
+              background: s.bg, border: `1.5px solid ${s.border}`,
+              boxShadow: `0 2px 6px ${s.shadow}, inset 0 1px 0 rgba(255,255,255,0.6)`,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: s.text }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ overflowX: 'auto', borderRadius: 18, background: '#FFFFFF', boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead>
+              <tr>
+                {DIAS.map(dia => (
+                  <th key={dia} style={{
+                    background: DLIGHT[dia],
+                    padding: '13px 10px 10px',
+                    borderBottom: `3px solid ${DCOL[dia]}`,
+                    borderRight: '1px solid rgba(0,0,0,0.05)',
+                    minWidth: 118, textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: DCOL[dia], letterSpacing: '0.05em' }}>
+                      {DNOM[dia].toUpperCase()}
                     </div>
+                    <div style={{ fontSize: 13, color: DCOL[dia], opacity: 0.80, marginTop: 4, fontWeight: 700 }}>
+                      {(local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || []).length} tiendas
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {DIAS.map(dia => {
+                  const tiendasDelDia = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
+                  return (
+                    <td key={dia}
+                      onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.background = '#F2F2F7'; }}
+                      onDragLeave={e => { (e.currentTarget as HTMLElement).style.background = '#FFFFFF'; }}
+                      onDrop={e => { (e.currentTarget as HTMLElement).style.background = '#FFFFFF'; onDrop(e, dia); }}
+                      style={{
+                        verticalAlign: 'top',
+                        padding: '8px 6px 10px',
+                        borderRight: '1px solid rgba(0,0,0,0.05)',
+                        background: '#FFFFFF',
+                        minWidth: 118,
+                      }}
+                    >
+                      {tiendasDelDia.length === 0 ? (
+                        <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.18)', fontStyle: 'italic', textAlign: 'center', padding: '18px 6px', border: '2px dashed rgba(0,0,0,0.08)', borderRadius: 12, marginTop: 2 }}>
+                          Sin tiendas
+                        </div>
+                      ) : tiendasDelDia.map(cod => {
+                        const tipo = getTipo(cod);
+                        const ts   = TYPE_STYLE[tipo];
+                        return (
+                          <div key={cod}
+                            draggable
+                            onDragStart={e => onDragStart(e, dia, cod)}
+                            title={tiendas[cod]?.n || cod}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              background: ts.bg, color: ts.text, border: `1.5px solid ${ts.border}`,
+                              borderRadius: 10, padding: '6px 10px', marginBottom: 5,
+                              fontSize: 15, fontWeight: 800, fontFamily: 'monospace',
+                              cursor: 'grab',
+                              boxShadow: `0 2px 6px ${ts.shadow}`,
+                              transition: 'all 0.12s',
+                            }}
+                          >
+                            <span>{formatCod(cod)}</span>
+                            <span onClick={() => cfgRm(dia, cod)}
+                              style={{ fontSize: 14, cursor: 'pointer', opacity: 0.5, marginLeft: 6 }}
+                              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                              onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+                            >✕</span>
+                          </div>
+                        );
+                      })}
+                    </td>
                   );
                 })}
-                {ts.length === 0 && (
-                  <span className="text-[12px] text-black/[0.20] italic self-center px-1">Sin tiendas asignadas</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       )}
 
       {/* ── Day picker modal ── */}
       {pickerOpen && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/[0.45] backdrop-blur-sm flex items-center justify-center"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
           onClick={e => { if (e.target === e.currentTarget) { setPickerOpen(false); setPickerCod(''); } }}
         >
-          <div className="bg-white rounded-[18px] p-[22px] w-[min(300px,88%)] shadow-[0_12px_40px_rgba(0,0,0,0.25)]">
-            <div className="text-[13px] font-bold text-ktext mb-1">
-              Agregar <span className="text-kred">{formatCod(pickerCod)}</span>
+          <div style={{
+            background: '#FFFFFF', borderRadius: 18, padding: 22,
+            width: 'min(300px, 88%)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1C1C1E', marginBottom: 4 }}>
+              Agregar <span style={{ color: '#C12828' }}>{formatCod(pickerCod)}</span>
               {tiendas[pickerCod] ? ' — ' + tiendas[pickerCod].n : ''}
             </div>
-            <div className="text-[12px] text-kmuted mb-3.5">Elige uno o más días · toca de nuevo para quitar:</div>
-            <div className="grid grid-cols-3 gap-2 mb-3.5">
+            <div style={{ fontSize: 12, color: '#8E8E93', marginBottom: 14 }}>
+              Elige uno o más días · toca de nuevo para quitar:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
               {DIAS.map(d => {
                 const yaEsta = local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(pickerCod);
                 return (
                   <button key={d} onClick={() => handlePickerConfirm(pickerCod, d)}
-                    className="h-[38px] rounded-[9px] text-[13px] font-semibold border-2 transition-all cursor-pointer"
                     style={{
-                      borderColor: DCOL[d],
-                      color:       yaEsta ? '#fff' : DCOL[d],
-                      background:  yaEsta ? DCOL[d] : 'transparent',
+                      height: 38, borderRadius: 9, fontSize: 13, fontWeight: 600,
+                      border: `2px solid ${DCOL[d]}`, cursor: 'pointer',
+                      color: yaEsta ? '#fff' : DCOL[d],
+                      background: yaEsta ? DCOL[d] : 'transparent',
+                      transition: 'all 0.12s',
                     }}>
                     {DNOM[d]}{yaEsta ? ' ✓' : ''}
                   </button>
@@ -487,7 +626,11 @@ export default function CalendarioCentral({ cal, tiendas, saveStatus, onSave }: 
             </div>
             <button
               onClick={() => { setPickerOpen(false); setPickerCod(''); }}
-              className="w-full h-[38px] rounded-[9px] text-[13px] font-bold border-[1.5px] border-kred text-kred transition-all">
+              style={{
+                width: '100%', height: 38, borderRadius: 9, fontSize: 13,
+                fontWeight: 700, border: '1.5px solid #C12828',
+                color: '#C12828', background: 'transparent', cursor: 'pointer',
+              }}>
               Listo
             </button>
           </div>

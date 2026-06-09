@@ -22,7 +22,6 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/despacho/conteo':         BarChart3,
   '/despacho/control-flota':  Truck,
   '/despacho/estado':         Activity,
-  '/panel-choferes':          Users,
   '/conductor-hub':           NavIcon,
   '/panel-operaciones':       Monitor,
   '/tiendas':                 Store,
