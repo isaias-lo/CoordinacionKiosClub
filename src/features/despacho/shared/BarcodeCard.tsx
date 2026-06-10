@@ -181,8 +181,9 @@ export function BarcodeCard({
     palletSize: 28, deSize: 10,
     catSize: 9, catPad: '2px 6px', catGap: 4, catRadius: 4,
     centerPad: '4px 0',
-    storeCodeSize: 'clamp(36px, 7vw, 52px)', storeCodeLS: '2px',
-    storeNameSize: 17, storeNameMT: 3,
+    // cqw = relativo al ANCHO de la tarjeta (no del viewport) → nunca se desborda/corta
+    storeCodeSize: 'clamp(22px, 22cqw, 42px)', storeCodeLS: '1px',
+    storeNameSize: 15, storeNameMT: 3,
     barMT: 4, barW: '88%', barH: 36, barBW: 2,
     footerFS: 7, footerDateFS: 9,
   } : {
@@ -214,6 +215,7 @@ export function BarcodeCard({
         border: `${compact ? 2 : cfg.borderWidth}px solid #E5E7EB`,
         borderRadius: compact ? 12 : cfg.cornerRadius,
         position: 'relative',
+        containerType: 'inline-size',  // habilita unidades cqw (el código se ajusta al ancho de la tarjeta)
       }}
     >
       {/* Badge AUDITADO */}
