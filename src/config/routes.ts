@@ -33,7 +33,8 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { path: '/despacho/control-flota', label: 'Control de Flota'       },
       { path: '/conductor-hub',          label: 'Panel Conductor'        },
       { path: '/panel-operaciones',      label: 'Panel Operaciones'      },
-      { path: '/tiendas',                label: 'Conductores / Tiendas'  },
+      // '/tiendas' (Recepción del conductor) se accede desde Panel Conductor;
+      // se quitó del sidebar para evitar duplicado. La ruta sigue activa.
     ],
   },
   {
