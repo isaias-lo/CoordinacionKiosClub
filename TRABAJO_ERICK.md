@@ -1,5 +1,15 @@
 # Estado actual del trabajo — Erick
 
+## 🔴 PENDIENTE AL LLEGAR — empezar por aquí (sobre todo en el MAC)
+**Instalar y loguear `gh` (GitHub CLI) en el Mac**, para que Claude pueda abrir PRs desde ahí.
+1. En la Terminal del Mac:  `brew install gh`  (si no tienes brew, ver https://brew.sh)
+2. Loguear una vez:  `gh auth login`  → GitHub.com → HTTPS → Login with a web browser → pegar el código.
+3. Verificar:  `gh auth status`
+> En cecilia (PC trabajo) ya quedó `gh` instalado; solo falta que Erick haga `gh auth login` ahí también.
+> Nuevos comandos disponibles: `npm run pr` (abrir PR a main) además de `npm run hola` / `npm run bye`.
+
+---
+
 ## Última sesión
 Fecha: 2026-06-07
 Último commit: feat(skills): agregar 10 skills de Antigravity + reglas de auto-activación (`1cde6b0`)
