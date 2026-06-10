@@ -175,12 +175,14 @@ export function BarcodeCard({
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
 
   const s = compact ? {
+    // innerMinH: 0 → la tarjeta abraza su contenido (no se estira hacia abajo);
+    // proporción cercana a la etiqueta real y responsiva al ancho disponible.
     outerMaxW: 340, outerMargin: '0 auto 6px',
-    innerPad: '8px 10px 6px', innerMinH: 155,
+    innerPad: '8px 10px 7px', innerMinH: 0,
     respSize: 9, pickerSize: 13, subSize: 11,
     palletSize: 28, deSize: 10,
     catSize: 9, catPad: '2px 6px', catGap: 4, catRadius: 4,
-    centerPad: '4px 0',
+    centerPad: '2px 0',
     // cqw = relativo al ANCHO de la tarjeta (no del viewport) → nunca se desborda/corta
     storeCodeSize: 'clamp(22px, 22cqw, 42px)', storeCodeLS: '1px',
     storeNameSize: 15, storeNameMT: 3,
