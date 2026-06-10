@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
-import { MODULE_GROUPS, HOME_OPTIONS, ALL_MODULE_PATHS, type ModuleGroup } from '@/config/routes';
+import { MODULE_GROUPS, HOME_OPTIONS, ALL_MODULE_PATHS, cleanAllowedPaths, type ModuleGroup } from '@/config/routes';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 
@@ -236,7 +236,8 @@ export default function UsuariosPage() {
     try {
       const headers = await authHeaders();
       const body: Record<string, unknown> = { id: role.id };
-      if (newPaths) body.allowed_paths = newPaths;
+      // Limpia rutas ya inexistentes antes de guardar (deja solo rutas reales + '*')
+      if (newPaths) body.allowed_paths = cleanAllowedPaths(newPaths);
       if (newPerms) body.permissions   = newPerms;
       const res = await fetch('/api/admin/roles', {
         method: 'PATCH',

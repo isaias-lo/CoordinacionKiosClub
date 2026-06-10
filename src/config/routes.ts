@@ -72,6 +72,25 @@ export const MODULE_GROUPS: ModuleGroup[] = [
 // Todos los paths registrados (sin /perfil, que siempre se incluye aparte).
 export const ALL_MODULE_PATHS: string[] = MODULE_GROUPS.flatMap(g => g.routes.map(r => r.path));
 
+// Rutas REALES que existen como página pero NO están en el sidebar/MODULE_GROUPS
+// (ej. /tiendas se accede desde Panel Conductor). Se usan para limpiar de los
+// permisos de un rol las rutas que ya NO existen, sin borrar accesos válidos.
+// ⚠️ Si agregas una página nueva fuera del sidebar, súmala aquí.
+const EXTRA_REAL_PATHS: string[] = [
+  '/perfil', '/tiendas', '/panel-choferes', '/chofer', '/control-cruce',
+  '/historial', '/recepcion', '/despacho-hub', '/despacho/conteo',
+  '/despacho/santiago/rutas', '/despacho/config-tiendas',
+  '/admin/usuarios', '/admin/calendario',
+];
+
+// Conjunto de paths válidos para asignar a un rol (sidebar + reales no-sidebar).
+export const VALID_PERMISSION_PATHS: ReadonlySet<string> = new Set([...ALL_MODULE_PATHS, ...EXTRA_REAL_PATHS]);
+
+/** Quita de allowed_paths las rutas que ya no existen (deja '*' y rutas reales). */
+export function cleanAllowedPaths(paths: string[]): string[] {
+  return paths.filter(p => p === '*' || VALID_PERMISSION_PATHS.has(p));
+}
+
 // Opciones de página inicial para el editor de roles.
 export const HOME_OPTIONS: { value: string; label: string }[] = [
   { value: '/despacho',        label: 'Enrutador'        },
