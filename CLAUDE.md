@@ -72,11 +72,29 @@ Required in `.env.local`:
 Al iniciar cada sesión, lee TRABAJO.md y resume brevemente en qué estamos.
 Al terminar cualquier tarea importante, actualiza TRABAJO.md con el estado actual sin que te lo pida.
 
-### Comandos "hola" / "bye" (continuidad entre PCs trabajo↔casa)
+### Comandos "hola" / "bye" / "PR" (continuidad entre PCs trabajo↔casa)
 El usuario trabaja desde dos equipos (trabajo y casa) sobre la MISMA rama. La guía completa está en FLUJO.md.
 - Cuando el usuario diga **"hola"** (o al iniciar): asegúrate de que esté al día — equivale a `npm run hola` (`git fetch` + `git pull --ff-only` de su rama). Avísale si hay cambios locales sin commitear.
-- Cuando el usuario diga **"bye"** (o "me voy"/"adiós"): ejecuta el cierre de jornada — actualiza TRABAJO.md y TRABAJO_<persona>.md, haz `git add -A` + commit (WIP si aplica) y `git push` de su rama. Nunca subas WIP directo a `main`.
-- También existen los atajos `npm run hola` y `npm run bye` (scripts en `scripts/`).
+- Cuando el usuario diga **"bye"** (o "me voy"/"adiós"): ejecuta el cierre de jornada — actualiza TRABAJO.md y TRABAJO_<persona>.md, haz `git add -A` + commit (WIP si aplica) y `git push` de su rama. **Nunca abras PR ni subas a `main` con bye** (puede ser trabajo a medias o solo un cambio de equipo).
+- Cuando el usuario diga **"PR"** / **"subir PR"**: abre el Pull Request de su rama hacia `main` (push + `gh pr create --base main --fill`, o el enlace web si `gh` no está). Es una acción DELIBERADA, solo cuando algo está listo para producción. **No mergees solo** — solo abrir el PR para revisión. Equivale a `npm run pr`.
+- Atajos: `npm run hola`, `npm run bye`, `npm run pr` (scripts en `scripts/`).
 
 ### Flujo de ramas / deploy (vigente desde 2026-06-09)
 Trabajar en rama del día y **NO mergear directo a main**: abrir PR con `gh pr create` para que el usuario lo revise/mergee desde GitHub. Vercel solo despliega `main`.
+
+## Skills — activación automática por contexto
+
+Los siguientes skills están en `.claude/skills/` y deben aplicarse automáticamente según el contexto de la tarea, sin necesidad de invocarlos explícitamente:
+
+| Contexto detectado | Skill a aplicar |
+|---|---|
+| Trabajar en `src/app/` (rutas, layouts, page.tsx, route.ts) | `@nextjs-app-router-patterns` |
+| Trabajar con Supabase auth, sesiones, roles o middleware | `@nextjs-supabase-auth` |
+| Trabajar en `src/app/api/odoo/` o `odooApi.ts` | `@odoo-rpc-api` |
+| Optimizar queries lentos a Odoo o reducir timeouts | `@odoo-performance-tuner` |
+| Crear o modificar componentes UI / pantallas / cards | `@frontend-ui-dark-ts` |
+| Diseñar o modificar tablas de Supabase / migraciones | `@database-design` |
+| Trabajar con OTP, JWT, roles o permisos | `@auth-implementation-patterns` |
+| Crear o modificar API routes en `src/app/api/` | `@api-security-best-practices` |
+| Escribir tests (cuando se agreguen al proyecto) | `@e2e-testing-patterns` |
+| Diagnosticar queries lentos en Supabase | `@database-optimizer` |

@@ -7,9 +7,18 @@ en qué PC estés. **Léela cuando tengas dudas.**
 
 ## ✅ Regla de oro
 
-> **`hola` al llegar  ·  `bye` antes de salir.**
+> **`hola` al llegar  ·  `bye` antes de salir  ·  `PR` cuando termines algo.**
 > Todo tu trabajo viaja entre PCs **a través de GitHub (git)**. Lo que dejes
 > sin subir, **NO** estará en la otra PC.
+
+| Palabra | Comando | Para qué |
+|---|---|---|
+| **hola** | `npm run hola` | Al llegar: ponerte al día (pull). |
+| **bye** | `npm run bye` | Al salir o cambiar de PC: guardar y subir tu avance a TU rama. **Nunca abre PR** → seguro aunque el trabajo esté a medias. |
+| **PR** / "subir PR" | `npm run pr` | Solo cuando una función está **lista para producción**: abre el Pull Request a `main` para revisar/desplegar. **No mergea solo.** |
+
+> 🔑 **`bye` ≠ `PR`.** `bye` solo sube tu avance a tu rama (no toca producción).
+> `PR` es una decisión aparte y consciente, solo cuando algo está terminado.
 
 ---
 
