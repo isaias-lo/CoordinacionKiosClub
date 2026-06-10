@@ -387,7 +387,7 @@ export default function UsuariosPage() {
 
       const emailRes = await fetch('/api/auth/send-approval-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,  // incluye el Bearer token — el endpoint exige admin (verifyAdmin)
         body: JSON.stringify({ email: approveTarget.email, full_name: approveTarget.full_name, password: pass, role: approveRole }),
       });
       if (!emailRes.ok) {
