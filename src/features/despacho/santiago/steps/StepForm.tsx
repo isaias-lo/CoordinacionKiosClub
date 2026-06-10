@@ -397,7 +397,7 @@ export function StepForm() {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
     const todayCode = DAY_CODES[new Date().getDay()];
     const RM_MAP: Record<string, string>    = { PEN: '23PEÑ', '23PEN': '23PEÑ' };
-    const COSTA_MAP: Record<string, string> = { VIN: '37VIÑ', '37VIN': '37VIÑ' };
+    const COSTA_MAP: Record<string, string> = { VIN: '37VIN', '37VIN': '37VIN' };
 
     // Initial fetch (checks localStorage cache first, then Sheets)
     getTiendasSantiagoHoyGrouped()
