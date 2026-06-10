@@ -258,6 +258,16 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
   );
 }
 
+// ── Columnas redimensionables (ancho por columna, estilo Sheets) ──────────────
+const COLW_KEY = 'registros_colwidths_v1';
+const DEFAULT_COLW: Record<string, number> = {
+  fecha: 96, cod: 64, tienda: 160, tipo: 80, regimen: 90, transporte: 120,
+  carga: 80, region: 150, comuna: 150, peso_kg: 78, estado: 140, n_pallet_bulto: 52,
+  conductor: 140, ruta: 56, supervisor: 140, guia: 100, valor: 90, fuente: 90, seguimiento: 112,
+  created_at: 150, pallets_sent: 72, bultos_sent: 72, pallets_recibidos: 72, bultos_recibidos: 72,
+  receptor: 140, rut: 112,
+};
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RegistrosPage() {
@@ -269,6 +279,31 @@ export default function RegistrosPage() {
   const [error,       setError]       = useState('');
   const [search,      setSearch]      = useState('');
   const [selectedRow, setSelectedRow] = useState<RecepcionRow | null>(null);
+
+  // Anchos de columna redimensionables (persisten en localStorage)
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  useEffect(() => {
+    try { setColWidths(JSON.parse(localStorage.getItem(COLW_KEY) || '{}')); } catch {}
+  }, []);
+  const widthFor = (c: string) => colWidths[c] ?? DEFAULT_COLW[c] ?? 110;
+  const resizeRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
+  const startResize = (c: string, e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    resizeRef.current = { col: c, startX: e.clientX, startW: widthFor(c) };
+    const move = (ev: PointerEvent) => {
+      const r = resizeRef.current; if (!r) return;
+      const w = Math.max(44, r.startW + (ev.clientX - r.startX));
+      setColWidths(prev => ({ ...prev, [r.col]: w }));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      resizeRef.current = null;
+      setColWidths(prev => { try { localStorage.setItem(COLW_KEY, JSON.stringify(prev)); } catch {} return prev; });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   const tabCfg = TABS.find(t => t.key === tab)!;
   const cols   = TABLE_COLS[tab];
@@ -324,7 +359,7 @@ export default function RegistrosPage() {
     : rows;
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden"
+    <div className="h-full w-full flex flex-col overflow-hidden"
          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
 
       {/* Header */}
@@ -415,14 +450,30 @@ export default function RegistrosPage() {
         {!loading && filtered.length > 0 && (
           <div className="rounded-2xl overflow-hidden"
                style={{ border: `1px solid ${color.border}`, background: 'rgba(255,255,255,0.03)' }}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px] border-collapse">
+            <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
+              <table className="text-[12px]" style={{ tableLayout: 'fixed', width: cols.reduce((a, c) => a + widthFor(c), 0), borderCollapse: 'separate', borderSpacing: 0 }}>
                 <thead>
-                  <tr style={{ background: color.bg }}>
+                  <tr>
                     {cols.map(c => (
-                      <th key={c} className="px-3 py-2.5 text-left font-bold uppercase tracking-wider whitespace-nowrap"
-                          style={{ color: color.text, borderBottom: `1px solid ${color.border}` }}>
+                      <th key={c} className="px-3 py-2.5 text-left font-bold uppercase tracking-wider"
+                          style={{
+                            width: widthFor(c), color: color.text, background: '#1A2550',
+                            borderBottom: `1px solid ${color.border}`, position: 'sticky', top: 0, zIndex: 2,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
                         {COL_LABEL[c] ?? c}
+                        {/* Manija para redimensionar (arrastrar) */}
+                        <span
+                          onPointerDown={e => startResize(c, e)}
+                          title="Arrastra para ajustar el ancho"
+                          style={{
+                            position: 'absolute', top: 0, right: 0, height: '100%', width: 8,
+                            cursor: 'col-resize', touchAction: 'none', userSelect: 'none',
+                            borderRight: '2px solid transparent',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.borderRight = `2px solid ${color.text}`)}
+                          onMouseLeave={e => (e.currentTarget.style.borderRight = '2px solid transparent')}
+                        />
                       </th>
                     ))}
                   </tr>
@@ -431,10 +482,12 @@ export default function RegistrosPage() {
                   {filtered.map((row, ri) => (
                     <tr key={ri}
                         onClick={() => tab === 'recepcion' ? setSelectedRow(row) : undefined}
-                        className="border-b transition-colors hover:bg-white/5"
-                        style={{ borderColor: 'rgba(255,255,255,0.05)', cursor: tab === 'recepcion' ? 'pointer' : 'default' }}>
+                        className="transition-colors hover:bg-white/5"
+                        style={{ cursor: tab === 'recepcion' ? 'pointer' : 'default' }}>
                       {cols.map(c => (
-                        <td key={c} className="px-3 py-2 text-white/80 whitespace-nowrap max-w-[200px] truncate">
+                        <td key={c} className="px-3 py-2 text-white/80"
+                            title={String(row[c] ?? '')}
+                            style={{ width: widthFor(c), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           {formatCell(c, row[c])}
                         </td>
                       ))}

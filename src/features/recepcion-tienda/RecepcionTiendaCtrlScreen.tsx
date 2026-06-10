@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { QRScanner } from '@/features/tiendas/QRScanner';
+import { BarcodeScanner } from '@/features/tiendas/BarcodeScanner';
 import { RecepcionTiendaCtrlForm } from './RecepcionTiendaCtrlForm';
 
 interface QRData {
@@ -136,8 +136,8 @@ export function RecepcionTiendaCtrlScreen() {
         {step === 'scanner' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px 10px', textAlign: 'center', flexShrink: 0 }}>
-              <p style={{ margin: '0 0 3px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear QR de despacho</p>
-              <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al código QR de la etiqueta del camión</p>
+              <p style={{ margin: '0 0 3px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear despacho</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al <b>QR del manifiesto</b> o al <b>código de barras</b> de la etiqueta</p>
             </div>
             {qrError && (
               <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0 }}>
@@ -145,7 +145,7 @@ export function RecepcionTiendaCtrlScreen() {
               </div>
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <QRScanner onDetect={handleQRDetected} />
+              <BarcodeScanner onDetect={handleQRDetected} />
             </div>
           </div>
         )}

@@ -869,26 +869,58 @@ export function TiendasPage() {
     const tgtId = formMergeState.targetId;
     const cod   = TIENDAS[selectedTienda]?.cod ?? '';
 
+    // Dimensiones del item combinado segun pkg (pallet/cont/choc usan fijas)
+    const pkg = sourceRow.pkg;
+    const a  = pkg === 'contenedor' ? 150 : pkg === 'chocolate' ? 42 : alto;
+    const aw = pkg === 'pallet' ? 100 : pkg === 'contenedor' ? 80 : pkg === 'chocolate' ? 56 : (parseFloat(sourceRow.ancho) || 0);
+    const l  = pkg === 'pallet' ? 120 : pkg === 'contenedor' ? 110 : pkg === 'chocolate' ? 80 : (parseFloat(sourceRow.largo) || 0);
+    const mguia  = sourceRow.savedItem?.guia || targetRow.savedItem?.guia || sourceRow.guia || '';
+    const mvalor = sourceRow.savedItem?.valor ?? targetRow.savedItem?.valor ?? 0;
+
     if (sourceRow.pickingSlotId && targetRow.pickingSlotId && cod) {
       const date = new Date().toISOString().slice(0, 10);
-      const tipo = PKG_TO_CODE[sourceRow.pkg] ?? 'P';
+      const tipo = PKG_TO_CODE[pkg] ?? 'P';
+      let newId: number | undefined;
+      let newCanonical: string | null = null;
+      let newSeq: number | null = null;
       try {
         const res  = await fetch('/api/picking-pallets/combine', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ ids: [sourceRow.pickingSlotId, targetRow.pickingSlotId], date, store_cod: cod, tipo }),
         });
-        const json = await res.json() as { newId?: number };
-        setFormRows(prev => prev
-          .filter(r => r.id !== tgtId)
-          .map(r => r.id === srcId ? { ...r, peso: String(peso), alto: String(alto), pickingSlotId: json.newId ?? r.pickingSlotId } : r));
-        showToast('Pallets unificados — nuevo código generado', '#2563EB');
-      } catch {
-        setFormRows(prev => prev
-          .filter(r => r.id !== tgtId)
-          .map(r => r.id === srcId ? { ...r, peso: String(peso), alto: String(alto) } : r));
-      }
+        const json = await res.json() as { newId?: number; renumbered?: { id: number; newSeq: number; canonical_id: string }[] };
+        newId = json.newId;
+        const entry = json.renumbered?.find(r => r.id === newId);
+        newCanonical = entry?.canonical_id ?? null;
+        newSeq = entry?.newSeq ?? null;
+      } catch { /* sin red: igual limpiamos el estado local para no dejar fantasmas */ }
+
+      const oldIds = [sourceRow.pickingSlotId, targetRow.pickingSlotId];
+      const combined: DispatchItem = {
+        orden: 'pallet1', tipo: sourceRow.tipo, pkg,
+        peso, alto: a, ancho: aw, largo: l, guia: mguia, valor: mvalor,
+        pickingSlotId: newId ?? sourceRow.pickingSlotId,
+      };
+      // 1) Items guardados: quitar los 2 viejos, agregar 1 combinado, renumerar
+      const cur = dispatchData[selectedTienda] || [];
+      const remaining = cur.filter(it => !oldIds.includes(it.pickingSlotId ?? -1));
+      dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems([...remaining, combined]) });
+      // 2) Caché de slots: quitar viejos, agregar el nuevo (evita que reaparezcan al reconstruir)
+      setPickingSlotsFull(prev => {
+        const next = { ...prev };
+        const list = (next[selectedTienda] ?? []).filter(s => !oldIds.includes(s.id));
+        if (newId) list.push({ id: newId, tipo, contenido: 'hogar', seq: newSeq, canonical_id: newCanonical, peso_kg: peso, alto: a, largo: l, ancho: aw, peso_v: null });
+        next[selectedTienda] = list;
+        return next;
+      });
+      // 3) Form: quitar el target, dejar el source como tarjeta combinada agregada
+      setFormRows(prev => prev
+        .filter(r => r.id !== tgtId)
+        .map(r => r.id === srcId ? { ...r, saved: true, savedItem: combined, pickingSlotId: newId ?? r.pickingSlotId, peso: String(peso), alto: String(a), ancho: String(aw), largo: String(l) } : r));
+      showToast('Pallets unificados — nuevo código generado', '#2563EB');
     } else {
+      // Ambos manuales (sin slot de picking): solo se ajusta el formulario
       setFormRows(prev => prev
         .filter(r => r.id !== tgtId)
         .map(r => r.id === srcId ? { ...r, peso: String(peso), alto: String(alto) } : r));

@@ -14,12 +14,22 @@ function ActualizarContrasenaContent() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const code = searchParams?.get('code');
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ error: e }) => {
-        if (e) setError(e.message);
-      });
-    }
+    const code      = searchParams?.get('code');       // flujo PKCE
+    const tokenHash = searchParams?.get('token_hash');  // flujo token_hash (algunas plantillas)
+    (async () => {
+      try {
+        if (code) {
+          const { error: e } = await supabase.auth.exchangeCodeForSession(code);
+          if (e) throw e;
+        } else if (tokenHash) {
+          const { error: e } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+          if (e) throw e;
+        }
+        // El formato con hash (#access_token=...) lo procesa el cliente automáticamente.
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'El enlace es inválido o expiró. Solicita uno nuevo.');
+      }
+    })();
   }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -33,7 +43,10 @@ function ActualizarContrasenaContent() {
     const { error: updateErr } = await supabase.auth.updateUser({ password });
 
     if (updateErr) {
-      setError(updateErr.message);
+      const msg = /session|missing|jwt|not.*authenticated|auth/i.test(updateErr.message)
+        ? 'El enlace expiró o no es válido. Vuelve a solicitar el correo de recuperación.'
+        : updateErr.message;
+      setError(msg);
       setLoading(false);
       return;
     }
