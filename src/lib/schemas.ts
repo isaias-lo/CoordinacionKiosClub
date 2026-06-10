@@ -15,22 +15,21 @@ export const SendOtpSchema = z.object({
 
 // ── Admin: Users ───────────────────────────────────────────────────────────
 
-const VALID_ROLES = [
-  'admin', 'despachador', 'auditor', 'admin-auditoria',
-  'recepcion-tienda', 'supervisor-picking', 'asistente-despacho',
-  'coordinador-flota', 'supervisor', 'pending',
-] as const;
+// Los roles son dinámicos: además de los built-in, el admin puede crear roles
+// personalizados (tabla `roles`). Por eso se valida el FORMATO del id de rol,
+// no una lista fija (que rechazaba los roles personalizados al crear usuarios).
+const RoleId = z.string().min(1).max(50).regex(/^[a-z0-9-]+$/, 'Rol inválido');
 
 export const CreateUserSchema = z.object({
   email:     z.string().email('Email inválido'),
   password:  z.string().min(8, 'Contraseña de mínimo 8 caracteres'),
   full_name: z.string().min(2).max(100),
-  role:      z.enum(VALID_ROLES),
+  role:      RoleId,
 });
 
 export const UpdateUserSchema = z.object({
   id:        z.string().uuid('ID de usuario inválido'),
-  role:      z.enum(VALID_ROLES).optional(),
+  role:      RoleId.optional(),
   full_name: z.string().min(2).max(100).optional(),
   password:  z.string().min(8).optional(),
 });
