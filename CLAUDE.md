@@ -80,3 +80,20 @@ El usuario trabaja desde dos equipos (trabajo y casa) sobre la MISMA rama. La gu
 
 ### Flujo de ramas / deploy (vigente desde 2026-06-09)
 Trabajar en rama del día y **NO mergear directo a main**: abrir PR con `gh pr create` para que el usuario lo revise/mergee desde GitHub. Vercel solo despliega `main`.
+
+## Skills — activación automática por contexto
+
+Los siguientes skills están en `.claude/skills/` y deben aplicarse automáticamente según el contexto de la tarea, sin necesidad de invocarlos explícitamente:
+
+| Contexto detectado | Skill a aplicar |
+|---|---|
+| Trabajar en `src/app/` (rutas, layouts, page.tsx, route.ts) | `@nextjs-app-router-patterns` |
+| Trabajar con Supabase auth, sesiones, roles o middleware | `@nextjs-supabase-auth` |
+| Trabajar en `src/app/api/odoo/` o `odooApi.ts` | `@odoo-rpc-api` |
+| Optimizar queries lentos a Odoo o reducir timeouts | `@odoo-performance-tuner` |
+| Crear o modificar componentes UI / pantallas / cards | `@frontend-ui-dark-ts` |
+| Diseñar o modificar tablas de Supabase / migraciones | `@database-design` |
+| Trabajar con OTP, JWT, roles o permisos | `@auth-implementation-patterns` |
+| Crear o modificar API routes en `src/app/api/` | `@api-security-best-practices` |
+| Escribir tests (cuando se agreguen al proyecto) | `@e2e-testing-patterns` |
+| Diagnosticar queries lentos en Supabase | `@database-optimizer` |
