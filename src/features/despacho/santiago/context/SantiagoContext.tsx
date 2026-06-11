@@ -198,13 +198,13 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     // Realtime subscription (instant when WebSocket works)
     const unsub = subscribeToSessionState('santiago', userId, handleRemote);
 
-    // Polling fallback every 3 s — guarantees sync even when Realtime drops
+    // Polling fallback every 15 s — only fires when Realtime is disconnected (3 s was too aggressive)
     const pollId = setInterval(async () => {
       try {
         const remote = await fetchSessionState('santiago');
         if (remote) handleRemote(remote);
       } catch {}
-    }, 3000);
+    }, 15000);
 
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);

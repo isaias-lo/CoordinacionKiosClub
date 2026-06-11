@@ -9,7 +9,7 @@ import {
   Map, Globe, MapPin, Activity, Navigation as NavIcon,
   Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, Search,
+  LogOut, Users, Search, ArrowLeftRight, Layers,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
@@ -28,8 +28,9 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/tiendas':                 Store,
   '/registros':               FileText,
   '/incidencias':             AlertTriangle,
-  '/control-interno':         Shield,
-  '/recepcion-tienda':        Inbox,
+  '/control-interno':                Shield,
+  '/control-interno/control-cruce': ArrowLeftRight,
+  '/recepcion-tienda':               Inbox,
   '/validacion-tienda':       CheckSquare,
   '/admin/tiendas':           Settings2,
   '/despacho/config-tiendas': Settings2,
@@ -47,6 +48,7 @@ const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {
   'control-interno':{ Icon: Shield,        color: '#10B981' },
   auditoria:        { Icon: ClipboardCheck,color: '#9333EA' },
   abastecimiento:   { Icon: PackageCheck,  color: '#F59E0B' },
+  otros:            { Icon: Layers,        color: '#6B7280' },
 };
 
 /* ── Helpers ────────────────────────────────────────────────────── */
@@ -318,8 +320,7 @@ export function AppSidebar() {
             collapsed={isCollapsed}
             routes={[
               { path: '/admin/usuarios',          label: 'Usuarios'     },
-              { path: '/admin/tiendas',           label: 'Tiendas'      },
-              { path: '/despacho/config-tiendas', label: 'Config. Tiendas' },
+              { path: '/despacho/config-tiendas', label: 'Config. Despacho' },
             ]}
           />
         )}

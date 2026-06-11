@@ -41,15 +41,13 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // getSession() validates the JWT locally from the cookie — no network call on every request.
+  // When the JWT expires, @supabase/ssr refreshes it automatically (one call per ~1h).
+  // getUser() was making a round-trip to Supabase auth on every navigation, causing 504s under load.
   let user = null;
   try {
-    const result = await Promise.race([
-      supabase.auth.getUser(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('auth_timeout')), 12_000)
-      ),
-    ]);
-    user = result.data?.user ?? null;
+    const { data: { session } } = await supabase.auth.getSession();
+    user = session?.user ?? null;
   } catch {
     const cleanResp = NextResponse.redirect(new URL('/login', request.url));
     request.cookies.getAll()

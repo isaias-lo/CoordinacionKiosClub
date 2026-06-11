@@ -48,10 +48,15 @@ export const MODULE_GROUPS: ModuleGroup[] = [
   {
     id: 'control-interno', label: 'Control Interno', color: '#10B981',
     routes: [
-      { path: '/control-interno',   label: 'Control Interno'    },
-      { path: '/recepcion-tienda',  label: 'Recepción Tienda'   },
-      { path: '/validacion-tienda', label: 'Validación Tienda'  },
-      { path: '/admin/tiendas',     label: 'Config. Tiendas'    },
+      { path: '/control-interno/control-cruce',  label: 'Control Cruce'      },
+      { path: '/admin/tiendas',                  label: 'Config. Tiendas'    },
+    ],
+  },
+  {
+    id: 'otros', label: 'Otros', color: '#6B7280',
+    routes: [
+      { path: '/recepcion-tienda', label: 'Recepción Tienda'  },
+      { path: '/validacion-tienda', label: 'Validación Tienda' },
     ],
   },
   {
@@ -81,6 +86,7 @@ const EXTRA_REAL_PATHS: string[] = [
   '/historial', '/recepcion', '/despacho-hub', '/despacho/conteo',
   '/despacho/santiago/rutas', '/despacho/config-tiendas',
   '/admin/usuarios', '/admin/calendario',
+  '/control-interno', // placeholder, no acceso directo desde sidebar
 ];
 
 // Conjunto de paths válidos para asignar a un rol (sidebar + reales no-sidebar).

@@ -36,11 +36,16 @@ export function useOdooProgress(): Map<string, StoreProgress> {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void load(); }, 800);
+    };
     const channel = supabase
       .channel('odoo-progress-shared')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_session_state', filter: `tipo=eq.odoo-progress` }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_session_state', filter: `tipo=eq.odoo-progress` }, debounced)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(channel); if (timer) clearTimeout(timer); };
   }, [load]);
 
   return map;

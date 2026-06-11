@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
 import { getStoreGroup, GROUP_LABELS } from '../picking-utils';
@@ -61,7 +62,7 @@ export const StoreListPanel = React.memo(function StoreListPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-4 pt-4 pb-3 border-b border-border flex-shrink-0">
-        <div className="font-barlow-condensed text-[14px] font-bold text-navy uppercase tracking-widest mb-2 flex items-center gap-2">
+        <div className="font-barlow-condensed text-[14px] font-semibold text-navy uppercase tracking-widest mb-2 flex items-center gap-2">
           Tiendas de hoy
           {storesLoading
             ? <span className="text-[12px] text-text-3 font-normal normal-case">cargando…</span>
@@ -72,14 +73,14 @@ export const StoreListPanel = React.memo(function StoreListPanel({
             <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{selectedCods.length} sel.</span>
           )}
         </div>
-        <div className="flex items-center gap-2 bg-[#F5F6FA] border border-border rounded-xl px-3 py-2.5">
+        <div className="flex items-center gap-2 bg-[var(--color-bg)] border border-border rounded-xl px-3 py-2">
           <svg className="w-4 h-4 text-text-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
           </svg>
           <input type="text" value={q} onChange={e => setQ(e.target.value)}
             placeholder="Buscar tienda…"
             className="flex-1 bg-transparent border-none outline-none text-[14px] font-barlow text-text min-w-0" />
-          {q && <button onClick={() => setQ('')} className="text-text-3 border-none bg-transparent cursor-pointer text-[18px] leading-none shrink-0">×</button>}
+          {q && <button onClick={() => setQ('')} className="text-text-3 border-none bg-transparent cursor-pointer text-[14px] leading-none shrink-0">×</button>}
         </div>
         {isFallback && !storesLoading && (
           <div className="mt-1.5 text-[12px] text-text-3 italic">
@@ -96,8 +97,8 @@ export const StoreListPanel = React.memo(function StoreListPanel({
           const style = GROUP_STYLE[gKey];
           return (
             <div key={gKey}>
-              <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-widest sticky top-0 z-10"
-                style={{ background: style.bg, color: style.color, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+              <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-widest sticky top-0 z-10"
+                style={{ background: style.bg, color: style.color, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                 {GROUP_LABELS[gKey]} ({stores.length})
               </div>
               {stores.map(store => {
@@ -114,14 +115,14 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const opCount     = ops.length;
                 return (
                   <button key={store.cod} onClick={() => onToggleStore(store.cod)} disabled={isLoading}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 border-b border-border cursor-pointer text-left transition-all disabled:cursor-wait"
+                    className="w-full flex items-center gap-2 px-4 py-3 border-b border-border cursor-pointer text-left transition-all disabled:cursor-wait"
                     style={{
                       background:  isSelected ? 'rgba(217,119,6,0.09)' : 'transparent',
                       borderLeft: `4px solid ${storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'transparent'}`,
                     }}>
                     <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all"
                       style={{ borderColor: storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'rgba(26,37,80,0.2)', background: isSelected ? (storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : '#D97706') : 'transparent' }}>
-                      {isSelected && <span className="text-white text-[11px] font-bold leading-none">✓</span>}
+                      {isSelected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </div>
                     <span className="font-mono text-[13px] font-bold shrink-0 px-2 py-0.5 rounded-lg"
                       style={{ background: isSelected ? 'rgba(217,119,6,0.15)' : 'rgba(26,37,80,0.07)', color: isSelected ? '#D97706' : '#374151' }}>
@@ -130,8 +131,8 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                     <span className="text-[14px] truncate flex-1" style={{ color: isSelected ? '#B45309' : '#374151', fontWeight: isSelected ? 600 : 400 }}>
                       {store.name}
                     </span>
-                    {isLoading && <span className="text-[14px] shrink-0">⏳</span>}
-                    {hasError && !isLoading && <span className="text-[13px] shrink-0" title="Error al cargar — haz clic para reintentar">⚠️</span>}
+                    {isLoading && <span className="shrink-0"><Loader2 size={14} className="animate-spin text-text-3" /></span>}
+                    {hasError && !isLoading && <span className="shrink-0" title="Error al cargar — haz clic para reintentar"><AlertTriangle size={14} className="text-amber-600" /></span>}
                     {storeStatus === 'complete' && (
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
                         style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>

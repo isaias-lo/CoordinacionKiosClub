@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
  *                    e.g. "picking_pallets:date=eq.2026-06-08,despacho_rm"
  * @param onRefresh   Callback invoked on any data change. Keep it stable (useCallback).
  * @param enabled     Pass false to pause the subscription.
- * @param pollMs      Polling fallback interval in ms (default 15 000).
+ * @param pollMs      Polling fallback interval in ms (default 15 000). Only fires when WebSocket is disconnected.
  * @param debounceMs  Debounce realtime events in ms (default 0 = no debounce).
  */
 export function useRealtimeRefresh(
@@ -21,9 +21,10 @@ export function useRealtimeRefresh(
   pollMs = 15000,
   debounceMs = 0,
 ): void {
-  const cbRef    = useRef(onRefresh);
-  cbRef.current  = onRefresh;
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cbRef       = useRef(onRefresh);
+  cbRef.current     = onRefresh;
+  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectedRef = useRef(false);
 
   useEffect(() => {
     if (!enabled || !tableKey) return;
@@ -53,12 +54,20 @@ export function useRealtimeRefresh(
       ch = ch.on('postgres_changes', opts, fire);
     }
 
-    ch.subscribe();
+    ch.subscribe((status) => {
+      const wasConnected = connectedRef.current;
+      connectedRef.current = status === 'SUBSCRIBED';
+      // Refresh once on reconnect to catch any changes missed during the gap
+      if (!wasConnected && connectedRef.current) fire();
+    });
 
-    // Polling fallback
-    const pollId = setInterval(() => cbRef.current(), pollMs);
+    // Polling fallback — only fires when WebSocket is disconnected
+    const pollId = setInterval(() => {
+      if (!connectedRef.current) cbRef.current();
+    }, pollMs);
 
     return () => {
+      connectedRef.current = false;
       supabase.removeChannel(ch);
       clearInterval(pollId);
       if (timerRef.current) clearTimeout(timerRef.current);

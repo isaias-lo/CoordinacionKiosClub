@@ -133,6 +133,14 @@
   .btn-corp-accent {
     @apply btn bg-kred text-white hover:brightness-110 active:scale-[0.97];
   }
+
+  /* Botones del compañero (Config Tiendas enterprise) — conservados */
+  .btn-info {
+    @apply btn bg-info text-white hover:brightness-110 active:scale-[0.97];
+  }
+  .btn-outline {
+    @apply btn bg-white border border-border text-text-2 hover:bg-bg active:scale-[0.97];
+  }
 }
   /* Despacho page: reset fixed/overflow for print */
   .despacho-root {

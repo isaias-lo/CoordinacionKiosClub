@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi'; // deprecated — config now server-side
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
@@ -38,6 +38,7 @@ import CalendarioColumnas     from '@/features/control-interno/CalendarioColumna
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -148,6 +149,8 @@ export function PickingScreen() {
   const palletSlotsRef = useRef<PalletSlot[]>([]);
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
+  // Decreasing counter for optimistic (temp) slot IDs — negative to never collide with real DB ids
+  const tempIdRef = useRef(-1);
 
   // Derived: count per state_key
   const pickerPallets = useMemo(() => {
@@ -222,15 +225,18 @@ export function PickingScreen() {
 
   const loadSessionState = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picking-session-state?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: SessionStateRow[] };
-      setSessionStateRows(json.data ?? []);
+      const { data } = await supabase
+        .from('picking_session_state')
+        .select('state_key, picker_label, tipo')
+        .eq('date', todayISO());
+      if (data) setSessionStateRows(data as SessionStateRow[]);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadSessionState(); }, [loadSessionState]);
-  useRealtimeRefresh('picking_session_state', loadSessionState);
+  // Debounce 1 s: upsertSessionState fires on every keystroke (500 ms debounced writes),
+  // so the subscriber would reload on every character typed by any supervisor.
+  useRealtimeRefresh('picking_session_state', loadSessionState, true, 15000, 1000);
 
   // Merge server state into local — skip keys actively being edited by this client
   // Only names are synced cross-client; tipos are managed locally per client (date-scoped localStorage)
@@ -308,18 +314,16 @@ export function PickingScreen() {
 
   const loadPrintRecords = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picking-prints?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: PrintRecord[] };
-      const sorted = [...(json.data ?? [])].sort(
-        (a, b) => new Date(a.printed_at).getTime() - new Date(b.printed_at).getTime()
-      );
-      setPrintRecords(sorted);
+      const { data } = await supabase
+        .from('picking_prints')
+        .select('state_key, printed_at, picker_label, pallets, tipo, printed_by_name')
+        .eq('date', todayISO())
+        .order('printed_at', { ascending: true });
+      if (data) setPrintRecords(data as PrintRecord[]);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadPrintRecords(); }, [loadPrintRecords]);
-  useRealtimeRefresh('picking_prints', loadPrintRecords);
   useEffect(() => { setMounted(true); }, []);
 
   // ── Name change history ────────────────────────────────────────────────────
@@ -327,33 +331,107 @@ export function PickingScreen() {
 
   const loadNameChanges = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picker-name-changes?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: PickerNameChange[] };
-      setNameChanges(json.data ?? []);
+      const date = todayISO();
+      const { data } = await supabase
+        .from('picker_name_changes')
+        .select('id, picker_key, old_name, new_name, changed_by_name, changed_at')
+        .gte('changed_at', `${date}T00:00:00.000Z`)
+        .lte('changed_at', `${date}T23:59:59.999Z`)
+        .order('changed_at', { ascending: false });
+      if (data) setNameChanges(data as PickerNameChange[]);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadNameChanges(); }, [loadNameChanges]);
-  useRealtimeRefresh('picker_name_changes', loadNameChanges);
+  // Single channel for both print records and name changes — reduces WebSocket channels by one.
+  // A change on either table is infrequent enough that reloading both callbacks is acceptable.
+  useRealtimeRefresh('picking_prints,picker_name_changes', useCallback(() => {
+    void loadPrintRecords();
+    void loadNameChanges();
+  }, [loadPrintRecords, loadNameChanges]));
 
   // ── Pallet slots: DB-backed, real-time ──────────────────────────────────────
+  // Uses the browser Supabase client directly to avoid the Next.js API round-trip on
+  // every realtime-triggered reload. RLS on picking_pallets allows all authenticated users.
   const loadPalletSlots = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picking-pallets?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: PalletSlot[] };
-      // Excluir IDs creados desde Bodega (origen "<cod>__bodega") — solo viven en Bodega/Enrutador/Seguimiento
-      const slots = (json.data ?? []).filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
-      setPalletSlots(slots);
+      const { data } = await supabase
+        .from('picking_pallets')
+        .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at')
+        .eq('date', todayISO())
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
+      if (data) {
+        // Excluir IDs creados desde Bodega (origen "<cod>__bodega") — solo viven en Bodega/Enrutador/Seguimiento
+        const slots = (data as PalletSlot[]).filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
+        setPalletSlots(slots);
+      }
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
-  useRealtimeRefresh(`picking_pallets:date=eq.${todayISO()}`, loadPalletSlots, true, 15000, 800);
+  // Incremental realtime: apply INSERT/UPDATE/DELETE deltas directly to local state
+  // instead of doing a full DB reload on every event. Eliminates the query storm where
+  // N supervisors each reload the full table on every change.
+  // onReconnect = loadPalletSlots ensures a full reload if the WebSocket was disconnected
+  // (catching any events missed during the gap).
+  useEffect(() => {
+    const unsub = subscribeToPickingPallets(
+      ({ eventType, new: newRow, old: oldRow }) => {
+        // Extract only the PalletSlot fields we care about from the full payload row
+        const toSlot = (r: Record<string, unknown>): PalletSlot => ({
+          id:           r.id as number,
+          store_cod:    r.store_cod as string,
+          state_key:    r.state_key as string,
+          picker_label: (r.picker_label as string) ?? '',
+          tipo:         (r.tipo as string) ?? 'P',
+          contenido:    (r.contenido as string) ?? 'hogar',
+          refs:         (r.refs as string) ?? '',
+          created_at:   r.created_at as string,
+        });
+
+        if (eventType === 'INSERT') {
+          const isActive = (newRow as { is_active?: boolean }).is_active;
+          if (isActive !== false) {
+            const slot = toSlot(newRow as Record<string, unknown>);
+            setPalletSlots(prev =>
+              prev.some(s => s.id === slot.id) ? prev : [...prev, slot]
+            );
+          }
+        } else if (eventType === 'UPDATE') {
+          const row = newRow as Record<string, unknown> & { is_active?: boolean };
+          const id  = row.id as number;
+          if (!row.is_active) {
+            // Slot deactivated (e.g. combine operation) — remove from visible state
+            setPalletSlots(prev => prev.filter(s => s.id !== id));
+          } else {
+            setPalletSlots(prev =>
+              prev.map(s => s.id !== id ? s : toSlot(row))
+            );
+          }
+        } else if (eventType === 'DELETE') {
+          const id = (oldRow as { id?: number }).id;
+          if (id !== undefined) setPalletSlots(prev => prev.filter(s => s.id !== id));
+        }
+      },
+      loadPalletSlots, // full reload on WebSocket reconnect
+    );
+    return unsub;
+  }, [loadPalletSlots]);
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
     const date = todayISO();
+    // Optimistic update: add a temp slot immediately so the counter in PickerGroupCard
+    // reflects the in-flight add. This prevents the rapid-click race condition where
+    // clicking + multiple times before the POST returns creates duplicate slots.
+    const tempId = tempIdRef.current--;
+    const tempSlot: PalletSlot = {
+      id: tempId, store_cod: storeCod, state_key: stateKey,
+      picker_label: pickerLabel, tipo, contenido, refs,
+      created_at: new Date().toISOString(),
+    };
+    setPalletSlots(prev => [...prev, tempSlot]);
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
@@ -362,24 +440,38 @@ export function PickingScreen() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
-        // Encolar para reintentar al reconectar
+        setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+        showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
         enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
       if (json.data) {
-        setPalletSlots(prev => [...prev, json.data!]);
+        // 4-case dedup: the incremental INSERT handler may have already added the real slot
+        // (realtime via WebSocket arrives faster than the HTTP response).
+        // Possible states: (A) only temp, (B) temp + real, (C) only real, (D) neither.
+        setPalletSlots(prev => {
+          const hasTemp = prev.some(s => s.id === tempId);
+          const hasReal = prev.some(s => s.id === json.data!.id);
+          if (hasTemp && hasReal) return prev.filter(s => s.id !== tempId); // (B) drop temp
+          if (hasTemp)            return prev.map(s => s.id === tempId ? json.data! : s); // (A) swap
+          if (!hasReal)           return [...prev, json.data!]; // (D) add real
+          return prev;           // (C) real already there, nothing to do
+        });
         pickingFetch('/api/despacho-picking', {
           method: 'POST',
           body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date }),
         }).catch(err => console.error('[picking] despacho-picking error', err));
+      } else {
+        setPalletSlots(prev => prev.filter(s => s.id !== tempId));
       }
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
-      // Sin red: encolar para reintentar al reconectar
+      setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+      showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
       enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
     }
-  }, [pickingFetch]);
+  }, [pickingFetch, showToast]);
 
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
     if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
@@ -408,12 +500,13 @@ export function PickingScreen() {
   // ── Canonical names: shared across all supervisor desktops ────────────────────
   const loadCanonicalNames = useCallback(async () => {
     try {
-      const res  = await pickingFetch('/api/picker-canonical-names');
-      if (!res.ok) return;
-      const json = await res.json() as { data?: { key: string; display_name: string }[] };
-      if (!json.data?.length) return;
+      const { data } = await supabase
+        .from('picker_canonical_names')
+        .select('key, display_name')
+        .order('key');
+      if (!data?.length) return;
       const next: Record<string, string> = {};
-      for (const r of json.data) if (r.display_name) next[r.key] = r.display_name;
+      for (const r of data) if (r.display_name) next[r.key] = r.display_name;
       setCanonicalNames(next);
     } catch { /* silent */ }
   }, []);
@@ -426,18 +519,17 @@ export function PickingScreen() {
   // Sobreescribe TIENDAS_INICIAL con los datos editados en /admin/tiendas.
   const loadTiendaOverrides = useCallback(async () => {
     try {
-      const res = await fetch('/api/tiendas');
-      if (!res.ok) return;
-      const json = await res.json() as { tiendas?: { codigo: string; nombre: string }[] };
+      const { data } = await supabase
+        .from('tiendas')
+        .select('codigo, nombre');
+      if (!data) return;
       const overrides: Record<string, string> = {};
-      for (const t of json.tiendas ?? []) {
-        if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
-      }
+      for (const t of data) if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
       setTiendaOverrides(overrides);
     } catch { /* silent */ }
   }, []);
   useEffect(() => { void loadTiendaOverrides(); }, [loadTiendaOverrides]);
-  useRealtimeRefresh('tiendas', loadTiendaOverrides);
+  // tiendas is a static lookup table — no realtime subscription needed
   // Cuando los overrides cargan (puede ser después del calendario), re-aplicar nombres
   useEffect(() => {
     if (Object.keys(tiendaOverrides).length === 0) return;
@@ -601,7 +693,10 @@ export function PickingScreen() {
     return () => clearInterval(id);
   }, [selectedCods, fetchOpsForStore]);
 
-  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it
+  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it.
+  // Debounced 2s via useEffect cleanup: if opsMap changes again before timer fires, the
+  // previous POST is cancelled and a new 2s window starts. Prevents a burst of writes when
+  // many stores load at once (e.g. on initial page load with N tiendas selected).
   useEffect(() => {
     const entries = Object.entries(opsMap).map(([cod, ops]) => ({
       cod,
@@ -609,11 +704,14 @@ export function PickingScreen() {
       done: ops.filter(o => o.state === 'done').length,
     }));
     if (entries.length === 0) return;
-    fetch('/api/picking-store-progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stores: entries }),
-    }).catch(e => console.error('[picking] sync progress:', e));
+    const timer = setTimeout(() => {
+      fetch('/api/picking-store-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stores: entries }),
+      }).catch(e => console.error('[picking] sync progress:', e));
+    }, 2000);
+    return () => clearTimeout(timer);
   }, [opsMap]);
 
   const handleToggleStore = useCallback(async (cod: string) => {
@@ -904,7 +1002,7 @@ export function PickingScreen() {
 
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
-        style={{ background: '#1E293B', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <button className="lg:hidden border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
           style={{ background: 'rgba(255,255,255,0.07)' }}
           onClick={() => panelView === 'planilla' ? setPanelView('stores') : router.push('/')}>
@@ -985,7 +1083,7 @@ export function PickingScreen() {
             onTouchStart={handlePanelTouchStart}
           >
             <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
-            <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex flex-col gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => (
                 <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
               ))}
@@ -1008,8 +1106,8 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab bar ── */}
-          <div className="flex flex-shrink-0 print:hidden"
-            style={{ background: '#fff', borderBottom: '1px solid #E2E8F0' }}>
+          <div className="flex flex-shrink-0 print:hidden overflow-x-auto"
+            style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
             {([
               { key: 'monitoreo',     label: 'Monitoreo'   },
               { key: 'actividad',     label: 'Actividad'   },
@@ -1021,10 +1119,10 @@ export function PickingScreen() {
               const active = rightTab === tab.key;
               return (
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                  className="relative flex-1 py-2.5 text-[12px] font-medium cursor-pointer transition-colors border-none bg-transparent"
+                  className="relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3"
                   style={{
-                    color: active ? '#1E40AF' : '#64748B',
-                    borderBottom: active ? '2px solid #1E40AF' : '2px solid transparent',
+                    color: active ? 'var(--color-info)' : '#64748B',
+                    borderBottom: active ? '2px solid var(--color-info)' : '2px solid transparent',
                   }}>
                   {tab.label}
                 </button>
@@ -1101,9 +1199,9 @@ export function PickingScreen() {
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
                         style={{
-                          background: sectionFilter === key ? '#1E40AF' : '#fff',
+                          background: sectionFilter === key ? 'var(--color-info)' : '#fff',
                           color:      sectionFilter === key ? '#fff'    : '#64748B',
-                          borderColor: sectionFilter === key ? '#1E40AF' : '#E2E8F0',
+                          borderColor: sectionFilter === key ? 'var(--color-info)' : 'var(--color-border)',
                         }}>
                         {label}
                       </button>
@@ -1124,7 +1222,7 @@ export function PickingScreen() {
 
               <div className="mb-4 flex items-center justify-between print:hidden">
                 <div>
-                  <div className="text-[15px] font-semibold text-text-2">
+                  <div className="text-[14px] font-semibold text-text-2">
                     {filteredGroups.length === 0
                       ? 'Sin operaciones de Abastecimiento hoy'
                       : `${filteredGroups.length} picker${filteredGroups.length !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`}
@@ -1139,7 +1237,7 @@ export function PickingScreen() {
                   onClick={() => selectedCods.forEach(cod => void fetchOpsForStore(cod))}
                   disabled={loadingCods.length > 0}
                   className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer border rounded px-3 py-1.5 transition-all disabled:opacity-40"
-                  style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                  style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                   <RefreshCw size={12} className={loadingCods.length > 0 ? 'animate-spin' : ''} />
                   {loadingCods.length > 0 ? 'Cargando…' : 'Actualizar'}
                 </button>
@@ -1154,7 +1252,7 @@ export function PickingScreen() {
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 return (
-                  <div key={cod} className="mb-8">
+                  <div key={cod} className="mb-6">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
                       <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
                       <span className="text-[16px] text-text-2 font-semibold">{nameFor(cod)}</span>
@@ -1170,9 +1268,9 @@ export function PickingScreen() {
                           {doneOps}/{totalOps} ops
                         </span>
                       )}
-                      {isLoading && <span className="text-[14px] text-text-3">Cargando…</span>}
+                      {isLoading && <span className="text-[14px] text-text-3 font-medium">Cargando…</span>}
                       {!isLoading && storeGroups.length === 0 && (
-                        <span className="text-[14px] text-text-3 italic">Sin operaciones de Abastecimiento hoy</span>
+                        <span className="text-[14px] text-text-3 font-medium">Sin operaciones de Abastecimiento hoy</span>
                       )}
                       {/* Per-store print button */}
                       {(() => {
@@ -1182,7 +1280,7 @@ export function PickingScreen() {
                           <button onClick={() => printStoreLabels(cod)}
                             className="ml-auto print:hidden text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
                             style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                            🖨 {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                            <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
                           </button>
                         );
                       })()}
@@ -1195,7 +1293,7 @@ export function PickingScreen() {
                       if (!count) return null;
                       return (
                         <div className="mb-3 print:hidden flex items-center gap-3 bg-white border border-[rgba(220,38,38,0.2)] rounded-xl px-4 py-2.5">
-                          <span className="text-[20px] shrink-0">⚠️</span>
+                          <AlertTriangle size={18} className="shrink-0" style={{color:'#DC2626'}} />
                           <div className="flex-1 text-[13px]" style={{ color: '#B91C1C' }}>
                             <span className="font-bold">{count} operación{count !== 1 ? 'es' : ''} sin responsable en Odoo</span>
                             {' '}— no generarán etiqueta. Asigna picker en Odoo y recarga.
@@ -1292,7 +1390,7 @@ export function PickingScreen() {
                           return (
                             <div className="mb-4 print:hidden">
                               <div className="flex items-center gap-3 mb-2">
-                                <span className="font-barlow-condensed text-[22px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
+                                <span className="font-barlow-condensed text-[18px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
                                   {meta.label}
                                 </span>
                                 {total > 0 && (
@@ -1316,7 +1414,7 @@ export function PickingScreen() {
                         return (
                           <div className="space-y-4">
                             {/* Grid de 3 columnas fijas — todas siempre visibles */}
-                            <div className="grid grid-cols-3 gap-4 items-start">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
@@ -1330,7 +1428,7 @@ export function PickingScreen() {
                                     ) : (
                                       <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
                                         style={{ borderColor: meta.color + '28', background: meta.bg }}>
-                                        <div className="text-[28px] mb-1" style={{ opacity: 0.18 }}>□</div>
+                                        <div className="mb-1" style={{ opacity: 0.18 }}><Package size={28} /></div>
                                         <div className="text-[12px] font-semibold text-center" style={{ color: meta.color, opacity: 0.5 }}>
                                           Sin operaciones aún
                                         </div>

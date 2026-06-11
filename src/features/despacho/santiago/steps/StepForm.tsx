@@ -14,6 +14,7 @@ import { useOdooProgress } from '../../shared/useOdooProgress';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { processPdf } from '../../regiones/utils/pdfUtils';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -533,15 +534,16 @@ export function StepForm() {
       setPickingSlotsFull(full);
     };
 
-    load();
+    void load();
 
-    const today = new Date().toISOString().slice(0, 10);
-    const channel = supabase
-      .channel('picking-pallets-santiago')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, () => load())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    // Debounce: bursts of events (e.g. combine op touching many rows) collapse into one reload
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void load(); }, 600);
+    };
+    const unsub = subscribeToPickingPallets(debounced, load);
+    return () => { unsub(); if (timer) clearTimeout(timer); };
   }, []);
 
   const prevContenidoRef     = useRef<ContenidoSantiago>('Hogar');

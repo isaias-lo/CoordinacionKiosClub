@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { BarcodeCard } from '../../despacho/shared/BarcodeCard';
 
 const DISMISSED_KEY = 'combine_alerts_dismissed_v1';
@@ -59,6 +60,7 @@ export function CombineAlertsPanel() {
   const [groups,    setGroups]    = useState<CombinedGroup[]>([]);
   const [dismissed, setDismissed] = useState<Set<number>>(loadDismissed);
   const [printSlot, setPrintSlot] = useState<CombinedGroup['reprints'][0] | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     const d = new Date();
@@ -141,14 +143,12 @@ export function CombineAlertsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Suscripción Realtime a cambios en picking_pallets
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const channel = supabase
-      .channel('combine-alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, load)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const debounced = () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => { void load(); }, 600);
+    };
+    return subscribeToPickingPallets(debounced, load);
   }, [load]);
 
   const dismiss = (newId: number) => {
