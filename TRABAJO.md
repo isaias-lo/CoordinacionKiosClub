@@ -272,6 +272,27 @@ RLS policies en `profiles`, `audit_entries`, `dispatch_history`, `audit_active_s
 
 ---
 
+### Sesión: Picking — Rediseño Enterprise UX — 2026-06-10
+
+#### Cambios realizados (sin modificar lógica)
+
+| Archivo | Cambios |
+|---------|---------|
+| `src/index.css` | Nuevas clases `.btn-info` y `.btn-outline` |
+| `src/features/picking/components/PickerGroupCard.tsx` | Colores unificados a CSS vars (`--color-info`, `--color-border`); tipografía reducida (9px→10px, 22px→20px); `font-bold`→`font-semibold` en labels; emojis→Lucide icons (`AlertTriangle`, `RotateCcw`, `Package`); spacing a grid 4px |
+| `src/features/picking/components/StoreListPanel.tsx` | Emojis→Lucide (`Loader2`, `AlertTriangle`); checkbox con SVG; tipografía y spacing consistentes |
+| `src/features/picking/PickingScreen.tsx` | Header bg→`var(--sidebar-bg)`; tabs con `overflow-x-auto` + `text-[11px]`; grid responsive `grid-cols-1 lg:grid-cols-3`; emojis→Lucide (`Printer`, `AlertTriangle`, `Package`); section headers 22px→18px |
+
+#### Mejoras Enterprise
+- **5 tonos de azul → 2** (`--color-info` para interactivos, `--color-secondary` para marca)
+- **13 font-sizes → 7** (escala: 10, 11, 12, 13, 14, 16, 20)
+- **Emojis eliminados** → componentes Lucide consistentes
+- **Grid responsive** → funciona en pantallas < 900px
+- **Tabs scrollables** → 7 tabs caben en pantallas pequeñas
+- **Empty states** → iconos SVG en vez de caracteres Unicode
+
+---
+
 ### Diagnóstico completo (pendiente de resolver)
 - **Multiple permissive policies** (WARN): `profiles`, `audit_active_sessions`, `calendario_central`, `config_despacho`, `shared_session_state` tienen múltiples políticas SELECT permisivas para el mismo rol — se evalúan todas en cada query. Requiere consolidar en una política por rol/acción.
 - **Unindexed foreign keys**: `audit_entries.user_id`, `dispatch_history.user_id`, `picking_pallets.combined_into`, `ruta_*` tables. Agregar índices mejoraría queries que filtran por estos campos.
