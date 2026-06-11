@@ -289,8 +289,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
             </div>
           ) : assignedNums.length === 0 ? (
             <div className="h-full min-h-[180px] flex flex-col items-center justify-center gap-3 text-text-3">
-              <div className="text-[40px] opacity-30">▊▊▊▊</div>
-              <div className="text-[14px] text-center">Ingresa la cantidad de unidades<br/>para generar los códigos</div>
+              <Package size={32} className="opacity-30" />
+              <div className="text-[14px] text-center">Ingresa unidades para generar códigos</div>
             </div>
           ) : (
             <div>
@@ -308,12 +308,12 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                     <>
                       <button onClick={() => setSelectedIndices(new Set())}
                         className="text-[12px] cursor-pointer px-2.5 py-1.5 rounded border transition-all"
-                        style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                        style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                         Limpiar
                       </button>
                       <button onClick={handlePrintSelected}
                         className="flex items-center gap-1.5 text-[12px] font-medium cursor-pointer px-3 py-1.5 rounded transition-all active:scale-95"
-                        style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>
+                        style={{ background: 'var(--color-info)', color: '#fff', border: 'none' }}>
                         <Printer size={13} /> {selectedIndices.size}
                       </button>
                     </>
@@ -321,8 +321,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   <button onClick={onPrint}
                     className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer px-3.5 py-1.5 rounded transition-all active:scale-95"
                     style={isPrinted
-                      ? { background: '#fff', color: '#16A34A', border: '1px solid #BBF7D0' }
-                      : { background: '#1E40AF', color: '#fff', border: 'none' }}>
+                      ? { background: '#fff', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }
+                      : { background: 'var(--color-info)', color: '#fff', border: 'none' }}>
                     <Printer size={13} />
                     {isPrinted ? 'Re-imprimir' : selectedIndices.size > 0 ? 'Todas' : 'Imprimir'}
                   </button>
