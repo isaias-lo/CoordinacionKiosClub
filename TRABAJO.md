@@ -2,6 +2,75 @@
 
 ---
 
+## Sesión: Picking — Lecturas a browser client + quitar realtime estáticas — 2026-06-11
+
+### Cambios realizados
+
+Conversión de las 4 funciones de carga restantes a usar el browser Supabase client directamente (elimina Next.js API round-trip en cada recarga):
+
+| Función | Antes | Después |
+|---------|-------|---------|
+| `loadPrintRecords` | `pickingFetch('/api/picking-prints?date=...')` + sort client-side | `supabase.from('picking_prints')...order('printed_at')` |
+| `loadNameChanges` | `pickingFetch('/api/picker-name-changes?date=...')` | `supabase.from('picker_name_changes')...gte/lte` |
+| `loadCanonicalNames` | `pickingFetch('/api/picker-canonical-names')` | `supabase.from('picker_canonical_names')...order('key')` |
+| `loadTiendaOverrides` | `fetch('/api/tiendas')` + `useRealtimeRefresh('tiendas', ...)` | `supabase.from('tiendas').select('codigo, nombre')` sin realtime |
+
+`tiendas` es tabla estática: eliminada su suscripción realtime (era innecesaria y sumaba un canal WebSocket por usuario).
+
+**Commit:** `perf(picking): convertir lecturas a browser client, quitar realtime en tablas estáticas`
+
+---
+
+## Sesión: Picking — Patrón incremental realtime — 2026-06-11
+
+### Cambio realizado
+
+`picking_pallets` ya no hace queries a la DB en cada evento realtime — aplica INSERT/UPDATE/DELETE directamente al estado local.
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/lib/pickingPalletsChannel.ts` | Listeners reciben el payload completo; `reloadListeners` para full reload en reconexión |
+| `src/features/picking/PickingScreen.tsx` | Handler incremental INSERT/UPDATE/DELETE; `addPalletSlot` POST handler con 4 casos para dedup (temp+real, solo temp, solo real, ninguno) |
+
+**Impacto:** Con 3 supervisores y N pallets, antes: 3×N queries a Supabase. Después: 0 queries adicionales — solo el WebSocket que ya existía.
+
+**Backward compat:** `StepForm`, `TiendasPage`, `CombineAlertsPanel` usan `subscribeToPickingPallets(load)` pasando `() => void` — TypeScript permite callbacks con menos parámetros, no requieren cambios.
+
+---
+
+## Sesión: Picking — Fix race condition + saturación servidor — 2026-06-11
+
+### Bugs corregidos
+
+| Bug | Síntoma | Fix |
+|-----|---------|-----|
+| Race condition `addPalletSlot` | Clicks rápidos creaban pallets duplicados porque el estado no se actualizaba hasta que el POST respondía | Update optimista: slot temporal (ID negativo) agregado a `palletSlots` ANTES del await. El contador sube inmediatamente → clicks siguientes ven el valor correcto |
+| Fallo silencioso al agregar pallet | Usuario no sabía que el POST falló, seguía clickeando, llenaba cola offline | Rollback del slot temporal + `showToast` con aviso al usuario en error y network error |
+| Saturación servidor | 7 canales WebSocket por usuario + cada recarga pasaba por Next.js API | (1) `loadPalletSlots` migrado a browser client directo (elimina hop API+supabaseServer) (2) canal `picking_pallets` usa singleton `subscribeToPickingPallets` (3) canales `picking_prints`+`picker_name_changes` consolidados en uno |
+| Índice sin uso | `picking_pallets_state_date` nunca usado por queries activas | Migration 040: drop del índice + drop índice duplicado en `control_cruce_skus` |
+
+### Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/features/picking/PickingScreen.tsx` | `addPalletSlot`: optimistic update + rollback + toast; `loadPalletSlots`: browser client directo; canal `picking_pallets`: singleton con debounce 800ms; canales prints+nameChanges: consolidados |
+| `supabase/migrations/040_picking_index_cleanup.sql` | Drop `picking_pallets_state_date` + drop `idx_skus_pick_det` (duplicado) |
+
+### Canales WebSocket antes → después
+
+| Antes (por usuario) | Después |
+|---------------------|---------|
+| picking_pallets (canal propio) | picking_pallets (singleton compartido) |
+| picking_prints | picking_prints + picker_name_changes (1 canal) |
+| picker_name_changes | — consolidado arriba |
+| picking_session_state | sin cambio |
+| picker_canonical_names | sin cambio |
+| tiendas | sin cambio |
+| presence | sin cambio |
+| **7 canales** | **5 canales** |
+
+---
+
 ## Sesión: Control Cruce — Estado actividades + Filtro fechaArmado — 2026-06-11
 
 ### Cambios realizados

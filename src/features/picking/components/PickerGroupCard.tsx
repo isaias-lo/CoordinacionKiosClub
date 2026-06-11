@@ -107,7 +107,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
             {group.operations.map(op => (
               <div key={op.id}
                 className={`flex items-start gap-2 ${group.operations.length > 1
-                  ? 'flex-1 min-w-[150px] border border-gray-100 rounded-xl p-3 bg-[#FAFAFA]'
+                  ? 'flex-1 min-w-[150px] border border-border rounded-lg p-3 bg-[#FAFAFA]'
                   : 'pb-2'
                 }`}>
                 <div className="flex-1 min-w-0">
@@ -135,7 +135,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 {op.state !== 'done' && (
                   <button onClick={() => onRefreshOp(op)} disabled={refreshingId === op.id}
                     className="shrink-0 border rounded p-1.5 cursor-pointer disabled:opacity-40"
-                    style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                    style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                     <RotateCcw size={12} className={refreshingId === op.id ? 'animate-spin' : ''} />
                   </button>
                 )}
@@ -145,16 +145,16 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
           {/* Nombre del picker */}
           <div>
-            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">
-              Nombre del picker <span className="text-amber-600 font-bold">*</span>
+            <label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide block mb-1.5">
+              Nombre del picker <span className="text-amber-600 font-semibold">*</span>
               <span className="ml-1 text-[11px] font-normal normal-case text-text-3">(se incluye en el código)</span>
             </label>
             <input type="text" value={displayName} onChange={e => onNameChange(e.target.value)}
               placeholder={`${group.key} — ingresa nombre real…`}
-              className="w-full border rounded-xl px-4 py-3 text-[16px] font-barlow text-text bg-white outline-none transition-colors"
+              className="w-full border rounded-lg px-4 py-3 text-[16px] font-barlow text-text bg-white outline-none transition-colors"
               style={{ borderColor: displayName ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.5)' }} />
             {!displayName && (
-              <div className="text-[12px] text-amber-600 mt-1">⚠ Se usará &quot;{group.key}&quot; si no ingresas nombre</div>
+              <div className="text-[12px] text-amber-600 mt-1"><AlertTriangle size={12} className="inline text-amber-600 mr-1" />Se usará &quot;{group.key}&quot; si no ingresas nombre</div>
             )}
           </div>
 
@@ -180,12 +180,12 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   <div key={tipo}
                     className="flex-1 flex flex-col items-center gap-2 py-2.5 px-1.5 rounded border transition-all"
                     style={{
-                      borderColor: active ? '#1E40AF' : '#E2E8F0',
+                      borderColor: active ? 'var(--color-info)' : 'var(--color-border)',
                       background: '#fff',
                     }}>
                     <div className="text-center leading-none">
-                      <div className="text-[14px] font-extrabold" style={{ color: active ? '#1E40AF' : '#64748B' }}>{tipo}</div>
-                      <div className="text-[9px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
+                      <div className="text-[14px] font-extrabold" style={{ color: active ? 'var(--color-info)' : '#64748B' }}>{tipo}</div>
+                      <div className="text-[10px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
                       <button
@@ -198,12 +198,12 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                           }
                         }}
                         className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer border"
-                        style={{ borderColor: '#E2E8F0', color: '#94A3B8', background: '#F8FAFC' }}>−</button>
-                      <span className="w-8 text-center text-[22px] font-bold leading-none"
+                        style={{ borderColor: 'var(--color-border)', color: '#94A3B8', background: '#fff' }}>−</button>
+                      <span className="w-8 text-center text-[20px] font-bold leading-none"
                         style={{ color: active ? '#1E293B' : '#CBD5E1' }}>{count}</span>
                       <button onClick={() => onTipoPalletsChange(tipo, count + 1)}
                         className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer"
-                        style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>+</button>
+                        style={{ background: 'var(--color-info)', color: '#fff', border: 'none' }}>+</button>
                     </div>
                   </div>
                 );
@@ -220,7 +220,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 </div>
                 <button onClick={() => setPendingDecrementTipo(null)}
                   className="text-[12px] font-medium px-2.5 py-1 rounded border cursor-pointer"
-                  style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                  style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                   Cancelar
                 </button>
                 <button onClick={() => {
@@ -240,7 +240,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
               <div className="mt-3 rounded px-3 py-2 flex items-center gap-2"
                 style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                 <span className="text-[11px]" style={{ color: '#92400E' }}>
-                  ⚠ Impreso por <strong>{lastPrint.printed_by_name}</strong>
+                  <AlertTriangle size={11} className="inline mr-1" style={{color:'#92400E'}} />Impreso por <strong>{lastPrint.printed_by_name}</strong>
                   {' · '}{new Date(lastPrint.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
@@ -249,7 +249,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
         </div>
 
         {/* RIGHT / BOTTOM */}
-        <div className={`${stickerBelow ? 'w-full border-t border-gray-100' : 'lg:w-[55%]'} p-4 bg-[#FAFAFA]`}>
+        <div className={`${stickerBelow ? 'w-full border-t border-border' : 'lg:w-[55%]'} p-4 bg-[#FAFAFA]`}>
           {!allDone ? (
             <div className="h-full min-h-[180px] flex flex-col gap-3">
               <div className="flex items-center gap-2 mb-1">
