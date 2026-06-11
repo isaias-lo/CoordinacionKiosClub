@@ -38,6 +38,49 @@
 
 ---
 
+### Sesión: Control Cruce — UX Enterprise + Bugs — 2026-06-10
+
+#### Bugs corregidos
+
+| Bug | Archivo | Descripción |
+|-----|---------|-------------|
+| Race condition `saveManual` | `ControlCruceContent.tsx` | `setManualMap` ahora usa updater funcional — elimina sobreescritura de campos al editar dos celdas rápido |
+| `exportToSheet` stale closure | `ControlCruceContent.tsx` | Lee `table.getFilteredRowModel()` en el momento del click, no desde closure |
+| `loadSkuCounts` URL overflow | `ControlCruceContent.tsx` + `skus/route.ts` | Cambiado a POST con body para evitar error 414 con 200+ pickings |
+| `removeSku` sin check HTTP | `SkuModal.tsx` | Verifica `res.ok` antes de quitar el chip de la UI |
+| `rowsWritten` incorrecto | `export-sheets/route.ts` | Reporta `dataRows.length` (filas reales con SKUs expandidos) |
+| Validación fechas | `ControlCruceContent.tsx` | Bloquea carga si `dateFrom > dateTo`; borde rojo en inputs |
+
+#### Mejoras UX Enterprise
+
+| Mejora | Descripción |
+|--------|-------------|
+| Barra de filtros de columna | DETALLE, AUDITADO, CORRECTA DEC., TIENDA, RESPONSABLE — dinámicos desde datos |
+| Paginación | 25/50/100/200 filas por página con controles primera/última |
+| Fila guardando | Resalte amarillo en la fila que se está persistiendo en Supabase |
+| Empty state filtros | Mensaje + botón limpiar cuando ninguna fila pasa los filtros activos |
+| Debug gated por rol | Panel debug solo visible para `role === 'admin'` |
+| Escape en SkuModal | `Escape` cierra el modal; delete con doble-click (confirmación inline 2.5s) |
+
+---
+
+### Sesión: Control Cruce — Filtros + Append — 2026-06-10
+
+#### Cambios realizados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/features/control-interno/ControlCruceContent.tsx` | Eliminado input `IDs Tipo` (state + label); agregado filtro de fechas `dateFrom`/`dateTo` con 2 inputs date; pasadas fechas al fetch de Odoo |
+| `src/app/api/odoo/route.ts` | `get_control_activities` ahora usa `dateFrom`/`dateTo` del body en vez del `oneWeekAgo` hardcoded |
+| `src/app/api/control-cruce/export-sheets/route.ts` | Exportación cambiada de `clear+update` a `append`; columna `FECHA EXPORTACIÓN` agregada; headers solo se escriben si la hoja está vacía |
+
+#### Funcionalidad
+- **Filtro fecha**: Selección de rango "DESDE" / "HASTA" para cargar actividades de Odoo por período específico
+- **Export append**: Cada export agrega filas al final del Sheet (no sobreescribe). Ideal para carga diaria acumulativa
+- **Columna fecha**: Cada fila exportada incluye la fecha de exportación para trazabilidad
+
+---
+
 ## Resumen de Cambios
 
 ### Fase 1 — Eliminar Hub Despacho
@@ -91,3 +134,57 @@
 - Monitorear I/O de Supabase tras optimizaciones
 - Migrar `picking_fetch` timeout de 15s → 10s
 - Consolidar patrones de tabs en componente TabBar reutilizable
+- Auditar el uso de `.btn-*` classes existentes y migrar los más repetitivos
+
+---
+
+## Sesión: Fix saturación Supabase — 2026-06-09
+
+### Problema
+El servidor Supabase se saturaba. Diagnóstico: exceso de polling y suscripciones redundantes.
+
+### Fixes aplicados
+
+#### Código
+| Archivo | Cambio |
+|---------|--------|
+| `src/hooks/useRealtimeRefresh.ts` | Polling ahora **condicional**: solo dispara cuando el WebSocket está desconectado (`status !== 'SUBSCRIBED'`). Antes siempre hacía polling cada 15s aunque realtime funcionara — 6 instancias en PickingScreen = 24 queries DB/min por usuario. Al reconectar hace un refresh para recuperar cambios perdidos. |
+| `src/features/despacho/santiago/context/SantiagoContext.tsx` | Poll de sesión Santiago: **3s → 15s**. El mismo motivo que ya estaba documentado en AppContext: "3s fue demasiado agresivo". Con múltiples usuarios en Santiago generaba ~20 queries DB/min c/u solo para sync de estado. |
+
+#### Base de datos (migración `fix_rls_auth_initplan`)
+RLS policies en `profiles`, `audit_entries`, `dispatch_history`, `audit_active_sessions` usaban `auth.uid()` / `auth.role()` directamente, lo que hace que Postgres las re-evalúe **por cada fila escaneada**. Fix: envolver en `(select auth.uid())` para evaluación única por query.
+
+### Sesión: Control Cruce — SKU múltiple + fix export — 2026-06-10
+
+#### Bug fix: export mezclaba SKUs entre Faltantes/Sobrantes
+- **Causa**: SKUs se guardaban solo por `picking_name`, pero un mismo picking puede tener múltiples `detalle` (Faltantes, Sobrantes, Merma)
+- **Fix**: Columna `detalle` agregada a `control_cruce_skus`; SKUs ahora son por `picking_name + detalle`
+
+#### Cambios realizados
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/migrations/039_control_cruce_skus.sql` | Tabla con columna `detalle NOT NULL DEFAULT ''` + índice compuesto `(picking_name, detalle)` |
+| `src/app/api/control-cruce/skus/route.ts` | GET filtra por `picking_name + detalle`; POST incluye `detalle`; endpoint `?action=counts` para conteo bulk |
+| `src/app/api/control-cruce/export-sheets/route.ts` | Fetch SKUs por `picking_name + detalle` en vez de solo `picking_name` |
+| `src/features/control-interno/components/SkuModal.tsx` | Recibe `detalle` como prop; header muestra badge del tipo de detalle; filtra SKUs por detalle |
+| `src/features/control-interno/ControlCruceContent.tsx` | Pasa `detalle` al modal; state `skuCounts` con conteo bulk; botón muestra "2 SKUs" o "Agregar SKU" |
+| `src/features/control-interno/components/SkuModal.tsx` | **Nuevo** — Modal con lista de chips SKU (X para quitar) + input para agregar |
+| `src/features/control-interno/ControlCruceContent.tsx` | Columna SKU: de EditableCell a botón que abre SkuModal; estados `skuModalOpen`/`skuModalPick` |
+
+#### Funcionalidad
+- Cada picking puede tener N SKUs (tabla `control_cruce_skus`)
+- UI: botón "Agregar SKU" → modal con chips + input
+- Export: un picking con 3 SKUs = 3 filas en el Sheet
+- **Pendiente**: Ejecutar migración `039_control_cruce_skus.sql` en Supabase Dashboard
+
+#### Pendiente de configuración (manual, una sola vez)
+1. Agregar a `.env.local`: `GOOGLE_CONTROL_CRUCE_SHEET_ID=1hzEACZM31wubNgGhFibpnUlUYo0IYDM4OCYgtPBkxGg`
+2. Compartir ese spreadsheet con el `client_email` de `GOOGLE_SERVICE_ACCOUNT_JSON` (rol **Editor**).
+
+---
+
+### Diagnóstico completo (pendiente de resolver)
+- **Multiple permissive policies** (WARN): `profiles`, `audit_active_sessions`, `calendario_central`, `config_despacho`, `shared_session_state` tienen múltiples políticas SELECT permisivas para el mismo rol — se evalúan todas en cada query. Requiere consolidar en una política por rol/acción.
+- **Unindexed foreign keys**: `audit_entries.user_id`, `dispatch_history.user_id`, `picking_pallets.combined_into`, `ruta_*` tables. Agregar índices mejoraría queries que filtran por estos campos.
+- **5 canales separados escuchando `picking_pallets`** (usePickingReady, StepForm, CombineAlertsPanel, TiendasPage, PickingScreen) — candidato a consolidar en un hook singleton.

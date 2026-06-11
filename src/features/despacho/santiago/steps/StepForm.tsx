@@ -14,6 +14,7 @@ import { useOdooProgress } from '../../shared/useOdooProgress';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { processPdf } from '../../regiones/utils/pdfUtils';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -529,13 +530,7 @@ export function StepForm() {
 
     load();
 
-    const today = new Date().toISOString().slice(0, 10);
-    const channel = supabase
-      .channel('picking-pallets-santiago')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, () => load())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return subscribeToPickingPallets(load);
   }, []);
 
   const prevContenidoRef     = useRef<ContenidoSantiago>('Hogar');

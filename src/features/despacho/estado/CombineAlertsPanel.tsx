@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { BarcodeCard } from '../../despacho/shared/BarcodeCard';
 
 const DISMISSED_KEY = 'combine_alerts_dismissed_v1';
@@ -141,15 +142,7 @@ export function CombineAlertsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Suscripción Realtime a cambios en picking_pallets
-  useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const channel = supabase
-      .channel('combine-alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, load)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [load]);
+  useEffect(() => subscribeToPickingPallets(load), [load]);
 
   const dismiss = (newId: number) => {
     setDismissed(prev => {
