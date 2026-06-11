@@ -1,6 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { format, subDays } from 'date-fns';
 
 export interface HistorialEntry {
   id: number;
@@ -13,17 +11,14 @@ export interface HistorialEntry {
   user_id?: string;
 }
 
+// Fuente real del dashboard: agrega despacho_rm + despacho_regiones por día
+// (vía /api/dashboard-stats). Antes leía la tabla `dispatch_history`, que el
+// flujo actual ya no escribe (por eso el dashboard salía en 0).
 async function fetchHistorial(days = 30): Promise<HistorialEntry[]> {
-  const since = format(subDays(new Date(), days), 'yyyy-MM-dd');
-  const { data, error } = await supabase
-    .from('dispatch_history')
-    .select('id, date, total_pallets, total_bultos, total_contenedores, total_chocolates, created_at, user_id')
-    .gte('date', since)
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(500);
-  if (error) throw new Error(error.message);
-  return data ?? [];
+  const res = await fetch(`/api/dashboard-stats?days=${days}`);
+  if (!res.ok) throw new Error('Error al cargar estadísticas del dashboard');
+  const json = await res.json() as { data?: Omit<HistorialEntry, 'id' | 'created_at'>[] };
+  return (json.data ?? []).map((r, i) => ({ id: i, created_at: '', ...r }));
 }
 
 export const HISTORIAL_KEY = (days: number) => ['historial', days] as const;
