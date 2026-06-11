@@ -1267,7 +1267,7 @@ export function PickingScreen() {
 
               <div className="mb-4 flex items-center justify-between print:hidden">
                 <div>
-                  <div className="text-[15px] font-semibold text-text-2">
+                  <div className="text-[14px] font-semibold text-text-2">
                     {filteredGroups.length === 0
                       ? 'Sin operaciones de Abastecimiento hoy'
                       : `${filteredGroups.length} picker${filteredGroups.length !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`}
@@ -1282,7 +1282,7 @@ export function PickingScreen() {
                   onClick={() => selectedCods.forEach(cod => void fetchOpsForStore(cod))}
                   disabled={loadingCods.length > 0}
                   className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer border rounded px-3 py-1.5 transition-all disabled:opacity-40"
-                  style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                  style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                   <RefreshCw size={12} className={loadingCods.length > 0 ? 'animate-spin' : ''} />
                   {loadingCods.length > 0 ? 'Cargando…' : 'Actualizar'}
                 </button>
@@ -1297,7 +1297,7 @@ export function PickingScreen() {
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 return (
-                  <div key={cod} className="mb-8">
+                  <div key={cod} className="mb-6">
                     <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
                       <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
                       <span className="text-[16px] text-text-2 font-semibold">{nameFor(cod)}</span>
@@ -1313,9 +1313,9 @@ export function PickingScreen() {
                           {doneOps}/{totalOps} ops
                         </span>
                       )}
-                      {isLoading && <span className="text-[14px] text-text-3">Cargando…</span>}
+                      {isLoading && <span className="text-[14px] text-text-3 font-medium">Cargando…</span>}
                       {!isLoading && storeGroups.length === 0 && (
-                        <span className="text-[14px] text-text-3 italic">Sin operaciones de Abastecimiento hoy</span>
+                        <span className="text-[14px] text-text-3 font-medium">Sin operaciones de Abastecimiento hoy</span>
                       )}
                       {/* Per-store print button */}
                       {(() => {
@@ -1325,7 +1325,7 @@ export function PickingScreen() {
                           <button onClick={() => printStoreLabels(cod)}
                             className="ml-auto print:hidden text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
                             style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                            🖨 {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                            <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
                           </button>
                         );
                       })()}

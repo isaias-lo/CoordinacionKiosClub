@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
@@ -72,20 +72,20 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     setSelectedIndices(new Set());
   };
 
-  const borderColor = allDone || isPrinted ? '#BBF7D0' : '#E2E8F0';
+  const borderColor = allDone || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';
   const shadow      = '0 1px 3px rgba(0,0,0,0.06)';
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
       {/* Card header */}
-      <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: '#E2E8F0', background: '#fff' }}>
+      <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: 'var(--color-border)', background: '#fff' }}>
         <span className="font-mono text-[12px] font-semibold shrink-0 px-2 py-0.5 rounded"
-          style={{ background: '#F1F5F9', color: '#475569' }}>{group.key}</span>
+          style={{ background: 'rgba(0,0,0,0.04)', color: '#475569' }}>{group.key}</span>
         {displayName && <span className="text-[14px] font-semibold text-slate-700 truncate flex-1">{displayName}</span>}
         {!displayName && <span className="flex-1" />}
         {allCategories.map(c => (
           <span key={c} className="text-[11px] font-medium px-2 py-0.5 rounded shrink-0"
-            style={{ background: '#F1F5F9', color: '#64748B' }}>{c}</span>
+            style={{ background: 'rgba(0,0,0,0.04)', color: '#64748B' }}>{c}</span>
         ))}
         <span className="text-[11px] text-slate-400 shrink-0">{group.operations.length} op.</span>
         {(allDone || isPrinted) && (
@@ -100,14 +100,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
       <div className={stickerBelow ? 'flex flex-col' : 'flex flex-col lg:flex-row'}>
 
         {/* LEFT: Form */}
-        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-5 border-gray-100 print:hidden space-y-4`}>
+        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-4 border-border print:hidden space-y-4`}>
 
           {/* Operaciones */}
           <div className={group.operations.length > 1 ? 'flex flex-wrap gap-2' : ''}>
             {group.operations.map(op => (
               <div key={op.id}
                 className={`flex items-start gap-2 ${group.operations.length > 1
-                  ? 'flex-1 min-w-[150px] border border-gray-100 rounded-xl p-3 bg-[#FAFAFA]'
+                  ? 'flex-1 min-w-[150px] border border-border rounded-lg p-3 bg-[#FAFAFA]'
                   : 'pb-2'
                 }`}>
                 <div className="flex-1 min-w-0">
@@ -145,16 +145,16 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
           {/* Nombre del picker */}
           <div>
-            <label className="text-[12px] font-bold text-text-3 uppercase tracking-wide block mb-1.5">
-              Nombre del picker <span className="text-amber-600 font-bold">*</span>
+            <label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide block mb-1.5">
+              Nombre del picker <span className="text-amber-600 font-semibold">*</span>
               <span className="ml-1 text-[11px] font-normal normal-case text-text-3">(se incluye en el código)</span>
             </label>
             <input type="text" value={displayName} onChange={e => onNameChange(e.target.value)}
               placeholder={`${group.key} — ingresa nombre real…`}
-              className="w-full border rounded-xl px-4 py-3 text-[16px] font-barlow text-text bg-white outline-none transition-colors"
+              className="w-full border rounded-lg px-4 py-3 text-[16px] font-barlow text-text bg-white outline-none transition-colors"
               style={{ borderColor: displayName ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.5)' }} />
             {!displayName && (
-              <div className="text-[12px] text-amber-600 mt-1">⚠ Se usará &quot;{group.key}&quot; si no ingresas nombre</div>
+              <div className="text-[12px] text-amber-600 mt-1"><AlertTriangle size={12} className="inline text-amber-600 mr-1" />Se usará &quot;{group.key}&quot; si no ingresas nombre</div>
             )}
           </div>
 
@@ -180,12 +180,12 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   <div key={tipo}
                     className="flex-1 flex flex-col items-center gap-2 py-2.5 px-1.5 rounded border transition-all"
                     style={{
-                      borderColor: active ? '#1E40AF' : '#E2E8F0',
+                      borderColor: active ? 'var(--color-info)' : 'var(--color-border)',
                       background: '#fff',
                     }}>
                     <div className="text-center leading-none">
-                      <div className="text-[14px] font-extrabold" style={{ color: active ? '#1E40AF' : '#64748B' }}>{tipo}</div>
-                      <div className="text-[9px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
+                      <div className="text-[14px] font-extrabold" style={{ color: active ? 'var(--color-info)' : '#64748B' }}>{tipo}</div>
+                      <div className="text-[10px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
                       <button
@@ -198,12 +198,12 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                           }
                         }}
                         className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer border"
-                        style={{ borderColor: '#E2E8F0', color: '#94A3B8', background: '#F8FAFC' }}>−</button>
-                      <span className="w-8 text-center text-[22px] font-bold leading-none"
+                        style={{ borderColor: 'var(--color-border)', color: '#94A3B8', background: '#fff' }}>−</button>
+                      <span className="w-8 text-center text-[20px] font-bold leading-none"
                         style={{ color: active ? '#1E293B' : '#CBD5E1' }}>{count}</span>
                       <button onClick={() => onTipoPalletsChange(tipo, count + 1)}
                         className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer"
-                        style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>+</button>
+                        style={{ background: 'var(--color-info)', color: '#fff', border: 'none' }}>+</button>
                     </div>
                   </div>
                 );
@@ -220,7 +220,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 </div>
                 <button onClick={() => setPendingDecrementTipo(null)}
                   className="text-[12px] font-medium px-2.5 py-1 rounded border cursor-pointer"
-                  style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                  style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                   Cancelar
                 </button>
                 <button onClick={() => {
@@ -308,7 +308,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                     <>
                       <button onClick={() => setSelectedIndices(new Set())}
                         className="text-[12px] cursor-pointer px-2.5 py-1.5 rounded border transition-all"
-                        style={{ borderColor: '#E2E8F0', color: '#64748B', background: '#fff' }}>
+                    style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                         Limpiar
                       </button>
                       <button onClick={handlePrintSelected}
