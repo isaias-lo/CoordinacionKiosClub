@@ -378,16 +378,53 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
-  // Singleton channel: all components share one WebSocket subscription to picking_pallets.
-  // Debounce 800 ms to batch rapid consecutive events (e.g. multiple pallet adds).
+  // Incremental realtime: apply INSERT/UPDATE/DELETE deltas directly to local state
+  // instead of doing a full DB reload on every event. Eliminates the query storm where
+  // N supervisors each reload the full table on every change.
+  // onReconnect = loadPalletSlots ensures a full reload if the WebSocket was disconnected
+  // (catching any events missed during the gap).
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const debounced = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void loadPalletSlots(), 800);
-    };
-    const unsub = subscribeToPickingPallets(debounced);
-    return () => { unsub(); if (timer) clearTimeout(timer); };
+    const unsub = subscribeToPickingPallets(
+      ({ eventType, new: newRow, old: oldRow }) => {
+        // Extract only the PalletSlot fields we care about from the full payload row
+        const toSlot = (r: Record<string, unknown>): PalletSlot => ({
+          id:           r.id as number,
+          store_cod:    r.store_cod as string,
+          state_key:    r.state_key as string,
+          picker_label: (r.picker_label as string) ?? '',
+          tipo:         (r.tipo as string) ?? 'P',
+          contenido:    (r.contenido as string) ?? 'hogar',
+          refs:         (r.refs as string) ?? '',
+          created_at:   r.created_at as string,
+        });
+
+        if (eventType === 'INSERT') {
+          const isActive = (newRow as { is_active?: boolean }).is_active;
+          if (isActive !== false) {
+            const slot = toSlot(newRow as Record<string, unknown>);
+            setPalletSlots(prev =>
+              prev.some(s => s.id === slot.id) ? prev : [...prev, slot]
+            );
+          }
+        } else if (eventType === 'UPDATE') {
+          const row = newRow as Record<string, unknown> & { is_active?: boolean };
+          const id  = row.id as number;
+          if (!row.is_active) {
+            // Slot deactivated (e.g. combine operation) — remove from visible state
+            setPalletSlots(prev => prev.filter(s => s.id !== id));
+          } else {
+            setPalletSlots(prev =>
+              prev.map(s => s.id !== id ? s : toSlot(row))
+            );
+          }
+        } else if (eventType === 'DELETE') {
+          const id = (oldRow as { id?: number }).id;
+          if (id !== undefined) setPalletSlots(prev => prev.filter(s => s.id !== id));
+        }
+      },
+      loadPalletSlots, // full reload on WebSocket reconnect
+    );
+    return unsub;
   }, [loadPalletSlots]);
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
@@ -417,12 +454,16 @@ export function PickingScreen() {
       }
       const json = await res.json() as { data?: PalletSlot };
       if (json.data) {
-        // Replace temp slot with the real one confirmed by the server.
-        // If loadPalletSlots already ran (replacing state), fall back to adding the real slot.
+        // 4-case dedup: the incremental INSERT handler may have already added the real slot
+        // (realtime via WebSocket arrives faster than the HTTP response).
+        // Possible states: (A) only temp, (B) temp + real, (C) only real, (D) neither.
         setPalletSlots(prev => {
-          if (prev.some(s => s.id === tempId))
-            return prev.map(s => s.id === tempId ? json.data! : s);
-          return prev.some(s => s.id === json.data!.id) ? prev : [...prev, json.data!];
+          const hasTemp = prev.some(s => s.id === tempId);
+          const hasReal = prev.some(s => s.id === json.data!.id);
+          if (hasTemp && hasReal) return prev.filter(s => s.id !== tempId); // (B) drop temp
+          if (hasTemp)            return prev.map(s => s.id === tempId ? json.data! : s); // (A) swap
+          if (!hasReal)           return [...prev, json.data!]; // (D) add real
+          return prev;           // (C) real already there, nothing to do
         });
         pickingFetch('/api/despacho-picking', {
           method: 'POST',
