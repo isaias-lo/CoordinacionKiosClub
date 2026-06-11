@@ -12,6 +12,7 @@
     "lint": "next lint",
     "hola": "powershell -ExecutionPolicy Bypass -File scripts/hola.ps1",
     "bye": "powershell -ExecutionPolicy Bypass -File scripts/bye.ps1",
+    "sync": "powershell -ExecutionPolicy Bypass -File scripts/sync.ps1",
     "pr": "powershell -ExecutionPolicy Bypass -File scripts/pr.ps1"
   },
   "dependencies": {

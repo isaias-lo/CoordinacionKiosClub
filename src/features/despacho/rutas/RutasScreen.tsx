@@ -187,7 +187,7 @@ export default function RutasScreen() {
         if (items.length) {
           const newCalT: Record<string, CalData> = {};
           items.forEach(t => {
-            newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: 0, g: 'rm' };
+            newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: (t as { ch?: number }).ch ?? 0, g: 'rm' };
           });
           setCalT(newCalT);
           setGrps(new Set(['rm']));
@@ -210,12 +210,12 @@ export default function RutasScreen() {
           if (items.length) {
             const newCalT: Record<string, CalData> = {};
             items.forEach(t => {
-              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: 0, g: 'rm' };
+              newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: (t as { ch?: number }).ch ?? 0, g: 'rm' };
             });
             setCalT(prev => {
               const merged = { ...prev };
               Object.keys(newCalT).forEach(key => {
-                if (!merged[key] || merged[key].p !== newCalT[key].p || merged[key].b !== newCalT[key].b) {
+                if (!merged[key] || merged[key].p !== newCalT[key].p || merged[key].b !== newCalT[key].b || merged[key].ch !== newCalT[key].ch) {
                   merged[key] = newCalT[key];
                 }
               });
@@ -784,7 +784,7 @@ export default function RutasScreen() {
           const enriched: StoreItem = { ...x, _v: tiendasData[x.c]?.v || '' };
           if (dest.ts.length > 1) dest.ts = nn([...dest.ts, enriched], gpsMap, cdRef.current);
           else dest.ts.push(enriched);
-          dest.tp += x.p; dest.tb += x.b;
+          dest.tp += x.p; dest.tb += x.b + ((x as { ch?: number }).ch ?? 0);
         }
       });
     });
@@ -944,7 +944,7 @@ export default function RutasScreen() {
 
     // También registra en Supabase historial_despacho
     const totalPallets = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
-    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b, 0), 0);
+    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b + ((t as { ch?: number }).ch ?? 0), 0), 0);
     const totalTiendas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c))).size;
     const totalRutas   = results.rutas.length;
     const kmTotal      = results.rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0);

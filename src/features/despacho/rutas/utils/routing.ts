@@ -3,7 +3,7 @@ import { PROVIDENCIA, REGION_V, CORREDOR_AUTOPISTA } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 
-export interface StoreItem { c: string; p: number; b: number; _v?: string; }
+export interface StoreItem { c: string; p: number; b: number; ch?: number; _v?: string; }
 export interface Ruta { v: Vehiculo; ts: StoreItem[]; tp: number; tb: number; _choferAsignado?: string; _kmReal?: number; }
 
 export function nn(tiendas: StoreItem[], gps: Record<string, number[]>, cd: number[]): StoreItem[] {
@@ -91,7 +91,7 @@ export function asignar(
     if (!cands.length) cands = rutas.filter(r => !excluir.includes(r) && r.tp+cap <= r.v.c);
     if (!cands.length) return null;
     const ruta = cands[0];
-    nn(tGrupo, gps, cd).forEach(t => { ruta.ts.push(t); ruta.tp+=t.p; ruta.tb+=t.b; });
+    nn(tGrupo, gps, cd).forEach(t => { ruta.ts.push(t); ruta.tp+=t.p; ruta.tb+=t.b+(t.ch??0); });
     return ruta;
   }
 
@@ -115,17 +115,17 @@ export function asignar(
     if (r2) usadas.push(r2);
     else {
       const ov = rutas.filter(r => !usadas.includes(r)).sort((a,b) => a.tp-b.tp)[0] || rutas[0];
-      chunk.forEach(t => { ov.ts.push(t); ov.tp+=t.p; ov.tb+=t.b; });
+      chunk.forEach(t => { ov.ts.push(t); ov.tp+=t.p; ov.tb+=t.b+(t.ch??0); });
     }
   }
 
   tCentro.forEach(t => {
     const cands = rutas.filter(r => !usadas.includes(r) && r.tp+t.p <= r.v.c)
                        .sort((a,b) => (b.tp/b.v.c)-(a.tp/a.v.c));
-    if (cands.length) { cands[0].ts.push(t); cands[0].tp+=t.p; cands[0].tb+=t.b; }
+    if (cands.length) { cands[0].ts.push(t); cands[0].tp+=t.p; cands[0].tb+=t.b+(t.ch??0); }
     else {
       const ov = rutas.sort((a,b) => a.tp-b.tp)[0];
-      ov.ts.push(t); ov.tp+=t.p; ov.tb+=t.b;
+      ov.ts.push(t); ov.tp+=t.p; ov.tb+=t.b+(t.ch??0);
     }
   });
 
@@ -144,8 +144,8 @@ export function asignar(
       if (r.tp > r.v.c) {
         r.ts.sort((a,b) => a.p-b.p);
         while (r.tp > r.v.c && tlr.tp < tl.c && r.ts.length) {
-          const x = r.ts.shift()!; r.tp -= x.p; r.tb -= x.b;
-          if (tlr.tp + x.p <= tl.c) { tlr.ts.push(x); tlr.tp+=x.p; tlr.tb+=x.b; }
+          const x = r.ts.shift()!; r.tp -= x.p; r.tb -= x.b+(x.ch??0);
+          if (tlr.tp + x.p <= tl.c) { tlr.ts.push(x); tlr.tp+=x.p; tlr.tb+=x.b+(x.ch??0); }
           else { r.ts.unshift(x); break; }
         }
       }
