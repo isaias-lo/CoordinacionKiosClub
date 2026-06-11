@@ -259,7 +259,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
               {group.operations.map(op => {
                 const info = STATE_INFO[op.state] ?? STATE_INFO.draft;
                 return (
-                  <div key={op.id} className="flex items-center gap-3 bg-white border rounded-xl px-4 py-3"
+                  <div key={op.id} className="flex items-center gap-3 bg-white border rounded-lg px-4 py-3"
                     style={{ borderColor: info.border }}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -280,7 +280,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                       <button onClick={() => onRefreshOp(op)} disabled={refreshingId === op.id}
                         className="text-[13px] shrink-0 border rounded-full px-2.5 py-1.5 cursor-pointer disabled:opacity-40"
                         style={{ borderColor: 'rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                        {refreshingId === op.id ? '⏳' : '↻'}
+                        <RotateCcw size={13} className={refreshingId === op.id ? 'animate-spin' : ''} />
                       </button>
                     )}
                   </div>
