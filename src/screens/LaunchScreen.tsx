@@ -9,7 +9,7 @@ import { EmptyState } from '../components/ui/empty-state';
 import { StatusBadge } from '../components/ui/status-badge';
 import { useHistorial, useHistorialStats, HistorialEntry } from '../hooks/queries/useHistorial';
 import { useTodayPickingPallets } from '../hooks/queries/usePickingPallets';
-import { format, subDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Truck, ClipboardList, Layers, Store, ClipboardCheck, Shield,
@@ -84,41 +84,25 @@ export function LaunchScreen() {
     return () => clearInterval(t);
   }, [loadPending]);
 
-  /* Chart data — last 7 days from historial */
+  /* Chart data — últimos 7 días CON despacho (no días de calendario vacíos),
+     así el gráfico siempre muestra actividad real aunque los despachos sean esporádicos. */
   const { data: historialRaw = [] } = useHistorial(90);
 
-  function matchDate(entryDate: string, isoKey: string): boolean {
-    if (entryDate === isoKey) return true;
-    const months: Record<string, string> = {
-      'ene':'01','feb':'02','mar':'03','abr':'04','may':'05','jun':'06',
-      'jul':'07','ago':'08','sep':'09','oct':'10','nov':'11','dic':'12',
-    };
-    const parts = entryDate.split(' ');
-    if (parts.length >= 3) {
-      const month = months[parts[2]];
-      if (month) {
-        const day = parts[1].padStart(2, '0');
-        const year = isoKey.slice(0, 4);
-        return `${year}-${month}-${day}` === isoKey;
-      }
-    }
-    return false;
-  }
-
-  const chartData: ChartData[] = Array.from({ length: 7 }, (_, i) => {
-    const d = subDays(new Date(), 6 - i);
-    const key = format(d, 'yyyy-MM-dd');
-    const rows = (historialRaw as HistorialEntry[] ?? [])
-      .filter(r => matchDate(r.date, key));
-    return {
-      day:          format(d, 'EEE', { locale: es }).replace('.', ''),
-      fullDate:     format(d, "EEEE d 'de' MMMM", { locale: es }),
-      pallets:      rows.reduce((s, r) => s + (r.total_pallets      ?? 0), 0),
-      bultos:       rows.reduce((s, r) => s + (r.total_bultos       ?? 0), 0),
-      contenedores: rows.reduce((s, r) => s + (r.total_contenedores ?? 0), 0),
-      chocolates:   rows.reduce((s, r) => s + (r.total_chocolates   ?? 0), 0),
-    };
-  });
+  const chartData: ChartData[] = (historialRaw as HistorialEntry[])
+    .filter(r => ((r.total_pallets ?? 0) + (r.total_bultos ?? 0) + (r.total_contenedores ?? 0) + (r.total_chocolates ?? 0)) > 0)
+    .slice(0, 7)   // historialRaw viene ordenado por fecha desc (más reciente primero)
+    .reverse()     // cronológico para el gráfico
+    .map(r => {
+      const d = parseISO(r.date);
+      return {
+        day:          format(d, 'd MMM', { locale: es }).replace('.', ''),
+        fullDate:     format(d, "EEEE d 'de' MMMM", { locale: es }),
+        pallets:      r.total_pallets      ?? 0,
+        bultos:       r.total_bultos       ?? 0,
+        contenedores: r.total_contenedores ?? 0,
+        chocolates:   r.total_chocolates   ?? 0,
+      };
+    });
 
   /* Quick tiles */
   const hasControlInterno = canSee('/control-interno');
@@ -277,9 +261,9 @@ export function LaunchScreen() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="font-barlow-condensed font-bold text-[15px] uppercase tracking-wide text-text">
-                  Despachos últimos 7 días
+                  Despachos recientes
                 </h2>
-                <p className="text-[11px] text-text-3 mt-0.5">Pallets y bultos por día</p>
+                <p className="text-[11px] text-text-3 mt-0.5">Últimos 7 días con despacho</p>
               </div>
               <div className="flex items-center gap-3 text-[11px] text-text-3 flex-wrap">
                 <span className="flex items-center gap-1.5">
