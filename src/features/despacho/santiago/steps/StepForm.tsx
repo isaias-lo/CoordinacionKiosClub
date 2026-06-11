@@ -606,7 +606,8 @@ export function StepForm() {
       c: cod,
       p: it.filter(i => i.tipo === 'Pallet').length,
       b: it.filter(i => i.tipo === 'Bulto').length,
-    })).filter(t => t.p > 0 || t.b > 0);
+      ch: it.filter(i => i.tipo === 'Chocolate').length,  // chocolates → detalle; suman al total de bultos
+    })).filter(t => t.p > 0 || t.b > 0 || t.ch > 0);
     localStorage.setItem('rutasInput', JSON.stringify(rutasInput));
     sessionStorage.setItem('despacho_from', '/despacho/santiago');
     flushPending(); // push antes de navegar — evita que el debounce se cancele al salir
