@@ -242,15 +242,18 @@ export function PickingScreen() {
 
   const loadSessionState = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picking-session-state?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: SessionStateRow[] };
-      setSessionStateRows(json.data ?? []);
+      const { data } = await supabase
+        .from('picking_session_state')
+        .select('state_key, picker_label, tipo')
+        .eq('date', todayISO());
+      if (data) setSessionStateRows(data as SessionStateRow[]);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadSessionState(); }, [loadSessionState]);
-  useRealtimeRefresh('picking_session_state', loadSessionState);
+  // Debounce 1 s: upsertSessionState fires on every keystroke (500 ms debounced writes),
+  // so the subscriber would reload on every character typed by any supervisor.
+  useRealtimeRefresh('picking_session_state', loadSessionState, true, 15000, 1000);
 
   // Merge server state into local — skip keys actively being edited by this client
   // Only names are synced cross-client; tipos are managed locally per client (date-scoped localStorage)
@@ -328,13 +331,12 @@ export function PickingScreen() {
 
   const loadPrintRecords = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picking-prints?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: PrintRecord[] };
-      const sorted = [...(json.data ?? [])].sort(
-        (a, b) => new Date(a.printed_at).getTime() - new Date(b.printed_at).getTime()
-      );
-      setPrintRecords(sorted);
+      const { data } = await supabase
+        .from('picking_prints')
+        .select('state_key, printed_at, picker_label, pallets, tipo, printed_by_name')
+        .eq('date', todayISO())
+        .order('printed_at', { ascending: true });
+      if (data) setPrintRecords(data as PrintRecord[]);
     } catch { /* silent */ }
   }, []);
 
@@ -346,10 +348,14 @@ export function PickingScreen() {
 
   const loadNameChanges = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picker-name-changes?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: PickerNameChange[] };
-      setNameChanges(json.data ?? []);
+      const date = todayISO();
+      const { data } = await supabase
+        .from('picker_name_changes')
+        .select('id, picker_key, old_name, new_name, changed_by_name, changed_at')
+        .gte('changed_at', `${date}T00:00:00.000Z`)
+        .lte('changed_at', `${date}T23:59:59.999Z`)
+        .order('changed_at', { ascending: false });
+      if (data) setNameChanges(data as PickerNameChange[]);
     } catch { /* silent */ }
   }, []);
 
@@ -507,12 +513,13 @@ export function PickingScreen() {
   // ── Canonical names: shared across all supervisor desktops ────────────────────
   const loadCanonicalNames = useCallback(async () => {
     try {
-      const res  = await pickingFetch('/api/picker-canonical-names');
-      if (!res.ok) return;
-      const json = await res.json() as { data?: { key: string; display_name: string }[] };
-      if (!json.data?.length) return;
+      const { data } = await supabase
+        .from('picker_canonical_names')
+        .select('key, display_name')
+        .order('key');
+      if (!data?.length) return;
       const next: Record<string, string> = {};
-      for (const r of json.data) if (r.display_name) next[r.key] = r.display_name;
+      for (const r of data) if (r.display_name) next[r.key] = r.display_name;
       setCanonicalNames(next);
     } catch { /* silent */ }
   }, []);
@@ -525,18 +532,17 @@ export function PickingScreen() {
   // Sobreescribe TIENDAS_INICIAL con los datos editados en /admin/tiendas.
   const loadTiendaOverrides = useCallback(async () => {
     try {
-      const res = await fetch('/api/tiendas');
-      if (!res.ok) return;
-      const json = await res.json() as { tiendas?: { codigo: string; nombre: string }[] };
+      const { data } = await supabase
+        .from('tiendas')
+        .select('codigo, nombre');
+      if (!data) return;
       const overrides: Record<string, string> = {};
-      for (const t of json.tiendas ?? []) {
-        if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
-      }
+      for (const t of data) if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
       setTiendaOverrides(overrides);
     } catch { /* silent */ }
   }, []);
   useEffect(() => { void loadTiendaOverrides(); }, [loadTiendaOverrides]);
-  useRealtimeRefresh('tiendas', loadTiendaOverrides);
+  // tiendas is a static lookup table — no realtime subscription needed
   // Cuando los overrides cargan (puede ser después del calendario), re-aplicar nombres
   useEffect(() => {
     if (Object.keys(tiendaOverrides).length === 0) return;
