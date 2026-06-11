@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi'; // deprecated — config now server-side
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
@@ -1027,7 +1027,7 @@ export function PickingScreen() {
 
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
-        style={{ background: '#1E293B', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <button className="lg:hidden border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
           style={{ background: 'rgba(255,255,255,0.07)' }}
           onClick={() => panelView === 'planilla' ? setPanelView('stores') : router.push('/')}>
@@ -1131,8 +1131,8 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab bar ── */}
-          <div className="flex flex-shrink-0 print:hidden"
-            style={{ background: '#fff', borderBottom: '1px solid #E2E8F0' }}>
+          <div className="flex flex-shrink-0 print:hidden overflow-x-auto"
+            style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
             {([
               { key: 'monitoreo',     label: 'Monitoreo'   },
               { key: 'actividad',     label: 'Actividad'   },
@@ -1146,10 +1146,10 @@ export function PickingScreen() {
               const showBadge = tab.key === 'movimientos' && movNuevos > 0;
               return (
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                  className="relative flex-1 py-2.5 text-[12px] font-medium cursor-pointer transition-colors border-none bg-transparent"
+                  className="relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3"
                   style={{
-                    color: active ? '#1E40AF' : '#64748B',
-                    borderBottom: active ? '2px solid #1E40AF' : '2px solid transparent',
+                    color: active ? 'var(--color-info)' : '#64748B',
+                    borderBottom: active ? '2px solid var(--color-info)' : '2px solid transparent',
                   }}>
                   {tab.label}
                   {showBadge && (
@@ -1244,9 +1244,9 @@ export function PickingScreen() {
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
                         style={{
-                          background: sectionFilter === key ? '#1E40AF' : '#fff',
+                          background: sectionFilter === key ? 'var(--color-info)' : '#fff',
                           color:      sectionFilter === key ? '#fff'    : '#64748B',
-                          borderColor: sectionFilter === key ? '#1E40AF' : '#E2E8F0',
+                          borderColor: sectionFilter === key ? 'var(--color-info)' : 'var(--color-border)',
                         }}>
                         {label}
                       </button>
