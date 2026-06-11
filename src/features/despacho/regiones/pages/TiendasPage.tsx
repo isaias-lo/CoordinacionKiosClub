@@ -8,6 +8,7 @@ import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
+import { useOdooProgress } from '../../shared/useOdooProgress';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
@@ -209,7 +210,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
   const router = useRouter();
-  const odooProgress = new Map<string, { status: 'none' | 'partial' | 'complete'; done: number; total: number }>();
+  const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
