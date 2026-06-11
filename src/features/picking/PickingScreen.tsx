@@ -39,6 +39,7 @@ import { MovimientosOdooPanel } from './components/MovimientosOdooPanel';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -161,6 +162,8 @@ export function PickingScreen() {
   const palletSlotsRef = useRef<PalletSlot[]>([]);
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
+  // Decreasing counter for optimistic (temp) slot IDs — negative to never collide with real DB ids
+  const tempIdRef = useRef(-1);
 
   // IDs de movimientos Odoo ya vistos en esta sesión (sobrevive cambios de tab).
   // Vive en PickingScreen (no en el panel) para que switchear de tab no resete "nuevos".
@@ -336,7 +339,6 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadPrintRecords(); }, [loadPrintRecords]);
-  useRealtimeRefresh('picking_prints', loadPrintRecords);
   useEffect(() => { setMounted(true); }, []);
 
   // ── Name change history ────────────────────────────────────────────────────
@@ -352,23 +354,54 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadNameChanges(); }, [loadNameChanges]);
-  useRealtimeRefresh('picker_name_changes', loadNameChanges);
+  // Single channel for both print records and name changes — reduces WebSocket channels by one.
+  // A change on either table is infrequent enough that reloading both callbacks is acceptable.
+  useRealtimeRefresh('picking_prints,picker_name_changes', useCallback(() => {
+    void loadPrintRecords();
+    void loadNameChanges();
+  }, [loadPrintRecords, loadNameChanges]));
 
   // ── Pallet slots: DB-backed, real-time ──────────────────────────────────────
+  // Uses the browser Supabase client directly to avoid the Next.js API round-trip on
+  // every realtime-triggered reload. RLS on picking_pallets allows all authenticated users.
   const loadPalletSlots = useCallback(async () => {
     try {
-      const res  = await pickingFetch(`/api/picking-pallets?date=${todayISO()}`);
-      if (!res.ok) return;
-      const json = await res.json() as { data?: PalletSlot[] };
-      setPalletSlots(json.data ?? []);
+      const { data } = await supabase
+        .from('picking_pallets')
+        .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at')
+        .eq('date', todayISO())
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
+      if (data) setPalletSlots(data as PalletSlot[]);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
-  useRealtimeRefresh(`picking_pallets:date=eq.${todayISO()}`, loadPalletSlots, true, 15000, 800);
+  // Singleton channel: all components share one WebSocket subscription to picking_pallets.
+  // Debounce 800 ms to batch rapid consecutive events (e.g. multiple pallet adds).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void loadPalletSlots(), 800);
+    };
+    const unsub = subscribeToPickingPallets(debounced);
+    return () => { unsub(); if (timer) clearTimeout(timer); };
+  }, [loadPalletSlots]);
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
     const date = todayISO();
+    // Optimistic update: add a temp slot immediately so the counter in PickerGroupCard
+    // reflects the in-flight add. This prevents the rapid-click race condition where
+    // clicking + multiple times before the POST returns creates duplicate slots.
+    const tempId = tempIdRef.current--;
+    const tempSlot: PalletSlot = {
+      id: tempId, store_cod: storeCod, state_key: stateKey,
+      picker_label: pickerLabel, tipo, contenido, refs,
+      created_at: new Date().toISOString(),
+    };
+    setPalletSlots(prev => [...prev, tempSlot]);
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
@@ -377,24 +410,34 @@ export function PickingScreen() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
-        // Encolar para reintentar al reconectar
+        setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+        showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
         enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
       if (json.data) {
-        setPalletSlots(prev => [...prev, json.data!]);
+        // Replace temp slot with the real one confirmed by the server.
+        // If loadPalletSlots already ran (replacing state), fall back to adding the real slot.
+        setPalletSlots(prev => {
+          if (prev.some(s => s.id === tempId))
+            return prev.map(s => s.id === tempId ? json.data! : s);
+          return prev.some(s => s.id === json.data!.id) ? prev : [...prev, json.data!];
+        });
         pickingFetch('/api/despacho-picking', {
           method: 'POST',
           body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date }),
         }).catch(err => console.error('[picking] despacho-picking error', err));
+      } else {
+        setPalletSlots(prev => prev.filter(s => s.id !== tempId));
       }
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
-      // Sin red: encolar para reintentar al reconectar
+      setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+      showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
       enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
     }
-  }, [pickingFetch]);
+  }, [pickingFetch, showToast]);
 
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
     if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
