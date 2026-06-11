@@ -24,12 +24,12 @@ const TAB_COLORS: Record<TabKey, { bg: string; border: string; text: string }> =
 };
 
 const SEGUIMIENTO_STYLE: Record<string, { bg: string; color: string }> = {
-  'Registrado': { bg: 'rgba(148,163,184,0.15)', color: '#94A3B8' },
-  'Pendiente':  { bg: 'rgba(239,68,68,0.15)',   color: '#EF4444' },
-  'En camino':  { bg: 'rgba(234,179,8,0.18)',   color: '#EAB308' },
-  'Entregado':  { bg: 'rgba(99,102,241,0.15)',  color: '#6366F1' },
-  'Recibido':   { bg: 'rgba(16,185,129,0.15)',  color: '#10B981' },
-  'Diferencia': { bg: 'rgba(245,158,11,0.15)',  color: '#F97316' },
+  'Registrado': { bg: 'rgba(138,148,166,0.12)', color: '#8A94A6' },
+  'Pendiente':  { bg: 'rgba(194,77,77,0.12)',   color: '#C24D4D' },
+  'En camino':  { bg: 'rgba(181,136,43,0.14)',  color: '#B5882B' },
+  'Entregado':  { bg: 'rgba(91,95,184,0.12)',   color: '#5B5FB8' },
+  'Recibido':   { bg: 'rgba(54,153,106,0.13)',  color: '#36996A' },
+  'Diferencia': { bg: 'rgba(194,106,58,0.13)',  color: '#C26A3A' },
 };
 
 const TABLE_COLS: Record<TabKey, string[]> = {

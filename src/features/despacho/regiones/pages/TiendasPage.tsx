@@ -134,14 +134,14 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       {storeStatus === 'complete' && (
         <span
           className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: '#16A34A', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(22,163,74,0.6)' }}
+          style={{ background: 'var(--status-done)', boxShadow: '0 0 0 2px #fff' }}
           title="✓ Todos los movimientos realizados"
         />
       )}
       {storeStatus === 'partial' && (
         <span
           className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: '#D97706', boxShadow: '0 0 0 2px #fff, 0 0 6px rgba(217,119,6,0.6)' }}
+          style={{ background: 'var(--status-partial)', boxShadow: '0 0 0 2px #fff' }}
           title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
         />
       )}

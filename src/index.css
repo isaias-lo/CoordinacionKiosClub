@@ -30,6 +30,11 @@
   --color-info:       #2563EB;
   --color-danger:     #D42B2B;
 
+  /* Estado (puntos/indicadores) — tonos sobrios, alineados al look empresarial */
+  --status-done:      #36996A;  /* verde apagado (completado) */
+  --status-partial:   #C2873A;  /* ámbar apagado (parcial) */
+  --status-none:      #9AA4B2;  /* gris (sin actividad) */
+
   /* Sidebar */
   --sidebar-bg:       #0D1829;
   --sidebar-border:   rgba(255,255,255,0.07);
