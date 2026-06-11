@@ -534,9 +534,16 @@ export function StepForm() {
       setPickingSlotsFull(full);
     };
 
-    load();
+    void load();
 
-    return subscribeToPickingPallets(load);
+    // Debounce: bursts of events (e.g. combine op touching many rows) collapse into one reload
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void load(); }, 600);
+    };
+    const unsub = subscribeToPickingPallets(debounced, load);
+    return () => { unsub(); if (timer) clearTimeout(timer); };
   }, []);
 
   const prevContenidoRef     = useRef<ContenidoSantiago>('Hogar');

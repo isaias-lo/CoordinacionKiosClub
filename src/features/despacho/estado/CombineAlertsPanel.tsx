@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { BarcodeCard } from '../../despacho/shared/BarcodeCard';
@@ -60,6 +60,7 @@ export function CombineAlertsPanel() {
   const [groups,    setGroups]    = useState<CombinedGroup[]>([]);
   const [dismissed, setDismissed] = useState<Set<number>>(loadDismissed);
   const [printSlot, setPrintSlot] = useState<CombinedGroup['reprints'][0] | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     const d = new Date();
@@ -142,7 +143,13 @@ export function CombineAlertsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => subscribeToPickingPallets(load), [load]);
+  useEffect(() => {
+    const debounced = () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => { void load(); }, 600);
+    };
+    return subscribeToPickingPallets(debounced, load);
+  }, [load]);
 
   const dismiss = (newId: number) => {
     setDismissed(prev => {

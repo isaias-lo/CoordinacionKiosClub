@@ -343,9 +343,15 @@ export function TiendasPage() {
       setPickingSlotsFull(full);
     };
 
-    load();
+    void load();
 
-    return subscribeToPickingPallets(load);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void load(); }, 600);
+    };
+    const unsub = subscribeToPickingPallets(debounced, load);
+    return () => { unsub(); if (timer) clearTimeout(timer); };
   }, []);
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */

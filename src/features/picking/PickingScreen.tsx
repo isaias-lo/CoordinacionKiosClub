@@ -693,7 +693,10 @@ export function PickingScreen() {
     return () => clearInterval(id);
   }, [selectedCods, fetchOpsForStore]);
 
-  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it
+  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it.
+  // Debounced 2s via useEffect cleanup: if opsMap changes again before timer fires, the
+  // previous POST is cancelled and a new 2s window starts. Prevents a burst of writes when
+  // many stores load at once (e.g. on initial page load with N tiendas selected).
   useEffect(() => {
     const entries = Object.entries(opsMap).map(([cod, ops]) => ({
       cod,
@@ -701,11 +704,14 @@ export function PickingScreen() {
       done: ops.filter(o => o.state === 'done').length,
     }));
     if (entries.length === 0) return;
-    fetch('/api/picking-store-progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stores: entries }),
-    }).catch(e => console.error('[picking] sync progress:', e));
+    const timer = setTimeout(() => {
+      fetch('/api/picking-store-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stores: entries }),
+      }).catch(e => console.error('[picking] sync progress:', e));
+    }, 2000);
+    return () => clearTimeout(timer);
   }, [opsMap]);
 
   const handleToggleStore = useCallback(async (cod: string) => {
