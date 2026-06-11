@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
@@ -72,20 +72,20 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     setSelectedIndices(new Set());
   };
 
-  const borderColor = allDone || isPrinted ? '#BBF7D0' : '#E2E8F0';
+  const borderColor = allDone || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';
   const shadow      = '0 1px 3px rgba(0,0,0,0.06)';
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
       {/* Card header */}
-      <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: '#E2E8F0', background: '#fff' }}>
+      <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: 'var(--color-border)', background: '#fff' }}>
         <span className="font-mono text-[12px] font-semibold shrink-0 px-2 py-0.5 rounded"
-          style={{ background: '#F1F5F9', color: '#475569' }}>{group.key}</span>
+          style={{ background: 'rgba(0,0,0,0.04)', color: '#475569' }}>{group.key}</span>
         {displayName && <span className="text-[14px] font-semibold text-slate-700 truncate flex-1">{displayName}</span>}
         {!displayName && <span className="flex-1" />}
         {allCategories.map(c => (
           <span key={c} className="text-[11px] font-medium px-2 py-0.5 rounded shrink-0"
-            style={{ background: '#F1F5F9', color: '#64748B' }}>{c}</span>
+            style={{ background: 'rgba(0,0,0,0.04)', color: '#64748B' }}>{c}</span>
         ))}
         <span className="text-[11px] text-slate-400 shrink-0">{group.operations.length} op.</span>
         {(allDone || isPrinted) && (
@@ -100,7 +100,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
       <div className={stickerBelow ? 'flex flex-col' : 'flex flex-col lg:flex-row'}>
 
         {/* LEFT: Form */}
-        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-5 border-gray-100 print:hidden space-y-4`}>
+        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-4 border-border print:hidden space-y-4`}>
 
           {/* Operaciones */}
           <div className={group.operations.length > 1 ? 'flex flex-wrap gap-2' : ''}>
