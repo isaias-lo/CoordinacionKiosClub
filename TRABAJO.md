@@ -2,6 +2,25 @@
 
 ---
 
+## Sesión: Picking — Lecturas a browser client + quitar realtime estáticas — 2026-06-11
+
+### Cambios realizados
+
+Conversión de las 4 funciones de carga restantes a usar el browser Supabase client directamente (elimina Next.js API round-trip en cada recarga):
+
+| Función | Antes | Después |
+|---------|-------|---------|
+| `loadPrintRecords` | `pickingFetch('/api/picking-prints?date=...')` + sort client-side | `supabase.from('picking_prints')...order('printed_at')` |
+| `loadNameChanges` | `pickingFetch('/api/picker-name-changes?date=...')` | `supabase.from('picker_name_changes')...gte/lte` |
+| `loadCanonicalNames` | `pickingFetch('/api/picker-canonical-names')` | `supabase.from('picker_canonical_names')...order('key')` |
+| `loadTiendaOverrides` | `fetch('/api/tiendas')` + `useRealtimeRefresh('tiendas', ...)` | `supabase.from('tiendas').select('codigo, nombre')` sin realtime |
+
+`tiendas` es tabla estática: eliminada su suscripción realtime (era innecesaria y sumaba un canal WebSocket por usuario).
+
+**Commit:** `perf(picking): convertir lecturas a browser client, quitar realtime en tablas estáticas`
+
+---
+
 ## Sesión: Picking — Patrón incremental realtime — 2026-06-11
 
 ### Cambio realizado
