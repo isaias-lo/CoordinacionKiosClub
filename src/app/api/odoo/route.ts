@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       pickings?: string[];
       dateFrom?: string;
       dateTo?: string;
+      incluyePendientes?: boolean;
       // config.url accepted only for list_databases; all auth credentials ignored from client
       config?: { url?: string };
     };
@@ -713,26 +714,24 @@ export async function POST(req: NextRequest) {
     }
 
     /* ── get_control_activities ── */
-    // Fuente: mail.message (actividades COMPLETADAS por Control Interno en stock.picking).
-    // El body HTML contiene: tipo (<span>Faltantes|Sobrantes|Merma</span>)
-    //                        y el movimiento de ajuste (línea tras "Ajuste Realizado").
+    // Filtra pickings INT/MERMA por date_done en rango (fechaArmado).
+    // Si incluyePendientes=true, también incluye pickings pendientes (scheduled_date en rango)
+    // y sus mail.activity con estado VENCIDA/PLANIFICADO.
     if (action === 'get_control_activities') {
 
-      // Helpers de parseo de body ──────────────────────────────────────────
+      // ── Helpers de parseo de body ──────────────────────────────────────
       function stripHtml(html: string): string {
         return html.replace(/<[^>]*>/g, '\n')
                    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
                    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
                    .replace(/\n+/g, '\n').trim();
       }
-
-      function parseDetalle(body: string): string {
-        const m = body.match(/<span>(Faltantes|Sobrantes|Merma)<\/span>/i);
+      function parseDetalle(html: string): string {
+        const m = html.match(/<span>(Faltantes|Sobrantes|Merma)<\/span>/i);
         return m ? m[1] : '';
       }
-
-      function parseMovAjuste(body: string): string {
-        const text = stripHtml(body);
+      function parseMovAjuste(html: string): string {
+        const text = stripHtml(html);
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const idx = lines.findIndex(l => /ajuste\s*(realizado)?|ajustado/i.test(l));
         if (idx >= 0) {
@@ -744,42 +743,112 @@ export async function POST(req: NextRequest) {
       }
       // ────────────────────────────────────────────────────────────────────
 
-      // 1. Resolver IDs de autores (Control Interno)
+      const incluyePendientes = body.incluyePendientes === true;
       const dateFromStr = dateFrom + ' 00:00:00';
       const dateToStr   = dateTo   + ' 23:59:59';
+      const today       = localDateStr(new Date());
 
-      const msgDomain: unknown[] = [
-        ['model', '=', 'stock.picking'],
-        ['mail_activity_type_id', '!=', false],
-        ['date', '>=', dateFromStr],
-        ['date', '<=', dateToStr],
-      ];
+      // 1. Tipos de actividad dinámicos (Faltantes/Sobrantes/Merma)
+      let actTypeIds: number[] = [];
+      const typeNameMap = new Map<number, string>();
+      try {
+        const actTypes = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'mail.activity.type', 'search_read',
+            [[['name', 'in', ['Faltantes', 'Sobrantes', 'Merma']]]],
+            { fields: ['id', 'name'], limit: 20 },
+          ],
+        })) as Array<{ id: number; name: string }>;
+        actTypeIds = actTypes.map(t => t.id);
+        for (const t of actTypes) typeNameMap.set(t.id, t.name);
+      } catch (err) {
+        console.error('[get_control_activities] error obteniendo tipos:', err);
+      }
+
+      // 2a. Pickings INT/MERMA completados en rango de date_done
+      type PickingRecord = {
+        id: number; name: string;
+        user_id: [number, string] | false;
+        origin: string | false; state: string;
+        date_done: string | false; scheduled_date: string | false; create_date: string;
+      };
+
+      const completedPickings = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read',
+          [['|', ['name', 'like', '/INT/'], ['name', 'like', '/MERMA/'],
+            ['state', '=', 'done'],
+            ['date_done', '>=', dateFromStr],
+            ['date_done', '<=', dateToStr],
+          ]],
+          {
+            fields: ['id', 'name', 'user_id', 'origin', 'state',
+                     'date_done', 'scheduled_date', 'create_date'],
+            limit: 2000,
+          },
+        ],
+      })) as PickingRecord[];
+
+      // 2b. Pickings INT/MERMA pendientes en rango de scheduled_date (si incluyePendientes)
+      let pendingPickings: PickingRecord[] = [];
+      if (incluyePendientes) {
+        pendingPickings = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'search_read',
+            [['|', ['name', 'like', '/INT/'], ['name', 'like', '/MERMA/'],
+              ['state', 'not in', ['done', 'cancel']],
+              ['scheduled_date', '>=', dateFromStr],
+              ['scheduled_date', '<=', dateToStr],
+            ]],
+            {
+              fields: ['id', 'name', 'user_id', 'origin', 'state',
+                       'date_done', 'scheduled_date', 'create_date'],
+              limit: 2000,
+            },
+          ],
+        })) as PickingRecord[];
+      }
+
+      // Combinar y deduplicar
+      const pickingMap = new Map<number, PickingRecord>();
+      for (const p of [...completedPickings, ...pendingPickings]) {
+        if (!pickingMap.has(p.id)) pickingMap.set(p.id, p);
+      }
+      const completedPickingIds = new Set(completedPickings.map(p => p.id));
+      const allPickingIds = [...pickingMap.keys()];
+
+      if (!allPickingIds.length) return NextResponse.json({ rows: [], total: 0 });
+
+      // 3. Resolver filtro de usuario → partnerIds (mail.message) + userIds (mail.activity)
+      let filterPartnerIds: number[] | null = null;
+      let filterUserIds: number[] | null = null;
+
       if (query && query.trim()) {
-        const authors = (await odooRpc(url, {
+        const matchUsers = (await odooRpc(url, {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'res.users', 'search_read',
             [[['name', 'ilike', query.trim()]]],
-            { fields: ['id'], limit: 10 },
+            { fields: ['id', 'partner_id'], limit: 10 },
           ],
-        })) as Array<{ id: number }>;
-        // author_id en mail.message es res.partner, no res.users
-        // Obtenemos el partner_id de cada usuario
-        if (authors.length) {
-          const partnerIds = (await odooRpc(url, {
-            service: 'object', method: 'execute_kw',
-            args: [db, uid, apiKey, 'res.users', 'read',
-              [authors.map(a => a.id)],
-              { fields: ['partner_id'] },
-            ],
-          })) as Array<{ id: number; partner_id: [number, string] | false }>;
-          const pids = partnerIds
+        })) as Array<{ id: number; partner_id: [number, string] | false }>;
+
+        if (matchUsers.length) {
+          filterUserIds = matchUsers.map(u => u.id);
+          filterPartnerIds = matchUsers
             .map(u => Array.isArray(u.partner_id) ? u.partner_id[0] : null)
             .filter((id): id is number => id !== null);
-          if (pids.length) msgDomain.push(['author_id', 'in', pids]);
         }
       }
 
-      // 2. Leer mail.message con body
+      // 4a. Actividades COMPLETADAS — mail.message con activity type
+      const msgDomain: unknown[] = [
+        ['model', '=', 'stock.picking'],
+        ['res_id', 'in', [...completedPickingIds]],
+        ['mail_activity_type_id', '!=', false],
+      ];
+      if (actTypeIds.length)          msgDomain.push(['mail_activity_type_id', 'in', actTypeIds]);
+      if (filterPartnerIds?.length)   msgDomain.push(['author_id', 'in', filterPartnerIds]);
+
       const messages = (await odooRpc(url, {
         service: 'object', method: 'execute_kw',
         args: [db, uid, apiKey, 'mail.message', 'search_read',
@@ -787,8 +856,7 @@ export async function POST(req: NextRequest) {
           {
             fields: ['id', 'res_id', 'record_name', 'author_id',
                      'mail_activity_type_id', 'date', 'body'],
-            limit: 2000,
-            order: 'id desc',
+            limit: 2000, order: 'id desc',
           },
         ],
       })) as Array<{
@@ -798,69 +866,102 @@ export async function POST(req: NextRequest) {
         date: string; body: string;
       }>;
 
-      // 3. Filtrar solo Faltantes/Sobrantes/Merma y parsear body
-      type ParsedMsg = {
+      type ParsedEntry = {
         msgId: number; pickingId: number; pickingName: string;
-        storeCod: string; detalle: string; movAjuste: string; authorName: string;
+        storeCod: string; detalle: string; movAjuste: string;
+        authorName: string; estado: 'COMPLETADO' | 'VENCIDA' | 'PLANIFICADO';
       };
-      const parsed: ParsedMsg[] = [];
+      const parsed: ParsedEntry[] = [];
+
       for (const msg of messages) {
         const detalle = parseDetalle(msg.body ?? '');
         if (!detalle) continue;
-        const movAjuste   = parseMovAjuste(msg.body ?? '');
         const pickingName = msg.record_name ?? '';
-        const storeCod    = pickingName.split('/')[0] ?? '';
         parsed.push({
           msgId:      msg.id,
           pickingId:  msg.res_id,
           pickingName,
-          storeCod,
+          storeCod:   pickingName.split('/')[0] ?? '',
           detalle,
-          movAjuste,
+          movAjuste:  parseMovAjuste(msg.body ?? ''),
           authorName: Array.isArray(msg.author_id) ? msg.author_id[1] : '',
+          estado:     'COMPLETADO',
         });
       }
 
-      if (!parsed.length) return NextResponse.json({ rows: [] });
+      // 4b. Actividades PENDIENTES — mail.activity (si incluyePendientes)
+      if (incluyePendientes && allPickingIds.length) {
+        const actDomain: unknown[] = [
+          ['res_model', '=', 'stock.picking'],
+          ['res_id', 'in', allPickingIds],
+        ];
+        if (actTypeIds.length)        actDomain.push(['activity_type_id', 'in', actTypeIds]);
+        if (filterUserIds?.length)    actDomain.push(['user_id', 'in', filterUserIds]);
 
-      // 4. Batch fetch pickings para Responsable Armado y Fecha Armado
-      const pickingIds = [...new Set(parsed.map(m => m.pickingId))];
-      const pickingRecords = (await odooRpc(url, {
-        service: 'object', method: 'execute_kw',
-        args: [db, uid, apiKey, 'stock.picking', 'search_read',
-          [[['id', 'in', pickingIds]]],
-          {
-            fields: ['id', 'name', 'scheduled_date', 'create_date', 'date_done', 'user_id', 'origin', 'state'],
-            limit: 1000,
-          },
-        ],
-      })) as Array<{
-        id: number; name: string;
-        scheduled_date: string | false; create_date: string;
-        date_done: string | false;
-        user_id: [number, string] | false;
-        origin: string | false; state: string;
-      }>;
-      const pickingMap = new Map(pickingRecords.map(p => [p.id, p]));
+        const pendingActivities = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'mail.activity', 'search_read',
+            [actDomain],
+            {
+              fields: ['id', 'res_id', 'res_name', 'user_id',
+                       'activity_type_id', 'summary', 'note', 'date_deadline'],
+              limit: 2000,
+            },
+          ],
+        })) as Array<{
+          id: number; res_id: number; res_name: string | false;
+          user_id: [number, string] | false;
+          activity_type_id: [number, string] | false;
+          summary: string | false; note: string | false;
+          date_deadline: string | false;
+        }>;
+
+        for (const act of pendingActivities) {
+          const typeId   = Array.isArray(act.activity_type_id) ? act.activity_type_id[0] : 0;
+          const typeName = typeNameMap.get(typeId)
+            ?? (Array.isArray(act.activity_type_id) ? act.activity_type_id[1] : '');
+          if (!typeName) continue;
+
+          // Usar nombre del picking desde el mapa (ya traído en paso 2)
+          const pickingName =
+            pickingMap.get(act.res_id)?.name
+            ?? (typeof act.res_name === 'string' ? act.res_name : '')
+            ?? '';
+
+          const deadline = typeof act.date_deadline === 'string' ? act.date_deadline : '';
+          const estado: 'VENCIDA' | 'PLANIFICADO' =
+            (deadline && deadline < today) ? 'VENCIDA' : 'PLANIFICADO';
+
+          parsed.push({
+            msgId:      act.id,
+            pickingId:  act.res_id,
+            pickingName,
+            storeCod:   pickingName.split('/')[0] ?? '',
+            detalle:    typeName,
+            movAjuste:  typeof act.note === 'string' ? parseMovAjuste(act.note) : '',
+            authorName: Array.isArray(act.user_id) ? act.user_id[1] : '',
+            estado,
+          });
+        }
+      }
+
+      if (!parsed.length) return NextResponse.json({ rows: [], total: 0 });
 
       // 5. Responsable Armado — cadena: INT picking → stock.move (move_orig_ids) →
       //    picking padre (ej: 99REC/DT/97060) → user_id del picker.
-      //    El campo origin contiene nombres de stock.move (OP/xxx), NO nombres de picking,
-      //    por lo que buscar stock.picking by name no funciona. El path correcto es move_orig_ids.
-      const respMap           = new Map<number, string>(); // pickingId → nombre responsable armado
-      const parentOriginMap   = new Map<number, string>(); // pickingId → origin del picking padre
-      const parentDateDoneMap = new Map<number, string>(); // pickingId → date_done del picking padre
+      const parsedPickingIds  = [...new Set(parsed.map(m => m.pickingId))];
+      const respMap           = new Map<number, string>();
+      const parentOriginMap   = new Map<number, string>();
+      const parentDateDoneMap = new Map<number, string>();
       try {
-        // 5a. Solo moves con move_orig_ids (filtro en dominio evita traer miles de moves vacíos)
         const intMoves = (await odooRpc(url, {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'stock.move', 'search_read',
-            [[['picking_id', 'in', pickingIds], ['move_orig_ids', '!=', false]]],
+            [[['picking_id', 'in', parsedPickingIds], ['move_orig_ids', '!=', false]]],
             { fields: ['id', 'picking_id', 'move_orig_ids'], limit: 99999 },
           ],
         })) as Array<{ id: number; picking_id: [number, string] | false; move_orig_ids: number[] }>;
 
-        // Mapa: pickingId → lista de move_orig_ids
         const origIdsByPicking = new Map<number, number[]>();
         for (const m of intMoves) {
           if (!Array.isArray(m.move_orig_ids) || !m.move_orig_ids.length) continue;
@@ -871,7 +972,6 @@ export async function POST(req: NextRequest) {
 
         const allOrigIds = [...new Set([...origIdsByPicking.values()].flat())];
         if (allOrigIds.length) {
-          // 5b. Leer moves origen para obtener picking_id padre
           const origMoves = (await odooRpc(url, {
             service: 'object', method: 'execute_kw',
             args: [db, uid, apiKey, 'stock.move', 'read',
@@ -887,7 +987,6 @@ export async function POST(req: NextRequest) {
 
           const parentPickingIds = [...new Set(origMoveToParentPick.values())];
           if (parentPickingIds.length) {
-            // 5c. Leer pickings padre para obtener user_id y origin
             const parentPickings = (await odooRpc(url, {
               service: 'object', method: 'execute_kw',
               args: [db, uid, apiKey, 'stock.picking', 'read',
@@ -898,7 +997,6 @@ export async function POST(req: NextRequest) {
 
             const parentPickMap = new Map(parentPickings.map(pp => [pp.id, pp]));
 
-            // 5d. Asignar responsable, origin y date_done del padre — saltar si el padre es INT
             for (const [pickId, origIds] of origIdsByPicking) {
               for (const oid of origIds) {
                 const parentPickId = origMoveToParentPick.get(oid);
@@ -922,25 +1020,20 @@ export async function POST(req: NextRequest) {
       const rows = parsed.map(m => {
         const p = pickingMap.get(m.pickingId);
         const responsableRaw =
-          respMap.get(m.pickingId)                                        // PICK picker (ideal)
-          ?? (p && Array.isArray(p.user_id) ? p.user_id[1] : '');        // fallback: INT user_id
-
+          respMap.get(m.pickingId)
+          ?? (p && Array.isArray(p.user_id) ? p.user_id[1] : '');
         const parentOrigin = parentOriginMap.get(m.pickingId) ?? '';
         const esAuditoria  = /^auditoria/i.test(parentOrigin);
 
-        // fechaArmado: date_done del picking padre (DT/PICK) → date_done del INT → scheduled_date → create_date
         const fechaArmado =
           parentDateDoneMap.get(m.pickingId)
           ?? (p && typeof p.date_done === 'string' ? p.date_done : null)
           ?? (p && typeof p.scheduled_date === 'string' ? p.scheduled_date : null)
-          ?? p?.create_date
-          ?? '';
+          ?? p?.create_date ?? '';
 
-        // fechaDeclaracion: date_done del INT picking (cuando fue validado/completado)
         const fechaDeclaracion =
           (p && typeof p.date_done === 'string' ? p.date_done : null)
-          ?? p?.create_date
-          ?? null;
+          ?? p?.create_date ?? null;
 
         return {
           activityId:        m.msgId,
@@ -956,6 +1049,7 @@ export async function POST(req: NextRequest) {
           state:             p?.state ?? '',
           auditado:          esAuditoria ? 'SI' : 'NO',
           auditorName:       esAuditoria ? responsableRaw : '',
+          estado:            m.estado,
         };
       });
 

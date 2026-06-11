@@ -49,10 +49,11 @@ export const MODULE_GROUPS: ModuleGroup[] = [
   {
     id: 'control-interno', label: 'Control Interno', color: '#10B981',
     routes: [
-      { path: '/control-interno',   label: 'Control Interno'    },
-      { path: '/recepcion-tienda',  label: 'Recepción Tienda'   },
-      { path: '/validacion-tienda', label: 'Validación Tienda'  },
-      { path: '/admin/tiendas',     label: 'Config. Tiendas'    },
+      { path: '/control-interno',                label: 'Control Interno'    },
+      { path: '/control-interno/control-cruce',  label: 'Control Cruce'      },
+      { path: '/recepcion-tienda',               label: 'Recepción Tienda'   },
+      { path: '/validacion-tienda',              label: 'Validación Tienda'  },
+      { path: '/admin/tiendas',                  label: 'Config. Tiendas'    },
     ],
   },
   {

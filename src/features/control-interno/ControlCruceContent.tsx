@@ -14,6 +14,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
   type PaginationState,
+  type RowSelectionState,
 } from '@tanstack/react-table';
 import {
   RefreshCw, AlertTriangle, ChevronUp, ChevronDown,
@@ -41,6 +42,7 @@ export interface CruceRow {
   state:             string;
   auditado:          'SI' | 'NO';
   auditorName:       string;
+  estado:            'COMPLETADO' | 'VENCIDA' | 'PLANIFICADO';
 }
 
 interface ManualRow {
@@ -97,6 +99,39 @@ function AuditadoBadge({ value }: { value: 'SI' | 'NO' }) {
       color: '#fff', borderRadius: 4, padding: '2px 10px',
       fontSize: 11, fontWeight: 700, display: 'inline-block',
     }}>{value}</span>
+  );
+}
+
+function EstadoBadge({ estado }: { estado: 'COMPLETADO' | 'VENCIDA' | 'PLANIFICADO' }) {
+  const styles: Record<string, { bg: string; color: string }> = {
+    COMPLETADO:  { bg: 'rgba(22,163,74,0.85)',  color: '#fff' },
+    VENCIDA:     { bg: 'rgba(220,38,38,0.85)',  color: '#fff' },
+    PLANIFICADO: { bg: 'rgba(217,119,6,0.85)',  color: '#fff' },
+  };
+  const s = styles[estado] ?? { bg: 'rgba(100,116,139,0.4)', color: 'rgba(255,255,255,0.6)' };
+  return (
+    <span style={{
+      background: s.bg, color: s.color, borderRadius: 4, padding: '2px 8px',
+      fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
+    }}>{estado}</span>
+  );
+}
+
+function IndeterminateCheckbox({
+  checked, indeterminate, onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
+  return (
+    <input
+      ref={ref} type="checkbox"
+      checked={checked} onChange={onChange}
+      style={{ accentColor: '#6EE7B7', cursor: 'pointer', width: 14, height: 14 }}
+    />
   );
 }
 
@@ -270,7 +305,9 @@ export default function ControlCruceContent() {
   const [skuModalOpen,  setSkuModalOpen]  = useState(false);
   const [skuModalPick,  setSkuModalPick]  = useState('');
   const [skuModalDet,   setSkuModalDet]   = useState('');
-  const [skuCounts,     setSkuCounts]     = useState<Record<string, number>>({});
+  const [skuCounts,          setSkuCounts]          = useState<Record<string, number>>({});
+  const [incluyePendientes,  setIncluyePendientes]  = useState(false);
+  const [rowSelection,       setRowSelection]       = useState<RowSelectionState>({});
 
   // Debug state
   const [debugData,       setDebugData]       = useState<Record<string, unknown>[] | null>(null);
@@ -323,25 +360,26 @@ export default function ControlCruceContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action:   'get_control_activities',
-          config:   odooConfig,
-          query:    controlUser,
-          pickings: ['1','2','3'],
+          action:             'get_control_activities',
+          config:             odooConfig,
+          query:              controlUser,
           dateFrom,
           dateTo,
+          incluyePendientes,
         }),
       });
       const data = await res.json() as { rows?: CruceRow[]; error?: string; message?: string };
       if (data.error)   { setError(data.error);   return; }
       if (data.message) { setError(data.message); return; }
       setRows(data.rows ?? []);
+      setRowSelection({});
       setPagination(p => ({ ...p, pageIndex: 0 }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error de conexión');
     } finally {
       setLoading(false);
     }
-  }, [odooConfig, controlUser, dateFrom, dateTo]);
+  }, [odooConfig, controlUser, dateFrom, dateTo, incluyePendientes]);
 
   const loadManual = useCallback(async () => {
     try {
@@ -464,6 +502,40 @@ export default function ControlCruceContent() {
   // ── Definición de columnas ──────────────────────────────────────────────────
   const columns = useMemo<ColumnDef<TableRow>[]>(() => [
     {
+      id: 'select', enableSorting: false, size: 36,
+      header: ({ table }) => {
+        const filteredIds = table.getFilteredRowModel().rows.map(r => r.id);
+        const sel = table.getState().rowSelection;
+        const allChecked  = filteredIds.length > 0 && filteredIds.every(id => sel[id]);
+        const someChecked = !allChecked && filteredIds.some(id => sel[id]);
+        function toggleAll() {
+          if (allChecked) {
+            const next = { ...sel };
+            filteredIds.forEach(id => delete next[id]);
+            table.setRowSelection(next);
+          } else {
+            const next = { ...sel };
+            filteredIds.forEach(id => { next[id] = true; });
+            table.setRowSelection(next);
+          }
+        }
+        return (
+          <IndeterminateCheckbox
+            checked={allChecked}
+            indeterminate={someChecked}
+            onChange={toggleAll}
+          />
+        );
+      },
+      cell: ({ row }) => (
+        <IndeterminateCheckbox
+          checked={row.getIsSelected()}
+          indeterminate={row.getIsSomeSelected()}
+          onChange={() => row.toggleSelected()}
+        />
+      ),
+    },
+    {
       id: 'storeCod', accessorKey: 'storeCod', header: 'TIENDA',
       cell: ({ getValue }) => <StoreCodBadge cod={getValue() as string} />,
     },
@@ -565,31 +637,50 @@ export default function ControlCruceContent() {
         />
       ),
     },
+    {
+      id: 'estado', accessorKey: 'estado', header: 'ESTADO',
+      enableSorting: false,
+      filterFn: 'equals',
+      cell: ({ getValue }) => <EstadoBadge estado={getValue() as CruceRow['estado']} />,
+    },
   ], [skuCounts]);
 
   // ── Tabla TanStack ──────────────────────────────────────────────────────────
   const table = useReactTable({
     data: tableData,
     columns,
-    state: { sorting, globalFilter, columnFilters, pagination },
+    state: { sorting, globalFilter, columnFilters, pagination, rowSelection },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
+    enableRowSelection: true,
+    getRowId: row => row.estado === 'COMPLETADO' ? `m_${row.activityId}` : `a_${row.activityId}`,
   });
 
-  const filteredCount = table.getFilteredRowModel().rows.length;
-  const pageRows      = table.getRowModel().rows;
+  const filteredCount       = table.getFilteredRowModel().rows.length;
+  const selectedRows        = table.getSelectedRowModel().rows;
+  const hasSelection        = selectedRows.length > 0;
+  const completadoCount     = table.getFilteredRowModel().rows.filter(r => r.original.estado === 'COMPLETADO').length;
+  const selCompletadoCount  = selectedRows.filter(r => r.original.estado === 'COMPLETADO').length;
+  const exportCount         = hasSelection ? selCompletadoCount : completadoCount;
+  const pageRows            = table.getRowModel().rows;
 
   // ── Exportar a Sheets (sin stale closure: lee tabla en el momento del click) ──
   async function exportToSheet() {
-    const currentRows = table.getFilteredRowModel().rows.map(r => r.original);
+    // Con selección: exporta las seleccionadas COMPLETADAS.
+    // Sin selección: exporta todas las filtradas COMPLETADAS.
+    const pool = hasSelection
+      ? table.getSelectedRowModel().rows.map(r => r.original)
+      : table.getFilteredRowModel().rows.map(r => r.original);
+    const currentRows = pool.filter(r => r.estado === 'COMPLETADO');
     if (!currentRows.length) return;
     setExporting(true);
     setExportMsg(null);
@@ -722,6 +813,25 @@ export default function ControlCruceContent() {
             )}
           </div>
 
+          {/* Toggle vencidas/planificadas */}
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            userSelect: 'none', whiteSpace: 'nowrap',
+          }}>
+            <input
+              type="checkbox"
+              checked={incluyePendientes}
+              onChange={e => setIncluyePendientes(e.target.checked)}
+              style={{ accentColor: '#F59E0B', width: 14, height: 14, cursor: 'pointer' }}
+            />
+            <span style={{
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
+              color: incluyePendientes ? '#FCD34D' : 'rgba(255,255,255,0.35)',
+            }}>
+              INCLUIR VENCIDAS/PLANIFICADAS
+            </span>
+          </label>
+
           {/* Botón cargar */}
           <button
             onClick={loadOdoo}
@@ -742,20 +852,28 @@ export default function ControlCruceContent() {
           {tableData.length > 0 && (
             <button
               onClick={exportToSheet}
-              disabled={exporting || filteredCount === 0}
-              title={`Exportar ${filteredCount} filas visibles a Google Sheet`}
+              disabled={exporting || exportCount === 0}
+              title={hasSelection
+                ? `Exportar ${selCompletadoCount} seleccionadas COMPLETADAS (${selectedRows.length} seleccionadas total)`
+                : `Exportar ${completadoCount} filas COMPLETADAS a Google Sheet`
+              }
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                background: exporting ? 'rgba(22,163,74,0.25)' : 'rgba(22,163,74,0.18)',
-                border: '1px solid rgba(22,163,74,0.45)',
+                background: exporting ? 'rgba(22,163,74,0.25)' : hasSelection ? 'rgba(22,163,74,0.35)' : 'rgba(22,163,74,0.18)',
+                border: hasSelection ? '1px solid rgba(22,163,74,0.7)' : '1px solid rgba(22,163,74,0.45)',
                 borderRadius: 6, color: '#6EE7B7',
                 padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                cursor: (exporting || filteredCount === 0) ? 'not-allowed' : 'pointer',
-                opacity: (exporting || filteredCount === 0) ? 0.5 : 1,
+                cursor: (exporting || exportCount === 0) ? 'not-allowed' : 'pointer',
+                opacity: (exporting || exportCount === 0) ? 0.5 : 1,
               }}
             >
               <FileSpreadsheet size={13} className={exporting ? 'animate-pulse' : ''} />
-              {exporting ? 'Exportando…' : `Exportar ${filteredCount} filas`}
+              {exporting
+                ? 'Exportando…'
+                : hasSelection
+                  ? `Exportar ${selCompletadoCount} seleccionadas`
+                  : `Exportar ${completadoCount} completadas`
+              }
             </button>
           )}
 
@@ -775,6 +893,21 @@ export default function ControlCruceContent() {
           {rows.length > 0 && (
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap' }}>
               {filteredCount}{(globalFilter || activeFilterCount > 0) ? ` / ${rows.length}` : ''} fila{filteredCount !== 1 ? 's' : ''}
+              {hasSelection && (
+                <span style={{ marginLeft: 8, color: '#6EE7B7', fontWeight: 600 }}>
+                  · {selectedRows.length} seleccionada{selectedRows.length !== 1 ? 's' : ''}
+                  <button
+                    onClick={() => setRowSelection({})}
+                    title="Limpiar selección"
+                    style={{
+                      marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'rgba(110,231,183,0.6)', padding: 0, display: 'inline-flex',
+                    }}
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              )}
               {savingKey && <span style={{ marginLeft: 8, color: '#FCD34D' }}>· Guardando…</span>}
             </span>
           )}
@@ -826,6 +959,12 @@ export default function ControlCruceContent() {
               value={getColFilter('responsableArmado')}
               options={uniqueResponsables}
               onChange={v => setColFilter('responsableArmado', v)}
+            />
+            <FilterSelect
+              label="ESTADO"
+              value={getColFilter('estado')}
+              options={['COMPLETADO', 'VENCIDA', 'PLANIFICADO']}
+              onChange={v => setColFilter('estado', v)}
             />
 
             {activeFilterCount > 0 && (

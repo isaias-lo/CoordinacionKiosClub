@@ -1,5 +1,31 @@
 # TRABAJO — Estado actual
 
+---
+
+## Sesión: Control Cruce — Estado actividades + Filtro fechaArmado — 2026-06-11
+
+### Cambios realizados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/app/api/odoo/route.ts` | `get_control_activities` reescrito: filtra INT/MERMA pickings por `date_done` (no `mail.message.date`); tipos de actividad dinámicos desde `mail.activity.type`; agrega pendientes (`mail.activity`) si `incluyePendientes=true`; campo `estado: 'COMPLETADO' \| 'VENCIDA' \| 'PLANIFICADO'` en cada fila |
+| `src/features/control-interno/ControlCruceContent.tsx` | Toggle "INCLUIR VENCIDAS/PLANIFICADAS" antes del botón cargar; columna ESTADO (última, sin export); `exportToSheet` filtra solo `estado === 'COMPLETADO'`; botón muestra "X completadas"; filtro de columna ESTADO en barra de filtros |
+
+### Comportamiento
+
+- **Filtro de fechas**: aplica sobre `date_done` del INT/MERMA picking (= fechaArmado real)
+- **Sin toggle**: solo muestra actividades COMPLETADAS (comportamiento anterior)
+- **Con toggle activo**: agrega filas VENCIDA/PLANIFICADO (de `mail.activity` en pickings `scheduled_date` en rango)
+- **Export a Sheet**: siempre solo filas COMPLETADAS, independiente de filtros visibles
+- **ESTADO column**: badge verde/rojo/amarillo, filtrable, nunca se exporta al Sheet
+
+### Pendiente de configuración (manual)
+1. `.env.local`: `GOOGLE_CONTROL_CRUCE_SHEET_ID=1hzEACZM31wubNgGhFibpnUlUYo0IYDM4OCYgtPBkxGg`
+2. Compartir spreadsheet con `client_email` del service account (rol Editor)
+3. Ejecutar migración `039_control_cruce_skus.sql` si no se ha hecho aún
+
+---
+
 ## Sesión: Fix Dashboard + Polling + 401 API
 
 ### Branch: `inicio`
