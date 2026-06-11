@@ -7,7 +7,7 @@
     "prebuild": "npm run copy-pdf-worker",
     "predev": "npm run copy-pdf-worker",
     "dev": "next dev",
-    "build": "next build",
+    "build": "node --max-old-space-size=4096 node_modules/next/dist/bin/next build",
     "start": "next start",
     "lint": "next lint",
     "hola": "powershell -ExecutionPolicy Bypass -File scripts/hola.ps1",
