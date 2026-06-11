@@ -77,7 +77,8 @@ El usuario trabaja desde dos equipos (trabajo y casa) sobre la MISMA rama. La gu
 - Cuando el usuario diga **"hola"** (o al iniciar): asegúrate de que esté al día — equivale a `npm run hola` (`git fetch` + `git pull --ff-only` de su rama). Avísale si hay cambios locales sin commitear.
 - Cuando el usuario diga **"bye"** (o "me voy"/"adiós"): ejecuta el cierre de jornada — actualiza TRABAJO.md y TRABAJO_<persona>.md, haz `git add -A` + commit (WIP si aplica) y `git push` de su rama. **Nunca abras PR ni subas a `main` con bye** (puede ser trabajo a medias o solo un cambio de equipo).
 - Cuando el usuario diga **"PR"** / **"subir PR"**: abre el Pull Request de su rama hacia `main` (push + `gh pr create --base main --fill`, o el enlace web si `gh` no está). Es una acción DELIBERADA, solo cuando algo está listo para producción. **No mergees solo** — solo abrir el PR para revisión. Equivale a `npm run pr`.
-- Atajos: `npm run hola`, `npm run bye`, `npm run pr` (scripts en `scripts/`).
+- Cuando el usuario diga **"sync"**: trae lo último de `main` a su rama de trabajo (`git fetch` + `git merge origin/main`), resolviendo conflictos si los hay, y push. Úsalo antes de un PR o cuando otra herramienta (OpenCode) mergeó algo a main. Equivale a `npm run sync`.
+- Atajos: `npm run hola`, `npm run bye`, `npm run sync`, `npm run pr` (scripts en `scripts/`).
 
 ### Flujo de ramas / deploy (vigente desde 2026-06-09)
 Trabajar en rama del día y **NO mergear directo a main**: abrir PR con `gh pr create` para que el usuario lo revise/mergee desde GitHub. Vercel solo despliega `main`.

@@ -13,8 +13,9 @@ en qué PC estés. **Léela cuando tengas dudas.**
 
 | Palabra | Comando | Para qué |
 |---|---|---|
-| **hola** | `npm run hola` | Al llegar: ponerte al día (pull). |
+| **hola** | `npm run hola` | Al llegar: ponerte al día (pull de TU rama). |
 | **bye** | `npm run bye` | Al salir o cambiar de PC: guardar y subir tu avance a TU rama. **Nunca abre PR** → seguro aunque el trabajo esté a medias. |
+| **sync** | `npm run sync` | Traer lo último de **main** a tu rama (úsalo antes de un PR, o si otra herramienta como OpenCode mergeó algo a main). Deja el PR limpio. |
 | **PR** / "subir PR" | `npm run pr` | Solo cuando una función está **lista para producción**: abre el Pull Request a `main` para revisar/desplegar. **No mergea solo.** |
 
 > 🔑 **`bye` ≠ `PR`.** `bye` solo sube tu avance a tu rama (no toca producción).
