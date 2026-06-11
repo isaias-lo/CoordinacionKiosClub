@@ -9,7 +9,7 @@ import {
   Map, Globe, MapPin, Activity, Navigation as NavIcon,
   Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, CalendarDays, Search, ArrowLeftRight,
+  LogOut, Users, Search, ArrowLeftRight,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
