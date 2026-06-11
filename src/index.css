@@ -107,6 +107,27 @@
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700 active:scale-[0.97];
   }
+
+  /* ── Estilo corporativo (acciones sobre el fondo CLARO del contenido) ──
+     Unifica el look con el sidebar: navy sobrio como primario, rojo solo acento. */
+  .btn-corp {
+    @apply btn text-white active:scale-[0.97];
+    background: var(--gradient-dark-h);
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-corp:hover { filter: brightness(1.15); box-shadow: var(--shadow-md); }
+
+  .btn-corp-outline {
+    @apply btn bg-white active:scale-[0.97];
+    color: #1A2550;
+    border: 1px solid rgba(26,37,80,0.16);
+  }
+  .btn-corp-outline:hover { background: rgba(26,37,80,0.04); border-color: rgba(26,37,80,0.28); }
+
+  /* Acento rojo Kios — uso puntual (no para acciones primarias grandes) */
+  .btn-corp-accent {
+    @apply btn bg-kred text-white hover:brightness-110 active:scale-[0.97];
+  }
 }
   /* Despacho page: reset fixed/overflow for print */
   .despacho-root {

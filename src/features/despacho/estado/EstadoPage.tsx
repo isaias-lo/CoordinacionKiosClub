@@ -791,8 +791,7 @@ export function EstadoPage() {
             <button
               onClick={() => window.print()}
               disabled={noneChecked || stores.length === 0}
-              className="w-full py-3 bg-red text-white border-none rounded-btn font-barlow-condensed text-[16px] font-bold cursor-pointer disabled:opacity-30 transition-all active:opacity-80 flex items-center justify-center gap-2 tracking-wide"
-              style={{ boxShadow: !noneChecked && stores.length > 0 ? '0 4px 14px rgba(211,47,47,0.45)' : 'none' }}>
+              className="btn-corp w-full py-3 text-[15px]">
               🖨 Imprimir {noneChecked ? '— nada seleccionado' : `${totalSelectedLabels} etiqueta${totalSelectedLabels !== 1 ? 's' : ''}`}
             </button>
           </div>
@@ -902,18 +901,13 @@ export function EstadoPage() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => setConfigOpen(v => !v)}
-                    className="px-4 py-2.5 rounded-btn border font-barlow-condensed text-[14px] font-bold cursor-pointer transition-all active:opacity-80 flex items-center gap-1.5 whitespace-nowrap"
-                    style={{
-                      background: configOpen ? 'rgba(26,37,80,0.10)' : 'rgba(255,255,255,0.9)',
-                      borderColor: configOpen ? 'rgba(26,37,80,0.30)' : '#d0d4df',
-                      color: '#1B2A6B',
-                    }}>
+                    className="btn-corp-outline text-[13px] whitespace-nowrap"
+                    style={configOpen ? { background: 'rgba(26,37,80,0.08)', borderColor: 'rgba(26,37,80,0.30)' } : undefined}>
                     ⚙ Config
                   </button>
                   <button
                     onClick={() => printSingleStore(selectedStore.cod)}
-                    className="px-5 py-2.5 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[15px] font-bold cursor-pointer active:opacity-80 flex items-center gap-2 whitespace-nowrap"
-                    style={{ boxShadow: '0 3px 10px rgba(27,42,107,0.30)' }}>
+                    className="btn-corp text-[13px] whitespace-nowrap">
                     🖨 Solo esta tienda
                   </button>
                 </div>

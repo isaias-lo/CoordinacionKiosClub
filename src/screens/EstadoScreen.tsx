@@ -30,19 +30,22 @@ function EstadoContent() {
             Estado / Seguimiento
           </div>
 
-          <div className="flex rounded-full overflow-hidden border border-white/20">
-            {tabs.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                onClick={() => setView(id)}
-                className="flex items-center gap-1.5 px-4 py-2.5 font-barlow-condensed text-[14px] font-bold tracking-widest uppercase cursor-pointer transition-all"
-                style={view === id
-                  ? { background: 'rgba(255,255,255,0.22)', color: '#fff' }
-                  : { background: 'transparent', color: 'rgba(255,255,255,0.45)' }}>
-                <Icon size={13} strokeWidth={2} />
-                <span className="hidden sm:inline">{label}</span>
-              </button>
-            ))}
+          {/* Tabs sobrias con acento rojo abajo — mismo lenguaje que el sidebar */}
+          <div className="flex gap-0.5">
+            {tabs.map(({ id, label, Icon }) => {
+              const active = view === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setView(id)}
+                  className="relative flex items-center gap-1.5 px-3.5 py-2.5 font-barlow-condensed text-[13px] font-bold tracking-wide uppercase cursor-pointer transition-colors"
+                  style={{ color: active ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+                  <Icon size={14} strokeWidth={active ? 2.2 : 1.9} />
+                  <span className="hidden sm:inline">{label}</span>
+                  {active && <span className="absolute left-2.5 right-2.5 bottom-0 h-[2.5px] rounded-full bg-kred" />}
+                </button>
+              );
+            })}
           </div>
 
         </div>
