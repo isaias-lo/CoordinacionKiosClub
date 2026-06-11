@@ -791,7 +791,7 @@ export function EstadoPage() {
             <button
               onClick={() => window.print()}
               disabled={noneChecked || stores.length === 0}
-              className="btn-corp w-full py-3 text-[15px]">
+              className="btn-info w-full py-3 text-[15px]">
               🖨 Imprimir {noneChecked ? '— nada seleccionado' : `${totalSelectedLabels} etiqueta${totalSelectedLabels !== 1 ? 's' : ''}`}
             </button>
           </div>
@@ -901,13 +901,13 @@ export function EstadoPage() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => setConfigOpen(v => !v)}
-                    className="btn-corp-outline text-[13px] whitespace-nowrap"
-                    style={configOpen ? { background: 'rgba(26,37,80,0.08)', borderColor: 'rgba(26,37,80,0.30)' } : undefined}>
+                    className="btn-outline text-[13px] whitespace-nowrap"
+                    style={configOpen ? { background: 'rgba(37,99,235,0.08)', borderColor: 'rgba(37,99,235,0.35)', color: '#2563EB' } : undefined}>
                     ⚙ Config
                   </button>
                   <button
                     onClick={() => printSingleStore(selectedStore.cod)}
-                    className="btn-corp text-[13px] whitespace-nowrap">
+                    className="btn-info text-[13px] whitespace-nowrap">
                     🖨 Solo esta tienda
                   </button>
                 </div>
