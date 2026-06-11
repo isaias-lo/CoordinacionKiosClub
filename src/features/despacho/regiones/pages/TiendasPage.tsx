@@ -13,6 +13,7 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
+import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
@@ -343,13 +344,7 @@ export function TiendasPage() {
 
     load();
 
-    const today = new Date().toISOString().slice(0, 10);
-    const channel = supabase
-      .channel('picking-pallets-nacional')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_pallets', filter: `date=eq.${today}` }, () => load())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return subscribeToPickingPallets(load);
   }, []);
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */

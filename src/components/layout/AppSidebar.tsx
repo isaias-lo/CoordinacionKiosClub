@@ -9,7 +9,7 @@ import {
   Map, Globe, MapPin, Activity, Navigation as NavIcon,
   Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, Search,
+  LogOut, Users, CalendarDays, Search, ArrowLeftRight,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
@@ -28,8 +28,9 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/tiendas':                 Store,
   '/registros':               FileText,
   '/incidencias':             AlertTriangle,
-  '/control-interno':         Shield,
-  '/recepcion-tienda':        Inbox,
+  '/control-interno':                Shield,
+  '/control-interno/control-cruce': ArrowLeftRight,
+  '/recepcion-tienda':               Inbox,
   '/validacion-tienda':       CheckSquare,
   '/admin/tiendas':           Settings2,
   '/despacho/config-tiendas': Settings2,
