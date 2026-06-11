@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
+import { Printer, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi'; // deprecated — config now server-side
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
@@ -1077,7 +1077,7 @@ export function PickingScreen() {
             onTouchStart={handlePanelTouchStart}
           >
             <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
-            <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex flex-col gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => (
                 <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
               ))}
@@ -1107,12 +1107,10 @@ export function PickingScreen() {
               { key: 'actividad',     label: 'Actividad'   },
               { key: 'historial',     label: 'Historial'   },
               { key: 'estadisticas',  label: 'Estadísticas'},
-              { key: 'movimientos',   label: 'Movimientos' },
               { key: 'configuracion', label: 'Config'      },
               { key: 'calendario',    label: 'Calendario'  },
             ] as { key: typeof rightTab; label: string }[]).map(tab => {
               const active = rightTab === tab.key;
-              const showBadge = tab.key === 'movimientos' && movNuevos > 0;
               return (
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
                   className="relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3"
@@ -1121,12 +1119,6 @@ export function PickingScreen() {
                     borderBottom: active ? '2px solid var(--color-info)' : '2px solid transparent',
                   }}>
                   {tab.label}
-                  {showBadge && (
-                    <span className="absolute top-1.5 right-2 min-w-[16px] h-[16px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
-                      style={{ background: '#D97706' }}>
-                      {movNuevos}
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -1165,18 +1157,6 @@ export function PickingScreen() {
             <div className="flex-1 overflow-y-auto min-h-0 p-3">
               <CalendarioColumnas readOnly forceGeneral />
             </div>
-          )}
-
-          {/* ── Tab content: Movimientos (Odoo del día) ── */}
-          {rightTab === 'movimientos' && (
-            <MovimientosOdooPanel
-              odooConfig={odooConfig}
-              hasOdoo={hasOdoo}
-              selectedCods={selectedCods}
-              onAdd={addManualMovement}
-              onNewCountChange={setMovNuevos}
-              seenIdsRef={seenMovIdsRef}
-            />
           )}
 
           {/* ── Tab content: Monitoreo ── */}
@@ -1307,7 +1287,7 @@ export function PickingScreen() {
                       if (!count) return null;
                       return (
                         <div className="mb-3 print:hidden flex items-center gap-3 bg-white border border-[rgba(220,38,38,0.2)] rounded-xl px-4 py-2.5">
-                          <span className="text-[20px] shrink-0">⚠️</span>
+                          <AlertTriangle size={18} className="shrink-0" style={{color:'#DC2626'}} />
                           <div className="flex-1 text-[13px]" style={{ color: '#B91C1C' }}>
                             <span className="font-bold">{count} operación{count !== 1 ? 'es' : ''} sin responsable en Odoo</span>
                             {' '}— no generarán etiqueta. Asigna picker en Odoo y recarga.
@@ -1404,7 +1384,7 @@ export function PickingScreen() {
                           return (
                             <div className="mb-4 print:hidden">
                               <div className="flex items-center gap-3 mb-2">
-                                <span className="font-barlow-condensed text-[22px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
+                                <span className="font-barlow-condensed text-[18px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
                                   {meta.label}
                                 </span>
                                 {total > 0 && (
@@ -1428,7 +1408,7 @@ export function PickingScreen() {
                         return (
                           <div className="space-y-4">
                             {/* Grid de 3 columnas fijas — todas siempre visibles */}
-                            <div className="grid grid-cols-3 gap-4 items-start">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
@@ -1442,7 +1422,7 @@ export function PickingScreen() {
                                     ) : (
                                       <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
                                         style={{ borderColor: meta.color + '28', background: meta.bg }}>
-                                        <div className="text-[28px] mb-1" style={{ opacity: 0.18 }}>□</div>
+                                        <div className="mb-1" style={{ opacity: 0.18 }}><Package size={28} /></div>
                                         <div className="text-[12px] font-semibold text-center" style={{ color: meta.color, opacity: 0.5 }}>
                                           Sin operaciones aún
                                         </div>
