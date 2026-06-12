@@ -13,7 +13,9 @@
     "hola": "powershell -ExecutionPolicy Bypass -File scripts/hola.ps1",
     "bye": "powershell -ExecutionPolicy Bypass -File scripts/bye.ps1",
     "sync": "powershell -ExecutionPolicy Bypass -File scripts/sync.ps1",
-    "pr": "powershell -ExecutionPolicy Bypass -File scripts/pr.ps1"
+    "pr": "powershell -ExecutionPolicy Bypass -File scripts/pr.ps1",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -63,11 +65,15 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@vitest/coverage-v8": "^4.1.8",
     "autoprefixer": "^10.4.16",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.3.1",
+    "fast-check": "^4.8.0",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "vitest": "^4.1.8"
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -189,6 +189,20 @@ export function AppSidebar() {
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleMouseEnter = useCallback(() => {
+    clearTimeout(leaveTimer.current);
+    setIsHovering(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    leaveTimer.current = setTimeout(() => setIsHovering(false), 100);
+  }, []);
+
+  // When collapsed but hovering, visually expand as overlay
+  const effectiveCollapsed = isCollapsed && !isHovering;
 
   function canSee(path: string) {
     const paths = profile?.allowedPaths ?? [];
@@ -207,7 +221,7 @@ export function AppSidebar() {
     supervisor: 'Supervisor',
   };
 
-  const sidebarW = isCollapsed ? 64 : 220;
+  const sidebarW = effectiveCollapsed ? 64 : 220;
 
   const sidebarContent = (
     <motion.aside
@@ -225,7 +239,7 @@ export function AppSidebar() {
         style={{ height: 56, borderBottom: '1px solid var(--sidebar-border)' }}
       >
         <AnimatePresence initial={false}>
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -246,7 +260,7 @@ export function AppSidebar() {
           )}
         </AnimatePresence>
 
-        {isCollapsed && (
+        {effectiveCollapsed && (
           <div className="flex-1 flex justify-center">
             <span className="font-barlow-condensed text-[18px] font-extrabold text-kred leading-none">K</span>
           </div>
@@ -254,12 +268,12 @@ export function AppSidebar() {
 
         <button
           onClick={toggleCollapsed}
-          aria-label={isCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
-          aria-expanded={!isCollapsed}
+          aria-label={effectiveCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+          aria-expanded={!effectiveCollapsed}
           className="w-7 h-7 rounded-md flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/[0.07] transition-all flex-shrink-0"
-          title={isCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+          title={effectiveCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
         >
-          {isCollapsed
+          {effectiveCollapsed
             ? <ChevronRight size={14} strokeWidth={2} aria-hidden="true" />
             : <ChevronLeft  size={14} strokeWidth={2} aria-hidden="true" />
           }
@@ -268,7 +282,7 @@ export function AppSidebar() {
 
       {/* ── Inicio ── */}
       <div className="pt-2 px-0">
-        <NavItem path="/" label="Inicio" collapsed={isCollapsed} />
+        <NavItem path="/" label="Inicio" collapsed={effectiveCollapsed} />
       </div>
 
       {/* ── Command palette trigger ── */}
@@ -279,12 +293,12 @@ export function AppSidebar() {
           title="Buscar (⌘K)"
           className={[
             'w-full flex items-center rounded-lg transition-all hover:bg-white/[0.06] active:scale-[0.98]',
-            isCollapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-2',
+            effectiveCollapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-2',
           ].join(' ')}
         >
           <Search size={14} className="text-white/35 flex-shrink-0" strokeWidth={2} />
           <AnimatePresence initial={false}>
-            {!isCollapsed && (
+            {!effectiveCollapsed && (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
@@ -309,7 +323,7 @@ export function AppSidebar() {
             <NavGroup
               key={group.id}
               group={group}
-              collapsed={isCollapsed}
+              collapsed={effectiveCollapsed}
               routes={accessibleRoutes}
             />
           );
@@ -319,7 +333,7 @@ export function AppSidebar() {
         {isAdmin && (
           <NavGroup
             group={{ id: 'admin', label: 'Admin', color: '#6B7280', routes: [] }}
-            collapsed={isCollapsed}
+            collapsed={effectiveCollapsed}
             routes={[
               { path: '/admin/usuarios',          label: 'Usuarios'     },
               { path: '/despacho/config-tiendas', label: 'Config. Despacho' },
@@ -340,9 +354,9 @@ export function AppSidebar() {
           aria-haspopup="menu"
           className={[
             'w-full flex items-center rounded-lg transition-all hover:bg-white/[0.07] active:scale-[0.98]',
-            isCollapsed ? 'justify-center p-2' : 'gap-2.5 px-2.5 py-2',
+            effectiveCollapsed ? 'justify-center p-2' : 'gap-2.5 px-2.5 py-2',
           ].join(' ')}
-          title={isCollapsed ? (profile?.full_name ?? 'Usuario') : undefined}
+          title={effectiveCollapsed ? (profile?.full_name ?? 'Usuario') : undefined}
         >
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold text-white flex-shrink-0"
@@ -351,7 +365,7 @@ export function AppSidebar() {
             {initial}
           </div>
           <AnimatePresence initial={false}>
-            {!isCollapsed && (
+            {!effectiveCollapsed && (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
@@ -418,9 +432,25 @@ export function AppSidebar() {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex h-full">
-        {sidebarContent}
+      {/* Desktop sidebar — wrapper holds static space; aside overlays when hover-expanded */}
+      <div
+        className="hidden lg:block h-full flex-shrink-0 relative"
+        style={{ width: isCollapsed ? 64 : 220 }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div
+          className="h-full"
+          style={{
+            position: isCollapsed && isHovering ? 'absolute' : 'relative',
+            top: 0,
+            left: 0,
+            zIndex: isCollapsed && isHovering ? 50 : 'auto',
+            boxShadow: isCollapsed && isHovering ? '4px 0 24px rgba(0,0,0,0.45)' : 'none',
+          }}
+        >
+          {sidebarContent}
+        </div>
       </div>
 
       {/* Mobile drawer backdrop */}
