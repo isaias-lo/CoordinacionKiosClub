@@ -35,6 +35,15 @@ export function useOdooProgress(): Map<string, StoreProgress> {
 
   useEffect(() => { load(); }, [load]);
 
+  // Re-consulta periódica (60 s) mientras la bodega está abierta: mantiene el
+  // semáforo al día y dispara el refresco batch throttleado del servidor, sin
+  // depender de que alguien tenga Picking abierto. La llamada a Odoo la limita
+  // el TTL del endpoint (máx 1/min en total), así que esto NO sobrecarga.
+  useEffect(() => {
+    const id = setInterval(() => { void load(); }, 60_000);
+    return () => clearInterval(id);
+  }, [load]);
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const debounced = () => {
