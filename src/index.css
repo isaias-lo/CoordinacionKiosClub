@@ -32,6 +32,11 @@
   --color-info:       #2563EB;
   --color-danger:     #D42B2B;
 
+  /* Estado (puntos/indicadores) — tonos sobrios, alineados al look empresarial */
+  --status-done:      #36996A;  /* verde apagado (completado) */
+  --status-partial:   #C2873A;  /* ámbar apagado (parcial) */
+  --status-none:      #9AA4B2;  /* gris (sin actividad) */
+
   /* Sidebar (always dark — independent of theme) */
   --sidebar-bg:       #0D1829;
   --sidebar-border:   rgba(255,255,255,0.07);
@@ -126,6 +131,10 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700 active:scale-[0.97];
   }
+
+  /* ── Estilo enterprise unificado (referencia: Config. Tiendas) ──
+     Primario = azul info (#2563EB); secundario = contorno claro slate.
+     El rojo Kios queda solo como acento de navegación-activa (sidebar/tabs). */
   .btn-info {
     @apply btn bg-info text-white hover:brightness-110 active:scale-[0.97];
   }
