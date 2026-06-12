@@ -39,11 +39,13 @@ export default function PerfilPage() {
   const [nameSaved,   setNameSaved]   = useState(false);
   const [nameError,   setNameError]   = useState('');
 
-  const [newEmail,    setNewEmail]    = useState('');
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailSent,    setEmailSent]    = useState(false);
-  const [emailError,   setEmailError]   = useState('');
+  const [newEmail,       setNewEmail]       = useState('');
+  const [emailCurrPass,  setEmailCurrPass]  = useState('');
+  const [emailLoading,   setEmailLoading]   = useState(false);
+  const [emailSent,      setEmailSent]      = useState(false);
+  const [emailError,     setEmailError]     = useState('');
 
+  const [currPass,    setCurrPass]    = useState('');
   const [newPass,     setNewPass]     = useState('');
   const [confPass,    setConfPass]    = useState('');
   const [passLoading, setPassLoading] = useState(false);
@@ -67,20 +69,33 @@ export default function PerfilPage() {
 
   const handleChangeEmail = async () => {
     if (!newEmail.trim() || !newEmail.includes('@')) { setEmailError('Correo inválido'); return; }
+    if (!emailCurrPass) { setEmailError('Ingresa tu contraseña actual para confirmar'); return; }
     setEmailLoading(true); setEmailError(''); setEmailSent(false);
+    const { error: authErr } = await supabase.auth.signInWithPassword({
+      email: user!.email!, password: emailCurrPass,
+    });
+    if (authErr) { setEmailError('Contraseña incorrecta'); setEmailLoading(false); return; }
     const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
     if (error) setEmailError(error.message);
-    else { setEmailSent(true); setNewEmail(''); }
+    else { setEmailSent(true); setNewEmail(''); setEmailCurrPass(''); }
     setEmailLoading(false);
   };
 
   const handleChangePassword = async () => {
-    if (newPass.length < 6) { setPassError('Mínimo 6 caracteres'); return; }
+    if (!currPass) { setPassError('Ingresa tu contraseña actual'); return; }
+    if (newPass.length < 8) { setPassError('Mínimo 8 caracteres'); return; }
     if (newPass !== confPass) { setPassError('Las contraseñas no coinciden'); return; }
+    if (newPass === currPass) { setPassError('La nueva contraseña debe ser distinta a la actual'); return; }
     setPassLoading(true); setPassError(''); setPassSaved(false);
+    const { error: authErr } = await supabase.auth.signInWithPassword({
+      email: user!.email!, password: currPass,
+    });
+    if (authErr) { setPassError('Contraseña actual incorrecta'); setPassLoading(false); return; }
     const { error } = await supabase.auth.updateUser({ password: newPass });
-    if (error) setPassError(error.message);
-    else { setPassSaved(true); setNewPass(''); setConfPass(''); setTimeout(() => setPassSaved(false), 2500); }
+    if (error) { setPassError(error.message); setPassLoading(false); return; }
+    await supabase.auth.signOut({ scope: 'others' });
+    setPassSaved(true); setCurrPass(''); setNewPass(''); setConfPass('');
+    setTimeout(() => setPassSaved(false), 2500);
     setPassLoading(false);
   };
 
@@ -168,25 +183,43 @@ export default function PerfilPage() {
             className="w-full bg-transparent border-none outline-none font-barlow text-[15px] text-text"
           />
         </Field>
+        <Field label="Contraseña actual (para confirmar)">
+          <input
+            type="password"
+            value={emailCurrPass}
+            onChange={e => { setEmailCurrPass(e.target.value); setEmailError(''); }}
+            placeholder="Tu contraseña actual"
+            className="w-full bg-transparent border-none outline-none font-barlow text-[15px] text-text"
+          />
+        </Field>
         {emailError && <div className="text-[11px] text-red mb-2">{emailError}</div>}
         {emailSent && <div className="text-[11px] text-success mb-2">✓ Verifica tu nuevo correo para confirmar el cambio</div>}
         <button
           onClick={handleChangeEmail}
-          disabled={emailLoading || !newEmail.trim()}
+          disabled={emailLoading || !newEmail.trim() || !emailCurrPass}
           className="w-full py-3 rounded-card font-barlow-condensed text-[16px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all"
           style={{ background: 'linear-gradient(135deg, #0f766e, #0d9488)' }}>
-          {emailLoading ? '⏳ Enviando…' : 'Cambiar correo'}
+          {emailLoading ? '⏳ Verificando…' : 'Cambiar correo'}
         </button>
 
         {/* ── CONTRASEÑA ── */}
         <SectionTitle>Contraseña</SectionTitle>
+        <Field label="Contraseña actual">
+          <input
+            type={showPass ? 'text' : 'password'}
+            value={currPass}
+            onChange={e => { setCurrPass(e.target.value); setPassError(''); }}
+            placeholder="Tu contraseña actual"
+            className="w-full bg-transparent border-none outline-none font-barlow text-[15px] text-text"
+          />
+        </Field>
         <Field label="Nueva contraseña">
           <div className="flex items-center gap-2">
             <input
               type={showPass ? 'text' : 'password'}
               value={newPass}
               onChange={e => { setNewPass(e.target.value); setPassError(''); }}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
               className="flex-1 bg-transparent border-none outline-none font-barlow text-[15px] text-text"
             />
             <button onClick={() => setShowPass(v => !v)} className="text-text-3 text-[12px] border-none bg-transparent cursor-pointer">{showPass ? 'Ocultar' : 'Ver'}</button>
@@ -202,20 +235,20 @@ export default function PerfilPage() {
           />
         </Field>
         {passError && <div className="text-[11px] text-red mb-2">{passError}</div>}
-        {passSaved && <div className="text-[11px] text-success mb-2">✓ Contraseña actualizada</div>}
+        {passSaved && <div className="text-[11px] text-success mb-2">✓ Contraseña actualizada — otras sesiones cerradas</div>}
         <button
           onClick={handleChangePassword}
-          disabled={passLoading || !newPass || !confPass}
+          disabled={passLoading || !currPass || !newPass || !confPass}
           className="w-full py-3 rounded-card font-barlow-condensed text-[16px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all"
           style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)' }}>
-          {passLoading ? '⏳ Actualizando…' : passSaved ? '✓ Actualizada' : 'Cambiar contraseña'}
+          {passLoading ? '⏳ Verificando…' : passSaved ? '✓ Actualizada' : 'Cambiar contraseña'}
         </button>
 
         {/* ── INFORMACIÓN ── */}
         <SectionTitle>Información de cuenta</SectionTitle>
         <div className="bg-white border border-border rounded-card overflow-hidden" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
           {[
-            { label: 'ID de usuario', value: user?.id?.slice(0, 16) + '…' },
+            { label: 'ID de usuario', value: user?.id ?? '—' },
             { label: 'Creada el', value: user?.created_at ? new Date(user.created_at).toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
             { label: 'Último acceso', value: user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—' },
             { label: 'Rol', value: roleLabel[profile?.role ?? ''] ?? profile?.role ?? '—' },
