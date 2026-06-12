@@ -117,14 +117,16 @@ export default function ResultsSection({
         />
       ))}
 
-      <MapSection
-        rutas={rutas}
-        gps={gps}
-        cd={cd}
-        tiendas={tiendas}
-        onKmReady={handleKmReady}
-        onCdUpdate={onCdUpdate}
-      />
+      <div className="no-print">
+        <MapSection
+          rutas={rutas}
+          gps={gps}
+          cd={cd}
+          tiendas={tiendas}
+          onKmReady={handleKmReady}
+          onCdUpdate={onCdUpdate}
+        />
+      </div>
 
       <div className="flex gap-[9px] mt-4 no-print">
         <button onClick={onVolver} className="h-[42px] px-4 rounded-kios2 bg-kbg text-kmuted text-[13px] font-semibold border-[1.5px] border-black/[0.09] whitespace-nowrap flex items-center gap-1.5">

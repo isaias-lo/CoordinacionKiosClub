@@ -104,12 +104,6 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
   }
 }
 
-/* ── Enrutador: print styles ── */
-@media print {
-  .no-print { display: none !important; }
-  .print-flex { display: flex !important; }
-  body { overflow: visible !important; height: auto !important; }
-  @page { size: A4; margin: 15mm; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Utility button classes ────────────────────────────────────── */
@@ -142,6 +136,38 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
     @apply btn bg-white border border-border text-text-2 hover:bg-bg active:scale-[0.97];
   }
 }
+
+/* ── Enrutador: print styles ── */
+@media print {
+  @page { size: A4; margin: 15mm; }
+
+  body { overflow: visible !important; height: auto !important; background: #fff !important; }
+
+  /* Hide navigation, sidebar, interactive buttons */
+  .no-print { display: none !important; }
+  .shell-sidebar,
+  [data-sidebar],
+  #mobile-menu-btn { display: none !important; }
+
+  /* Show print-only elements */
+  .print-flex { display: flex !important; }
+
+  /* Reset the fixed shell so content flows normally */
+  .shell-container {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    inset: auto !important;
+  }
+  #main-content {
+    position: static !important;
+    overflow: visible !important;
+    transform: none !important;
+    height: auto !important;
+    min-height: unset !important;
+  }
+
   /* Despacho page: reset fixed/overflow for print */
   .despacho-root {
     position: static !important;
@@ -158,5 +184,14 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
     height: auto !important;
     overflow: visible !important;
   }
+
+  /* Route cards — avoid cutting across pages */
+  .rc { page-break-inside: avoid; break-inside: avoid; }
+
+  /* Force white backgrounds on cards for readability */
+  .rc, .sc {
+    background: #fff !important;
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
 }
-@keyframes spin { to { transform: rotate(360deg); } }

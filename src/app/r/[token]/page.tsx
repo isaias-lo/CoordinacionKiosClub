@@ -4,7 +4,7 @@ import { useParams }           from 'next/navigation';
 
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaRuta {
-  id: number; store_cod: string; orden: number;
+  id: number; store_cod: string; nombre?: string; ventana?: string; orden: number;
   pallets: number; bultos: number; contenedores: number;
   estado_entrega: string;
 }
@@ -78,7 +78,7 @@ export default function RutaPublicaPage() {
   const totalB      = ruta.ruta_tiendas.reduce((s, t) => s + t.bultos, 0);
 
   return (
-    <div className="min-h-screen pb-10" style={{ background: '#0f172a', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="min-h-screen pb-10" style={{ background: '#0f172a', fontFamily: 'system-ui, -apple-system, sans-serif', overflowX: 'hidden' }}>
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '24px 20px 20px' }}>
@@ -143,12 +143,15 @@ export default function RutaPublicaPage() {
               <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2d3f8a', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 {t.orden}
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{t.store_cod}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {t.nombre ?? t.store_cod}
+                </div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
-                  {t.pallets > 0 && `${t.pallets} pallet${t.pallets !== 1 ? 's' : ''}`}
+                  {t.ventana && <span style={{ marginRight: 6 }}>{t.ventana}</span>}
+                  {t.pallets > 0 && `${t.pallets}P`}
                   {t.pallets > 0 && t.bultos > 0 && ' · '}
-                  {t.bultos > 0 && `${t.bultos} bulto${t.bultos !== 1 ? 's' : ''}`}
+                  {t.bultos > 0 && `${t.bultos}B`}
                 </div>
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: ESTADO_COLOR[t.estado_entrega] ?? '#666', textTransform: 'capitalize' }}>
