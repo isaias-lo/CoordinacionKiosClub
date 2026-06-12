@@ -1,12 +1,25 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-12 17:52
-Último commit: WIP: auto-save antes de compactar contexto
+Fecha: 2026-06-12 18:07
+Último commit: fix: scripts cross-platform (bash para Mac) + gh CLI instalado
 Rama: inicio
 
 ## Archivos modificados recientemente
+TRABAJO.md
 TRABAJO_ERICK.md
+package.json
+scripts/bye.sh
+scripts/hola.sh
+scripts/pr.sh
+scripts/sync.sh
+src/app/api/rutas-despacho/route.ts
+src/app/r/[token]/page.tsx
+src/components/layout/AppShell.tsx
+src/features/despacho/rutas/components/ResultsSection.tsx
+src/index.css
+supabase/migrations/041_ruta_tiendas_nombre.sql
+tsconfig.tsbuildinfo
 
 ## En progreso
 [actualizar manualmente o con comando bye]

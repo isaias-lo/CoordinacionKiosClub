@@ -901,32 +901,48 @@ export default function RutasScreen() {
   }
 
   // ── Save history ──────────────────────────────────────────────────
-  function handleGuardarHistorial() {
+  async function handleGuardarHistorial() {
     if (!results) { setHistorialStatus('warn'); setHistorialMsg('⚠️ No hay rutas calculadas.'); return; }
-    guardarHistorialFn({
-      fecha, supervisor,
-      rutas: results.rutas, ts: results.ts,
-      gps,
-      cd:          cdRef.current,
-      kmTotalReal: kmTotalRealRef.current,
-      sheetsWebAppUrl: SHEETS_WEB_APP_URL,
-      onStart:   () => { setHistorialStatus('loading'); setHistorialMsg(''); },
-      onSuccess: msg => {
-        setHistorialMsg(msg);
-        setHistorialStatus('success');
-        // Limpiar pendientes al registrar despacho exitosamente
-        try { localStorage.removeItem('despacho_pendientes'); } catch {}
-        setPendientes(null);
-      },
-      onWarn:    msg => { setHistorialMsg(msg); setHistorialStatus('warn'); },
-      onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
-    });
-    // Escribe en Google Sheets (historial/auditoría)
-    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+    setHistorialStatus('loading');
+    setHistorialMsg('');
 
-    // Actualiza routing en Supabase (conductor, patente, ruta, supervisor)
-    // en las filas existentes de despacho_rm y picking_pallets usando (fecha, cod).
-    // NO crea registros nuevos — evita duplicados con prefijo R que existían antes.
+    const totalPallets = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
+    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b + ((t as { ch?: number }).ch ?? 0), 0), 0);
+    const totalTiendas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c))).size;
+    const totalRutas   = results.rutas.length;
+    const kmTotal      = Math.round((results.rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0)) * 10) / 10;
+
+    // 1. PRIMARY: guardar en Supabase — de aquí viene el feedback al usuario
+    try {
+      const res = await fetch('/api/historial-despacho', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fecha, supervisor, totalTiendas, totalPallets, totalBultos, totalRutas, kmTotal,
+          resumen: results.rutas.map(r => ({
+            patente:   r.v.p,
+            conductor: r._choferAsignado || r.v.ch,
+            tiendas:   r.ts.map(t => t.c),
+            pallets:   r.tp,
+            bultos:    r.tb,
+          })),
+        }),
+      });
+      const json = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
+
+      setHistorialMsg(`✓ Guardado · ${fecha} · ${totalTiendas} tiendas · ${totalPallets}P+${totalBultos}B · ${kmTotal}km`);
+      setHistorialStatus('success');
+      try { localStorage.removeItem('despacho_pendientes'); } catch {}
+      setPendientes(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      setHistorialMsg(`⚠️ Error guardando: ${msg}`);
+      setHistorialStatus('error');
+      return; // No continuar con las sincronizaciones secundarias si Supabase falló
+    }
+
+    // 2. SECONDARY (fire-and-forget): actualiza conductor/ruta en despacho_rm y picking_pallets
     const routingUpdates = results.rutas.flatMap((ruta, ri) => {
       const conductor = ruta._choferAsignado || ruta.v.ch || '';
       const patente   = ruta.v.p;
@@ -939,34 +955,24 @@ export default function RutasScreen() {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ fecha, updates: routingUpdates }),
-      }).catch(() => {});
+      }).catch(e => console.error('[despacho-records PATCH]', e));
     }
 
-    // También registra en Supabase historial_despacho
-    const totalPallets = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
-    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b + ((t as { ch?: number }).ch ?? 0), 0), 0);
-    const totalTiendas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c))).size;
-    const totalRutas   = results.rutas.length;
-    const kmTotal      = results.rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0);
+    // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM en Google Sheets
+    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
 
-    fetch('/api/historial-despacho', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fecha,
-        supervisor,
-        totalTiendas,
-        totalPallets,
-        totalBultos,
-        totalRutas,
-        kmTotal,
-        resumen: results.rutas.map(r => ({
-          patente:   r.v.p,
-          conductor: r._choferAsignado || r.v.ch,
-          tiendas:   r.ts.map(t => t.c),
-        })),
-      }),
-    }).catch(err => console.error('[historial-despacho]', err));
+    // 4. SECONDARY (fire-and-forget): GAS historial (puede fallar silenciosamente)
+    guardarHistorialFn({
+      fecha, supervisor,
+      rutas: results.rutas, ts: results.ts, gps,
+      cd:          cdRef.current,
+      kmTotalReal: kmTotalRealRef.current,
+      sheetsWebAppUrl: SHEETS_WEB_APP_URL,
+      onStart:   () => {},  // UI ya está manejada por Supabase
+      onSuccess: () => {},
+      onWarn:    () => {},
+      onError:   () => {},
+    });
   }
 
   // ── Driver change ─────────────────────────────────────────────────
