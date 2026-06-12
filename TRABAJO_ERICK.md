@@ -11,7 +11,27 @@
 ---
 
 ## Última sesión
-Fecha: 2026-06-07
+Fecha: 2026-06-12 (cierre desde cecilia / PC laboral)
+Rama: `inicio` (sincronizada con `main` + remoto; nada sin subir salvo artefactos de build)
+Último commit: `195586d` Merge origin/main into inicio
+
+### Qué se hizo hoy
+1. **PR #16 (Estado/Seguimiento visual) → mergeado a `main` por el compañero.** El rework visual ya está en producción.
+2. **Sync de `main` a `inicio`** tras el merge: trajo el trabajo del compañero (202 tests, fixes auth/email, AppSidebar). Conflicto único en `TRABAJO.md` resuelto.
+3. **PR #17 ABIERTO** (`inicio → main`, MERGEABLE, Vercel preview OK) con los 5 fixes que quedaron fuera del PR #16:
+   - fix realtime entre cuentas (`shared_session_state`, filtro de 1 campo).
+   - **semáforo de bodegas automático** (server-side, batch a Odoo throttleado 1/min, sin abrir Picking, sin botón).
+   - fix sidebar en `/registros`.
+   - fix franja gris arriba de los tabs de Estado.
+
+### 🔵 AL LLEGAR A CASA — empezar por aquí
+1. `hola` (trae `inicio` al PC de casa).
+2. Revisar / mergear el **PR #17** en GitHub para que los fixes (realtime + semáforo) lleguen a producción. (Si el check `ci` sale rojo, es por los tests del compañero, no por nuestro código.)
+3. Heads-up: `tsc` marca errores en `__tests__/*.test.ts` (del compañero, ya en `main`); no son nuestros.
+
+---
+
+## Sesión 2026-06-07 (histórico)
 Último commit: feat(skills): agregar 10 skills de Antigravity + reglas de auto-activación (`1cde6b0`)
 Rama: inicio
 
