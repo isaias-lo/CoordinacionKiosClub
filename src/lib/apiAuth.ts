@@ -1,11 +1,10 @@
 import { jwtVerify } from 'jose';
 import type { NextRequest } from 'next/server';
 
-// JWT_SECRET: available in Supabase Dashboard → Settings → API → JWT Settings.
-// Add SUPABASE_JWT_SECRET to .env.local and Vercel env vars.
-// Falls back to network validation if not set (safe but slower under load).
+// Supabase JWT secret is base64-encoded in the dashboard — must Buffer.from(..., 'base64').
+// Falls back to network validation if not set or if local verification fails.
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET
-  ? new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET)
+  ? new Uint8Array(Buffer.from(process.env.SUPABASE_JWT_SECRET, 'base64'))
   : null;
 
 function extractBearer(request: NextRequest): string | null {
@@ -26,10 +25,10 @@ async function verifyJwt(token: string): Promise<JwtPayload | null> {
       const { payload } = await jwtVerify(token, JWT_SECRET);
       return payload as JwtPayload;
     } catch {
-      return null;
+      // Local verification failed (wrong key, expired, etc.) — fall through to network
     }
   }
-  // Fallback: network call to Supabase auth (when JWT_SECRET not set)
+  // Fallback: network call to Supabase auth (when JWT_SECRET not set OR local verify failed)
   const { createClient } = await import('@supabase/supabase-js');
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
