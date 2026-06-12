@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { BarcodeCard, LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, PropRow, ToggleRow } from '@/features/despacho/shared/BarcodeCard';
 import { TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
@@ -10,6 +10,7 @@ import { formatCod } from '../rutas/utils/helpers';
 import { TIENDAS_INICIAL } from '../rutas/data/tiendas';
 import { getTiendasDelDia } from '../utils/useCalendario';
 import { useOdooProgress } from '../shared/useOdooProgress';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useApp } from '../../../context/AppContext';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { supabase } from '@/lib/supabase';
@@ -155,21 +156,27 @@ function StoreCard({
         />
       )}
 
-      {/* Checkbox para selección de impresión */}
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={e => onCheck(e.target.checked)}
-        onClick={e => e.stopPropagation()}
-        disabled={empty}
-        className="w-4 h-4 flex-shrink-0 cursor-pointer accent-navy rounded disabled:opacity-30"
-      />
+      {/* Checkbox para selección de impresión — estilo caja (como Picking) */}
+      <div
+        onClick={e => { e.stopPropagation(); if (!empty) onCheck(!checked); }}
+        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${empty ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{
+          borderColor: checked ? 'var(--color-secondary)' : 'rgba(26,37,80,0.2)',
+          background:  checked ? 'var(--color-secondary)' : 'transparent',
+          color: '#fff',
+        }}>
+        {checked && (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="font-barlow-condensed text-[18px] font-extrabold text-navy leading-none">{formatCod(store.cod)}</span>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${store.source === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>
-            {store.source === 'santiago' ? 'Santiago' : 'Regiones'}
+          <span className="font-mono text-[13px] font-bold shrink-0 px-2 py-0.5 rounded-lg"
+            style={{ background: 'rgba(26,37,80,0.07)', color: '#374151' }}>
+            {formatCod(store.cod)}
           </span>
           {hasGuides && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[rgba(22,163,74,0.10)] text-success uppercase">
@@ -182,7 +189,7 @@ function StoreCard({
             </span>
           )}
         </div>
-        <div className="text-[13px] text-text-2 font-semibold truncate leading-tight">{store.name}</div>
+        <div className="text-[14px] truncate leading-tight" style={{ color: '#374151' }}>{store.name}</div>
       </div>
 
       <div className="flex gap-2 flex-shrink-0">
@@ -217,9 +224,13 @@ const GROUP_META: { key: GroupKey; label: string; bg: string; color: string }[] 
   { key: 'santiago', label: 'SANTIAGO', bg: 'rgba(26,37,80,0.05)',   color: '#374151' },
 ];
 
-export function EstadoPage() {
+export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
   const { state: appState } = useApp();
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
+
+  // Columna izquierda redimensionable (divisor arrastrable, como Picking)
+  const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =
+    useResizablePanel({ storageKey: 'estado_left_panel_width', defaultWidth: 440, min: 320, max: 640 });
 
   // Tiendas del día por grupo (fal→REGIONES, costa→COSTA, rm→SANTIAGO)
   const [calGroups, setCalGroups] = useState<Record<GroupKey, string[]>>({ region: [], costa: [], santiago: [] });
@@ -696,19 +707,22 @@ export function EstadoPage() {
             LEFT — Subida + Lista + Imprimir
             Móvil sin selección: visible (flex-1 acotado → scroll funciona).
             Móvil con tienda seleccionada: oculto (el panel derecho ocupa toda la pantalla).
-            Desktop: siempre visible, ancho fijo 440px.
+            Desktop: ancho redimensionable con el divisor arrastrable.
         ══════════════════════════════ */}
-        <div className={`${selected ? 'hidden lg:flex' : 'flex'} flex-col flex-1 lg:flex-none w-full lg:w-[440px] border-r border-border overflow-hidden`}>
+        <div
+          className={`${selected ? 'hidden lg:flex' : 'flex'} flex-col overflow-hidden border-r border-border bg-white ${isDesktop ? 'shrink-0' : 'flex-1 w-full'}`}
+          style={isDesktop ? { width: leftWidth } : undefined}>
 
-          {/* Stats header */}
-          <div className="px-5 py-4 bg-navy flex-shrink-0">
-            <div className="font-barlow-condensed text-[22px] font-bold text-white leading-none">
-              {stores.length} tienda{stores.length !== 1 ? 's' : ''}
+          {/* Stats header — estilo claro (igual que "Tiendas de hoy" de Abastecimiento) */}
+          <div className="px-4 pt-4 pb-3 border-b border-border flex-shrink-0 bg-white">
+            <div className="font-barlow-condensed text-[14px] font-semibold text-navy uppercase tracking-widest flex items-center gap-2">
+              Tiendas de hoy
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[rgba(217,119,6,0.12)] text-amber-700">{stores.length}</span>
             </div>
             <div className="flex items-center gap-3 mt-1.5">
-              {totalP > 0 && <span className="font-barlow-condensed text-[15px] font-bold text-[#93C5FD]">{totalP} pallet{totalP !== 1 ? 's' : ''}</span>}
-              {totalB > 0 && <span className="font-barlow-condensed text-[15px] font-bold text-[#FCD34D]">{totalB} bulto{totalB !== 1 ? 's' : ''}</span>}
-              {totalP === 0 && totalB === 0 && <span className="text-[13px] text-white/35">Sin despacho registrado</span>}
+              {totalP > 0 && <span className="font-barlow-condensed text-[14px] font-bold text-info">{totalP} pallet{totalP !== 1 ? 's' : ''}</span>}
+              {totalB > 0 && <span className="font-barlow-condensed text-[14px] font-bold text-warn">{totalB} bulto{totalB !== 1 ? 's' : ''}</span>}
+              {totalP === 0 && totalB === 0 && <span className="text-[13px] text-text-3">Sin despacho registrado</span>}
             </div>
           </div>
 
@@ -857,6 +871,22 @@ export function EstadoPage() {
           </div>
         </div>
 
+        {/* DIVISOR ARRASTRABLE — solo desktop (igual que Picking) */}
+        {isDesktop && (
+          <div
+            className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
+            style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
+            onMouseDown={handlePanelMouseDown}
+            onTouchStart={handlePanelTouchStart}>
+            <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
+            <div className="flex flex-col gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ══════════════════════════════
             RIGHT — Previsualización de etiquetas
             Móvil sin selección: oculto (solo se ve la lista).
@@ -864,6 +894,15 @@ export function EstadoPage() {
             Desktop: siempre visible al lado de la lista.
         ══════════════════════════════ */}
         <div className={`${selected ? 'flex' : 'hidden lg:flex'} flex-col flex-1 overflow-y-auto bg-[#ECEEF3] p-4 lg:p-6`}>
+
+          {/* Tabs (estilo Picking) — pegados al tope del panel derecho, sin hueco.
+              Sticky para que permanezcan visibles al hacer scroll; los márgenes
+              negativos los extienden hasta los bordes del panel. */}
+          {tabBar && (
+            <div className="sticky top-0 z-20 -mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-4">
+              {tabBar}
+            </div>
+          )}
 
           {/* Botón Volver — solo en móvil cuando hay tienda seleccionada */}
           {selected && (
