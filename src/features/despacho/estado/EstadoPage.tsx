@@ -893,16 +893,13 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
             Móvil con tienda seleccionada: full-screen con botón "← Volver".
             Desktop: siempre visible al lado de la lista.
         ══════════════════════════════ */}
-        <div className={`${selected ? 'flex' : 'hidden lg:flex'} flex-col flex-1 overflow-y-auto bg-[#ECEEF3] p-4 lg:p-6`}>
+        <div className={`${selected ? 'flex' : 'hidden lg:flex'} flex-col flex-1 overflow-hidden bg-[#ECEEF3]`}>
 
-          {/* Tabs (estilo Picking) — pegados al tope del panel derecho, sin hueco.
-              Sticky para que permanezcan visibles al hacer scroll; los márgenes
-              negativos los extienden hasta los bordes del panel. */}
-          {tabBar && (
-            <div className="sticky top-0 z-20 -mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-4">
-              {tabBar}
-            </div>
-          )}
+          {/* Tabs (estilo Picking) — pegados al tope del panel derecho, sin franja gris. */}
+          {tabBar}
+
+          {/* Contenido con scroll y padding (debajo de los tabs) */}
+          <div className="flex-1 overflow-y-auto p-4 lg:p-6 flex flex-col">
 
           {/* Botón Volver — solo en móvil cuando hay tienda seleccionada */}
           {selected && (
@@ -1029,6 +1026,7 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 

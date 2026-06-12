@@ -2,6 +2,27 @@
 
 ---
 
+## Sesión: Estado/Seguimiento visual + fixes bodegas/realtime — 2026-06-12
+
+Rama `inicio`. El rework visual de Estado se mergeó a `main` vía PR #16. Quedaron pendientes de un PR nuevo los fixes de realtime, /registros, semáforo de bodegas y franja gris. Sincronizado con `main` (incluye tests+auth del compañero).
+
+### Cambios
+| Área | Cambio | Commit |
+|------|--------|--------|
+| Estado/Seguimiento | Rework visual estilo Picking: header oscuro a lo ancho, tabs sobre el panel derecho (sin hueco), columna redimensionable, lista estilo Picking (código en caja gris, checkbox cuadro). | `4caa4dc` |
+| Realtime | `shared_session_state`: filtro de 1 sola condición (Supabase no soporta multi-filtro `fecha=eq.X,fuente=eq.Y` → contaminaba estado entre fuentes). | `0dc86d9` |
+| /registros | Contenedor `absolute inset-0` consistente con el shell (sidebar visible). | `d2aaac6` |
+| Bodegas — semáforo | `GET /api/picking-store-progress` calcula progreso por tienda con **1 llamada batch a Odoo, cacheada + throttleada (máx 1/min vía fila META)**. Bodegas ven estado real sin abrir Picking (re-GET 60s, automático, sin botón). Picking sin cambios. | `1a5dcef` |
+
+### Pendiente / a verificar
+- **Punto 2b** (franja gris arriba de tabs): se reestructuró esa zona; verificar en el build fresco si persiste.
+- Probar en `localhost:3000`: semáforo automático en bodegas, realtime entre cuentas, sidebar en /registros.
+
+### Causa raíz documentada (semáforo verde)
+El estado verde/naranja/gris lo alimentaba sólo lo que Picking publicaba al **seleccionar** tiendas (`opsMap`). Tiendas no seleccionadas → grises aunque estuvieran listas en Odoo. Ahora se calcula server-side para todas, independiente de Picking.
+
+---
+
 ## Sesión: Tests + Auth — 2026-06-12
 
 ### Cambios realizados

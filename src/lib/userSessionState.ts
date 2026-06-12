@@ -48,14 +48,20 @@ export function subscribeToSessionState(
 ): () => void {
   const fecha = todayISO();
   const channelId = `shared-state-${fuente}-${fecha}-${Math.random().toString(36).slice(2, 7)}`;
+  // Supabase Realtime solo admite UNA condición de filtro por suscripción.
+  // Filtramos por `fuente` en el servidor y validamos `fecha`/`fuente` en el
+  // callback (un filtro multi-condición con coma es inválido y dejaba pasar
+  // eventos de otras fuentes → cross-contaminación de estado entre vistas).
   const channel = supabase
     .channel(channelId)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'shared_session_state', filter: `fecha=eq.${fecha},fuente=eq.${fuente}` },
+      { event: '*', schema: 'public', table: 'shared_session_state', filter: `fuente=eq.${fuente}` },
       (payload) => {
-        const row = payload.new as { state: unknown } | null;
-        if (row?.state) onState(row.state);
+        const row = payload.new as { state?: unknown; fecha?: string; fuente?: string } | null;
+        if (!row) return;
+        if (row.fecha !== fecha || row.fuente !== fuente) return; // solo hoy + esta fuente
+        if (row.state) onState(row.state);
       },
     )
     .subscribe();
