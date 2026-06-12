@@ -9,10 +9,11 @@ import {
   Map, Globe, MapPin, Activity, Navigation as NavIcon,
   Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, Search, ArrowLeftRight, Layers,
+  LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
+import { useTheme } from '@/context/ThemeContext';
 import { MODULE_GROUPS } from '@/config/routes';
 
 /* ── Icon registry ─────────────────────────────────────────────── */
@@ -185,6 +186,7 @@ function NavGroup({
 export function AppSidebar() {
   const { profile, signOut }      = useAuth();
   const { isCollapsed, toggleCollapsed, isMobileOpen, closeMobile } = useSidebar();
+  const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -387,6 +389,16 @@ export function AppSidebar() {
                 >
                   <Settings2 size={14} />
                   Gestionar cuenta
+                </button>
+                <button
+                  onClick={() => { toggleTheme(); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors text-[13px] font-medium text-left"
+                >
+                  {theme === 'dark'
+                    ? <Sun size={14} className="text-yellow-300" />
+                    : <Moon size={14} className="text-blue-300" />
+                  }
+                  {theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
                 </button>
                 <div className="h-px mx-3" style={{ background: 'rgba(255,255,255,0.07)' }} />
                 <button

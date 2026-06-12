@@ -4,6 +4,7 @@ export default {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -18,7 +19,7 @@ export default {
         kgreen:  '#34C759',
         korange: '#FF9500',
 
-        /* ── Semantic aliases (kept for backward compat) ── */
+        /* ── Semantic aliases — backed by CSS variables for dark mode ── */
         red: {
           DEFAULT: '#D42B2B',
           dark: '#B71C1C',
@@ -29,19 +30,19 @@ export default {
           dark: '#0D1829',
         },
         bg: {
-          DEFAULT: '#F2F2F7',
-          2: '#E8E8ED',
-          3: '#D8D8DC',
+          DEFAULT: 'var(--color-bg)',
+          2: 'var(--color-bg-2)',
+          3: 'var(--color-bg-3)',
         },
-        card: '#FFFFFF',
+        card: 'var(--color-card)',
         text: {
-          DEFAULT: '#1C1C1E',
-          2: '#3A3A3C',
-          3: '#8E8E93',
+          DEFAULT: 'var(--color-text)',
+          2: 'var(--color-text-2)',
+          3: 'var(--color-text-3)',
         },
         border: {
-          DEFAULT: '#D8DCE6',
-          2: '#C8CDD8',
+          DEFAULT: 'var(--color-border)',
+          2: 'var(--color-border-2)',
         },
 
         /* ── Status ── */

@@ -4,14 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-
-const ROLE_HOME: Record<string, string> = {
-  auditor:            '/auditoria',
-  'admin-auditoria':  '/auditoria',
-  despachador:        '/',
-  admin:              '/',
-  'recepcion-tienda': '/tiendas',
-};
+import { SYSTEM_ROLE_HOME } from '@/config/routes';
 
 const ERROR_MAP: Record<string, string> = {
   'Invalid login credentials': 'Correo o contraseña incorrectos.',
@@ -53,8 +46,10 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    const role = (data.user.user_metadata?.role as string) ?? 'auditor';
-    router.push(ROLE_HOME[role] ?? '/auditoria');
+    const role     = (data.user.user_metadata?.role      as string) ?? 'auditor';
+    const homeMeta = (data.user.user_metadata?.home_path as string) ?? '';
+    const home     = homeMeta || SYSTEM_ROLE_HOME[role] || '/perfil';
+    router.push(home);
     router.refresh();
   }
 

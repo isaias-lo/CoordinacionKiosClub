@@ -14,15 +14,17 @@
   --color-primary:    #D42B2B;
   --color-secondary:  #1B2A6B;
 
-  /* Surface */
-  --color-bg:         #F2F2F7;
+  /* ── Light mode (default) ── */
+  --color-bg:         #FFFFFF;
+  --color-bg-2:       #F2F2F7;
+  --color-bg-3:       #E8E8ED;
   --color-card:       #FFFFFF;
   --color-border:     #D8DCE6;
-
-  /* Text */
+  --color-border-2:   #C8CDD8;
   --color-text:       #1C1C1E;
   --color-text-2:     #3A3A3C;
   --color-text-3:     #8E8E93;
+  --shadow-card:      0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
 
   /* Status */
   --color-success:    #34C759;
@@ -35,11 +37,11 @@
   --status-partial:   #C2873A;  /* ámbar apagado (parcial) */
   --status-none:      #9AA4B2;  /* gris (sin actividad) */
 
-  /* Sidebar */
+  /* Sidebar (always dark — independent of theme) */
   --sidebar-bg:       #0D1829;
   --sidebar-border:   rgba(255,255,255,0.07);
 
-  /* Dark surfaces */
+  /* Dark surfaces (used by dark-bg components like despacho panels) */
   --surface-1:        rgba(255,255,255,0.04);
   --surface-2:        rgba(255,255,255,0.08);
   --surface-3:        rgba(255,255,255,0.12);
@@ -57,6 +59,23 @@
   --shadow-md:        0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.07);
   --shadow-lg:        0 8px 32px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.10);
 }
+
+/* ── Dark mode overrides ─────────────────────────────────────────── */
+html.dark {
+  --color-bg:         #0D1829;
+  --color-bg-2:       #111E38;
+  --color-bg-3:       #1a2845;
+  --color-card:       #111E38;
+  --color-border:     rgba(255,255,255,0.10);
+  --color-border-2:   rgba(255,255,255,0.16);
+  --color-text:       #F1F5F9;
+  --color-text-2:     #CBD5E1;
+  --color-text-3:     #94A3B8;
+  --shadow-card:      0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+}
+
+html.dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
+html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 
 @layer base {
   * {
