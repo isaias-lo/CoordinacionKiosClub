@@ -18,6 +18,7 @@ interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  accessToken: string | null;
   signOut: () => Promise<void>;
   /** Returns true if the current user can perform `action` on `section`. */
   can: (section: string, action: 'edit' | 'read') => boolean;
@@ -27,6 +28,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   profile: null,
   loading: true,
+  accessToken: null,
   signOut: async () => {},
   can: () => true,
 });
@@ -55,22 +57,18 @@ function profileFromUser(user: User): Profile {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]       = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]             = useState<User | null>(null);
+  const [profile, setProfile]       = useState<Profile | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user ?? null;
-      setUser(u);
-      setProfile(u ? profileFromUser(u) : null);
-      setLoading(false);
-    });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null;
       setUser(u);
       setProfile(u ? profileFromUser(u) : null);
+      setAccessToken(session?.access_token ?? null);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -88,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, can }}>
+    <AuthContext.Provider value={{ user, profile, loading, accessToken, signOut, can }}>
       {children}
     </AuthContext.Provider>
   );

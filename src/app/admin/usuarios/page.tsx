@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { MODULE_GROUPS, HOME_OPTIONS, ALL_MODULE_PATHS, cleanAllowedPaths, type ModuleGroup } from '@/config/routes';
 
@@ -63,9 +62,8 @@ const EMPTY_NEW_ROLE: Omit<AppRole,'is_system'> = {
 
 /* ─── Helpers ────────────────────────────────────────────────── */
 
-async function authHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` };
+function makeHeaders(token: string | null) {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` };
 }
 
 function slugify(str: string) {
@@ -77,7 +75,7 @@ function slugify(str: string) {
 
 export default function UsuariosPage() {
   const router  = useRouter();
-  const { profile } = useAuth();
+  const { profile, accessToken } = useAuth();
 
   /* ── Tab ── */
   const [activeTab, setActiveTab] = useState<'usuarios' | 'roles'>('usuarios');
@@ -137,7 +135,7 @@ export default function UsuariosPage() {
     setLoading(true);
     setError('');
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const res  = await fetch('/api/admin/users', { headers });
       const data = await res.json() as { users?: AppUser[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? 'Error');
@@ -149,13 +147,13 @@ export default function UsuariosPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accessToken]);
 
   const loadRoles = useCallback(async () => {
     setRolesLoading(true);
     setRolesError(false);
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const res  = await fetch('/api/admin/roles', { headers });
       const data = await res.json() as { roles?: AppRole[]; error?: string };
       if (res.ok && data.roles) setRoles(data.roles);
@@ -165,7 +163,7 @@ export default function UsuariosPage() {
     } finally {
       setRolesLoading(false);
     }
-  }, []);
+  }, [accessToken]);
 
   useEffect(() => { loadUsers(); loadRoles(); }, [loadUsers, loadRoles]);
 
@@ -234,7 +232,7 @@ export default function UsuariosPage() {
     if (!newPaths && !newPerms) return;
     setSavingRole(role.id);
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const body: Record<string, unknown> = { id: role.id };
       // Limpia rutas ya inexistentes antes de guardar (deja solo rutas reales + '*')
       if (newPaths) body.allowed_paths = cleanAllowedPaths(newPaths);
@@ -264,7 +262,7 @@ export default function UsuariosPage() {
     if (!deleteRoleTarget) return;
     setDeletingRole(true);
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const res = await fetch(`/api/admin/roles?id=${deleteRoleTarget.id}`, { method: 'DELETE', headers });
       const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error ?? 'Error');
@@ -294,7 +292,7 @@ export default function UsuariosPage() {
     setEditRoleSaving(true);
     setEditRoleError('');
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const res = await fetch('/api/admin/roles', {
         method: 'PATCH',
         headers,
@@ -346,7 +344,7 @@ export default function UsuariosPage() {
     setCreatingRole(true);
     setCreateRoleError('');
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const res = await fetch('/api/admin/roles', {
         method: 'POST',
         headers,
@@ -375,7 +373,7 @@ export default function UsuariosPage() {
     setApproving(true);
     setApproveError('');
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const pass = Math.random().toString(36).slice(2, 10) + 'A1!';
 
       const patchRes = await fetch('/api/admin/users', {
@@ -422,7 +420,7 @@ export default function UsuariosPage() {
     setSaving(true);
     setFormError('');
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       if (modal === 'create') {
         const res  = await fetch('/api/admin/users', { method: 'POST', headers, body: JSON.stringify(form) });
         const data = await res.json() as { error?: string };
@@ -447,7 +445,7 @@ export default function UsuariosPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const headers = await authHeaders();
+      const headers = makeHeaders(accessToken);
       const res = await fetch(`/api/admin/users?id=${deleteTarget.id}`, { method: 'DELETE', headers });
       const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error ?? 'Error al eliminar');

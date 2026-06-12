@@ -2,14 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { verifyAdmin } from '@/lib/apiAuth';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER!,
-    pass: process.env.GMAIL_APP_PASS!,
-  },
-});
-
 const ROLE_LABEL: Record<string, string> = {
   auditor:           'Auditor',
   'admin-auditoria': 'Admin Auditoría',
@@ -22,6 +14,11 @@ export async function POST(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASS;
+  if (!gmailUser || !gmailPass)
+    return NextResponse.json({ error: 'Email no configurado en el servidor (GMAIL_USER / GMAIL_APP_PASS)' }, { status: 503 });
+
   const { email, full_name, password, role } = await request.json() as {
     email: string;
     full_name: string;
@@ -33,11 +30,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email y contraseña requeridos' }, { status: 400 });
   }
 
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: gmailUser, pass: gmailPass },
+  });
+
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3002').replace(/\/$/, '');
 
   try {
     await transporter.sendMail({
-      from: `KiosClub <${process.env.GMAIL_USER}>`,
+      from: `KiosClub <${gmailUser}>`,
       to: email,
       subject: 'Tu cuenta fue aprobada - KiosClub',
       html: `

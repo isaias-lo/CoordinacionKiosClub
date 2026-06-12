@@ -8,9 +8,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev        # Start dev server (also runs copy-pdf-worker first)
 npm run build      # Production build (also runs copy-pdf-worker first)
 npm run lint       # ESLint via next lint
+npm test           # Run all unit tests (vitest run)
+npm run test:watch # Watch mode — re-runs on save
 ```
 
-There are no tests in this project. The `copy-pdf-worker` script is wired as a `pre*` hook and copies `pdfjs-dist` worker files to `public/` — it runs automatically before `dev` and `build`.
+The `copy-pdf-worker` script is wired as a `pre*` hook and copies `pdfjs-dist` worker files to `public/` — it runs automatically before `dev` and `build`.
+
+## Testing Policy
+
+**Whenever you create or modify a feature, write tests for it.**
+
+### What to test
+- **Pure utility functions** (`src/features/*/utils`, `src/lib/`) — always testable, no mocking needed.
+- **Zod schemas** in `src/lib/schemas.ts` — test valid and invalid inputs for any schema you add or change.
+- **API auth logic** (`src/lib/apiAuth.ts`) — test with real JWTs via `jose`'s `SignJWT`.
+- **Offline queues / localStorage logic** — use `// @vitest-environment jsdom` at the top of the file.
+- **Business logic in hooks or context** — extract pure functions and test those; skip React rendering tests.
+
+### What NOT to test
+- React component rendering (no React Testing Library in this project — keep it out).
+- Supabase DB queries — mock at the `@supabase/supabase-js` import level if needed.
+- Next.js routing, middleware, or build behavior.
+
+### Where to put test files
+```
+src/features/<feature>/__tests__/<name>.test.ts   ← feature-specific
+src/lib/__tests__/<name>.test.ts                  ← shared lib
+```
+
+### Conventions
+- Use `vitest` globals (`describe`, `it`, `expect`, `vi`) — configured in `vitest.config.ts`.
+- Path alias `@/` works in tests exactly as in source.
+- To prevent network calls in tests that fall back to Supabase auth, mock `@supabase/supabase-js`:
+  ```ts
+  vi.mock('@supabase/supabase-js', () => ({
+    createClient: vi.fn(() => ({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) } })),
+  }));
+  ```
+- For modules that read `process.env` at init time (like `apiAuth.ts`), use `vi.stubEnv` + `vi.resetModules()` before dynamic import.
+- Run `npm test` after writing tests. All tests must pass before committing.
 
 ## Architecture Overview
 

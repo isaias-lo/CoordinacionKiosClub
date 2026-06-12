@@ -4,7 +4,7 @@
 
 ## Sesión: Estado/Seguimiento visual + fixes bodegas/realtime — 2026-06-12
 
-Rama `inicio` (PR #16 → main, abierto, MERGEABLE). Sincronizado con `main` (auth + modo oscuro + /perfil del compañero); conflicto único en `index.css` resuelto.
+Rama `inicio`. El rework visual de Estado se mergeó a `main` vía PR #16. Quedaron pendientes de un PR nuevo los fixes de realtime, /registros, semáforo de bodegas y franja gris. Sincronizado con `main` (incluye tests+auth del compañero).
 
 ### Cambios
 | Área | Cambio | Commit |
@@ -20,6 +20,68 @@ Rama `inicio` (PR #16 → main, abierto, MERGEABLE). Sincronizado con `main` (au
 
 ### Causa raíz documentada (semáforo verde)
 El estado verde/naranja/gris lo alimentaba sólo lo que Picking publicaba al **seleccionar** tiendas (`opsMap`). Tiendas no seleccionadas → grises aunque estuvieran listas en Odoo. Ahora se calcula server-side para todas, independiente de Picking.
+
+---
+
+## Sesión: Tests + Auth — 2026-06-12
+
+### Cambios realizados
+
+#### Auth: fix crítico verifyAdmin (sesión anterior)
+- `src/lib/apiAuth.ts` — `new TextEncoder().encode(secret)` → `new Uint8Array(Buffer.from(secret, 'base64'))`. El secreto JWT de Supabase viene base64-encoded desde el dashboard; la codificación incorrecta generaba una clave completamente distinta y todos los admins recibían 403.
+- Fallback de red en la cadena de verificación: cuando local verify falla, el catch ahora hace fall-through a Supabase `getUser()` en vez de retornar `null` inmediatamente.
+
+#### Infraestructura de tests (esta sesión)
+
+| Archivo | Descripción |
+|---------|-------------|
+| `vitest.config.ts` | Config mínima: env=node, alias `@→./src` |
+| `package.json` | `"test": "vitest run"`, `"test:watch": "vitest"` |
+| `.github/workflows/ci.yml` | CI: install + tsc + lint + test en push/PR a main y cruze-* |
+| `src/features/picking/__tests__/picking-utils.test.ts` | 63 tests: pure functions (stampFromISO, buildCanonicalId, categoriesToContenido, fmtDuration, fmtSecs, cphColor, isAllowedPicker, relativeTime, parseOrigin…) |
+| `src/features/picking/__tests__/picking-offline-queue.test.ts` | 11 tests: cola offline con jsdom localStorage (load/save/enqueue/flush con mocks de fetch) |
+| `src/lib/__tests__/schemas.test.ts` | 14 tests: Zod schemas CreatePickingPalletSchema + CreateUserSchema |
+| `src/lib/__tests__/apiAuth.test.ts` | 12 tests: verifyAuth / verifyAdmin / verifyAnyUser con JWTs reales (jose SignJWT) |
+
+**Total: 100 tests ✅ — 2.82s**
+
+Los tests de apiAuth usan `vi.resetModules()` + dynamic import para forzar que el módulo re-lea `SUPABASE_JWT_SECRET` desde el env, y `vi.mock('@supabase/supabase-js')` para evitar llamadas de red en el fallback.
+
+#### Tests adicionales (sesión actual)
+
+| Archivo | Tests | Cubre |
+|---------|-------|-------|
+| `src/features/despacho/rutas/__tests__/helpers.test.ts` | 29 | `dkm` Haversine, `getDia` días semana, `norm` normalización+alias, `formatCod`, `fechaTxt`, `todayStr` |
+| `src/features/despacho/rutas/__tests__/routing.test.ts` | 17 | `nn` nearest-neighbor (bonus early-close, stores sin GPS), `asignar` (flota vacía, grupos geográficos, REGION_V, PROVIDENCIA, overflow TLBD) |
+| `src/lib/__tests__/otpToken.test.ts` | 12 | `createOtpToken` (formato, expiración 10min), `verifyOtpToken` (token válido, email/OTP incorrecto, firma alterada, expirado, malformado) |
+
+**Total: 160 tests ✅ — 2.09s**
+
+#### Tests property-based (fast-check)
+
+| Archivo | Propiedades cubre |
+|---------|-------------------|
+| `src/features/despacho/rutas/__tests__/helpers.property.test.ts` | `dkm`: no-negativo, simétrico, mismo punto=0, desigualdad triangular / `norm`: idempotente, no lanza, siempre string, sin espacios |
+| `src/features/despacho/rutas/__tests__/routing.property.test.ts` | `nn`: preserva todos los stores / `asignar`: **conservación** (nunca pierde stores), tp-suma, tb-suma, sin rutas vacías, ≤ vehículos+1, invariante pallets totales, no lanza |
+| `src/features/picking/__tests__/picking-utils.property.test.ts` | `stampFromISO`, `buildCanonicalId`, `categoriesToContenido`, `isAllowedPicker`, `fmtDuration`, `cphColor` |
+
+fast-check encontró bug real: `asignar()` no garantiza aislamiento geográfico cuando hay overflow — best-effort sólo.
+
+**Total: 202 tests ✅ — 4.84s**
+
+#### Fix bugs auth/email (esta sesión)
+
+| Archivo | Problema | Fix |
+|---------|----------|-----|
+| `src/app/api/auth/send-approval-email/route.ts` | `nodemailer.createTransport()` se ejecutaba en module init capturando `undefined` → "Missing credentials for PLAIN" | Transporter creado dentro del handler; guard explícito devuelve 503 si `GMAIL_USER`/`GMAIL_APP_PASS` no están seteadas |
+| `src/components/AuthProvider.tsx` | Llamada a `supabase.auth.getSession()` en useEffect disparaba warning de Supabase; `accessToken` no estaba expuesto en contexto | Removida la llamada a `getSession()`, se usa sólo `onAuthStateChange` (incluye `INITIAL_SESSION`); se agrega `accessToken: string \| null` al contexto |
+| `src/app/admin/usuarios/page.tsx` | `authHeaders()` llamaba `getSession()` en cada petición API → warning repetido en consola | Reemplazado por `makeHeaders(accessToken)` síncrono usando el token del `AuthProvider`; eliminado import `supabase` innecesario |
+
+#### Pendiente importante
+- `SUPABASE_JWT_SECRET` y `GMAIL_USER` / `GMAIL_APP_PASS` — confirmar que están seteadas en Vercel (el email fallará en producción si no).
+- RLS deshabilitado en `calendario_armado` y `calendario_notificaciones` (riesgo de seguridad pendiente).
+- E2E con Playwright: diferido para más adelante.
+- Tests restantes pendientes: `sheets.ts`, `rateLimit.ts`, schemas RecepcionSchema/CreateRoleSchema.
 
 ---
 
