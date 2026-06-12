@@ -428,18 +428,20 @@ export default function PanelOperaciones() {
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 5, marginBottom: 18, background: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: 4 }}>
           {([
-            { f: 'conductor',  label: '🚚 Conductor',    activeColor: 'rgba(251,146,60,0.22)',  activeBorder: 'rgba(251,146,60,0.5)'  },
-            { f: 'tienda',     label: '🏪 Tienda',       activeColor: 'rgba(99,102,241,0.22)',  activeBorder: 'rgba(99,102,241,0.5)'  },
-            { f: 'pendientes', label: '⚠ Sin recepción', activeColor: 'rgba(239,68,68,0.22)',   activeBorder: 'rgba(239,68,68,0.55)'  },
-          ] as { f: Fuente; label: string; activeColor: string; activeBorder: string }[]).map(({ f, label, activeColor, activeBorder }) => (
+            { f: 'conductor',  label: '🚚 Conductor'    },
+            { f: 'tienda',     label: '🏪 Tienda'       },
+            { f: 'pendientes', label: '⚠ Sin recepción' },
+          ] as { f: Fuente; label: string }[]).map(({ f, label }) => (
             <button
               key={f}
               onClick={() => setTab(f)}
               style={{
                 flex: 1, padding: '10px 4px', borderRadius: 10,
                 fontSize: 11, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' as const, cursor: 'pointer',
-                background: tab === f ? activeColor : 'transparent',
-                border: `1.5px solid ${tab === f ? activeBorder : 'transparent'}`,
+                transition: 'all 0.15s',
+                // Acento azul uniforme para la tab activa (sobrio/empresarial)
+                background: tab === f ? 'rgba(37,99,235,0.22)' : 'transparent',
+                border: `1.5px solid ${tab === f ? 'rgba(37,99,235,0.5)' : 'transparent'}`,
                 color: tab === f ? '#fff' : 'rgba(255,255,255,0.4)',
               }}
             >
