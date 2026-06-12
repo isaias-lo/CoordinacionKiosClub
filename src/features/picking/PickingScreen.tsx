@@ -1121,8 +1121,8 @@ export function PickingScreen() {
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
                   className="relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3"
                   style={{
-                    color: active ? 'var(--color-info)' : '#64748B',
-                    borderBottom: active ? '2px solid var(--color-info)' : '2px solid transparent',
+                    color: active ? '#1A2550' : '#64748B',
+                    borderBottom: active ? '2px solid var(--color-primary)' : '2px solid transparent',
                   }}>
                   {tab.label}
                 </button>
