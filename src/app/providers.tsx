@@ -2,6 +2,7 @@
 
 import { AppProvider } from '../context/AppContext';
 import { AuthProvider } from '../components/AuthProvider';
+import { ThemeProvider } from '../context/ThemeContext';
 import { Toast } from '../components/Toast';
 import { SplashScreen } from '../components/SplashScreen';
 import { ClientShell } from '../components/layout/ClientShell';
@@ -14,6 +15,7 @@ import type { ReactNode } from 'react';
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
       <AuthProvider>
         <AppProvider>
           <ClientShell>
@@ -35,6 +37,7 @@ export function Providers({ children }: { children: ReactNode }) {
           />
         </AppProvider>
       </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

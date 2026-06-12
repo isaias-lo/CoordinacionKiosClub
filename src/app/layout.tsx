@@ -13,6 +13,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      {/* Prevent flash of wrong theme before React hydrates */}
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('kc-theme');if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
+      </head>
       <body>
         <Providers>
           {children}
