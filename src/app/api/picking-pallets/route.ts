@@ -102,10 +102,10 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as { id: number };
-  const { error } = await supabaseServer()
-    .from('picking_pallets')
-    .delete()
-    .eq('id', body.id);
+  const sb = supabaseServer();
+  // Limpiar despacho_rm huérfano antes de borrar el slot — evita filas fantasma
+  await sb.from('despacho_rm').delete().eq('picking_slot_id', body.id);
+  const { error } = await sb.from('picking_pallets').delete().eq('id', body.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

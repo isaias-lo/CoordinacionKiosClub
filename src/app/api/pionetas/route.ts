@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
+function syncPersonalSheets() {
+  const base = process.env.NEXTAUTH_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+  fetch(`${base}/api/personal/export-sheets`, { method: 'POST' })
+    .catch(e => console.error('[pionetas] sync-sheets:', e));
+}
+
 export async function GET() {
   const { data, error } = await supabaseServer()
     .from('pionetas')
@@ -22,6 +28,7 @@ export async function POST(request: NextRequest) {
     .select('id, nombre, telefono, empresa')
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  syncPersonalSheets();
   return NextResponse.json({ data });
 }
 
@@ -44,6 +51,7 @@ export async function PATCH(request: NextRequest) {
     .select('id, nombre, telefono, empresa')
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  syncPersonalSheets();
   return NextResponse.json({ data });
 }
 
@@ -56,5 +64,6 @@ export async function DELETE(request: NextRequest) {
     .delete()
     .eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  syncPersonalSheets();
   return NextResponse.json({ ok: true });
 }

@@ -802,7 +802,10 @@ export function TiendasPage() {
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId };
+    const pickingSlot = row.pickingSlotId
+      ? (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === row.pickingSlotId)
+      : null;
+    const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${orden} agregado`, '#16A34A');
 

@@ -3,6 +3,12 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateConductorSchema, UpdateConductorSchema } from '@/lib/schemas';
 
+function syncPersonalSheets() {
+  const base = process.env.NEXTAUTH_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+  fetch(`${base}/api/personal/export-sheets`, { method: 'POST' })
+    .catch(e => console.error('[conductores] sync-sheets:', e));
+}
+
 export async function GET() {
   const { data, error } = await supabaseServer()
     .from('conductores')
@@ -27,6 +33,7 @@ export async function POST(request: NextRequest) {
     .select('id, nombre, telefono, empresa')
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  syncPersonalSheets();
   return NextResponse.json({ conductor: data });
 }
 
@@ -53,6 +60,7 @@ export async function PATCH(request: NextRequest) {
     .select('id, nombre, telefono, empresa')
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  syncPersonalSheets();
   return NextResponse.json({ conductor: data });
 }
 
@@ -65,5 +73,6 @@ export async function DELETE(request: NextRequest) {
     .update({ activo: false })
     .eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  syncPersonalSheets();
   return NextResponse.json({ ok: true });
 }

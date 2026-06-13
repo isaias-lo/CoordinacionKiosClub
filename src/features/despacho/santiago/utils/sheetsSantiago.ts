@@ -70,6 +70,7 @@ export function buildRows(
         '',                                                                // PIONETA 1 (col AA — Enrutador lo llena)
         '',                                                                // PIONETA 2 (col AB — Enrutador lo llena)
         fechaArmadoFmt,                                                    // FECHA_ARMADO (col AC)
+        item.canonical_id ?? '',                                           // CÓDIGO (col AD — canonical_id picking)
       ]);
     }
   }

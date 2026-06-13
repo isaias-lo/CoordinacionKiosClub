@@ -979,13 +979,17 @@ export function StepForm() {
     const bc  = existing.filter(i => i.tipo === 'Bulto').length + 1;
     const cc  = existing.filter(i => i.tipo === 'Contenedor').length + 1;
     const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
+    const pickingSlot = row.pickingSlotId
+      ? (pickingSlotsFull[cod] ?? []).find(s => s.id === row.pickingSlotId)
+      : null;
     const savedItem: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
       orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : row.tipo === 'Chocolate' ? `CH${chc}` : `${bc}B`,
       estado: ESTADO_DEFAULT,
-      pickingSlotId: row.pickingSlotId,  // persistir vínculo al slot de picking
+      pickingSlotId: row.pickingSlotId,
+      canonical_id: pickingSlot?.canonical_id ?? undefined,
     };
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));

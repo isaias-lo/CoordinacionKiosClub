@@ -165,6 +165,8 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
       if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
       if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
       if (row[8]) existente.empresa = row[8];
+      if (row[9]) existente.p1 = row[9];
+      if (row[10]) existente.p2 = row[10];
     } else {
       // Vehículo en Sheets que no está en FLOTA_INICIAL → agregar
       flota.push({
@@ -177,6 +179,8 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
         on:          row[6] ? row[6].toUpperCase() === 'SI' : true,
         tlbd:        row[7] ? row[7].toUpperCase() === 'SI' : false,
         empresa:     row[8] || '',
+        p1:          row[9] || '',
+        p2:          row[10] || '',
       });
     }
   }
