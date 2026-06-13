@@ -18,6 +18,7 @@ import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoRMFn } from './utils/sheets';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
+import { supabase } from '../../../lib/supabase';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
@@ -102,6 +103,9 @@ export default function RutasScreen() {
     } catch { return null; }
   });
   const [showPendientesModal, setShowPendientesModal] = useState(false);
+
+  // 2ª vuelta: pendientes cross-device (keyed by dispatch fecha, NOT today)
+  const [pendientesV2, setPendientesV2] = useState<{ c: string; p: number; b: number; ch: number }[]>([]);
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -668,6 +672,53 @@ export default function RutasScreen() {
     return { ts, errs };
   }
 
+  // ── Segunda vuelta: pendientes Supabase ──────────────────────────
+  function savePendientesV2(
+    fechaDespacho: string,
+    stores: { c: string; p: number; b: number; ch: number }[],
+  ): void {
+    const payload = { savedAt: new Date().toISOString(), fecha: fechaDespacho, stores };
+    try { localStorage.setItem('despacho_pendientes_v2', JSON.stringify(payload)); } catch {}
+    supabase
+      .from('shared_session_state')
+      .upsert({ fecha: fechaDespacho, fuente: 'segunda_vuelta', state: payload }, { onConflict: 'fecha,fuente' })
+      .then(({ error }) => { if (error) console.error('[pendientes-v2]', error.message); });
+  }
+
+  useEffect(() => {
+    // 1. Quick path: localStorage
+    try {
+      const raw = localStorage.getItem('despacho_pendientes_v2');
+      if (raw) {
+        const saved = JSON.parse(raw) as { fecha: string; stores: { c: string; p: number; b: number; ch: number }[] };
+        if (saved.fecha === fecha && saved.stores.length > 0) {
+          setPendientesV2(saved.stores);
+          return;
+        }
+      }
+    } catch {}
+    // 2. Cross-device path: Supabase keyed by dispatch fecha
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('shared_session_state')
+          .select('state')
+          .eq('fecha', fecha)
+          .eq('fuente', 'segunda_vuelta')
+          .maybeSingle();
+        const s = data?.state as { stores?: { c: string; p: number; b: number; ch: number }[] } | null;
+        setPendientesV2(s?.stores?.length ? s.stores : []);
+      } catch {}
+    })();
+  }, [fecha]);
+
+  function handleCargarPendientes() {
+    if (!pendientesV2.length) return;
+    const txt = pendientesV2.map(s => `${s.c} ${s.p}P${s.b ? ' ' + s.b + 'B' : ''}`).join('\n');
+    setManualText(txt);
+    setModo('man');
+  }
+
   // ── Extra stops helpers ───────────────────────────────────────────
   function buildExtendidos(baseGps: Record<string, number[]>, baseTiendas: Record<string, TiendaInfo>) {
     const extGps     = { ...baseGps };
@@ -707,18 +758,14 @@ export default function RutasScreen() {
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
 
-    // Guardar tiendas sin asignar en localStorage para segunda vuelta
-    try {
-      const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
-      const noAsignadas = ts.filter(t => !asignadas.has(t.c) && !t.c.startsWith('_P'));
-      if (noAsignadas.length > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        localStorage.setItem('despacho_pendientes', JSON.stringify({
-          savedAt: today,
-          stores: noAsignadas.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? 0) })),
-        }));
-      }
-    } catch {}
+    // Guardar tiendas sin asignar para segunda vuelta (cross-device via Supabase, keyed by fecha dispatch)
+    const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
+    const noAsignadas = ts.filter(t => !asignadas.has(t.c) && !t.c.startsWith('_P'));
+    const pendV2 = noAsignadas.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? 0) }));
+    setPendientesV2(pendV2);
+    if (pendV2.length > 0) {
+      savePendientesV2(fecha, pendV2);
+    }
   }
 
   // ── Calculate manual routes ───────────────────────────────────────
@@ -948,7 +995,8 @@ export default function RutasScreen() {
       const patente   = ruta.v.p;
       const empresa   = ruta.v.empresa || 'Luis Fica';
       const rutaNum   = String(ri + 1);
-      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor }));
+      const vuelta    = ruta.v.tlbd ? 2 : 1;
+      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor, vuelta }));
     });
     if (routingUpdates.length > 0) {
       fetch('/api/despacho-records', {
@@ -983,6 +1031,35 @@ export default function RutasScreen() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ sheet: 'HISTORIAL', rows: historialRows }),
     }).catch(e => console.error('[historial-sheets]', e));
+
+    // 5. SECONDARY (fire-and-forget): escribe en CONTROL DESPACHO (upsert por fecha::cod)
+    const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const diaCD = DIAS[new Date(fecha + 'T12:00').getDay()];
+    const controlMap = new Map<string, { p: number; b: number; v1: string; v2: string }>();
+    results.rutas.forEach(ruta => {
+      const isV2 = ruta.v.tlbd, pat = ruta.v.p;
+      ruta.ts.forEach(t => {
+        const ex = controlMap.get(t.c);
+        if (!ex) controlMap.set(t.c, { p: t.p, b: t.b + ((t as { ch?: number }).ch ?? 0), v1: isV2 ? '' : pat, v2: isV2 ? pat : '' });
+        else if (isV2) ex.v2 = pat; else ex.v1 = pat;
+      });
+    });
+    const controlRows = Array.from(controlMap.entries()).map(([cod, d]) => [fechaDDMM, diaCD, cod, d.p, d.b, d.v1, d.v2]);
+    if (controlRows.length > 0) {
+      fetch('/api/sheets-write', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sheet: 'CONTROL DESPACHO', rows: controlRows }),
+      }).catch(e => console.error('[control-despacho]', e));
+    }
+
+    // 6. Actualizar pendientes de 2ª vuelta: remover tiendas ya despachadas
+    if (pendientesV2.length > 0) {
+      const despachadas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)));
+      const remaining = pendientesV2.filter(s => !despachadas.has(s.c));
+      setPendientesV2(remaining);
+      savePendientesV2(fecha, remaining);
+    }
   }
 
   // ── Driver change ─────────────────────────────────────────────────
@@ -1025,6 +1102,19 @@ export default function RutasScreen() {
           >
             📦 Tiendas pendientes de ayer ({pendientes.stores.length})
           </button>
+        </div>
+      )}
+
+      {/* Pill de pendientes 2ª vuelta (misma fecha) */}
+      {pendientesV2.length > 0 && (
+        <div className="flex-shrink-0 px-4 py-1.5 bg-kred/10 border-b border-kred/20 flex items-center gap-2">
+          <button
+            onClick={handleCargarPendientes}
+            className="text-[11px] font-bold px-2.5 py-1 rounded-[8px] border-2 border-kred text-kred bg-kred/[0.08] hover:bg-kred/[0.15] transition-colors active:scale-95"
+          >
+            ⚠ {pendientesV2.length} pendiente{pendientesV2.length !== 1 ? 's' : ''} 2ª vuelta — Cargar
+          </button>
+          <span className="text-[10px] text-kred/50">{pendientesV2.map(s => s.c).join(', ')}</span>
         </div>
       )}
 

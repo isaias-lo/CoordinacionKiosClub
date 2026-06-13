@@ -172,7 +172,7 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
 
       {/* ── Aviso TLBD ── */}
       <div className="text-[12px] text-kmuted bg-knavy/[0.05] border border-knavy/[0.12] rounded-[10px] px-3.5 py-2.5 mb-4 leading-relaxed">
-        💡 <strong className="text-knavy">TLBD53</strong> (3P máx) se reserva para 2ª vuelta o válvula de alivio.
+        💡 Los mismos autos pueden hacer <strong className="text-knavy">1ª y 2ª vuelta</strong>. Marca un vehículo como &quot;2ª Vuelta&quot; cuando regrese al CD para asignarle las tiendas pendientes.
       </div>
 
       {/* ── Grid de tarjetas ── */}

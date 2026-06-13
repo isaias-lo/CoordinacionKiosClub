@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as {
       fecha: string;
-      updates: { cod: string; conductor: string; patente: string; transporte: string; ruta: string; supervisor: string }[];
+      updates: { cod: string; conductor: string; patente: string; transporte: string; ruta: string; supervisor: string; vuelta?: number }[];
     };
 
     if (!body.fecha || !Array.isArray(body.updates) || body.updates.length === 0) {
@@ -139,6 +139,7 @@ export async function PATCH(request: NextRequest) {
             ruta:        upd.ruta,
             supervisor:  upd.supervisor,
             estado:      'Listo para despachar',
+            ...(upd.vuelta !== undefined && { vuelta: upd.vuelta }),
           })
           .in('id', idsActualizables);
         if (error) console.error('[despacho-records PATCH] despacho_rm:', error.message);

@@ -275,7 +275,12 @@ export function TiendasPage() {
   const sheetRef     = useRef<HTMLDivElement>(null);
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
-  const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg } = state;
+  const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg, fechaDespacho: _fechaDespacho, registrado } = state;
+  const fechaDespacho = _fechaDespacho ?? (() => {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  })();
+  const todayLabel = new Date(_localDate + 'T12:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1590,6 +1595,42 @@ export function TiendasPage() {
       {/* LEFT PANEL — lista de tiendas (full height on mobile) */}
       <div className="w-full flex-1 lg:flex-none flex flex-col overflow-hidden flex-shrink-0"
            style={isDesktop ? { width: leftWidth } : undefined}>
+
+        {/* Fecha Armado / Despacho */}
+        <div style={{
+          padding: '8px 14px', borderBottom: '1px solid var(--border, #E2E5EC)',
+          background: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+              Armado
+            </span>
+            <span style={{ fontSize: 12, color: '#555', textTransform: 'capitalize' }}>{todayLabel}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+              Fecha de despacho
+            </span>
+            <input
+              type="date"
+              value={fechaDespacho}
+              min={_localDate}
+              onChange={e => dispatch({ type: 'SET_FECHA_DESPACHO', payload: e.target.value })}
+              style={{
+                border: '1.5px solid #dde3f0', borderRadius: 7, padding: '2px 8px',
+                fontSize: 12, fontWeight: 700, color: '#1a2550', background: '#fff',
+              }}
+            />
+          </div>
+          {registrado && (
+            <span style={{
+              marginLeft: 'auto', fontSize: 10, color: '#16A34A', fontWeight: 700,
+              background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px',
+            }}>
+              ✓ Registrado
+            </span>
+          )}
+        </div>
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">

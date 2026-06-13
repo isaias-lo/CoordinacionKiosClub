@@ -20,19 +20,61 @@ interface RutaData {
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
-const ESTADO_COLOR: Record<string, string> = {
-  pendiente: '#FF9500', en_camino: '#007AFF', entregado: '#34C759', recibido: '#8E8E93',
-};
 const ESTADO_LABEL: Record<string, string> = {
   pendiente: 'Pendiente', en_camino: 'En Camino', entregado: 'Entregado', recibido: 'Recibido',
 };
-const ESTADO_ICON: Record<string, string> = {
-  pendiente: '🕐', en_camino: '🚚', entregado: '📦', recibido: '✅',
-};
 
 function fechaLabel(iso: string) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 }
+
+function docId(ruta: RutaData) {
+  return `${ruta.patente.replace(/[-\s]/g, '')}-${ruta.fecha.replace(/-/g, '')}`;
+}
+
+function generadoEn() {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+const ESTADO_CELL: Record<string, { bg: string; color: string; label: string }> = {
+  pendiente:  { bg: '#fef3c7', color: '#92400e', label: 'Pendiente'  },
+  en_camino:  { bg: '#dbeafe', color: '#1e40af', label: 'En Camino'  },
+  entregado:  { bg: '#dcfce7', color: '#166534', label: 'Entregado'  },
+  recibido:   { bg: '#f1f5f9', color: '#475569', label: 'Recibido'   },
+};
+
+/* ── Styles ─────────────────────────────────────────────── */
+const S = {
+  page:      { background: '#fff', fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", color: '#111827', minHeight: '100vh' },
+  header:    { background: '#1a2550', padding: '16px 20px', color: '#fff' },
+  hTop:      { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  hBrand:    { fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: 0.5 },
+  hSub:      { fontSize: 10, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase' as const, letterSpacing: 1 },
+  hTitle:    { fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 2 },
+  hDocId:    { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace' },
+  hDate:     { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 2, textTransform: 'capitalize' as const },
+  body:      { padding: '0 16px 32px' },
+  section:   { border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden', margin: '14px 0' },
+  sTitle:    { background: '#f9fafb', borderBottom: '1px solid #d1d5db', padding: '8px 14px', fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: 1.2 },
+  infoRow:   { display: 'flex', justifyContent: 'space-between', padding: '9px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 13 },
+  infoLabel: { color: '#6b7280', fontWeight: 500 },
+  infoVal:   { color: '#111827', fontWeight: 600 },
+  statsRow:  { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, margin: '14px 0' },
+  statBox:   { border: '1px solid #d1d5db', borderRadius: 8, padding: '12px 8px', textAlign: 'center' as const },
+  statN:     { fontSize: 26, fontWeight: 900, color: '#1a2550', lineHeight: 1 },
+  statL:     { fontSize: 9, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 3 },
+  tHead:     { display: 'flex', background: '#f9fafb', borderBottom: '1px solid #d1d5db', padding: '7px 12px', gap: 8 },
+  tHeadCell: { fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: 0.8 },
+  tRow:      { display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6', gap: 8 },
+  badge:     { width: 22, height: 22, borderRadius: '50%', background: '#1a2550', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  storeName: { flex: 1, minWidth: 0 },
+  storeN:    { fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  storeSub:  { fontSize: 10, color: '#9ca3af', marginTop: 1 },
+  qty:       { fontSize: 11, fontWeight: 700, color: '#374151', flexShrink: 0 },
+  printBtn:  { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '12px', background: '#1a2550', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', margin: '16px 0 4px' },
+};
 
 /* ── Page ─────────────────────────────────────────────── */
 export default function RutaPublicaPage() {
@@ -54,156 +96,162 @@ export default function RutaPublicaPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  /* Loading */
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center" style={{ background: '#0f172a' }}>
-      <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4" />
-      <p className="text-white/60 text-sm">Cargando ruta…</p>
+    <div style={{ ...S.page, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+      <div style={{ width: 36, height: 36, border: '3px solid #d1d5db', borderTopColor: '#1a2550', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: 12 }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <p style={{ color: '#6b7280', fontSize: 13 }}>Cargando manifiesto…</p>
     </div>
   );
 
-  /* Error */
   if (error || !ruta) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#0f172a' }}>
-      <div className="text-5xl mb-4">🚫</div>
-      <h1 className="text-white text-xl font-bold mb-2">Enlace no válido</h1>
-      <p className="text-white/50 text-sm text-center">{error ?? 'Este QR no corresponde a ninguna ruta activa.'}</p>
+    <div style={{ ...S.page, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24 }}>
+      <div style={{ width: 48, height: 48, background: '#fee2e2', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 12 }}>✕</div>
+      <h1 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Enlace no válido</h1>
+      <p style={{ color: '#6b7280', fontSize: 13, textAlign: 'center' }}>{error ?? 'Este QR no corresponde a ninguna ruta activa.'}</p>
     </div>
   );
 
-  const estadoCol   = ESTADO_COLOR[ruta.estado] ?? '#8E8E93';
-  const estadoLbl   = ESTADO_LABEL[ruta.estado] ?? ruta.estado;
-  const estadoIcon  = ESTADO_ICON[ruta.estado]  ?? '📋';
-  const totalP      = ruta.ruta_tiendas.reduce((s, t) => s + t.pallets, 0);
-  const totalB      = ruta.ruta_tiendas.reduce((s, t) => s + t.bultos, 0);
+  const totalP = ruta.ruta_tiendas.reduce((s, t) => s + t.pallets, 0);
+  const totalB = ruta.ruta_tiendas.reduce((s, t) => s + t.bultos, 0);
+  const estadoRuta = ESTADO_LABEL[ruta.estado] ?? ruta.estado;
+  const sorted = [...ruta.ruta_tiendas].sort((a, b) => a.orden - b.orden);
 
   return (
-    <div className="min-h-screen pb-10" style={{ background: '#0f172a', fontFamily: 'system-ui, -apple-system, sans-serif', overflowX: 'hidden' }}>
+    <div style={S.page}>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { margin: 0; }
+          div { page-break-inside: avoid; }
+        }
+      `}</style>
 
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '24px 20px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <span style={{ fontSize: 22, fontWeight: 900, color: '#C62828', letterSpacing: -1 }}>KIOS</span>
-          <span style={{ fontSize: 18, fontStyle: 'italic', fontWeight: 700, color: '#C62828' }}>Club</span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>
-            Sistema de Despacho
-          </span>
+      {/* Header corporativo */}
+      <div style={S.header}>
+        <div style={S.hTop}>
+          <div>
+            <div style={S.hBrand}>KIOSCLUB</div>
+            <div style={S.hSub}>Sistema de Despacho — CD</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>N° Documento</div>
+            <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#fff', fontWeight: 700 }}>{docId(ruta)}</div>
+          </div>
         </div>
-
-        <h1 style={{ fontSize: 26, fontWeight: 900, color: '#fff', letterSpacing: 1, marginBottom: 4 }}>
-          {ruta.codigo_ruta}
-        </h1>
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 16 }}>
-          {fechaLabel(ruta.fecha)}
-        </p>
-
-        {/* Estado badge */}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 50, fontWeight: 700, fontSize: 13, color: '#fff', background: estadoCol }}>
-          <span>{estadoIcon}</span>
-          <span>{estadoLbl}</span>
-        </div>
+        <div style={S.hTitle}>Manifiesto de Despacho</div>
+        <div style={S.hDate}>{fechaLabel(ruta.fecha)}</div>
       </div>
 
-      <div style={{ padding: '0 16px', marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={S.body}>
 
         {/* Info ruta */}
-        <div style={{ background: '#1e293b', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>
-            Información de Ruta
-          </div>
-          {[
-            ['🚗 Chofer',   ruta.chofer],
-            ['🪪 Patente',  ruta.patente],
-            ['🏭 Bodega',   ruta.bodega_origen],
-          ].map(([label, val]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 13 }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</span>
-              <span style={{ color: '#fff', fontWeight: 600 }}>{val}</span>
+        <div style={S.section}>
+          <div style={S.sTitle}>Datos del Transporte</div>
+          {([
+            ['Conductor',     ruta.chofer],
+            ['Patente',       ruta.patente],
+            ['Bodega Origen', ruta.bodega_origen],
+            ['Estado',        estadoRuta],
+          ] as [string, string][]).map(([label, val], i, arr) => (
+            <div key={label} style={{ ...S.infoRow, borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <span style={S.infoLabel}>{label}</span>
+              <span style={S.infoVal}>{val}</span>
             </div>
           ))}
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-          {([[ ruta.ruta_tiendas.length, 'Tiendas' ], [ totalP, 'Pallets' ], [ totalB, 'Bultos' ]] as [number, string][]).map(([n, l]) => (
-            <div key={l} style={{ background: '#1e293b', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: '#C62828', lineHeight: 1 }}>{n}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: .5, marginTop: 4 }}>{l}</div>
+        <div style={S.statsRow}>
+          {([
+            [ruta.ruta_tiendas.length, 'Tiendas'],
+            [totalP, 'Pallets'],
+            [totalB, 'Bultos'],
+          ] as [number, string][]).map(([n, l]) => (
+            <div key={l} style={S.statBox}>
+              <div style={S.statN}>{n}</div>
+              <div style={S.statL}>{l}</div>
             </div>
           ))}
         </div>
 
-        {/* Tiendas */}
-        <div style={{ background: '#1e293b', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>
-            Tiendas Destino
+        {/* Tabla de tiendas */}
+        <div style={S.section}>
+          <div style={{ ...S.sTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Paradas</span>
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {sorted.length} tiendas · {totalP}P · {totalB}B
+            </span>
           </div>
-          {[...ruta.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2d3f8a', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {t.orden}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {t.nombre ?? t.store_cod}
+          <div style={{ ...S.tHead }}>
+            <span style={{ ...S.tHeadCell, width: 22 }}>#</span>
+            <span style={{ ...S.tHeadCell, flex: 1 }}>Tienda</span>
+            <span style={{ ...S.tHeadCell, width: 26, textAlign: 'right' }}>P</span>
+            <span style={{ ...S.tHeadCell, width: 26, textAlign: 'right' }}>B</span>
+            <span style={{ ...S.tHeadCell, width: 70, textAlign: 'right' }}>Estado</span>
+          </div>
+          {sorted.map((t, i) => {
+            const ec = ESTADO_CELL[t.estado_entrega] ?? { bg: '#f9fafb', color: '#6b7280', label: t.estado_entrega };
+            return (
+              <div key={t.id} style={{ ...S.tRow, background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                <div style={S.badge}>{t.orden}</div>
+                <div style={S.storeName}>
+                  <div style={S.storeN}>{t.nombre ?? t.store_cod}</div>
+                  {t.ventana && <div style={S.storeSub}>{t.ventana}</div>}
                 </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
-                  {t.ventana && <span style={{ marginRight: 6 }}>{t.ventana}</span>}
-                  {t.pallets > 0 && `${t.pallets}P`}
-                  {t.pallets > 0 && t.bultos > 0 && ' · '}
-                  {t.bultos > 0 && `${t.bultos}B`}
-                </div>
+                <span style={{ ...S.qty, width: 26, textAlign: 'right' }}>{t.pallets || '—'}</span>
+                <span style={{ ...S.qty, width: 26, textAlign: 'right' }}>{t.bultos || '—'}</span>
+                <span style={{ width: 70, textAlign: 'right', flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: ec.bg, color: ec.color }}>
+                    {ec.label}
+                  </span>
+                </span>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: ESTADO_COLOR[t.estado_entrega] ?? '#666', textTransform: 'capitalize' }}>
-                {ESTADO_LABEL[t.estado_entrega] ?? t.estado_entrega}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Guías DTE */}
-        {ruta.ruta_guias.length > 0 && (
-          <div style={{ background: '#1e293b', borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>
-              Guías DTE · Folios SII
+        <div style={S.section}>
+          <div style={S.sTitle}>Guias de Despacho SII</div>
+          {ruta.ruta_guias.length === 0 ? (
+            <div style={{ padding: '14px 16px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+              Sin guias vinculadas — se adjuntan desde el modulo Estado
             </div>
-            {ruta.ruta_guias.map(g => (
-              <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: 'monospace' }}>#{g.folio_dte}</div>
-                  {g.store_cod && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{g.store_cod}</div>}
-                </div>
-                {g.drive_url && (
-                  <a href={g.drive_url} target="_blank" rel="noreferrer"
-                    style={{ padding: '5px 12px', background: '#2d3f8a', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
-                    Ver PDF
-                  </a>
-                )}
+          ) : ruta.ruta_guias.map((g, i, arr) => (
+            <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', fontFamily: 'monospace' }}>Folio #{g.folio_dte}</div>
+                {g.store_cod && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{g.store_cod}</div>}
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Sin guías */}
-        {ruta.ruta_guias.length === 0 && (
-          <div style={{ background: '#1e293b', borderRadius: 14, padding: '16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-              Las guías DTE se vinculan desde el módulo Estado/Seguimiento
+              {g.drive_url && (
+                <a href={g.drive_url} target="_blank" rel="noreferrer"
+                  style={{ padding: '5px 13px', background: '#1a2550', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
+                  Descargar PDF
+                </a>
+              )}
             </div>
-          </div>
-        )}
+          ))}
+        </div>
 
-        {/* Fiscalización notice */}
-        <div style={{ background: 'rgba(52,199,89,0.1)', border: '1px solid rgba(52,199,89,0.25)', borderRadius: 12, padding: '12px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#34C759', marginBottom: 4 }}>✓ Documento Válido para Fiscalización</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-            Este QR reemplaza la presentación de guías físicas. Todas las guías son electrónicas válidas del SII.
+        {/* Fiscalización */}
+        <div style={{ border: '1px solid #bbf7d0', borderRadius: 8, background: '#f0fdf4', padding: '12px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 4 }}>
+            DOCUMENTO VALIDO PARA FISCALIZACION
+          </div>
+          <div style={{ fontSize: 11, color: '#374151', lineHeight: 1.5 }}>
+            Todas las guias adjuntas son Documentos Tributarios Electronicos (DTE) validos ante el Servicio de Impuestos Internos (SII).
+            Generado: {generadoEn()}
           </div>
         </div>
 
-        {/* Footer */}
-        <div style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', paddingTop: 4 }}>
-          KiosClub · Centro de Distribución · {ruta.codigo_ruta}
+        {/* Print button */}
+        <button className="no-print" style={S.printBtn} onClick={() => window.print()}>
+          Imprimir / Guardar PDF
+        </button>
+
+        <div style={{ textAlign: 'center', fontSize: 10, color: '#d1d5db', marginTop: 8 }}>
+          KiosClub · {ruta.codigo_ruta} · {ruta.patente}
         </div>
       </div>
     </div>

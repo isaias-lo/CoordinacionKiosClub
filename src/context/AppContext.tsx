@@ -130,6 +130,10 @@ function reducer(state: AppState, action: Action): AppState {
         dispatch: action.payload.dispatch ?? state.dispatch,
         pdfData:  action.payload.pdfData  ?? state.pdfData,
       };
+    case 'SET_FECHA_DESPACHO':
+      return { ...state, fechaDespacho: action.payload, registrado: false };
+    case 'SET_REGISTRADO':
+      return { ...state, registrado: action.payload };
     default:
       return state;
   }
@@ -283,7 +287,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Debounced push to Supabase (800 ms after last change) + localStorage fallback
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: state.dispatch, pdfData: state.pdfData };
+    const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
 
@@ -306,7 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 800);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [state.dispatch, state.pdfData]);
+  }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado]);
 
   const showToast = useCallback((msg: string, color?: string) => {
     dispatch({ type: 'SHOW_TOAST', msg, color });
@@ -330,7 +334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Flush any pending debounced push immediately — call before navigating away so data is never lost.
   const flushPending = useCallback(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData };
+    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
