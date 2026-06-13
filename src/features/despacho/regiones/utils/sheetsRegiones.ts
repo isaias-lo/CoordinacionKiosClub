@@ -41,10 +41,11 @@ function canonicalId(pkg: string, orden: string, cod: string, stamp: string): st
   return `${seq}B${cod}${stamp}B`; // bulto / box (default)
 }
 
-function buildRows(
+export function buildRows(
   dispatchData: Record<string, DispatchItem[]>,
   regimen: string,
-  fechaISO?: string,   // YYYY-MM-DD — registra con esta fecha en vez de hoy (recuperación)
+  fechaISO?: string,        // YYYY-MM-DD — fecha de despacho (puede ser mañana)
+  fechaArmadoISO?: string,  // YYYY-MM-DD — fecha en que se armó en Bodega (hoy)
 ): (string | number)[][] {
   const now   = new Date();
   const [yISO, mISO, dISO] = (fechaISO ?? '').split('-');
@@ -54,6 +55,10 @@ function buildRows(
   const stamp = `${dd}${mm}${yyyy}`;
   const fecha = `${dd}/${mm}/${yyyy}`;
   const transporte = regimen === 'Falabella' ? 'Falabella' : 'Carga';
+
+  const fechaArmadoFmt = fechaArmadoISO
+    ? fechaArmadoISO.split('-').reverse().join('/')
+    : `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
   const rows: (string | number)[][] = [];
 
@@ -69,7 +74,7 @@ function buildRows(
 
       rows.push([
         canonicalId(item.pkg, item.orden, tienda.cod, stamp), // ID
-        fecha,                                          // FECHA
+        fecha,                                          // FECHA (despacho)
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
         item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : item.pkg === 'chocolate' ? 'Bulto CH' : 'Bulto',  // TIPO
@@ -94,6 +99,7 @@ function buildRows(
         '',                                             // SUPERVISOR
         item.guia  || '',                               // GUIA
         item.valor || '',                               // VALOR
+        fechaArmadoFmt,                                 // FECHA_ARMADO (col AC)
       ]);
     }
   }
@@ -105,8 +111,9 @@ export function sheetsRegionesWrite(
   dispatchData: Record<string, DispatchItem[]>,
   regimen = 'Carga',
   fechaISO?: string,
+  fechaArmadoISO?: string,
 ): void {
-  const rows = buildRows(dispatchData, regimen, fechaISO);
+  const rows = buildRows(dispatchData, regimen, fechaISO, fechaArmadoISO);
   if (!rows.length) return;
 
   fetch('/api/sheets-write', {

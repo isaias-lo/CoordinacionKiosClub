@@ -70,4 +70,6 @@ export interface AppState {
   sheetsUrl: string;
   dispatchDate: string;
   toast: { msg: string; color?: string } | null;
+  fechaDespacho?: string;  // YYYY-MM-DD, default = mañana
+  registrado?: boolean;    // true after "Registrar" — usado por cron auto-registro
 }

@@ -41,7 +41,9 @@ type Action =
   | { type: 'SET_SHEETS_URL'; payload: string }
   | { type: 'SHOW_TOAST'; msg: string; color?: string }
   | { type: 'HIDE_TOAST' }
-  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } };
+  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } }
+  | { type: 'SET_FECHA_DESPACHO'; payload: string }
+  | { type: 'SET_REGISTRADO'; payload: boolean };
 
 function renumber(items: DispatchItem[]): DispatchItem[] {
   let pc = 1, bc = 1, cc = 1, chc = 1;

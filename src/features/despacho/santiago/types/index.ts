@@ -41,4 +41,6 @@ export interface SantiagoState {
   regimen: RegimenCarga | null;
   currentTienda: TiendaSantiago | null;
   items: Record<string, SantiagoItem[]>;
+  fechaDespacho?: string;  // YYYY-MM-DD, default = mañana
+  registrado?: boolean;    // true after "Registrar despacho" — usado por cron auto-registro
 }

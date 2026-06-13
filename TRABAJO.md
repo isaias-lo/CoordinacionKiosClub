@@ -1,7 +1,7 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-12 18:36
+Fecha: 2026-06-12 20:31
 Último commit: WIP: auto-save antes de compactar contexto
 Rama: inicio
 
@@ -11,11 +11,8 @@ TRABAJO_ERICK.md
 next-env.d.ts
 package-lock.json
 package.json
-scripts/bye.sh
-scripts/hola.sh
-scripts/pr.sh
 scripts/run.cjs
-scripts/sync.sh
+src/app/api/sheets-write/route.ts
 src/features/despacho/rutas/RutasScreen.tsx
 supabase/migrations/042_historial_despacho.sql
 tsconfig.tsbuildinfo

@@ -52,9 +52,16 @@ export function StepResumen() {
       return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : ''].filter(Boolean).join('+')}`;
     }).join(', ');
 
+  const todayISO = new Date().toISOString().split('T')[0];
+  const fechaDespacho = state.fechaDespacho ?? (() => {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  })();
+
   const registrar = () => {
     if (!activeTiendas.length) { showToast('No hay items para registrar', '#D97706'); return; }
-    sheetsSantiagoWrite(items, regimen!);
+    sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO);
+    dispatch({ type: 'SET_REGISTRADO', payload: true });
     showToast(`✓ Registrado · ${buildSummaryString()}`, '#16A34A');
   };
 
