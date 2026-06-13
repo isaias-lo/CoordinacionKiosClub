@@ -9,13 +9,13 @@ import ConfigPanel    from './components/ConfigPanel';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
 
-import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL, SHEETS_WEB_APP_URL } from './data/tiendas';
+import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
-import { getDia, norm, todayStr } from './utils/helpers';
+import { getDia, norm, todayStr, fechaTxt } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoRMFn } from './utils/sheets';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
 import type { SesionRow } from '../../../lib/despachoSesion';
@@ -961,18 +961,28 @@ export default function RutasScreen() {
     // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM en Google Sheets
     guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
 
-    // 4. SECONDARY (fire-and-forget): GAS historial (puede fallar silenciosamente)
-    guardarHistorialFn({
-      fecha, supervisor,
-      rutas: results.rutas, ts: results.ts, gps,
-      cd:          cdRef.current,
-      kmTotalReal: kmTotalRealRef.current,
-      sheetsWebAppUrl: SHEETS_WEB_APP_URL,
-      onStart:   () => {},  // UI ya está manejada por Supabase
-      onSuccess: () => {},
-      onWarn:    () => {},
-      onError:   () => {},
-    });
+    // 4. SECONDARY (fire-and-forget): escribe en HISTORIAL de Google Sheets directamente
+    const fechaDDMM = fecha.split('-').reverse().join('/'); // YYYY-MM-DD → DD/MM/YYYY
+    const fechaLeg  = fechaTxt(fecha);
+    const historialRows: (string | number)[][] = results.rutas.map((r, ri) => [
+      fechaDDMM,
+      fechaLeg,
+      supervisor,
+      r.v.p,
+      r._choferAsignado || r.v.ch || '',
+      r.v.tlbd ? '2' : '1',
+      r.ts.length,
+      r.tp,
+      r.tb,
+      r._kmReal ?? 0,
+      r.ts.map(t => t.c).join(', '),
+      String(ri + 1),
+    ]);
+    fetch('/api/sheets-write', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ sheet: 'HISTORIAL', rows: historialRows }),
+    }).catch(e => console.error('[historial-sheets]', e));
   }
 
   // ── Driver change ─────────────────────────────────────────────────

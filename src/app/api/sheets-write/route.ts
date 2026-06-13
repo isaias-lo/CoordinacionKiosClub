@@ -4,7 +4,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
-const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN TIENDA']);
+const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN TIENDA', 'HISTORIAL']);
 
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;

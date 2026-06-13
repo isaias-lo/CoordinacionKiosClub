@@ -30,20 +30,25 @@ Rama: `inicio`
 2. **Scripts bash creados** (`hola.sh`, `bye.sh`, `sync.sh`, `pr.sh`) — los PowerShell no funcionaban en macOS. `package.json` actualizado para detectar OS y usar el script correcto (bash en Mac, PS1 en Windows). `npm run hola/bye/sync/pr` funcionan en ambas PCs.
 
 3. **PDF del Enrutador corregido** — El PDF se imprimía mostrando toda la UI (sidebar, mapa, botones). Fixes:
-   - `src/index.css`: corregido `@media print` que estaba malformado (el `@layer components` estaba dentro del bloque de print). Agregados: `shell-container` reset, `shell-sidebar` hide, route card `page-break-inside: avoid`, `no-print` para `#mobile-menu-btn`.
-   - `AppShell.tsx`: clases `shell-container` y `shell-sidebar no-print` en el contenedor raíz. Sidebar y botón móvil ahora se ocultan al imprimir.
-   - `ResultsSection.tsx`: mapa Google Maps envuelto en `no-print` → ya no se imprime el mapa roto.
+   - `src/index.css`: corregido `@media print` que estaba malformado.
+   - `AppShell.tsx`: `shell-container` y `shell-sidebar no-print`. Sidebar y botón móvil ocultos al imprimir.
+   - `ResultsSection.tsx`: mapa Google Maps envuelto en `no-print`.
 
 4. **Página QR del Manifiesto mejorada** (`/r/[token]`):
    - `supabase/migrations/041_ruta_tiendas_nombre.sql`: agrega `nombre` y `ventana` a `ruta_tiendas`.
    - `src/app/api/rutas-despacho/route.ts`: guarda `nombre` y `ventana` al crear el manifiesto.
-   - `src/app/r/[token]/page.tsx`: muestra nombre de tienda (fallback a código), ventana horaria en subtítulo, y fix de scroll horizontal (`overflow-x: hidden`).
-   - **Nota:** Los manifiestos ya guardados antes del fix seguirán mostrando códigos. Solo los nuevos que se guarden después de ejecutar la migración tendrán los nombres.
+   - `src/app/r/[token]/page.tsx`: muestra nombre de tienda, ventana horaria, fix scroll horizontal.
 
-5. **Investigación de "Registrar Despacho"** — El botón hace 3 cosas:
-   - **GAS historial** (Google Apps Script): envío con `mode: 'no-cors'` → siempre muestra "Historial guardado" aunque falle. Verificar si la URL de GAS sigue activa.
-   - **DESPACHO RM** (`/api/sheets-write`): solo **ACTUALIZA** filas existentes, NO agrega nuevas. Si el módulo Bodega/Santiago no creó filas para esa fecha+tiendas, el enrutador no escribe nada en el sheet.
-   - **Supabase `historial_despacho`**: la API escribe aquí si la tabla existe. Si no existe (no hay migration), falla silenciosamente. Verificar en Supabase Dashboard → Table Editor.
+5. **HISTORIAL Google Sheets corregido** — El GAS Web App URL dejó de funcionar después del 5/05/2026 (deployment expirado o revocado).
+   - `src/app/api/sheets-write/route.ts`: agregado `'HISTORIAL'` a `ALLOWED_SHEETS`.
+   - `src/features/despacho/rutas/RutasScreen.tsx`: se eliminó la llamada a `guardarHistorialFn` (GAS) y se reemplazó con llamada directa a `/api/sheets-write` con `sheet: 'HISTORIAL'`.
+   - **Formato de filas HISTORIAL** (una fila por ruta): `[fecha DD/MM/YYYY, fecha legible, supervisor, patente, conductor, vuelta (1/2), n_tiendas, pallets, bultos, km_ruta, tiendas_lista, ruta_num]`
+   - El historial en Supabase (`historial_despacho`) ya funcionaba — tiene 10 registros desde 2026-06-02.
+
+6. **Investigación de "Registrar Despacho"** — El botón hace 3 cosas:
+   - **Supabase `historial_despacho`** (PRIMARY): guarda resumen del día con totales. ✓ Funciona.
+   - **DESPACHO RM** (`/api/sheets-write`): solo **ACTUALIZA** filas existentes. Bodega Santiago/Regiones debe crear las filas primero.
+   - **HISTORIAL** (`/api/sheets-write`): ✓ Ahora funciona vía Sheets API directa (ya no depende de GAS).
 
 ---
 
