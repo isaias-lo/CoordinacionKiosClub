@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     tipo_carga?: string;
     regimen?:    string;
     usuario_creador?: string;
-    tiendas?: { store_cod: string; orden: number; pallets: number; bultos: number; contenedores?: number }[];
+    tiendas?: { store_cod: string; nombre?: string; ventana?: string; orden: number; pallets: number; bultos: number; contenedores?: number }[];
     guias?:   { store_cod?: string; folio_dte: string; drive_url?: string }[];
   };
 
@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
       .insert(body.tiendas.map(t => ({
         ruta_id:      ruta.id,
         store_cod:    t.store_cod,
+        nombre:       t.nombre   ?? null,
+        ventana:      t.ventana  ?? null,
         orden:        t.orden,
         pallets:      t.pallets,
         bultos:       t.bultos,

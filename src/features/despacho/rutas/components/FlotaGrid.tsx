@@ -14,6 +14,7 @@ interface Props {
   onEliminarVehiculo: (idx: number) => void;
   onActualizarVehiculo?: (patente: string, updates: Partial<Vehiculo>) => void;
   onGuardarFlota?: () => void;
+  onPionetaChange: (idx: number, field: 'p1' | 'p2', value: string) => void;
 }
 
 const NUEVO_KEY = '__nuevo__';
@@ -21,6 +22,7 @@ const NUEVO_KEY = '__nuevo__';
 interface NuevoVehiculoState {
   p: string; c: number | string; b: number | string; t: string; ch: string; tel: string;
   porton: boolean | null; refrigerado: boolean; on: boolean; tlbd: boolean; empresa: string;
+  p1: string; p2: string;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -34,12 +36,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-kred bg-white";
 
-export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota }: Props) {
+export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota, onPionetaChange }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [nuevoVehiculo, setNuevoVehiculo] = useState<NuevoVehiculoState>({
     p: '', c: 10, b: 20, t: '', ch: '', tel: '',
-    porton: null, refrigerado: false, on: true, tlbd: false, empresa: '',
+    porton: null, refrigerado: false, on: true, tlbd: false, empresa: '', p1: '', p2: '',
   });
 
   const patentesExistentes = new Set(flota.map(v => v.p.toUpperCase()));
@@ -62,9 +64,11 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
       tlbd: v.tlbd,
       on: true,
       empresa: v.empresa || '',
+      p1: v.p1 || '',
+      p2: v.p2 || '',
     });
 
-    setNuevoVehiculo({ p: '', c: 10, b: 20, t: '', ch: '', tel: '', porton: null, refrigerado: false, on: true, tlbd: false, empresa: '' });
+    setNuevoVehiculo({ p: '', c: 10, b: 20, t: '', ch: '', tel: '', porton: null, refrigerado: false, on: true, tlbd: false, empresa: '', p1: '', p2: '' });
     setError('');
     setShowAgregar(false);
   }
@@ -141,10 +145,14 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
             </Field>
           </div>
 
-          <div className="mb-4">
-            <Field label="Empresa">
-              <input type="text" value={nv.empresa} onChange={e => setNv({ empresa: e.target.value })}
-                placeholder="Nombre de la empresa" className={inputCls} />
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Field label="Pioneta 1 (opcional)">
+              <input type="text" value={nv.p1} onChange={e => setNv({ p1: e.target.value })}
+                placeholder="Nombre pioneta" className={inputCls} />
+            </Field>
+            <Field label="Pioneta 2 (opcional)">
+              <input type="text" value={nv.p2} onChange={e => setNv({ p2: e.target.value })}
+                placeholder="Nombre pioneta" className={inputCls} />
             </Field>
           </div>
 
@@ -172,7 +180,7 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
 
       {/* ── Aviso TLBD ── */}
       <div className="text-[12px] text-kmuted bg-knavy/[0.05] border border-knavy/[0.12] rounded-[10px] px-3.5 py-2.5 mb-4 leading-relaxed">
-        💡 <strong className="text-knavy">TLBD53</strong> (3P máx) se reserva para 2ª vuelta o válvula de alivio.
+        💡 Los mismos autos pueden hacer <strong className="text-knavy">1ª y 2ª vuelta</strong>. Marca un vehículo como &quot;2ª Vuelta&quot; cuando regrese al CD para asignarle las tiendas pendientes.
       </div>
 
       {/* ── Grid de tarjetas ── */}
@@ -187,6 +195,7 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
             onAgregarConductor={onAgregarConductor}
             onEliminar={onEliminarVehiculo}
             onActualizar={onActualizarVehiculo}
+            onPionetaChange={onPionetaChange}
           />
         ))}
       </div>
@@ -199,7 +208,7 @@ interface EditVehiculoState {
   porton: boolean | null; refrigerado: boolean;
 }
 
-function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onEliminar, onActualizar }: {
+function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onEliminar, onActualizar, onPionetaChange }: {
   v: Vehiculo; idx: number; conductores: string[];
   onToggle: (i: number) => void;
   onToggleTlbd: (i: number) => void;
@@ -207,6 +216,7 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
   onAgregarConductor: (n: string) => void;
   onEliminar: (i: number) => void;
   onActualizar?: (patente: string, updates: Partial<Vehiculo>) => void;
+  onPionetaChange: (idx: number, field: 'p1' | 'p2', value: string) => void;
 }) {
   const [modoNuevo, setModoNuevo]         = useState(false);
   const [nuevoNombre, setNuevoNombre]     = useState('');
@@ -338,6 +348,29 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
             </div>
           )}
         </div>
+
+        {/* Pionetas */}
+        {v.on && (
+          <div className="mb-2.5">
+            <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1.5">Pionetas (opcional)</div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={v.p1 ?? ''}
+                onChange={e => onPionetaChange(idx, 'p1', e.target.value)}
+                placeholder="Pioneta 1"
+                className="flex-1 text-[13px] px-3 h-[34px] rounded-[8px] border border-black/[0.12] focus:outline-none focus:border-knavy bg-white"
+              />
+              <input
+                type="text"
+                value={v.p2 ?? ''}
+                onChange={e => onPionetaChange(idx, 'p2', e.target.value)}
+                placeholder="Pioneta 2"
+                className="flex-1 text-[13px] px-3 h-[34px] rounded-[8px] border border-black/[0.12] focus:outline-none focus:border-knavy bg-white"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Edit form inline */}
         {editOpen && (

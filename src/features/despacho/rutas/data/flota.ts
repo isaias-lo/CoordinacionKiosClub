@@ -10,6 +10,8 @@ export interface Vehiculo {
   porton: boolean | null;
   refrigerado: boolean;
   empresa: string;
+  p1?: string;
+  p2?: string;
 }
 
 export const FLOTA_INICIAL: Vehiculo[] = [

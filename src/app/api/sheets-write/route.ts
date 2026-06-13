@@ -4,7 +4,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
-const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN TIENDA']);
+const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN TIENDA', 'HISTORIAL', 'CONTROL DESPACHO']);
 
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -26,7 +26,13 @@ function n(v: string | number): number | null {
   return isNaN(parsed) ? null : parsed;
 }
 
-// DESPACHO RM/REGIONES — 26 cols (PATENTE insertada entre TRANSPORTE[6] y CARGA[8])
+function parseSheetDate(s: string): string | null {
+  const [dd, mm, yyyy] = String(s).split('/');
+  if (!dd || !mm || !yyyy) return null;
+  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+}
+
+// DESPACHO RM/REGIONES — 26 cols A:Z + AA=PIONETA1 + AB=PIONETA2 + AC=FECHA_ARMADO + AD=CÓDIGO
 function toRmRecord(row: (string | number)[]) {
   return {
     id:               String(row[0]  ?? ''),
@@ -55,8 +61,8 @@ function toRmRecord(row: (string | number)[]) {
     supervisor:       String(row[23] ?? ''),
     guia:             String(row[24] ?? ''),
     valor:            n(row[25] ?? ''),
-    pioneta_1:        row[26] ? String(row[26]) : null,
-    pioneta_2:        row[27] ? String(row[27]) : null,
+    fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
+    canonical_id:     row[29] ? String(row[29]) : null,
     seguimiento: 'Registrado',
   };
 }
@@ -89,25 +95,60 @@ function toRegionesRecord(row: (string | number)[]) {
     supervisor:       String(row[23] ?? ''),
     guia:             String(row[24] ?? ''),
     valor:            n(row[25] ?? ''),
-    pioneta_1:        row[26] ? String(row[26]) : null,
-    pioneta_2:        row[27] ? String(row[27]) : null,
+    fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
+    canonical_id:     row[29] ? String(row[29]) : null,
     seguimiento: 'Registrado',
   };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { sheet, rows, fuente } = await request.json() as { sheet: string; rows: (string | number)[][]; fuente?: string };
+    const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[] };
+    const { sheet, rows = [], fuente, action } = body;
 
     if (!ALLOWED_SHEETS.has(sheet)) {
       return NextResponse.json({ error: `Hoja no permitida: ${sheet}` }, { status: 400 });
     }
-    if (!Array.isArray(rows) || rows.length === 0) {
+    // rows vacío solo es error cuando no es una acción especial
+    if (!action && (!Array.isArray(rows) || rows.length === 0)) {
       return NextResponse.json({ error: 'rows vacío' }, { status: 400 });
     }
 
     const auth = await getAuth();
     const gs   = google.sheets({ version: 'v4', auth });
+
+    // ── DESPACHO RM: update-pionetas — batchUpdate AA:AB por cod+fecha ──
+    if (sheet === 'DESPACHO RM' && body.action === 'update-pionetas') {
+      const items = body.items as { cods: string[]; fecha: string; p1: string; p2: string }[];
+      if (!Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ ok: true, updated: 0 });
+      }
+      const readRes = await gs.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range:         'DESPACHO RM!A:C',
+      });
+      const sheetRows = readRes.data.values ?? [];
+      const rowMap = new Map<string, number>();
+      for (let i = 1; i < sheetRows.length; i++) {
+        const r = sheetRows[i];
+        if (r?.[1] && r?.[2]) rowMap.set(`${r[1]}::${r[2]}`, i + 1);
+      }
+      const updateData: { range: string; values: string[][] }[] = [];
+      for (const item of items) {
+        for (const cod of item.cods) {
+          const rowNum = rowMap.get(`${item.fecha}::${cod}`);
+          if (!rowNum) continue;
+          updateData.push({ range: `DESPACHO RM!AA${rowNum}:AB${rowNum}`, values: [[item.p1, item.p2]] });
+        }
+      }
+      if (updateData.length > 0) {
+        await gs.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody:   { valueInputOption: 'USER_ENTERED', data: updateData },
+        });
+      }
+      return NextResponse.json({ ok: true, updated: updateData.length });
+    }
 
     // ── DESPACHO RM / REGIONES: split enrutador vs bodega paths ──────
     if (sheet === 'DESPACHO RM' || sheet === 'DESPACHO REGIONES') {
@@ -219,6 +260,8 @@ export async function POST(request: NextRequest) {
             tipo_comuna: rm.tipo_comuna,
             peso_kg: rm.peso_kg, alto: rm.alto, largo: rm.largo, ancho: rm.ancho, peso_v: rm.peso_v,
             ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
+            ...(rm.fecha_armado  !== null && rm.fecha_armado  !== undefined && { fecha_armado:  rm.fecha_armado }),
+            ...(rm.canonical_id  !== null && rm.canonical_id  !== undefined && { canonical_id:  rm.canonical_id }),
           };
           if (fuente) updateObj.fuente = fuente;
           const { error } = await sb.from(table).update(updateObj).eq('id', r.id);
@@ -227,6 +270,50 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ ok: true, written: rows.length });
       }
+    }
+
+    // ── CONTROL DESPACHO: upsert by fecha::cod, update patente columns ──
+    if (sheet === 'CONTROL DESPACHO') {
+      const readRes = await gs.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range:         'CONTROL DESPACHO!A:G',
+      });
+      const sheetRows = readRes.data.values ?? [];
+      const rowMap = new Map<string, number>();
+      for (let i = 1; i < sheetRows.length; i++) {
+        const r = sheetRows[i];
+        if (r?.[0] && r?.[2]) rowMap.set(`${r[0]}::${r[2]}`, i + 1);
+      }
+      const updateData: { range: string; values: (string | number)[][] }[] = [];
+      const newRows: (string | number)[][] = [];
+      for (const row of rows) {
+        const key = `${row[0]}::${row[2]}`;
+        const v1  = row[5] != null ? String(row[5]) : '';
+        const v2  = row[6] != null ? String(row[6]) : '';
+        const existingRowNum = rowMap.get(key);
+        if (existingRowNum) {
+          if (v1) updateData.push({ range: `CONTROL DESPACHO!F${existingRowNum}`, values: [[v1]] });
+          if (v2) updateData.push({ range: `CONTROL DESPACHO!G${existingRowNum}`, values: [[v2]] });
+        } else {
+          newRows.push(row);
+        }
+      }
+      if (updateData.length > 0) {
+        await gs.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody:   { valueInputOption: 'USER_ENTERED', data: updateData },
+        });
+      }
+      if (newRows.length > 0) {
+        await gs.spreadsheets.values.append({
+          spreadsheetId:    SPREADSHEET_ID,
+          range:            'CONTROL DESPACHO!A1',
+          valueInputOption: 'USER_ENTERED',
+          insertDataOption: 'INSERT_ROWS',
+          requestBody:      { values: newRows },
+        });
+      }
+      return NextResponse.json({ ok: true, updated: updateData.length, appended: newRows.length });
     }
 
     // ── Other allowed sheets (RECEPCIÓN TIENDA etc.) — always append ──

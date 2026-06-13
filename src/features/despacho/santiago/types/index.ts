@@ -31,7 +31,8 @@ export interface SantiagoItem {
   regimen: RegimenCarga;
   orden: string;
   estado: EstadoItem;
-  pickingSlotId?: number;  // FK a picking_pallets.id (trazabilidad)
+  pickingSlotId?: number;   // FK a picking_pallets.id (trazabilidad)
+  canonical_id?: string;    // P3MAI13062026P — del picking slot (para CÓDIGO en Sheets/Supabase)
 }
 
 export type SantiagoStep = 'regimen' | 'form';
@@ -41,4 +42,6 @@ export interface SantiagoState {
   regimen: RegimenCarga | null;
   currentTienda: TiendaSantiago | null;
   items: Record<string, SantiagoItem[]>;
+  fechaDespacho?: string;  // YYYY-MM-DD, default = mañana
+  registrado?: boolean;    // true after "Registrar despacho" — usado por cron auto-registro
 }

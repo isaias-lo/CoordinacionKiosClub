@@ -1,49 +1,61 @@
 # Estado actual del trabajo — Erick
 
-## 🔴 PENDIENTE AL LLEGAR — empezar por aquí (sobre todo en el MAC)
-**Instalar y loguear `gh` (GitHub CLI) en el Mac**, para que Claude pueda abrir PRs desde ahí.
-1. En la Terminal del Mac:  `brew install gh`  (si no tienes brew, ver https://brew.sh)
-2. Loguear una vez:  `gh auth login`  → GitHub.com → HTTPS → Login with a web browser → pegar el código.
-3. Verificar:  `gh auth status`
-> En cecilia (PC trabajo) ya quedó `gh` instalado; solo falta que Erick haga `gh auth login` ahí también.
-> Nuevos comandos disponibles: `npm run pr` (abrir PR a main) además de `npm run hola` / `npm run bye`.
+## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
+1. **Autenticar `gh` en esta Mac** (ya está instalado en `~/.bun/bin/gh`):
+   ```
+   gh auth login
+   ```
+   → Seleccionar: GitHub.com → HTTPS → Login with a web browser → pegar el código.
+   Luego verificar: `gh auth status`
+
+2. **Ejecutar migración `041_ruta_tiendas_nombre.sql` en Supabase Dashboard:**
+   - Ir a Supabase Dashboard → SQL Editor
+   - Pegar y ejecutar:
+     ```sql
+     ALTER TABLE ruta_tiendas
+       ADD COLUMN IF NOT EXISTS nombre  text,
+       ADD COLUMN IF NOT EXISTS ventana text;
+     ```
+   - Esto habilita que los manifiestos QR muestren nombres de tiendas (no solo códigos).
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-07
-Último commit: feat(skills): agregar 10 skills de Antigravity + reglas de auto-activación (`1cde6b0`)
-Rama: inicio
+Fecha: 2026-06-12 (desde Mac casa)
+Rama: `inicio`
 
-## Qué se hizo esta sesión
-1. **Migración a rama `inicio`** — Se abandonó `desdecasamac` (atrasada 60 commits). Trabajando desde `inicio` que tiene todos los cambios del trabajo.
-2. **Evaluación de 6 Claude Code skills/herramientas:**
-   - Superpowers → ❌ No (metodología rígida, sin tests en el proyecto)
-   - UI UX Pro Max → ✅ Ya estaba activo — usar con `/ui-ux-pro-max`
-   - claude-mem → ❌ No (no sincroniza entre PCs, inferior a TRABAJO.md en git)
-   - Antigravity Awesome Skills → ✅ Instalado (10 skills seleccionados)
-   - Andrej Karpathy Skills → ❌ No (redundante, ya en Claude Code nativo)
-   - Everything Claude Code → ⚠️ Pendiente evaluar con `--profile minimal`
-3. **10 skills instalados en `.claude/skills/`** (en el repo, disponibles para todo el equipo):
-   - `nextjs-app-router-patterns`, `nextjs-supabase-auth`
-   - `odoo-rpc-api`, `odoo-performance-tuner`
-   - `frontend-ui-dark-ts`, `database-design`, `database-optimizer`
-   - `auth-implementation-patterns`, `api-security-best-practices`
-   - `e2e-testing-patterns`
-4. **Auto-activación configurada en CLAUDE.md** — los skills se activan solos según el contexto del archivo que se edite.
+### Qué se hizo hoy
+1. **`gh` CLI instalado** (sin Homebrew) en `~/.bun/bin/gh` (v2.94.0). Falta `gh auth login`.
 
-## Sesión anterior (2026-06-09)
-5 fixes ya en `main`:
-1. Bug bodegas: ítems agregados ya no vuelven a formulario al navegar.
-2. Chocolates auto-agregados a 20 kg + clic agrega sin pedir peso.
-3. Crear IDs desde bodega (todos los tipos), excluidos de Picking.
-4. Guía 35BNT → 35BN2.
-5. Eliminado "Movimientos" de Picking.
+2. **Scripts bash creados** (`hola.sh`, `bye.sh`, `sync.sh`, `pr.sh`) — los PowerShell no funcionaban en macOS. `package.json` actualizado para detectar OS y usar el script correcto (bash en Mac, PS1 en Windows). `npm run hola/bye/sync/pr` funcionan en ambas PCs.
 
-## Próximos pasos
-- Probar en vivo los 5 fixes de bodegas/chocolates.
+3. **PDF del Enrutador corregido** — El PDF se imprimía mostrando toda la UI (sidebar, mapa, botones). Fixes:
+   - `src/index.css`: corregido `@media print` que estaba malformado.
+   - `AppShell.tsx`: `shell-container` y `shell-sidebar no-print`. Sidebar y botón móvil ocultos al imprimir.
+   - `ResultsSection.tsx`: mapa Google Maps envuelto en `no-print`.
+
+4. **Página QR del Manifiesto mejorada** (`/r/[token]`):
+   - `supabase/migrations/041_ruta_tiendas_nombre.sql`: agrega `nombre` y `ventana` a `ruta_tiendas`.
+   - `src/app/api/rutas-despacho/route.ts`: guarda `nombre` y `ventana` al crear el manifiesto.
+   - `src/app/r/[token]/page.tsx`: muestra nombre de tienda, ventana horaria, fix scroll horizontal.
+
+5. **HISTORIAL Google Sheets corregido** — El GAS Web App URL dejó de funcionar después del 5/05/2026 (deployment expirado o revocado).
+   - `src/app/api/sheets-write/route.ts`: agregado `'HISTORIAL'` a `ALLOWED_SHEETS`.
+   - `src/features/despacho/rutas/RutasScreen.tsx`: se eliminó la llamada a `guardarHistorialFn` (GAS) y se reemplazó con llamada directa a `/api/sheets-write` con `sheet: 'HISTORIAL'`.
+   - **Formato de filas HISTORIAL** (una fila por ruta): `[fecha DD/MM/YYYY, fecha legible, supervisor, patente, conductor, vuelta (1/2), n_tiendas, pallets, bultos, km_ruta, tiendas_lista, ruta_num]`
+   - El historial en Supabase (`historial_despacho`) ya funcionaba — tiene 10 registros desde 2026-06-02.
+
+6. **Investigación de "Registrar Despacho"** — El botón hace 3 cosas:
+   - **Supabase `historial_despacho`** (PRIMARY): guarda resumen del día con totales. ✓ Funciona.
+   - **DESPACHO RM** (`/api/sheets-write`): solo **ACTUALIZA** filas existentes. Bodega Santiago/Regiones debe crear las filas primero.
+   - **HISTORIAL** (`/api/sheets-write`): ✓ Ahora funciona vía Sheets API directa (ya no depende de GAS).
+
+---
+
+## Pendientes anteriores
+- Ejecutar migración `039_control_cruce_skus.sql` en Supabase (si no está hecha).
+- Agregar `GOOGLE_CONTROL_CRUCE_SHEET_ID` a `.env.local`.
 - Evaluar Everything Claude Code con `--profile minimal`.
-- Si el equipo crece a 3+, revisar Superpowers (ver memoria del proyecto).
 
 ## Recordatorio
 - Al llegar:  `npm run hola`

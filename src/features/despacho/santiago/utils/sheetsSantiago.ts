@@ -11,10 +11,11 @@ const URBAN_COMMUNES = new Set([
 // ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,PATENTE,CARGA,REGION,COMUNA,
 // TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
 // N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
-function buildRows(
+export function buildRows(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
-  fechaISO?: string,   // YYYY-MM-DD — registra con esta fecha en vez de hoy (recuperación)
+  fechaISO?: string,        // YYYY-MM-DD — fecha de despacho (puede ser mañana)
+  fechaArmadoISO?: string,  // YYYY-MM-DD — fecha en que se armó en Bodega (hoy)
 ): (string | number)[][] {
   const now   = new Date();
   const [yISO, mISO, dISO] = (fechaISO ?? '').split('-');
@@ -23,6 +24,11 @@ function buildRows(
   const yyyy  = fechaISO ? yISO : String(now.getFullYear());
   const stamp = `${dd}${mm}${yyyy}`;
   const fecha = `${dd}/${mm}/${yyyy}`;
+
+  // Fecha armado formateada (DD/MM/YYYY), cae a hoy si no se provee
+  const fechaArmadoFmt = fechaArmadoISO
+    ? fechaArmadoISO.split('-').reverse().join('/')
+    : `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
   const rows: (string | number)[][] = [];
 
@@ -36,7 +42,7 @@ function buildRows(
       const tipoLabel  = item.tipo === 'Chocolate' ? 'Bulto CH' : item.tipo;
       rows.push([
         `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — matches Enrutador format
-        fecha,                                                             // FECHA
+        fecha,                                                             // FECHA (despacho)
         cod,                                                               // COD
         tienda.tienda,                                                     // TIENDA
         tipoLabel,                                                         // TIPO
@@ -61,6 +67,10 @@ function buildRows(
         '',                                                                // SUPERVISOR
         '',                                                                // GUIA
         '',                                                                // VALOR
+        '',                                                                // PIONETA 1 (col AA — Enrutador lo llena)
+        '',                                                                // PIONETA 2 (col AB — Enrutador lo llena)
+        fechaArmadoFmt,                                                    // FECHA_ARMADO (col AC)
+        item.canonical_id ?? '',                                           // CÓDIGO (col AD — canonical_id picking)
       ]);
     }
   }
@@ -72,8 +82,9 @@ export function sheetsSantiagoWrite(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
   fechaISO?: string,
+  fechaArmadoISO?: string,
 ): void {
-  const rows = buildRows(items, regimen, fechaISO);
+  const rows = buildRows(items, regimen, fechaISO, fechaArmadoISO);
   if (!rows.length) return;
 
   fetch('/api/sheets-write', {

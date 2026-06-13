@@ -9,15 +9,16 @@ import ConfigPanel    from './components/ConfigPanel';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
 
-import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL, SHEETS_WEB_APP_URL } from './data/tiendas';
+import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
-import { getDia, norm, todayStr } from './utils/helpers';
+import { getDia, norm, todayStr, fechaTxt } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarHistorialFn, guardarDespachoRMFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoRMFn, actualizarPionetasRMFn } from './utils/sheets';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
+import { supabase } from '../../../lib/supabase';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
@@ -102,6 +103,9 @@ export default function RutasScreen() {
     } catch { return null; }
   });
   const [showPendientesModal, setShowPendientesModal] = useState(false);
+
+  // 2ª vuelta: pendientes cross-device (keyed by dispatch fecha, NOT today)
+  const [pendientesV2, setPendientesV2] = useState<{ c: string; p: number; b: number; ch: number }[]>([]);
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -579,6 +583,9 @@ export default function RutasScreen() {
   function handleConductorChange(idx: number, nombre: string) {
     setFlota(prev => prev.map((v, i) => i === idx ? { ...v, ch: nombre } : v));
   }
+  function handlePionetaChange(idx: number, field: 'p1' | 'p2', value: string) {
+    setFlota(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v));
+  }
   function handleAgregarConductor(nombre: string) {
     const n = nombre.trim();
     if (!n) return;
@@ -668,6 +675,53 @@ export default function RutasScreen() {
     return { ts, errs };
   }
 
+  // ── Segunda vuelta: pendientes Supabase ──────────────────────────
+  function savePendientesV2(
+    fechaDespacho: string,
+    stores: { c: string; p: number; b: number; ch: number }[],
+  ): void {
+    const payload = { savedAt: new Date().toISOString(), fecha: fechaDespacho, stores };
+    try { localStorage.setItem('despacho_pendientes_v2', JSON.stringify(payload)); } catch {}
+    supabase
+      .from('shared_session_state')
+      .upsert({ fecha: fechaDespacho, fuente: 'segunda_vuelta', state: payload }, { onConflict: 'fecha,fuente' })
+      .then(({ error }) => { if (error) console.error('[pendientes-v2]', error.message); });
+  }
+
+  useEffect(() => {
+    // 1. Quick path: localStorage
+    try {
+      const raw = localStorage.getItem('despacho_pendientes_v2');
+      if (raw) {
+        const saved = JSON.parse(raw) as { fecha: string; stores: { c: string; p: number; b: number; ch: number }[] };
+        if (saved.fecha === fecha && saved.stores.length > 0) {
+          setPendientesV2(saved.stores);
+          return;
+        }
+      }
+    } catch {}
+    // 2. Cross-device path: Supabase keyed by dispatch fecha
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('shared_session_state')
+          .select('state')
+          .eq('fecha', fecha)
+          .eq('fuente', 'segunda_vuelta')
+          .maybeSingle();
+        const s = data?.state as { stores?: { c: string; p: number; b: number; ch: number }[] } | null;
+        setPendientesV2(s?.stores?.length ? s.stores : []);
+      } catch {}
+    })();
+  }, [fecha]);
+
+  function handleCargarPendientes() {
+    if (!pendientesV2.length) return;
+    const txt = pendientesV2.map(s => `${s.c} ${s.p}P${s.b ? ' ' + s.b + 'B' : ''}`).join('\n');
+    setManualText(txt);
+    setModo('man');
+  }
+
   // ── Extra stops helpers ───────────────────────────────────────────
   function buildExtendidos(baseGps: Record<string, number[]>, baseTiendas: Record<string, TiendaInfo>) {
     const extGps     = { ...baseGps };
@@ -707,18 +761,14 @@ export default function RutasScreen() {
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
 
-    // Guardar tiendas sin asignar en localStorage para segunda vuelta
-    try {
-      const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
-      const noAsignadas = ts.filter(t => !asignadas.has(t.c) && !t.c.startsWith('_P'));
-      if (noAsignadas.length > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        localStorage.setItem('despacho_pendientes', JSON.stringify({
-          savedAt: today,
-          stores: noAsignadas.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? 0) })),
-        }));
-      }
-    } catch {}
+    // Guardar tiendas sin asignar para segunda vuelta (cross-device via Supabase, keyed by fecha dispatch)
+    const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
+    const noAsignadas = ts.filter(t => !asignadas.has(t.c) && !t.c.startsWith('_P'));
+    const pendV2 = noAsignadas.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? 0) }));
+    setPendientesV2(pendV2);
+    if (pendV2.length > 0) {
+      savePendientesV2(fecha, pendV2);
+    }
   }
 
   // ── Calculate manual routes ───────────────────────────────────────
@@ -901,72 +951,121 @@ export default function RutasScreen() {
   }
 
   // ── Save history ──────────────────────────────────────────────────
-  function handleGuardarHistorial() {
+  async function handleGuardarHistorial() {
     if (!results) { setHistorialStatus('warn'); setHistorialMsg('⚠️ No hay rutas calculadas.'); return; }
-    guardarHistorialFn({
-      fecha, supervisor,
-      rutas: results.rutas, ts: results.ts,
-      gps,
-      cd:          cdRef.current,
-      kmTotalReal: kmTotalRealRef.current,
-      sheetsWebAppUrl: SHEETS_WEB_APP_URL,
-      onStart:   () => { setHistorialStatus('loading'); setHistorialMsg(''); },
-      onSuccess: msg => {
-        setHistorialMsg(msg);
-        setHistorialStatus('success');
-        // Limpiar pendientes al registrar despacho exitosamente
-        try { localStorage.removeItem('despacho_pendientes'); } catch {}
-        setPendientes(null);
-      },
-      onWarn:    msg => { setHistorialMsg(msg); setHistorialStatus('warn'); },
-      onError:   msg => { setHistorialMsg(msg); setHistorialStatus('error'); },
-    });
-    // Escribe en Google Sheets (historial/auditoría)
-    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+    setHistorialStatus('loading');
+    setHistorialMsg('');
 
-    // Actualiza routing en Supabase (conductor, patente, ruta, supervisor)
-    // en las filas existentes de despacho_rm y picking_pallets usando (fecha, cod).
-    // NO crea registros nuevos — evita duplicados con prefijo R que existían antes.
+    const totalPallets = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
+    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b + ((t as { ch?: number }).ch ?? 0), 0), 0);
+    const totalTiendas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c))).size;
+    const totalRutas   = results.rutas.length;
+    const kmTotal      = Math.round((results.rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0)) * 10) / 10;
+
+    // 1. PRIMARY: guardar en Supabase — de aquí viene el feedback al usuario
+    try {
+      const res = await fetch('/api/historial-despacho', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fecha, supervisor, totalTiendas, totalPallets, totalBultos, totalRutas, kmTotal,
+          resumen: results.rutas.map(r => ({
+            patente:   r.v.p,
+            conductor: r._choferAsignado || r.v.ch,
+            tiendas:   r.ts.map(t => t.c),
+            pallets:   r.tp,
+            bultos:    r.tb,
+          })),
+        }),
+      });
+      const json = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
+
+      setHistorialMsg(`✓ Guardado · ${fecha} · ${totalTiendas} tiendas · ${totalPallets}P+${totalBultos}B · ${kmTotal}km`);
+      setHistorialStatus('success');
+      try { localStorage.removeItem('despacho_pendientes'); } catch {}
+      setPendientes(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      setHistorialMsg(`⚠️ Error guardando: ${msg}`);
+      setHistorialStatus('error');
+      return; // No continuar con las sincronizaciones secundarias si Supabase falló
+    }
+
+    // 2. SECONDARY (fire-and-forget): actualiza conductor/ruta en despacho_rm y picking_pallets
     const routingUpdates = results.rutas.flatMap((ruta, ri) => {
       const conductor = ruta._choferAsignado || ruta.v.ch || '';
       const patente   = ruta.v.p;
       const empresa   = ruta.v.empresa || 'Luis Fica';
       const rutaNum   = String(ri + 1);
-      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor }));
+      const vuelta    = ruta.v.tlbd ? 2 : 1;
+      const pioneta_1 = ruta.v.p1 ?? null;
+      const pioneta_2 = ruta.v.p2 ?? null;
+      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor, vuelta, pioneta_1, pioneta_2 }));
     });
     if (routingUpdates.length > 0) {
       fetch('/api/despacho-records', {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ fecha, updates: routingUpdates }),
-      }).catch(() => {});
+      }).catch(e => console.error('[despacho-records PATCH]', e));
     }
 
-    // También registra en Supabase historial_despacho
-    const totalPallets = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
-    const totalBultos  = results.rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b + ((t as { ch?: number }).ch ?? 0), 0), 0);
-    const totalTiendas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c))).size;
-    const totalRutas   = results.rutas.length;
-    const kmTotal      = results.rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0);
+    // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM en Google Sheets
+    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+    actualizarPionetasRMFn({ fecha, rutas: results.rutas });
 
-    fetch('/api/historial-despacho', {
-      method: 'POST',
+    // 4. SECONDARY (fire-and-forget): escribe en HISTORIAL de Google Sheets directamente
+    const fechaDDMM = fecha.split('-').reverse().join('/'); // YYYY-MM-DD → DD/MM/YYYY
+    const fechaLeg  = fechaTxt(fecha);
+    const historialRows: (string | number)[][] = results.rutas.map((r, ri) => [
+      fechaDDMM,
+      fechaLeg,
+      supervisor,
+      r.v.p,
+      r._choferAsignado || r.v.ch || '',
+      r.v.tlbd ? '2' : '1',
+      r.ts.length,
+      r.tp,
+      r.tb,
+      r._kmReal ?? 0,
+      r.ts.map(t => t.c).join(', '),
+      String(ri + 1),
+    ]);
+    fetch('/api/sheets-write', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fecha,
-        supervisor,
-        totalTiendas,
-        totalPallets,
-        totalBultos,
-        totalRutas,
-        kmTotal,
-        resumen: results.rutas.map(r => ({
-          patente:   r.v.p,
-          conductor: r._choferAsignado || r.v.ch,
-          tiendas:   r.ts.map(t => t.c),
-        })),
-      }),
-    }).catch(err => console.error('[historial-despacho]', err));
+      body:    JSON.stringify({ sheet: 'HISTORIAL', rows: historialRows }),
+    }).catch(e => console.error('[historial-sheets]', e));
+
+    // 5. SECONDARY (fire-and-forget): escribe en CONTROL DESPACHO (upsert por fecha::cod)
+    const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const diaCD = DIAS[new Date(fecha + 'T12:00').getDay()];
+    const controlMap = new Map<string, { p: number; b: number; v1: string; v2: string }>();
+    results.rutas.forEach(ruta => {
+      const isV2 = ruta.v.tlbd, pat = ruta.v.p;
+      ruta.ts.forEach(t => {
+        const ex = controlMap.get(t.c);
+        if (!ex) controlMap.set(t.c, { p: t.p, b: t.b + ((t as { ch?: number }).ch ?? 0), v1: isV2 ? '' : pat, v2: isV2 ? pat : '' });
+        else if (isV2) ex.v2 = pat; else ex.v1 = pat;
+      });
+    });
+    const controlRows = Array.from(controlMap.entries()).map(([cod, d]) => [fechaDDMM, diaCD, cod, d.p, d.b, d.v1, d.v2]);
+    if (controlRows.length > 0) {
+      fetch('/api/sheets-write', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sheet: 'CONTROL DESPACHO', rows: controlRows }),
+      }).catch(e => console.error('[control-despacho]', e));
+    }
+
+    // 6. Actualizar pendientes de 2ª vuelta: remover tiendas ya despachadas
+    if (pendientesV2.length > 0) {
+      const despachadas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)));
+      const remaining = pendientesV2.filter(s => !despachadas.has(s.c));
+      setPendientesV2(remaining);
+      savePendientesV2(fecha, remaining);
+    }
   }
 
   // ── Driver change ─────────────────────────────────────────────────
@@ -1009,6 +1108,19 @@ export default function RutasScreen() {
           >
             📦 Tiendas pendientes de ayer ({pendientes.stores.length})
           </button>
+        </div>
+      )}
+
+      {/* Pill de pendientes 2ª vuelta (misma fecha) */}
+      {pendientesV2.length > 0 && (
+        <div className="flex-shrink-0 px-4 py-1.5 bg-kred/10 border-b border-kred/20 flex items-center gap-2">
+          <button
+            onClick={handleCargarPendientes}
+            className="text-[11px] font-bold px-2.5 py-1 rounded-[8px] border-2 border-kred text-kred bg-kred/[0.08] hover:bg-kred/[0.15] transition-colors active:scale-95"
+          >
+            ⚠ {pendientesV2.length} pendiente{pendientesV2.length !== 1 ? 's' : ''} 2ª vuelta — Cargar
+          </button>
+          <span className="text-[10px] text-kred/50">{pendientesV2.map(s => s.c).join(', ')}</span>
         </div>
       )}
 
@@ -1102,6 +1214,7 @@ export default function RutasScreen() {
           onUpdateChip={handleUpdateChip}
           flotaStatus={flotaStatus}
           onConductorChange={handleConductorChange}
+          onPionetaChange={handlePionetaChange}
           onAgregarConductor={handleAgregarConductor}
           onToggleFlota={handleToggleFlota}
           onToggleTlbd={handleToggleTlbd}

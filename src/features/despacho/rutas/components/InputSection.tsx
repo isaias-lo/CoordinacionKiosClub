@@ -37,6 +37,7 @@ interface Props {
   onToggleChip: (cod: string) => void;
   onUpdateChip: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
   onConductorChange: (idx: number, nombre: string) => void;
+  onPionetaChange: (idx: number, field: 'p1' | 'p2', value: string) => void;
   onAgregarConductor: (nombre: string) => void;
   onToggleFlota: (idx: number) => void;
   onToggleTlbd: (idx: number) => void;
@@ -156,7 +157,7 @@ export default function InputSection({
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
   onModo, onToggleGroup, onToggleChip, onUpdateChip,
-  onConductorChange, onAgregarConductor,
+  onConductorChange, onPionetaChange, onAgregarConductor,
   onToggleFlota, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onLimpiar, onEliminarParada,
@@ -361,7 +362,8 @@ export default function InputSection({
                         <FlotaGrid
                           flota={flota} conductores={conductores} flotaStatus={flotaStatus}
                           onToggle={onToggleFlota} onToggleTlbd={onToggleTlbd}
-                          onConductorChange={onConductorChange} onAgregarConductor={onAgregarConductor}
+                          onConductorChange={onConductorChange} onPionetaChange={onPionetaChange}
+                          onAgregarConductor={onAgregarConductor}
                           onAgregarVehiculo={onAgregarVehiculo} onEliminarVehiculo={onEliminarVehiculo}
                           onActualizarVehiculo={onActualizarVehiculo} onGuardarFlota={onGuardarFlota}
                         />
@@ -619,7 +621,8 @@ export default function InputSection({
                   <FlotaGrid
                     flota={flota} conductores={conductores} flotaStatus={flotaStatus}
                     onToggle={onToggleFlota} onToggleTlbd={onToggleTlbd}
-                    onConductorChange={onConductorChange} onAgregarConductor={onAgregarConductor}
+                    onConductorChange={onConductorChange} onPionetaChange={onPionetaChange}
+                    onAgregarConductor={onAgregarConductor}
                     onAgregarVehiculo={onAgregarVehiculo} onEliminarVehiculo={onEliminarVehiculo}
                     onActualizarVehiculo={onActualizarVehiculo} onGuardarFlota={onGuardarFlota}
                   />

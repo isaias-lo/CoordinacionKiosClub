@@ -27,7 +27,8 @@ export interface DispatchItem {
   alto: number;
   ancho: number;
   largo: number;
-  pickingSlotId?: number;  // FK a picking_pallets.id (trazabilidad)
+  pickingSlotId?: number;   // FK a picking_pallets.id (trazabilidad)
+  canonical_id?: string;    // P3MAI13062026P — del picking slot (para CÓDIGO en Sheets/Supabase)
 }
 
 export interface PdfGuia {
@@ -70,4 +71,6 @@ export interface AppState {
   sheetsUrl: string;
   dispatchDate: string;
   toast: { msg: string; color?: string } | null;
+  fechaDespacho?: string;  // YYYY-MM-DD, default = mañana
+  registrado?: boolean;    // true after "Registrar" — usado por cron auto-registro
 }

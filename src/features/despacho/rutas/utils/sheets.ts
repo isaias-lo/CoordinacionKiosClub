@@ -165,6 +165,8 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
       if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
       if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
       if (row[8]) existente.empresa = row[8];
+      if (row[9]) existente.p1 = row[9];
+      if (row[10]) existente.p2 = row[10];
     } else {
       // Vehículo en Sheets que no está en FLOTA_INICIAL → agregar
       flota.push({
@@ -177,6 +179,8 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
         on:          row[6] ? row[6].toUpperCase() === 'SI' : true,
         tlbd:        row[7] ? row[7].toUpperCase() === 'SI' : false,
         empresa:     row[8] || '',
+        p1:          row[9] || '',
+        p2:          row[10] || '',
       });
     }
   }
@@ -398,6 +402,29 @@ export function guardarDespachoRMFn(params: {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ sheet: 'DESPACHO RM', rows, fuente: 'enrutador' }),
   }).catch(err => console.error('[guardarDespachoRM]', err));
+}
+
+export function actualizarPionetasRMFn(params: { fecha: string; rutas: Ruta[] }): void {
+  const { fecha, rutas } = params;
+  const [y, m, d] = fecha.split('-');
+  const fechaSheet = `${d}/${m}/${y}`;
+
+  const items = rutas
+    .filter(r => r.v.p1 || r.v.p2)
+    .map(r => ({
+      cods: r.ts.map(t => t.c),
+      fecha: fechaSheet,
+      p1: r.v.p1 ?? '',
+      p2: r.v.p2 ?? '',
+    }));
+
+  if (!items.length) return;
+
+  fetch('/api/sheets-write', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ sheet: 'DESPACHO RM', action: 'update-pionetas', items }),
+  }).catch(err => console.error('[actualizarPionetasRM]', err));
 }
 
 interface GuardarHistorialParams {

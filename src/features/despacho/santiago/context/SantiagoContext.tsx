@@ -18,6 +18,8 @@ type SyncableState = {
   step: SantiagoState['step'];
   regimen: RegimenCarga | null;
   items: Record<string, SantiagoItem[]>;
+  fechaDespacho?: string;
+  registrado?: boolean;
 };
 
 const _d = new Date();
@@ -64,7 +66,9 @@ type SantiagoAction =
   | { type: 'EDIT_ITEM'; tiendaCod: string; idx: number; item: SantiagoItem }
   | { type: 'SET_ITEMS'; tiendaCod: string; items: SantiagoItem[] }
   | { type: 'RESET' }
-  | { type: 'LOAD_STATE'; payload: SyncableState };
+  | { type: 'LOAD_STATE'; payload: SyncableState }
+  | { type: 'SET_FECHA_DESPACHO'; payload: string }
+  | { type: 'SET_REGISTRADO'; payload: boolean };
 
 function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
   switch (action.type) {
@@ -109,9 +113,17 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
       return {
         ...state,
         // step is intentionally not synced — each device controls its own navigation
-        regimen: action.payload.regimen ?? state.regimen,
-        items:   action.payload.items   ?? state.items,
+        regimen:       action.payload.regimen       ?? state.regimen,
+        items:         action.payload.items         ?? state.items,
+        fechaDespacho: action.payload.fechaDespacho ?? state.fechaDespacho,
+        registrado:    action.payload.registrado    ?? state.registrado,
       };
+
+    case 'SET_FECHA_DESPACHO':
+      return { ...state, fechaDespacho: action.payload, registrado: false };
+
+    case 'SET_REGISTRADO':
+      return { ...state, registrado: action.payload };
 
     default:
       return state;
@@ -212,7 +224,10 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   // Debounced push to Supabase (800 ms after last change) + localStorage fallback
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    const payload: SyncableState = { step: state.step, regimen: state.regimen, items: state.items };
+    const payload: SyncableState = {
+      step: state.step, regimen: state.regimen, items: state.items,
+      fechaDespacho: state.fechaDespacho, registrado: state.registrado,
+    };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
 
@@ -241,12 +256,15 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
       }
     };
-  }, [state.step, state.regimen, state.items, state]);
+  }, [state.step, state.regimen, state.items, state.fechaDespacho, state.registrado, state]);
 
   // Flush any pending debounced push immediately — call before navigating away
   const flushPending = useCallback(() => {
     if (!isInitializedRef.current) return;
-    const payload: SyncableState = { step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items };
+    const payload: SyncableState = {
+      step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
+      fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado,
+    };
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
