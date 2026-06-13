@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -51,7 +52,9 @@ interface TiendaRow {
   tel_supervisor: string; transportista: string; activo: boolean;
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   try {
     // 1. Read all tiendas from Supabase
     const sb = supabaseServer();

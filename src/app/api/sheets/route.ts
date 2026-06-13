@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -23,6 +24,8 @@ async function getAuth() {
 }
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const sheet = searchParams.get('sheet') || 'CALENDARIO';
 

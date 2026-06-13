@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const fecha  = request.nextUrl.searchParams.get('fecha');
   const rutaId = request.nextUrl.searchParams.get('ruta_id');
 

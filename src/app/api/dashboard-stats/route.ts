@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 /**
@@ -42,6 +43,8 @@ interface DayAgg {
 }
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const days = Math.max(1, Math.min(365, Number(new URL(request.url).searchParams.get('days') ?? 90)));
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);

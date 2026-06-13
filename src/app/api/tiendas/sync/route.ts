@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -38,7 +39,9 @@ function normalizeCod(raw: string): string {
 // Valid store code: 0-2 digits, 2-4 uppercase ASCII letters, optional digit
 const COD_RE = /^[0-9]{0,2}[A-Z]{2,5}[0-9]?$/;
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   try {
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });

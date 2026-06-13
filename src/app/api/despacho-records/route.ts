@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const ALLOWED_TABLES = new Set(['despacho_rm', 'despacho_regiones', 'recepcion']);
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const table = searchParams.get('table') ?? '';
 
@@ -36,6 +39,8 @@ export async function GET(request: NextRequest) {
  * el campo seguimiento no se sobreescribe. Para el resto de campos sí.
  */
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const body = await request.json() as { table?: string; records?: object[] };
     const { table = '', records = [] } = body;

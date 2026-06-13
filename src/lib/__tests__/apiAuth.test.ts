@@ -29,6 +29,15 @@ vi.mock('@supabase/supabase-js', () => ({
   })),
 }));
 
+// Cookie fallback: no session cookie present in test requests → null session.
+vi.mock('@supabase/ssr', () => ({
+  createServerClient: vi.fn(() => ({
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+    },
+  })),
+}));
+
 let verifyAuth:    (r: NextRequest) => Promise<boolean>;
 let verifyAdmin:   (r: NextRequest) => Promise<boolean>;
 let verifyAnyUser: (r: NextRequest) => Promise<{ id: string; role: string } | null>;

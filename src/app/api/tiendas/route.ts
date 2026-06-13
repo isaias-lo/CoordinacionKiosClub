@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { verifyAdmin } from '@/lib/apiAuth';
+import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateTiendaSchema } from '@/lib/schemas';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -106,7 +106,9 @@ async function syncTiendaToSheets(tienda: TiendaBody): Promise<void> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const sb = supabaseServer();
     const { data, error } = await sb

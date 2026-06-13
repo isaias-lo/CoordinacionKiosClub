@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const ruta_id = request.nextUrl.searchParams.get('ruta_id');
   if (!ruta_id) return NextResponse.json({ error: 'ruta_id requerido' }, { status: 400 });
 
@@ -15,6 +18,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
     ruta_id: number;
     tipo: 'salida' | 'qr_scan' | 'entrega' | 'recepcion' | 'incidencia';

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { sendOTPEmail } from '@/lib/gmail';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 
 function generateOTP(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -15,6 +16,13 @@ export async function POST(request: NextRequest) {
 
   if (!store_cod) {
     return NextResponse.json({ error: 'store_cod requerido' }, { status: 400 });
+  }
+
+  // Anti email-bombing: máx 3 envíos por tienda y por IP cada 10 min.
+  // (best-effort en serverless — el store es por instancia; ver rateLimit.ts)
+  if (!checkRateLimit(`otp:${store_cod}`, { max: 3 }) ||
+      !checkRateLimit(`otp-ip:${getClientIp(request)}`, { max: 3 })) {
+    return tooManyRequests();
   }
 
   // Busca email en Supabase (fuente única de verdad)

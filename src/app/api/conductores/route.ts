@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { verifyAdmin } from '@/lib/apiAuth';
+import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateConductorSchema, UpdateConductorSchema } from '@/lib/schemas';
 
 function syncPersonalSheets() {
@@ -9,7 +9,9 @@ function syncPersonalSheets() {
     .catch(e => console.error('[conductores] sync-sheets:', e));
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { data, error } = await supabaseServer()
     .from('conductores')
     .select('id, nombre, telefono, empresa')
@@ -65,6 +67,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 

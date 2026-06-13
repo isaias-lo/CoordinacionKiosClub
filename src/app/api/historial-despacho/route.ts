@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 interface HistorialDespachoBody {
@@ -13,6 +14,8 @@ interface HistorialDespachoBody {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const body = await request.json() as Partial<HistorialDespachoBody>;
     const {

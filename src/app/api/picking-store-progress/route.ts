@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { parseOrigin, isAbastecimientoOp } from '@/features/picking/picking-utils';
 
@@ -46,6 +47,8 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
 }
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const date = request.nextUrl.searchParams.get('date') ?? todayISO();
   const sb   = supabaseServer();
 
@@ -109,6 +112,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
     stores: Array<{ cod: string; total: number; done: number }>;
   };

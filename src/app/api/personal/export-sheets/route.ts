@@ -1,3 +1,7 @@
+// NOTE: sin verifyAuth a propósito — es un sync fire-and-forget llamado
+// server-to-server desde /api/conductores y /api/pionetas (sin cookie ni
+// Bearer). Esos endpoints sí están protegidos; aquí solo se exportan nombres
+// a Google Sheets (sin exponer datos en la respuesta).
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';

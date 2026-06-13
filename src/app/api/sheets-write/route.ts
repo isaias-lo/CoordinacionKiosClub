@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 
@@ -9,7 +10,7 @@ const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN 
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
-  const clean = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const clean = raw.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   return JSON.parse(clean);
 }
 
@@ -102,6 +103,8 @@ function toRegionesRecord(row: (string | number)[]) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[] };
     const { sheet, rows = [], fuente, action } = body;
