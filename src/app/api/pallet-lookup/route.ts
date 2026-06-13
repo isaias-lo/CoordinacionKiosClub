@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 
 /**
  * GET /api/pallet-lookup?id=<canonicalId>
@@ -76,6 +77,8 @@ async function aggregateBy(
 }
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const id = (request.nextUrl.searchParams.get('id') ?? '').trim();
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 

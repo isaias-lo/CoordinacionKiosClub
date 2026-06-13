@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 import type {
   TrazabilidadCreatePayload,
   TrazabilidadDespachoPayload,
@@ -17,6 +18,8 @@ const TABLE = 'trazabilidad_unidades';
 // ?fecha=2026-06-01   (por fecha_hora_creacion)
 // ?id=abc123          (una unidad específica)
 export async function GET(req: NextRequest) {
+  if (!await verifyAuth(req))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const sb     = supabaseServer();
   const params = req.nextUrl.searchParams;
 
@@ -45,6 +48,8 @@ export async function GET(req: NextRequest) {
 
 // ── POST — crear unidad (PUNTO 1: Creación) ───────────────────────────
 export async function POST(req: NextRequest) {
+  if (!await verifyAuth(req))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const sb = supabaseServer();
   const body = await req.json() as TrazabilidadCreatePayload | TrazabilidadCreatePayload[];
 
@@ -112,6 +117,8 @@ export async function POST(req: NextRequest) {
 // ── PATCH — actualizar unidades según punto del ciclo ─────────────────
 // body.punto: 'despacho' | 'recepcion' | 'cierre'
 export async function PATCH(req: NextRequest) {
+  if (!await verifyAuth(req))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const sb   = supabaseServer();
   const body = await req.json() as
     | ({ punto: 'despacho'  } & TrazabilidadDespachoPayload)

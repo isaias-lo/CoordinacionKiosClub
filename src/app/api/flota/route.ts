@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdmin } from '@/lib/apiAuth';
+import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import type { Vehiculo } from '@/features/despacho/rutas/data/flota';
 
@@ -45,7 +45,9 @@ function vehiculoToRow(v: Vehiculo): Omit<FlotaRow, never> {
 }
 
 // ── GET /api/flota  →  lista todos los vehículos activos ──────────────────
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { data, error } = await supabaseServer()
     .from('flota_vehiculos')
     .select('patente,capacidad_p,capacidad_b,tipo,porton,refrigerado,activo,es_tlbd,empresa')

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
+import { verifyAuth } from '@/lib/apiAuth';
 
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const fecha   = request.nextUrl.searchParams.get('fecha') ?? new Date().toISOString().slice(0, 10);
   const patente = request.nextUrl.searchParams.get('patente');
 
@@ -20,6 +23,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
     fecha: string; codigo_ruta: string; chofer: string; patente: string;
     bodega_origen?: string;
@@ -172,6 +177,8 @@ function isoToFecha(iso: string): string {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as { id: number; estado: string };
   const VALID = ['pendiente', 'en_camino', 'entregado', 'recibido'];
   if (!VALID.includes(body.estado))
