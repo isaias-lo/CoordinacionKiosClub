@@ -15,7 +15,7 @@ import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoRMFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoRMFn, actualizarPionetasRMFn } from './utils/sheets';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
@@ -583,6 +583,9 @@ export default function RutasScreen() {
   function handleConductorChange(idx: number, nombre: string) {
     setFlota(prev => prev.map((v, i) => i === idx ? { ...v, ch: nombre } : v));
   }
+  function handlePionetaChange(idx: number, field: 'p1' | 'p2', value: string) {
+    setFlota(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v));
+  }
   function handleAgregarConductor(nombre: string) {
     const n = nombre.trim();
     if (!n) return;
@@ -996,7 +999,9 @@ export default function RutasScreen() {
       const empresa   = ruta.v.empresa || 'Luis Fica';
       const rutaNum   = String(ri + 1);
       const vuelta    = ruta.v.tlbd ? 2 : 1;
-      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor, vuelta }));
+      const pioneta_1 = ruta.v.p1 ?? null;
+      const pioneta_2 = ruta.v.p2 ?? null;
+      return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor, vuelta, pioneta_1, pioneta_2 }));
     });
     if (routingUpdates.length > 0) {
       fetch('/api/despacho-records', {
@@ -1008,6 +1013,7 @@ export default function RutasScreen() {
 
     // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM en Google Sheets
     guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+    actualizarPionetasRMFn({ fecha, rutas: results.rutas });
 
     // 4. SECONDARY (fire-and-forget): escribe en HISTORIAL de Google Sheets directamente
     const fechaDDMM = fecha.split('-').reverse().join('/'); // YYYY-MM-DD → DD/MM/YYYY
@@ -1208,6 +1214,7 @@ export default function RutasScreen() {
           onUpdateChip={handleUpdateChip}
           flotaStatus={flotaStatus}
           onConductorChange={handleConductorChange}
+          onPionetaChange={handlePionetaChange}
           onAgregarConductor={handleAgregarConductor}
           onToggleFlota={handleToggleFlota}
           onToggleTlbd={handleToggleTlbd}

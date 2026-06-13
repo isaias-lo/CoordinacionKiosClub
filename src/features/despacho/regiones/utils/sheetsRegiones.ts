@@ -99,6 +99,8 @@ export function buildRows(
         '',                                             // SUPERVISOR
         item.guia  || '',                               // GUIA
         item.valor || '',                               // VALOR
+        '',                                             // PIONETA 1 (col AA — Enrutador lo llena)
+        '',                                             // PIONETA 2 (col AB — Enrutador lo llena)
         fechaArmadoFmt,                                 // FECHA_ARMADO (col AC)
       ]);
     }

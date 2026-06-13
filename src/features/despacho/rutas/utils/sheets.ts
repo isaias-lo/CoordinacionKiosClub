@@ -400,6 +400,29 @@ export function guardarDespachoRMFn(params: {
   }).catch(err => console.error('[guardarDespachoRM]', err));
 }
 
+export function actualizarPionetasRMFn(params: { fecha: string; rutas: Ruta[] }): void {
+  const { fecha, rutas } = params;
+  const [y, m, d] = fecha.split('-');
+  const fechaSheet = `${d}/${m}/${y}`;
+
+  const items = rutas
+    .filter(r => r.v.p1 || r.v.p2)
+    .map(r => ({
+      cods: r.ts.map(t => t.c),
+      fecha: fechaSheet,
+      p1: r.v.p1 ?? '',
+      p2: r.v.p2 ?? '',
+    }));
+
+  if (!items.length) return;
+
+  fetch('/api/sheets-write', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ sheet: 'DESPACHO RM', action: 'update-pionetas', items }),
+  }).catch(err => console.error('[actualizarPionetasRM]', err));
+}
+
 interface GuardarHistorialParams {
   fecha: string;
   supervisor: string;
