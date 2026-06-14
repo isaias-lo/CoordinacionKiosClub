@@ -165,17 +165,16 @@ export default function ResultsSection({
         )}
       </div>
 
-      {/* Manifiesto de Ruta */}
+      {/* Manifiesto de Ruta — acción secundaria: reabrir el panel sin re-registrar */}
       <div className="mt-[9px] no-print">
         <button
           onClick={() => setManifiestoOpen(true)}
-          className="w-full h-[46px] rounded-kios2 text-white text-[14px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
-          style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', boxShadow: '0 4px 14px rgba(26,37,80,0.3)' }}
+          className="w-full h-[38px] rounded-kios2 bg-white text-knavy text-[13px] font-semibold border border-knavy/25 flex items-center justify-center gap-2 transition-all cursor-pointer hover:bg-knavy/[0.04]"
         >
           📋 Generar Manifiestos de Ruta
         </button>
         <div className="mt-[5px] text-[10px] text-kmuted text-center">
-          Genera el documento único por ruta · incluye QR maestro · reemplaza guías físicas
+          Reabre el panel de manifiestos sin volver a registrar el despacho
         </div>
       </div>
 
