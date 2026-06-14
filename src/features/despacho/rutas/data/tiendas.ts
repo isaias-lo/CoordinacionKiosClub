@@ -83,6 +83,9 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
 export const ALIAS: Record<string, string> = {
   // Códigos canónicos con Ñ: entrada directa para que norm() no haga strip antes del lookup
   "23PEÑ":"23PEÑ",
+  // Variante ASCII del código completo (23PEN) → canónico con Ñ. Evita la tienda
+  // duplicada 23PEN/23PEÑ: norm() ya resolvía "PEN" pero NO "23PEN".
+  "23PEN":"23PEÑ",
   // Variantes con tilde → código interno ASCII
   "PEÑ":"23PEÑ","PEñ":"23PEÑ","PEG":"23PEÑ",
   "VIÑ":"37VIN","VIñ":"37VIN",
