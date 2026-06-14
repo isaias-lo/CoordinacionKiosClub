@@ -1,8 +1,8 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-13 15:57
-Último commit: fix(seguridad): PR 1B — auth en endpoints de chofer/tienda (vía cookie)
+Fecha: 2026-06-13 16:01
+Último commit: docs: actualizar TRABAJO.md — fase de seguridad (PR 1A/1B) completa
 Rama: fix/seguridad-pr1b
 
 ## Archivos modificados recientemente
