@@ -1,9 +1,6 @@
 import { CORR_COLORS, CORR_LABEL } from '../constants';
-import type { AuditEntry, TipoError } from '../types';
-
-function calcAuditado(u: number, tipo: TipoError, esp: number) {
-  return tipo === 'faltante' ? esp - u : esp + u;
-}
+import type { AuditEntry } from '../types';
+import { calcAuditado } from './calculos';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

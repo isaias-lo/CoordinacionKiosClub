@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
       .lt('fecha_hora_creacion',  `${fecha}T23:59:59.999Z`);
   }
 
-  const limit = parseInt(params.get('limit') ?? '200', 10);
+  const rawLimit = parseInt(params.get('limit') ?? '200', 10);
+  const limit = Number.isNaN(rawLimit) ? 200 : Math.min(Math.max(1, rawLimit), 1000);
   query = query.limit(limit);
 
   const { data, error } = await query;

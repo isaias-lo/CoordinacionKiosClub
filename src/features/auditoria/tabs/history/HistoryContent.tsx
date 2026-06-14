@@ -4,11 +4,8 @@ import { useState, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { formatTimer } from '../../constants';
 import { displayPicker } from '../dashboard/helpers';
-import type { AuditEntry, TipoError } from '../../types';
-
-function calcAuditado(u: number, tipo: TipoError, esp: number) {
-  return tipo === 'faltante' ? esp - u : esp + u;
-}
+import type { AuditEntry } from '../../types';
+import { calcAuditado } from '../../utils/calculos';
 
 export function HistoryContent({ history, today, onReaudit, onExportPDF, onRefresh, pickerNames }: {
   history: AuditEntry[]; today: string;
