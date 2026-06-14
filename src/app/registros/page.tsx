@@ -359,7 +359,7 @@ export default function RegistrosPage() {
     : rows;
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden"
+    <div className="h-full w-full flex flex-col overflow-hidden"
          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
 
       {/* Header */}
