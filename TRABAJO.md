@@ -1,62 +1,46 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-13 16:01
-Último commit: docs: actualizar TRABAJO.md — fase de seguridad (PR 1A/1B) completa
-Rama: fix/seguridad-pr1b
+Fecha: 2026-06-14 16:07
+Último commit: refactor: centralizar calcAuditado, documentar rateLimit, clamp limit trazabilidad
+Rama: fix/calidad-pr4
 
 ## Archivos modificados recientemente
-TRABAJO.md
-src/app/api/calendario-write/route.ts
-src/app/api/conductores/route.ts
-src/app/api/conteo-consolidacion/route.ts
-src/app/api/control-cruce/route.ts
-src/app/api/control-flota/route.ts
-src/app/api/dashboard-stats/route.ts
-src/app/api/despacho-records/route.ts
-src/app/api/drive-upload/route.ts
-src/app/api/flota-cambios/route.ts
-src/app/api/flota/export-sheets/route.ts
-src/app/api/flota/route.ts
-src/app/api/historial-despacho/route.ts
-src/app/api/pallet-lookup/route.ts
-src/app/api/panel-operaciones/route.ts
-src/app/api/parametros-sistema/route.ts
-src/app/api/personal/export-sheets/route.ts
-src/app/api/picking-store-progress/route.ts
-src/app/api/pionetas/route.ts
-src/app/api/recepcion-otp/route.ts
-src/app/api/ruta-eventos/route.ts
-src/app/api/rutas-despacho/route.ts
-src/app/api/seguimiento/route.ts
-src/app/api/send-otp/route.ts
-src/app/api/sheets-write/route.ts
-src/app/api/sheets/route.ts
-src/app/api/sync-despacho/route.ts
-src/app/api/tiendas/export-sheets/route.ts
-src/app/api/tiendas/route.ts
-src/app/api/tiendas/sync/route.ts
 src/app/api/trazabilidad/route.ts
-src/components/AuthProvider.tsx
-src/lib/__tests__/apiAuth.test.ts
-src/lib/apiAuth.ts
-src/lib/otpToken.ts
-src/lib/sheetsTraza.ts
+src/app/despacho/regiones/loading.tsx
+src/app/despacho/santiago/loading.tsx
+src/app/error.tsx
+src/features/auditoria/AuditoriaScreen.tsx
+src/features/auditoria/__tests__/calculos.test.ts
+src/features/auditoria/components/fields/ProductSearch.tsx
+src/features/auditoria/tabs/history/HistoryContent.tsx
+src/features/auditoria/utils/calculos.ts
+src/features/auditoria/utils/pdfExport.ts
+src/features/despacho/rutas/components/ManifiestoPanel.tsx
+src/features/despacho/santiago/components/PickingSlotCards.tsx
+src/features/tiendas/RecepcionForm.tsx
+src/lib/rateLimit.ts
 
 ## En progreso
-Correcciones del code review (211 issues). Fase de SEGURIDAD completa:
-- Rama `fix/seguridad-pr1a`: auth en ~22 endpoints internos (verifyAuth/verifyAdmin
-  ahora aceptan cookie de sesión, no solo Bearer), rate limit OTP, fix can(),
+Correcciones del code review (211 issues). Las 4 fases COMPLETAS (4 ramas apiladas):
+- `fix/seguridad-pr1a`: auth en ~22 endpoints internos (verifyAuth/verifyAdmin
+  aceptan cookie de sesión, no solo Bearer), rate limit OTP, fix can(),
   otpToken timing-safe, sanitización Unicode (5 archivos), gmail env var.
-- Rama `fix/seguridad-pr1b` (apilada sobre 1a): auth vía cookie en endpoints de
-  chofer/tienda (rutas-despacho, flota GET, pallet-lookup, trazabilidad).
-  Simplificado — NO se necesitó token HMAC porque esas páginas ya tienen sesión.
-Ambas: build OK, 202 tests passing. Sin PR abierto aún.
+- `fix/seguridad-pr1b`: auth vía cookie en endpoints chofer/tienda
+  (rutas-despacho, flota GET, pallet-lookup, trazabilidad). Sin HMAC porque
+  esas páginas ya tienen sesión Supabase.
+- `fix/bugs-pr2`: XSS en pdfExport (escapeHtml), setTimeout leak en
+  ManifiestoPanel, blob URLs sin revocar en RecepcionForm, `}` roto en
+  PickingSlotCards. (getDia domingo→LU NO se tocó: es intencional, hay test).
+- `fix/ux-pr3`: app/error.tsx a nivel de ruta (cubre las 36 páginas) +
+  loading.tsx para santiago/regiones. global-error.tsx y ErrorBoundary ya
+  existían. Verificado en runtime contra build de prod.
+- `fix/calidad-pr4`: centralizar calcAuditado (utils/calculos.ts + test),
+  documentar limitación de rateLimit (Map por instancia), clamp limit
+  trazabilidad a [1,1000].
+Todas: build OK, 206 tests passing. Rama actual: fix/calidad-pr4. Sin PR abierto.
 
 ## Próximos pasos
 1. ⚠️ Smoke test en staging de flujos chofer/recepción tienda antes de mergear 1B.
-2. PR 2: bugs de negocio (getDia domingo→LU, className roto en PickingSlotCards,
-   XSS en pdfExport, setTimeout leak ManifiestoPanel, blob URLs RecepcionForm).
-3. PR 3: error.tsx global + ErrorBoundaries + loading states.
-4. PR 4: centralizar calcAuditado, documentar rateLimit, clamp limit en trazabilidad.
+2. Abrir PR(s) a main cuando esté listo (decidir si una PR consolidada o por fase).
 Plan completo: ~/.claude/plans/un-agente-reviso-el-scalable-hickey.md
