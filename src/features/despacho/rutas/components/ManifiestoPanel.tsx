@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -249,6 +249,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
   const [saving,  setSaving]  = useState<Record<number, boolean>>({});
   const [saved,   setSaved]   = useState<Record<number, boolean>>({});
   const [toast,   setToast]   = useState<{ msg: string; ok: boolean } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Selección masiva
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -277,9 +278,14 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
+  useEffect(() => {
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, []);
+
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3500);
   }, []);
 
   const guardar = useCallback(async (idx: number) => {
