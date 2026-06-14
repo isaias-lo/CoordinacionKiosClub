@@ -951,8 +951,8 @@ export default function RutasScreen() {
   }
 
   // ── Save history ──────────────────────────────────────────────────
-  async function handleGuardarHistorial() {
-    if (!results) { setHistorialStatus('warn'); setHistorialMsg('⚠️ No hay rutas calculadas.'); return; }
+  async function handleGuardarHistorial(): Promise<boolean> {
+    if (!results) { setHistorialStatus('warn'); setHistorialMsg('⚠️ No hay rutas calculadas.'); return false; }
     setHistorialStatus('loading');
     setHistorialMsg('');
 
@@ -989,7 +989,7 @@ export default function RutasScreen() {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setHistorialMsg(`⚠️ Error guardando: ${msg}`);
       setHistorialStatus('error');
-      return; // No continuar con las sincronizaciones secundarias si Supabase falló
+      return false; // No continuar con las sincronizaciones secundarias si Supabase falló
     }
 
     // 2. SECONDARY (fire-and-forget): actualiza conductor/ruta en despacho_rm y picking_pallets
@@ -1066,6 +1066,8 @@ export default function RutasScreen() {
       setPendientesV2(remaining);
       savePendientesV2(fecha, remaining);
     }
+
+    return true; // guardado primario OK → habilita encadenar con manifiestos
   }
 
   // ── Driver change ─────────────────────────────────────────────────

@@ -20,7 +20,7 @@ interface Props {
   onLimpiar: () => void;
   onVolver: () => void;
   onGenerarPDF: () => void;
-  onGuardarHistorial: () => void;
+  onGuardarHistorial: () => Promise<boolean>;
   onChoferChange: (ri: number, nombre: string) => void;
   historialStatus: string;
   historialMsg: string;
@@ -47,6 +47,13 @@ export default function ResultsSection({
   const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
   const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
   const [manifiestoOpen, setManifiestoOpen] = useState(false);
+
+  // Registrar despacho y, si el guardado primario fue exitoso, encadenar
+  // automáticamente con la generación de manifiestos (panel reutilizable y cerrable).
+  async function handleRegistrarYManifiesto() {
+    const ok = await onGuardarHistorial();
+    if (ok) setManifiestoOpen(true);
+  }
 
   function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
     setKmPorRuta(kmMap);
@@ -142,11 +149,11 @@ export default function ResultsSection({
 
       <div className="mt-[9px] no-print">
         <button
-          onClick={onGuardarHistorial}
+          onClick={() => void handleRegistrarYManifiesto()}
           disabled={historialStatus === 'loading'}
           className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
         >
-          {historialStatus === 'loading' ? '⏳ Registrando...' : '📊 REGISTRAR DESPACHO'}
+          {historialStatus === 'loading' ? '⏳ Registrando...' : '📊 REGISTRAR DESPACHO Y GENERAR MANIFIESTOS'}
         </button>
         {historialMsg && (
           <div
