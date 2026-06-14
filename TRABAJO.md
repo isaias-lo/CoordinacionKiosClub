@@ -1,11 +1,12 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-14 16:07
-Último commit: refactor: centralizar calcAuditado, documentar rateLimit, clamp limit trazabilidad
+Fecha: 2026-06-14 16:10
+Último commit: docs: actualizar TRABAJO.md — las 4 fases del code review completas
 Rama: fix/calidad-pr4
 
 ## Archivos modificados recientemente
+TRABAJO.md
 src/app/api/trazabilidad/route.ts
 src/app/despacho/regiones/loading.tsx
 src/app/despacho/santiago/loading.tsx
@@ -16,9 +17,6 @@ src/features/auditoria/components/fields/ProductSearch.tsx
 src/features/auditoria/tabs/history/HistoryContent.tsx
 src/features/auditoria/utils/calculos.ts
 src/features/auditoria/utils/pdfExport.ts
-src/features/despacho/rutas/components/ManifiestoPanel.tsx
-src/features/despacho/santiago/components/PickingSlotCards.tsx
-src/features/tiendas/RecepcionForm.tsx
 src/lib/rateLimit.ts
 
 ## En progreso
