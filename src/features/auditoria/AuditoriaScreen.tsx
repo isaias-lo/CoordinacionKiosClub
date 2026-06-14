@@ -8,6 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import { entryToRow, rowToEntry } from './utils/converters';
+import { calcAuditado } from './utils/calculos';
 import { TODAS_LAS_TIENDAS } from './data/todasLasTiendas';
 import { PICKER_NAMES } from './data/pickerNames';
 import { getOdooConfig } from './utils/odooApi';
@@ -75,10 +76,6 @@ async function flushOfflineQueue(onFlushed: (count: number) => void) {
   }
   saveOfflineQueue(remaining);
   if (flushed > 0) onFlushed(flushed);
-}
-
-function calcAuditado(u: number, tipo: TipoError, esp: number) {
-  return tipo === 'faltante' ? esp - u : esp + u;
 }
 
 function matchPickerNames(odooName: string, names: Record<string, string>): string | null {

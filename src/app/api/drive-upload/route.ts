@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: `Tipo no permitido: ${file.type}` }, { status: 400 });
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: 'Archivo demasiado grande (máx 10 MB)' }, { status: 400 });
     }
 
     const sb = supabaseServer();
@@ -15,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     const { error: uploadError } = await sb.storage
       .from('guides')
-      .upload(filename, buffer, { contentType: 'application/pdf', upsert: false });
+      .upload(filename, buffer, { contentType: file.type, upsert: false });
 
     if (uploadError) throw new Error(uploadError.message);
 

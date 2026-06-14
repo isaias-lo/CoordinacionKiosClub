@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!profile) return false;
     if (profile.role === 'admin') return true;
     if (action === 'read') return true;
-    return profile.permissions[section] !== 'read';
+    return profile.permissions[section] === 'edit';
   };
 
   return (

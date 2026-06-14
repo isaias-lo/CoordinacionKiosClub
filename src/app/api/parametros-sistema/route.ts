@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { data, error } = await supabaseServer()
     .from('config_despacho')
     .select('clave, valor, descripcion');
@@ -13,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const body = await request.json() as { clave: string; valor: string };
   const { error } = await supabaseServer()
     .from('config_despacho')

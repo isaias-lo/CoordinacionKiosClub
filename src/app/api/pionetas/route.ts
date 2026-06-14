@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 function syncPersonalSheets() {
@@ -7,7 +8,9 @@ function syncPersonalSheets() {
     .catch(e => console.error('[pionetas] sync-sheets:', e));
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { data, error } = await supabaseServer()
     .from('pionetas')
     .select('id, nombre, telefono, empresa')
@@ -18,6 +21,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const body = await request.json() as { nombre?: string; telefono?: string; empresa?: string };
   if (!body.nombre?.trim())
     return NextResponse.json({ error: 'nombre requerido' }, { status: 400 });
@@ -33,6 +38,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const body = await request.json() as { id?: string; nombre?: string; telefono?: string; empresa?: string };
   if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 
@@ -56,6 +63,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 

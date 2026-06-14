@@ -1,6 +1,18 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+/**
+ * Rate limiter en memoria (Map por instancia).
+ *
+ * ⚠️ LIMITACIÓN EN PRODUCCIÓN SERVERLESS (Vercel): cada instancia/lambda tiene
+ * su propio `store`, y las instancias se crean/destruyen bajo demanda. Esto NO
+ * garantiza un límite global: un atacante repartido entre varias instancias
+ * puede superar el `max` configurado, y un cold start reinicia los contadores.
+ *
+ * Sirve como capa de protección débil contra abuso accidental o brute-force
+ * casual (p.ej. OTP). Para límites globales reales habría que mover el estado a
+ * un store compartido (Redis/Upstash). Suficiente para el volumen actual.
+ */
 const store = new Map<string, number[]>();
 
 export interface RateLimitOpts {

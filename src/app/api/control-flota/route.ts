@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 
@@ -7,7 +8,7 @@ const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID ?? '16UHW1UoeX1egZ5WK2C
 function getAuth() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) return null;
-  const clean = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const clean = raw.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   return new google.auth.GoogleAuth({ credentials: JSON.parse(clean), scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
 }
 
@@ -18,6 +19,8 @@ function isoToFecha(iso: string): string {
 
 // ── GET /api/control-flota?fecha=YYYY-MM-DD ────────────────────────────────
 export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const fecha = request.nextUrl.searchParams.get('fecha') ?? new Date().toISOString().slice(0, 10);
   const { data, error } = await supabaseServer()
     .from('rutas_despacho')
@@ -30,6 +33,8 @@ export async function GET(request: NextRequest) {
 
 // ── PATCH /api/control-flota ───────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
     ruta_id:    number;
     chofer?:    string | null;

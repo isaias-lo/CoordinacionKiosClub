@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const VALID_ESTADOS = new Set(['Registrado', 'Pendiente', 'En camino', 'Entregado', 'Recibido', 'Diferencia']);
@@ -40,6 +41,8 @@ function computeRutaEstado(seguimientos: string[]): string | null {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const { cod, estado, fecha } = await request.json() as { cod: string; estado: string; fecha?: string };
 

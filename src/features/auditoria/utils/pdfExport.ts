@@ -1,10 +1,11 @@
 import { CORR_COLORS, CORR_LABEL } from '../constants';
-import type { AuditEntry, TipoError } from '../types';
+import type { AuditEntry } from '../types';
+import { calcAuditado } from './calculos';
 
-function calcAuditado(u: number, tipo: TipoError, esp: number) {
-  return tipo === 'faltante' ? esp - u : esp + u;
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
-
 
 export function exportarPDF(entries: AuditEntry[], fechaLabel: string) {
   const totalBueno = entries.filter(e => e.resultado === 'bueno').length;
@@ -14,12 +15,12 @@ export function exportarPDF(entries: AuditEntry[], fechaLabel: string) {
     const ops = e.operaciones?.map(op => op.codigo).join(', ') || '—';
     const cc = CORR_COLORS[e.correccion];
     const extras = [
-      e.productos?.length ? `<tr><td colspan="9" style="font-size:10px;color:#555;padding:2px 8px 5px;border-bottom:1px solid #eee"><b>Productos:</b> ${e.productos.map(p => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return `[${p.codigo}] ${p.nombre} <span style="color:${p.tipo === 'faltante' ? '#D32F2F' : '#D97706'}">${p.tipo} ${r}</span>`; }).join(' | ')}</td></tr>` : '',
-      e.observaciones ? `<tr><td colspan="9" style="font-size:10px;color:#555;font-style:italic;padding:2px 8px 5px;border-bottom:1px solid #eee"><b>Obs:</b> ${e.observaciones}</td></tr>` : '',
+      e.productos?.length ? `<tr><td colspan="9" style="font-size:10px;color:#555;padding:2px 8px 5px;border-bottom:1px solid #eee"><b>Productos:</b> ${e.productos.map(p => { const r = p.cantidadEsperada !== undefined ? `${calcAuditado(p.unidades, p.tipo, p.cantidadEsperada)}/${p.cantidadEsperada}` : `${p.unidades}u`; return `[${escapeHtml(p.codigo)}] ${escapeHtml(p.nombre)} <span style="color:${p.tipo === 'faltante' ? '#D32F2F' : '#D97706'}">${escapeHtml(p.tipo)} ${r}</span>`; }).join(' | ')}</td></tr>` : '',
+      e.observaciones ? `<tr><td colspan="9" style="font-size:10px;color:#555;font-style:italic;padding:2px 8px 5px;border-bottom:1px solid #eee"><b>Obs:</b> ${escapeHtml(e.observaciones)}</td></tr>` : '',
     ].join('');
     const reaud = e.reauditoriaDeId ? ' <span style="background:#dbeafe;color:#1d4ed8;padding:1px 5px;border-radius:3px;font-size:9px">↩ Re</span>' : '';
-    const pickerDisp = e.picker ? e.picker : '—';
-    return `<tr><td>${e.hora}${reaud}</td><td><b>${e.tiendaNombre}</b></td><td>${pickerDisp}</td><td>${e.auditor}</td><td style="text-transform:capitalize">${e.tipo}</td><td style="text-align:center">${e.pallets}</td><td style="font-family:monospace;font-size:10px">${ops}</td><td style="color:${cc};font-weight:bold">${CORR_LABEL[e.correccion]}</td><td style="text-align:center"><span style="padding:2px 8px;border-radius:4px;font-weight:bold;font-size:11px;background:${e.resultado === 'bueno' ? 'rgba(22,163,74,0.12)' : 'rgba(211,47,47,0.12)'};color:${e.resultado === 'bueno' ? '#16A34A' : '#D32F2F'}">${e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}</span></td></tr>${extras}`;
+    const pickerDisp = e.picker ? escapeHtml(e.picker) : '—';
+    return `<tr><td>${escapeHtml(e.hora)}${reaud}</td><td><b>${escapeHtml(e.tiendaNombre)}</b></td><td>${pickerDisp}</td><td>${escapeHtml(e.auditor)}</td><td style="text-transform:capitalize">${escapeHtml(e.tipo)}</td><td style="text-align:center">${e.pallets}</td><td style="font-family:monospace;font-size:10px">${ops}</td><td style="color:${cc};font-weight:bold">${CORR_LABEL[e.correccion]}</td><td style="text-align:center"><span style="padding:2px 8px;border-radius:4px;font-weight:bold;font-size:11px;background:${e.resultado === 'bueno' ? 'rgba(22,163,74,0.12)' : 'rgba(211,47,47,0.12)'};color:${e.resultado === 'bueno' ? '#16A34A' : '#D32F2F'}">${e.resultado === 'bueno' ? '✓ Bueno' : '✗ Malo'}</span></td></tr>${extras}`;
   }).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Informe ${fechaLabel}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#1a2550;padding:24px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:3px solid #1a2550;padding-bottom:12px}h1{font-size:20px;font-weight:900;text-transform:uppercase;letter-spacing:2px}.stats{display:flex;gap:12px;margin-bottom:20px}.stat{padding:10px 20px;border-radius:8px;text-align:center}.stat .n{font-size:24px;font-weight:900}.stat .l{font-size:10px;text-transform:uppercase}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#1a2550;color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}tr:nth-child(even) td{background:#f9fafb}.footer{margin-top:36px;border-top:1px solid #e5e7eb;padding-top:16px;display:flex;justify-content:space-around;font-size:11px;color:#666}@media print{button{display:none!important}}</style></head>

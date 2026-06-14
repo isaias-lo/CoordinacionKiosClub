@@ -3,10 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { buscarProducto } from '../../utils/odooApi';
 import type { TipoError, ProductoError, ProductoOdoo, OdooConfig } from '../../types';
-
-function calcAuditado(u: number, tipo: TipoError, esp: number) {
-  return tipo === 'faltante' ? esp - u : esp + u;
-}
+import { calcAuditado } from '../../utils/calculos';
 
 export function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, onNeedConfig }: {
   odooConfig: OdooConfig; tiposError: TipoError[]; operacionCodes: string[];

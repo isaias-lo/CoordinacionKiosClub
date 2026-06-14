@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import type { Vehiculo } from '@/features/despacho/rutas/data/flota';
 
@@ -44,7 +45,9 @@ function vehiculoToRow(v: Vehiculo): Omit<FlotaRow, never> {
 }
 
 // ── GET /api/flota  →  lista todos los vehículos activos ──────────────────
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { data, error } = await supabaseServer()
     .from('flota_vehiculos')
     .select('patente,capacidad_p,capacidad_b,tipo,porton,refrigerado,activo,es_tlbd,empresa')
@@ -59,6 +62,8 @@ export async function GET() {
 
 // ── POST /api/flota  →  inserta un nuevo vehículo ─────────────────────────
 export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const body = await request.json() as Vehiculo;
   if (!body.p) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
 
@@ -78,6 +83,8 @@ export async function POST(request: NextRequest) {
 
 // ── PATCH /api/flota  →  actualiza un vehículo por patente ───────────────
 export async function PATCH(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const body = await request.json() as Partial<Vehiculo> & { p: string };
   if (!body.p) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
 
@@ -104,6 +111,8 @@ export async function PATCH(request: NextRequest) {
 
 // ── DELETE /api/flota?patente=X  →  soft delete (activo=false) ───────────
 export async function DELETE(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const patente = request.nextUrl.searchParams.get('patente');
   if (!patente) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
 

@@ -12,7 +12,16 @@
       "Bash(git commit -m ' *)",
       "Bash(git checkout *)",
       "Bash(git merge tiempo-real --no-ff -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(grep -rn \"fetch\\([\\\\`'\\\\\"]/api/\" src --include=\"*.tsx\" --include=\"*.ts\")",
+      "Bash(npx vitest *)",
+      "Bash(npm run *)",
+      "Bash(git commit -m 'docs: actualizar TRABAJO.md — fase de seguridad \\(PR 1A/1B\\) completa *)",
+      "Bash(grep -q \"Ready in\\\\|started server\\\\|Local:\" /tmp/kios-dev.log)",
+      "Bash(break)",
+      "Read(//private/tmp/**)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"PORT=3939\")"
     ]
   }
 }

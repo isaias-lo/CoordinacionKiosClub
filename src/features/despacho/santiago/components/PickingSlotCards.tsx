@@ -153,7 +153,7 @@ function SlotCard({
               />
             </div>
             <div>
-              <div className="text-[9px] font-bold text-[#64748B]} uppercase tracking-wide mb-1">Ancho cm</div>
+              <div className="text-[9px] font-bold text-[#64748B] uppercase tracking-wide mb-1">Ancho cm</div>
               <input
                 type="number" min="0"
                 value={ancho} onChange={e => setAncho(e.target.value)}

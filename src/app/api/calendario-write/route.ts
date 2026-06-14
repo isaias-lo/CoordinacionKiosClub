@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAdmin } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import type { sheets_v4 } from 'googleapis';
 
@@ -70,7 +71,7 @@ const ARMADO_PINK  = hex('#FECDD3');
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
-  const clean = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const clean = raw.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   return JSON.parse(clean);
 }
 
@@ -111,6 +112,8 @@ function cellFmt(
 }
 
 export async function POST(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   try {
     const { calendario } = await request.json() as { calendario: CalRecord };
     if (!calendario) return NextResponse.json({ error: 'calendario requerido' }, { status: 400 });

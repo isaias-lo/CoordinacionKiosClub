@@ -81,6 +81,14 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
   const lastRef    = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
+    return () => {
+      estadoPreviews.forEach(url => URL.revokeObjectURL(url));
+      if (selloSalida?.preview) URL.revokeObjectURL(selloSalida.preview);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const init = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;

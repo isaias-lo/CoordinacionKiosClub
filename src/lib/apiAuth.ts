@@ -1,4 +1,5 @@
 import { jwtVerify } from 'jose';
+import { createServerClient } from '@supabase/ssr';
 import type { NextRequest } from 'next/server';
 
 // Supabase JWT secret is base64-encoded in the dashboard — must Buffer.from(..., 'base64').
@@ -40,26 +41,50 @@ async function verifyJwt(token: string): Promise<JwtPayload | null> {
   return { sub: user.id, user_metadata: user.user_metadata as { role?: string } };
 }
 
-/** Returns true if the token belongs to an authenticated user. */
-export async function verifyAuth(request: NextRequest): Promise<boolean> {
-  const token = extractBearer(request);
-  if (!token) return false;
-  return (await verifyJwt(token)) !== null;
+// Fallback for the many client call sites that use a bare fetch('/api/...')
+// without an Authorization header: the browser sends the Supabase session
+// cookie automatically, so we read the session from it (same source the
+// middleware trusts). No-op cookie setter — route handlers only read here.
+async function verifyFromCookie(request: NextRequest): Promise<JwtPayload | null> {
+  const sb = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return request.cookies.getAll(); },
+        setAll() { /* read-only in route handlers */ },
+      },
+    },
+  );
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.user) return null;
+  return { sub: session.user.id, user_metadata: session.user.user_metadata as { role?: string } };
 }
 
-/** Returns true only if the token belongs to an admin user. */
-export async function verifyAdmin(request: NextRequest): Promise<boolean> {
+/** Resolves the auth payload from the Bearer header, falling back to the session cookie. */
+async function resolvePayload(request: NextRequest): Promise<JwtPayload | null> {
   const token = extractBearer(request);
-  if (!token) return false;
-  const payload = await verifyJwt(token);
+  if (token) {
+    const payload = await verifyJwt(token);
+    if (payload) return payload;
+  }
+  return verifyFromCookie(request);
+}
+
+/** Returns true if the request belongs to an authenticated user. */
+export async function verifyAuth(request: NextRequest): Promise<boolean> {
+  return (await resolvePayload(request)) !== null;
+}
+
+/** Returns true only if the request belongs to an admin user. */
+export async function verifyAdmin(request: NextRequest): Promise<boolean> {
+  const payload = await resolvePayload(request);
   return payload?.user_metadata?.role === 'admin';
 }
 
 /** Returns the user's id and role, or null if unauthenticated. */
 export async function verifyAnyUser(request: NextRequest): Promise<{ id: string; role: string } | null> {
-  const token = extractBearer(request);
-  if (!token) return null;
-  const payload = await verifyJwt(token);
+  const payload = await resolvePayload(request);
   if (!payload?.sub) return null;
   return { id: payload.sub, role: payload.user_metadata?.role ?? '' };
 }
