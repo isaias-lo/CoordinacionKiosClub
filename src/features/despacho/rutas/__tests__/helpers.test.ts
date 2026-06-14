@@ -100,6 +100,13 @@ describe('norm', () => {
     expect(norm('PEN')).toBe('23PEÑ'); // PEN → 23PEÑ in ALIAS
   });
 
+  it('maps the full ASCII code 23PEN to the canonical 23PEÑ', () => {
+    // Evita la tienda duplicada: el código completo con N debe resolver al canónico con Ñ
+    expect(norm('23PEN')).toBe('23PEÑ');
+    expect(norm('23pen')).toBe('23PEÑ');
+    expect(norm('23PEÑ')).toBe('23PEÑ');
+  });
+
   it('passes through full canonical codes unchanged', () => {
     expect(norm('12LAS')).toBe('12LAS');
     expect(norm('03VIT')).toBe('03VIT');
