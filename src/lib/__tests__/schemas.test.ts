@@ -77,6 +77,11 @@ describe('CreatePickingPalletSchema', () => {
       expect(r.success, `store_cod=${cod} should be valid`).toBe(true);
     }
   });
+
+  it('accepts store codes with Ñ (canónico, ej. 23PEÑ)', () => {
+    const r = CreatePickingPalletSchema.safeParse({ ...valid, store_cod: '23PEÑ' });
+    expect(r.success).toBe(true);
+  });
 });
 
 // ─── CreateUserSchema ─────────────────────────────────────────────────────────
