@@ -58,7 +58,8 @@ export const UpdateRoleSchema = z.object({
 
 const StoreCodeSchema = z.string()
   .min(1).max(10)
-  .regex(/^[0-9]{0,2}[A-Z]{2,5}[0-9]?$/, 'Código de tienda inválido (ej: LAS1, 01VIT)');
+  // Ñ permitida: hay códigos canónicos con Ñ (ej. 23PEÑ) que NO se normalizan a N.
+  .regex(/^[0-9]{0,2}[A-ZÑ]{2,5}[0-9]?$/, 'Código de tienda inválido (ej: LAS1, 01VIT, 23PEÑ)');
 
 export const CreateTiendaSchema = z.object({
   codigo:          StoreCodeSchema,

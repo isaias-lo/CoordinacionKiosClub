@@ -36,8 +36,8 @@ function normalizeCod(raw: string): string {
     .replace(/[ÚÙÛÜ]/g, 'U');
 }
 
-// Valid store code: 0-2 digits, 2-4 uppercase ASCII letters, optional digit
-const COD_RE = /^[0-9]{0,2}[A-Z]{2,5}[0-9]?$/;
+// Valid store code: 0-2 digits, 2-5 uppercase letters (Ñ permitida, ej. 23PEÑ), optional digit
+const COD_RE = /^[0-9]{0,2}[A-ZÑ]{2,5}[0-9]?$/;
 
 export async function POST(request: NextRequest) {
   if (!await verifyAdmin(request))
