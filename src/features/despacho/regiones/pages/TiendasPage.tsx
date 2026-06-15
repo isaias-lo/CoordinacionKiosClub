@@ -117,55 +117,67 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
   const remC  = Math.max(0, pickingC  - contenedorCount);
   const remCH = Math.max(0, pickingCH - chocolateCount);
   const hasGhost = remP > 0 || remB > 0 || remC > 0 || remCH > 0;
+  const cardBg = isActive
+    ? 'rgba(211,47,47,0.18)'
+    : hasPdf
+    ? 'rgba(22,163,74,0.12)'
+    : isToday
+    ? 'rgba(255,255,255,0.07)'
+    : 'rgba(255,255,255,0.04)';
+  const cardBorder = isActive
+    ? '1.5px solid rgba(211,47,47,0.65)'
+    : hasPdf
+    ? '1.5px solid rgba(22,163,74,0.55)'
+    : isToday
+    ? '1px solid rgba(255,255,255,0.13)'
+    : '1px solid rgba(255,255,255,0.07)';
+  const cardShadow = isActive
+    ? '0 0 0 1px rgba(211,47,47,0.20), 0 4px 18px rgba(0,0,0,0.35)'
+    : '0 1px 3px rgba(0,0,0,0.25)';
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
-        ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
-          : hasPdf
-          ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
-          : isToday
-          ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
-          : 'bg-white border border-border hover:bg-bg'
-        }`}>
-      {/* Indicador progreso Odoo — esquina superior izquierda */}
+      style={{ background: cardBg, border: cardBorder, boxShadow: cardShadow }}
+      className="flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]">
+      {/* Odoo status indicator */}
       {storeStatus === 'complete' && (
         <span
-          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-done)', boxShadow: '0 0 0 2px #fff' }}
+          className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full flex-shrink-0"
+          style={{ background: 'var(--status-done)', boxShadow: '0 0 0 2px rgba(0,0,0,0.40)' }}
           title="✓ Todos los movimientos realizados"
         />
       )}
       {storeStatus === 'partial' && (
         <span
-          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-partial)', boxShadow: '0 0 0 2px #fff' }}
+          className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full flex-shrink-0"
+          style={{ background: 'var(--status-partial)', boxShadow: '0 0 0 2px rgba(0,0,0,0.40)' }}
           title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
         />
       )}
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
+      <div className="font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center"
+           style={{ color: isActive ? '#EF4444' : hasPdf ? '#4ADE80' : 'rgba(255,255,255,0.90)' }}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
+      <div className="text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide"
+           style={{ color: 'rgba(255,255,255,0.38)' }}>
         {t.name}
       </div>
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
-        {remB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
-        {remC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
-        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{remCH}CH</span>}
-        {/* Solid badges: items ingresados en despacho */}
-        {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
-        {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
-        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
-        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>}
-        {/* Preset fallback (solo cuando no hay picking ni items) */}
+        {/* Ghost badges: picking pendiente */}
+        {remP  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(147,197,253,0.70)', background: 'rgba(37,99,235,0.15)', borderColor: 'rgba(37,99,235,0.35)' }}>{remP}P</span>}
+        {remB  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(252,211,77,0.70)', background: 'rgba(217,119,6,0.15)', borderColor: 'rgba(217,119,6,0.35)' }}>{remB}B</span>}
+        {remC  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(196,181,253,0.70)', background: 'rgba(107,33,168,0.15)', borderColor: 'rgba(107,33,168,0.35)' }}>{remC}C</span>}
+        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(251,182,160,0.70)', background: 'rgba(120,53,15,0.15)', borderColor: 'rgba(120,53,15,0.35)' }}>{remCH}CH</span>}
+        {/* Solid badges: items ingresados */}
+        {palletCount    > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#93C5FD', background: 'rgba(37,99,235,0.25)' }}>{palletCount}P</span>}
+        {boxCount       > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#FCD34D', background: 'rgba(217,119,6,0.25)' }}>{boxCount}B</span>}
+        {contenedorCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#C4B5FD', background: 'rgba(107,33,168,0.25)' }}>{contenedorCount}C</span>}
+        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#FBB6A0', background: 'rgba(120,53,15,0.25)' }}>{chocolateCount}CH</span>}
+        {/* Preset fallback */}
         {!hasGhost && preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
-          <span className="text-[11px] text-text-3/50 leading-none">
+          <span className="text-[11px] leading-none" style={{ color: 'rgba(255,255,255,0.22)' }}>
             {[preset.pallets > 0 ? `${preset.pallets}P` : '', preset.bultos > 0 ? `${preset.bultos}B` : ''].filter(Boolean).join(' ')}
           </span>
         )}
@@ -1597,21 +1609,21 @@ export function TiendasPage() {
 
       {/* LEFT PANEL — lista de tiendas (full height on mobile) */}
       <div className="w-full flex-1 lg:flex-none flex flex-col overflow-hidden flex-shrink-0"
-           style={isDesktop ? { width: leftWidth } : undefined}>
+           style={isDesktop ? { width: leftWidth, background: '#0B1426' } : { background: '#0B1426' }}>
 
         {/* Fecha Armado / Despacho */}
         <div style={{
-          padding: '8px 14px', borderBottom: '1px solid var(--border, #E2E5EC)',
-          background: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
+          padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)',
+          background: '#08101E', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
               Armado
             </span>
-            <span style={{ fontSize: 12, color: '#555', textTransform: 'capitalize' }}>{todayLabel}</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', textTransform: 'capitalize' }}>{todayLabel}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
               Fecha de despacho
             </span>
             <input
@@ -1620,15 +1632,16 @@ export function TiendasPage() {
               min={_localDate}
               onChange={e => dispatch({ type: 'SET_FECHA_DESPACHO', payload: e.target.value })}
               style={{
-                border: '1.5px solid #dde3f0', borderRadius: 7, padding: '2px 8px',
-                fontSize: 12, fontWeight: 700, color: '#1a2550', background: '#fff',
+                border: '1px solid rgba(255,255,255,0.15)', borderRadius: 7, padding: '2px 8px',
+                fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.08)',
+                colorScheme: 'dark',
               }}
             />
           </div>
           {registrado && (
             <span style={{
-              marginLeft: 'auto', fontSize: 10, color: '#16A34A', fontWeight: 700,
-              background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px',
+              marginLeft: 'auto', fontSize: 10, color: '#4ADE80', fontWeight: 700,
+              background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.30)', borderRadius: 20, padding: '2px 8px',
             }}>
               ✓ Registrado
             </span>
@@ -1636,15 +1649,16 @@ export function TiendasPage() {
         </div>
 
         {/* Search */}
-        <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
+        <div className="px-2 py-2 flex-shrink-0" style={{ background: '#0B1426', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar…"
-            className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-red placeholder:text-text-3" />
+            placeholder="Buscar tienda…"
+            className="w-full rounded-btn px-2.5 py-2 font-barlow text-[14px] outline-none transition-all"
+            style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.85)' }} />
         </div>
 
         {/* HOY chips — desktop only; on mobile the grid below already shows status */}
         {todayNames.length > 0 && (
-          <div className="hidden lg:block px-2 py-2.5 border-b flex-shrink-0 bg-[rgba(211,47,47,0.08)] border-[rgba(211,47,47,0.20)]">
+          <div className="hidden lg:block px-2 py-2.5 flex-shrink-0" style={{ background: 'rgba(211,47,47,0.07)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <div className="font-barlow-condensed text-[20px] font-extrabold uppercase tracking-widest text-red mb-2 text-center" style={{ letterSpacing: '0.18em' }}>HOY</div>
             <div className="flex flex-wrap gap-1 justify-center">
               {todayNames.map(name => (
@@ -1658,7 +1672,7 @@ export function TiendasPage() {
         )}
 
         {/* Toolbar: Multi-PDF — desktop only */}
-        <div className="hidden lg:flex px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 gap-1.5">
+        <div className="hidden lg:flex px-2 py-1.5 flex-shrink-0 gap-1.5" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <input ref={multiFileRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => e.target.files && handleMultiplePdfs(e.target.files)} />
           <button
             onClick={() => multiFileRef.current?.click()}
@@ -1682,12 +1696,16 @@ export function TiendasPage() {
               onDragOver={handleAddDragOver}
               onDragLeave={handleAddDragLeave}
               onDrop={handleAddDrop}
-              className={`transition-colors ${addDropActive ? 'bg-[rgba(211,47,47,0.07)]' : ''}`}>
-              <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all ${addDropActive ? 'bg-[rgba(211,47,47,0.18)] border-red/60' : 'bg-[rgba(211,47,47,0.10)] border-[rgba(211,47,47,0.20)]'}`}>
-                <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">
+              style={{ transition: 'background 150ms', background: addDropActive ? 'rgba(211,47,47,0.10)' : 'transparent' }}>
+              <div className="sticky top-0 z-10 transition-all" style={{
+                padding: '7px 10px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                background: addDropActive ? 'rgba(211,47,47,0.22)' : 'rgba(0,0,0,0.28)',
+              }}>
+                <span className="font-barlow-condensed text-[13px] font-extrabold uppercase tracking-widest" style={{ color: '#F87171' }}>
                   {addDropActive ? '↓ Suelta aquí' : 'HOY'}
                 </span>
-                {!addDropActive && <span className="font-barlow-condensed text-[11px] text-red/50 ml-2 uppercase tracking-wide">arrastra aquí</span>}
+                {!addDropActive && <span className="font-barlow-condensed text-[10px] ml-2 uppercase tracking-wide" style={{ color: 'rgba(248,113,113,0.40)' }}>arrastra aquí</span>}
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                 {today.map(t => {
@@ -1724,16 +1742,23 @@ export function TiendasPage() {
               onDragOver={handleRemoveDragOver}
               onDragLeave={handleRemoveDragLeave}
               onDrop={handleRemoveDrop}
-              className={`transition-colors ${removeDropActive ? 'bg-[rgba(217,119,6,0.07)]' : ''}`}>
+              style={{ transition: 'background 150ms', background: removeDropActive ? 'rgba(217,119,6,0.10)' : 'transparent' }}>
               {today.length > 0 && (
                 <div
                   onClick={() => !removeDropActive && setShowTodas(prev => !prev)}
-                  className={`px-2.5 py-2 border-b border-t sticky top-0 z-10 transition-all flex items-center ${removeDropActive ? 'cursor-default bg-[rgba(217,119,6,0.18)] border-warn/60' : 'cursor-pointer bg-bg border-border'}`}>
-                  <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3 flex-1">
+                  className="sticky top-0 z-10 transition-all flex items-center"
+                  style={{
+                    padding: '7px 10px',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    borderTop: '1px solid rgba(255,255,255,0.05)',
+                    background: removeDropActive ? 'rgba(217,119,6,0.18)' : 'rgba(0,0,0,0.20)',
+                    cursor: removeDropActive ? 'default' : 'pointer',
+                  }}>
+                  <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-widest flex-1" style={{ color: removeDropActive ? '#F59E0B' : 'rgba(255,255,255,0.32)' }}>
                     {removeDropActive ? '↓ Suelta para retirar de hoy' : 'Todas'}
                   </span>
                   {!removeDropActive && (
-                    <span className="font-barlow-condensed text-[12px] text-text-3/50 select-none">
+                    <span className="font-barlow-condensed text-[11px] select-none" style={{ color: 'rgba(255,255,255,0.20)' }}>
                       {showTodas ? '▲' : '▼'}
                     </span>
                   )}
@@ -1770,8 +1795,8 @@ export function TiendasPage() {
           )}
 
           {filtered.length === 0 && (
-            <div className="py-10 text-center text-text-3">
-              <p className="text-[13px] opacity-60">Sin resultados</p>
+            <div className="py-10 text-center">
+              <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.28)' }}>Sin resultados</p>
             </div>
           )}
         </div>
@@ -1823,13 +1848,13 @@ export function TiendasPage() {
       {isDesktop && (
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
-          style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
+          style={{ width: 5, background: 'rgba(0,0,0,0.35)' }}
           onMouseDown={handleLeftMouseDown}
           onTouchStart={handleLeftTouchStart}
         >
-          <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
+          <div className="absolute inset-0 group-hover:bg-red/20 transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            {[0,1,2].map(i => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#D97706' }} />)}
+            {[0,1,2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#EF4444' }} />)}
           </div>
         </div>
       )}
@@ -1898,13 +1923,13 @@ export function TiendasPage() {
       {isDesktop && (
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
-          style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
+          style={{ width: 5, background: 'rgba(0,0,0,0.08)' }}
           onMouseDown={handleRightMouseDown}
           onTouchStart={handleRightTouchStart}
         >
-          <div className="absolute inset-0 group-hover:bg-amber-400/25 transition-colors duration-150" />
+          <div className="absolute inset-0 group-hover:bg-border transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            {[0,1,2].map(i => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#D97706' }} />)}
+            {[0,1,2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />)}
           </div>
         </div>
       )}

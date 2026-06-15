@@ -1,34 +1,38 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-14 20:15
-Último commit: WIP: auto-save antes de compactar contexto
-Rama: inicio
+Fecha: 2026-06-15
+Último commit: feat(ux): dark enterprise left panel en /despacho/regiones
+Rama: ux-despacho (en progreso — NO mergeada a main todavía)
 
 ## Archivos modificados recientemente
-.claude/settings.local.json
-supabase/migrations/046_rls_calendario_armado_notificaciones.sql
+src/features/despacho/regiones/pages/TiendasPage.tsx
 
 ## En progreso
-NADA en curso — jornada cerrada con todo en producción. main = inicio = deploy Vercel
-= commit e82c26b (verificado en el dashboard de Vercel).
+**Rediseño UX enterprise de /despacho/regiones** — rama `ux-despacho`
 
-Cerrado hoy (todo mergeado a main, PRs #19–#23):
-- Code review (211 issues) COMPLETO: PR 1A/1B (auth endpoints + cookie), PR 2
-  (XSS/setTimeout/blob URLs/className), PR 3 (error.tsx + loading), PR 4
-  (calcAuditado + rateLimit doc + clamp trazabilidad).
-- feat: Registrar Despacho → abre auto el panel de Manifiestos (+ botón secundario).
-- fix: sidebar oculto en Safari en /registros (overlay → flujo normal).
-- fix: tienda duplicada 23PEN→23PEÑ (ALIAS + test) Y limpieza de DATOS en Supabase
-  (migrado el registro en despacho_rm, eliminada la fila duplicada).
-- fix: RLS activado en calendario_armado y calendario_notificaciones (migración
-  046, política solo authenticated, aplicada y verificada).
+Cambios aplicados:
+- Panel izquierdo: fondo oscuro navy (#0B1426) estilo sidebar enterprise
+- Tarjetas de tienda (TiendaGridCard): glassmorphism sobre fondo oscuro
+  (fondo rgba, borde sutil, badges con colores ajustados para contraste sobre oscuro)
+- Encabezado de fecha/despacho: dark (elimina el blanco chirriante)
+- Barra de búsqueda: input oscuro con texto claro
+- Sección HOY: header oscuro con acento rojo
+- Sección Todas: header oscuro sutil
+- Toolbar multi-PDF: dark
+- Dividers redimensionables: acento rojo/gris más limpio
 
-## Próximos pasos (sin urgencia)
-1. Deuda diferida (sin bugs activos): refactor de componentes monolíticos
-   (StepForm ~2384 líneas, AuditoriaScreen ~2400); rateLimit→Redis solo si crece
-   el volumen; issues LOW del reporte original.
-2. Seguridad menor (preexistente, opcional): activar Leaked Password Protection en
-   Supabase Auth; revisar buckets públicos (audit-photos/guides/signatures);
-   search_path en funciones; handle_new_user SECURITY DEFINER.
+Centro y derecha sin cambios (formulario blanco, resumen blanco/navy ya era correcto).
+
+Todos los tests pasan: 216/216.
+
+## Próximos pasos inmediatos
+1. El usuario revisa el diseño en el browser (localhost:3000/despacho/regiones)
+2. Si está conforme → abrir PR de ux-despacho → main
+3. Posibles ajustes: scrollbar custom en panel oscuro, hover states, etc.
+
+## Backlog (sin urgencia)
+1. Deuda diferida: refactor de componentes monolíticos
+   (StepForm ~2384 líneas, AuditoriaScreen ~2400).
+2. Seguridad menor (preexistente): activar Leaked Password Protection en Supabase Auth.
 Plan completo: ~/.claude/plans/un-agente-reviso-el-scalable-hickey.md
