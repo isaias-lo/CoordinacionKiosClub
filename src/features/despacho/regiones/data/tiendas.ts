@@ -19,6 +19,12 @@ export const TIENDAS: Record<string, Tienda> = {
   "Valdivia":          {cod:"53VAL",name:"Valdivia",           region:"LOS RÍOS",      nombre_dest:"tienda valdivia",             email:"despachocd@kiosclub.com",         celular:"926109718",rut:"76360868-9",region_sendu:"Los_Ríos",                                        comuna:"Valdivia",            calle:"Errazuriz",                                    numero:"1102",  complemento:"Local 1078",               str_val:"Valdivia"}
 };
 
+/** Códigos de todas las tiendas de Regiones (universo de la bodega Regiones). */
+export const REGIONES_CODS = new Set(Object.values(TIENDAS).map(t => t.cod));
+
+/** True si el código pertenece a una tienda de Regiones (para excluirla de la bodega Santiago). */
+export const isRegionesCod = (cod: string): boolean => REGIONES_CODS.has(cod);
+
 export const CALENDARIO: Record<number, string[]> = {
   1: ['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP'],
   2: ['27MCH','36CHL','24SPP','38SP2','76PAN','51SER'],

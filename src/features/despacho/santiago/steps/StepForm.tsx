@@ -17,6 +17,7 @@ import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { processPdf } from '../../regiones/utils/pdfUtils';
+import { isRegionesCod } from '../../regiones/data/tiendas';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 
 /* ── Calendar localStorage ── */
@@ -568,6 +569,9 @@ export function StepForm() {
   const tiendaByCod     = { ...supabaseTiendasMap, ...Object.fromEntries(TIENDAS_SANTIAGO.map(t => [t.cod, t])) };
   const todayTiendas    = allTodayCods.map(c => tiendaByCod[c]).filter((t): t is TiendaSantiago => !!t);
   const filtered        = Object.values(tiendaByCod).filter(t => {
+    // La bodega Santiago solo maneja Santiago (RM) + Costa (VR). Las tiendas de
+    // Regiones llegan vía /api/tiendas y NO deben aparecer aquí (van en su propia bodega).
+    if (isRegionesCod(t.cod)) return false;
     const inGrp = t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm');
     if (!inGrp) return false;
     const q = search.toLowerCase();
@@ -1308,7 +1312,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
-                  hasGuide={!!guides[t.cod]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
+                  hasGuide={!!guides[t.cod]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );

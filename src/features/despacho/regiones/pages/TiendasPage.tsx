@@ -1757,9 +1757,9 @@ export function TiendasPage() {
                         pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
                         pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                         hasPdf={!!state.pdfData[t.name]}
-                        storeStatus={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.status ?? 'none'}
-                        storeDoneOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.done ?? 0}
-                        storeTotalOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.total ?? 0}
+                        storeStatus="none"
+                        storeDoneOps={0}
+                        storeTotalOps={0}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />
                     );
