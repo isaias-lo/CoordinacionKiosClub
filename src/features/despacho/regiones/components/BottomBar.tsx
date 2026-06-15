@@ -16,23 +16,24 @@ export function BottomBar({ onClear }: Props) {
   const peso    = items.reduce((s, i) => s + i.peso, 0);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-navy border-t-[3px] border-red px-4 py-2.5 z-[150] flex items-center gap-3"
-         style={{ boxShadow: '0 -4px 20px rgba(26,37,80,0.2)' }}>
-      <div className="flex gap-3.5 flex-1">
+    <div className="fixed bottom-0 left-0 right-0 px-4 py-2.5 z-[150] flex items-center gap-3"
+         style={{ background: '#08101E', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="flex gap-4 flex-1">
         {[
-          { v: pallets, l: 'pallets' },
-          { v: bultos,  l: 'bultos' },
+          { v: pallets, l: 'P' },
+          { v: bultos,  l: 'B' },
           { v: peso.toLocaleString('es-CL'), l: 'kg' },
         ].map(({ v, l }) => (
-          <div key={l}>
-            <div className="font-barlow-condensed text-xl font-bold text-white leading-none">{v}</div>
-            <div className="text-[10px] text-white/50 uppercase tracking-widest">{l}</div>
+          <div key={l} className="flex items-baseline gap-1">
+            <span className="font-mono text-[18px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.88)' }}>{v}</span>
+            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.28)' }}>{l}</span>
           </div>
         ))}
       </div>
       <button onClick={onClear}
-        className="px-3 py-1.5 bg-white/10 text-white/70 border border-white/15 rounded-btn font-barlow text-xs cursor-pointer">
-        🗑 Limpiar
+        className="px-3 py-1.5 cursor-pointer font-mono text-[11px] uppercase tracking-widest transition-all active:opacity-70"
+        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6, color: 'rgba(255,255,255,0.40)' }}>
+        limpiar
       </button>
     </div>
   );

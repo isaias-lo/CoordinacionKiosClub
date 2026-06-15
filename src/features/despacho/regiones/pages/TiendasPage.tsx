@@ -117,70 +117,75 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
   const remC  = Math.max(0, pickingC  - contenedorCount);
   const remCH = Math.max(0, pickingCH - chocolateCount);
   const hasGhost = remP > 0 || remB > 0 || remC > 0 || remCH > 0;
-  const cardBg = isActive
-    ? 'rgba(211,47,47,0.18)'
-    : hasPdf
-    ? 'rgba(22,163,74,0.12)'
-    : isToday
-    ? 'rgba(255,255,255,0.07)'
-    : 'rgba(255,255,255,0.04)';
-  const cardBorder = isActive
-    ? '1.5px solid rgba(211,47,47,0.65)'
-    : hasPdf
-    ? '1.5px solid rgba(22,163,74,0.55)'
-    : isToday
-    ? '1px solid rgba(255,255,255,0.13)'
-    : '1px solid rgba(255,255,255,0.07)';
-  const cardShadow = isActive
-    ? '0 0 0 1px rgba(211,47,47,0.20), 0 4px 18px rgba(0,0,0,0.35)'
-    : '0 1px 3px rgba(0,0,0,0.25)';
+  const countParts: string[] = [];
+  if (palletCount > 0) countParts.push(`${palletCount}P`);
+  if (boxCount > 0) countParts.push(`${boxCount}B`);
+  if (contenedorCount > 0) countParts.push(`${contenedorCount}C`);
+  if (chocolateCount > 0) countParts.push(`${chocolateCount}CH`);
+  const countStr = countParts.join(' · ');
+
+  const pendingParts: string[] = [];
+  if (remP > 0) pendingParts.push(`${remP}P`);
+  if (remB > 0) pendingParts.push(`${remB}B`);
+  if (remC > 0) pendingParts.push(`${remC}C`);
+  if (remCH > 0) pendingParts.push(`${remCH}CH`);
+  const pendingStr = pendingParts.join(' ');
+
+  const presetStr = (!countStr && !pendingStr && preset && (preset.pallets > 0 || preset.bultos > 0))
+    ? [preset.pallets > 0 ? `${preset.pallets}P` : '', preset.bultos > 0 ? `${preset.bultos}B` : ''].filter(Boolean).join(' ')
+    : '';
+
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
-      style={{ background: cardBg, border: cardBorder, boxShadow: cardShadow }}
-      className="flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]">
-      {/* Odoo status indicator */}
-      {storeStatus === 'complete' && (
+      style={{
+        background: isActive ? '#141c30' : '#0c1220',
+        border: isActive ? '1px solid rgba(212,43,43,0.22)' : '1px solid rgba(255,255,255,0.05)',
+        borderLeft: isActive ? '2px solid #D42B2B' : hasPdf ? '2px solid #16A34A' : '2px solid rgba(255,255,255,0.05)',
+      }}
+      className="flex flex-col px-2.5 py-2.5 cursor-pointer transition-all select-none min-h-[74px] relative rounded-lg active:scale-[0.98]">
+
+      {/* Odoo completion dot — top right */}
+      {storeStatus !== 'none' && (
         <span
-          className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-done)', boxShadow: '0 0 0 2px rgba(0,0,0,0.40)' }}
-          title="✓ Todos los movimientos realizados"
+          className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ background: storeStatus === 'complete' ? '#22C55E' : '#F59E0B' }}
+          title={storeStatus === 'complete' ? '✓ Operaciones completadas' : `${storeDoneOps}/${storeTotalOps} operaciones`}
         />
       )}
-      {storeStatus === 'partial' && (
-        <span
-          className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-partial)', boxShadow: '0 0 0 2px rgba(0,0,0,0.40)' }}
-          title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
-        />
-      )}
-      <div className="font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center"
-           style={{ color: isActive ? '#EF4444' : hasPdf ? '#4ADE80' : 'rgba(255,255,255,0.90)' }}>
+
+      {/* Store code — monospace, primary */}
+      <div className="font-mono text-[12px] font-bold leading-none tracking-wide"
+           style={{ color: isActive ? '#ffffff' : hasPdf ? '#22C55E' : 'rgba(255,255,255,0.80)' }}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide"
-           style={{ color: 'rgba(255,255,255,0.38)' }}>
+
+      {/* Store name — secondary muted */}
+      <div className="text-[10px] leading-tight truncate mt-1.5"
+           style={{ color: 'rgba(255,255,255,0.28)', letterSpacing: '0.02em' }}>
         {t.name}
       </div>
-      <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking pendiente */}
-        {remP  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(147,197,253,0.70)', background: 'rgba(37,99,235,0.15)', borderColor: 'rgba(37,99,235,0.35)' }}>{remP}P</span>}
-        {remB  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(252,211,77,0.70)', background: 'rgba(217,119,6,0.15)', borderColor: 'rgba(217,119,6,0.35)' }}>{remB}B</span>}
-        {remC  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(196,181,253,0.70)', background: 'rgba(107,33,168,0.15)', borderColor: 'rgba(107,33,168,0.35)' }}>{remC}C</span>}
-        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(251,182,160,0.70)', background: 'rgba(120,53,15,0.15)', borderColor: 'rgba(120,53,15,0.35)' }}>{remCH}CH</span>}
-        {/* Solid badges: items ingresados */}
-        {palletCount    > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#93C5FD', background: 'rgba(37,99,235,0.25)' }}>{palletCount}P</span>}
-        {boxCount       > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#FCD34D', background: 'rgba(217,119,6,0.25)' }}>{boxCount}B</span>}
-        {contenedorCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#C4B5FD', background: 'rgba(107,33,168,0.25)' }}>{contenedorCount}C</span>}
-        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#FBB6A0', background: 'rgba(120,53,15,0.25)' }}>{chocolateCount}CH</span>}
-        {/* Preset fallback */}
-        {!hasGhost && preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
-          <span className="text-[11px] leading-none" style={{ color: 'rgba(255,255,255,0.22)' }}>
-            {[preset.pallets > 0 ? `${preset.pallets}P` : '', preset.bultos > 0 ? `${preset.bultos}B` : ''].filter(Boolean).join(' ')}
+
+      {/* Package counts — monochrome, bottom-aligned */}
+      <div className="mt-auto pt-2">
+        {countStr ? (
+          <span className="font-mono text-[10px]"
+                style={{ color: isActive ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.40)' }}>
+            {countStr}
           </span>
-        )}
+        ) : pendingStr ? (
+          <span className="font-mono text-[10px]"
+                style={{ color: 'rgba(255,255,255,0.20)' }}>
+            — {pendingStr}
+          </span>
+        ) : presetStr ? (
+          <span className="font-mono text-[10px]"
+                style={{ color: 'rgba(255,255,255,0.16)' }}>
+            {presetStr}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -1658,16 +1663,16 @@ export function TiendasPage() {
 
         {/* HOY chips — desktop only; on mobile the grid below already shows status */}
         {todayNames.length > 0 && (
-          <div className="hidden lg:block px-2 py-2.5 flex-shrink-0" style={{ background: 'rgba(211,47,47,0.07)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="font-barlow-condensed text-[20px] font-extrabold uppercase tracking-widest text-red mb-2 text-center" style={{ letterSpacing: '0.18em' }}>HOY</div>
-            <div className="flex flex-wrap gap-1 justify-center">
-              {todayNames.map(name => (
-                <span key={name} onClick={() => select(name)}
-                  className={`px-2.5 py-1 rounded-full text-[14px] font-bold font-barlow-condensed cursor-pointer border transition-all ${selectedTienda === name ? 'bg-red text-white border-red' : 'bg-[rgba(211,47,47,0.12)] text-red border-[rgba(211,47,47,0.30)]'}`}>
-                  {TIENDAS[name]?.cod ? formatCod(TIENDAS[name].cod) : ''}
-                </span>
-              ))}
-            </div>
+          <div className="hidden lg:flex flex-wrap gap-1 px-2 py-2 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: '#0a1020' }}>
+            {todayNames.map(name => (
+              <span key={name} onClick={() => select(name)}
+                className="px-2 py-1 cursor-pointer transition-all font-mono text-[11px] font-semibold rounded"
+                style={selectedTienda === name
+                  ? { background: '#D42B2B', color: '#fff', border: '1px solid #D42B2B' }
+                  : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.50)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                {TIENDAS[name]?.cod ? formatCod(TIENDAS[name].cod) : ''}
+              </span>
+            ))}
           </div>
         )}
 
@@ -1680,10 +1685,15 @@ export function TiendasPage() {
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setMultiDragOver(true); } }}
             onDragLeave={e => { e.stopPropagation(); setMultiDragOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setMultiDragOver(false); if (!multiPdfLoading && e.dataTransfer.files.length) handleMultiplePdfs(e.dataTransfer.files); }}
-            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${multiDragOver ? 'border-red bg-[rgba(211,47,47,0.18)] text-red scale-[1.02]' : 'border-red bg-[rgba(211,47,47,0.06)] text-red active:bg-[rgba(211,47,47,0.12)]'}`}>
+            className="flex-1 py-2 rounded cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-40"
+            style={{
+              background: multiDragOver ? 'rgba(212,43,43,0.12)' : 'rgba(255,255,255,0.04)',
+              border: multiDragOver ? '1px solid rgba(212,43,43,0.40)' : '1px dashed rgba(255,255,255,0.12)',
+              color: multiDragOver ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.40)',
+            }}>
             {multiPdfLoading
-              ? <><div className="w-3 h-3 border-2 border-red/30 border-t-red rounded-full animate-spin" />PROCESANDO…</>
-              : multiDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
+              ? <><div className="w-3 h-3 border border-white/20 border-t-white/60 rounded-full animate-spin" /><span className="font-mono text-[11px] tracking-widest">procesando…</span></>
+              : <span className="font-mono text-[11px] uppercase tracking-widest">{multiDragOver ? '↓ suelta aquí' : 'subir guías PDF'}</span>}
           </button>
         </div>
 
@@ -1697,15 +1707,15 @@ export function TiendasPage() {
               onDragLeave={handleAddDragLeave}
               onDrop={handleAddDrop}
               style={{ transition: 'background 150ms', background: addDropActive ? 'rgba(211,47,47,0.10)' : 'transparent' }}>
-              <div className="sticky top-0 z-10 transition-all" style={{
-                padding: '7px 10px',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-                background: addDropActive ? 'rgba(211,47,47,0.22)' : 'rgba(0,0,0,0.28)',
+              <div className="sticky top-0 z-10 transition-all flex items-center gap-2" style={{
+                padding: '6px 10px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                background: addDropActive ? 'rgba(212,43,43,0.12)' : '#0a1020',
               }}>
-                <span className="font-barlow-condensed text-[13px] font-extrabold uppercase tracking-widest" style={{ color: '#F87171' }}>
-                  {addDropActive ? '↓ Suelta aquí' : 'HOY'}
+                <div className="w-1 h-3 rounded-sm flex-shrink-0" style={{ background: addDropActive ? '#D42B2B' : 'rgba(212,43,43,0.70)' }} />
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-widest" style={{ color: addDropActive ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.35)' }}>
+                  {addDropActive ? 'Suelta aquí' : 'Hoy'}
                 </span>
-                {!addDropActive && <span className="font-barlow-condensed text-[10px] ml-2 uppercase tracking-wide" style={{ color: 'rgba(248,113,113,0.40)' }}>arrastra aquí</span>}
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                 {today.map(t => {
@@ -1746,20 +1756,21 @@ export function TiendasPage() {
               {today.length > 0 && (
                 <div
                   onClick={() => !removeDropActive && setShowTodas(prev => !prev)}
-                  className="sticky top-0 z-10 transition-all flex items-center"
+                  className="sticky top-0 z-10 transition-all flex items-center gap-2"
                   style={{
-                    padding: '7px 10px',
-                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    padding: '6px 10px',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
                     borderTop: '1px solid rgba(255,255,255,0.05)',
-                    background: removeDropActive ? 'rgba(217,119,6,0.18)' : 'rgba(0,0,0,0.20)',
+                    background: removeDropActive ? 'rgba(217,119,6,0.10)' : '#0a1020',
                     cursor: removeDropActive ? 'default' : 'pointer',
                   }}>
-                  <span className="font-barlow-condensed text-[12px] font-bold uppercase tracking-widest flex-1" style={{ color: removeDropActive ? '#F59E0B' : 'rgba(255,255,255,0.32)' }}>
-                    {removeDropActive ? '↓ Suelta para retirar de hoy' : 'Todas'}
+                  <div className="w-1 h-3 rounded-sm flex-shrink-0" style={{ background: 'rgba(255,255,255,0.15)' }} />
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-widest flex-1" style={{ color: removeDropActive ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.25)' }}>
+                    {removeDropActive ? 'Suelta para quitar de hoy' : 'Todas'}
                   </span>
                   {!removeDropActive && (
-                    <span className="font-barlow-condensed text-[11px] select-none" style={{ color: 'rgba(255,255,255,0.20)' }}>
-                      {showTodas ? '▲' : '▼'}
+                    <span className="text-[10px] select-none" style={{ color: 'rgba(255,255,255,0.18)' }}>
+                      {showTodas ? '▴' : '▾'}
                     </span>
                   )}
                 </div>
@@ -1802,43 +1813,36 @@ export function TiendasPage() {
         </div>
 
         {/* Stats bar + actions */}
-        <div className="flex-shrink-0 bg-navy border-t-4 border-red">
-          <div className="flex">
-            {(() => {
-              const stats = [
-                { v: statP, l: 'Pallets', color: '#93C5FD' },
-                { v: statB, l: 'Bultos',  color: '#FCD34D' },
-                ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []),
-                { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
-              ];
-              return stats.map(({ v, l, color }, i) => (
-                <div key={l} className={`flex-1 py-2.5 text-center ${i < stats.length - 1 ? 'border-r border-white/10' : ''}`}>
-                  <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-                  <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-                </div>
-              ));
-            })()}
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: '#08101E' }}>
+          {/* Stats row */}
+          <div className="flex px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            {[
+              { v: statP,             l: 'P' },
+              { v: statB,             l: 'B' },
+              ...(statCH > 0 ? [{ v: statCH, l: 'CH' }] : []),
+              { v: activeTiendasCount, l: 'T' },
+            ].map(({ v, l }, i, arr) => (
+              <div key={l} className="flex-1 flex items-baseline gap-1.5" style={{ borderRight: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none', paddingRight: i < arr.length - 1 ? 12 : 0, paddingLeft: i > 0 ? 12 : 0 }}>
+                <span className="font-mono text-[20px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.88)' }}>{v}</span>
+                <span className="text-[10px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.28)' }}>{l}</span>
+              </div>
+            ))}
           </div>
-          <div className="px-3 pb-3 pt-1 flex gap-2">
+          {/* Action buttons */}
+          <div className="px-3 py-2.5 flex gap-2">
             <button
               onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
-              className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
-              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
-              RESUMEN ({activeTiendasCount})
+              className="flex-1 py-2.5 text-white rounded-btn font-barlow-condensed text-[13px] font-bold tracking-widest uppercase cursor-pointer lg:hidden transition-all active:opacity-80"
+              style={{ background: '#D42B2B', border: 'none' }}>
+              Resumen · {activeTiendasCount}
             </button>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
-              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
-              style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
+              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2 px-3 cursor-pointer transition-all active:opacity-70"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6 }}
               title="Ir al Enrutador">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                   style={{
-                     background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
-                     boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
-                   }}>
-                <Navigation size={14} color="#fff" strokeWidth={2} />
-              </div>
-              <span className="hidden lg:inline font-barlow-condensed text-[15px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>Enrutador</span>
+              <Navigation size={13} color="rgba(255,255,255,0.50)" strokeWidth={1.5} />
+              <span className="hidden lg:inline font-barlow-condensed text-[13px] font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.50)' }}>Enrutador</span>
             </button>
           </div>
         </div>
@@ -1943,26 +1947,20 @@ export function TiendasPage() {
       {/* Mobile Resumen Overlay */}
       {showMobileResumen && (
         <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
-          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
-               style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
+          <div className="px-3 py-3 flex items-center gap-3 flex-shrink-0" style={{ background: '#08101E', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <button
               onClick={() => setShowMobileResumen(false)}
-              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95"
-              style={{
-                width: 36, height: 36,
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-                border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+              className="flex items-center justify-center flex-shrink-0 cursor-pointer transition-all active:opacity-70"
+              style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6 }}>
+              <ChevronLeft size={16} color="rgba(255,255,255,0.65)" strokeWidth={1.5} />
             </button>
-            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1">Resumen</span>
+            <span className="font-mono text-[12px] font-semibold tracking-widest uppercase flex-1" style={{ color: 'rgba(255,255,255,0.60)' }}>Resumen</span>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
-              className="flex items-center gap-2 py-2 px-3 rounded-full cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(211,47,47,0.18)', border: '1px solid rgba(211,47,47,0.50)' }}>
-              <Navigation size={13} color="#EF4444" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#EF4444' }}>Enrutador</span>
+              className="flex items-center gap-1.5 py-1.5 px-3 cursor-pointer transition-all active:opacity-70"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6 }}>
+              <Navigation size={12} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+              <span className="font-mono text-[11px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.45)' }}>Enrutador</span>
             </button>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">
