@@ -21,11 +21,26 @@
 ---
 
 ## Última sesión
-Fecha: 2026-06-12 (desde Mac casa)
-Rama: `inicio`
+Fecha: 2026-06-14 (cierre de jornada)
+Rama: `inicio` (sincronizada con main = e82c26b = producción)
 
-### Qué se hizo hoy
-1. **`gh` CLI instalado** (sin Homebrew) en `~/.bun/bin/gh` (v2.94.0). Falta `gh auth login`.
+### Qué se hizo hoy (todo en producción)
+- **Code review (211 issues) COMPLETO y mergeado** (PRs #19–#22): auth en endpoints
+  (cookie+Bearer), rate limit OTP, fix can()/otpToken/Unicode/Gmail, XSS pdfExport,
+  setTimeout/blob leaks, error.tsx + loading, calcAuditado centralizado, clamp trazabilidad.
+- **feat Registrar Despacho → Manifiestos** (PR #20) + botón "Generar Manifiestos"
+  como acción secundaria.
+- **fix sidebar Safari** en /registros (PR #21): `absolute inset-0` → `h-full w-full`.
+- **fix tienda duplicada 23PEN/23PEÑ** (PR #22 ALIAS) + **limpieza de datos en Supabase**
+  (migrado despacho_rm 23PEN→23PEÑ, eliminada fila duplicada; 0 restantes, tiendas 55→54).
+- **RLS** en calendario_armado/notificaciones (PR #23, migración 046): solo authenticated,
+  aplicada y verificada (anon=0, authenticated=ve filas).
+- **Prompt de workflow** actualizado (núcleo + adaptación por stack) — entregado en chat.
+- Nota: el MCP de Vercel conectado apunta a otra cuenta (fynanz/controlfynanz), NO a KiosClub.
+  El deploy de KiosClub se verificó manualmente en el dashboard de Isaías (e82c26b, Ready).
+
+### Histórico (sesiones previas)
+1. **`gh` CLI instalado** en `~/.bun/bin/gh` (v2.94.0) y autenticado (PRs #19–#23 abiertos OK).
 
 2. **Scripts bash creados** (`hola.sh`, `bye.sh`, `sync.sh`, `pr.sh`) — los PowerShell no funcionaban en macOS. `package.json` actualizado para detectar OS y usar el script correcto (bash en Mac, PS1 en Windows). `npm run hola/bye/sync/pr` funcionan en ambas PCs.
 
