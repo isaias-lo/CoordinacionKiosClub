@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { nn, asignar } from '../utils/routing';
-import type { StoreItem, Ruta } from '../utils/routing';
+import type { StoreItem } from '../utils/routing';
 import type { Vehiculo } from '../data/flota';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────

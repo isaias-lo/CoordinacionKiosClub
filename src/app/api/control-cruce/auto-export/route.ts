@@ -52,7 +52,7 @@ async function writeConfig(sb: ReturnType<typeof supabaseServer>, config: AutoEx
 
 // ─── Core export logic ────────────────────────────────────────────────────────
 
-async function runExport(baseUrl: string, targetDate: ReturnType<typeof santiagoDateParts>) {
+async function runExport(baseUrl: string, targetDate: { iso: string; tabName: string }) {
   // 1. Fetch Odoo data (COMPLETADO para fechaArmado = targetDate.iso,
   //    más VENCIDA/PLANIFICADO con scheduled_date en ese rango)
   const odooRes = await fetch(`${baseUrl}/api/odoo`, {

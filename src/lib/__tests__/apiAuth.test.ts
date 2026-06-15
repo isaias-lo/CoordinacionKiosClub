@@ -16,7 +16,7 @@ async function signToken(payload: object, expiresIn = '1h'): Promise<string> {
 }
 
 function makeReq(authHeader?: string): NextRequest {
-  const headers = authHeader ? { authorization: authHeader } : {};
+  const headers: Record<string, string> = authHeader ? { authorization: authHeader } : {};
   return new NextRequest('http://localhost/api/test', { headers });
 }
 

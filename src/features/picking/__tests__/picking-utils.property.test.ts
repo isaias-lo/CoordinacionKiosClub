@@ -10,7 +10,6 @@ import {
   categoriesToContenido,
   isAllowedPicker,
   fmtDuration,
-  fmtSecs,
   cphColor,
 } from '../picking-utils';
 

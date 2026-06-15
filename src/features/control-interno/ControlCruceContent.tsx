@@ -24,7 +24,6 @@ import {
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase } from '@/lib/supabase';
 import SkuModal from './components/SkuModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

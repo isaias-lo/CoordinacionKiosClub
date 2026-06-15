@@ -8,7 +8,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { asignar, nn } from '../utils/routing';
-import type { StoreItem } from '../utils/routing';
 import type { Vehiculo } from '../data/flota';
 
 // ─── Fixtures fijos ───────────────────────────────────────────────────────────

@@ -267,7 +267,7 @@ export function ValidacionTiendaScreen() {
                     )}
                   </div>
                   {r.observaciones && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: '#6B7280', fontStyle: 'italic' }}>"{r.observaciones}"</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#6B7280', fontStyle: 'italic' }}>&quot;{r.observaciones}&quot;</div>
                   )}
                 </div>
               )}
