@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { parseOrigin, isAbastecimientoOp } from '@/features/picking/picking-utils';
+import { isAbastecimientoOp, resolveStoreCode } from '@/features/picking/picking-utils';
 import { computeStoreStatus } from '@/features/despacho/shared/storeStatus';
 
 function todayISO(): string {
@@ -27,7 +27,10 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
       body: JSON.stringify({ action: 'picking_today_operations', query: '' }),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { pickings?: Array<{ origin: string; state: string }>; error?: string };
+    const data = (await res.json()) as {
+      pickings?: Array<{ origin: string; state: string; toLocation?: string; partner?: string }>;
+      error?: string;
+    };
     if (data.error || !data.pickings) return null;
 
     const acc: Record<string, { total: number; done: number }> = {};
@@ -35,7 +38,9 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
       const origin = p.origin ?? '';
       // Mismo filtro que usa Picking al cargar ops por tienda
       if (!isAbastecimientoOp(origin) || origin.toUpperCase().startsWith('AUDITORIA')) continue;
-      const { storeCode } = parseOrigin(origin);
+      // Identifica la tienda por destino (columna "A") con respaldo al origin/partner,
+      // para ser robusto a typos manuales en el Documento Origen.
+      const storeCode = resolveStoreCode(p);
       if (!storeCode) continue;
       if (!acc[storeCode]) acc[storeCode] = { total: 0, done: 0 };
       acc[storeCode].total += 1;

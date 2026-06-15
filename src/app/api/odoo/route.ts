@@ -306,7 +306,11 @@ export async function POST(req: NextRequest) {
         domain.push(['origin', 'ilike', 'Abastecimiento']);
       }
       if (storeCod) {
-        domain.push(['origin', 'ilike', storeCod]);
+        // La tienda se reconoce por el origin (texto manual, puede tener typos) O por
+        // la ubicación destino (location_dest_id = columna "A", dato estructurado y fiable).
+        domain.push('|',
+          ['origin', 'ilike', storeCod],
+          ['location_dest_id.complete_name', 'ilike', storeCod]);
       }
 
       const pickings = (await odooRpc(url, {

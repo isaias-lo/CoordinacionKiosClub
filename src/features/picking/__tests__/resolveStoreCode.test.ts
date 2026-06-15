@@ -1,0 +1,50 @@
+import { describe, it, expect } from 'vitest';
+import { extractStoreCode, resolveStoreCode } from '../picking-utils';
+
+describe('extractStoreCode', () => {
+  it('extrae el código de un texto simple', () => {
+    expect(extractStoreCode('42ANP')).toBe('42ANP');
+  });
+
+  it('extrae el código de una ruta de ubicación (columna A)', () => {
+    expect(extractStoreCode('WH/PICK/42ANP/Stock')).toBe('42ANP');
+    expect(extractStoreCode('Tienda 42ANP')).toBe('42ANP');
+  });
+
+  it('normaliza a mayúsculas', () => {
+    expect(extractStoreCode('42anp')).toBe('42ANP');
+  });
+
+  it('devuelve "" si no hay código', () => {
+    expect(extractStoreCode('')).toBe('');
+    expect(extractStoreCode('Picking')).toBe('');
+  });
+});
+
+describe('resolveStoreCode', () => {
+  it('caso del bug: typo en origin (52ANP) pero destino correcto (42ANP) → gana el destino', () => {
+    expect(resolveStoreCode({
+      toLocation: 'WH/PICK/42ANP/Stock',
+      origin: 'Abastecimiento Hogar 52ANP',
+    })).toBe('42ANP');
+  });
+
+  it('respaldo al origin cuando el destino no trae código', () => {
+    expect(resolveStoreCode({
+      toLocation: 'Picking',
+      origin: 'Abastecimiento Hogar 28TEM',
+    })).toBe('28TEM');
+  });
+
+  it('último recurso: partner', () => {
+    expect(resolveStoreCode({
+      toLocation: '',
+      origin: 'Abastecimiento sin código',
+      partner: 'Cliente 39PSB',
+    })).toBe('39PSB');
+  });
+
+  it('sin ningún código → ""', () => {
+    expect(resolveStoreCode({ toLocation: 'Picking', origin: 'Abastecimiento' })).toBe('');
+  });
+});

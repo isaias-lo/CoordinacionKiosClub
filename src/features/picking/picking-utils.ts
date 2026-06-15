@@ -94,6 +94,23 @@ export function isAbastecimientoOp(origin: string): boolean {
   return ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw));
 }
 
+/** Extrae un código de tienda (2 dígitos + 2-4 letras, ej. "42ANP") de cualquier texto. */
+const STORE_CODE_RE = /\b(\d{2}[A-Z]{2,4})\b/;
+export function extractStoreCode(text: string): string {
+  return (text ?? '').toUpperCase().match(STORE_CODE_RE)?.[1] ?? '';
+}
+
+/**
+ * Identifica la tienda de un picking de forma robusta a typos manuales en el
+ * Documento Origen. Prioridad: 1º destino (location_dest_id, columna "A" en Odoo,
+ * dato estructurado), 2º origin (texto manual), 3º partner.
+ */
+export function resolveStoreCode(p: { toLocation?: string; origin?: string; partner?: string }): string {
+  return extractStoreCode(p.toLocation ?? '')
+      || parseOrigin(p.origin ?? '').storeCode
+      || extractStoreCode(p.partner ?? '');
+}
+
 // ─── Stats formatting ─────────────────────────────────────────────────────────
 export function fmtDuration(min: number): string {
   if (min <= 0) return '—';
