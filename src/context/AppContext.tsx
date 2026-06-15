@@ -60,7 +60,9 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_TAB':
       return { ...state, activeTab: action.payload };
     case 'SET_TIENDA':
-      return { ...state, selectedTienda: action.payload };
+      // Al cambiar de tienda, volver el tipo de paquete a sus defaults para que el
+      // form de la nueva tienda no herede el tipo de la anterior (defaults de initialState).
+      return { ...state, selectedTienda: action.payload, currentPkg: 'pallet', currentTipo: 'comida' };
     case 'SET_TIPO':
       return { ...state, currentTipo: action.payload };
     case 'SET_PKG':

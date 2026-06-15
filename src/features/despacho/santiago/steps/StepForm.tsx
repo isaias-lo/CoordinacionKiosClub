@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Navigation, GripVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
@@ -675,8 +675,10 @@ export function StepForm() {
 
   /* ── Form effects ──
      Only re-runs when the selected tienda changes. Uses pickingSlotsRef (always current)
-     so picking real-time updates do NOT retrigger this and wipe the user's in-progress form. */
-  useEffect(() => {
+     so picking real-time updates do NOT retrigger this and wipe the user's in-progress form.
+     useLayoutEffect (no useEffect) → corre antes del paint: nunca se pinta un frame con el
+     form de la tienda anterior bajo el header de la nueva. */
+  useLayoutEffect(() => {
     setTipo('Pallet'); setContenido('Hogar');
     setPeso(''); setAlto(''); setLargo(''); setAncho('');
     setEditingIdx(null);
@@ -888,8 +890,7 @@ export function StepForm() {
         estado: ESTADO_DEFAULT,
       },
     });
-    setPeso(''); setAlto('');
-    if (tipo === 'Bulto' && !isChocolateBulto || tipo === 'Chocolate') { setLargo(''); setAncho(''); }
+    setPeso(''); setAlto(''); setLargo(''); setAncho('');
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
 
