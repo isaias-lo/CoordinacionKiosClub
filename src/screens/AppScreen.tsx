@@ -10,7 +10,7 @@ export function AppScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
+    <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ background: '#0D1829' }}>
       <AppHeader onFinish={() => setFinishOpen(true)} backTo="/despacho/conteo" />
 
       <PendingDraftBanner fuente="regiones" />

@@ -186,42 +186,26 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
 
   /* ── Stats strip ── */
   const statsStrip = (
-    <div className="bg-navy flex items-center px-3 py-2 gap-0 flex-shrink-0">
-      <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-        <span className="font-barlow-condensed text-[22px] font-extrabold text-[#93C5FD] leading-none">{stats.pallets}</span>
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">P</span>
-      </div>
-      <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-        <span className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{stats.bultos}</span>
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">B</span>
-      </div>
-      {stats.chocolates > 0 && (
-        <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-          <span className="font-barlow-condensed text-[22px] font-extrabold text-[#FBB6A0] leading-none">{stats.chocolates}</span>
-          <span className="text-[10px] text-white/50 uppercase tracking-wide">CH</span>
+    <div className="flex items-center px-3 py-2.5 gap-0 flex-shrink-0" style={{ background: '#08101E', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      {[
+        { v: stats.pallets, l: 'P' },
+        { v: stats.bultos,  l: 'B' },
+        ...(stats.chocolates > 0 ? [{ v: stats.chocolates, l: 'CH' }] : []),
+        { v: names.length,  l: 'T' },
+        ...(stats.monto > 0 ? [{ v: `$${Math.round(stats.monto / 1000)}K`, l: '$' }] : []),
+      ].map(({ v, l }, i, arr) => (
+        <div key={l} className="flex-1 flex items-baseline gap-1.5" style={{ borderRight: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none', paddingRight: i < arr.length - 1 ? 10 : 0, paddingLeft: i > 0 ? 10 : 0 }}>
+          <span className="font-mono text-[18px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.88)' }}>{v}</span>
+          <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.28)' }}>{l}</span>
         </div>
-      )}
-      <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-        <span className="font-barlow-condensed text-[22px] font-extrabold text-[#86EFAC] leading-none">{names.length}</span>
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">T</span>
-      </div>
-      {stats.monto > 0 && (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <span className="font-barlow-condensed text-[13px] font-bold text-white/90 leading-none">
-            ${Math.round(stats.monto / 1000)}K
-          </span>
-          <span className="text-[9px] text-white/40 uppercase tracking-wide mt-0.5">$</span>
-        </div>
-      )}
+      ))}
     </div>
   );
 
   /* ── Bottom action bar ── */
   const actionBar = (
-    <div className={`bg-white border-t border-border px-3 py-2.5 flex gap-2 flex-shrink-0 ${
-      panel ? '' : 'fixed bottom-0 left-0 right-0 z-[150]'
-    }`}
-      style={{ boxShadow: '0 -4px 16px rgba(26,37,80,0.10)' }}>
+    <div className={`px-3 py-2.5 flex gap-2 flex-shrink-0 ${panel ? '' : 'fixed bottom-0 left-0 right-0 z-[150]'}`}
+      style={{ background: '#08101E', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
       <button
         onClick={() => {
           if (confirm(`¿Borrar todos los ${stats.pallets + stats.bultos} items del día?`)) {
@@ -229,12 +213,12 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
             showToast('Todo limpiado', '#8896A8');
           }
         }}
-        className="w-10 flex items-center justify-center py-2.5 bg-bg-2 text-text-2 border border-border rounded-card text-sm cursor-pointer active:bg-bg-3">
-        🗑
+        className="w-10 flex items-center justify-center py-2.5 cursor-pointer rounded-card font-mono text-[13px] transition-all active:opacity-70"
+        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.38)' }}>
+        ✕
       </button>
       <button onClick={exportAll}
-        className="flex-1 py-2.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:bg-red-dark"
-        style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
+        className="flex-1 py-2.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:bg-red-dark">
         ↓ Exportar todo
       </button>
     </div>
@@ -244,10 +228,9 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
   const acordeon = (
     <>
       {!names.length ? (
-        <div className="flex-1 flex flex-col items-center justify-center py-10 text-text-3">
-          <div className="text-3xl mb-2 opacity-40">📋</div>
-          <p className="text-xs opacity-60 font-barlow-condensed uppercase tracking-wide text-center px-4">
-            Sin items aún
+        <div className="flex-1 flex flex-col items-center justify-center py-10">
+          <p className="font-mono text-[11px] uppercase tracking-widest text-center px-4" style={{ color: 'rgba(255,255,255,0.22)' }}>
+            Sin items
           </p>
         </div>
       ) : names.map(name => {
@@ -263,40 +246,32 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         const chocolates  = items.filter(i => i.pkg === 'chocolate').length;
 
         return (
-          <div key={name} className={`border-b border-border ${isOpen ? 'bg-white' : ''}`}>
+          <div key={name} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
 
             {/* Row header */}
             <div
               onClick={() => { cancelEdit(); toggleExpanded(name); }}
-              className={`flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-all active:bg-bg ${
-                isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'
-              } ${sel.size > 0 ? 'border-l-4 border-l-success' : ''}`}>
+              className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-all"
+              style={{
+                background: isOpen ? 'rgba(255,255,255,0.05)' : 'transparent',
+                borderBottom: isOpen ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                borderLeft: sel.size > 0 ? '2px solid #22C55E' : '2px solid transparent',
+              }}>
 
-              <div className="font-mono text-[10px] text-text-3 bg-bg-2 border border-border-2 px-1 py-0.5 rounded min-w-[40px] text-center flex-shrink-0">
+              <div className="font-mono text-[10px] px-1 py-0.5 rounded min-w-[40px] text-center flex-shrink-0"
+                   style={{ color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 {t?.cod ? formatCod(t.cod) : ''}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-bold text-navy truncate leading-tight">{name}</div>
-                <div className="text-[10px] text-text-3 truncate">{t?.region}</div>
+                <div className="font-mono text-[12px] font-semibold truncate leading-tight" style={{ color: 'rgba(255,255,255,0.80)' }}>{name}</div>
+                <div className="font-mono text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.28)' }}>{t?.region}</div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {pallets > 0 && (
-                  <span className="font-barlow-condensed text-[11px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-1.5 py-0.5 rounded-full">
-                    {pallets}P
-                  </span>
-                )}
-                {bultos > 0 && (
-                  <span className="font-barlow-condensed text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-1.5 py-0.5 rounded-full">
-                    {bultos}B
-                  </span>
-                )}
-                {chocolates > 0 && (
-                  <span className="font-barlow-condensed text-[11px] font-bold text-[#92400E] bg-[rgba(120,53,15,0.10)] border border-[rgba(120,53,15,0.20)] px-1.5 py-0.5 rounded-full">
-                    {chocolates}CH
-                  </span>
-                )}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {[pallets > 0 && `${pallets}P`, bultos > 0 && `${bultos}B`, chocolates > 0 && `${chocolates}CH`].filter(Boolean).map(v => (
+                  <span key={String(v)} className="font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>{v}</span>
+                ))}
                 {sel.size > 0 && (
-                  <span className="font-mono text-[10px] text-success font-bold">✓{sel.size}</span>
+                  <span className="font-mono text-[10px]" style={{ color: '#22C55E' }}>✓{sel.size}</span>
                 )}
                 <span className="text-text-3 text-[10px] ml-0.5">{isOpen ? '▲' : '▼'}</span>
               </div>

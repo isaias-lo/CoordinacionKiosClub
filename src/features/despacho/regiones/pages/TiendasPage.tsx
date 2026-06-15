@@ -53,19 +53,21 @@ const TAG_CLS: Record<string, string> = {
   pallet:        'bg-[rgba(37,99,235,0.10)] text-info',
   box:           'bg-[rgba(217,119,6,0.10)] text-warn',
 };
-const inputCls = "bg-white border-[1.5px] border-border rounded-btn px-2.5 py-2.5 text-text font-barlow text-[16px] outline-none transition-all focus:border-red focus:shadow-[0_0_0_3px_rgba(211,47,47,0.10)] [-webkit-appearance:none] w-full";
+const inputCls = "rounded-btn px-2.5 py-2.5 font-barlow text-[16px] outline-none transition-all focus:border-red [-webkit-appearance:none] w-full border bg-[rgba(255,255,255,0.06)] border-[rgba(255,255,255,0.10)] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.20)]";
 
 function SLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="font-barlow-condensed text-[13px] font-bold uppercase tracking-[0.12em] text-text-3 mb-1.5 mt-3 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">
-      {children}
+    <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 mt-4 flex items-center gap-2"
+         style={{ color: 'rgba(255,255,255,0.28)' }}>
+      <span>{children}</span>
+      <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
     </div>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">{label}</label>
+      <label className="font-mono text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>{label}</label>
       {children}
     </div>
   );
@@ -1095,7 +1097,7 @@ export function TiendasPage() {
     /* ── Multi-form (preset) mode ── */
     if (formRows.length > 0) {
       const pdfStrip = (
-        <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
+        <div className="hidden lg:flex px-3 py-1.5 flex-shrink-0 items-center gap-2" style={{ background: '#0D1829', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <input ref={fileRef} type="file" accept=".pdf" className="hidden"
             onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
           {hasPdf ? (
@@ -1405,7 +1407,8 @@ export function TiendasPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
         {/* PDF compact strip — outside scroll */}
-        <div className="flex-shrink-0 px-2.5 py-1.5 border-b border-border hidden lg:flex items-center gap-2 bg-bg"
+        <div className="flex-shrink-0 px-2.5 py-1.5 hidden lg:flex items-center gap-2"
+          style={{ background: '#0D1829', borderBottom: '1px solid rgba(255,255,255,0.07)' }}
           onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type === 'application/pdf') handlePdfFile(f); }}>
           <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
@@ -1417,34 +1420,33 @@ export function TiendasPage() {
                     <span className="text-[11px] text-success font-semibold truncate block">✓ {pdfInfo!.guias.length} guías · ${pdfInfo!.totalSum.toLocaleString('es-CL')} · {items.length + 1} items: ${Math.round(pdfInfo!.totalSum / (items.length + 1)).toLocaleString('es-CL')} c/u</span>
                     <span className="text-[10px] text-success/60 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
                   </div>
-                  <button onClick={clearPdf} className="text-[11px] text-text-3 hover:text-red cursor-pointer border border-border rounded px-1.5 py-0.5 flex-shrink-0 bg-white">✕ Quitar</button>
+                  <button onClick={clearPdf} className="text-[11px] cursor-pointer px-1.5 py-0.5 flex-shrink-0 rounded transition-all hover:text-red"
+                          style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>✕</button>
                 </>
               : <button onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-red hover:border-red cursor-pointer transition-all">
-                  Subir PDF guías
+                  className="flex items-center gap-1 px-2 py-1 cursor-pointer transition-all font-mono text-[11px] uppercase tracking-widest rounded"
+                  style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.12)' }}>
+                  Subir PDF
                 </button>
           }
         </div>
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
           {editingIdx !== null && (
-            <div className="mt-2 bg-[rgba(37,99,235,0.07)] border border-[rgba(37,99,235,0.25)] rounded-card px-2.5 py-2 flex items-center justify-between">
-              <span className="text-[13px] font-semibold text-info">Editando #{editingIdx + 1}</span>
-              <button onClick={cancelEdit} className="text-[12px] text-text-3 cursor-pointer border-none bg-none hover:text-red">✕ Cancelar</button>
+            <div className="mt-2 rounded-card px-2.5 py-2 flex items-center justify-between"
+                 style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}>
+              <span className="font-mono text-[12px]" style={{ color: 'rgba(255,255,255,0.60)' }}>editando #{editingIdx + 1}</span>
+              <button onClick={cancelEdit} className="font-mono text-[11px] cursor-pointer border-none bg-transparent transition-all hover:text-red" style={{ color: 'rgba(255,255,255,0.35)' }}>cancelar</button>
             </div>
           )}
           <SLabel>Tipo</SLabel>
           <div className="flex gap-1.5 flex-wrap">
             {(['pallet', 'box', 'contenedor', 'chocolate'] as TipoPaquete[]).map(p => (
               <button key={p} onClick={() => setPkg(p)}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[13px] font-medium cursor-pointer transition-all min-w-[60px] ${
-                  currentPkg === p
-                    ? p === 'pallet'     ? 'bg-[rgba(37,99,235,0.08)] border-info text-info'
-                    : p === 'contenedor' ? 'bg-[rgba(107,33,168,0.08)] border-[#6B21A8] text-[#6B21A8]'
-                    : p === 'chocolate'  ? 'bg-[rgba(120,53,15,0.08)] border-[#92400E] text-[#92400E]'
-                    : 'bg-[rgba(217,119,6,0.08)] border-warn text-warn'
-                    : 'border-border bg-white text-text-2'
-                }`}>
-                {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Contened.' : p === 'chocolate' ? 'Choc. CH' : 'Bulto'}
+                className="flex-1 py-2 rounded-btn font-mono text-[11px] font-semibold cursor-pointer transition-all min-w-[60px] uppercase tracking-widest"
+                style={currentPkg === p
+                  ? { background: 'rgba(212,43,43,0.18)', border: '1px solid rgba(212,43,43,0.50)', color: 'rgba(255,255,255,0.90)' }
+                  : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.40)' }}>
+                {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Cont.' : p === 'chocolate' ? 'Choc.' : 'Bulto'}
               </button>
             ))}
           </div>
@@ -1452,12 +1454,15 @@ export function TiendasPage() {
           <div className="flex gap-1.5">
             {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
               <button key={t} onClick={() => setTipo(t)} disabled={currentPkg === 'box' && t !== 'hogar'}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed ${currentTipo === t ? TIPO_CLS[t] : 'border-border bg-white text-text-2'}`}>
+                className="flex-1 py-2 rounded-btn font-mono text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-25 disabled:cursor-not-allowed uppercase tracking-widest"
+                style={currentTipo === t
+                  ? { background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', color: 'rgba(255,255,255,0.90)' }
+                  : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.38)' }}>
                 {t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto'}
               </button>
             ))}
           </div>
-          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">{currentPkg === 'chocolate' ? 'Chocolate siempre es Hogar' : 'Bulto siempre es Hogar'}</div>}
+          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 rounded-btn px-2.5 py-1 font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>{currentPkg === 'chocolate' ? 'Chocolate → siempre Hogar' : 'Bulto → siempre Hogar'}</div>}
           <SLabel>Peso y dimensiones</SLabel>
           <div className="grid grid-cols-2 gap-1.5">
             <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder={currentPkg === 'chocolate' ? 'máx 25' : '500'} inputMode="decimal" className={inputCls} /></Field>
@@ -1466,23 +1471,22 @@ export function TiendasPage() {
             )}
             {currentPkg === 'pallet' ? (
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Ancho × Largo</label>
-                <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-info text-center">
+                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>Ancho × Largo</label>
+                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
                   100 × 120 cm — fijo
                 </div>
               </div>
             ) : currentPkg === 'contenedor' ? (
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
-                <div className="bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-[#6B21A8] text-center">
+                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>Dimensiones</label>
+                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
                   80 × 110 cm · alto 150 cm — fijo
                 </div>
               </div>
             ) : currentPkg === 'chocolate' ? (
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
-                <div className="rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-center"
-                  style={{ background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.20)', color: '#92400E' }}>
+                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>Dimensiones</label>
+                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
                   56 × 80 cm · alto 42 cm — fijo · máx 25 kg
                 </div>
               </div>
@@ -1494,15 +1498,15 @@ export function TiendasPage() {
             )}
           </div>
           <div className="sticky bottom-0 z-10 mt-3 pb-4 pt-2"
-            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
+            style={{ background: 'linear-gradient(to bottom, rgba(13,24,41,0) 0%, #0D1829 28%)' }}>
             <button onClick={saveItem}
-              className="w-full py-4 bg-red text-white border-none rounded-card font-barlow-condensed text-[20px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]"
-              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.28)' }}>
+              className="w-full py-3.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[18px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]">
               {editingIdx !== null ? 'Guardar' : '+ Agregar'}
             </button>
             {items.length > 0 && editingIdx === null && (
-              <button onClick={copyLast} className="w-full py-2.5 mt-1.5 bg-white text-text-2 border border-dashed border-border-2 rounded-btn text-[13px] cursor-pointer font-barlow hover:border-text-3">
-                ↻ Copiar último
+              <button onClick={copyLast} className="w-full py-2.5 mt-1.5 rounded-btn font-mono text-[11px] uppercase tracking-widest cursor-pointer transition-all"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.35)' }}>
+                ↻ copiar último
               </button>
             )}
           </div>
@@ -1573,28 +1577,32 @@ export function TiendasPage() {
                       setDragIdx(null); setDropIdx(null);
                     }}
                     className={[
-                      'bg-white border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 shadow-card transition-all select-none',
-                      dropIdx === i ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border',
-                      dragIdx === i ? 'opacity-40' : '',
+                      'border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 transition-all select-none',
+                      dropIdx === i ? 'scale-[1.01]' : '',
+                      dragIdx === i ? 'opacity-30' : '',
                       dragIdx !== null ? 'cursor-grabbing' : 'cursor-grab',
                     ].join(' ')}
+                    style={{
+                      background: dropIdx === i ? 'rgba(34,197,94,0.08)' : isEditing ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                      border: dropIdx === i ? '1px solid rgba(34,197,94,0.40)' : isEditing ? '1px solid rgba(255,255,255,0.16)' : '1px solid rgba(255,255,255,0.07)',
+                    }}
                   >
-                    <GripVertical size={13} color="#CBD5E1" className="flex-shrink-0" />
-                    <div className="font-mono text-[11px] text-text-3 w-4 text-center flex-shrink-0">{i + 1}</div>
+                    <GripVertical size={13} color="rgba(255,255,255,0.18)" className="flex-shrink-0" />
+                    <div className="font-mono text-[11px] w-4 text-center flex-shrink-0" style={{ color: 'rgba(255,255,255,0.22)' }}>{i + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.pkg]}`}>{item.orden}</span>
                         <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.tipo]}`}>{item.tipo === 'comida' ? 'Comida' : item.tipo === 'hogar' ? 'Hogar' : 'Mixto'}</span>
-                        <span className="text-[13px] font-semibold text-text-2">{item.peso}kg</span>
+                        <span className="font-mono text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>{item.peso}kg</span>
                       </div>
-                      <div className="font-mono text-[11px] text-text-3 mt-0.5 truncate">
+                      <div className="font-mono text-[11px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.30)' }}>
                         {dims.length ? dims.join('×') + 'cm' : ''}
                         {item.guia ? (dims.length ? ' · ' : '') + '#' + item.guia : ''}
                         {item.valor ? ' · $' + item.valor.toLocaleString('es-CL') : ''}
                       </div>
                     </div>
-                    <button onClick={() => startEdit(i)} className={`border-none text-[13px] cursor-pointer px-1.5 py-1 rounded transition-all flex-shrink-0 ${isEditing ? 'bg-[rgba(37,99,235,0.12)] text-info' : 'bg-none text-text-3 hover:text-info'}`}>✎</button>
-                    <button onClick={() => { if (isEditing) cancelEdit(); dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda!, idx: i }); }} className="bg-none border-none text-text-3 cursor-pointer px-1.5 py-1 rounded text-sm hover:text-red flex-shrink-0">✕</button>
+                    <button onClick={() => startEdit(i)} className="border-none text-[13px] cursor-pointer px-1.5 py-1 rounded transition-all flex-shrink-0" style={{ background: 'none', color: isEditing ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.22)' }}>✎</button>
+                    <button onClick={() => { if (isEditing) cancelEdit(); dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda!, idx: i }); }} className="border-none cursor-pointer px-1.5 py-1 rounded text-sm flex-shrink-0 transition-all hover:text-red" style={{ background: 'none', color: 'rgba(255,255,255,0.22)' }}>✕</button>
                   </div>
                 );
               })}
@@ -1614,12 +1622,12 @@ export function TiendasPage() {
 
       {/* LEFT PANEL — lista de tiendas (full height on mobile) */}
       <div className="w-full flex-1 lg:flex-none flex flex-col overflow-hidden flex-shrink-0"
-           style={isDesktop ? { width: leftWidth, background: '#0B1426' } : { background: '#0B1426' }}>
+           style={isDesktop ? { width: leftWidth, background: '#0D1829' } : { background: '#0D1829' }}>
 
         {/* Fecha Armado / Despacho */}
         <div style={{
           padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)',
-          background: '#08101E', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
+          background: '#0D1829', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
@@ -1654,7 +1662,7 @@ export function TiendasPage() {
         </div>
 
         {/* Search */}
-        <div className="px-2 py-2 flex-shrink-0" style={{ background: '#0B1426', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="px-2 py-2 flex-shrink-0" style={{ background: '#0D1829', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar tienda…"
             className="w-full rounded-btn px-2.5 py-2 font-barlow text-[14px] outline-none transition-all"
@@ -1896,13 +1904,15 @@ export function TiendasPage() {
       {/* Sheet */}
       <div
         ref={sheetRef}
-        className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[28px] bg-white overflow-hidden"
+        className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[20px] overflow-hidden"
         style={{
+          background: '#0D1829',
           minHeight: '82vh',
           maxHeight: '92vh',
           transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
-          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+          boxShadow: '0 -8px 40px rgba(0,0,0,0.55)',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
         }}
       >
         {/* Form content (reuses renderForm logic) */}
