@@ -14,7 +14,7 @@ export function TabBar() {
   };
 
   return (
-    <div className="flex bg-white border-b-2 border-bg-2 flex-shrink-0">
+    <div className="flex bg-surface-card border-b-2 border-line flex-shrink-0">
       {TABS.map((label, idx) => {
         const badge = getBadge(idx);
         const active = activeTab === idx;

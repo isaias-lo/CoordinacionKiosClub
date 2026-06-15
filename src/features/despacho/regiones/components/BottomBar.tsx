@@ -17,7 +17,7 @@ export function BottomBar({ onClear }: Props) {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 px-4 py-2.5 z-[150] flex items-center gap-3"
-         style={{ background: '#08101E', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+         style={{ background: 'var(--surface-header)', borderTop: '1px solid var(--line)' }}>
       <div className="flex gap-4 flex-1">
         {[
           { v: pallets, l: 'P' },
@@ -25,14 +25,16 @@ export function BottomBar({ onClear }: Props) {
           { v: peso.toLocaleString('es-CL'), l: 'kg' },
         ].map(({ v, l }) => (
           <div key={l} className="flex items-baseline gap-1">
-            <span className="font-mono text-[18px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.88)' }}>{v}</span>
-            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.28)' }}>{l}</span>
+            <span className="font-mono text-[18px] font-bold leading-none"
+                  style={{ color: 'var(--text-hi)' }}>{v}</span>
+            <span className="font-mono text-[10px] uppercase tracking-widest"
+                  style={{ color: 'var(--text-lo)' }}>{l}</span>
           </div>
         ))}
       </div>
       <button onClick={onClear}
         className="px-3 py-1.5 cursor-pointer font-mono text-[11px] uppercase tracking-widest transition-all active:opacity-70"
-        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6, color: 'rgba(255,255,255,0.40)' }}>
+        style={{ background: 'var(--surface-inset)', border: '1px solid var(--line-2)', borderRadius: 6, color: 'var(--text-lo)' }}>
         limpiar
       </button>
     </div>

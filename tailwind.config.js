@@ -63,6 +63,23 @@ export default {
           active:  'rgba(255,255,255,0.10)',
           border:  'rgba(255,255,255,0.07)',
         },
+
+        /* ── Despacho panel semantic tokens ── */
+        surface: {
+          card:   'var(--surface-card)',
+          header: 'var(--surface-header)',
+          inset:  'var(--surface-inset)',
+          raised: 'var(--surface-raised)',
+        },
+        txt: {
+          hi:  'var(--text-hi)',
+          mid: 'var(--text-mid)',
+          lo:  'var(--text-lo)',
+        },
+        line: {
+          DEFAULT: 'var(--line)',
+          2:       'var(--line-2)',
+        },
       },
       fontFamily: {
         barlow:            ['Barlow', 'sans-serif'],

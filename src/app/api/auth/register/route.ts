@@ -22,11 +22,6 @@ export async function POST(request: NextRequest) {
 
   const sb = adminSb();
 
-  const { data: existing } = await sb.auth.admin.listUsers({ perPage: 1000 });
-  if (existing?.users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
-    return NextResponse.json({ error: 'Este correo ya está registrado' }, { status: 409 });
-  }
-
   const { error } = await sb.auth.admin.createUser({
     email,
     password: crypto.randomUUID(),
@@ -35,6 +30,10 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
+    // Supabase returns "already registered" / status 422 for duplicate emails
+    if (error.status === 422 || error.message.toLowerCase().includes('already registered')) {
+      return NextResponse.json({ error: 'Este correo ya está registrado' }, { status: 409 });
+    }
     console.error('[register] createUser error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

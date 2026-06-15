@@ -172,12 +172,12 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
       ...list[idx],
       pkg:   editPkg,
       tipo:  editTipo,
-      peso:  parseFloat(editPeso)  || 0,
-      alto:  parseInt(editAlto)    || 0,
-      ancho: parseInt(editAncho)   || 0,
-      largo: parseInt(editLargo)   || 0,
+      peso:  Math.max(0, parseFloat(editPeso)    || 0),
+      alto:  Math.max(0, parseInt(editAlto,  10) || 0),
+      ancho: Math.max(0, parseInt(editAncho, 10) || 0),
+      largo: Math.max(0, parseInt(editLargo, 10) || 0),
       guia:  editGuia,
-      valor: parseInt(editValor)   || 0,
+      valor: Math.max(0, parseInt(editValor, 10) || 0),
     };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(list) });
     setEditingItem(null);

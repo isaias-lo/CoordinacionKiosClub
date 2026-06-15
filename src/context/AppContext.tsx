@@ -90,8 +90,11 @@ function reducer(state: AppState, action: Action): AppState {
         selection: { ...state.selection, [action.tienda]: sel },
       };
     }
-    case 'UPDATE_ITEMS':
-      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: action.items } };
+    case 'UPDATE_ITEMS': {
+      const sel = { ...state.selection };
+      delete sel[action.tienda]; // indices change after reorder/combine — clear to avoid stale refs
+      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: action.items }, selection: sel };
+    }
     case 'CLEAR_TIENDA': {
       const d = { ...state.dispatch }; delete d[action.tienda];
       const p = { ...state.pdfData }; delete p[action.tienda];
@@ -182,6 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { return ''; }
   })());
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
   const clearedAtRef    = useRef<number>(0); // timestamp of last intentional CLEAR_ALL push
@@ -304,17 +308,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastPushTimestampRef.current = pushedAt;
       // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
       pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
-        .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
+        .catch(() => {
+          lastPushedRef.current = prevLastPushed; // reset so dirty check retries
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+          dispatch({ type: 'SHOW_TOAST', msg: 'Sin conexión — cambios guardados localmente', color: '#F59E0B' });
+          toastTimerRef.current = setTimeout(() => dispatch({ type: 'HIDE_TOAST' }), 4000);
+        })
         .finally(() => { isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now(); });
-      try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
+      try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
     }, 800);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado]);
 
   const showToast = useCallback((msg: string, color?: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     dispatch({ type: 'SHOW_TOAST', msg, color });
-    setTimeout(() => dispatch({ type: 'HIDE_TOAST' }), 3000);
+    toastTimerRef.current = setTimeout(() => dispatch({ type: 'HIDE_TOAST' }), 3000);
   }, []);
 
   const getStats = useCallback(() => {

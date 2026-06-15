@@ -53,21 +53,21 @@ const TAG_CLS: Record<string, string> = {
   pallet:        'bg-[rgba(37,99,235,0.10)] text-info',
   box:           'bg-[rgba(217,119,6,0.10)] text-warn',
 };
-const inputCls = "rounded-btn px-2.5 py-2.5 font-barlow text-[16px] outline-none transition-all focus:border-red [-webkit-appearance:none] w-full border bg-[rgba(255,255,255,0.06)] border-[rgba(255,255,255,0.10)] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.20)]";
+const inputCls = "rounded-btn px-2.5 py-2.5 font-barlow text-[16px] outline-none transition-all focus:border-red [-webkit-appearance:none] w-full border bg-surface-raised border-line-2 text-txt-hi placeholder:text-txt-lo";
 
 function SLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 mt-4 flex items-center gap-2"
-         style={{ color: 'rgba(255,255,255,0.28)' }}>
+         style={{ color: 'var(--text-lo)' }}>
       <span>{children}</span>
-      <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
+      <span className="flex-1 h-px" style={{ background: 'var(--line)' }} />
     </div>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="font-mono text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>{label}</label>
+      <label className="font-mono text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--text-lo)' }}>{label}</label>
       {children}
     </div>
   );
@@ -143,9 +143,9 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       onDragStart={onDragStart}
       onClick={onSelect}
       style={{
-        background: isActive ? '#141c30' : '#0c1220',
-        border: isActive ? '1px solid rgba(212,43,43,0.22)' : '1px solid rgba(255,255,255,0.05)',
-        borderLeft: isActive ? '2px solid #D42B2B' : hasPdf ? '2px solid #16A34A' : '2px solid rgba(255,255,255,0.05)',
+        background: isActive ? 'var(--card-bg-active)' : 'var(--card-bg)',
+        border: isActive ? '1px solid rgba(212,43,43,0.22)' : '1px solid var(--line)',
+        borderLeft: isActive ? '2px solid #D42B2B' : hasPdf ? '2px solid #16A34A' : '2px solid var(--line)',
       }}
       className="flex flex-col px-2.5 py-2.5 cursor-pointer transition-all select-none min-h-[74px] relative rounded-lg active:scale-[0.98]">
 
@@ -160,13 +160,13 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
 
       {/* Store code — monospace, primary */}
       <div className="font-mono text-[12px] font-bold leading-none tracking-wide"
-           style={{ color: isActive ? '#ffffff' : hasPdf ? '#22C55E' : 'rgba(255,255,255,0.80)' }}>
+           style={{ color: isActive ? 'var(--text-hi)' : hasPdf ? '#22C55E' : 'var(--text-mid)' }}>
         {formatCod(t.cod)}
       </div>
 
       {/* Store name — secondary muted */}
       <div className="text-[10px] leading-tight truncate mt-1.5"
-           style={{ color: 'rgba(255,255,255,0.28)', letterSpacing: '0.02em' }}>
+           style={{ color: 'var(--text-lo)', letterSpacing: '0.02em' }}>
         {t.name}
       </div>
 
@@ -174,17 +174,17 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       <div className="mt-auto pt-2">
         {countStr ? (
           <span className="font-mono text-[10px]"
-                style={{ color: isActive ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.40)' }}>
+                style={{ color: isActive ? 'var(--text-mid)' : 'var(--text-lo)' }}>
             {countStr}
           </span>
         ) : pendingStr ? (
           <span className="font-mono text-[10px]"
-                style={{ color: 'rgba(255,255,255,0.20)' }}>
+                style={{ color: 'var(--text-lo)' }}>
             — {pendingStr}
           </span>
         ) : presetStr ? (
           <span className="font-mono text-[10px]"
-                style={{ color: 'rgba(255,255,255,0.16)' }}>
+                style={{ color: 'var(--text-lo)' }}>
             {presetStr}
           </span>
         ) : null}
@@ -1434,8 +1434,8 @@ export function TiendasPage() {
           {editingIdx !== null && (
             <div className="mt-2 rounded-card px-2.5 py-2 flex items-center justify-between"
                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}>
-              <span className="font-mono text-[12px]" style={{ color: 'rgba(255,255,255,0.60)' }}>editando #{editingIdx + 1}</span>
-              <button onClick={cancelEdit} className="font-mono text-[11px] cursor-pointer border-none bg-transparent transition-all hover:text-red" style={{ color: 'rgba(255,255,255,0.35)' }}>cancelar</button>
+              <span className="font-mono text-[12px]" style={{ color: 'var(--text-mid)' }}>editando #{editingIdx + 1}</span>
+              <button onClick={cancelEdit} className="font-mono text-[11px] cursor-pointer border-none bg-transparent transition-all hover:text-red" style={{ color: 'var(--text-lo)' }}>cancelar</button>
             </div>
           )}
           <SLabel>Tipo</SLabel>
@@ -1444,8 +1444,8 @@ export function TiendasPage() {
               <button key={p} onClick={() => setPkg(p)}
                 className="flex-1 py-2 rounded-btn font-mono text-[11px] font-semibold cursor-pointer transition-all min-w-[60px] uppercase tracking-widest"
                 style={currentPkg === p
-                  ? { background: 'rgba(212,43,43,0.18)', border: '1px solid rgba(212,43,43,0.50)', color: 'rgba(255,255,255,0.90)' }
-                  : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.40)' }}>
+                  ? { background: 'rgba(212,43,43,0.18)', border: '1px solid rgba(212,43,43,0.50)', color: 'var(--text-hi)' }
+                  : { background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'var(--text-lo)' }}>
                 {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Cont.' : p === 'chocolate' ? 'Choc.' : 'Bulto'}
               </button>
             ))}
@@ -1456,13 +1456,13 @@ export function TiendasPage() {
               <button key={t} onClick={() => setTipo(t)} disabled={currentPkg === 'box' && t !== 'hogar'}
                 className="flex-1 py-2 rounded-btn font-mono text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-25 disabled:cursor-not-allowed uppercase tracking-widest"
                 style={currentTipo === t
-                  ? { background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', color: 'rgba(255,255,255,0.90)' }
-                  : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.38)' }}>
+                  ? { background: 'var(--surface-2)', border: '1px solid var(--line-2)', color: 'var(--text-hi)' }
+                  : { background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'var(--text-lo)' }}>
                 {t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto'}
               </button>
             ))}
           </div>
-          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 rounded-btn px-2.5 py-1 font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>{currentPkg === 'chocolate' ? 'Chocolate → siempre Hogar' : 'Bulto → siempre Hogar'}</div>}
+          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 rounded-btn px-2.5 py-1 font-mono text-[10px]" style={{ color: 'var(--text-lo)', background: 'var(--surface-inset)', border: '1px solid var(--line)' }}>{currentPkg === 'chocolate' ? 'Chocolate → siempre Hogar' : 'Bulto → siempre Hogar'}</div>}
           <SLabel>Peso y dimensiones</SLabel>
           <div className="grid grid-cols-2 gap-1.5">
             <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder={currentPkg === 'chocolate' ? 'máx 25' : '500'} inputMode="decimal" className={inputCls} /></Field>
@@ -1471,22 +1471,22 @@ export function TiendasPage() {
             )}
             {currentPkg === 'pallet' ? (
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>Ancho × Largo</label>
-                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
+                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--text-lo)' }}>Ancho × Largo</label>
+                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'var(--text-lo)' }}>
                   100 × 120 cm — fijo
                 </div>
               </div>
             ) : currentPkg === 'contenedor' ? (
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>Dimensiones</label>
-                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
+                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--text-lo)' }}>Dimensiones</label>
+                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'var(--text-lo)' }}>
                   80 × 110 cm · alto 150 cm — fijo
                 </div>
               </div>
             ) : currentPkg === 'chocolate' ? (
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.28)' }}>Dimensiones</label>
-                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
+                <label className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--text-lo)' }}>Dimensiones</label>
+                <div className="rounded-btn px-2.5 py-2.5 font-mono text-[13px] text-center" style={{ background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'var(--text-lo)' }}>
                   56 × 80 cm · alto 42 cm — fijo · máx 25 kg
                 </div>
               </div>
@@ -1505,7 +1505,7 @@ export function TiendasPage() {
             </button>
             {items.length > 0 && editingIdx === null && (
               <button onClick={copyLast} className="w-full py-2.5 mt-1.5 rounded-btn font-mono text-[11px] uppercase tracking-widest cursor-pointer transition-all"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.35)' }}>
+                style={{ background: 'var(--surface-inset)', border: '1px dashed var(--line-2)', color: 'var(--text-lo)' }}>
                 ↻ copiar último
               </button>
             )}
@@ -1583,8 +1583,8 @@ export function TiendasPage() {
                       dragIdx !== null ? 'cursor-grabbing' : 'cursor-grab',
                     ].join(' ')}
                     style={{
-                      background: dropIdx === i ? 'rgba(34,197,94,0.08)' : isEditing ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-                      border: dropIdx === i ? '1px solid rgba(34,197,94,0.40)' : isEditing ? '1px solid rgba(255,255,255,0.16)' : '1px solid rgba(255,255,255,0.07)',
+                      background: dropIdx === i ? 'rgba(34,197,94,0.08)' : isEditing ? 'var(--surface-2)' : 'var(--surface-inset)',
+                      border: dropIdx === i ? '1px solid rgba(34,197,94,0.40)' : isEditing ? '1px solid var(--line-2)' : '1px solid var(--line)',
                     }}
                   >
                     <GripVertical size={13} color="rgba(255,255,255,0.18)" className="flex-shrink-0" />
@@ -1593,16 +1593,16 @@ export function TiendasPage() {
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.pkg]}`}>{item.orden}</span>
                         <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.tipo]}`}>{item.tipo === 'comida' ? 'Comida' : item.tipo === 'hogar' ? 'Hogar' : 'Mixto'}</span>
-                        <span className="font-mono text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>{item.peso}kg</span>
+                        <span className="font-mono text-[13px] font-semibold" style={{ color: 'var(--text-mid)' }}>{item.peso}kg</span>
                       </div>
-                      <div className="font-mono text-[11px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.30)' }}>
+                      <div className="font-mono text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-lo)' }}>
                         {dims.length ? dims.join('×') + 'cm' : ''}
                         {item.guia ? (dims.length ? ' · ' : '') + '#' + item.guia : ''}
                         {item.valor ? ' · $' + item.valor.toLocaleString('es-CL') : ''}
                       </div>
                     </div>
-                    <button onClick={() => startEdit(i)} className="border-none text-[13px] cursor-pointer px-1.5 py-1 rounded transition-all flex-shrink-0" style={{ background: 'none', color: isEditing ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.22)' }}>✎</button>
-                    <button onClick={() => { if (isEditing) cancelEdit(); dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda!, idx: i }); }} className="border-none cursor-pointer px-1.5 py-1 rounded text-sm flex-shrink-0 transition-all hover:text-red" style={{ background: 'none', color: 'rgba(255,255,255,0.22)' }}>✕</button>
+                    <button onClick={() => startEdit(i)} className="border-none text-[13px] cursor-pointer px-1.5 py-1 rounded transition-all flex-shrink-0" style={{ background: 'none', color: isEditing ? 'var(--text-mid)' : 'var(--text-lo)' }}>✎</button>
+                    <button onClick={() => { if (isEditing) cancelEdit(); dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda!, idx: i }); }} className="border-none cursor-pointer px-1.5 py-1 rounded text-sm flex-shrink-0 transition-all hover:text-red" style={{ background: 'none', color: 'var(--text-lo)' }}>✕</button>
                   </div>
                 );
               })}
@@ -1815,7 +1815,7 @@ export function TiendasPage() {
 
           {filtered.length === 0 && (
             <div className="py-10 text-center">
-              <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.28)' }}>Sin resultados</p>
+              <p className="text-[13px]" style={{ color: 'var(--text-lo)' }}>Sin resultados</p>
             </div>
           )}
         </div>
@@ -1832,7 +1832,7 @@ export function TiendasPage() {
             ].map(({ v, l }, i, arr) => (
               <div key={l} className="flex-1 flex items-baseline gap-1.5" style={{ borderRight: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none', paddingRight: i < arr.length - 1 ? 12 : 0, paddingLeft: i > 0 ? 12 : 0 }}>
                 <span className="font-mono text-[20px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.88)' }}>{v}</span>
-                <span className="text-[10px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.28)' }}>{l}</span>
+                <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--text-lo)' }}>{l}</span>
               </div>
             ))}
           </div>
@@ -1872,7 +1872,7 @@ export function TiendasPage() {
       )}
 
       {/* CENTER PANEL — formulario (desktop only) */}
-      <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative">
+      <div ref={rightPanelRef} className="hidden lg:flex flex-1 flex-col overflow-hidden relative bg-bg">
         <div className="flex-1 overflow-hidden flex flex-col">
           {selectedTienda
             ? renderForm(false)
@@ -1906,13 +1906,13 @@ export function TiendasPage() {
         ref={sheetRef}
         className="fixed inset-x-0 bottom-0 z-50 lg:hidden flex flex-col rounded-t-[20px] overflow-hidden"
         style={{
-          background: '#0D1829',
+          background: 'var(--color-bg)',
           minHeight: '82vh',
           maxHeight: '92vh',
           transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -8px 40px rgba(0,0,0,0.55)',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
+          borderTop: '1px solid var(--line)',
         }}
       >
         {/* Form content (reuses renderForm logic) */}
@@ -1957,20 +1957,20 @@ export function TiendasPage() {
       {/* Mobile Resumen Overlay */}
       {showMobileResumen && (
         <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
-          <div className="px-3 py-3 flex items-center gap-3 flex-shrink-0" style={{ background: '#08101E', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="px-3 py-3 flex items-center gap-3 flex-shrink-0" style={{ background: 'var(--surface-header)', borderBottom: '1px solid var(--line)' }}>
             <button
               onClick={() => setShowMobileResumen(false)}
               className="flex items-center justify-center flex-shrink-0 cursor-pointer transition-all active:opacity-70"
-              style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6 }}>
-              <ChevronLeft size={16} color="rgba(255,255,255,0.65)" strokeWidth={1.5} />
+              style={{ width: 32, height: 32, background: 'var(--surface-raised)', border: '1px solid var(--line-2)', borderRadius: 6 }}>
+              <ChevronLeft size={16} style={{ color: 'var(--text-mid)' }} strokeWidth={1.5} />
             </button>
-            <span className="font-mono text-[12px] font-semibold tracking-widest uppercase flex-1" style={{ color: 'rgba(255,255,255,0.60)' }}>Resumen</span>
+            <span className="font-mono text-[12px] font-semibold tracking-widest uppercase flex-1" style={{ color: 'var(--text-mid)' }}>Resumen</span>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
               className="flex items-center gap-1.5 py-1.5 px-3 cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 6 }}>
-              <Navigation size={12} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
-              <span className="font-mono text-[11px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.45)' }}>Enrutador</span>
+              style={{ background: 'var(--surface-raised)', border: '1px solid var(--line-2)', borderRadius: 6 }}>
+              <Navigation size={12} style={{ color: 'var(--text-lo)' }} strokeWidth={1.5} />
+              <span className="font-mono text-[11px] uppercase tracking-widest" style={{ color: 'var(--text-lo)' }}>Enrutador</span>
             </button>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">

@@ -670,17 +670,22 @@ export default function ControlCruceContent() {
   const hasSelection        = selectedRows.length > 0;
   const completadoCount     = table.getFilteredRowModel().rows.filter(r => r.original.estado === 'COMPLETADO').length;
   const selCompletadoCount  = selectedRows.filter(r => r.original.estado === 'COMPLETADO').length;
-  const exportCount         = hasSelection ? selCompletadoCount : completadoCount;
+  const exportCount         = incluyePendientes
+    ? (hasSelection ? selectedRows.length : filteredCount)
+    : (hasSelection ? selCompletadoCount : completadoCount);
   const pageRows            = table.getRowModel().rows;
 
   // ── Exportar a Sheets (sin stale closure: lee tabla en el momento del click) ──
   async function exportToSheet() {
-    // Con selección: exporta las seleccionadas COMPLETADAS.
-    // Sin selección: exporta todas las filtradas COMPLETADAS.
+    // Con selección: exporta las seleccionadas.
+    // Sin selección: exporta todas las filtradas.
+    // Si incluyePendientes está activo, incluye VENCIDA/PLANIFICADO; si no, solo COMPLETADO.
     const pool = hasSelection
       ? table.getSelectedRowModel().rows.map(r => r.original)
       : table.getFilteredRowModel().rows.map(r => r.original);
-    const currentRows = pool.filter(r => r.estado === 'COMPLETADO');
+    const currentRows = incluyePendientes
+      ? pool
+      : pool.filter(r => r.estado === 'COMPLETADO');
     if (!currentRows.length) return;
     setExporting(true);
     setExportMsg(null);
@@ -854,8 +859,12 @@ export default function ControlCruceContent() {
               onClick={exportToSheet}
               disabled={exporting || exportCount === 0}
               title={hasSelection
-                ? `Exportar ${selCompletadoCount} seleccionadas COMPLETADAS (${selectedRows.length} seleccionadas total)`
-                : `Exportar ${completadoCount} filas COMPLETADAS a Google Sheet`
+                ? incluyePendientes
+                  ? `Exportar ${selectedRows.length} seleccionadas (incluye vencidas/planificadas)`
+                  : `Exportar ${selCompletadoCount} seleccionadas COMPLETADAS (${selectedRows.length} seleccionadas total)`
+                : incluyePendientes
+                  ? `Exportar ${filteredCount} filas visibles (incluye vencidas/planificadas)`
+                  : `Exportar ${completadoCount} filas COMPLETADAS a Google Sheet`
               }
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -871,8 +880,12 @@ export default function ControlCruceContent() {
               {exporting
                 ? 'Exportando…'
                 : hasSelection
-                  ? `Exportar ${selCompletadoCount} seleccionadas`
-                  : `Exportar ${completadoCount} completadas`
+                  ? incluyePendientes
+                    ? `Exportar ${selectedRows.length} seleccionadas`
+                    : `Exportar ${selCompletadoCount} seleccionadas`
+                  : incluyePendientes
+                    ? `Exportar ${filteredCount} filas`
+                    : `Exportar ${completadoCount} completadas`
               }
             </button>
           )}

@@ -10,7 +10,7 @@ type Fuente = 'santiago' | 'regiones';
 
 interface DraftStore { nombre: string; pallets: number; bultos: number; contenedores: number; chocolates: number; }
 interface PendingDraft {
-  fecha: string;                 // YYYY-MM-DD
+  fecha: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   state: any;
   stores: DraftStore[];
@@ -29,7 +29,7 @@ function todayISO(): string {
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 function fechaBonita(iso: string): string {
   const [y, m, d] = iso.split('-');
-  return `${parseInt(d)} ${MESES[parseInt(m) - 1] ?? m} ${y}`;
+  return `${parseInt(d, 10)} ${MESES[parseInt(m, 10) - 1] ?? m} ${y}`;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,7 +104,6 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Marca el borrador como atendido (upsert con state vacío) — evita depender de permisos DELETE
   const marcarAtendido = async (fecha: string) => {
     await supabase.from('shared_session_state').upsert(
       { fecha, fuente, state: { _handled: true }, updated_at: new Date().toISOString() },
@@ -146,51 +145,50 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
 
   return (
     <>
+      {/* Toast de éxito */}
       {toast && (
-        <div className="flex-shrink-0 px-4 py-2 bg-[rgba(22,163,74,0.10)] border-b border-[rgba(22,163,74,0.25)] text-[13px] font-bold text-success">
+        <div className="flex-shrink-0 px-4 py-2 font-mono text-[11px] font-semibold"
+             style={{ background: 'rgba(22,163,74,0.10)', borderBottom: '1px solid rgba(22,163,74,0.22)', color: '#4ADE80' }}>
           {toast}
         </div>
       )}
 
+      {/* Banners de borradores pendientes */}
       {drafts.map(d => (
-        <div key={d.fecha} className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3">
+        <div key={d.fecha} className="flex-shrink-0 px-4 py-3"
+             style={{ background: 'rgba(245,158,11,0.08)', borderBottom: '1px solid rgba(245,158,11,0.18)' }}>
           <div className="flex items-start gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-extrabold text-amber-800 uppercase tracking-wide flex items-center gap-2">
-                ⚠️ Despacho sin registrar · {fechaBonita(d.fecha)}
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] flex items-center gap-2"
+                   style={{ color: '#F59E0B' }}>
+                Despacho sin registrar · {fechaBonita(d.fecha)}
               </div>
-              <div className="text-[13px] text-amber-700 font-semibold mt-0.5">
+              <div className="font-mono text-[12px] font-bold mt-0.5" style={{ color: 'var(--text-mid)' }}>
                 {d.tiendas} tienda{d.tiendas !== 1 ? 's' : ''}
-                {d.pallets > 0 ? ` · ${d.pallets} pallet${d.pallets !== 1 ? 's' : ''}` : ''}
-                {d.bultos > 0 ? ` · ${d.bultos} bulto${d.bultos !== 1 ? 's' : ''}` : ''}
-                {d.contenedores > 0 ? ` · ${d.contenedores} cont.` : ''}
-                {d.chocolates > 0 ? ` · ${d.chocolates} choc.` : ''}
+                {d.pallets > 0 ? ` · ${d.pallets}P` : ''}
+                {d.bultos > 0 ? ` · ${d.bultos}B` : ''}
+                {d.contenedores > 0 ? ` · ${d.contenedores}C` : ''}
+                {d.chocolates > 0 ? ` · ${d.chocolates}CH` : ''}
               </div>
-              <div className="text-[11px] text-amber-600 mt-0.5">Ya es un nuevo día. Regístralo para no perderlo.</div>
+              <div className="font-mono text-[10px] mt-0.5" style={{ color: 'var(--text-lo)' }}>
+                Ya es un nuevo día — regístralo para no perderlo
+              </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={() => registrar(d)}
-                disabled={busy === d.fecha}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-bold text-white cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'linear-gradient(145deg,#16A34A,#15803D)', boxShadow: '0 2px 8px rgba(22,163,74,0.35)' }}
-              >
-                {busy === d.fecha ? '⏳' : '✓'} Registrar ahora
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button onClick={() => registrar(d)} disabled={busy === d.fecha}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-mono text-[10px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-70 disabled:opacity-40"
+                style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.28)', color: '#4ADE80' }}>
+                {busy === d.fecha ? '…' : '✓'} Registrar
               </button>
-              <button
-                onClick={() => setReviewing(d)}
-                className="px-3 py-2 rounded-lg text-[12px] font-bold cursor-pointer transition-all active:scale-95"
-                style={{ background: 'white', color: '#92400E', border: '1px solid rgba(146,64,14,0.30)' }}
-              >
-                👁 Revisar
+              <button onClick={() => setReviewing(d)}
+                className="px-3 py-1.5 rounded-[6px] font-mono text-[10px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-70"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--line-2)', color: 'rgba(255,255,255,0.50)' }}>
+                Revisar
               </button>
-              <button
-                onClick={() => descartar(d)}
-                disabled={busy === d.fecha}
-                className="px-3 py-2 rounded-lg text-[12px] font-bold cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'white', color: '#9CA3AF', border: '1px solid rgba(0,0,0,0.12)' }}
-              >
-                🗑 Descartar
+              <button onClick={() => descartar(d)} disabled={busy === d.fecha}
+                className="px-3 py-1.5 rounded-[6px] font-mono text-[10px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-70 disabled:opacity-40"
+                style={{ background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'var(--text-lo)' }}>
+                Descartar
               </button>
             </div>
           </div>
@@ -199,44 +197,59 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
 
       {/* Modal Revisar */}
       {reviewing && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setReviewing(null)}>
-          <div className="bg-white rounded-2xl overflow-hidden shadow-2xl w-full max-w-md mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 bg-navy flex items-center justify-between flex-shrink-0">
+        <div className="fixed inset-0 z-[600] flex items-center justify-center"
+             style={{ background: 'rgba(0,0,0,0.72)' }}
+             onClick={() => setReviewing(null)}>
+          <div className="w-full max-w-md mx-4 max-h-[85vh] flex flex-col rounded-[10px] overflow-hidden"
+               style={{ background: 'var(--surface-card)', border: '1px solid var(--line)' }}
+               onClick={e => e.stopPropagation()}>
+
+            {/* Header modal */}
+            <div className="px-4 py-3 flex items-center justify-between flex-shrink-0"
+                 style={{ background: 'var(--surface-header)', borderBottom: '1px solid var(--line)' }}>
               <div>
-                <div className="font-barlow-condensed text-[16px] font-bold text-white uppercase tracking-wider">
-                  Borrador · {fechaBonita(reviewing.fecha)}
+                <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em]"
+                     style={{ color: 'var(--text-lo)' }}>Borrador</div>
+                <div className="font-mono text-[14px] font-bold" style={{ color: 'var(--text-hi)' }}>
+                  {fechaBonita(reviewing.fecha)}
                 </div>
-                <div className="text-[11px] text-white/55">
+                <div className="font-mono text-[10px] mt-0.5" style={{ color: 'var(--text-lo)' }}>
                   {reviewing.tiendas} tiendas · {reviewing.pallets}P · {reviewing.bultos}B
                   {reviewing.chocolates > 0 ? ` · ${reviewing.chocolates}CH` : ''}
                 </div>
               </div>
-              <button onClick={() => setReviewing(null)} className="text-white/50 hover:text-white text-xl">✕</button>
+              <button onClick={() => setReviewing(null)}
+                      className="w-7 h-7 flex items-center justify-center rounded-[4px] font-mono text-[14px] cursor-pointer transition-all active:opacity-70"
+                      style={{ background: 'var(--surface-raised)', color: 'rgba(255,255,255,0.40)' }}>
+                ✕
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-border">
-              {reviewing.stores.map(s => (
-                <div key={s.nombre} className="px-4 py-2.5 flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-navy truncate">{s.nombre}</span>
-                  <span className="font-mono text-[12px] text-text-3 flex-shrink-0 ml-2">
+
+            {/* Lista tiendas */}
+            <div className="flex-1 overflow-y-auto">
+              {reviewing.stores.map((s, i) => (
+                <div key={s.nombre} className="px-4 py-2.5 flex items-center justify-between"
+                     style={{ borderTop: i > 0 ? '1px solid var(--line)' : 'none' }}>
+                  <span className="font-mono text-[12px]" style={{ color: 'var(--text-mid)' }}>{s.nombre}</span>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-lo)' }}>
                     {s.pallets > 0 ? `${s.pallets}P ` : ''}{s.bultos > 0 ? `${s.bultos}B ` : ''}
                     {s.contenedores > 0 ? `${s.contenedores}C ` : ''}{s.chocolates > 0 ? `${s.chocolates}CH` : ''}
                   </span>
                 </div>
               ))}
             </div>
-            <div className="flex gap-2 px-4 py-3 border-t border-border flex-shrink-0">
-              <button
-                onClick={() => registrar(reviewing)}
-                disabled={busy === reviewing.fecha}
-                className="flex-1 py-2.5 rounded-xl text-[14px] font-bold text-white cursor-pointer disabled:opacity-50"
-                style={{ background: 'linear-gradient(145deg,#16A34A,#15803D)' }}
-              >
-                {busy === reviewing.fecha ? 'Registrando…' : '✓ Registrar ahora'}
+
+            {/* Footer modal */}
+            <div className="flex gap-2 px-4 py-3 flex-shrink-0"
+                 style={{ borderTop: '1px solid var(--line)' }}>
+              <button onClick={() => registrar(reviewing)} disabled={busy === reviewing.fecha}
+                className="flex-1 py-2.5 rounded-[6px] font-mono text-[11px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-75 disabled:opacity-40"
+                style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.28)', color: '#4ADE80' }}>
+                {busy === reviewing.fecha ? 'Registrando…' : '✓ Registrar'}
               </button>
-              <button
-                onClick={() => setReviewing(null)}
-                className="px-4 py-2.5 rounded-xl text-[14px] font-bold cursor-pointer bg-bg-2 text-text-2 border border-border"
-              >
+              <button onClick={() => setReviewing(null)}
+                className="px-5 py-2.5 rounded-[6px] font-mono text-[11px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-70"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.45)' }}>
                 Cerrar
               </button>
             </div>

@@ -30,7 +30,7 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   accessToken: null,
   signOut: async () => {},
-  can: () => true,
+  can: () => false,
 });
 
 export function useAuth() {

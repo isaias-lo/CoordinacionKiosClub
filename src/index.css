@@ -48,6 +48,19 @@
   --border-subtle:    rgba(255,255,255,0.08);
   --border-medium:    rgba(255,255,255,0.12);
 
+  /* ── Despacho panel semantic tokens (light defaults) ── */
+  --text-hi:          rgba(0,0,0,0.88);
+  --text-mid:         rgba(0,0,0,0.55);
+  --text-lo:          rgba(0,0,0,0.30);
+  --line:             rgba(0,0,0,0.07);
+  --line-2:           rgba(0,0,0,0.12);
+  --surface-card:     #FFFFFF;
+  --surface-header:   #F8F8FA;
+  --surface-inset:    rgba(0,0,0,0.03);
+  --surface-raised:   rgba(0,0,0,0.04);
+  --card-bg:          #F4F6FA;
+  --card-bg-active:   #FFFFFF;
+
   /* Gradients */
   --gradient-dark:    linear-gradient(180deg, #0D1829 0%, #111E38 100%);
   --gradient-dark-h:  linear-gradient(90deg,  #0D1829 0%, #111E38 100%);
@@ -60,8 +73,9 @@
   --shadow-lg:        0 8px 32px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.10);
 }
 
-/* ── Dark mode overrides ─────────────────────────────────────────── */
-html.dark {
+/* ── Dark mode — activable via html.dark (toggle global) o .theme-dark (scope local) ── */
+html.dark,
+.theme-dark {
   --color-bg:         #0D1829;
   --color-bg-2:       #111E38;
   --color-bg-3:       #1a2845;
@@ -72,10 +86,30 @@ html.dark {
   --color-text-2:     #CBD5E1;
   --color-text-3:     #94A3B8;
   --shadow-card:      0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --surface-1:        rgba(255,255,255,0.04);
+  --surface-2:        rgba(255,255,255,0.08);
+  --surface-3:        rgba(255,255,255,0.12);
+  --border-subtle:    rgba(255,255,255,0.07);
+  --border-medium:    rgba(255,255,255,0.12);
+
+  /* ── Despacho panel semantic tokens (dark overrides) ── */
+  --text-hi:          rgba(255,255,255,0.88);
+  --text-mid:         rgba(255,255,255,0.55);
+  --text-lo:          rgba(255,255,255,0.28);
+  --line:             rgba(255,255,255,0.07);
+  --line-2:           rgba(255,255,255,0.12);
+  --surface-card:     #111E38;
+  --surface-header:   #08101E;
+  --surface-inset:    rgba(255,255,255,0.04);
+  --surface-raised:   rgba(255,255,255,0.06);
+  --card-bg:          #0c1220;
+  --card-bg-active:   #141c30;
 }
 
-html.dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
-html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+html.dark ::-webkit-scrollbar-thumb,
+.theme-dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
+html.dark ::-webkit-scrollbar-thumb:hover,
+.theme-dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 
 @layer base {
   * {

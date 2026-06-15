@@ -5,12 +5,14 @@ import { AppHeader } from '../components/AppHeader';
 import { FinishModal } from '../components/modals/FinishModal';
 import { TiendasPage } from '../features/despacho/regiones/pages/TiendasPage';
 import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
+import { useTheme } from '../context/ThemeContext';
 
 export function AppScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
+  const { theme } = useTheme();
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ background: '#0D1829' }}>
+    <div className={`${theme === 'dark' ? 'theme-dark' : ''} fixed inset-0 flex flex-col overflow-hidden bg-bg`}>
       <AppHeader onFinish={() => setFinishOpen(true)} backTo="/despacho/conteo" />
 
       <PendingDraftBanner fuente="regiones" />

@@ -22,7 +22,11 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
   try {
     const res = await fetch(new URL('/api/odoo', request.url), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Reenviar la cookie de sesión para que /api/odoo pueda verificar auth
+        'Cookie': request.headers.get('cookie') ?? '',
+      },
       // query vacío = TODAS las tiendas del día en una sola llamada batch
       body: JSON.stringify({ action: 'picking_today_operations', query: '' }),
     });

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Check } from 'lucide-react';
+import { ChevronLeft, Check, Sun, Moon } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 import { REGIONES_TERMINADO_KEY } from './modals/FinishModal';
 
 interface AppHeaderProps {
@@ -13,6 +14,8 @@ interface AppHeaderProps {
 
 export function AppHeader({ onFinish, backTo = '/despacho' }: AppHeaderProps) {
   const { state, flushPending } = useApp();
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
   const router = useRouter();
   const [terminated, setTerminated] = useState(false);
   const [terminatedAt, setTerminatedAt] = useState('');
@@ -35,61 +38,79 @@ export function AppHeader({ onFinish, backTo = '/despacho' }: AppHeaderProps) {
   };
 
   return (
-    <div className="flex items-center px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
-         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
+    <div className="flex items-center px-4 py-3 gap-3 flex-shrink-0"
+         style={{ background: 'var(--surface-header)', borderBottom: '1px solid var(--line)' }}>
+
+      {/* Back — flat square, no shadow */}
       <button
         onClick={() => confirmBack(backTo)}
-        className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
+        className="flex items-center justify-center cursor-pointer transition-all active:opacity-70 flex-shrink-0"
         style={{
-          width: 36, height: 36,
-          background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-          border: '1px solid rgba(255,255,255,0.15)',
-          boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
+          width: 34, height: 34,
+          background: 'var(--surface-raised)',
+          border: '1px solid var(--line-2)',
+          borderRadius: 6,
         }}>
-        <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+        <ChevronLeft size={16} style={{ color: 'var(--text-mid)' }} strokeWidth={1.5} />
       </button>
+
+      {/* Center: label + date */}
       <div className="flex flex-col items-center flex-1 min-w-0">
-        <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] leading-none"
+              style={{ color: 'var(--text-lo)' }}>
           NACIONAL
-        </div>
+        </span>
         {state.dispatchDate && (
-          <div className="font-barlow-condensed text-[11px] text-white/50 tracking-wide leading-none mt-0.5">
+          <span className="font-mono text-[13px] font-bold leading-none mt-[5px]"
+                style={{ color: 'var(--text-hi)' }}>
             {state.dispatchDate}
-          </div>
+          </span>
         )}
       </div>
 
+      {/* Theme toggle */}
+      <button
+        onClick={toggleTheme}
+        title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        className="flex items-center justify-center cursor-pointer transition-all active:opacity-70 flex-shrink-0"
+        style={{
+          width: 34, height: 34,
+          background: 'var(--surface-raised)',
+          border: '1px solid var(--line-2)',
+          borderRadius: 6,
+        }}>
+        {isDark
+          ? <Sun  size={15} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+          : <Moon size={15} color="rgba(0,0,0,0.45)"       strokeWidth={1.5} />}
+      </button>
+
+      {/* Registrar / Completado — flat, no gradient */}
       {terminated ? (
         <button
           onClick={handleReopen}
           title={`Terminado a las ${terminatedAt} · Toca para reabrir`}
-          className="flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-          style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.50)' }}>
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-               style={{
-                 background: 'linear-gradient(145deg, #22C55E, #15803D)',
-                 boxShadow: '0 3px 8px rgba(34,197,94,0.45), inset 0 1px 0 rgba(255,255,255,0.25)',
-               }}>
-            <Check size={14} color="#fff" strokeWidth={2.5} />
-          </div>
+          className="flex items-center gap-1.5 px-3 py-2 cursor-pointer transition-all active:opacity-70 flex-shrink-0"
+          style={{
+            background: 'rgba(22,163,74,0.10)',
+            border: '1px solid rgba(22,163,74,0.25)',
+            borderRadius: 6,
+          }}>
+          <Check size={13} color="#4ADE80" strokeWidth={2.5} />
           <div className="flex flex-col leading-none">
-            <span className="font-barlow-condensed text-[12px] font-bold tracking-widest uppercase text-[#86EFAC]">COMPLETADO</span>
-            {terminatedAt && <span className="text-[9px] text-white/40 mt-0.5">{terminatedAt}</span>}
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-widest"
+                  style={{ color: '#4ADE80' }}>Completado</span>
+            {terminatedAt && (
+              <span className="font-mono text-[9px] mt-0.5"
+                    style={{ color: 'var(--text-lo)' }}>{terminatedAt}</span>
+            )}
           </div>
         </button>
       ) : (
         <button
           onClick={onFinish}
-          className="flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-          style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)' }}>
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-               style={{
-                 background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
-                 boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
-               }}>
-            <Check size={14} color="#fff" strokeWidth={2} />
-          </div>
-          <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">REGISTRAR</span>
+          className="px-4 py-2 cursor-pointer transition-all active:opacity-75 flex-shrink-0 font-mono text-[11px] font-semibold uppercase tracking-widest text-white"
+          style={{ background: '#D42B2B', borderRadius: 6 }}>
+          Registrar
         </button>
       )}
     </div>

@@ -2,40 +2,29 @@
 
 ## Última sesión
 Fecha: 2026-06-15
-Último commit: feat(ux): dark enterprise left panel en /despacho/regiones
-Rama: ux-despacho (en progreso — NO mergeada a main todavía)
+Rama: ux-despacho — **CERRADA y commiteada. Nueva rama: controlv3 desde main.**
 
-## Archivos modificados recientemente
-src/features/despacho/regiones/pages/TiendasPage.tsx
+## Resumen de lo que quedó en ux-despacho
+**Rediseño UX enterprise dark de /despacho/regiones** — completo.
 
-## En progreso
-**Rediseño UX enterprise v2 de /despacho/regiones** — rama `ux-despacho`
-
-Principio aplicado: monocromático serio (Linear/Vercel/Bloomberg), no colorido.
-
-Cambios:
-- TiendaGridCard: dark flat (#0c1220), borde izq rojo solo si activa, código en font-mono
-  blanco, nombre muted, conteos "2P · 1B" en font-mono monocromático (sin badges colores)
-- Dot de Odoo: movido a esquina derecha, 6px, sin ring, solo verde/ámbar funcional
-- Stats footer: numbers mono blancos, labels tracking-widest muted, sin azul/amarillo/verde
-- Botón Enrutador: flat, sin gradiente ni ícono decorativo, solo texto + flecha pequeña
-- Botón RESUMEN: rojo plano sin box-shadow dramático
-- Sección HOY: thin red strip + texto mono minúsculo "Hoy"
-- Sección Todas: thin grey strip + texto mono minúsculo "Todas"
-- Multi-PDF: botón plano dashed, mono, sin drama
-- HOY chips: pequeños tags mono flat, selected=rojo sólido
-- BottomBar: monocromático, sin border-red, sin shadow
-- Mobile Resumen overlay: header oscuro flat sin gradientes
+### Cambios entregados
+- **Sistema de tokens CSS** (`src/index.css`): vars semánticas `--text-hi/mid/lo`, `--line`, `--line-2`, `--surface-card/header/inset/raised`, `--card-bg/active` en `:root` (light) y `.theme-dark` (dark).
+- **tailwind.config.js**: aliases `surface.*`, `txt.*`, `line.*` para las vars CSS.
+- **AppScreen**: clase condicional `theme-dark` desde `ThemeContext`.
+- **AppHeader**: toggle Sol/Luna + tokens CSS en lugar de rgba hardcoded.
+- **CombineItemsModal, FinishModal, PendingDraftBanner**: todas las rgba → `var(--...)`.
+- **TabBar, StatsBar, BottomBar**: tokens CSS, light/dark adaptativos.
+- **TiendasPage**: `inputCls`, `SLabel`, `Field`, `TiendaGridCard` y formularios con tokens.
+- **Fix 500**: stray `}}` en TiendasPage.tsx:1465 corregido. Clave duplicada `card` en tailwind eliminada.
 
 216/216 tests pasan.
 
-## Próximos pasos inmediatos
-1. El usuario revisa en browser (localhost:3000/despacho/regiones)
-2. Si conforme → PR
-3. Posibles ajustes según feedback visual
+## En progreso
+**rama `controlv3`** (creada desde main) — sin cambios todavía.
+Propósito por definir con el usuario en la próxima sesión.
 
 ## Backlog (sin urgencia)
-1. Deuda diferida: refactor de componentes monolíticos
+1. PR de ux-despacho hacia main cuando el usuario lo apruebe.
+2. Deuda diferida: refactor de componentes monolíticos
    (StepForm ~2384 líneas, AuditoriaScreen ~2400).
-2. Seguridad menor (preexistente): activar Leaked Password Protection en Supabase Auth.
-Plan completo: ~/.claude/plans/un-agente-reviso-el-scalable-hickey.md
+3. Seguridad menor (preexistente): activar Leaked Password Protection en Supabase Auth.

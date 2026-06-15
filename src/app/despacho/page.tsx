@@ -50,32 +50,16 @@ function RutasScreenWrapper({ onBack }: { onBack: () => void }) {
 }
 
 function SyncManager() {
-  const [mounted, setMounted] = useState(false);
-
   useEffect(() => {
-    setMounted(true);
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('rutasInput');
+      if (raw) {
+        const items = JSON.parse(raw);
+        if (items.length > 0) localStorage.removeItem('rutasInput');
+      }
+    } catch {}
   }, []);
-
-  useEffect(() => {
-    if (!mounted || typeof window === 'undefined') return;
-
-    const syncFromSantiago = () => {
-      try {
-        const raw = localStorage.getItem('rutasInput');
-        if (raw) {
-          const items = JSON.parse(raw);
-          if (items.length > 0) {
-            localStorage.removeItem('rutasInput');
-          }
-        }
-      } catch {}
-    };
-
-    syncFromSantiago();
-    const interval = setInterval(syncFromSantiago, 2000);
-
-    return () => clearInterval(interval);
-  }, [mounted]);
 
   return null;
 }

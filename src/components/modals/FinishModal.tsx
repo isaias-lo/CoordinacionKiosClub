@@ -80,51 +80,69 @@ export function FinishModal({ open, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-navy/60 z-[500] flex items-end backdrop-blur-sm">
-      <div className="bg-white rounded-t-[20px] px-4 pb-9 pt-6 w-full max-h-[80vh] overflow-y-auto"
-           style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.2)' }}>
-        <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
-        <h3 className="font-barlow-condensed text-[22px] font-bold text-navy mb-1 tracking-wide">Registrar despacho del día — NACIONAL</h3>
-        <p className="text-sm text-text-2 mb-4">
-          {dispatchDate} · {withItems.length} tiendas · {tp} pallets · {tb} bultos{tc > 0 ? ` · ${tc} contenedores` : ''}
+    <div className="fixed inset-0 z-[500] flex items-end" style={{ background: 'rgba(0,0,0,0.72)' }}>
+      <div className="w-full max-h-[82vh] overflow-y-auto rounded-t-[12px] px-4 pb-10 pt-5"
+           style={{ background: 'var(--color-bg)', borderTop: '1px solid var(--line)' }}>
+
+        {/* Drag handle */}
+        <div className="w-8 h-0.5 rounded-full mx-auto mb-5" style={{ background: 'rgba(255,255,255,0.14)' }} />
+
+        {/* Título */}
+        <div className="mb-1">
+          <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em]"
+                style={{ color: 'var(--text-lo)' }}>Registrar despacho</span>
+          <div className="font-mono text-[16px] font-bold mt-0.5" style={{ color: 'var(--text-hi)' }}>
+            NACIONAL
+          </div>
+        </div>
+        <p className="font-mono text-[11px] mb-5" style={{ color: 'var(--text-lo)' }}>
+          {dispatchDate} · {withItems.length} tiendas · {tp}P · {tb}B{tc > 0 ? ` · ${tc}C` : ''}
         </p>
 
-        {tiendaStats.map(({ name, pallets, bultos, contenedores, monto }) => (
-          <div key={name} className="flex justify-between py-1.5 border-b border-border text-[13px]">
-            <span className="font-semibold text-text">{name}</span>
-            <span className="font-mono text-text-3">
-              {pallets > 0 ? `${pallets}P ` : ''}{bultos > 0 ? `${bultos}B ` : ''}{contenedores > 0 ? `${contenedores}C ` : ''}{monto ? `· $${monto.toLocaleString('es-CL')}` : ''}
-            </span>
-          </div>
-        ))}
+        {/* Lista tiendas */}
+        <div className="mb-5 rounded-[8px] overflow-hidden" style={{ border: '1px solid var(--line)' }}>
+          {tiendaStats.map(({ name, pallets, bultos, contenedores, monto }, i) => (
+            <div key={name} className="flex items-center justify-between px-3 py-2.5"
+                 style={{
+                   borderTop: i > 0 ? '1px solid var(--line)' : 'none',
+                   background: i % 2 === 0 ? 'var(--surface-inset)' : 'transparent',
+                 }}>
+              <span className="font-mono text-[12px]" style={{ color: 'var(--text-mid)' }}>{name}</span>
+              <span className="font-mono text-[11px]" style={{ color: 'var(--text-lo)' }}>
+                {pallets > 0 ? `${pallets}P ` : ''}{bultos > 0 ? `${bultos}B ` : ''}{contenedores > 0 ? `${contenedores}C ` : ''}{monto ? `$${Math.round(monto / 1000)}K` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
 
-        <div className="mt-5 mb-3">
-          <p className="text-xs text-text-2 mb-2 font-semibold uppercase tracking-wide">Transporte</p>
+        {/* Transporte */}
+        <div className="mb-4">
+          <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] mb-2"
+               style={{ color: 'var(--text-lo)' }}>Transporte</div>
           <div className="flex gap-2">
             {(['Carga', 'Falabella'] as const).map(r => (
-              <button
-                key={r}
-                onClick={() => setRegimen(r)}
-                className={`flex-1 py-2.5 rounded-card border font-barlow-condensed text-base font-bold cursor-pointer transition-colors
-                  ${regimen === r
-                    ? 'bg-navy text-white border-navy'
-                    : 'bg-bg-2 text-text-2 border-border'}`}
-              >
+              <button key={r} onClick={() => setRegimen(r)}
+                className="flex-1 py-2.5 rounded-[6px] font-mono text-[11px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-75"
+                style={regimen === r
+                  ? { background: 'rgba(212,43,43,0.18)', border: '1px solid rgba(212,43,43,0.40)', color: 'rgba(255,255,255,0.90)' }
+                  : { background: 'var(--surface-inset)', border: '1px solid var(--line)', color: 'rgba(255,255,255,0.40)' }}>
                 {r}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="flex gap-2.5 mt-3">
+        {/* Acciones */}
+        <div className="flex gap-2">
           <button onClick={onClose}
-            className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer">
+            className="flex-1 py-3 rounded-[6px] font-mono text-[11px] font-semibold uppercase tracking-widest cursor-pointer transition-all active:opacity-70"
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--line-2)', color: 'rgba(255,255,255,0.45)' }}>
             Cancelar
           </button>
           <button onClick={finish}
-            className="flex-1 py-3.5 bg-red text-white rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer"
-            style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.3)' }}>
-            ✓ Guardar
+            className="flex-1 py-3 rounded-[6px] font-mono text-[11px] font-semibold uppercase tracking-widest text-white cursor-pointer transition-all active:opacity-75"
+            style={{ background: '#D42B2B' }}>
+            Guardar
           </button>
         </div>
       </div>

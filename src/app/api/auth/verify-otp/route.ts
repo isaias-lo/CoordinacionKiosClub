@@ -10,7 +10,14 @@ export async function POST(request: NextRequest) {
   if (!checkRateLimit(`verifyotp:${getClientIp(request)}`, { max: 10, windowMs: 600_000 }))
     return tooManyRequests();
 
-  const { email, token } = await request.json() as { email: string; token: string };
+  let email: string, token: string;
+  try {
+    const body = await request.json() as { email?: unknown; token?: unknown };
+    email = typeof body.email === 'string' ? body.email.trim() : '';
+    token = typeof body.token === 'string' ? body.token.trim() : '';
+  } catch {
+    return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
+  }
   if (!email || !token) return NextResponse.json({ error: 'Email y código requeridos' }, { status: 400 });
 
   const sb = createClient(URL_, ANON, { auth: { persistSession: false } });
