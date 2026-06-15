@@ -54,6 +54,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
 
+  // Movimiento arrastrado: el Documento Origen trae la fecha (DD/MM/YYYY). Si NO es hoy,
+  // Odoo arrastró un pick de un día anterior sin cerrar → se avisa para que el supervisor
+  // no lo confunda con el picker de hoy ni cree pallets contra él (casos PQA/CTC).
+  const _now = new Date();
+  const todayDMY = `${String(_now.getDate()).padStart(2, '0')}/${String(_now.getMonth() + 1).padStart(2, '0')}/${_now.getFullYear()}`;
+  const staleDates = [...new Set(group.operations.map(o => o.originDate).filter((d): d is string => !!d && d !== todayDMY))];
+  const isStaleDay = staleDates.length > 0;
+
   const [selectedIndices, setSelectedIndices]             = useState<Set<number>>(new Set());
   // Confirm inline al decrementar un pallet que ya fue impreso
   const [pendingDecrementTipo, setPendingDecrementTipo]   = useState<PickerType | null>(null);
@@ -77,6 +85,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
+      {/* Aviso de movimiento de día anterior (arrastrado de Odoo) */}
+      {isStaleDay && (
+        <div className="px-4 py-2 flex items-center gap-2 text-[12px] font-semibold"
+          style={{ background: 'rgba(217,119,6,0.12)', color: '#B45309', borderBottom: '1px solid rgba(217,119,6,0.3)' }}>
+          <AlertTriangle size={14} className="shrink-0" />
+          <span>Movimiento del {staleDates.join(', ')} — día anterior, NO de hoy. Verifica el picker asignado antes de crear pallets.</span>
+        </div>
+      )}
       {/* Card header */}
       <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: 'var(--color-border)', background: '#fff' }}>
         <span className="font-mono text-[12px] font-semibold shrink-0 px-2 py-0.5 rounded"
