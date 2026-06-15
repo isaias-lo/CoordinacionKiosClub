@@ -24,6 +24,7 @@ import {
 import { getOdooConfig } from '@/features/auditoria/utils/odooApi';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/AuthProvider';
+import { supabase } from '@/lib/supabase';
 import SkuModal from './components/SkuModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -197,13 +198,14 @@ function EditableCell({ value, onSave, placeholder, monospace }: {
 
 // ─── Dropdown corrección ──────────────────────────────────────────────────────
 
-const CORR_OPTS = ['PENDIENTE', 'SI', 'NO', 'EN REVISIÓN'];
+const CORR_OPTS = ['ACTIVIDAD REALIZADA', 'PENDIENTE', 'SI', 'NO', 'EN REVISIÓN'];
 
 function corrDecBg(v: string): { bg: string; color: string } {
   const u = v.toUpperCase();
-  if (u === 'SI')          return { bg: 'rgba(22,163,74,0.85)',   color: '#fff' };
-  if (u === 'NO')          return { bg: 'rgba(220,38,38,0.85)',   color: '#fff' };
-  if (u.includes('REVIS')) return { bg: 'rgba(217,119,6,0.85)',   color: '#fff' };
+  if (u === 'ACTIVIDAD REALIZADA') return { bg: 'rgba(22,163,74,0.55)',   color: '#fff' };
+  if (u === 'SI')                  return { bg: 'rgba(22,163,74,0.85)',   color: '#fff' };
+  if (u === 'NO')                  return { bg: 'rgba(220,38,38,0.85)',   color: '#fff' };
+  if (u.includes('REVIS'))         return { bg: 'rgba(217,119,6,0.85)',   color: '#fff' };
   return { bg: 'rgba(100,116,139,0.45)', color: 'rgba(255,255,255,0.6)' };
 }
 
@@ -309,6 +311,15 @@ export default function ControlCruceContent() {
   const [incluyePendientes,  setIncluyePendientes]  = useState(false);
   const [rowSelection,       setRowSelection]       = useState<RowSelectionState>({});
 
+  // ── Auto-export schedule ────────────────────────────────────────────────────
+  interface AutoExportConfig { hora: string; habilitado: boolean; ultima_fecha: string | null; }
+  const [autoConfig,    setAutoConfig]    = useState<AutoExportConfig>({ hora: '07:00', habilitado: true, ultima_fecha: null });
+  const [pendingConfig, setPendingConfig] = useState<AutoExportConfig | null>(null);
+  const [showConfirm,   setShowConfirm]   = useState(false);
+  const [savingConfig,  setSavingConfig]  = useState(false);
+  const [runningNow,    setRunningNow]    = useState(false);
+  const [autoRunMsg,    setAutoRunMsg]    = useState<{ ok: boolean; text: string } | null>(null);
+
   // Debug state
   const [debugData,       setDebugData]       = useState<Record<string, unknown>[] | null>(null);
   const [debugTypes,      setDebugTypes]      = useState<Record<string, unknown>[] | null>(null);
@@ -320,6 +331,56 @@ export default function ControlCruceContent() {
   const [debugMsgData,    setDebugMsgData]    = useState<Record<string, unknown> | null>(null);
 
   const odooConfig = getOdooConfig();
+
+  // ── Carga configuración auto-export ─────────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/control-cruce/auto-export?action=config')
+      .then(r => r.json())
+      .then((d: { config?: AutoExportConfig }) => { if (d.config) setAutoConfig(d.config); })
+      .catch(() => {/* usa defaults */});
+  }, []);
+
+  function requestConfigChange(next: AutoExportConfig) {
+    setPendingConfig(next);
+    setShowConfirm(true);
+  }
+
+  async function confirmConfigChange() {
+    if (!pendingConfig) return;
+    setShowConfirm(false);
+    setSavingConfig(true);
+    try {
+      await fetch('/api/control-cruce/auto-export', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingConfig),
+      });
+      setAutoConfig(pendingConfig);
+    } finally {
+      setSavingConfig(false);
+      setPendingConfig(null);
+    }
+  }
+
+  async function runAutoExportNow() {
+    setRunningNow(true);
+    setAutoRunMsg(null);
+    try {
+      const res  = await fetch('/api/control-cruce/auto-export', { method: 'POST' });
+      const data = await res.json() as { ok?: boolean; rowsWritten?: number; error?: string; date?: string };
+      if (data.ok) {
+        setAutoRunMsg({ ok: true, text: `${data.rowsWritten} filas exportadas (${data.date ?? ''})` });
+        if (data.date) setAutoConfig(c => ({ ...c, ultima_fecha: data.date! }));
+      } else {
+        setAutoRunMsg({ ok: false, text: data.error ?? 'Error al ejecutar' });
+      }
+    } catch (e) {
+      setAutoRunMsg({ ok: false, text: e instanceof Error ? e.message : 'Error de red' });
+    } finally {
+      setRunningNow(false);
+      setTimeout(() => setAutoRunMsg(null), 7000);
+    }
+  }
 
   // ── saveManual (race-condition safe: functional setState) ───────────────────
   const saveManual = useCallback(async (
@@ -463,7 +524,13 @@ export default function ControlCruceContent() {
   const tableData = useMemo<TableRow[]>(() =>
     rows.map(r => ({
       ...r,
-      correcta_declaracion: manualMap[r.pickingName]?.correcta_declaracion ?? 'PENDIENTE',
+      correcta_declaracion: (() => {
+        const manual = manualMap[r.pickingName]?.correcta_declaracion;
+        if (r.estado === 'COMPLETADO') {
+          return manual && manual !== 'PENDIENTE' ? manual : 'ACTIVIDAD REALIZADA';
+        }
+        return manual ?? 'PENDIENTE';
+      })(),
       movimiento_ajuste:    manualMap[r.pickingName]?.movimiento_ajuste ?? '',
     })),
     [rows, manualMap],
@@ -670,17 +737,22 @@ export default function ControlCruceContent() {
   const hasSelection        = selectedRows.length > 0;
   const completadoCount     = table.getFilteredRowModel().rows.filter(r => r.original.estado === 'COMPLETADO').length;
   const selCompletadoCount  = selectedRows.filter(r => r.original.estado === 'COMPLETADO').length;
-  const exportCount         = hasSelection ? selCompletadoCount : completadoCount;
+  const exportCount         = incluyePendientes
+    ? (hasSelection ? selectedRows.length : filteredCount)
+    : (hasSelection ? selCompletadoCount : completadoCount);
   const pageRows            = table.getRowModel().rows;
 
   // ── Exportar a Sheets (sin stale closure: lee tabla en el momento del click) ──
   async function exportToSheet() {
-    // Con selección: exporta las seleccionadas COMPLETADAS.
-    // Sin selección: exporta todas las filtradas COMPLETADAS.
+    // Con selección: exporta las seleccionadas.
+    // Sin selección: exporta todas las filtradas.
+    // Si incluyePendientes está activo, incluye VENCIDA/PLANIFICADO; si no, solo COMPLETADO.
     const pool = hasSelection
       ? table.getSelectedRowModel().rows.map(r => r.original)
       : table.getFilteredRowModel().rows.map(r => r.original);
-    const currentRows = pool.filter(r => r.estado === 'COMPLETADO');
+    const currentRows = incluyePendientes
+      ? pool
+      : pool.filter(r => r.estado === 'COMPLETADO');
     if (!currentRows.length) return;
     setExporting(true);
     setExportMsg(null);
@@ -854,8 +926,12 @@ export default function ControlCruceContent() {
               onClick={exportToSheet}
               disabled={exporting || exportCount === 0}
               title={hasSelection
-                ? `Exportar ${selCompletadoCount} seleccionadas COMPLETADAS (${selectedRows.length} seleccionadas total)`
-                : `Exportar ${completadoCount} filas COMPLETADAS a Google Sheet`
+                ? incluyePendientes
+                  ? `Exportar ${selectedRows.length} seleccionadas (incluye vencidas/planificadas)`
+                  : `Exportar ${selCompletadoCount} seleccionadas COMPLETADAS (${selectedRows.length} seleccionadas total)`
+                : incluyePendientes
+                  ? `Exportar ${filteredCount} filas visibles (incluye vencidas/planificadas)`
+                  : `Exportar ${completadoCount} filas COMPLETADAS a Google Sheet`
               }
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -871,8 +947,12 @@ export default function ControlCruceContent() {
               {exporting
                 ? 'Exportando…'
                 : hasSelection
-                  ? `Exportar ${selCompletadoCount} seleccionadas`
-                  : `Exportar ${completadoCount} completadas`
+                  ? incluyePendientes
+                    ? `Exportar ${selectedRows.length} seleccionadas`
+                    : `Exportar ${selCompletadoCount} seleccionadas`
+                  : incluyePendientes
+                    ? `Exportar ${filteredCount} filas`
+                    : `Exportar ${completadoCount} completadas`
               }
             </button>
           )}
@@ -912,6 +992,137 @@ export default function ControlCruceContent() {
             </span>
           )}
         </div>
+
+        {/* ── Panel exportación automática ── */}
+        <div style={{
+          display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+          background: 'rgba(255,255,255,0.025)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 8, padding: '8px 14px', marginBottom: 8,
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>
+            ⏰ AUTO-EXPORT
+          </span>
+
+          {/* Toggle habilitado */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={autoConfig.habilitado}
+              onChange={e => requestConfigChange({ ...autoConfig, habilitado: e.target.checked })}
+              style={{ accentColor: '#6EE7B7', width: 14, height: 14, cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 11, fontWeight: 600, color: autoConfig.habilitado ? '#6EE7B7' : 'rgba(255,255,255,0.3)' }}>
+              {autoConfig.habilitado ? 'Habilitada' : 'Deshabilitada'}
+            </span>
+          </label>
+
+          {/* Hora */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.05em' }}>
+              HORA DIARIA
+            </span>
+            <input
+              type="time"
+              value={autoConfig.hora}
+              onChange={e => requestConfigChange({ ...autoConfig, hora: e.target.value })}
+              style={{
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 6, color: '#fff',
+                padding: '3px 8px', fontSize: 12, outline: 'none',
+                colorScheme: 'dark',
+              }}
+            />
+          </label>
+
+          {/* Última ejecución */}
+          {autoConfig.ultima_fecha && (
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', whiteSpace: 'nowrap' }}>
+              · Última: <strong style={{ color: 'rgba(255,255,255,0.45)' }}>{autoConfig.ultima_fecha}</strong>
+            </span>
+          )}
+
+          {savingConfig && (
+            <span style={{ fontSize: 11, color: '#FCD34D' }}>Guardando…</span>
+          )}
+
+          {/* Ejecutar ahora */}
+          <button
+            onClick={runAutoExportNow}
+            disabled={runningNow}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: runningNow ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.18)',
+              border: '1px solid rgba(99,102,241,0.4)',
+              borderRadius: 6, color: '#A5B4FC',
+              padding: '4px 11px', fontSize: 11, fontWeight: 600,
+              cursor: runningNow ? 'not-allowed' : 'pointer',
+              opacity: runningNow ? 0.6 : 1,
+            }}
+          >
+            <FileSpreadsheet size={12} className={runningNow ? 'animate-pulse' : ''} />
+            {runningNow ? 'Exportando…' : 'Exportar ayer'}
+          </button>
+
+          {autoRunMsg && (
+            <span style={{ fontSize: 11, color: autoRunMsg.ok ? '#6EE7B7' : '#FCA5A5', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {autoRunMsg.ok ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+              {autoRunMsg.text}
+            </span>
+          )}
+        </div>
+
+        {/* ── Modal de confirmación de cambio de config ── */}
+        {showConfirm && pendingConfig && (
+          <div style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9000,
+          }}>
+            <div style={{
+              background: '#1e293b',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 12, padding: '24px 28px',
+              maxWidth: 400, width: '90%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 10 }}>
+                ¿Confirmar cambio de programación?
+              </div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 20, lineHeight: 1.5 }}>
+                {pendingConfig.habilitado !== autoConfig.habilitado
+                  ? `La exportación automática quedará ${pendingConfig.habilitado ? 'habilitada' : 'deshabilitada'}.`
+                  : `La exportación diaria cambiará de ${autoConfig.hora} a ${pendingConfig.hora} (hora Santiago).`
+                }
+                {' '}Este ajuste se aplica a todos los usuarios del sistema.
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => { setShowConfirm(false); setPendingConfig(null); }}
+                  style={{
+                    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 7, color: 'rgba(255,255,255,0.6)',
+                    padding: '7px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmConfigChange}
+                  style={{
+                    background: 'rgba(22,163,74,0.85)', border: 'none',
+                    borderRadius: 7, color: '#fff',
+                    padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Barra de filtros de columna ── */}
         {tableData.length > 0 && (

@@ -1,34 +1,41 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-14 20:15
-Último commit: WIP: auto-save antes de compactar contexto
-Rama: inicio
+Fecha: 2026-06-15
+Rama: controlv3
 
 ## Archivos modificados recientemente
 .claude/settings.local.json
 supabase/migrations/046_rls_calendario_armado_notificaciones.sql
 
-## En progreso
-NADA en curso — jornada cerrada con todo en producción. main = inicio = deploy Vercel
-= commit e82c26b (verificado en el dashboard de Vercel).
+## Completado en esta sesión (rama controlv3)
+Todos los cambios están en la rama `controlv3`, pendiente de PR a main.
 
-Cerrado hoy (todo mergeado a main, PRs #19–#23):
-- Code review (211 issues) COMPLETO: PR 1A/1B (auth endpoints + cookie), PR 2
-  (XSS/setTimeout/blob URLs/className), PR 3 (error.tsx + loading), PR 4
-  (calcAuditado + rateLimit doc + clamp trazabilidad).
-- feat: Registrar Despacho → abre auto el panel de Manifiestos (+ botón secundario).
-- fix: sidebar oculto en Safari en /registros (overlay → flujo normal).
-- fix: tienda duplicada 23PEN→23PEÑ (ALIAS + test) Y limpieza de DATOS en Supabase
-  (migrado el registro en despacho_rm, eliminada la fila duplicada).
-- fix: RLS activado en calendario_armado y calendario_notificaciones (migración
-  046, política solo authenticated, aplicada y verificada).
+### Control Cruce — bugs y feature
+
+**Bugs corregidos:**
+- fix: CORRECTA DEC. aparecía en blanco para actividades COMPLETADO
+  → agregado 'ACTIVIDAD REALIZADA' a CORR_OPTS (controlled select sin option matching)
+- fix: DETALLE mostraba "TO DO" para actividades VENCIDA/PLANIFICADO
+  → eliminado fallback `activity_type_id[1]` en `/api/odoo` route (get_control_activities)
+- fix: exportación manual no incluía filas VENCIDA/PLANIFICADO con el checkbox activo
+  → `currentRows` ya filtraba correctamente (era cosmético, no bug real)
+
+**Feature nueva: Auto-export diario a Google Sheets:**
+- `supabase/migrations/048_control_cruce_config.sql` — tabla `control_cruce_config`
+- `src/app/api/control-cruce/auto-export/route.ts` — GET (cron + config), POST (forzar), PATCH (config)
+- `src/app/api/control-cruce/export-sheets/route.ts` — soporte para `tabName` (pestaña por fecha)
+- `vercel.json` — cron horario `0 * * * *`
+- `src/features/control-interno/ControlCruceContent.tsx` — panel UI con toggle, hora, "Exportar ayer", modal confirmación
+
+**225/225 tests pasan.**
+
+## Pendiente antes de PR / deploy
+1. **Aplicar migración 048** en Supabase (dashboard → SQL editor o `supabase db push`)
+2. **Agregar `CRON_SECRET`** en Vercel → Settings → Environment Variables
+3. **Agregar `GOOGLE_CONTROL_CRUCE_SHEET_ID`** si no existe (el Spreadsheet ID del sheet de control cruce)
+4. Abrir PR controlv3 → main cuando esté listo
 
 ## Próximos pasos (sin urgencia)
-1. Deuda diferida (sin bugs activos): refactor de componentes monolíticos
-   (StepForm ~2384 líneas, AuditoriaScreen ~2400); rateLimit→Redis solo si crece
-   el volumen; issues LOW del reporte original.
-2. Seguridad menor (preexistente, opcional): activar Leaked Password Protection en
-   Supabase Auth; revisar buckets públicos (audit-photos/guides/signatures);
-   search_path en funciones; handle_new_user SECURITY DEFINER.
-Plan completo: ~/.claude/plans/un-agente-reviso-el-scalable-hickey.md
+1. Deuda diferida: refactor componentes monolíticos (StepForm ~2384 líneas, AuditoriaScreen ~2400)
+2. Seguridad menor: Leaked Password Protection, buckets públicos, search_path en funciones

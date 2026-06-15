@@ -699,8 +699,16 @@ export async function POST(req: NextRequest) {
                    .replace(/\n+/g, '\n').trim();
       }
       function parseDetalle(html: string): string {
-        const m = html.match(/<span>(Faltantes|Sobrantes|Merma)<\/span>/i);
-        return m ? m[1] : '';
+        // 1) <span ...>Faltantes</span> (con o sin atributos)
+        const m1 = html.match(/<span[^>]*>(Faltantes|Sobrantes|Merma)<\/span>/i);
+        if (m1) return m1[1];
+        // 2) Cualquier tag: <b>Faltantes</b>, <em>Faltantes</em>, etc.
+        const m2 = html.match(/<(?:b|strong|em|i|u|span|div|p)[^>]*>(Faltantes|Sobrantes|Merma)<\/(?:b|strong|em|i|u|span|div|p)>/i);
+        if (m2) return m2[1];
+        // 3) Texto plano sin tags (después de strip HTML)
+        const text = stripHtml(html);
+        const m3 = text.match(/\b(Faltantes|Sobrantes|Merma)\b/i);
+        return m3 ? m3[1] : '';
       }
       function parseMovAjuste(html: string): string {
         const text = stripHtml(html);
@@ -721,18 +729,24 @@ export async function POST(req: NextRequest) {
       const today       = localDateStr(new Date());
 
       // 1. Tipos de actividad dinámicos (Faltantes/Sobrantes/Merma)
+      //    Búsqueda flexible: trae todos los types y filtra en JS por keywords.
       let actTypeIds: number[] = [];
       const typeNameMap = new Map<number, string>();
+      const DETALLE_KEYWORDS = ['faltante', 'sobrante', 'merma'];
       try {
-        const actTypes = (await odooRpc(url, {
+        const allActTypes = (await odooRpc(url, {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'mail.activity.type', 'search_read',
-            [[['name', 'in', ['Faltantes', 'Sobrantes', 'Merma']]]],
-            { fields: ['id', 'name'], limit: 20 },
+            [[]],
+            { fields: ['id', 'name'], limit: 100 },
           ],
         })) as Array<{ id: number; name: string }>;
-        actTypeIds = actTypes.map(t => t.id);
-        for (const t of actTypes) typeNameMap.set(t.id, t.name);
+        const matched = allActTypes.filter(t =>
+          DETALLE_KEYWORDS.some(kw => (t.name ?? '').toLowerCase().includes(kw))
+        );
+        actTypeIds = matched.map(t => t.id);
+        for (const t of matched) typeNameMap.set(t.id, t.name);
+        console.log(`[get_control_activities] activity types encontrados: ${matched.map(t => `${t.id}=${t.name}`).join(', ') || 'NINGUNO'} (total en Odoo: ${allActTypes.length})`);
       } catch (err) {
         console.error('[get_control_activities] error obteniendo tipos:', err);
       }
@@ -847,7 +861,10 @@ export async function POST(req: NextRequest) {
 
       for (const msg of messages) {
         const detalle = parseDetalle(msg.body ?? '');
-        if (!detalle) continue;
+        if (!detalle) {
+          console.log(`[get_control_activities] msg ${msg.id} picking=${msg.record_name} sin detalle, body preview: ${(msg.body ?? '').substring(0, 150)}`);
+          continue;
+        }
         const pickingName = msg.record_name ?? '';
         parsed.push({
           msgId:      msg.id,
@@ -890,9 +907,13 @@ export async function POST(req: NextRequest) {
 
         for (const act of pendingActivities) {
           const typeId   = Array.isArray(act.activity_type_id) ? act.activity_type_id[0] : 0;
-          const typeName = typeNameMap.get(typeId)
-            ?? (Array.isArray(act.activity_type_id) ? act.activity_type_id[1] : '');
-          if (!typeName) continue;
+          // Solo usar el nombre del tipo si está en nuestro mapa de keywords.
+          // activity_type_id[1] puede devolver nombres genéricos como "To Do" que no son detalles válidos.
+          const typeName = typeNameMap.get(typeId) ?? '';
+          const detalle = typeName
+            || parseDetalle(typeof act.summary === 'string' ? act.summary : '')
+            || parseDetalle(typeof act.note === 'string' ? act.note : '');
+          if (!detalle) continue;
 
           // Usar nombre del picking desde el mapa (ya traído en paso 2)
           const pickingName =
@@ -909,12 +930,13 @@ export async function POST(req: NextRequest) {
             pickingId:  act.res_id,
             pickingName,
             storeCod:   pickingName.split('/')[0] ?? '',
-            detalle:    typeName,
+            detalle:    detalle,
             movAjuste:  typeof act.note === 'string' ? parseMovAjuste(act.note) : '',
             authorName: Array.isArray(act.user_id) ? act.user_id[1] : '',
             estado,
           });
         }
+        console.log(`[get_control_activities] pending: ${pendingActivities.length} total, ${parsed.filter(p => p.estado !== 'COMPLETADO').length} parseados OK`);
       }
 
       if (!parsed.length) return NextResponse.json({ rows: [], total: 0 });

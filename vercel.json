@@ -4,6 +4,10 @@
     {
       "path": "/api/auto-register-bodega",
       "schedule": "0 2 * * 1-5"
+    },
+    {
+      "path": "/api/control-cruce/auto-export",
+      "schedule": "0 * * * *"
     }
   ]
 }
