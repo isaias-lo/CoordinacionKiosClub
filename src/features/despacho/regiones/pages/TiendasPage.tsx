@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, GripVertical, ChevronLeft } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
@@ -399,8 +399,10 @@ export function TiendasPage() {
 
   /* Initialize formRows only when the selected tienda changes.
      Uses pickingSlotsRef (always current) so picking real-time updates
-     do NOT retrigger this effect and wipe the user's in-progress form. */
-  useEffect(() => {
+     do NOT retrigger this effect and wipe the user's in-progress form.
+     useLayoutEffect → corre antes del paint: nunca se pinta el form de la
+     tienda anterior bajo el header de la nueva. */
+  useLayoutEffect(() => {
     resetForm();
     setEditingIdx(null);
     if (selectedTienda) {
@@ -1010,7 +1012,7 @@ export function TiendasPage() {
       const perItem = Math.round(pdfInfo!.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo!.guias[i]?.num || '', valor: perItem })) });
     } else { setGuia(''); setValor(''); }
-    setPeso(''); setAlto('');
+    setPeso(''); setAlto(''); setAncho(''); setLargo('');
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
   const copyLast = () => {
