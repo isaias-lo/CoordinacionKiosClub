@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { parseOrigin, isAbastecimientoOp } from '@/features/picking/picking-utils';
+import { computeStoreStatus } from '@/features/despacho/shared/storeStatus';
 
 function todayISO(): string {
   const d = new Date();
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
     if (row.state_key.startsWith('__')) continue;   // saltar filas de control (META)
     try {
       const parsed = JSON.parse(row.picker_label) as { total: number; done: number };
-      const status = parsed.total === 0 ? 'none' : parsed.done === parsed.total ? 'complete' : 'partial';
+      const status = computeStoreStatus(parsed.total, parsed.done);
       result[row.state_key] = { ...parsed, status };
     } catch { /* skip malformed */ }
   }

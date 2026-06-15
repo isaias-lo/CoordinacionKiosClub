@@ -21,7 +21,11 @@
       "Bash(break)",
       "Read(//private/tmp/**)",
       "Bash(pkill -f \"next dev\")",
-      "Bash(pkill -f \"PORT=3939\")"
+      "Bash(pkill -f \"PORT=3939\")",
+      "mcp__claude_ai_Vercel__list_teams",
+      "mcp__claude_ai_Vercel__list_projects",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "Bash(git commit -m 'docs: cierre de jornada 2026-06-14 — code review + extras + RLS en producción *)"
     ]
   }
 }
