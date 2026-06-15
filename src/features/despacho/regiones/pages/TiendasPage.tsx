@@ -1844,7 +1844,7 @@ export function TiendasPage() {
             : (
               <div className="flex-1 flex flex-col items-center justify-center bg-navy" style={{ minHeight: 0 }}>
                 <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
-                <p className="text-[13px] text-white/35 mt-1">o arrastra desde "Todas" a Hoy</p>
+                <p className="text-[13px] text-white/35 mt-1">o arrastra desde &quot;Todas&quot; a Hoy</p>
               </div>
             )
           }

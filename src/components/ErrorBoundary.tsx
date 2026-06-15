@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 interface Props {
@@ -63,13 +64,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <RefreshCw size={14} strokeWidth={2} />
             Reintentar
           </button>
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 px-4 py-2.5 rounded-btn text-[13px] font-semibold text-text-2 bg-bg border border-border hover:bg-border/60 transition-colors"
           >
             <Home size={14} strokeWidth={2} />
             Inicio
-          </a>
+          </Link>
         </div>
       </div>
     );

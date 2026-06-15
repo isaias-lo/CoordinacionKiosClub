@@ -189,17 +189,8 @@ export default function PickingSlotCards({ slots, storeCod, date, onRefresh, onC
   const [combineError, setCombineError] = useState('');
 
   const activeSlots = slots.filter(s => s.seq != null || s.canonical_id != null || s.id > 0);
-  if (activeSlots.length === 0) return null;
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  // Only allow combining slots of the SAME tipo
+  // Compute before early return so hooks are always called unconditionally
   const selectedSlots  = activeSlots.filter(s => selectedIds.has(s.id));
   const selectedTipos  = [...new Set(selectedSlots.map(s => s.tipo))];
   const canCombine     = selectedIds.size >= 2 && selectedTipos.length === 1;
@@ -232,6 +223,16 @@ export default function PickingSlotCards({ slots, storeCod, date, onRefresh, onC
       setCombining(false);
     }
   }, [canCombine, selectedIds, date, storeCod, selectedTipos, onRefresh, onCombined]);
+
+  if (activeSlots.length === 0) return null;
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   // Group by tipo for display
   const byTipo: Record<string, PickingSlot[]> = {};
