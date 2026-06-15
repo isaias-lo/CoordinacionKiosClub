@@ -27,7 +27,7 @@ import {
   LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY, AUTO_REFRESH_MS, CANONICAL_PICKER_KEYS,
 } from './picking-types';
 import {
-  todayISO, getStoreName, parseOrigin, isAbastecimientoOp,
+  todayISO, getStoreName, parseOrigin, isAbastecimientoOp, resolveStoreCode,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
 } from './picking-utils';
 import { StatsTab }           from './components/StatsTab';
@@ -670,8 +670,10 @@ export function PickingScreen() {
       const parsed: PickingOperation[] = (data.pickings ?? [])
         .filter(p => isAbastecimientoOp(p.origin) && !p.origin.toUpperCase().startsWith('AUDITORIA'))
         .map(p => {
-          const { categories, storeCode, originDate } = parseOrigin(p.origin);
-          return { ...p, categories, storeCodeFromOrigin: storeCode, originDate };
+          const { categories, originDate } = parseOrigin(p.origin);
+          // Identifica la tienda por destino (columna "A") con respaldo al origin/partner,
+          // para ser robusto a typos manuales en el Documento Origen.
+          return { ...p, categories, storeCodeFromOrigin: resolveStoreCode(p), originDate };
         });
       setOpsMap(prev => ({ ...prev, [cod]: parsed }));
       setErrorCods(prev => prev.filter(c => c !== cod));
