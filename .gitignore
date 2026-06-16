@@ -40,3 +40,4 @@ out/
 *.sw?
 # Archivos de sesión personal — sí se commitean (uno por desarrollador)
 # TRABAJO_ERICK.md y TRABAJO_ISAIAS.md son rastreados por git
+.vercel
