@@ -63,7 +63,7 @@ function toRmRecord(row: (string | number)[]) {
     guia:             String(row[24] ?? ''),
     valor:            n(row[25] ?? ''),
     fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
-    canonical_id:     row[29] ? String(row[29]) : null,
+    picking_slot_id:  row[29] ? Number(row[29]) || null : null,  // col AD = #488 (id del pallet). El canonical va en `id` (col A).
     seguimiento: 'Registrado',
   };
 }
@@ -97,7 +97,7 @@ function toRegionesRecord(row: (string | number)[]) {
     guia:             String(row[24] ?? ''),
     valor:            n(row[25] ?? ''),
     fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
-    canonical_id:     row[29] ? String(row[29]) : null,
+    picking_slot_id:  row[29] ? Number(row[29]) || null : null,  // col AD = #488 (id del pallet). El canonical va en `id` (col A).
     seguimiento: 'Registrado',
   };
 }
@@ -263,8 +263,8 @@ export async function POST(request: NextRequest) {
             tipo_comuna: rm.tipo_comuna,
             peso_kg: rm.peso_kg, alto: rm.alto, largo: rm.largo, ancho: rm.ancho, peso_v: rm.peso_v,
             ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
-            ...(rm.fecha_armado  !== null && rm.fecha_armado  !== undefined && { fecha_armado:  rm.fecha_armado }),
-            ...(rm.canonical_id  !== null && rm.canonical_id  !== undefined && { canonical_id:  rm.canonical_id }),
+            ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
+            ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
           };
           if (fuente) updateObj.fuente = fuente;
           const { error } = await sb.from(table).update(updateObj).eq('id', r.id);
