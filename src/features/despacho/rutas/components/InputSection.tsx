@@ -312,23 +312,24 @@ export default function InputSection({
           <>
             {/* Right panel — mobile full width */}
             <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
-              <div className="flex items-center gap-2 px-3 py-2">
+              <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
                 <button onClick={() => setMobilePanel('sidebar')}
                   className="h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0">
                   ← Tiendas
                 </button>
-                <div className="flex bg-kbg rounded-[10px] p-[3px] gap-0.5 flex-1">
+                <button onClick={onLimpiar} className="h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ml-auto">
+                  Limpiar
+                </button>
+                {/* Modos: fila propia a lo ancho para que no queden apretados en móvil */}
+                <div className="flex bg-kbg rounded-[10px] p-[3px] gap-1 w-full">
                   {MODES.map(({ id, Icon, label }) => (
                     <button key={id} onClick={() => onModo(id)}
-                      className={`flex-1 h-[30px] rounded-[8px] text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all
+                      className={`flex-1 h-[36px] rounded-[8px] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all
                         ${modo === id ? 'bg-white shadow-sm text-ktext' : 'text-kmuted'}`}>
-                      <Icon size={11} strokeWidth={2} /><span>{label}</span>
+                      <Icon size={13} strokeWidth={2} /><span>{label}</span>
                     </button>
                   ))}
                 </div>
-                <button onClick={onLimpiar} className="h-[36px] px-2 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[11px] font-semibold flex-shrink-0">
-                  Limpiar
-                </button>
               </div>
             </div>
             <div className="flex-1 overflow-hidden bg-kbg">
