@@ -584,15 +584,6 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
       showToast('No se pudo asignar. El nombre debe empezar con el código (ej: 11ILC-guia.pdf)', false);
   };
 
-  const removeGuide = (cod: string) => {
-    const next = { ...guides };
-    delete next[cod];
-    saveGuides(next);
-    setGuides(next);
-    rebuild(next, appState.dispatch);
-    pushSessionState('guides', next).catch(() => {});
-  };
-
   /* Print only the currently-previewed store */
   const printSingleStore = (cod: string) => {
     const prev = printCods;
@@ -761,24 +752,8 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
               )}
             </div>
 
-            {/* Loaded guide chips */}
-            {Object.keys(guides).length > 0 && (
-              <div className="px-3 py-2 flex gap-1.5 flex-wrap">
-                {Object.entries(guides).map(([cod, g]) => (
-                  <span key={cod} className="flex items-center gap-1.5 bg-[rgba(22,163,74,0.08)] border border-[rgba(22,163,74,0.25)] rounded-full px-2.5 py-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
-                    <span className="font-barlow-condensed text-[12px] font-bold text-success">{formatCod(cod)}</span>
-                    <span className="text-[11px] text-text-3">{g.guias.length}g</span>
-                    <button
-                      onClick={() => removeGuide(cod)}
-                      className="text-text-3 hover:text-red cursor-pointer text-[14px] leading-none ml-0.5 border-none bg-transparent font-bold">
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {Object.keys(guides).length === 0 && <div className="pb-3" />}
+            {/* Chips de guías removidos: el "(PDF ✓)" por tienda ya indica cuáles tienen guía. */}
+            <div className="pb-2" />
           </div>
 
           {/* Print controls */}
