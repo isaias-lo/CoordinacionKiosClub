@@ -120,6 +120,9 @@ export default function RutaPublicaPage() {
   return (
     <div style={S.page}>
       <style>{`
+        /* Vista pública: anular el overflow:hidden global del shell para que
+           el manifiesto scrollee hasta el final (guías, fiscalización, imprimir). */
+        html, body { overflow: auto !important; height: auto !important; }
         @media print {
           .no-print { display: none !important; }
           body { margin: 0; }
