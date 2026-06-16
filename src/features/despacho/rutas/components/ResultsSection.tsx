@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
-import RouteCard       from './RouteCard';
-import MapSection      from './MapSection';
-import ManifiestoPanel from './ManifiestoPanel';
+import RouteCard          from './RouteCard';
+import MapSection         from './MapSection';
+import ManifiestoPanel    from './ManifiestoPanel';
+import CierreJornadaPanel from './CierreJornadaPanel';
 import { fechaTxt, fechaLargaTxt } from '../utils/helpers';
 import type { Ruta, StoreItem } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -26,6 +27,10 @@ interface Props {
   historialMsg: string;
   onKmTotalReal: (km: number) => void;
   onCdUpdate: (coords: number[]) => void;
+  pendientesV2: { c: string; p: number; b: number; ch: number }[];
+  onCargarPendientes: () => void;
+  onListoPorHoy: () => void;
+  cerrado: boolean;
 }
 
 export default function ResultsSection({
@@ -33,6 +38,7 @@ export default function ResultsSection({
   onLimpiar, onVolver, onGenerarPDF, onGuardarHistorial,
   onChoferChange, historialStatus, historialMsg,
   onKmTotalReal, onCdUpdate,
+  pendientesV2, onCargarPendientes, onListoPorHoy, cerrado,
 }: Props) {
   const { ts, rutas } = results;
   const tp = ts.reduce((s, t) => s + t.p, 0);
@@ -47,6 +53,7 @@ export default function ResultsSection({
   const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
   const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
   const [manifiestoOpen, setManifiestoOpen] = useState(false);
+  const [cierreOpen,     setCierreOpen]     = useState(false);
 
   // Registrar despacho y, si el guardado primario fue exitoso, encadenar
   // automáticamente con la generación de manifiestos (panel reutilizable y cerrable).
@@ -179,6 +186,21 @@ export default function ResultsSection({
         </div>
       </div>
 
+      {/* Cierre de jornada */}
+      <div className="mt-[9px] no-print">
+        <button
+          onClick={() => setCierreOpen(true)}
+          className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy/30 flex items-center justify-center gap-2 transition-all cursor-pointer hover:border-knavy"
+        >
+          {cerrado ? '✓ Jornada cerrada — ver resumen' : '🏁 Cierre de jornada'}
+        </button>
+        {pendientesV2.length > 0 && (
+          <div className="mt-[5px] text-[10px] text-kred text-center font-semibold">
+            ⚠ {pendientesV2.length} tienda{pendientesV2.length !== 1 ? 's' : ''} pendiente{pendientesV2.length !== 1 ? 's' : ''} para 2ª vuelta
+          </div>
+        )}
+      </div>
+
       <ManifiestoPanel
         rutas={rutas}
         fecha={fecha}
@@ -186,6 +208,17 @@ export default function ResultsSection({
         tiendas={tiendas}
         isOpen={manifiestoOpen}
         onClose={() => setManifiestoOpen(false)}
+      />
+
+      <CierreJornadaPanel
+        isOpen={cierreOpen}
+        onClose={() => setCierreOpen(false)}
+        rutas={rutas}
+        fecha={fecha}
+        supervisor={supervisor}
+        pendientesV2={pendientesV2}
+        onCargarPendientes={onCargarPendientes}
+        onListoPorHoy={onListoPorHoy}
       />
     </div>
   );

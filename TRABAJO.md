@@ -1,8 +1,32 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-15
-Rama: controlv3
+Fecha: 2026-06-16
+Rama: feat/cierre-jornada (creada desde main/inicio sincronizado)
+
+## Completado en esta sesión (rama feat/cierre-jornada) — Punto 4: Cierre de jornada
+
+Contexto: puntos 1, 2, 3 y 5 ya están en `main` (PRs #31/#32/#33, commit 7e8b66f). Rama `inicio`
+sincronizada a main (fast-forward). Esta sesión implementa el **punto 4** (flujo de despacho completo).
+
+**Investigación 2ª vuelta (recolección de datos):** el `vuelta` (1/2) nace de marcar TLBD en Flota y se
+reparte a HISTORIAL (evento por ruta), CONTROL DESPACHO (v1/v2 patente por tienda), Supabase
+`despacho_rm.vuelta` (write-only, nadie lo lee) y `shared_session_state('segunda_vuelta')` (pendientes
+cross-device). **Decisión: NO migrar a per-pallet** (el Enrutador rutea por tienda, no por pallet; la
+columna no se consume; los Sheets ya capturan ambas vueltas bien).
+
+**Cambios:**
+- `src/features/despacho/rutas/utils/vueltaIntegrity.ts` (NUEVO) — `idsActualizables()`: en carga extra
+  (2ª vuelta) NO se pisan filas ya despachadas en 1ª vuelta (las que ya tienen conductor). + tests.
+- `src/app/api/despacho-records/route.ts` — usa el helper; protege también `picking_pallets` en carga extra.
+- `src/features/despacho/rutas/components/CierreJornadaPanel.tsx` (NUEVO) — resumen 1ª/2ª vuelta,
+  pendientes (reusa `pendientesV2`/`segunda_vuelta`), guía de carga extra, botón "Listo por hoy".
+- `src/features/despacho/rutas/components/ResultsSection.tsx` — botón "🏁 Cierre de jornada" + panel.
+- `src/features/despacho/rutas/RutasScreen.tsx` — estado `cerrado` + `handleListoPorHoy` (marca cross-device
+  en `shared_session_state` fuente `cierre`) + lectura del marcador.
+- `supabase/migrations/049_picking_slot_id_despacho_regiones.sql` — renombrada desde 048 (había DOS 048).
+
+**231/231 tests pasan · tsc limpio · build OK.**
 
 ## Archivos modificados recientemente
 .claude/settings.local.json

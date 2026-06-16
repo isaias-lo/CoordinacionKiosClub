@@ -106,6 +106,8 @@ export default function RutasScreen() {
 
   // 2ª vuelta: pendientes cross-device (keyed by dispatch fecha, NOT today)
   const [pendientesV2, setPendientesV2] = useState<{ c: string; p: number; b: number; ch: number }[]>([]);
+  // Cierre de jornada: marca cross-device de "listo por hoy" (keyed by dispatch fecha)
+  const [cerrado, setCerrado] = useState(false);
 
   const [tiendas, setTiendas] = useState<Record<string, TiendaInfo>>(() => ({ ...TIENDAS_INICIAL }));
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
@@ -722,6 +724,31 @@ export default function RutasScreen() {
     setModo('man');
   }
 
+  // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
+  useEffect(() => {
+    setCerrado(false);
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('shared_session_state')
+          .select('state')
+          .eq('fecha', fecha)
+          .eq('fuente', 'cierre')
+          .maybeSingle();
+        if (data?.state) setCerrado(true);
+      } catch {}
+    })();
+  }, [fecha]);
+
+  function handleListoPorHoy() {
+    const payload = { closedAt: new Date().toISOString(), by: supervisor || '' };
+    setCerrado(true);
+    supabase
+      .from('shared_session_state')
+      .upsert({ fecha, fuente: 'cierre', state: payload }, { onConflict: 'fecha,fuente' })
+      .then(({ error }) => { if (error) console.error('[cierre-jornada]', error.message); });
+  }
+
   // ── Extra stops helpers ───────────────────────────────────────────
   function buildExtendidos(baseGps: Record<string, number[]>, baseTiendas: Record<string, TiendaInfo>) {
     const extGps     = { ...baseGps };
@@ -1254,6 +1281,10 @@ export default function RutasScreen() {
                     historialMsg={historialMsg}
                     onKmTotalReal={km => { kmTotalRealRef.current = km; }}
                     onCdUpdate={coords => { cdRef.current = coords; }}
+                    pendientesV2={pendientesV2}
+                    onCargarPendientes={handleCargarPendientes}
+                    onListoPorHoy={handleListoPorHoy}
+                    cerrado={cerrado}
                   />
                 </div>
                 <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
