@@ -21,10 +21,25 @@
 ---
 
 ## Última sesión
-Fecha: 2026-06-14 (cierre de jornada)
-Rama: `inicio` (sincronizada con main = e82c26b = producción)
+Fecha: 2026-06-16 (cierre de jornada — PC trabajo, sigo desde casa)
+Rama: `inicio` (sincronizada con main = 80523e6 = producción)
 
 ### Qué se hizo hoy (todo en producción)
+- **Punto 4 del reporte de 5 puntos: Cierre de jornada** (PR #35, mergeado a main).
+  - Pantalla "🏁 Cierre de jornada" en el Enrutador: resumen 1ª/2ª vuelta, pendientes
+    (reusa `shared_session_state('segunda_vuelta')`), guía de carga extra, botón "Listo por hoy"
+    (marca cross-device fuente `cierre`).
+  - **Integridad 2ª vuelta**: al registrar carga extra ya no se pisan las filas despachadas en 1ª
+    vuelta (`vueltaIntegrity.ts` + tests; usado en `api/despacho-records`, protege despacho_rm y picking_pallets).
+  - **Decisión**: NO migrar `vuelta` a per-pallet (es write-only, el Enrutador rutea por tienda;
+    HISTORIAL + CONTROL DESPACHO ya separan vueltas).
+  - Limpieza: migración 048 duplicada → 049 (picking_slot_id ya aplicada vía MCP).
+- **Reporte de 5 puntos CERRADO**: 1 (scroll QR), 2 (chips), 3 (#488 en AD), 5 (Enrutador móvil)
+  ya estaban en main (PRs #31/#32/#33); 4 mergeado hoy.
+- 231/231 tests · tsc OK · build OK.
+- **Para retomar en casa**: `npm run hola` (pull de `inicio`). Nada a medias; rama al día con main.
+
+### Sesión 2026-06-14 (histórico)
 - **Code review (211 issues) COMPLETO y mergeado** (PRs #19–#22): auth en endpoints
   (cookie+Bearer), rate limit OTP, fix can()/otpToken/Unicode/Gmail, XSS pdfExport,
   setTimeout/blob leaks, error.tsx + loading, calcAuditado centralizado, clamp trazabilidad.
