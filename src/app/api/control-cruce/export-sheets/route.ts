@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 
 const SPREADSHEET_ID = process.env.GOOGLE_CONTROL_CRUCE_SHEET_ID ?? '';
 const SHEET_GID      = 1832124874;
@@ -64,7 +65,16 @@ function fmtDate(iso: string | null | undefined): string {
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Acepta usuarios autenticados (UI) o el cron interno (auto-export reenvía
+  // su propio Bearer CRON_SECRET ya validado en ese handler).
+  const cronSecret = process.env.CRON_SECRET ?? '';
+  const authHeader = req.headers.get('authorization') ?? '';
+  const isInternalCron = cronSecret !== '' && authHeader === `Bearer ${cronSecret}`;
+  if (!isInternalCron && !(await verifyAuth(req))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
   if (!SPREADSHEET_ID) {
     return NextResponse.json(
       { error: 'GOOGLE_CONTROL_CRUCE_SHEET_ID no configurado en .env.local' },

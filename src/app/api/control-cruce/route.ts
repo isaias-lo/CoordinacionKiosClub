@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const TABLE = 'control_cruce_manual';
@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
     picking_name: string;
     correcta_declaracion?: string;

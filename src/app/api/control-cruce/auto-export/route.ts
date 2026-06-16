@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
+import { resolveManualFields } from '@/features/control-interno/utils/controlCruceUtils';
 
 // ─── Helpers de timezone Santiago ────────────────────────────────────────────
 
@@ -52,7 +54,11 @@ async function writeConfig(sb: ReturnType<typeof supabaseServer>, config: AutoEx
 
 // ─── Core export logic ────────────────────────────────────────────────────────
 
-async function runExport(baseUrl: string, targetDate: { iso: string; tabName: string }) {
+async function runExport(
+  baseUrl: string,
+  targetDate: { iso: string; tabName: string },
+  forwardHeaders: Record<string, string>,
+) {
   // 1. Fetch Odoo data (COMPLETADO para fechaArmado = targetDate.iso,
   //    más VENCIDA/PLANIFICADO con scheduled_date en ese rango)
   const odooRes = await fetch(`${baseUrl}/api/odoo`, {
@@ -95,24 +101,15 @@ async function runExport(baseUrl: string, targetDate: { iso: string; tabName: st
   }
 
   // 3. Aplicar misma lógica que tableData del componente
-  const rows = rawRows.map(r => {
-    const manual   = manualMap.get(r.pickingName);
-    const manualCd = manual?.correcta_declaracion;
-    const correcta_declaracion =
-      r.estado === 'COMPLETADO'
-        ? (manualCd && manualCd !== 'PENDIENTE' ? manualCd : 'ACTIVIDAD REALIZADA')
-        : (manualCd ?? 'PENDIENTE');
-    return {
-      ...r,
-      correcta_declaracion,
-      movimiento_ajuste: manual?.movimiento_ajuste ?? '',
-    };
-  });
+  const rows = rawRows.map(r => ({
+    ...r,
+    ...resolveManualFields(r.estado, manualMap.get(r.pickingName)),
+  }));
 
   // 4. Exportar a Sheet con pestaña por fecha
   const exportRes = await fetch(`${baseUrl}/api/control-cruce/export-sheets`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...forwardHeaders },
     body: JSON.stringify({
       rows,
       fecha:   new Date().toLocaleDateString('es-CL', { timeZone: 'America/Santiago' }),
@@ -169,7 +166,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = new URL(req.url).origin;
 
   try {
-    const result = await runExport(baseUrl, ayer);
+    const result = await runExport(baseUrl, ayer, { authorization: authHeader });
     await writeConfig(sb, { ...config, ultima_fecha: ayer.iso });
     return NextResponse.json({ ok: true, ...result, date: ayer.iso });
   } catch (e) {
@@ -181,6 +178,10 @@ export async function GET(req: NextRequest) {
 // ─── POST — forzar exportación desde la UI ────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  if (!(await verifyAuth(req))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
   let body: { fecha?: string } = {};
   try { body = await req.json(); } catch { /* sin body */ }
 
@@ -194,8 +195,13 @@ export async function POST(req: NextRequest) {
     : yesterday();
 
   const baseUrl = new URL(req.url).origin;
+  const forwardHeaders: Record<string, string> = {};
+  const incomingAuth   = req.headers.get('authorization');
+  const incomingCookie = req.headers.get('cookie');
+  if (incomingAuth)   forwardHeaders.authorization = incomingAuth;
+  if (incomingCookie) forwardHeaders.cookie         = incomingCookie;
   try {
-    const result = await runExport(baseUrl, targetDate);
+    const result = await runExport(baseUrl, targetDate, forwardHeaders);
     // Actualizar ultima_fecha si es "ayer"
     const ayer = yesterday();
     if (targetDate.iso === ayer.iso) {
@@ -213,6 +219,10 @@ export async function POST(req: NextRequest) {
 // ─── PATCH — actualizar configuración desde la UI ─────────────────────────────
 
 export async function PATCH(req: NextRequest) {
+  if (!(await verifyAuth(req))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
   let body: Partial<AutoExportConfig> = {};
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: 'Body inválido' }, { status: 400 });

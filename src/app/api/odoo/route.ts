@@ -879,6 +879,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 4b. Actividades PENDIENTES — mail.activity (si incluyePendientes)
+      let pendingActivitiesCount = 0;
       if (incluyePendientes && allPickingIds.length) {
         const actDomain: unknown[] = [
           ['res_model', '=', 'stock.picking'],
@@ -936,6 +937,7 @@ export async function POST(req: NextRequest) {
             estado,
           });
         }
+        pendingActivitiesCount = pendingActivities.length;
         console.log(`[get_control_activities] pending: ${pendingActivities.length} total, ${parsed.filter(p => p.estado !== 'COMPLETADO').length} parseados OK`);
       }
 
@@ -1047,7 +1049,13 @@ export async function POST(req: NextRequest) {
         };
       });
 
-      return NextResponse.json({ rows, total: rows.length });
+      const truncated =
+        completedPickings.length === 2000 ||
+        pendingPickings.length   === 2000 ||
+        messages.length          === 2000 ||
+        (incluyePendientes && pendingActivitiesCount === 2000);
+
+      return NextResponse.json({ rows, total: rows.length, truncated });
     }
 
     /* ── store_movement_status ── */
