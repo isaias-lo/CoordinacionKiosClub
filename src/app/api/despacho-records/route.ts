@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { idsActualizables, type DespachoRow } from '@/features/despacho/rutas/utils/vueltaIntegrity';
 
 const ALLOWED_TABLES = new Set(['despacho_rm', 'despacho_regiones', 'recepcion']);
 
@@ -113,7 +114,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     const sb = supabaseServer();
-    const estadosFinales = new Set(['Entregado', 'Recibido', 'Diferencia']);
     let updatedDespacho = 0;
     let updatedPicking  = 0;
 
@@ -123,18 +123,18 @@ export async function PATCH(request: NextRequest) {
       if (seen.has(upd.cod)) continue;
       seen.add(upd.cod);
 
-      // 1. Actualizar despacho_rm por (fecha, cod) — solo filas no finalizadas
+      // 1. Actualizar despacho_rm por (fecha, cod) — solo filas no finalizadas.
+      // En carga extra (2ª vuelta) se protegen las filas ya despachadas en 1ª vuelta.
       const { data: rmRows } = await sb
         .from('despacho_rm')
-        .select('id, seguimiento')
+        .select('id, seguimiento, conductor, vuelta')
         .eq('fecha', body.fecha)
         .eq('cod', upd.cod);
 
-      const idsActualizables = ((rmRows ?? []) as { id: string; seguimiento: string }[])
-        .filter(r => !estadosFinales.has(r.seguimiento))
-        .map(r => r.id);
+      const esCargaExtra = upd.vuelta === 2;
+      const ids = idsActualizables((rmRows ?? []) as DespachoRow[], upd.vuelta);
 
-      if (idsActualizables.length > 0) {
+      if (ids.length > 0) {
         const { error } = await sb
           .from('despacho_rm')
           .update({
@@ -148,9 +148,9 @@ export async function PATCH(request: NextRequest) {
             ...(upd.pioneta_1  !== undefined && { pioneta_1:  upd.pioneta_1 }),
             ...(upd.pioneta_2  !== undefined && { pioneta_2:  upd.pioneta_2 }),
           })
-          .in('id', idsActualizables);
+          .in('id', ids);
         if (error) console.error('[despacho-records PATCH] despacho_rm:', error.message);
-        else updatedDespacho += idsActualizables.length;
+        else updatedDespacho += ids.length;
       }
 
       // 2. Actualizar picking_pallets activos por (date≈fecha, store_cod, is_active)
@@ -158,7 +158,7 @@ export async function PATCH(request: NextRequest) {
       const parts = body.fecha.split('/');
       const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : body.fecha;
 
-      const { error: pkErr } = await sb
+      let pkQuery = sb
         .from('picking_pallets')
         .update({
           conductor:  upd.conductor,
@@ -169,6 +169,11 @@ export async function PATCH(request: NextRequest) {
         .eq('date', isoDate)
         .eq('store_cod', upd.cod)
         .eq('is_active', true);
+
+      // Carga extra (2ª vuelta): no relabelar pallets ya despachados en 1ª vuelta.
+      if (esCargaExtra) pkQuery = pkQuery.is('conductor', null);
+
+      const { error: pkErr } = await pkQuery;
 
       if (pkErr) console.error('[despacho-records PATCH] picking_pallets:', pkErr.message);
       else updatedPicking++;
