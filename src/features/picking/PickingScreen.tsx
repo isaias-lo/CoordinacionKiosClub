@@ -748,15 +748,37 @@ export function PickingScreen() {
     setRefreshingId(null);
   }, [hasOdoo, odooConfig]);
 
+  // Grupos cuyo movimiento es de OTRO DÍA (arrastre/error de Odoo). Regla de negocio:
+  // el picking siempre se cierra el mismo día → un movimiento con fecha de origen válida y
+  // distinta de hoy nunca es legítimo. Se ocultan del flujo (no se trabaja contra ellos).
+  // Conservador: si la fecha está vacía/ilegible se trata como de hoy (beneficio de la duda).
+  const otroDiaGroupKeys = useMemo(() => {
+    const d = new Date();
+    const todayDMY = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const validDate = (s: string) => /^\d{2}\/\d{2}\/\d{4}$/.test(s);
+    const keys = new Set<string>();
+    for (const g of allGroups) {
+      if (g.operations.length > 0 && g.operations.every(o => validDate(o.originDate) && o.originDate !== todayDMY))
+        keys.add(g.stateKey);
+    }
+    return keys;
+  }, [allGroups]);
+
+  const otroDiaCount = useMemo(
+    () => allGroups.filter(g => otroDiaGroupKeys.has(g.stateKey)).length,
+    [allGroups, otroDiaGroupKeys],
+  );
+
   const filteredGroups = useMemo(() => {
-    if (sectionFilter === 'all') return allGroups;
     return allGroups.filter(g => {
+      if (otroDiaGroupKeys.has(g.stateKey)) return false;          // ocultar movimientos de otro día
+      if (sectionFilter === 'all') return true;
       const cats = new Set(g.operations.flatMap(o => o.categories));
       if (sectionFilter === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
       if (sectionFilter === 'chocolates')  return cats.has('Chocolates');
       return cats.has('Hogar');
     });
-  }, [allGroups, sectionFilter]);
+  }, [allGroups, sectionFilter, otroDiaGroupKeys]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
@@ -1229,6 +1251,11 @@ export function PickingScreen() {
                       ? 'Sin operaciones de Abastecimiento hoy'
                       : `${filteredGroups.length} picker${filteredGroups.length !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`}
                   </div>
+                  {otroDiaCount > 0 && (
+                    <div className="text-[11px] text-text-3 mt-0.5">
+                      {otroDiaCount} movimiento{otroDiaCount !== 1 ? 's' : ''} de otro día oculto{otroDiaCount !== 1 ? 's' : ''} (error de Odoo — no {otroDiaCount !== 1 ? 'son' : 'es'} de hoy)
+                    </div>
+                  )}
                   {lastRefresh && (
                     <div className="text-[13px] text-text-3">
                       Actualizado: {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
