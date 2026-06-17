@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, AlertTriangle } from 'lucide-react';
+import { useMemo, useState, useEffect, type ReactNode } from 'react';
+import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { detectarReincidencia, TIPO_LABEL, type PickingEvento } from '../picking-utils';
@@ -207,7 +208,7 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center px-8">
         <div className="mb-4 opacity-20"><User size={48} strokeWidth={1.5} className="text-slate-400" /></div>
-        <div className="text-[14px] font-medium text-slate-400">Sin actividad registrada hoy</div>
+        <div className="text-[14px] font-medium text-slate-400">Sin actividad registrada</div>
       </div>
     );
   }
@@ -337,5 +338,174 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
         </div>
       ))}
     </div>
+  );
+}
+
+// ─── Wrapper con selector de fecha + resumen ──────────────────────────────────
+// SupervisorActivityPanel es el renderizador puro (recibe los datos por props).
+// Este wrapper decide QUÉ datos mostrar: para HOY usa los datos en vivo de
+// PickingScreen (con Presence/tiempo real); para días pasados hace sus propias
+// consultas a la BD y oculta "En línea" (Presence solo existe en el momento).
+
+interface ActivityData {
+  printRecords: PrintRecord[];
+  nameChanges:  PickerNameChange[];
+  palletSlots:  PalletSlot[];
+  eventos:      PickingEvento[];
+}
+
+/** YYYY-MM-DD desplazado `n` días (mediodía UTC para evitar bordes de DST). */
+function shiftDate(date: string, n: number): string {
+  return new Date(new Date(date + 'T12:00:00Z').getTime() + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Carga la actividad persistida de una fecha (Chile). */
+async function fetchActivity(date: string): Promise<ActivityData> {
+  const [prints, evts, pallets, names] = await Promise.all([
+    supabase.from('picking_prints')
+      .select('state_key, printed_at, picker_label, pallets, tipo, printed_by_name')
+      .eq('date', date).order('printed_at', { ascending: true }),
+    supabase.from('picking_eventos')
+      .select('id, date, event_type, pallet_id, state_key, store_cod, tipo, picker_label, actor_name, created_at')
+      .eq('date', date).order('created_at', { ascending: true }),
+    supabase.from('picking_pallets')
+      .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at')
+      .eq('date', date).eq('is_active', true).order('created_at', { ascending: true }),
+    // picker_name_changes no tiene columna `date`: filtramos por día UTC, igual que
+    // el resto del módulo de Picking (las columnas `date` se escriben con todayISO UTC).
+    supabase.from('picker_name_changes')
+      .select('id, picker_key, old_name, new_name, changed_by_name, changed_at')
+      .gte('changed_at', `${date}T00:00:00.000Z`)
+      .lte('changed_at', `${date}T23:59:59.999Z`)
+      .order('changed_at', { ascending: false }),
+  ]);
+
+  const palletSlots = ((pallets.data ?? []) as PalletSlot[])
+    .filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
+
+  return {
+    printRecords: (prints.data ?? []) as PrintRecord[],
+    eventos:      (evts.data ?? []) as PickingEvento[],
+    palletSlots,
+    nameChanges:  (names.data ?? []) as PickerNameChange[],
+  };
+}
+
+interface ActivityTabProps {
+  /** Datos en vivo de hoy (los que ya carga PickingScreen). */
+  live:  ActivityData & { supervisors: Record<string, SupervisorPresence> };
+  /** Fecha de hoy en Chile (YYYY-MM-DD). */
+  today: string;
+}
+
+export function ActivityTab({ live, today }: ActivityTabProps) {
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [histo, setHisto] = useState<ActivityData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const isToday = selectedDate === today;
+
+  useEffect(() => {
+    if (isToday) { setHisto(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetchActivity(selectedDate)
+      .then(d => { if (!cancelled) setHisto(d); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedDate, isToday]);
+
+  const printRecords = isToday ? live.printRecords : (histo?.printRecords ?? []);
+  const nameChanges  = isToday ? live.nameChanges  : (histo?.nameChanges  ?? []);
+  const palletSlots  = isToday ? live.palletSlots  : (histo?.palletSlots  ?? []);
+  const eventos      = isToday ? live.eventos      : (histo?.eventos      ?? []);
+  const supervisors  = isToday ? live.supervisors  : {};
+
+  const resumen = useMemo(() => ({
+    impresiones: printRecords.length,
+    creados:     eventos.filter(e => e.event_type === 'crear').length,
+    eliminados:  eventos.filter(e => e.event_type === 'eliminar').length,
+    errores:     detectarReincidencia(eventos).pares.length,
+  }), [printRecords, eventos]);
+
+  const ayer = useMemo(() => shiftDate(today, -1), [today]);
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* ── Barra de fecha + resumen ── */}
+      <div className="px-4 pt-3 pb-2 border-b" style={{ borderColor: '#E2E8F0', background: '#FAFBFC' }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Calendar size={15} style={{ color: '#64748B' }} />
+          <button
+            onClick={() => setSelectedDate(today)}
+            className="text-[12px] font-semibold px-2.5 py-1 rounded transition-colors"
+            style={isToday ? { background: '#1E40AF', color: '#fff' } : { background: '#F1F5F9', color: '#475569' }}
+          >Hoy</button>
+          <button
+            onClick={() => setSelectedDate(ayer)}
+            className="text-[12px] font-semibold px-2.5 py-1 rounded transition-colors"
+            style={selectedDate === ayer ? { background: '#1E40AF', color: '#fff' } : { background: '#F1F5F9', color: '#475569' }}
+          >Ayer</button>
+          <input
+            type="date"
+            value={selectedDate}
+            max={today}
+            onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }}
+            className="text-[12px] font-medium px-2 py-1 rounded border bg-white"
+            style={{ borderColor: '#CBD5E1', color: '#334155' }}
+          />
+          {loading && <Loader2 size={14} className="animate-spin" style={{ color: '#94A3B8' }} />}
+          {!isToday && (
+            <span className="text-[11px] px-2 py-0.5 rounded" style={{ background: '#FEF9C3', color: '#854D0E' }}>
+              Día anterior (histórico)
+            </span>
+          )}
+        </div>
+
+        {/* Resumen del día */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <ResumenChip icon={<Printer size={12} />} label="impresiones" value={resumen.impresiones} color="#1E40AF" />
+          <ResumenChip icon={<PlusCircle size={12} />} label="creados"   value={resumen.creados}    color="#15803D" />
+          <ResumenChip icon={<MinusCircle size={12} />} label="eliminados" value={resumen.eliminados} color="#B45309" />
+          <ResumenChip icon={<AlertTriangle size={12} />} label="errores" value={resumen.errores}
+            color={resumen.errores > 0 ? '#DC2626' : '#94A3B8'} highlight={resumen.errores > 0} />
+        </div>
+      </div>
+
+      {/* ── Listado ── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {loading && !histo ? (
+          <div className="flex items-center justify-center py-16 text-[13px]" style={{ color: '#94A3B8' }}>
+            <Loader2 size={16} className="animate-spin mr-2" /> Cargando actividad…
+          </div>
+        ) : (
+          <SupervisorActivityPanel
+            printRecords={printRecords}
+            nameChanges={nameChanges}
+            palletSlots={palletSlots}
+            supervisors={supervisors}
+            eventos={eventos}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResumenChip({ icon, label, value, color, highlight = false }: {
+  icon: ReactNode; label: string; value: number; color: string; highlight?: boolean;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded"
+      style={{
+        background: highlight ? '#FEF2F2' : '#fff',
+        border: `1px solid ${highlight ? '#FECACA' : '#E2E8F0'}`,
+        color,
+      }}
+    >
+      {icon}
+      <span style={{ color: '#0F172A', fontWeight: 700 }}>{value}</span>
+      <span style={{ color: '#64748B', fontWeight: 500 }}>{label}</span>
+    </span>
   );
 }
