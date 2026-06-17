@@ -30,6 +30,7 @@ import {
   todayISO, getStoreName, parseOrigin, isAbastecimientoOp, resolveStoreCode,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
 } from './picking-utils';
+import type { PickingEvento } from './picking-utils';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
 import { SupervisorActivityPanel } from './components/ActivityTab';
@@ -343,12 +344,30 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadNameChanges(); }, [loadNameChanges]);
-  // Single channel for both print records and name changes — reduces WebSocket channels by one.
-  // A change on either table is infrequent enough that reloading both callbacks is acceptable.
-  useRealtimeRefresh('picking_prints,picker_name_changes', useCallback(() => {
+
+  // ── Auditoría de altas/bajas de pallets (crear / eliminar) ──────────────────
+  const [pickingEventos, setPickingEventos] = useState<PickingEvento[]>([]);
+
+  const loadEventos = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('picking_eventos')
+        .select('id, date, event_type, pallet_id, state_key, store_cod, tipo, picker_label, actor_name, created_at')
+        .eq('date', todayISO())
+        .order('created_at', { ascending: true });
+      if (data) setPickingEventos(data as PickingEvento[]);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { void loadEventos(); }, [loadEventos]);
+
+  // Single channel for prints, name changes and pallet audit — reduces WebSocket channels.
+  // A change on any is infrequent enough that reloading all callbacks is acceptable.
+  useRealtimeRefresh('picking_prints,picker_name_changes,picking_eventos', useCallback(() => {
     void loadPrintRecords();
     void loadNameChanges();
-  }, [loadPrintRecords, loadNameChanges]));
+    void loadEventos();
+  }, [loadPrintRecords, loadNameChanges, loadEventos]));
 
   // ── Pallet slots: DB-backed, real-time ──────────────────────────────────────
   // Uses the browser Supabase client directly to avoid the Next.js API round-trip on
@@ -435,7 +454,7 @@ export function PickingScreen() {
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs, actor_name: presenceRef.current.name }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
@@ -485,7 +504,7 @@ export function PickingScreen() {
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'DELETE',
-        body: JSON.stringify({ id: slot.id }),
+        body: JSON.stringify({ id: slot.id, actor_name: presenceRef.current.name }),
       });
       if (!res.ok) setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
     } catch {
@@ -1162,7 +1181,7 @@ export function PickingScreen() {
           {/* ── Tab content: Actividad ── */}
           {rightTab === 'actividad' && (
             <div className="flex-1 overflow-y-auto min-h-0 py-2">
-              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} supervisors={otherSupervisors} />
+              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} supervisors={otherSupervisors} eventos={pickingEventos} />
             </div>
           )}
 

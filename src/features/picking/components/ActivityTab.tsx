@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Printer, Tag, User, Wifi } from 'lucide-react';
+import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, AlertTriangle } from 'lucide-react';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
+import { detectarReincidencia, TIPO_LABEL, type PickingEvento } from '../picking-utils';
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
@@ -30,7 +31,16 @@ type NameEv = {
   newName:   string;
 };
 
-type AnyEv = PrintEv | NameEv;
+type PalletEv = {
+  kind:        'pallet';
+  at:          string;
+  eventType:   'crear' | 'eliminar';
+  storeCod:    string;
+  tipo:        string;
+  pickerLabel: string;
+};
+
+type AnyEv = PrintEv | NameEv | PalletEv;
 
 interface Section {
   name:         string;
@@ -45,9 +55,17 @@ interface Props {
   nameChanges:  PickerNameChange[];
   palletSlots:  PalletSlot[];
   supervisors:  Record<string, SupervisorPresence>; // otros supervisores en tiempo real
+  eventos?:     PickingEvento[];                     // auditoría de altas/bajas de pallets
 }
 
-export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots, supervisors }: Props) {
+export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots, supervisors, eventos = [] }: Props) {
+
+  // Reincidencia: quién creó y luego borró el mismo pallet en poco tiempo
+  const reincidencia = useMemo(() => detectarReincidencia(eventos), [eventos]);
+  const reincidentes = useMemo(
+    () => Object.entries(reincidencia.porSupervisor).sort((a, b) => b[1] - a[1]),
+    [reincidencia],
+  );
 
   // Pallets y bultos reales desde picking_pallets
   const unitsByKey = useMemo(() => {
@@ -62,10 +80,10 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
   }, [palletSlots]);
 
   const sections = useMemo<Section[]>(() => {
-    const byName: Record<string, { dbPrints: PrintRecord[]; presencePrints: SupervisorPrint[]; nameEvs: PickerNameChange[]; isLive: boolean }> = {};
+    const byName: Record<string, { dbPrints: PrintRecord[]; presencePrints: SupervisorPrint[]; nameEvs: PickerNameChange[]; palletEvs: PickingEvento[]; isLive: boolean }> = {};
 
     const ensure = (name: string) => {
-      if (!byName[name]) byName[name] = { dbPrints: [], presencePrints: [], nameEvs: [], isLive: false };
+      if (!byName[name]) byName[name] = { dbPrints: [], presencePrints: [], nameEvs: [], palletEvs: [], isLive: false };
     };
 
     // 1. Datos de DB: registros con printed_by_name
@@ -80,6 +98,13 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
       const name = c.changed_by_name?.trim() || 'Sin atribución';
       ensure(name);
       byName[name].nameEvs.push(c);
+    }
+
+    // 2b. Auditoría de altas/bajas de pallets (crear / eliminar)
+    for (const e of eventos) {
+      const name = e.actor_name?.trim() || 'Sin atribución';
+      ensure(name);
+      byName[name].palletEvs.push(e);
     }
 
     // 3. Datos de Presence: supervisores conectados en tiempo real.
@@ -152,6 +177,18 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
           events.push({ kind: 'name', at: c.changed_at, pickerKey: c.picker_key, oldName: c.old_name, newName: c.new_name });
         }
 
+        // Altas / bajas de pallets
+        for (const e of data.palletEvs) {
+          events.push({
+            kind:        'pallet',
+            at:          e.created_at,
+            eventType:   e.event_type,
+            storeCod:    e.store_cod ?? (e.state_key ? e.state_key.split('__')[0] : '—'),
+            tipo:        e.tipo ?? '',
+            pickerLabel: e.picker_label ?? '',
+          });
+        }
+
         // Ordenar cronológicamente
         events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
@@ -163,7 +200,7 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
         if (b.name === 'Sin atribución') return -1;
         return a.name.localeCompare(b.name);
       });
-  }, [printRecords, nameChanges, palletSlots, supervisors, unitsByKey]);
+  }, [printRecords, nameChanges, palletSlots, supervisors, eventos, unitsByKey]);
 
   if (sections.length === 0) {
     return (
@@ -176,6 +213,28 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
 
   return (
     <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
+      {reincidentes.length > 0 && (
+        <div className="rounded overflow-hidden"
+          style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <div className="flex items-center gap-2 px-4 py-2.5" style={{ borderBottom: '1px solid #FECACA' }}>
+            <AlertTriangle size={14} style={{ color: '#DC2626' }} />
+            <span className="font-semibold text-[13px]" style={{ color: '#991B1B' }}>
+              Creó y borró el mismo pallet (posibles errores)
+            </span>
+          </div>
+          <div className="divide-y" style={{ borderColor: '#FEE2E2' }}>
+            {reincidentes.map(([name, n]) => (
+              <div key={name} className="flex items-center gap-3 px-4 py-2">
+                <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#7F1D1D' }}>{name}</span>
+                <span className="flex-shrink-0 text-[12px] font-bold px-2 py-0.5 rounded"
+                  style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                  {n} {n === 1 ? 'vez' : 'veces'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {sections.map(sec => (
         <div key={sec.name}
           style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
@@ -204,13 +263,31 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
 
           {/* Eventos */}
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {sec.events.map((ev) => (
-              <div key={ev.at + ev.kind + (ev.kind === 'print' ? ev.storeCod + ev.pickerLabel : ev.pickerKey)} className="flex items-center gap-3 px-4 py-2.5">
+            {sec.events.map((ev, i) => (
+              <div key={ev.at + ev.kind + i} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#94A3B8', minWidth: 36 }}>
                   {fmtTime(ev.at)}
                 </span>
 
-                {ev.kind === 'print' ? (
+                {ev.kind === 'pallet' ? (
+                  <>
+                    {ev.eventType === 'crear'
+                      ? <PlusCircle size={13} className="flex-shrink-0" style={{ color: '#15803D' }} />
+                      : <MinusCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
+                    <span className="font-mono font-bold text-[12px] flex-shrink-0 px-1.5 py-0.5 rounded"
+                      style={{ background: '#F1F5F9', color: '#334155' }}>
+                      {ev.storeCod}
+                    </span>
+                    <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#334155' }}>
+                      {ev.eventType === 'crear' ? 'Creó' : 'Eliminó'} {TIPO_LABEL[ev.tipo] ?? ev.tipo}
+                      {ev.pickerLabel ? ` · ${ev.pickerLabel}` : ''}
+                    </span>
+                    <span className="flex-shrink-0 text-[11px] font-semibold"
+                      style={{ color: ev.eventType === 'crear' ? '#15803D' : '#DC2626' }}>
+                      {ev.eventType === 'crear' ? '+' : '−'}
+                    </span>
+                  </>
+                ) : ev.kind === 'print' ? (
                   <>
                     <Printer size={13} className="flex-shrink-0" style={{ color: ev.fromPresence ? '#15803D' : '#64748B' }} />
                     <span className="font-mono font-bold text-[12px] flex-shrink-0 px-1.5 py-0.5 rounded"

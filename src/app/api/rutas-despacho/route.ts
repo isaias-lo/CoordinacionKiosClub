@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
 import { verifyAuth } from '@/lib/apiAuth';
+import { norm } from '@/features/despacho/rutas/utils/helpers';
+
+/** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
+function addDaysIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
 
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request))
@@ -75,16 +84,52 @@ export async function POST(request: NextRequest) {
     if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
   }
 
+  const guiasManuales = new Set<string>();
   if (body.guias?.length) {
+    body.guias.forEach(g => { if (g.store_cod) guiasManuales.add(norm(g.store_cod)); });
     const { error: gErr } = await supabaseServer()
       .from('ruta_guias')
       .insert(body.guias.map(g => ({
         ruta_id:   ruta.id,
-        store_cod: g.store_cod ?? null,
+        store_cod: g.store_cod ? norm(g.store_cod) : null,
         folio_dte: g.folio_dte,
         drive_url: g.drive_url ?? null,
       })));
     if (gErr) return NextResponse.json({ error: gErr.message }, { status: 500 });
+  }
+
+  // "Jalar" las guías ya subidas en bodega (Santiago/Regiones) antes de existir el
+  // manifiesto: por cada tienda, la subida más reciente dentro de una ventana de
+  // días alrededor de la fecha de salida. Cubre el caso "armado hoy / sale mañana".
+  if (body.tiendas?.length) {
+    const sbg = supabaseServer();
+    const codsNorm = [...new Set(body.tiendas.map(t => norm(t.store_cod)))]
+      .filter(c => !guiasManuales.has(c));  // no pisar las pasadas explícitamente
+    if (codsNorm.length) {
+      const desde = addDaysIso(body.fecha, -2);
+      const hasta = addDaysIso(body.fecha, 1);
+      const { data: subidas } = await sbg
+        .from('guias_subidas')
+        .select('store_cod, folios, drive_url, fecha, created_at')
+        .in('store_cod', codsNorm)
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      // Quedarse con la subida más reciente por tienda
+      const masReciente = new Map<string, { folios: string[]; drive_url: string | null }>();
+      for (const s of (subidas ?? []) as { store_cod: string; folios: string[]; drive_url: string | null }[]) {
+        if (!masReciente.has(s.store_cod)) masReciente.set(s.store_cod, { folios: s.folios ?? [], drive_url: s.drive_url });
+      }
+
+      const rows = [...masReciente.entries()].flatMap(([cod, g]) =>
+        (g.folios ?? []).map(folio => ({
+          ruta_id: ruta.id, store_cod: cod, folio_dte: folio, drive_url: g.drive_url ?? null, tipo: 'original',
+        })),
+      );
+      if (rows.length) await sbg.from('ruta_guias').insert(rows);
+    }
   }
 
   // ── Crear registros en trazabilidad_unidades (PUNTO 1 — Creación) ──

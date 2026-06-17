@@ -523,6 +523,7 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
     Object.values(TIENDAS).forEach(t => { codMap[t.cod] = t.cod; });
 
     let assigned = 0, skipped = 0;
+    const sinManifiesto: string[] = [];
     const newGuides = { ...guides };
 
     for (const file of Array.from(files)) {
@@ -555,17 +556,20 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
           body: JSON.stringify({ cod: storeCod, estado: 'Pendiente' }),
         }).catch(() => {});
 
-        // Link guide folios to ruta manifest (fire-and-forget)
-        void fetch('/api/ruta-guias', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_cod: storeCod,
-            fecha: new Date().toISOString().split('T')[0],
-            folios: data.guias.map(g => g.num),
-            drive_url: driveFileId,
-          }),
-        });
+        // Vincular folios al manifiesto de la ruta (match robusto por código + ventana de fecha)
+        try {
+          const linkRes = await fetch('/api/ruta-guias', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              store_cod: storeCod,
+              folios: data.guias.map(g => g.num),
+              drive_url: driveFileId,
+            }),
+          });
+          const linkJson = await linkRes.json().catch(() => ({})) as { linked?: number; reason?: string };
+          if (linkRes.ok && linkJson.linked === 0) sinManifiesto.push(storeCod);
+        } catch { /* no bloquear la subida si falla el vínculo */ }
 
         assigned++;
       } catch { skipped++; }
@@ -582,6 +586,8 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
       showToast(`✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`);
     else
       showToast('No se pudo asignar. El nombre debe empezar con el código (ej: 11ILC-guia.pdf)', false);
+    if (sinManifiesto.length)
+      showToast(`⚠ Guía subida pero aún sin manifiesto para ${sinManifiesto.join(', ')}`, false);
   };
 
   /* Print only the currently-previewed store */

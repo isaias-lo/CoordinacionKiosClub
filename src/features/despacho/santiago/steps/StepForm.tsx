@@ -377,6 +377,22 @@ export function StepForm() {
         const data = await processPdf(file);
         if (!data.guias.length) data.guias = [{ num: clean, total: 0 }];
         newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum };
+
+        // Subir el PDF (con timbres) al storage y registrar la guía para que el
+        // manifiesto la muestre/descargue. En bodega suele subirse antes de existir
+        // el manifiesto: la guía queda persistida y el manifiesto la jala al crearse.
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          const driveRes = await fetch('/api/drive-upload', { method: 'POST', body: fd });
+          const driveUrl = driveRes.ok ? (await driveRes.json()).fileId as string : undefined;
+          void fetch('/api/ruta-guias', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ store_cod: storeCod, folios: data.guias.map(g => g.num), drive_url: driveUrl }),
+          });
+        } catch { /* no bloquear la asignación local si falla la subida */ }
+
         assigned++;
       } catch { skipped++; }
     }

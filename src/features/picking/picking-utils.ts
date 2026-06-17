@@ -141,6 +141,71 @@ export function isAllowedPicker(name: string): boolean {
   return n.includes('adquisicion') || n.includes('adquisición') || n.includes('calidad');
 }
 
+// ─── Auditoría de pallets (crear / eliminar) ───────────────────────────────────
+export interface PickingEvento {
+  id:           number;
+  date:         string;
+  event_type:   'crear' | 'eliminar';
+  pallet_id:    number | null;
+  state_key:    string | null;
+  store_cod:    string | null;
+  tipo:         string | null;
+  picker_label: string | null;
+  actor_name:   string | null;
+  created_at:   string;
+}
+
+export interface ReincidenciaPar {
+  actor_name: string;       // quién creó (origen de la acción)
+  borrado_por: string | null;
+  state_key:  string;
+  tipo:       string;
+  store_cod:  string | null;
+  pallet_id:  number | null;
+  creado_at:  string;
+  borrado_at: string;
+}
+
+/**
+ * Empareja "creó y luego borró" el MISMO pallet (por pallet_id) dentro de una
+ * ventana corta, para detectar errores/correcciones reiteradas. Devuelve los
+ * pares y un conteo por supervisor (atribuido a quien creó). Una ventana corta
+ * (default 30 min) evita marcar bajas legítimas hechas horas después.
+ */
+export function detectarReincidencia(
+  eventos: PickingEvento[],
+  ventanaMin = 30,
+): { pares: ReincidenciaPar[]; porSupervisor: Record<string, number> } {
+  const byPallet = new Map<number, { crear?: PickingEvento; eliminar?: PickingEvento }>();
+  for (const e of eventos) {
+    if (e.pallet_id == null) continue;
+    const g = byPallet.get(e.pallet_id) ?? {};
+    if (e.event_type === 'crear' && !g.crear) g.crear = e;       // primera creación
+    if (e.event_type === 'eliminar')          g.eliminar = e;    // última eliminación
+    byPallet.set(e.pallet_id, g);
+  }
+  const pares: ReincidenciaPar[] = [];
+  const porSupervisor: Record<string, number> = {};
+  for (const { crear, eliminar } of byPallet.values()) {
+    if (!crear || !eliminar) continue;
+    const dtMin = (new Date(eliminar.created_at).getTime() - new Date(crear.created_at).getTime()) / 60_000;
+    if (dtMin < 0 || dtMin > ventanaMin) continue;
+    const actor = crear.actor_name ?? eliminar.actor_name ?? '—';
+    pares.push({
+      actor_name:  actor,
+      borrado_por: eliminar.actor_name ?? null,
+      state_key:   crear.state_key ?? eliminar.state_key ?? '',
+      tipo:        crear.tipo ?? eliminar.tipo ?? '',
+      store_cod:   crear.store_cod ?? eliminar.store_cod ?? null,
+      pallet_id:   crear.pallet_id,
+      creado_at:   crear.created_at,
+      borrado_at:  eliminar.created_at,
+    });
+    porSupervisor[actor] = (porSupervisor[actor] ?? 0) + 1;
+  }
+  return { pares, porSupervisor };
+}
+
 // ─── Relative time ────────────────────────────────────────────────────────────
 export function relativeTime(isoStr: string, nowMs: number): string {
   const diffMs = nowMs - new Date(isoStr).getTime();

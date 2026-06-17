@@ -6,6 +6,28 @@ import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
 const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
+// Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
+// Permite ver en Monitoreo quién creó y luego eliminó un pallet/bulto/contenedor.
+function logEvento(ev: {
+  date?: string; event_type: 'crear' | 'eliminar'; pallet_id: number;
+  state_key?: string; store_cod?: string; tipo?: string;
+  picker_label?: string; actor_name?: string;
+}) {
+  supabaseServer()
+    .from('picking_eventos')
+    .insert({
+      date:         ev.date ?? new Date().toISOString().slice(0, 10),
+      event_type:   ev.event_type,
+      pallet_id:    ev.pallet_id,
+      state_key:    ev.state_key ?? null,
+      store_cod:    ev.store_cod ?? null,
+      tipo:         ev.tipo ?? null,
+      picker_label: ev.picker_label ?? null,
+      actor_name:   ev.actor_name ?? null,
+    })
+    .then(({ error }) => { if (error) console.error('[picking-eventos]', error.message); });
+}
+
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const idParam = request.nextUrl.searchParams.get('id');
@@ -62,6 +84,11 @@ export async function POST(request: NextRequest) {
     .select(SELECT_COLS)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  logEvento({
+    date: body.date, event_type: 'crear', pallet_id: data.id as number,
+    state_key: body.state_key, store_cod: body.store_cod, tipo: body.tipo,
+    picker_label: body.picker_label, actor_name: body.actor_name,
+  });
   return NextResponse.json({ data });
 }
 
@@ -101,11 +128,23 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
-  const body = await request.json() as { id: number };
+  const body = await request.json() as { id: number; actor_name?: string };
   const sb = supabaseServer();
+  // Capturar datos del slot antes de borrarlo para la auditoría
+  const { data: slot } = await sb
+    .from('picking_pallets')
+    .select('date, state_key, store_cod, tipo, picker_label')
+    .eq('id', body.id)
+    .maybeSingle();
   // Limpiar despacho_rm huérfano antes de borrar el slot — evita filas fantasma
   await sb.from('despacho_rm').delete().eq('picking_slot_id', body.id);
   const { error } = await sb.from('picking_pallets').delete().eq('id', body.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  logEvento({
+    date: slot?.date as string | undefined, event_type: 'eliminar', pallet_id: body.id,
+    state_key: slot?.state_key as string | undefined, store_cod: slot?.store_cod as string | undefined,
+    tipo: slot?.tipo as string | undefined, picker_label: slot?.picker_label as string | undefined,
+    actor_name: body.actor_name,
+  });
   return NextResponse.json({ ok: true });
 }
