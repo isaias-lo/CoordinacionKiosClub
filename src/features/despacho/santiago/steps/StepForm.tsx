@@ -19,6 +19,7 @@ import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/
 import { processPdf } from '../../regiones/utils/pdfUtils';
 import { isRegionesCod } from '../../regiones/data/tiendas';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
+import { useDayRollover } from '@/hooks/useDayRollover';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -251,6 +252,7 @@ export function StepForm() {
   const { showToast } = useApp();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
+  useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
 
   /* Mobile view */
   const [view, setView] = useState<'list' | 'form' | 'resumen'>('list');

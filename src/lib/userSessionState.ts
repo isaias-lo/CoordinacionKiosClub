@@ -40,11 +40,16 @@ export async function fetchSessionState(fuente: Fuente): Promise<unknown | null>
 /**
  * Subscribe to real-time changes on the shared state.
  * All users (including other people) trigger this callback when they push changes.
+ *
+ * @param onStatus  Optional. Reports WebSocket connection health (true = SUBSCRIBED).
+ *                  Used by callers to skip the polling fallback while Realtime is live,
+ *                  which avoids re-downloading the full state blob every few seconds (egress).
  */
 export function subscribeToSessionState(
   fuente: Fuente,
   _userId: string,
   onState: (state: unknown) => void,
+  onStatus?: (connected: boolean) => void,
 ): () => void {
   const fecha = todayISO();
   const channelId = `shared-state-${fuente}-${fecha}-${Math.random().toString(36).slice(2, 7)}`;
@@ -64,7 +69,7 @@ export function subscribeToSessionState(
         if (row.state) onState(row.state);
       },
     )
-    .subscribe();
+    .subscribe((status) => onStatus?.(status === 'SUBSCRIBED'));
 
   return () => { supabase.removeChannel(channel); };
 }

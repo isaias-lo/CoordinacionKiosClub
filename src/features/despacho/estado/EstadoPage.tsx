@@ -11,6 +11,7 @@ import { TIENDAS_INICIAL } from '../rutas/data/tiendas';
 import { getTiendasDelDia } from '../utils/useCalendario';
 import { useOdooProgress } from '../shared/useOdooProgress';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
+import { useDayRollover } from '@/hooks/useDayRollover';
 import { useApp } from '../../../context/AppContext';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { supabase } from '@/lib/supabase';
@@ -67,8 +68,10 @@ const GUIDES_KEY = `estadoGuias_${TODAY_KEY}`;
 function loadSantiagoItems(): Record<string, SantiagoItem[]> {
   if (typeof window === 'undefined') return {};
   try {
-    // SantiagoContext writes to the dated key since the sync update
-    const raw = localStorage.getItem(`santiagoState_${TODAY_KEY}`) || localStorage.getItem('santiagoState');
+    // Solo la clave del día. NO usar el fallback legacy sin fecha (`santiagoState`):
+    // arrastraba las tiendas de días anteriores y las mostraba en verde/naranja como si
+    // siguieran activas hoy. SantiagoContext escribe en la clave con fecha desde el sync.
+    const raw = localStorage.getItem(`santiagoState_${TODAY_KEY}`);
     if (!raw) return {};
     const s = JSON.parse(raw) as SantiagoState;
     return s.items || {};
@@ -227,6 +230,7 @@ const GROUP_META: { key: GroupKey; label: string; bg: string; color: string }[] 
 export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
   const { state: appState } = useApp();
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
+  useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
 
   // Columna izquierda redimensionable (divisor arrastrable, como Picking)
   const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =

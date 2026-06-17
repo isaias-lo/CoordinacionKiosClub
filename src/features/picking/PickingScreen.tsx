@@ -714,26 +714,12 @@ export function PickingScreen() {
     return () => clearInterval(id);
   }, [selectedCods, fetchOpsForStore]);
 
-  // Sync Odoo progress to Supabase so Bodega (Santiago/Regiones) can see it.
-  // Debounced 2s via useEffect cleanup: if opsMap changes again before timer fires, the
-  // previous POST is cancelled and a new 2s window starts. Prevents a burst of writes when
-  // many stores load at once (e.g. on initial page load with N tiendas selected).
-  useEffect(() => {
-    const entries = Object.entries(opsMap).map(([cod, ops]) => ({
-      cod,
-      total: ops.length,
-      done: ops.filter(o => o.state === 'done').length,
-    }));
-    if (entries.length === 0) return;
-    const timer = setTimeout(() => {
-      fetch('/api/picking-store-progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stores: entries }),
-      }).catch(e => console.error('[picking] sync progress:', e));
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [opsMap]);
+  // NOTA: el progreso de Odoo para el semáforo de Bodega lo calcula ahora UNA sola fuente
+  // —el refresco batch del servidor en GET /api/picking-store-progress, que atribuye los
+  // pickings por tienda con `resolveStoreCode` sobre TODAS las tiendas—. Antes PickingScreen
+  // también posteaba un conteo (total = ops cargadas por el picker), calculado con un criterio
+  // distinto; los dos escritores se pisaban con totales diferentes y el semáforo saltaba entre
+  // verde y naranja al cambiar de pestaña. Con fuente única el estado es estable (refresco ≤60s).
 
   const handleToggleStore = useCallback(async (cod: string) => {
     const isSelected = selectedCods.includes(cod);

@@ -271,12 +271,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => { isInitializedRef.current = true; });
 
-    // Realtime subscription (instant when WebSocket works)
-    const unsub = subscribeToSessionState('regiones', userId, handleRemote);
+    // Realtime subscription (instant when WebSocket works). Track connection health so the
+    // polling fallback below only runs when Realtime is actually down — otherwise we'd
+    // re-download the full state blob every 15 s on every open tab (wasted egress).
+    let realtimeConnected = false;
+    const unsub = subscribeToSessionState('regiones', userId, handleRemote, (connected) => {
+      const reconnected = connected && !realtimeConnected;
+      realtimeConnected = connected;
+      // On (re)connect, fetch once to catch any change missed while the socket was down.
+      if (reconnected) {
+        fetchSessionState('regiones').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+      }
+    });
 
-    // Polling fallback every 15 s — guarantees sync even when Realtime drops.
+    // Polling fallback every 15 s — ONLY fires while Realtime is disconnected.
     // 3 s was too aggressive: frequent polls created race-condition windows after pushes.
     const pollId = setInterval(async () => {
+      if (realtimeConnected) return;
       try {
         const remote = await fetchSessionState('regiones');
         if (remote) handleRemote(remote);
@@ -286,7 +297,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
 
-  // Debounced push to Supabase (800 ms after last change) + localStorage fallback
+  // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
+  // The debounce window also throttles how often the full row is re-broadcast over Realtime
+  // to every subscriber — a longer window means fewer rebroadcasts of the whole blob (egress).
+  // flushPending() + localStorage on unmount guarantee no data is lost on navigation.
   useEffect(() => {
     if (!isInitializedRef.current) return;
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado };
@@ -309,7 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now(); });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
-    }, 800);
+    }, 2500);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado]);

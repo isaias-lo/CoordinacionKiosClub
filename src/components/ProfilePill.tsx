@@ -77,16 +77,18 @@ export function ProfilePill({ compact = false }: ProfilePillProps) {
     if (!isAdmin) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-    const res = await fetch('/api/admin/users', {
+    const res = await fetch('/api/admin/users?count=pending', {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-    const data = await res.json() as { users?: { role: string }[] };
-    if (data.users) setPendingCount(data.users.filter((u: { role: string }) => u.role === 'pending').length);
+    const data = await res.json() as { pendingCount?: number };
+    if (typeof data.pendingCount === 'number') setPendingCount(data.pendingCount);
   }, [isAdmin]);
 
   useEffect(() => {
     loadPending();
-    const interval = setInterval(loadPending, 30000);
+    // 5 min: an approval badge doesn't need 30 s freshness, and each poll pulls the full
+    // user list out of Supabase Auth (egress). 10× fewer polls per open admin tab.
+    const interval = setInterval(loadPending, 300_000);
     return () => clearInterval(interval);
   }, [loadPending]);
 

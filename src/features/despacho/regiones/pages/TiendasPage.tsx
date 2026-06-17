@@ -16,6 +16,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
+import { useDayRollover } from '@/hooks/useDayRollover';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -212,6 +213,7 @@ export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
+  useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
