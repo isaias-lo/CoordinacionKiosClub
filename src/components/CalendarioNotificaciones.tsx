@@ -109,8 +109,8 @@ export default function CalendarioNotificaciones({
         const allHandled  = hCount === notif.cambios.length && notif.cambios.length > 0;
 
         const dt    = new Date(notif.created_at);
-        const dtStr = dt.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-                    + ' ' + dt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+        const dtStr = dt.toLocaleDateString('es-CL', { timeZone: 'America/Santiago', day: 'numeric', month: 'short' })
+                    + ' ' + dt.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour12: false, hour: '2-digit', minute: '2-digit' });
 
         return (
           <div key={notif.id} style={{

@@ -21,7 +21,7 @@ const RESOLUCION_OPTS: { value: TrazabilidadEstadoResolucion; label: string; col
 
 function fmtFecha(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString('es-CL', { timeZone: 'America/Santiago', hour12: false, day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function IncidenciasPage() {

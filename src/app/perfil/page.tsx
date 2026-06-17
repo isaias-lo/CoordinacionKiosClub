@@ -485,8 +485,8 @@ export default function PerfilPage() {
         <Card>
           {[
             { label: 'ID de usuario',  value: user?.id ?? '—' },
-            { label: 'Cuenta creada',  value: user?.created_at ? new Date(user.created_at).toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
-            { label: 'Último acceso',  value: user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—' },
+            { label: 'Cuenta creada',  value: user?.created_at ? new Date(user.created_at).toLocaleDateString('es-CL', { timeZone: 'America/Santiago', year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+            { label: 'Último acceso',  value: user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('es-CL', { timeZone: 'America/Santiago', hour12: false, year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—' },
             { label: 'Rol',            value: roleLabel },
           ].map(({ label, value }, i, arr) => (
             <div

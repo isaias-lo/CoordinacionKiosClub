@@ -119,7 +119,7 @@ export function StatsTab({ odooConfig, hasOdoo, canonicalNames }: Props) {
   };
 
   const cachedAt = cache?.cachedAt
-    ? new Date(cache.cachedAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    ? new Date(cache.cachedAt).toLocaleString('es-CL', { timeZone: 'America/Santiago', hour12: false, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : null;
 
   function exportStats() {

@@ -64,8 +64,10 @@ function todayISO(): string {
 }
 
 function fmtDatetime(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  // Hora real de Chile (los timestamptz se guardan en UTC).
+  return new Date(iso).toLocaleString('es-CL', {
+    timeZone: 'America/Santiago', hour12: false, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
 }
 
 function hasDiff(r: Rec): boolean {
