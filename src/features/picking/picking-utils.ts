@@ -94,8 +94,12 @@ export function isAbastecimientoOp(origin: string): boolean {
   return ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw));
 }
 
-/** Extrae un código de tienda (2 dígitos + 2-4 letras, ej. "42ANP") de cualquier texto. */
-const STORE_CODE_RE = /\b(\d{2}[A-Z]{2,4})\b/;
+/** Extrae un código de tienda (2 dígitos + 2-4 letras, ej. "42ANP") de cualquier texto.
+ *  Incluye Ñ en la clase de letras y usa lookarounds en vez de \b: la Ñ NO es carácter
+ *  de palabra para \b, así que con la regex anterior códigos como "23PEÑ" (Peñalolén)
+ *  quedaban truncados a "23PE" y el progreso de Odoo se guardaba bajo una clave que no
+ *  coincidía con la canónica de la tienda (semáforo siempre naranja). */
+const STORE_CODE_RE = /(?<![A-ZÑ0-9])(\d{2}[A-ZÑ]{2,4})(?![A-ZÑ0-9])/;
 export function extractStoreCode(text: string): string {
   return (text ?? '').toUpperCase().match(STORE_CODE_RE)?.[1] ?? '';
 }

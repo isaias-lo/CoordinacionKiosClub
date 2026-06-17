@@ -19,6 +19,13 @@ describe('extractStoreCode', () => {
     expect(extractStoreCode('')).toBe('');
     expect(extractStoreCode('Picking')).toBe('');
   });
+
+  it('extrae códigos con Ñ sin truncar (bug 23PEÑ → no debe quedar en 23PE)', () => {
+    expect(extractStoreCode('23PEÑ')).toBe('23PEÑ');
+    expect(extractStoreCode('WH/PICK/23PEÑ/Stock')).toBe('23PEÑ');
+    expect(extractStoreCode('Abastecimiento Comida 23PEÑ Fecha(16/06/2026)')).toBe('23PEÑ');
+    expect(extractStoreCode('23peñ')).toBe('23PEÑ');
+  });
 });
 
 describe('resolveStoreCode', () => {
