@@ -33,7 +33,7 @@ import {
 import type { PickingEvento } from './picking-utils';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
-import { SupervisorActivityPanel } from './components/ActivityTab';
+import { ActivityTab } from './components/ActivityTab';
 import { ConfigTab }          from './components/ConfigTab';
 import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
 import { PickerGroupCard }    from './components/PickerGroupCard';
@@ -1166,8 +1166,11 @@ export function PickingScreen() {
 
           {/* ── Tab content: Actividad ── */}
           {rightTab === 'actividad' && (
-            <div className="flex-1 overflow-y-auto min-h-0 py-2">
-              <SupervisorActivityPanel printRecords={printRecords} nameChanges={nameChanges} palletSlots={palletSlots} supervisors={otherSupervisors} eventos={pickingEventos} />
+            <div className="flex-1 overflow-hidden min-h-0">
+              <ActivityTab
+                live={{ printRecords, nameChanges, palletSlots, eventos: pickingEventos, supervisors: otherSupervisors }}
+                today={todayISO()}
+              />
             </div>
           )}
 

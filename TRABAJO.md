@@ -1,9 +1,16 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-16 21:21
-Último commit: feat(despacho+picking): guías en manifiesto, auditoría de pallets y 2ª vuelta por fecha de salida
-Rama: inicio
+Fecha: 2026-06-17 (tarde)
+Rama: feat/actividad-por-fecha (PR pendiente). Hoy mergeados a main: #37 (egress+semáforo+rollover),
+#38 (hora Chile), #39 (fix código Ñ 23PEÑ). Limpieza de filas contaminadas en despacho_sesion hecha.
+
+### En curso: Actividad de Picking por fecha
+- `ActivityTab` (wrapper nuevo en components/ActivityTab.tsx): selector Hoy/Ayer + input fecha + resumen
+  (impresiones, creados, eliminados, errores/reincidencias). Para HOY usa datos en vivo de PickingScreen;
+  para días pasados hace sus propias consultas (sin Presence "En línea"). `SupervisorActivityPanel` quedó
+  como renderizador puro. Nota: el módulo Picking define el "día" en UTC (todayISO UTC en columnas `date`),
+  así que el filtro de fecha opera en ese mismo espacio para que calce con cómo se guardan los datos.
 
 ## Archivos modificados recientemente
 .claude/settings.local.json
