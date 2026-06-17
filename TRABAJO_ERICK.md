@@ -1,27 +1,35 @@
 # Estado actual del trabajo — Erick
 
 ## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-1. **Autenticar `gh` en esta Mac** (ya está instalado en `~/.bun/bin/gh`):
-   ```
-   gh auth login
-   ```
-   → Seleccionar: GitHub.com → HTTPS → Login with a web browser → pegar el código.
-   Luego verificar: `gh auth status`
-
-2. **Ejecutar migración `041_ruta_tiendas_nombre.sql` en Supabase Dashboard:**
-   - Ir a Supabase Dashboard → SQL Editor
-   - Pegar y ejecutar:
-     ```sql
-     ALTER TABLE ruta_tiendas
-       ADD COLUMN IF NOT EXISTS nombre  text,
-       ADD COLUMN IF NOT EXISTS ventana text;
-     ```
-   - Esto habilita que los manifiestos QR muestren nombres de tiendas (no solo códigos).
+1. **Revisar y mergear PR #36** desde GitHub si está OK:
+   https://github.com/isaias-lo/CoordinacionKiosClub/pull/36
+   (3 mejoras: guías en manifiesto, auditoría de pallets, 2ª vuelta por fecha de salida).
+   Las migraciones 050 y 051 YA están aplicadas en producción (vía MCP).
+2. (Opcional) Click-through real de las 3 mejoras: instalar Playwright MCP
+   (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-16 (cierre de jornada — PC trabajo, sigo desde casa)
+Fecha: 2026-06-16 (tarde — 3 mejoras, PR #36 abierto)
+Rama: `inicio` (al día con main + commit 56d8fd5)
+
+### Qué se hizo hoy (PR #36, NO mergeado aún)
+- **#1 Guías de Despacho SII en el manifiesto del fiscalizador**: match robusto
+  (norm + ventana fecha local Chile) en `/api/ruta-guias`; tabla `guias_subidas`
+  (mig. 051) para guías subidas en bodega antes del manifiesto (el Enrutador las jala
+  al crearlo); Santiago/Regiones ahora suben el PDF al bucket y lo registran;
+  EstadoPage avisa si no hay manifiesto. Bucket `guides` es público (descarga OK).
+- **#2 Auditoría Picking**: tabla `picking_eventos` (mig. 050) + logging crear/eliminar
+  con `actor_name`; `detectarReincidencia()` cuenta "creó y borró" por supervisor;
+  ActivityTab muestra eventos +/- y banner de reincidencia.
+- **#3 2ª vuelta**: modelo fecha = día de SALIDA; se escribe `despacho_rm.fecha_armado`;
+  InputSection con atajos Hoy/Mañana; pill de pendientes muestra la fecha de salida.
+- Verificado: build OK, 247 tests, tsc/lint limpios; flujos validados a nivel de BD
+  contra producción (FKs, RLS, bucket público). Migraciones 050/051 aplicadas.
+- `gh` autenticado y funcionando (PR #36 creado desde aquí).
+
+### Sesión anterior 2026-06-16 (mañana — PC trabajo)
 Rama: `inicio` (sincronizada con main = 80523e6 = producción)
 
 ### Qué se hizo hoy (todo en producción)

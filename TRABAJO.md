@@ -1,7 +1,7 @@
 # Estado actual del trabajo
 
 ## Última sesión
-Fecha: 2026-06-16 21:20
+Fecha: 2026-06-16 21:21
 Último commit: feat(despacho+picking): guías en manifiesto, auditoría de pallets y 2ª vuelta por fecha de salida
 Rama: inicio
 
