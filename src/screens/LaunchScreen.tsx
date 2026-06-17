@@ -69,18 +69,20 @@ export function LaunchScreen() {
     if (!isAdmin) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-    const res = await fetch('/api/admin/users', {
+    const res = await fetch('/api/admin/users?count=pending', {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-    const data = await res.json() as { users?: { role: string }[] };
-    if (data.users) {
-      setPendingCount(data.users.filter(u => u.role === 'pending').length);
+    const data = await res.json() as { pendingCount?: number };
+    if (typeof data.pendingCount === 'number') {
+      setPendingCount(data.pendingCount);
     }
   }, [isAdmin]);
 
   useEffect(() => {
     loadPending();
-    const t = setInterval(loadPending, 30_000);
+    // 5 min: the approval badge doesn't need 30 s freshness, and each poll pulls the full
+    // user list out of Supabase Auth (egress). 10× fewer polls per open admin tab.
+    const t = setInterval(loadPending, 300_000);
     return () => clearInterval(t);
   }, [loadPending]);
 

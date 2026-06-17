@@ -207,11 +207,22 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => { isInitializedRef.current = true; });
 
-    // Realtime subscription (instant when WebSocket works)
-    const unsub = subscribeToSessionState('santiago', userId, handleRemote);
+    // Realtime subscription (instant when WebSocket works). Track connection health so the
+    // polling fallback below only runs when Realtime is down — otherwise we'd re-download the
+    // full state blob every 15 s on every open tab (wasted egress).
+    let realtimeConnected = false;
+    const unsub = subscribeToSessionState('santiago', userId, handleRemote, (connected) => {
+      const reconnected = connected && !realtimeConnected;
+      realtimeConnected = connected;
+      // On (re)connect, fetch once to catch any change missed while the socket was down.
+      if (reconnected) {
+        fetchSessionState('santiago').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+      }
+    });
 
-    // Polling fallback every 15 s — only fires when Realtime is disconnected (3 s was too aggressive)
+    // Polling fallback every 15 s — ONLY fires when Realtime is disconnected (3 s was too aggressive)
     const pollId = setInterval(async () => {
+      if (realtimeConnected) return;
       try {
         const remote = await fetchSessionState('santiago');
         if (remote) handleRemote(remote);
@@ -221,7 +232,10 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
 
-  // Debounced push to Supabase (800 ms after last change) + localStorage fallback
+  // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
+  // The debounce window also throttles how often the full row is re-broadcast over Realtime
+  // to every subscriber — a longer window means fewer rebroadcasts of the whole blob (egress).
+  // The unmount cleanup flushes to localStorage so navigating away never loses data.
   useEffect(() => {
     if (!isInitializedRef.current) return;
     const payload: SyncableState = {
@@ -246,7 +260,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => { isPushingRef.current = false; });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
-    }, 800);
+    }, 2500);
 
     return () => {
       if (debounceRef.current) {

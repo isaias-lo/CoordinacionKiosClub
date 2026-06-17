@@ -19,6 +19,7 @@ import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalenda
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
+import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
@@ -91,6 +92,7 @@ export default function RutasScreen() {
   const router = useRouter();
   const { signOut, user } = useAuth();
   const userId = user?.id;
+  useDayRollover();  // recarga al cruzar medianoche → evita arrastrar tiendas/cantidades de ayer
 
   const [pendientes, setPendientes] = useState<PendientesGuardados | null>(() => {
     try {

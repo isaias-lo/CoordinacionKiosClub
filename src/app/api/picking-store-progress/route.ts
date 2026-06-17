@@ -117,26 +117,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ stores: result });
 }
 
-export async function POST(request: NextRequest) {
-  if (!await verifyAuth(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  const body = await request.json() as {
-    stores: Array<{ cod: string; total: number; done: number }>;
-  };
-  const date = todayISO();
-  if (!body.stores?.length) return NextResponse.json({ ok: true });
-
-  const rows = body.stores.map(s => ({
-    state_key: s.cod,
-    date,
-    picker_label: JSON.stringify({ total: s.total, done: s.done }),
-    tipo: TIPO,
-    updated_at: new Date().toISOString(),
-  }));
-
-  const { error } = await supabaseServer()
-    .from('picking_session_state')
-    .upsert(rows, { onConflict: 'state_key,date' });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
-}
+// El POST (que PickingScreen usaba para postear su propio conteo de progreso) se eliminó a
+// propósito: era un segundo escritor de picking_session_state(odoo-progress) con un `total`
+// calculado distinto al del refresco batch del GET, y ambos se pisaban → semáforo inestable
+// (verde↔naranja). Ahora el GET es la fuente única de verdad. No reintroducir un POST aquí
+// sin unificar primero la atribución de tiendas con `resolveStoreCode`.

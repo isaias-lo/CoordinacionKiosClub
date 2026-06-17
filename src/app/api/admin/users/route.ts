@@ -10,7 +10,7 @@ function adminSb() {
   return createClient(URL_, SRK, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-/* ── GET: list users ── */
+/* ── GET: list users (or, with ?count=pending, just the pending count) ── */
 export async function GET(request: NextRequest) {
   if (!await verifyAdmin(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
@@ -18,6 +18,14 @@ export async function GET(request: NextRequest) {
   const sb = adminSb();
   const { data: { users }, error } = await sb.auth.admin.listUsers({ perPage: 1000 });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Lightweight mode for the approval badge: return only the count, not the full user list.
+  // The Auth admin API has no metadata-role filter, so listUsers is still required, but this
+  // trims the server→client payload to a single number (polled periodically by every admin tab).
+  if (new URL(request.url).searchParams.get('count') === 'pending') {
+    const pendingCount = users.filter(u => (u.user_metadata?.role as string) === 'pending').length;
+    return NextResponse.json({ pendingCount });
+  }
 
   return NextResponse.json({
     users: users.map(u => ({
