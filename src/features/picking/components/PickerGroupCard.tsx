@@ -5,6 +5,7 @@ import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
+import { fmtHoraChile } from '@/lib/fechaChile';
 
 // ─── StateBadge ───────────────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                 <span className="text-[11px]" style={{ color: '#92400E' }}>
                   <AlertTriangle size={11} className="inline mr-1" style={{color:'#92400E'}} />Impreso por <strong>{lastPrint.printed_by_name}</strong>
-                  {' · '}{new Date(lastPrint.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                  {' · '}{fmtHoraChile(lastPrint.printed_at)}
                 </span>
               </div>
             )}

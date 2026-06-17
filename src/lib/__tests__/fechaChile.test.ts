@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fechaChile } from '@/lib/fechaChile';
+import { fechaChile, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile } from '@/lib/fechaChile';
 
 describe('fechaChile', () => {
   it('devuelve formato YYYY-MM-DD', () => {
@@ -22,5 +22,44 @@ describe('fechaChile', () => {
     const dHoy = new Date(hoy + 'T12:00:00Z').getTime();
     const dManana = new Date(manana + 'T12:00:00Z').getTime();
     expect(Math.round((dManana - dHoy) / 86400000)).toBe(1);
+  });
+});
+
+describe('fmtHoraChile / fmtFechaChile / fmtFechaHoraChile', () => {
+  // Junio = invierno en Chile → UTC-4. 18:21 UTC = 14:21 Chile.
+  const inviernoUTC = '2026-06-16T18:21:15Z';
+  // Enero = verano con horario de verano → UTC-3. 18:21 UTC = 15:21 Chile.
+  const veranoUTC = '2026-01-15T18:21:00Z';
+
+  it('convierte UTC a hora de Chile (invierno UTC-4)', () => {
+    expect(fmtHoraChile(inviernoUTC)).toBe('14:21');
+  });
+
+  it('respeta el horario de verano (UTC-3)', () => {
+    expect(fmtHoraChile(veranoUTC)).toBe('15:21');
+  });
+
+  it('agrega segundos cuando se pide', () => {
+    expect(fmtHoraChile(inviernoUTC, true)).toBe('14:21:15');
+  });
+
+  it('fmtFechaChile devuelve la fecha local de Chile', () => {
+    // 16-jun 18:21 UTC sigue siendo 16-jun en Chile (14:21).
+    expect(fmtFechaChile(inviernoUTC)).toBe('16-06-2026');
+  });
+
+  it('fmtFechaChile retrocede un día si en UTC ya pasó medianoche pero en Chile no', () => {
+    // 17-jun 02:00 UTC = 16-jun 22:00 en Chile.
+    expect(fmtFechaChile('2026-06-17T02:00:00Z')).toBe('16-06-2026');
+  });
+
+  it('fmtFechaHoraChile combina fecha y hora de Chile', () => {
+    expect(fmtFechaHoraChile(inviernoUTC)).toBe('16-06-2026 14:21');
+  });
+
+  it('maneja valores nulos/ inválidos con guion', () => {
+    expect(fmtHoraChile(null)).toBe('—');
+    expect(fmtFechaChile(undefined)).toBe('—');
+    expect(fmtFechaHoraChile('no-es-fecha')).toBe('—');
   });
 });

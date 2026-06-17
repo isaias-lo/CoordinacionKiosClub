@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { RotateCcw, Printer } from 'lucide-react';
 import type { PickerGroup, PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
+import { fmtHoraChile } from '@/lib/fechaChile';
 
 const CAT_COLOR: Record<string, { bg: string; color: string; border: string }> = {
   Comida: { bg: 'rgba(22,163,74,0.08)',  color: '#15803D', border: 'rgba(22,163,74,0.25)' },
@@ -94,7 +95,7 @@ export function HistorialTab({ allGroups, nameChanges, records, palletSlots, onR
     const win = window.open('', '_blank');
     if (!win) return;
     const rows = records.map((r, i) => {
-      const hora    = new Date(r.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      const hora    = fmtHoraChile(r.printed_at);
       const tienda  = r.state_key.split('__')[0];
       const u       = unitsByKey[r.state_key];
       const tipos   = u?.tipos ?? [r.tipo];
@@ -256,7 +257,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                     return (
                       <tr key={r.state_key + r.printed_at} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
                         <td className="px-4 py-2.5 font-mono text-[12px]" style={{ color: '#94A3B8' }}>
-                          {new Date(r.printed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                          {fmtHoraChile(r.printed_at)}
                         </td>
                         <td className="px-4 py-2.5 font-medium text-[13px]" style={{ color: '#1E293B' }}>
                           {r.picker_label}
@@ -319,7 +320,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                     .map((c, i) => (
                       <tr key={c.id} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
                         <td className="px-4 py-2 font-mono text-[11px]" style={{ color: '#94A3B8' }}>
-                          {new Date(c.changed_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                          {fmtHoraChile(c.changed_at)}
                         </td>
                         <td className="px-4 py-2 font-mono font-bold text-[12px]" style={{ color: '#1E293B' }}>{c.picker_key}</td>
                         <td className="px-4 py-2 text-[12px]" style={{ color: '#94A3B8' }}>{c.old_name || '—'}</td>

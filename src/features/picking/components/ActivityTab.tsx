@@ -5,9 +5,10 @@ import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, AlertTriangle } from
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { detectarReincidencia, TIPO_LABEL, type PickingEvento } from '../picking-utils';
+import { fmtHoraChile } from '@/lib/fechaChile';
 
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+  return fmtHoraChile(iso);
 }
 
 // ─── tipos internos ───────────────────────────────────────────────────────────
