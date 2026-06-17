@@ -25,7 +25,12 @@
       "mcp__claude_ai_Vercel__list_teams",
       "mcp__claude_ai_Vercel__list_projects",
       "mcp__claude_ai_Vercel__list_deployments",
-      "Bash(git commit -m 'docs: cierre de jornada 2026-06-14 — code review + extras + RLS en producción *)"
+      "Bash(git commit -m 'docs: cierre de jornada 2026-06-14 — code review + extras + RLS en producción *)",
+      "Bash(git fetch *)",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(echo \"=== tsc exit: $? ===\")",
+      "Bash(npm test *)",
+      "Bash(echo \"BUILD_EXIT=$?\")"
     ]
   }
 }

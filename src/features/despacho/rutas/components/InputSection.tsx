@@ -6,7 +6,7 @@ import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
 import FlotaGrid      from './FlotaGrid';
 import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
-import { getDia, formatCod } from '../utils/helpers';
+import { getDia, formatCod, todayStr } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -164,6 +164,10 @@ export default function InputSection({
   rightPanelContent,
 }: Props) {
   const dia = getDia(fecha);
+  // Fecha de SALIDA: por defecto hoy, pero se arma a veces para mañana (sale al día
+  // siguiente). Atajos Hoy/Mañana para que la 2ª vuelta quede bajo la fecha correcta.
+  const hoy = todayStr();
+  const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const [sidebarFilter, setSidebarFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
   const [flotaSubTab, setFlotaSubTab]     = useState<'personal' | 'gestionar' | 'vehiculos'>('gestionar');
 
@@ -290,6 +294,19 @@ export default function InputSection({
               <div className="px-4 pt-3 pb-2 border-b border-black/[0.08] space-y-2">
                 <input type="text" value={supervisor} onChange={e => onSupervisor(e.target.value)} placeholder="Supervisor"
                   className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none" />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-kmuted">Fecha de salida</span>
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => onFecha(hoy)}
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-[7px] transition-colors ${fecha === hoy ? 'bg-knavy text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
+                      Hoy
+                    </button>
+                    <button type="button" onClick={() => onFecha(manana)}
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-[7px] transition-colors ${fecha === manana ? 'bg-kred text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
+                      Mañana
+                    </button>
+                  </div>
+                </div>
                 <input type="date" value={fecha} onChange={e => onFecha(e.target.value)}
                   className="w-full h-[36px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-kred focus:outline-none" />
               </div>

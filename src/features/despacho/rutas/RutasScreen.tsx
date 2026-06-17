@@ -1149,7 +1149,8 @@ export default function RutasScreen() {
           >
             ⚠ {pendientesV2.length} pendiente{pendientesV2.length !== 1 ? 's' : ''} 2ª vuelta — Cargar
           </button>
-          <span className="text-[10px] text-kred/50">{pendientesV2.map(s => s.c).join(', ')}</span>
+          <span className="text-[10px] text-kred/60 font-semibold">salida {fechaTxt(fecha)}</span>
+          <span className="text-[10px] text-kred/50">· {pendientesV2.map(s => s.c).join(', ')}</span>
         </div>
       )}
 

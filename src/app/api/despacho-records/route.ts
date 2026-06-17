@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { idsActualizables, type DespachoRow } from '@/features/despacho/rutas/utils/vueltaIntegrity';
+import { fechaChile } from '@/lib/fechaChile';
 
 const ALLOWED_TABLES = new Set(['despacho_rm', 'despacho_regiones', 'recepcion']);
 
@@ -116,6 +117,9 @@ export async function PATCH(request: NextRequest) {
     const sb = supabaseServer();
     let updatedDespacho = 0;
     let updatedPicking  = 0;
+    // Día calendario real en que se registra el despacho (puede diferir de la fecha
+    // de SALIDA: armado hoy, sale mañana). Para distinguir "armado vs salida" en reportes.
+    const fechaArmado = fechaChile(0);
 
     // Deduplicar por cod (tomar el primer registro si hay múltiples del mismo cod)
     const seen = new Set<string>();
@@ -144,6 +148,7 @@ export async function PATCH(request: NextRequest) {
             ruta:        upd.ruta,
             supervisor:  upd.supervisor,
             estado:      'Listo para despachar',
+            fecha_armado: fechaArmado,
             ...(upd.vuelta     !== undefined && { vuelta:     upd.vuelta }),
             ...(upd.pioneta_1  !== undefined && { pioneta_1:  upd.pioneta_1 }),
             ...(upd.pioneta_2  !== undefined && { pioneta_2:  upd.pioneta_2 }),

@@ -641,6 +641,24 @@ export function TiendasPage() {
   const handleRemoveDragLeave = (e: React.DragEvent<HTMLDivElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setRemoveDropActive(false); };
   const handleRemoveDrop      = (e: React.DragEvent) => { e.preventDefault(); setRemoveDropActive(false); const name = e.dataTransfer.getData('removeName'); if (name) setConfirmRemoveName(name); };
 
+  /* Sube el PDF (con timbres) al storage y registra la guía para el manifiesto.
+     En bodega suele subirse antes de existir el manifiesto: la guía queda persistida
+     y el Enrutador la jala al crear el manifiesto. Fire-and-forget, no bloquea la UI. */
+  const subirYVincularGuia = async (file: File, storeCod: string, folios: string[]) => {
+    if (!storeCod) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const driveRes = await fetch('/api/drive-upload', { method: 'POST', body: fd });
+      const driveUrl = driveRes.ok ? (await driveRes.json()).fileId as string : undefined;
+      void fetch('/api/ruta-guias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod: storeCod, folios, drive_url: driveUrl }),
+      });
+    } catch { /* no bloquear la asignación local si falla la subida */ }
+  };
+
   /* PDF handlers */
   const handlePdfFile = async (file: File) => {
     if (!selectedTienda) return;
@@ -656,6 +674,7 @@ export function TiendasPage() {
         const perItem = data.totalSum > 0 ? Math.round(data.totalSum / items.length) : 0;
         dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: items.map((it, i) => ({ ...it, guia: data.guias[i]?.num || '', valor: perItem || it.valor })) });
       }
+      void subirYVincularGuia(file, TIENDAS[selectedTienda]?.cod ?? '', data.guias.map(g => g.num));
       showToast(`✓ ${data.guias.length} guía${data.guias.length > 1 ? 's' : ''}${data.totalSum > 0 ? ' · $' + data.totalSum.toLocaleString('es-CL') : ''}`, '#16A34A');
     } catch (e) { console.error('[PDF] Error al leer el PDF:', e); showToast('Error al leer el PDF', '#D32F2F'); }
     finally { setPdfLoading(false); }
@@ -695,6 +714,7 @@ export function TiendasPage() {
           const perItem = data.totalSum > 0 ? Math.round(data.totalSum / ex.length) : 0;
           dispatch({ type: 'UPDATE_ITEMS', tienda: storeName, items: ex.map((it, i) => ({ ...it, guia: data.guias[i]?.num || '', valor: perItem || it.valor })) });
         }
+        void subirYVincularGuia(file, cod, data.guias.map(g => g.num));
         assigned++;
       } catch (e) { console.error('[PDF] Error procesando', file.name, e); skipped++; }
     }

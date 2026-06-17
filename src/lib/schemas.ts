@@ -156,6 +156,7 @@ export const CreatePickingPalletSchema = z.object({
   tipo:         z.enum(['P', 'B', 'C', 'CH', 'otro']),
   contenido:    z.string().max(50).optional(),
   refs:         z.string().max(500).optional(),
+  actor_name:   z.string().max(100).optional(),
 });
 
 // ── Conductores ────────────────────────────────────────────────────────────
