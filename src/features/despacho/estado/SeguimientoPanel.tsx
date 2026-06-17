@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import { fmtFechaHoraChile } from '@/lib/fechaChile';
 import { CombineAlertsPanel } from './CombineAlertsPanel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
   const bultosRec   = Number(row.bultos_recibidos  ?? 0);
   const match       = palletsRec === palletsSent && bultosRec === bultosSent;
   const estadoFotos = (row.estado_fotos as string[]) ?? [];
-  const fechaHora   = row.created_at ? new Date(String(row.created_at)).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  const fechaHora   = row.created_at ? fmtFechaHoraChile(String(row.created_at)) : '—';
 
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, overflowY: 'auto', padding: '20px 16px 40px' }}>
@@ -471,8 +472,7 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
         : <span style={{ color: '#C0C7D4' }}>—</span>;
     }
     if (col.key === 'created_at' && val) {
-      const d = new Date(String(val));
-      return `${d.toLocaleDateString('es-CL')} ${d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`;
+      return fmtFechaHoraChile(String(val));
     }
     if (['pallets_sent','bultos_sent','pallets_recibidos','bultos_recibidos'].includes(col.key) && val != null) {
       return <span style={{ fontWeight: 700, color: '#1B2A6B' }}>{String(val)}</span>;

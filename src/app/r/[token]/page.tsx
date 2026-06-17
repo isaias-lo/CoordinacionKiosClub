@@ -34,8 +34,10 @@ function docId(ruta: RutaData) {
 }
 
 function generadoEn() {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  // Hora real de Chile, independiente de la zona del dispositivo.
+  return new Date().toLocaleString('es-CL', {
+    timeZone: 'America/Santiago', hour12: false, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
 }
 
 const ESTADO_CELL: Record<string, { bg: string; color: string; label: string }> = {

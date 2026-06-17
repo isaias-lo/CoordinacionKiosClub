@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
+import { fmtHoraChile } from '@/lib/fechaChile';
 import { BarcodeScanner } from './BarcodeScanner';
 import { RecepcionForm } from './RecepcionForm';
 
@@ -92,7 +93,7 @@ async function resolveCanonicalIdQRData(canonicalId: string): Promise<QRData | n
 }
 
 export function formatHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return fmtHoraChile(iso, true);
 }
 
 function capturarFoto(

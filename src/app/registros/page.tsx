@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Truck, MapPin, Store, X, History } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import { fmtHoraChile, fmtFechaHoraChile } from '@/lib/fechaChile';
 import { HistContent } from '@/screens/HistScreen';
 import type { LucideIcon } from 'lucide-react';
 
@@ -75,8 +76,7 @@ function SeguimientoBadge({ valor }: { valor: string }) {
 function formatCell(col: string, val: unknown): React.ReactNode {
   if (col === 'seguimiento') return <SeguimientoBadge valor={String(val ?? '')} />;
   if (col === 'created_at' && val) {
-    const d = new Date(String(val));
-    return `${d.toLocaleDateString('es-CL')} ${d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`;
+    return fmtFechaHoraChile(String(val));
   }
   return String(val ?? '');
 }
@@ -87,8 +87,7 @@ type RecepcionRow = Record<string, unknown>;
 
 function formatHora(iso: string): string {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
-  catch { return iso; }
+  return fmtHoraChile(iso, true);
 }
 
 function PhotoThumb({ url, label, hora }: { url: string; label: string; hora?: string }) {
@@ -116,7 +115,7 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
   const bultosRec   = Number(row.bultos_recibidos  ?? 0);
   const match       = palletsRec === palletsSent && bultosRec === bultosSent;
   const estadoFotos = (row.estado_fotos as string[]) ?? [];
-  const fechaHora   = row.created_at ? new Date(String(row.created_at)).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  const fechaHora   = row.created_at ? fmtFechaHoraChile(String(row.created_at)) : '—';
 
   return (
     <div
