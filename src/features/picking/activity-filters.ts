@@ -10,6 +10,8 @@ export type PrintEv = {
   bultos:         number;
   tiposPresentes: string[];
   fromPresence:   boolean; // true = dato de Presence (tiempo real, no persistido aún)
+  batch?:         string;  // Transferir Agrupación (Odoo)
+  printCount?:    number;  // veces (re)impreso
 };
 
 export type NameEv = {

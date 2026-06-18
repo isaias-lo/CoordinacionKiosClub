@@ -131,6 +131,8 @@ export function SupervisorActivityPanel({
             bultos:         units?.bultos  ?? 0,
             tiposPresentes: units?.tipos   ?? [r.tipo],
             fromPresence:   false,
+            batch:          r.batch,
+            printCount:     r.print_count,
           });
         }
 
@@ -297,6 +299,19 @@ export function SupervisorActivityPanel({
                     <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#334155' }}>
                       {ev.pickerLabel}
                     </span>
+                    {ev.batch && (
+                      <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#EDE9FE', color: '#6D28D9' }} title="Transferir Agrupación (Odoo)">
+                        🏷 {ev.batch}
+                      </span>
+                    )}
+                    {(ev.printCount ?? 0) > 1 && (
+                      <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
+                        title="Veces que se imprimió esta etiqueta">
+                        ↻ ×{ev.printCount}
+                      </span>
+                    )}
                     {ev.pallets > 0 && (
                       <span className="flex-shrink-0 text-[12px] font-bold" style={{ color: '#1E40AF' }}>
                         {ev.pallets}P

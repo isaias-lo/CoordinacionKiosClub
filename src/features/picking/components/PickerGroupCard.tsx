@@ -115,6 +115,13 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[14px] font-bold text-navy">{op.name}</span>
                     <StateBadge state={op.state} />
+                    {op.batch && (
+                      <span className="inline-flex items-center gap-1 text-[12px] font-bold px-2 py-0.5 rounded"
+                        style={{ background: '#EDE9FE', color: '#6D28D9', border: '1px solid #DDD6FE' }}
+                        title="Transferir Agrupación (Odoo)">
+                        🏷 {op.batch}
+                      </span>
+                    )}
                   </div>
                   {op.categories.length > 0 && (
                     <div className="text-[13px] text-text-3 mt-0.5">{op.categories.join(' · ')}</div>
@@ -296,11 +303,18 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
           ) : (
             <div>
               <div className="print:hidden flex items-center justify-between mb-3 gap-2 flex-wrap">
-                <div className="text-[13px] font-semibold text-text-2">
-                  {assignedNums.length} código{assignedNums.length !== 1 ? 's' : ''}
+                <div className="text-[13px] font-semibold text-text-2 flex items-center gap-2 flex-wrap">
+                  <span>{assignedNums.length} código{assignedNums.length !== 1 ? 's' : ''}</span>
                   {selectedIndices.size > 0 && (
-                    <span className="ml-2 text-[12px] font-normal text-blue-600">
+                    <span className="text-[12px] font-normal text-blue-600">
                       · {selectedIndices.size} seleccionada{selectedIndices.size !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {(lastPrint?.print_count ?? 0) > 1 && (
+                    <span className="inline-flex items-center gap-1 text-[12px] font-bold px-2 py-0.5 rounded"
+                      style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
+                      title="Veces que se imprimió esta etiqueta">
+                      ↻ Reimpreso ×{lastPrint!.print_count}
                     </span>
                   )}
                 </div>

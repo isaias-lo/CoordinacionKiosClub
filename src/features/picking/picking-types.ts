@@ -5,6 +5,7 @@ export interface PickingOperation {
   responsible: string; responsibleId: number | null;
   categories: string[]; storeCodeFromOrigin: string; originDate: string;
   lineCount: number;
+  batch?: string;   // "Transferir Agrupación" de Odoo (batch_id), ej. BATCH/39934
 }
 
 export interface PickerGroup {
@@ -43,6 +44,8 @@ export interface PrintRecord {
   pallets: number;
   tipo: string;
   printed_by_name?: string;
+  batch?: string;        // BATCH/Transferir Agrupación (persistido al imprimir)
+  print_count?: number;  // veces (re)impreso
 }
 
 export interface SessionStateRow {

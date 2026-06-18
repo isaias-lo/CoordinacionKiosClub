@@ -18,7 +18,7 @@ export type OfflineQueueItem =
   | {
       op: 'print';
       stateKey: string; pickerLabel: string; pallets: number;
-      tipo: string; date: string; printedByName: string;
+      tipo: string; date: string; printedByName: string; batch?: string;
     };
 
 const QUEUE_KEY = 'picking_offline_queue_v1';
@@ -72,7 +72,7 @@ export async function flushPickingQueue(
           body: JSON.stringify({
             stateKey: item.stateKey, pickerLabel: item.pickerLabel,
             pallets: item.pallets, tipo: item.tipo, date: item.date,
-            printedByName: item.printedByName,
+            printedByName: item.printedByName, batch: item.batch ?? '',
           }),
         });
       }

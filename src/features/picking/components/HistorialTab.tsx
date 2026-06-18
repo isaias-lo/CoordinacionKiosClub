@@ -101,9 +101,10 @@ export function HistorialTab({ allGroups, nameChanges, records, palletSlots, onR
       const tipos   = u?.tipos ?? [r.tipo];
       const tipotxt = tipos.map(t => t === 'B' ? 'Bulto' : t === 'C' ? 'Contenedor' : t === 'CH' ? 'Chocolate' : 'Pallet').join(' + ');
       const cats    = (catsByKey[r.state_key] ?? []).join(', ') || '—';
+      const reimpr = (r.print_count ?? 1) > 1 ? ` ×${r.print_count}` : '';
       return `<tr class="${i % 2 === 0 ? '' : 'alt'}">
 <td class="mono">${hora}</td><td>${r.picker_label}</td>
-<td class="mono">${tienda}</td><td>${cats}</td>
+<td class="mono">${tienda}</td><td class="mono">${(r.batch || '—') + reimpr}</td><td>${cats}</td>
 <td class="r">${u?.pallets ?? 0}</td><td class="r">${u?.bultos ?? 0}</td><td>${tipotxt}</td></tr>`;
     }).join('');
     const storeRows = Object.entries(byStore).map(([cod, { pallets, bultos, cats }]) =>
@@ -134,9 +135,9 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 <div class="meta">Generado: ${new Date().toLocaleString('es-CL')}<br>${records.length} impresión${records.length !== 1 ? 'es' : ''} · ${totalPallets} pallets · ${totalBultos} bultos</div>
 </header>
 <table><thead><tr>
-<th>Hora</th><th>Picker</th><th>Tienda</th><th>Contenido</th><th class="r">Pallets</th><th class="r">Bultos</th><th>Tipo</th>
+<th>Hora</th><th>Picker</th><th>Tienda</th><th>Batch</th><th>Contenido</th><th class="r">Pallets</th><th class="r">Bultos</th><th>Tipo</th>
 </tr></thead><tbody>${rows}</tbody><tfoot><tr>
-<td colspan="4"><strong>TOTAL</strong> · ${records.length} impresión${records.length !== 1 ? 'es' : ''} · ${uniquePickers} pickers · ${uniqueStores} tiendas</td>
+<td colspan="5"><strong>TOTAL</strong> · ${records.length} impresión${records.length !== 1 ? 'es' : ''} · ${uniquePickers} pickers · ${uniqueStores} tiendas</td>
 <td class="r">${totalPallets}</td><td class="r">${totalBultos}</td><td></td>
 </tr></tfoot></table>
 <h2>Resumen por tienda</h2>
@@ -244,9 +245,11 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                     <th className="text-left px-4 py-3 font-semibold text-[12px]">Hora</th>
                     <th className="text-left px-4 py-3 font-semibold text-[12px]">Picker</th>
                     <th className="text-left px-4 py-3 font-semibold text-[12px]">Tienda</th>
+                    <th className="text-left px-4 py-3 font-semibold text-[12px]">Batch</th>
                     <th className="text-left px-4 py-3 font-semibold text-[12px]">Contenido</th>
                     <th className="text-right px-4 py-3 font-semibold text-[12px]">Pallets</th>
                     <th className="text-right px-4 py-3 font-semibold text-[12px]">Bultos</th>
+                    <th className="text-center px-4 py-3 font-semibold text-[12px]">Impr.</th>
                     <th className="text-center px-4 py-3 font-semibold text-[12px]">Tipo</th>
                   </tr>
                 </thead>
@@ -265,6 +268,9 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                         <td className="px-4 py-2.5 font-mono font-bold text-[12px]" style={{ color: '#475569' }}>
                           {r.state_key.split('__')[0]}
                         </td>
+                        <td className="px-4 py-2.5 font-mono text-[12px]" style={{ color: r.batch ? '#6D28D9' : '#CBD5E1' }}>
+                          {r.batch || '—'}
+                        </td>
                         <td className="px-4 py-2.5">
                           <CatPills cats={catsByKey[r.state_key] ?? []} />
                         </td>
@@ -273,6 +279,10 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                         </td>
                         <td className="px-4 py-2.5 text-right font-bold text-[13px]" style={{ color: '#15803D' }}>
                           {u?.bultos ?? 0}
+                        </td>
+                        <td className="px-4 py-2.5 text-center text-[12px] font-bold"
+                          style={{ color: (r.print_count ?? 1) > 1 ? '#B45309' : '#94A3B8' }}>
+                          {(r.print_count ?? 1) > 1 ? `↻ ×${r.print_count}` : '×1'}
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <TipoBadge tipos={tipos} />
@@ -283,11 +293,12 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#F8FAFC', borderTop: '2px solid #E2E8F0' }}>
-                    <td className="px-4 py-3 font-semibold text-[12px]" colSpan={4} style={{ color: '#475569' }}>
+                    <td className="px-4 py-3 font-semibold text-[12px]" colSpan={5} style={{ color: '#475569' }}>
                       TOTAL · {records.length} impresión{records.length !== 1 ? 'es' : ''} · {uniquePickers} pickers · {uniqueStores} tiendas
                     </td>
                     <td className="px-4 py-3 text-right font-black text-[14px]" style={{ color: '#1E40AF' }}>{totalPallets}</td>
                     <td className="px-4 py-3 text-right font-black text-[14px]" style={{ color: '#15803D' }}>{totalBultos}</td>
+                    <td />
                     <td />
                   </tr>
                 </tfoot>
