@@ -682,6 +682,7 @@ export function PickingScreen() {
           fromLocation: string; toLocation: string; state: string;
           scheduledDate: string; dateDone: string | null; pickingType: string;
           responsible: string; responsibleId: number | null; lineCount: number;
+          batch?: string;
         }>;
         error?: string;
       };
@@ -839,9 +840,11 @@ export function PickingScreen() {
           slotTipos.reduce((acc, t) =>
             slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
           , slotTipos[0]);
+        // BATCH (Transferir Agrupación) de Odoo: primer batch no vacío entre las operaciones del picker
+        const batch = group.operations.find(o => o.batch)?.batch ?? '';
         return pickingFetch('/api/picking-prints', {
           method: 'POST',
-          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '' }),
+          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch }),
         }).then(res => {
           if (!res.ok) throw new Error(`picking-prints ${res.status}`);
           return { storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() } satisfies SupervisorPrint;
@@ -867,7 +870,8 @@ export function PickingScreen() {
             slotTipos.reduce((acc, t) =>
               slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
             , slotTipos[0]);
-          enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '' });
+          const batch = group.operations.find(o => o.batch)?.batch ?? '';
+          enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch });
         }
       });
     }

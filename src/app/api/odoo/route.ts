@@ -318,7 +318,7 @@ export async function POST(req: NextRequest) {
         method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
           fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
-                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id'],
+                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id'],
           limit: 500,
           order: 'scheduled_date asc',
         }],
@@ -329,6 +329,7 @@ export async function POST(req: NextRequest) {
         state: string; scheduled_date: string | false; date_done: string | false;
         picking_type_id: [number, string];
         user_id: [number, string] | false;
+        batch_id: [number, string] | false;
       }>;
 
       // Batch-fetch stock.move records — only count moves with actual stock reserved.
@@ -371,6 +372,7 @@ export async function POST(req: NextRequest) {
           responsible: Array.isArray(p.user_id) ? p.user_id[1] : '',
           responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
           lineCount: linesByPicking[p.id] ?? 0,
+          batch: Array.isArray(p.batch_id) ? p.batch_id[1] : '',
         })),
       });
     }
