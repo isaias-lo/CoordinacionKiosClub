@@ -13,6 +13,7 @@ import { type PickingSlot } from '../components/PickingSlotCards';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
+import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
@@ -1173,7 +1174,9 @@ export function StepForm() {
     });
   };
 
-  const addFormRow = async (t: TipoCargamento) => {
+  // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
+  // en ese caso NO se crea un slot nuevo, se usa el reclamado.
+  const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot) => {
     const cod = currentTienda?.cod;
     const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
     const date = new Date().toISOString().slice(0, 10);
@@ -1181,9 +1184,9 @@ export function StepForm() {
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
     if (t === 'Chocolate') {
       if (!cod || !regimen) { showToast('Selecciona régimen', '#D97706'); return; }
-      // Crear el ID de bodega (canonical_id + seq) y vincularlo
-      let slot: PickingSlot | undefined;
-      try {
+      // Crear el ID de bodega (canonical_id + seq) y vincularlo — o usar el preexistente
+      let slot: PickingSlot | undefined = existingSlot;
+      if (!slot) try {
         const res = await fetch('/api/picking-pallets/create-bodega', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' }),
@@ -1222,6 +1225,14 @@ export function StepForm() {
     // Agregar el form row de inmediato (respuesta visual), luego vincular el slot
     setFormRows(prev => [...prev, { id: rowId, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
     if (!cod) return;
+
+    // Preexistente: usar el slot ya reclamado (no se crea uno nuevo)
+    if (existingSlot) {
+      setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), existingSlot] }));
+      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: existingSlot.id } : r));
+      return;
+    }
+
     try {
       const res  = await fetch('/api/picking-pallets/create-bodega', {
         method:  'POST',
@@ -1241,6 +1252,11 @@ export function StepForm() {
       setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
     } catch { /* fallback: el row queda sin slot */ }
   };
+
+  // Mapea el tipo del slot (P/B/C/CH) al TipoCargamento del formulario
+  const SLOT_TIPO_TO_CARGAMENTO: Record<string, TipoCargamento> = { P: 'Pallet', B: 'Bulto', C: 'Contenedor', CH: 'Chocolate' };
+  // Estado del diálogo "Nuevo / Preexistente"
+  const [dialogTipo, setDialogTipo] = useState<TipoCargamento | null>(null);
 
   /* ── Resumen editing ── */
   const rStartEdit = (cod: string, idx: number) => {
@@ -1966,11 +1982,26 @@ export function StepForm() {
             );
           })()}
           <div className="flex gap-2 pb-2">
-            <button onClick={() => addFormRow('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
-            <button onClick={() => addFormRow('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
-            <button onClick={() => addFormRow('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
-            <button onClick={() => addFormRow('Chocolate')}  className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(146,64,14,0.50)', color: '#92400E' }}>+ Choc.</button>
+            <button onClick={() => setDialogTipo('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
+            <button onClick={() => setDialogTipo('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
+            <button onClick={() => setDialogTipo('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
+            <button onClick={() => setDialogTipo('Chocolate')}  className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(146,64,14,0.50)', color: '#92400E' }}>+ Choc.</button>
           </div>
+          {dialogTipo && currentTienda && (
+            <AgregarPalletDialog
+              tipoLabel={dialogTipo}
+              storeCod={currentTienda.cod}
+              date={new Date().toISOString().slice(0, 10)}
+              onClose={() => setDialogTipo(null)}
+              onNuevo={() => { const t = dialogTipo; setDialogTipo(null); void addFormRow(t); }}
+              onExistente={(slot) => {
+                setDialogTipo(null);
+                const t = SLOT_TIPO_TO_CARGAMENTO[slot.tipo] ?? 'Bulto';
+                void addFormRow(t, slot);
+                showToast(`✓ Pallet #${slot.id} agregado`, '#16A34A');
+              }}
+            />
+          )}
           {activeTiendasCount > 0 && (
             <button onClick={goToResumen}
               className="w-full py-3.5 bg-navy text-white border-none rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer active:bg-navy-dark mb-4 lg:hidden"

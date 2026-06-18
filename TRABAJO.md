@@ -90,8 +90,19 @@ Tres causas, tres fixes (247/247 tests · tsc · build OK):
   (el rollover en bodega evita que vuelva a pasar). Verificar con SQL si reaparecen tras Ctrl+Shift+R.
 
 ## Próximos pasos
-1. Verificar en producción (tras deploy) que el semáforo ya NO parpadea y que en día nuevo no salen
+1. **[UI] Actividad de Picking: los (+) y (−) de los eventos de pallet se ven muy chicos** y no se
+   entienden. En `ActivityTab.tsx` (filas kind='pallet'): el `PlusCircle`/`MinusCircle` `size={13}` y el
+   texto `+`/`−` `text-[11px]`. Hacerlos más grandes/claros (ej. badge "+1"/"−1" con color verde/rojo y
+   tamaño mayor). OJO: el archivo está en la rama de PR #41 (feat/actividad-filtros) — hacerlo ahí o tras
+   su merge para no duplicar.
+2. **[BUG semáforo] Tiendas con estado incorrecto:** 24SPP marca **verde "Realizado" sin asignación**, y
+   38SP2 sale **gris** estando terminada. Es el progreso de Odoo (`/api/picking-store-progress` +
+   `useOdooProgress`): el verde refleja "picking done en Odoo" sin cruzar con asignación de ruta, y filas
+   contaminadas/atribución por `resolveStoreCode` pueden dar falsos. Pendiente: (a) decidir si el semáforo
+   debe ocultarse/grisarse en tiendas no asignadas; (b) revisar por qué 38SP2 no toma color (¿sus pickings
+   no se atribuyen a 38SP2? ¿están en otra fecha/clave?). Diagnosticar con el SELECT de
+   `picking_session_state(odoo-progress)` por fecha como con 23PEÑ.
+3. Verificar en producción (tras deploy) que el semáforo ya NO parpadea y que en día nuevo no salen
    guías/estados fantasma. El rollover requiere que la pestaña recupere el foco (o pasen ≤5 min).
-2. Opcional: decidir si el semáforo debe ocultarse en tiendas no asignadas a una ruta.
-3. Deuda diferida: refactor componentes monolíticos (StepForm ~2384 líneas, AuditoriaScreen ~2400)
-4. Seguridad menor: Leaked Password Protection, buckets públicos, search_path en funciones
+4. Deuda diferida: refactor componentes monolíticos (StepForm ~2384 líneas, AuditoriaScreen ~2400)
+5. Seguridad menor: Leaked Password Protection, buckets públicos, search_path en funciones
