@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
       dateFrom?: string;
       dateTo?: string;
       incluyePendientes?: boolean;
+      includeDoneToday?: boolean;
       // config.url accepted only for list_databases; all auth credentials ignored from client
       config?: { url?: string };
     };
@@ -293,11 +294,22 @@ export async function POST(req: NextRequest) {
         pickingTypeIds = ptRows.map(r => r.id);
       } catch { /* if this fails, skip the filter and return all */ }
 
+      const desde = todayStr + ' 00:00:00';
+      const hasta = todayStr + ' 23:59:59';
+      // Ventana de fecha. Por defecto: pickings PROGRAMADOS para hoy (scheduled_date).
+      // includeDoneToday: además, los TERMINADOS hoy (date_done) aunque su scheduled_date
+      // sea de otro día (pallets adelantados). Evita que una tienda ya pickeada hoy
+      // quede gris en el semáforo solo porque se programó para otro día.
+      const dateCond: unknown[] = body.includeDoneToday
+        ? ['|',
+            '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta],
+            '&', ['date_done', '>=', desde], ['date_done', '<=', hasta]]
+        : [['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta]];
+
       const domain: unknown[] = [
         ['state', 'not in', ['draft', 'cancel']],
-        ['scheduled_date', '>=', todayStr + ' 00:00:00'],
-        ['scheduled_date', '<=', todayStr + ' 23:59:59'],
         ['origin', 'not ilike', 'AUDITORIA'],
+        ...dateCond,
       ];
       // Filter by picking type if found; fallback to origin containing "Abastecimiento"
       if (pickingTypeIds.length > 0) {

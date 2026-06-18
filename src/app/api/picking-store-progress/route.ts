@@ -23,8 +23,10 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
     const res = await fetch(new URL('/api/odoo', request.url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // query vacío = TODAS las tiendas del día en una sola llamada batch
-      body: JSON.stringify({ action: 'picking_today_operations', query: '' }),
+      // query vacío = TODAS las tiendas del día en una sola llamada batch.
+      // includeDoneToday: cuenta también los pickings TERMINADOS hoy aunque su
+      // scheduled_date sea de otro día (adelantados) → no quedan grises en el semáforo.
+      body: JSON.stringify({ action: 'picking_today_operations', query: '', includeDoneToday: true }),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
