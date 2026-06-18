@@ -6,43 +6,15 @@ import { supabase } from '@/lib/supabase';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { detectarReincidencia, TIPO_LABEL, type PickingEvento } from '../picking-utils';
+import {
+  eventMatchesType, eventMatchesStore, EMPTY_TYPE_SET,
+  type AnyEv, type FilterCat,
+} from '../activity-filters';
 import { fmtHoraChile } from '@/lib/fechaChile';
 
 function fmtTime(iso: string) {
   return fmtHoraChile(iso);
 }
-
-// ─── tipos internos ───────────────────────────────────────────────────────────
-
-type PrintEv = {
-  kind:           'print';
-  at:             string;
-  storeCod:       string;
-  pickerLabel:    string;
-  pallets:        number;
-  bultos:         number;
-  tiposPresentes: string[];
-  fromPresence:   boolean; // true = dato de Presence (tiempo real, no persistido aún)
-};
-
-type NameEv = {
-  kind:      'name';
-  at:        string;
-  pickerKey: string;
-  oldName:   string;
-  newName:   string;
-};
-
-type PalletEv = {
-  kind:        'pallet';
-  at:          string;
-  eventType:   'crear' | 'eliminar';
-  storeCod:    string;
-  tipo:        string;
-  pickerLabel: string;
-};
-
-type AnyEv = PrintEv | NameEv | PalletEv;
 
 interface Section {
   name:         string;
@@ -50,7 +22,7 @@ interface Section {
   events:       AnyEv[];
 }
 
-// ─── componente principal ─────────────────────────────────────────────────────
+// ─── componente principal (renderizador puro) ─────────────────────────────────
 
 interface Props {
   printRecords: PrintRecord[];
@@ -58,9 +30,17 @@ interface Props {
   palletSlots:  PalletSlot[];
   supervisors:  Record<string, SupervisorPresence>; // otros supervisores en tiempo real
   eventos?:     PickingEvento[];                     // auditoría de altas/bajas de pallets
+  userFilter?:  string | null;                       // mostrar solo esta cuenta (null = todas)
+  storeFilter?: string | null;                       // mostrar solo esta tienda (null = todas)
+  typeFilter?:  Set<FilterCat>;                       // tipos a mostrar (vacío = todos)
+  onStoreClick?: (cod: string) => void;              // clic en el código de tienda → filtrar
 }
 
-export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots, supervisors, eventos = [] }: Props) {
+export function SupervisorActivityPanel({
+  printRecords, nameChanges, palletSlots, supervisors, eventos = [],
+  userFilter = null, storeFilter = null, typeFilter, onStoreClick,
+}: Props) {
+  const typeSet = typeFilter ?? EMPTY_TYPE_SET;
 
   // Reincidencia: quién creó y luego borró el mismo pallet en poco tiempo
   const reincidencia = useMemo(() => detectarReincidencia(eventos), [eventos]);
@@ -188,6 +168,7 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
             storeCod:    e.store_cod ?? (e.state_key ? e.state_key.split('__')[0] : '—'),
             tipo:        e.tipo ?? '',
             pickerLabel: e.picker_label ?? '',
+            palletId:    e.pallet_id ?? null,
           });
         }
 
@@ -204,18 +185,41 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
       });
   }, [printRecords, nameChanges, palletSlots, supervisors, eventos, unitsByKey]);
 
-  if (sections.length === 0) {
+  // IDs de pallets con reincidencia (creó+borró el mismo) → categoría "error"
+  const errorPalletIds = useMemo(
+    () => new Set(reincidencia.pares.map(p => p.pallet_id).filter((id): id is number => id != null)),
+    [reincidencia],
+  );
+
+  // Secciones tras aplicar los filtros activos (cuenta / tipo / tienda)
+  const filteredSections = useMemo(() => sections
+    .filter(s => !userFilter || s.name === userFilter)
+    .map(s => ({
+      ...s,
+      events: s.events.filter(ev => eventMatchesType(ev, typeSet, errorPalletIds) && eventMatchesStore(ev, storeFilter)),
+    }))
+    .filter(s => s.events.length > 0),
+    [sections, userFilter, typeSet, storeFilter, errorPalletIds],
+  );
+
+  // Reincidentes visibles en el panel rojo, respetando el filtro de cuenta
+  const reincidentesVisibles = userFilter ? reincidentes.filter(([name]) => name === userFilter) : reincidentes;
+
+  if (filteredSections.length === 0) {
+    const conFiltros = !!userFilter || !!storeFilter || typeSet.size > 0;
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center px-8">
         <div className="mb-4 opacity-20"><User size={48} strokeWidth={1.5} className="text-slate-400" /></div>
-        <div className="text-[14px] font-medium text-slate-400">Sin actividad registrada</div>
+        <div className="text-[14px] font-medium text-slate-400">
+          {sections.length > 0 && conFiltros ? 'Sin resultados con los filtros aplicados' : 'Sin actividad registrada'}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
-      {reincidentes.length > 0 && (
+      {reincidentesVisibles.length > 0 && (
         <div className="rounded overflow-hidden"
           style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
           <div className="flex items-center gap-2 px-4 py-2.5" style={{ borderBottom: '1px solid #FECACA' }}>
@@ -225,7 +229,7 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
             </span>
           </div>
           <div className="divide-y" style={{ borderColor: '#FEE2E2' }}>
-            {reincidentes.map(([name, n]) => (
+            {reincidentesVisibles.map(([name, n]) => (
               <div key={name} className="flex items-center gap-3 px-4 py-2">
                 <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#7F1D1D' }}>{name}</span>
                 <span className="flex-shrink-0 text-[12px] font-bold px-2 py-0.5 rounded"
@@ -237,19 +241,19 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
           </div>
         </div>
       )}
-      {sections.map(sec => (
+      {filteredSections.map(sec => (
         <div key={sec.name}
           style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
           className="rounded overflow-hidden">
 
           {/* Header supervisor */}
-          <div className="flex items-center gap-3 px-4 py-2.5"
+          <div className="flex items-center gap-3 px-4 py-3"
             style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-            <div className="w-7 h-7 rounded flex items-center justify-center flex-shrink-0"
+            <div className="w-9 h-9 rounded flex items-center justify-center flex-shrink-0"
               style={{ background: '#EFF6FF' }}>
-              <User size={14} style={{ color: '#1E40AF' }} />
+              <User size={20} style={{ color: '#1E40AF' }} />
             </div>
-            <span className="font-semibold text-[14px]" style={{ color: '#1E293B' }}>{sec.name}</span>
+            <span className="font-bold text-[18px]" style={{ color: '#1E293B' }}>{sec.name}</span>
             {sec.isLive && (
               <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded"
                 style={{ background: '#DCFCE7', color: '#15803D' }}>
@@ -276,10 +280,7 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
                     {ev.eventType === 'crear'
                       ? <PlusCircle size={13} className="flex-shrink-0" style={{ color: '#15803D' }} />
                       : <MinusCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
-                    <span className="font-mono font-bold text-[12px] flex-shrink-0 px-1.5 py-0.5 rounded"
-                      style={{ background: '#F1F5F9', color: '#334155' }}>
-                      {ev.storeCod}
-                    </span>
+                    <StoreBadge cod={ev.storeCod} onClick={onStoreClick} />
                     <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#334155' }}>
                       {ev.eventType === 'crear' ? 'Creó' : 'Eliminó'} {TIPO_LABEL[ev.tipo] ?? ev.tipo}
                       {ev.pickerLabel ? ` · ${ev.pickerLabel}` : ''}
@@ -292,10 +293,7 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
                 ) : ev.kind === 'print' ? (
                   <>
                     <Printer size={13} className="flex-shrink-0" style={{ color: ev.fromPresence ? '#15803D' : '#64748B' }} />
-                    <span className="font-mono font-bold text-[12px] flex-shrink-0 px-1.5 py-0.5 rounded"
-                      style={{ background: '#F1F5F9', color: '#334155' }}>
-                      {ev.storeCod}
-                    </span>
+                    <StoreBadge cod={ev.storeCod} onClick={onStoreClick} />
                     <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#334155' }}>
                       {ev.pickerLabel}
                     </span>
@@ -341,11 +339,28 @@ export function SupervisorActivityPanel({ printRecords, nameChanges, palletSlots
   );
 }
 
-// ─── Wrapper con selector de fecha + resumen ──────────────────────────────────
+/** Código de tienda; clicable si se pasa onClick (para filtrar por esa tienda). */
+function StoreBadge({ cod, onClick }: { cod: string; onClick?: (cod: string) => void }) {
+  const cls = 'font-mono font-bold text-[12px] flex-shrink-0 px-1.5 py-0.5 rounded';
+  const style = { background: '#F1F5F9', color: '#334155' };
+  if (!onClick) return <span className={cls} style={style}>{cod}</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(cod)}
+      title={`Filtrar por tienda ${cod}`}
+      className={`${cls} cursor-pointer transition hover:brightness-95`}
+      style={{ ...style, border: 'none' }}
+    >{cod}</button>
+  );
+}
+
+// ─── Wrapper con selector de fecha + resumen + filtros ────────────────────────
 // SupervisorActivityPanel es el renderizador puro (recibe los datos por props).
 // Este wrapper decide QUÉ datos mostrar: para HOY usa los datos en vivo de
 // PickingScreen (con Presence/tiempo real); para días pasados hace sus propias
 // consultas a la BD y oculta "En línea" (Presence solo existe en el momento).
+// Además maneja el estado de los filtros (cuenta / tipo / tienda).
 
 interface ActivityData {
   printRecords: PrintRecord[];
@@ -359,7 +374,7 @@ function shiftDate(date: string, n: number): string {
   return new Date(new Date(date + 'T12:00:00Z').getTime() + n * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** Carga la actividad persistida de una fecha (Chile). */
+/** Carga la actividad persistida de una fecha. */
 async function fetchActivity(date: string): Promise<ActivityData> {
   const [prints, evts, pallets, names] = await Promise.all([
     supabase.from('picking_prints')
@@ -394,7 +409,7 @@ async function fetchActivity(date: string): Promise<ActivityData> {
 interface ActivityTabProps {
   /** Datos en vivo de hoy (los que ya carga PickingScreen). */
   live:  ActivityData & { supervisors: Record<string, SupervisorPresence> };
-  /** Fecha de hoy en Chile (YYYY-MM-DD). */
+  /** Fecha de hoy (YYYY-MM-DD, espacio UTC como el resto de Picking). */
   today: string;
 }
 
@@ -403,6 +418,11 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
   const [histo, setHisto] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(false);
   const isToday = selectedDate === today;
+
+  // Filtros
+  const [userFilter,  setUserFilter]  = useState<string | null>(null);
+  const [storeFilter, setStoreFilter] = useState<string | null>(null);
+  const [typeFilter,  setTypeFilter]  = useState<Set<FilterCat>>(() => new Set());
 
   useEffect(() => {
     if (isToday) { setHisto(null); return; }
@@ -413,6 +433,11 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [selectedDate, isToday]);
+
+  // Al cambiar de fecha, limpiar los filtros (las cuentas/tiendas pueden ser otras)
+  useEffect(() => {
+    setUserFilter(null); setStoreFilter(null); setTypeFilter(new Set());
+  }, [selectedDate]);
 
   const printRecords = isToday ? live.printRecords : (histo?.printRecords ?? []);
   const nameChanges  = isToday ? live.nameChanges  : (histo?.nameChanges  ?? []);
@@ -425,14 +450,42 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     creados:     eventos.filter(e => e.event_type === 'crear').length,
     eliminados:  eventos.filter(e => e.event_type === 'eliminar').length,
     errores:     detectarReincidencia(eventos).pares.length,
-  }), [printRecords, eventos]);
+    nombres:     nameChanges.length,
+  }), [printRecords, eventos, nameChanges]);
+
+  // Opciones de los desplegables (derivadas del dataset activo)
+  const users = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of printRecords) set.add(r.printed_by_name?.trim() || 'Sin atribución');
+    for (const e of eventos)      set.add(e.actor_name?.trim()      || 'Sin atribución');
+    for (const c of nameChanges)  set.add(c.changed_by_name?.trim() || 'Sin atribución');
+    for (const s of Object.values(supervisors)) { const n = s.name?.trim(); if (n) set.add(n); }
+    return [...set].sort((a, b) =>
+      a === 'Sin atribución' ? 1 : b === 'Sin atribución' ? -1 : a.localeCompare(b));
+  }, [printRecords, eventos, nameChanges, supervisors]);
+
+  const stores = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of printRecords) { const c = r.state_key.split('__')[0]; if (c) set.add(c); }
+    for (const e of eventos) { const c = e.store_cod ?? (e.state_key ? e.state_key.split('__')[0] : ''); if (c) set.add(c); }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [printRecords, eventos]);
 
   const ayer = useMemo(() => shiftDate(today, -1), [today]);
 
+  const toggleType = (cat: FilterCat) => setTypeFilter(prev => {
+    const next = new Set(prev);
+    if (next.has(cat)) next.delete(cat); else next.add(cat);
+    return next;
+  });
+  const hasFilters = !!userFilter || !!storeFilter || typeFilter.size > 0;
+  const clearFilters = () => { setUserFilter(null); setStoreFilter(null); setTypeFilter(new Set()); };
+
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* ── Barra de fecha + resumen ── */}
+      {/* ── Barra de fecha + resumen + filtros ── */}
       <div className="px-4 pt-3 pb-2 border-b" style={{ borderColor: '#E2E8F0', background: '#FAFBFC' }}>
+        {/* Fila 1: fecha */}
         <div className="flex items-center gap-2 flex-wrap">
           <Calendar size={15} style={{ color: '#64748B' }} />
           <button
@@ -461,13 +514,51 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
           )}
         </div>
 
-        {/* Resumen del día */}
+        {/* Fila 2: resumen = botones-toggle de tipo (combinables). El conteo es del día completo. */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <ResumenChip icon={<Printer size={12} />} label="impresiones" value={resumen.impresiones} color="#1E40AF" />
-          <ResumenChip icon={<PlusCircle size={12} />} label="creados"   value={resumen.creados}    color="#15803D" />
-          <ResumenChip icon={<MinusCircle size={12} />} label="eliminados" value={resumen.eliminados} color="#B45309" />
-          <ResumenChip icon={<AlertTriangle size={12} />} label="errores" value={resumen.errores}
-            color={resumen.errores > 0 ? '#DC2626' : '#94A3B8'} highlight={resumen.errores > 0} />
+          <ResumenChip icon={<Printer size={12} />} label="impresiones" value={resumen.impresiones} color="#1E40AF"
+            active={typeFilter.has('print')} onClick={() => toggleType('print')} />
+          <ResumenChip icon={<PlusCircle size={12} />} label="creados" value={resumen.creados} color="#15803D"
+            active={typeFilter.has('crear')} onClick={() => toggleType('crear')} />
+          <ResumenChip icon={<MinusCircle size={12} />} label="eliminados" value={resumen.eliminados} color="#B45309"
+            active={typeFilter.has('eliminar')} onClick={() => toggleType('eliminar')} />
+          <ResumenChip icon={<AlertTriangle size={12} />} label="errores" value={resumen.errores} color="#DC2626"
+            active={typeFilter.has('error')} highlight={resumen.errores > 0 && !typeFilter.has('error')}
+            onClick={() => toggleType('error')} />
+          <ResumenChip icon={<Tag size={12} />} label="nombres" value={resumen.nombres} color="#7C3AED"
+            active={typeFilter.has('name')} onClick={() => toggleType('name')} />
+        </div>
+
+        {/* Fila 3: filtros por cuenta y tienda */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Ver:</span>
+          <select
+            value={userFilter ?? ''}
+            onChange={e => setUserFilter(e.target.value || null)}
+            className="text-[12px] px-2 py-1 rounded border bg-white"
+            style={{ borderColor: '#CBD5E1', color: '#334155', maxWidth: 180 }}
+          >
+            <option value="">Todas las cuentas</option>
+            {users.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+          <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Tienda:</span>
+          <select
+            value={storeFilter ?? ''}
+            onChange={e => setStoreFilter(e.target.value || null)}
+            className="text-[12px] px-2 py-1 rounded border bg-white"
+            style={{ borderColor: '#CBD5E1', color: '#334155' }}
+          >
+            <option value="">Todas</option>
+            {stores.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-[11px] font-semibold px-2 py-1 rounded"
+              style={{ background: '#FEE2E2', color: '#B91C1C' }}
+            >Limpiar filtros</button>
+          )}
         </div>
       </div>
 
@@ -484,6 +575,10 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
             palletSlots={palletSlots}
             supervisors={supervisors}
             eventos={eventos}
+            userFilter={userFilter}
+            storeFilter={storeFilter}
+            typeFilter={typeFilter}
+            onStoreClick={(cod) => setStoreFilter(cod)}
           />
         )}
       </div>
@@ -491,21 +586,21 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
   );
 }
 
-function ResumenChip({ icon, label, value, color, highlight = false }: {
-  icon: ReactNode; label: string; value: number; color: string; highlight?: boolean;
+function ResumenChip({ icon, label, value, color, active = false, highlight = false, onClick }: {
+  icon: ReactNode; label: string; value: number; color: string; active?: boolean; highlight?: boolean; onClick?: () => void;
 }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded"
-      style={{
-        background: highlight ? '#FEF2F2' : '#fff',
-        border: `1px solid ${highlight ? '#FECACA' : '#E2E8F0'}`,
-        color,
-      }}
-    >
+  const style = active
+    ? { background: color, border: `1px solid ${color}`, color: '#fff' }
+    : { background: highlight ? '#FEF2F2' : '#fff', border: `1px solid ${highlight ? '#FECACA' : '#E2E8F0'}`, color };
+  const cls = 'inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded transition'
+    + (onClick ? ' cursor-pointer' : '');
+  const inner = (
+    <>
       {icon}
-      <span style={{ color: '#0F172A', fontWeight: 700 }}>{value}</span>
-      <span style={{ color: '#64748B', fontWeight: 500 }}>{label}</span>
-    </span>
+      <span style={{ color: active ? '#fff' : '#0F172A', fontWeight: 700 }}>{value}</span>
+      <span style={{ color: active ? 'rgba(255,255,255,0.9)' : '#64748B', fontWeight: 500 }}>{label}</span>
+    </>
   );
+  if (!onClick) return <span className={cls} style={style}>{inner}</span>;
+  return <button type="button" onClick={onClick} aria-pressed={active} className={cls} style={style}>{inner}</button>;
 }
