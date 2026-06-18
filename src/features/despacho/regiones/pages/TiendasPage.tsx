@@ -17,6 +17,8 @@ import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
+import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
+import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -727,7 +729,9 @@ export function TiendasPage() {
   };
 
   /* Multi-form row helpers */
-  const addFormRow = async (pkg: TipoPaquete) => {
+  // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
+  // en ese caso NO se crea un slot nuevo, se usa el reclamado.
+  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
     const date = new Date().toISOString().slice(0, 10);
@@ -735,13 +739,13 @@ export function TiendasPage() {
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
     if (pkg === 'chocolate') {
       if (!cod || !selectedTienda) return;
-      let slot: import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot | undefined;
-      try {
+      let slot: PickingSlot | undefined = existingSlot;
+      if (!slot) try {
         const res = await fetch('/api/picking-pallets/create-bodega', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' }),
         });
-        slot = (await res.json() as { data?: import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot }).data;
+        slot = (await res.json() as { data?: PickingSlot }).data;
       } catch { /* sin slot: queda como chocolate sin ID */ }
       if (slot) {
         const s = slot;
@@ -780,13 +784,21 @@ export function TiendasPage() {
       guia: '', valor: '',
     }]);
     if (!cod || !selectedTienda) return;
+
+    // Preexistente: usar el slot ya reclamado (no se crea uno nuevo)
+    if (existingSlot) {
+      setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), existingSlot] }));
+      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: existingSlot.id } : r));
+      return;
+    }
+
     try {
       const res  = await fetch('/api/picking-pallets/create-bodega', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ date, store_cod: cod, tipo: PKG_CODE[pkg], contenido: 'hogar' }),
       });
-      const json = await res.json() as { data?: import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot };
+      const json = await res.json() as { data?: PickingSlot };
       const slot = json.data;
       if (!slot) return;
       setPickingSlotsFull(prev => {
@@ -797,6 +809,12 @@ export function TiendasPage() {
       setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
     } catch { /* fallback: el row queda sin slot */ }
   };
+
+  // Mapea el tipo del slot (P/B/C/CH) al TipoPaquete del formulario
+  const SLOT_TIPO_TO_PKG: Record<string, TipoPaquete> = { P: 'pallet', B: 'box', C: 'contenedor', CH: 'chocolate' };
+  // Estado del diálogo "Nuevo / Preexistente"
+  const [dialogPkg, setDialogPkg] = useState<TipoPaquete | null>(null);
+  const PKG_LABEL: Record<TipoPaquete, string> = { pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate' };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
@@ -1379,22 +1397,22 @@ export function TiendasPage() {
               );
             })()}
             <div className="grid grid-cols-4 gap-1.5 pb-1">
-              <button onClick={() => addFormRow('pallet')}
+              <button onClick={() => setDialogPkg('pallet')}
                 className="py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
                 + Pallet
               </button>
-              <button onClick={() => addFormRow('box')}
+              <button onClick={() => setDialogPkg('box')}
                 className="py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
                 + Bulto
               </button>
-              <button onClick={() => addFormRow('contenedor')}
+              <button onClick={() => setDialogPkg('contenedor')}
                 className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
                 style={{ borderColor: 'rgba(107,33,168,0.4)', color: '#6B21A8', background: 'transparent' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(107,33,168,0.05)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                 + Cont.
               </button>
-              <button onClick={() => addFormRow('chocolate')}
+              <button onClick={() => setDialogPkg('chocolate')}
                 className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
                 style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
@@ -1402,6 +1420,21 @@ export function TiendasPage() {
                 + Choc. CH
               </button>
             </div>
+            {dialogPkg && selectedTienda && (
+              <AgregarPalletDialog
+                tipoLabel={PKG_LABEL[dialogPkg]}
+                storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
+                date={new Date().toISOString().slice(0, 10)}
+                onClose={() => setDialogPkg(null)}
+                onNuevo={() => { const p = dialogPkg; setDialogPkg(null); void addFormRow(p); }}
+                onExistente={(slot) => {
+                  setDialogPkg(null);
+                  const p = SLOT_TIPO_TO_PKG[slot.tipo] ?? 'box';
+                  void addFormRow(p, slot);
+                  showToast(`✓ Pallet #${slot.id} agregado`, '#16A34A');
+                }}
+              />
+            )}
           </div>
         </div>
       );
