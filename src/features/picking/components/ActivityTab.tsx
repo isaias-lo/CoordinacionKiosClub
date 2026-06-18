@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
-import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
+import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, Plus, Minus, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
@@ -279,17 +279,20 @@ export function SupervisorActivityPanel({
 
                 {ev.kind === 'pallet' ? (
                   <>
-                    {ev.eventType === 'crear'
-                      ? <PlusCircle size={13} className="flex-shrink-0" style={{ color: '#15803D' }} />
-                      : <MinusCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
+                    {/* Badge grande y claro de crear (+) / eliminar (−) */}
+                    <span className="flex-shrink-0 inline-flex items-center justify-center rounded-md"
+                      style={{ width: 28, height: 28, background: ev.eventType === 'crear' ? 'rgba(22,163,74,0.14)' : 'rgba(220,38,38,0.14)' }}
+                      title={ev.eventType === 'crear' ? 'Creó (agregó)' : 'Eliminó (quitó)'}>
+                      {ev.eventType === 'crear'
+                        ? <Plus  size={19} strokeWidth={3.5} style={{ color: '#15803D' }} />
+                        : <Minus size={19} strokeWidth={3.5} style={{ color: '#DC2626' }} />}
+                    </span>
                     <StoreBadge cod={ev.storeCod} onClick={onStoreClick} />
                     <span className="text-[13px] font-medium flex-1 truncate" style={{ color: '#334155' }}>
-                      {ev.eventType === 'crear' ? 'Creó' : 'Eliminó'} {TIPO_LABEL[ev.tipo] ?? ev.tipo}
+                      <span className="font-bold" style={{ color: ev.eventType === 'crear' ? '#15803D' : '#DC2626' }}>
+                        {ev.eventType === 'crear' ? 'Creó' : 'Eliminó'}
+                      </span> {TIPO_LABEL[ev.tipo] ?? ev.tipo}
                       {ev.pickerLabel ? ` · ${ev.pickerLabel}` : ''}
-                    </span>
-                    <span className="flex-shrink-0 text-[11px] font-semibold"
-                      style={{ color: ev.eventType === 'crear' ? '#15803D' : '#DC2626' }}>
-                      {ev.eventType === 'crear' ? '+' : '−'}
                     </span>
                   </>
                 ) : ev.kind === 'print' ? (
