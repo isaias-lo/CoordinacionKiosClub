@@ -110,18 +110,22 @@ export function buildRows(
   return rows;
 }
 
+// Devuelve la promesa del POST a Sheets para que el llamador pueda encadenar
+// acciones que dependan de que la escritura ya esté en la planilla (p. ej.
+// disparar la sincronización a la base de datos). La promesa nunca rechaza:
+// captura el error internamente para no romper el flujo de registro.
 export function sheetsRegionesWrite(
   dispatchData: Record<string, DispatchItem[]>,
   regimen = 'Carga',
   fechaISO?: string,
   fechaArmadoISO?: string,
-): void {
+): Promise<void> {
   const rows = buildRows(dispatchData, regimen, fechaISO, fechaArmadoISO);
-  if (!rows.length) return;
+  if (!rows.length) return Promise.resolve();
 
-  fetch('/api/sheets-write', {
+  return fetch('/api/sheets-write', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ sheet: 'DESPACHO REGIONES', rows, fuente: 'bodega_regiones' }),
-  }).catch(err => console.error('[sheetsRegionesWrite]', err));
+  }).then(() => undefined).catch(err => { console.error('[sheetsRegionesWrite]', err); });
 }
