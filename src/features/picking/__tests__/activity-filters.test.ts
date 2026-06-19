@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  eventMatchesType, eventMatchesStore,
+  eventMatchesType, eventMatchesStore, eventMatchesPicker,
   type AnyEv, type FilterCat,
 } from '../activity-filters';
 
@@ -59,5 +59,24 @@ describe('eventMatchesStore', () => {
     expect(eventMatchesStore(palletEv('crear', 1, '42ANP'), '42ANP')).toBe(true);
     expect(eventMatchesStore(printEv('28TEM'), '42ANP')).toBe(false);
     expect(eventMatchesStore(nameEv(), '42ANP')).toBe(false);
+  });
+});
+
+describe('eventMatchesPicker', () => {
+  const printP = (picker: string): AnyEv =>
+    ({ kind: 'print', at: '', storeCod: '42ANP', pickerLabel: picker, pallets: 1, bultos: 0, tiposPresentes: ['P'], fromPresence: false });
+  const palletP = (picker: string): AnyEv =>
+    ({ kind: 'pallet', at: '', eventType: 'crear', storeCod: '42ANP', tipo: 'P', pickerLabel: picker, palletId: 1 });
+
+  it('null → todos', () => {
+    expect(eventMatchesPicker(printP('Sebastian Castillo'), null)).toBe(true);
+    expect(eventMatchesPicker(nameEv(), null)).toBe(true);
+  });
+
+  it('filtra por picker; los cambios de nombre (sin picker) quedan fuera', () => {
+    expect(eventMatchesPicker(printP('Sebastian Castillo'), 'Sebastian Castillo')).toBe(true);
+    expect(eventMatchesPicker(palletP('Sebastian Castillo'), 'Sebastian Castillo')).toBe(true);
+    expect(eventMatchesPicker(printP('Gladys Osorio'), 'Sebastian Castillo')).toBe(false);
+    expect(eventMatchesPicker(nameEv(), 'Sebastian Castillo')).toBe(false);
   });
 });

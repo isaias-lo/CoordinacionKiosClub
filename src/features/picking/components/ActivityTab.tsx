@@ -7,7 +7,7 @@ import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, Sup
 import { TipoBadge } from './TipoBadge';
 import { detectarReincidencia, TIPO_LABEL, type PickingEvento } from '../picking-utils';
 import {
-  eventMatchesType, eventMatchesStore, EMPTY_TYPE_SET,
+  eventMatchesType, eventMatchesStore, eventMatchesPicker, EMPTY_TYPE_SET,
   type AnyEv, type FilterCat,
 } from '../activity-filters';
 import { fmtHoraChile } from '@/lib/fechaChile';
@@ -32,13 +32,14 @@ interface Props {
   eventos?:     PickingEvento[];                     // auditoría de altas/bajas de pallets
   userFilter?:  string | null;                       // mostrar solo esta cuenta (null = todas)
   storeFilter?: string | null;                       // mostrar solo esta tienda (null = todas)
+  pickerFilter?: string | null;                      // mostrar solo este picker (null = todos)
   typeFilter?:  Set<FilterCat>;                       // tipos a mostrar (vacío = todos)
   onStoreClick?: (cod: string) => void;              // clic en el código de tienda → filtrar
 }
 
 export function SupervisorActivityPanel({
   printRecords, nameChanges, palletSlots, supervisors, eventos = [],
-  userFilter = null, storeFilter = null, typeFilter, onStoreClick,
+  userFilter = null, storeFilter = null, pickerFilter = null, typeFilter, onStoreClick,
 }: Props) {
   const typeSet = typeFilter ?? EMPTY_TYPE_SET;
 
@@ -193,22 +194,25 @@ export function SupervisorActivityPanel({
     [reincidencia],
   );
 
-  // Secciones tras aplicar los filtros activos (cuenta / tipo / tienda)
+  // Secciones tras aplicar los filtros activos (cuenta / tipo / tienda / picker)
   const filteredSections = useMemo(() => sections
     .filter(s => !userFilter || s.name === userFilter)
     .map(s => ({
       ...s,
-      events: s.events.filter(ev => eventMatchesType(ev, typeSet, errorPalletIds) && eventMatchesStore(ev, storeFilter)),
+      events: s.events.filter(ev =>
+        eventMatchesType(ev, typeSet, errorPalletIds) &&
+        eventMatchesStore(ev, storeFilter) &&
+        eventMatchesPicker(ev, pickerFilter)),
     }))
     .filter(s => s.events.length > 0),
-    [sections, userFilter, typeSet, storeFilter, errorPalletIds],
+    [sections, userFilter, typeSet, storeFilter, pickerFilter, errorPalletIds],
   );
 
   // Reincidentes visibles en el panel rojo, respetando el filtro de cuenta
   const reincidentesVisibles = userFilter ? reincidentes.filter(([name]) => name === userFilter) : reincidentes;
 
   if (filteredSections.length === 0) {
-    const conFiltros = !!userFilter || !!storeFilter || typeSet.size > 0;
+    const conFiltros = !!userFilter || !!storeFilter || !!pickerFilter || typeSet.size > 0;
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center px-8">
         <div className="mb-4 opacity-20"><User size={48} strokeWidth={1.5} className="text-slate-400" /></div>
@@ -438,9 +442,10 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
   const isToday = selectedDate === today;
 
   // Filtros
-  const [userFilter,  setUserFilter]  = useState<string | null>(null);
-  const [storeFilter, setStoreFilter] = useState<string | null>(null);
-  const [typeFilter,  setTypeFilter]  = useState<Set<FilterCat>>(() => new Set());
+  const [userFilter,   setUserFilter]   = useState<string | null>(null);
+  const [storeFilter,  setStoreFilter]  = useState<string | null>(null);
+  const [pickerFilter, setPickerFilter] = useState<string | null>(null);
+  const [typeFilter,   setTypeFilter]   = useState<Set<FilterCat>>(() => new Set());
 
   useEffect(() => {
     if (isToday) { setHisto(null); return; }
@@ -452,9 +457,9 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     return () => { cancelled = true; };
   }, [selectedDate, isToday]);
 
-  // Al cambiar de fecha, limpiar los filtros (las cuentas/tiendas pueden ser otras)
+  // Al cambiar de fecha, limpiar los filtros (las cuentas/tiendas/pickers pueden ser otros)
   useEffect(() => {
-    setUserFilter(null); setStoreFilter(null); setTypeFilter(new Set());
+    setUserFilter(null); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set());
   }, [selectedDate]);
 
   const printRecords = isToday ? live.printRecords : (histo?.printRecords ?? []);
@@ -489,6 +494,14 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [printRecords, eventos]);
 
+  // Pickers asignados presentes (picker_label de impresiones + altas/bajas)
+  const pickers = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of printRecords) { const p = r.picker_label?.trim(); if (p) set.add(p); }
+    for (const e of eventos) { const p = e.picker_label?.trim(); if (p) set.add(p); }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [printRecords, eventos]);
+
   const ayer = useMemo(() => shiftDate(today, -1), [today]);
 
   const toggleType = (cat: FilterCat) => setTypeFilter(prev => {
@@ -496,8 +509,8 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     if (next.has(cat)) next.delete(cat); else next.add(cat);
     return next;
   });
-  const hasFilters = !!userFilter || !!storeFilter || typeFilter.size > 0;
-  const clearFilters = () => { setUserFilter(null); setStoreFilter(null); setTypeFilter(new Set()); };
+  const hasFilters = !!userFilter || !!storeFilter || !!pickerFilter || typeFilter.size > 0;
+  const clearFilters = () => { setUserFilter(null); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set()); };
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -569,6 +582,16 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
             <option value="">Todas</option>
             {stores.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Picker:</span>
+          <select
+            value={pickerFilter ?? ''}
+            onChange={e => setPickerFilter(e.target.value || null)}
+            className="text-[12px] px-2 py-1 rounded border bg-white"
+            style={{ borderColor: '#CBD5E1', color: '#334155', maxWidth: 180 }}
+          >
+            <option value="">Todos</option>
+            {pickers.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
           {hasFilters && (
             <button
               type="button"
@@ -595,6 +618,7 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
             eventos={eventos}
             userFilter={userFilter}
             storeFilter={storeFilter}
+            pickerFilter={pickerFilter}
             typeFilter={typeFilter}
             onStoreClick={(cod) => setStoreFilter(cod)}
           />
