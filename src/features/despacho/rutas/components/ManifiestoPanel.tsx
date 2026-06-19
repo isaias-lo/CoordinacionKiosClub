@@ -101,17 +101,19 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 <div class="hdr">
   <div>
     <div class="logo">KIOSClub</div>
+    <div class="razon">Kiosclub American Supermarket SPA</div>
+    <div class="rut">RUT 76.360.868-9</div>
     <div class="logo-sub">Centro de Distribución · Bodega ${m.bodega_origen}</div>
   </div>
   <div>
     <div class="title">MANIFIESTO DE RUTA</div>
+    <div class="code-lbl">N° Manifiesto</div>
     <div class="code">${m.codigo_ruta}</div>
   </div>
 </div>
 
 <div class="meta">
   <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
-  <div class="mi"><label>Chofer</label><span>${m.chofer}</span></div>
   <div class="mi"><label>Patente</label><span>${m.patente}</span></div>
   <div class="mi"><label>Bodega Origen</label><span>${m.bodega_origen}</span></div>
   <div class="mi"><label>N° Tiendas</label><span>${m.tiendas.length}</span></div>
@@ -193,9 +195,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18
 .manifiesto-page:last-child{page-break-after:auto}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
 .logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
+.razon{font-size:11px;font-weight:700;color:#1a2550;margin-top:3px}
+.rut{font-size:10px;font-weight:600;color:#555;margin-top:1px}
 .logo-sub{font-size:9px;color:#555;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
 .title{font-size:20px;font-weight:900;color:#1a2550;text-align:right}
-.code{font-size:13px;font-weight:700;color:#C62828;text-align:right;margin-top:2px}
+.code-lbl{font-size:8px;font-weight:700;color:#888;text-align:right;text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
+.code{font-size:15px;font-weight:800;color:#C62828;text-align:right;margin-top:1px}
 .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#f0f2f5;padding:10px 14px;border-radius:6px;margin-bottom:14px}
 .mi label{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.4px;display:block;font-weight:600}
 .mi span{font-size:13px;font-weight:700;color:#111}
