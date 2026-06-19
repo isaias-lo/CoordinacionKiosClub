@@ -28,6 +28,10 @@ service-account*.json
 .next/
 out/
 
+# TypeScript / Next.js generated files (no versionar — causan conflictos espurios)
+*.tsbuildinfo
+next-env.d.ts
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
