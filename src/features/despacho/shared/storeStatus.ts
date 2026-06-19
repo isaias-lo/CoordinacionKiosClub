@@ -1,18 +1,18 @@
 /**
  * Estado del semáforo de una tienda (punto gris/naranja/verde en bodegas).
  *
- *  - `none`     (gris)    → SIN operaciones asignadas a un picker (nada que pickear).
- *  - `partial`  (naranja) → asignado pero NO terminado. Incluye 0/N, 1/N … (N-1)/N.
- *  - `complete` (verde)   → todas las operaciones asignadas terminadas (N/N).
+ *  - `none`     (gris)    → nada REALIZADO todavía (done = 0), aunque ya existan
+ *                           operaciones asignadas/en "Preparado". También si no hay ops.
+ *  - `partial`  (naranja) → al menos 1 realizado pero no todas: 1/N … (N-1)/N.
+ *  - `complete` (verde)   → todas realizadas (N/N).
  *
- * Regla: el gris representa "sin asignación". Apenas hay operaciones asignadas
- * (total > 0) el punto pasa a naranja aunque no se haya hecho ninguna (0/N), y a
- * verde solo cuando están todas (done >= total).
+ * Regla acordada: el naranja significa "en progreso" (≥1 movimiento realizado). Que las
+ * operaciones estén asignadas/preparadas pero con 0 hechas NO basta → queda GRIS.
  */
 export type StoreStatus = 'none' | 'partial' | 'complete';
 
 export function computeStoreStatus(total: number, done: number): StoreStatus {
-  if (total <= 0)    return 'none';      // sin operaciones asignadas
-  if (done >= total) return 'complete';  // todo lo asignado, terminado
-  return 'partial';                       // asignado pero incompleto (incluye 0/N)
+  if (total <= 0 || done <= 0) return 'none';      // sin ops, o asignadas pero 0 realizadas
+  if (done >= total)           return 'complete';  // todas realizadas
+  return 'partial';                                 // 1..N-1 realizadas
 }
