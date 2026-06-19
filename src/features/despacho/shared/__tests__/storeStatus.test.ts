@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { computeStoreStatus } from '../storeStatus';
 
 describe('computeStoreStatus', () => {
-  it('sin operaciones asignadas → none (gris)', () => {
+  it('sin operaciones → none (gris)', () => {
     expect(computeStoreStatus(0, 0)).toBe('none');
   });
 
-  it('asignado pero nada terminado (0/N) → partial (naranja)', () => {
-    expect(computeStoreStatus(4, 0)).toBe('partial');
-    expect(computeStoreStatus(1, 0)).toBe('partial');
+  it('asignado pero 0 realizado (0/N) → none (gris, no naranja)', () => {
+    expect(computeStoreStatus(4, 0)).toBe('none');
+    expect(computeStoreStatus(1, 0)).toBe('none');
   });
 
   it('algunas terminadas pero no todas → partial (naranja)', () => {
@@ -25,8 +25,8 @@ describe('computeStoreStatus', () => {
     expect(computeStoreStatus(4, 5)).toBe('complete');
   });
 
-  it('sin total → none; con total y done negativo → partial (defensivo)', () => {
+  it('valores con done <= 0 → none (defensivo)', () => {
     expect(computeStoreStatus(-1, -1)).toBe('none');
-    expect(computeStoreStatus(3, -2)).toBe('partial');
+    expect(computeStoreStatus(3, -2)).toBe('none');
   });
 });
