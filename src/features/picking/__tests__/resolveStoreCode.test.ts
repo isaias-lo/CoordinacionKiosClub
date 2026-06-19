@@ -26,6 +26,16 @@ describe('extractStoreCode', () => {
     expect(extractStoreCode('Abastecimiento Comida 23PEÑ Fecha(16/06/2026)')).toBe('23PEÑ');
     expect(extractStoreCode('23peñ')).toBe('23PEÑ');
   });
+
+  it('extrae códigos con dígito final sin truncar (bug 35BN2/38SP2 → sin semáforo)', () => {
+    expect(extractStoreCode('35BN2')).toBe('35BN2');
+    expect(extractStoreCode('38SP2')).toBe('38SP2');
+    expect(extractStoreCode('WH/PICK/35BN2/Stock')).toBe('35BN2');
+    expect(extractStoreCode('Abastecimiento Hogar 38SP2 Fecha(19/06/2026)')).toBe('38SP2');
+    expect(extractStoreCode('35bn2')).toBe('35BN2');
+    // sigue funcionando el código sin dígito final
+    expect(extractStoreCode('42ANP')).toBe('42ANP');
+  });
 });
 
 describe('resolveStoreCode', () => {
