@@ -41,7 +41,7 @@ type Action =
   | { type: 'SET_SHEETS_URL'; payload: string }
   | { type: 'SHOW_TOAST'; msg: string; color?: string }
   | { type: 'HIDE_TOAST' }
-  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } }
+  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; registrado?: boolean } }
   | { type: 'SET_FECHA_DESPACHO'; payload: string }
   | { type: 'SET_REGISTRADO'; payload: boolean };
 
@@ -129,8 +129,9 @@ function reducer(state: AppState, action: Action): AppState {
     case 'LOAD_STATE':
       return {
         ...state,
-        dispatch: action.payload.dispatch ?? state.dispatch,
-        pdfData:  action.payload.pdfData  ?? state.pdfData,
+        dispatch:   action.payload.dispatch   ?? state.dispatch,
+        pdfData:    action.payload.pdfData     ?? state.pdfData,
+        registrado: action.payload.registrado ?? state.registrado,
       };
     case 'SET_FECHA_DESPACHO':
       return { ...state, fechaDespacho: action.payload, registrado: false };
@@ -162,7 +163,7 @@ function loadInitialState(): AppState {
     const raw = localStorage.getItem(REGIONES_KEY);
     if (!raw) return initialState;
     const saved = JSON.parse(raw);
-    return { ...initialState, dispatch: saved.dispatch || {}, pdfData: saved.pdfData || {} };
+    return { ...initialState, dispatch: saved.dispatch || {}, pdfData: saved.pdfData || {}, registrado: saved.registrado ?? false };
   } catch { return initialState; }
 }
 
@@ -202,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Date.now() - lastPushCompletedAtRef.current < 3_000) return;
       // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
-      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string; pushedAt?: number };
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string; pushedAt?: number; registrado?: boolean };
       // Reject data from a different calendar day — prevents stale sessions from other devices
       // from pushing yesterday's guides into today's view. Old records without sessionDate are also rejected.
       if (remote.sessionDate !== SESSION_DATE) return;
@@ -258,7 +259,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: localPdf });
       if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;
 
-      dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf } });
+      // Adoptar "registrado" desde otro equipo (solo si el remoto está registrado; nunca
+      // des-registrar localmente con un remoto viejo).
+      dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf, registrado: remote.registrado === true ? true : undefined } });
     };
 
     // Initial fetch: use same per-tienda dirty merge as handleRemote.
