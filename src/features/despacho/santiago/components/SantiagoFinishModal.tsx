@@ -44,7 +44,11 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
 
     // 1. Escribir en Google Sheets DESPACHO RM e insertar en Supabase despacho_rm
     //    Los IDs ya tienen el formato canónico: P{seq}{cod}{stamp}P, {seq}B{cod}{stamp}B, etc.
-    sheetsSantiagoWrite(items, regimen!);
+    //    Tras la escritura, refrescar la base de datos (sync-despacho) para que el
+    //    dashboard de Inicio quede al día. keepalive: sobrevive al router.push('/').
+    sheetsSantiagoWrite(items, regimen!)
+      .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
+      .catch(() => {});
 
     // 2. Marcar como terminado
     localStorage.setItem(SANTIAGO_TERMINADO_KEY,

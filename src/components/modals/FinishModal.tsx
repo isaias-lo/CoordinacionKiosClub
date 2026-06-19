@@ -72,7 +72,12 @@ export function FinishModal({ open, onClose }: Props) {
     localStorage.setItem('dispatchHistory', JSON.stringify(hist.slice(-100)));
 
     const fechaDespacho = state.fechaDespacho;
-    sheetsRegionesWrite(dispatchData, regimen, fechaDespacho, todayKey);
+    // Tras escribir en Sheets, refrescar la base de datos (despacho_regiones)
+    // para que el dashboard de Inicio quede al día sin depender del botón
+    // manual "Sincronizar". keepalive: sobrevive si el usuario navega.
+    sheetsRegionesWrite(dispatchData, regimen, fechaDespacho, todayKey)
+      .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
+      .catch(() => {});
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
     dispatch({ type: 'SET_REGISTRADO', payload: true });
