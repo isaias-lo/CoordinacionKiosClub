@@ -14,7 +14,7 @@ export const REGIONES_TERMINADO_KEY = `regionesTerminado_${todayKey}`;
 interface Props { open: boolean; onClose: () => void; }
 
 export function FinishModal({ open, onClose }: Props) {
-  const { state, dispatch, showToast } = useApp();
+  const { state, dispatch, showToast, flushPending } = useApp();
   const { dispatch: dispatchData, dispatchDate } = state;
   const { user } = useAuth();
   const [regimen, setRegimen] = useState<'Carga' | 'Falabella'>('Carga');
@@ -77,6 +77,9 @@ export function FinishModal({ open, onClose }: Props) {
 
     dispatch({ type: 'SET_REGISTRADO', payload: true });
     localStorage.setItem(REGIONES_TERMINADO_KEY, new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
+    // Forzar el push inmediato del estado con registrado=true a shared_session_state,
+    // así el banner "sin registrar" no reaparece al día siguiente ni en otro equipo.
+    flushPending();
   };
 
   return (

@@ -86,6 +86,9 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
 
     const result: PendingDraft[] = [];
     for (const row of data) {
+      // Si ese día ya se registró (vía FinishModal/SantiagoFinishModal), el flag viaja en el
+      // state → no lo mostramos como "sin registrar" (evita reaparición y doble registro).
+      if ((row.state as { registrado?: boolean })?.registrado === true) continue;
       const stores = fuente === 'santiago' ? resumirSantiago(row.state) : resumirRegiones(row.state);
       if (stores.length === 0) continue;
       result.push({
