@@ -55,3 +55,10 @@ export function eventMatchesStore(ev: AnyEv, storeFilter: string | null): boolea
   if (!storeFilter) return true;
   return ev.kind !== 'name' && ev.storeCod === storeFilter;
 }
+
+/** ¿El evento pasa el filtro de picker? (null = todos). Filtra por el picker asignado
+ *  (`pickerLabel`) de impresiones y altas/bajas; los cambios de nombre no tienen picker. */
+export function eventMatchesPicker(ev: AnyEv, pickerFilter: string | null): boolean {
+  if (!pickerFilter) return true;
+  return ev.kind !== 'name' && ev.pickerLabel === pickerFilter;
+}
