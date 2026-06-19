@@ -528,6 +528,7 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
 
     let assigned = 0, skipped = 0;
     const sinManifiesto: string[] = [];
+    const driveFallidos: string[] = [];
     const newGuides = { ...guides };
 
     for (const file of Array.from(files)) {
@@ -543,13 +544,16 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
         const data = await processPdf(file);
         if (!data.guias.length) data.guias = [{ num: clean, total: 0 }];
 
+        // Subir el PDF a Drive. NO bloquea la lectura de folios, pero si falla hay
+        // que avisar: sin drive_url no se puede mostrar el botón "Descargar PDF".
         let driveFileId: string | undefined;
         try {
           const fd = new FormData();
           fd.append('file', file);
           const driveRes = await fetch('/api/drive-upload', { method: 'POST', body: fd });
           if (driveRes.ok) driveFileId = (await driveRes.json()).fileId;
-        } catch { /* non-blocking */ }
+        } catch { /* non-blocking — se reporta abajo vía driveFallidos */ }
+        if (!driveFileId) driveFallidos.push(storeCod);
 
         newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum, driveFileId };
 
@@ -590,6 +594,8 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
       showToast(`✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`);
     else
       showToast('No se pudo asignar. El nombre debe empezar con el código (ej: 11ILC-guia.pdf)', false);
+    if (driveFallidos.length)
+      showToast(`⚠ Folios leídos pero el PDF NO se guardó en Drive para ${driveFallidos.join(', ')} — vuelve a subirlo (no habrá botón Descargar PDF)`, false);
     if (sinManifiesto.length)
       showToast(`⚠ Guía subida pero aún sin manifiesto para ${sinManifiesto.join(', ')}`, false);
   };
