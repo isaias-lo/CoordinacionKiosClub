@@ -132,6 +132,37 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Backfill de drive_url para guías MANUALES sin PDF ──────────────────────
+  // Las guías de `body.guias` que llegaron con folio pero sin drive_url bloqueaban el
+  // jalado de guias_subidas (su tienda quedaba en `guiasManuales`). Si esa tienda SÍ
+  // tiene un PDF subido, lo adjuntamos a sus filas de ruta_guias que quedaron en null.
+  // (Caso 23PEÑ: folio manual sin URL → no aparecía "Descargar PDF" en el QR.)
+  if (guiasManuales.size) {
+    const sbb = supabaseServer();
+    const desde = addDaysIso(body.fecha, -2);
+    const hasta = addDaysIso(body.fecha, 1);
+    const { data: subidas } = await sbb
+      .from('guias_subidas')
+      .select('store_cod, drive_url, created_at')
+      .in('store_cod', [...guiasManuales])
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .not('drive_url', 'is', null)
+      .order('created_at', { ascending: false });
+
+    const urlByStore = new Map<string, string>();
+    for (const s of (subidas ?? []) as { store_cod: string; drive_url: string }[]) {
+      if (!urlByStore.has(s.store_cod)) urlByStore.set(s.store_cod, s.drive_url);
+    }
+    for (const [cod, url] of urlByStore) {
+      await sbb.from('ruta_guias')
+        .update({ drive_url: url })
+        .eq('ruta_id', ruta.id)
+        .eq('store_cod', cod)
+        .is('drive_url', null);
+    }
+  }
+
   // ── Crear registros en trazabilidad_unidades (PUNTO 1 — Creación) ──
   // Enriquecer con datos de tiendas para caché de destino
   if (body.tiendas?.length) {
