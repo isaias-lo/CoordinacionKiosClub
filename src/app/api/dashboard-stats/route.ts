@@ -54,7 +54,10 @@ export async function GET(request: NextRequest) {
   const agg: Record<string, DayAgg> = {};
 
   for (const table of ['despacho_rm', 'despacho_regiones'] as const) {
-    const { data, error } = await sb.from(table).select('fecha, tipo').limit(50000);
+    // order by id desc: el limit debe traer las filas MÁS RECIENTES. Sin order, Postgres
+    // devolvía un subconjunto arbitrario (típicamente las más viejas) y, al superar la tabla
+    // las 50.000 filas, dejaba fuera la data reciente → el gráfico se quedaba en fechas pasadas.
+    const { data, error } = await sb.from(table).select('fecha, tipo').order('id', { ascending: false }).limit(50000);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     for (const row of (data ?? []) as { fecha: string; tipo: string }[]) {
       const iso = toISO(row.fecha);
