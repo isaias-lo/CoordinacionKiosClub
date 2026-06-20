@@ -8,6 +8,7 @@ import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from 
 import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
+import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
 import { useOdooProgress } from '../../shared/useOdooProgress';
@@ -261,6 +262,9 @@ export function StepForm() {
   /* Calendar */
   const [extraCods,    setExtraCods]    = useState<string[]>(loadExtra);
   const [removedCods,  setRemovedCods]  = useState<string[]>(loadRemoved);
+  // Tiendas de adelanto de hoy con destino Santiago/Costa (zona rm | costa).
+  // Entran al flujo de la bodega sin tocar el calendario central.
+  const [adelantoCods, setAdelantoCods] = useState<string[]>([]);
   const [confirmAdd,   setConfirmAdd]   = useState<string | null>(null);
   const [confirmRemove,setConfirmRemove]= useState<string | null>(null);
 
@@ -425,6 +429,11 @@ export function StepForm() {
       .then(grouped => { setSheetsTodayGrouped(grouped); })
       .catch(() => {});
 
+    // Tiendas de adelanto de hoy (solo zona Santiago/Costa)
+    getTiendasAdelantoHoy()
+      .then(list => setAdelantoCods(list.filter(a => a.zona === 'rm' || a.zona === 'costa').map(a => a.store_cod)))
+      .catch(() => {});
+
     // Real-time sync when CalendarioCentral saves from another tab
     return subscribeToCalendarChanges(cal => {
       const day = cal[todayCode];
@@ -582,7 +591,8 @@ export function StepForm() {
   const localTodayCods  = getTiendasSantiagoHoy().map(t => t.cod);
   const sheetsAllCods   = [...sheetsTodayGrouped.rm, ...sheetsTodayGrouped.costa];
   const baseTodayCods   = sheetsAllCods.length > 0 ? sheetsAllCods : localTodayCods;
-  const allTodayCods    = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
+  const baseConAdelanto = [...baseTodayCods, ...adelantoCods.filter(c => !baseTodayCods.includes(c))];
+  const allTodayCods    = [...baseConAdelanto, ...extraCods.filter(c => !baseConAdelanto.includes(c))]
     .filter(c => !removedCods.includes(c));
   // Static takes priority over Supabase (more carefully maintained)
   const tiendaByCod     = { ...supabaseTiendasMap, ...Object.fromEntries(TIENDAS_SANTIAGO.map(t => [t.cod, t])) };

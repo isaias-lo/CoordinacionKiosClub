@@ -8,6 +8,7 @@ import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
+import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
@@ -234,6 +235,8 @@ export function TiendasPage() {
 
   /* Calendar from Calendario Central (Sheets + localStorage cross-tab sync) */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
+  // Tiendas de adelanto de hoy con destino Regiones (zona 'fal'), sin tocar el calendario central.
+  const [adelantoCods, setAdelantoCods] = useState<string[]>([]);
   useEffect(() => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
     const todayCode = DAY_CODES[new Date().getDay()];
@@ -241,6 +244,11 @@ export function TiendasPage() {
     // Initial fetch (checks localStorage cache first, then Sheets)
     getTiendasDelDia('fal')
       .then(cods => { if (cods.length > 0) setSheetsTodayCods(cods); })
+      .catch(() => {});
+
+    // Tiendas de adelanto de hoy (solo zona Regiones / 'fal')
+    getTiendasAdelantoHoy()
+      .then(list => setAdelantoCods(list.filter(a => a.zona === 'fal').map(a => a.store_cod)))
       .catch(() => {});
 
     // Real-time sync when CalendarioCentral saves from another tab
@@ -367,7 +375,8 @@ export function TiendasPage() {
   useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
   useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
 
-  const baseTodayCods = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
+  const baseRaw       = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
+  const baseTodayCods = mounted ? [...baseRaw, ...adelantoCods.filter(c => !baseRaw.includes(c))] : [];
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
 
