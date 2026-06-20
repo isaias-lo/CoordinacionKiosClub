@@ -15,7 +15,12 @@ export interface PickerGroup {
   operations: PickingOperation[];
 }
 
-export interface TodayStore { cod: string; name: string; sources: ('rm' | 'regiones')[]; }
+export interface TodayStore {
+  cod: string; name: string; sources: ('rm' | 'regiones')[];
+  // Presente solo si la tienda fue agregada como "adelanto" (extra del día,
+  // fuera del calendario central). Permite marcarla y eliminarla en la UI.
+  adelanto?: { id: number; zona: 'rm' | 'costa' | 'fal'; fecha_despacho: string | null };
+}
 export type StoreGroupKey = 'region' | 'costa' | 'santiago';
 export interface OdooConfig { url: string; db: string; username: string; apiKey: string; }
 

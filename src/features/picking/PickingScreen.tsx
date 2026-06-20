@@ -38,8 +38,13 @@ import { ConfigTab }          from './components/ConfigTab';
 import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
+import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
+import {
+  getTiendasAdelantoHoy, deleteTiendaAdelanto, todayISO as adelantoTodayISO,
+  type TiendaAdelanto,
+} from '@/features/despacho/shared/tiendasAdelanto';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -130,7 +135,9 @@ export function PickingScreen() {
   const [loadingCods, setLoadingCods]   = useState<string[]>([]);
   const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
-  const [todayStores, setTodayStores]     = useState<TodayStore[]>([]);
+  const [calStores, setCalStores]         = useState<TodayStore[]>([]);
+  const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
+  const [adelantoDialogOpen, setAdelantoDialogOpen] = useState(false);
   const [storesLoading, setStoresLoading] = useState(false);
   // Nombres de tiendas desde Supabase — sobreescriben el hardcoded TIENDAS_INICIAL
   const [tiendaOverrides, setTiendaOverrides] = useState<Record<string, string>>({});
@@ -549,11 +556,8 @@ export function PickingScreen() {
   }, []);
   useEffect(() => { void loadTiendaOverrides(); }, [loadTiendaOverrides]);
   // tiendas is a static lookup table — no realtime subscription needed
-  // Cuando los overrides cargan (puede ser después del calendario), re-aplicar nombres
-  useEffect(() => {
-    if (Object.keys(tiendaOverrides).length === 0) return;
-    setTodayStores(prev => prev.map(s => ({ ...s, name: tiendaOverrides[s.cod] || getStoreName(s.cod) })));
-  }, [tiendaOverrides]);
+  // (los nombres con override y la fusión con adelantos se resuelven en el memo
+  //  `todayStores` más abajo)
 
   const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => {
     setCanonicalNames(names); // persisted automatically by useLocalStorage
@@ -622,12 +626,47 @@ export function PickingScreen() {
     const today = DAY_CODES[new Date().getDay()];
     const day = cal[today];
     if (!day) return;
-    setTodayStores([
+    setCalStores([
       ...day.fal.map(cod   => ({ cod, name: nameFor(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
       ...day.costa.map(cod => ({ cod, name: nameFor(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
       ...day.rm.map(cod    => ({ cod, name: nameFor(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
     ]);
   }, [nameFor]);
+
+  // ── Tiendas de adelanto (extra del día, fuera del calendario central) ──────
+  const loadAdelantos = useCallback(async () => {
+    setAdelantos(await getTiendasAdelantoHoy());
+  }, []);
+  useEffect(() => { void loadAdelantos(); }, [loadAdelantos]);
+  useRealtimeRefresh('tiendas_adelanto', loadAdelantos, true, 30000, 1000);
+
+  const handleDeleteAdelanto = useCallback(async (id: number) => {
+    const ok = await deleteTiendaAdelanto(id);
+    if (ok) setAdelantos(prev => prev.filter(a => a.id !== id));
+    else showToast('No se pudo eliminar el adelanto');
+  }, [showToast]);
+
+  // todayStores = calendario (con overrides de nombre) + tiendas de adelanto de hoy.
+  const todayStores = useMemo<TodayStore[]>(() => {
+    const base = calStores.map(s => ({ ...s, name: tiendaOverrides[s.cod] || getStoreName(s.cod) }));
+    const present = new Set(base.map(s => s.cod));
+    const extra: TodayStore[] = adelantos.map(a => ({
+      cod:      a.store_cod,
+      name:     tiendaOverrides[a.store_cod] || getStoreName(a.store_cod),
+      sources:  (a.zona === 'fal' ? ['regiones'] : ['rm']) as ('rm' | 'regiones')[],
+      adelanto: { id: a.id, zona: a.zona, fecha_despacho: a.fecha_despacho },
+    }));
+    // Anota como adelanto las que ya estuvieran en el calendario; agrega las nuevas.
+    for (const e of extra) {
+      if (present.has(e.cod)) {
+        const i = base.findIndex(s => s.cod === e.cod);
+        if (i >= 0) base[i] = { ...base[i], adelanto: e.adelanto };
+      } else {
+        base.push(e);
+      }
+    }
+    return base;
+  }, [calStores, adelantos, tiendaOverrides]);
 
   // Resizable divider logic is handled by useResizablePanel hook above.
 
@@ -1104,8 +1143,19 @@ export function PickingScreen() {
             storesLoading={storesLoading}
             onToggleStore={handleToggleStore}
             tiendaOverrides={tiendaOverrides}
+            onOpenAdelanto={() => setAdelantoDialogOpen(true)}
+            onDeleteAdelanto={handleDeleteAdelanto}
           />
         </div>
+
+        {adelantoDialogOpen && (
+          <AgregarAdelantoDialog
+            date={adelantoTodayISO()}
+            creadoPor={profile?.full_name ?? undefined}
+            onClose={() => setAdelantoDialogOpen(false)}
+            onAdded={loadAdelantos}
+          />
+        )}
 
         {/* RESIZE DIVIDER — desktop only */}
         {isDesktop && (

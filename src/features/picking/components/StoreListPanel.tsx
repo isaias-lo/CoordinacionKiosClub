@@ -22,10 +22,13 @@ interface Props {
   storesLoading: boolean;
   onToggleStore: (cod: string) => void;
   tiendaOverrides?: Record<string, string>; // nombres desde Supabase (override del hardcoded)
+  onOpenAdelanto?: () => void;              // abrir diálogo "agregar tienda (adelanto)"
+  onDeleteAdelanto?: (id: number) => void;  // eliminar una tienda de adelanto
 }
 
 export const StoreListPanel = React.memo(function StoreListPanel({
   selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore, tiendaOverrides = {},
+  onOpenAdelanto, onDeleteAdelanto,
 }: Props) {
   const [q, setQ] = useState('');
 
@@ -82,6 +85,13 @@ export const StoreListPanel = React.memo(function StoreListPanel({
             className="flex-1 bg-transparent border-none outline-none text-[14px] font-barlow text-text min-w-0" />
           {q && <button onClick={() => setQ('')} className="text-text-3 border-none bg-transparent cursor-pointer text-[14px] leading-none shrink-0">×</button>}
         </div>
+        {onOpenAdelanto && (
+          <button onClick={onOpenAdelanto}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-bold cursor-pointer transition-colors"
+            style={{ background: 'rgba(30,64,175,0.06)', color: '#1E40AF', border: '1.5px dashed rgba(30,64,175,0.35)' }}>
+            ⚡ Agregar tienda (adelanto)
+          </button>
+        )}
         {isFallback && !storesLoading && (
           <div className="mt-1.5 text-[12px] text-text-3 italic">
             {todayStores.length === 0 ? 'Sin despachos hoy — mostrando todas' : 'Sin coincidencias hoy — buscando en todas'}
@@ -149,6 +159,21 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
                         style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
                         {pickerCount}p · {opCount}op
+                      </span>
+                    )}
+                    {store.adelanto && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                        title={store.adelanto.fecha_despacho ? `Despacho: ${store.adelanto.fecha_despacho}` : 'Adelanto'}
+                        style={{ background: 'rgba(30,64,175,0.12)', color: '#1E40AF', border: '1px solid rgba(30,64,175,0.3)' }}>
+                        ⚡ Adelanto
+                      </span>
+                    )}
+                    {store.adelanto && onDeleteAdelanto && (
+                      <span role="button" tabIndex={0} title="Eliminar adelanto"
+                        onClick={e => { e.stopPropagation(); onDeleteAdelanto(store.adelanto!.id); }}
+                        className="text-[13px] shrink-0 cursor-pointer px-0.5"
+                        style={{ color: '#DC2626' }}>
+                        🗑
                       </span>
                     )}
                   </button>
