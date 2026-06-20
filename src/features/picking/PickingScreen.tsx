@@ -668,6 +668,13 @@ export function PickingScreen() {
     return base;
   }, [calStores, adelantos, tiendaOverrides]);
 
+  // Lookup store_cod → adelanto (para marcar la etiqueta de esa tienda).
+  const adelantoByCod = useMemo(() => {
+    const m: Record<string, { fecha_despacho: string | null }> = {};
+    for (const a of adelantos) m[a.store_cod] = { fecha_despacho: a.fecha_despacho };
+    return m;
+  }, [adelantos]);
+
   // Resizable divider logic is handled by useResizablePanel hook above.
 
   useEffect(() => {
@@ -1410,6 +1417,7 @@ export function PickingScreen() {
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
                               sectionFilter={sectionFilter}
+                              adelanto={adelantoByCod[group.storeCod]}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');

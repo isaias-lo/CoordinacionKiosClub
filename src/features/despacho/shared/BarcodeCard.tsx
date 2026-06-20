@@ -161,6 +161,7 @@ export function BarcodeCard({
   value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories,
   totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId,
   audited, subLabel, footerExtra, storeName: storeNameProp,
+  adelanto, adelantoFecha,
 }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
@@ -170,6 +171,8 @@ export function BarcodeCard({
   subLabel?: string;
   footerExtra?: string;
   storeName?: string;
+  adelanto?: boolean;             // marca visual de tienda agregada como adelanto
+  adelantoFecha?: string | null;  // fecha de despacho a mostrar en la etiqueta
 }) {
   const storeName = storeNameProp ?? getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -232,6 +235,21 @@ export function BarcodeCard({
           zIndex: 10,
         }}>
           ✓ Auditado
+        </div>
+      )}
+
+      {/* Badge ADELANTO (esquina superior izquierda; visible también en compact) */}
+      {adelanto && (
+        <div style={{
+          position: 'absolute', top: compact ? 5 : 8, left: compact ? 5 : 8,
+          background: '#D97706', color: '#fff',
+          padding: compact ? '1px 6px' : '2px 10px', borderRadius: 6,
+          fontFamily: 'Arial Black, sans-serif', fontSize: compact ? 9 : 11, fontWeight: 900,
+          letterSpacing: '0.5px', textTransform: 'uppercase',
+          boxShadow: '0 0 0 1.5px #fff, 0 0 0 2.5px #D97706',
+          zIndex: 10, whiteSpace: 'nowrap',
+        }}>
+          ⚡ Adelanto{adelantoFecha ? ` · ${adelantoFecha}` : ''}
         </div>
       )}
 
