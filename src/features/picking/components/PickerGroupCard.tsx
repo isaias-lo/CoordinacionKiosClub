@@ -40,13 +40,14 @@ interface Props {
   lastPrint?: PrintRecord;   // último registro de impresión para mostrar advertencia de reimpresión
   myName?: string;           // nombre del supervisor actual para detectar impresiones propias vs ajenas
   sectionFilter?: SectionFilter;
+  adelanto?: { fecha_despacho: string | null }; // si la tienda es un adelanto
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
   group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange,
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
-  lastPrint, myName, sectionFilter,
+  lastPrint, myName, sectionFilter, adelanto,
 }: Props) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -367,6 +368,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                           totalPickers={totalPickers} tipo={slotTipo}
                           slotId={slot?.id}
                           canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
+                          adelanto={!!adelanto} adelantoFecha={adelanto?.fecha_despacho ?? null}
                           compact
                         />
                         {isSelected && (
