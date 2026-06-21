@@ -1,18 +1,24 @@
 # Estado actual del trabajo — Erick
 
 ## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-1. **Revisar y mergear PR #36** desde GitHub si está OK:
-   https://github.com/isaias-lo/CoordinacionKiosClub/pull/36
-   (3 mejoras: guías en manifiesto, auditoría de pallets, 2ª vuelta por fecha de salida).
-   Las migraciones 050 y 051 YA están aplicadas en producción (vía MCP).
-2. (Opcional) Click-through real de las 3 mejoras: instalar Playwright MCP
+1. **[MCP Supabase — VERIFICAR EN WINDOWS] ⚠ PRIMERO ESTO.**
+   👉 Al decir "hola", Claude debe **preguntar/confirmar si estoy en el PC Windows**. Solo en Windows
+   se hace esta verificación.
+   - Contexto: el `.mcp.json` YA quedó **commiteado** con `npx` + **read+write** + fijado a toolskios
+     (`--project-ref=aiclobncdhxjxdlvkezk`). En la **Mac** está **verificado** (lee y escribe OK).
+   - **Falta probarlo en Windows.** Pasos: (a) `setx SUPABASE_ACCESS_TOKEN "TU_TOKEN"` (mismo token sbp_…);
+     (b) reiniciar VSCode; (c) Claude verifica con un SELECT/escritura de prueba contra toolskios.
+   - **Si en Windows el `npx` directo NO arranca** → cambiar SOLO en ese equipo el `command` del `.mcp.json`
+     a `cmd` con args `["/c","npx",...]` (wrapper de Windows), sin tocar el resto. (No commitear ese ajuste
+     o buscar una forma que sirva a ambos.)
+2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
    (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-16 (tarde — 3 mejoras, PR #36 abierto)
-Rama: `inicio` (al día con main + commit 56d8fd5)
+Fecha: 2026-06-21 (Mac/casa) — MCP Supabase del proyecto operativo en la Mac (read+write, pinned).
+Rama: `inicio` (al día con main = a98a337; PR #36 ya mergeado a prod).
 
 ### Qué se hizo hoy (PR #36, NO mergeado aún)
 - **#1 Guías de Despacho SII en el manifiesto del fiscalizador**: match robusto

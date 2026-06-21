@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeStoreStatus } from '../storeStatus';
+import { computeStoreStatus, progressTone } from '../storeStatus';
 
 describe('computeStoreStatus', () => {
   it('sin operaciones → none (gris)', () => {
@@ -28,5 +28,33 @@ describe('computeStoreStatus', () => {
   it('valores con done <= 0 → none (defensivo)', () => {
     expect(computeStoreStatus(-1, -1)).toBe('none');
     expect(computeStoreStatus(3, -2)).toBe('none');
+  });
+});
+
+describe('progressTone (semáforo real de la barra)', () => {
+  it('sin operaciones (total 0) → none (no se muestra barra)', () => {
+    expect(progressTone(0, 0)).toBe('none');
+    expect(progressTone(-1, 0)).toBe('none');
+  });
+
+  it('ops existen pero 0 realizadas → red', () => {
+    expect(progressTone(4, 0)).toBe('red');
+    expect(progressTone(1, 0)).toBe('red');
+    expect(progressTone(4, -2)).toBe('red'); // defensivo
+  });
+
+  it('en progreso (1..N-1) → yellow', () => {
+    expect(progressTone(4, 1)).toBe('yellow');
+    expect(progressTone(4, 2)).toBe('yellow');
+    expect(progressTone(4, 3)).toBe('yellow');
+  });
+
+  it('todas realizadas (N/N) → green', () => {
+    expect(progressTone(4, 4)).toBe('green');
+    expect(progressTone(1, 1)).toBe('green');
+  });
+
+  it('done > total (defensivo) → green', () => {
+    expect(progressTone(4, 5)).toBe('green');
   });
 });

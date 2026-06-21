@@ -16,3 +16,22 @@ export function computeStoreStatus(total: number, done: number): StoreStatus {
   if (done >= total)           return 'complete';  // todas realizadas
   return 'partial';                                 // 1..N-1 realizadas
 }
+
+/**
+ * Tono "semáforo real" del progreso de movimientos para la BARRA de bodegas.
+ * A diferencia de `computeStoreStatus`, distingue "sin operaciones" (no mostrar nada)
+ * de "operaciones existen pero 0 realizadas" (rojo).
+ *
+ *  - `none`   → no hay ops (total = 0) → la barra no se renderiza.
+ *  - `red`    → hay ops pero ninguna realizada (done = 0).
+ *  - `yellow` → en progreso (1 … N-1 realizadas).
+ *  - `green`  → todas realizadas (N/N).
+ */
+export type ProgressTone = 'none' | 'red' | 'yellow' | 'green';
+
+export function progressTone(total: number, done: number): ProgressTone {
+  if (total <= 0)    return 'none';
+  if (done <= 0)     return 'red';
+  if (done >= total) return 'green';
+  return 'yellow';
+}
