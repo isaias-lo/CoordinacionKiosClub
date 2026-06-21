@@ -1,18 +1,26 @@
 # Estado actual del trabajo — Erick
 
 ## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-1. **Revisar y mergear PR #36** desde GitHub si está OK:
-   https://github.com/isaias-lo/CoordinacionKiosClub/pull/36
-   (3 mejoras: guías en manifiesto, auditoría de pallets, 2ª vuelta por fecha de salida).
-   Las migraciones 050 y 051 YA están aplicadas en producción (vía MCP).
-2. (Opcional) Click-through real de las 3 mejoras: instalar Playwright MCP
+1. **[MCP Supabase — VERIFICAR EN WINDOWS] ⚠ PRIMERO ESTO.**
+   👉 Al decir "hola", Claude debe **preguntar/confirmar si estoy en el PC Windows**. Solo en Windows
+   se hace esta verificación.
+   - Contexto: en la **Mac** ya quedó funcionando el MCP del proyecto (`.mcp.json`) con `npx`, **read+write**,
+     fijado a toolskios (`--project-ref=aiclobncdhxjxdlvkezk`). Verificado: lee y escribe OK.
+   - **El cambio del `.mcp.json` está SOLO local en la Mac (NO commiteado)**, así que en Windows seguirá
+     el `.mcp.json` viejo de main (`cmd /c npx` + `--read-only`). Para probar la versión nueva en Windows
+     hay que **aplicar el mismo cambio ahí** (Claude lo edita) o, si `npx` directo no arranca en Windows,
+     dejar el wrapper `cmd /c npx`.
+   - Pasos en Windows: (a) `setx SUPABASE_ACCESS_TOKEN "TU_TOKEN"` (mismo token sbp_…); (b) reiniciar VSCode;
+     (c) Claude verifica con un SELECT/escritura de prueba contra toolskios.
+   - **Si funciona en Windows → recién ahí commitear/subir el `.mcp.json`** para que sirva en ambos equipos.
+2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
    (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-16 (tarde — 3 mejoras, PR #36 abierto)
-Rama: `inicio` (al día con main + commit 56d8fd5)
+Fecha: 2026-06-21 (Mac/casa) — MCP Supabase del proyecto operativo en la Mac (read+write, pinned).
+Rama: `inicio` (al día con main = a98a337; PR #36 ya mergeado a prod).
 
 ### Qué se hizo hoy (PR #36, NO mergeado aún)
 - **#1 Guías de Despacho SII en el manifiesto del fiscalizador**: match robusto

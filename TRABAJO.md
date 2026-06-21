@@ -1,5 +1,13 @@
 # Estado actual del trabajo
 
+## 🔴 PENDIENTE AL LLEGAR — empezar por aquí (2026-06-21)
+1. **[MCP Supabase] VERIFICAR EN WINDOWS — primero esto.** Al decir "hola", Claude debe
+   **confirmar si estoy en el PC Windows**; solo ahí se hace la verificación. En la Mac ya quedó
+   el MCP del proyecto (`.mcp.json`) con `npx`, **read+write**, fijado a toolskios — verificado OK.
+   El cambio está **solo local en la Mac (NO commiteado)**, así que en Windows hay que aplicarlo ahí
+   + `setx SUPABASE_ACCESS_TOKEN` + reiniciar VSCode + probar; si funciona, **recién ahí commitear el
+   `.mcp.json`**. Detalle completo en **TRABAJO_ERICK.md** (pendiente #1).
+
 ## Última sesión
 Fecha: 2026-06-17 (tarde)
 Rama: feat/actividad-por-fecha (PR pendiente). Hoy mergeados a main: #37 (egress+semáforo+rollover),
