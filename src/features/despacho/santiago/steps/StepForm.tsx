@@ -12,6 +12,7 @@ import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
 import { useOdooProgress } from '../../shared/useOdooProgress';
+import { StoreProgressBar } from '../../shared/StoreProgressBar';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
@@ -97,7 +98,7 @@ interface ResumenEditState {
 ═══════════════════════════════════════ */
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
-  despachoP, despachoB, despachoC, hasGuide, storeStatus = 'none', storeDoneOps = 0, storeTotalOps = 0,
+  despachoP, despachoB, despachoC, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -128,21 +129,6 @@ function TiendaGridCard({
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border active:bg-bg'
         }`}>
-      {/* Indicador progreso Odoo — esquina superior izquierda */}
-      {storeStatus === 'complete' && (
-        <span
-          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-done)', boxShadow: '0 0 0 2px #fff' }}
-          title="✓ Todos los movimientos realizados"
-        />
-      )}
-      {storeStatus === 'partial' && (
-        <span
-          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-partial)', boxShadow: '0 0 0 2px #fff' }}
-          title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
-        />
-      )}
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-warn bg-[rgba(217,119,6,0.15)] rounded-full cursor-pointer border-none leading-none"
@@ -170,6 +156,7 @@ function TiendaGridCard({
         {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
         {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
       </div>
+      <StoreProgressBar total={storeTotalOps} done={storeDoneOps} variant="grid" showCount />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { useOdooProgress } from '../../shared/useOdooProgress';
+import { StoreProgressBar } from '../../shared/StoreProgressBar';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
@@ -112,7 +113,7 @@ interface GridCardProps {
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeStatus = 'none', storeDoneOps = 0, storeTotalOps = 0, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -135,21 +136,6 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      {/* Indicador progreso Odoo — esquina superior izquierda */}
-      {storeStatus === 'complete' && (
-        <span
-          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-done)', boxShadow: '0 0 0 2px #fff' }}
-          title="✓ Todos los movimientos realizados"
-        />
-      )}
-      {storeStatus === 'partial' && (
-        <span
-          className="absolute top-1 left-1 w-3 h-3 rounded-full flex-shrink-0"
-          style={{ background: 'var(--status-partial)', boxShadow: '0 0 0 2px #fff' }}
-          title={`${storeDoneOps}/${storeTotalOps} movimientos realizados`}
-        />
-      )}
       <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
@@ -174,6 +160,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           </span>
         )}
       </div>
+      <StoreProgressBar total={storeTotalOps} done={storeDoneOps} variant="grid" showCount />
     </div>
   );
 }
