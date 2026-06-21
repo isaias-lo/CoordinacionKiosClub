@@ -4,15 +4,13 @@
 1. **[MCP Supabase — VERIFICAR EN WINDOWS] ⚠ PRIMERO ESTO.**
    👉 Al decir "hola", Claude debe **preguntar/confirmar si estoy en el PC Windows**. Solo en Windows
    se hace esta verificación.
-   - Contexto: en la **Mac** ya quedó funcionando el MCP del proyecto (`.mcp.json`) con `npx`, **read+write**,
-     fijado a toolskios (`--project-ref=aiclobncdhxjxdlvkezk`). Verificado: lee y escribe OK.
-   - **El cambio del `.mcp.json` está SOLO local en la Mac (NO commiteado)**, así que en Windows seguirá
-     el `.mcp.json` viejo de main (`cmd /c npx` + `--read-only`). Para probar la versión nueva en Windows
-     hay que **aplicar el mismo cambio ahí** (Claude lo edita) o, si `npx` directo no arranca en Windows,
-     dejar el wrapper `cmd /c npx`.
-   - Pasos en Windows: (a) `setx SUPABASE_ACCESS_TOKEN "TU_TOKEN"` (mismo token sbp_…); (b) reiniciar VSCode;
-     (c) Claude verifica con un SELECT/escritura de prueba contra toolskios.
-   - **Si funciona en Windows → recién ahí commitear/subir el `.mcp.json`** para que sirva en ambos equipos.
+   - Contexto: el `.mcp.json` YA quedó **commiteado** con `npx` + **read+write** + fijado a toolskios
+     (`--project-ref=aiclobncdhxjxdlvkezk`). En la **Mac** está **verificado** (lee y escribe OK).
+   - **Falta probarlo en Windows.** Pasos: (a) `setx SUPABASE_ACCESS_TOKEN "TU_TOKEN"` (mismo token sbp_…);
+     (b) reiniciar VSCode; (c) Claude verifica con un SELECT/escritura de prueba contra toolskios.
+   - **Si en Windows el `npx` directo NO arranca** → cambiar SOLO en ese equipo el `command` del `.mcp.json`
+     a `cmd` con args `["/c","npx",...]` (wrapper de Windows), sin tocar el resto. (No commitear ese ajuste
+     o buscar una forma que sirva a ambos.)
 2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
    (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
 
