@@ -1,16 +1,41 @@
 # Estado actual del trabajo — Erick
 
-## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-1. **Revisar y mergear PR #36** desde GitHub si está OK:
-   https://github.com/isaias-lo/CoordinacionKiosClub/pull/36
-   (3 mejoras: guías en manifiesto, auditoría de pallets, 2ª vuelta por fecha de salida).
-   Las migraciones 050 y 051 YA están aplicadas en producción (vía MCP).
-2. (Opcional) Click-through real de las 3 mejoras: instalar Playwright MCP
-   (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
+## 🔴 PENDIENTE AL LLEGAR (en la Mac) — empezar por aquí
+1. **Activar el MCP de Supabase** (quedó configurado en `.mcp.json`, modo solo-lectura,
+   apuntando a toolskios `aiclobncdhxjxdlvkezk`):
+   - Crear un Personal Access Token en Supabase → Account → Access Tokens.
+   - En la Mac, agregar a `~/.zshrc`:  `export SUPABASE_ACCESS_TOKEN="sbp_..."`  → `source ~/.zshrc`.
+   - `git fetch` + checkout `chore/mcp-supabase` (o pull de main si ya se mergeó #56).
+   - Reiniciar Claude Code y aprobar el server MCP "supabase". Luego decir **"prueba Supabase"**.
+2. **Mergear los PRs abiertos** (todos verdes, sin conflictos):
+   - #53 manifiesto (razón social+RUT, sin chofer, N° manifiesto): https://github.com/isaias-lo/CoordinacionKiosClub/pull/53
+   - #54 dashboard auto-sync: https://github.com/isaias-lo/CoordinacionKiosClub/pull/54
+   - #55 adelanto de tiendas desde Picking: https://github.com/isaias-lo/CoordinacionKiosClub/pull/55
+   - #56 `.mcp.json` Supabase: https://github.com/isaias-lo/CoordinacionKiosClub/pull/56
+3. La migración **053 `tiendas_adelanto` YA está aplicada** en producción (la corrió Erick).
 
 ---
 
 ## Última sesión
+Fecha: 2026-06-21
+Rama: `chore/mcp-supabase` (todo commiteado y pusheado; nada a medias)
+
+### Qué se hizo hoy
+- **Manifiesto** (PR #53): razón social "Kiosclub American Supermarket SPA" + RUT 76.360.868-9
+  en la cabecera; se quitó el dato Chofer (firma se mantiene); código de ruta rotulado "N° Manifiesto".
+- **Dashboard Inicio congelado** (PR #54): la data llegaba a Sheets pero no a `despacho_rm/regiones`
+  (solo se copiaba con el botón manual "⇅ Sheets"). Ahora al "Registrar despacho del día"
+  (FinishModal + SantiagoFinishModal) se dispara `/api/sync-despacho` en background. El dashboard
+  muestra el TOTAL combinado (RM + Regiones) por día.
+- **Adelanto de tiendas desde Picking** (PR #55, migración 053): agregar tiendas extra del día
+  (buscador + zona + fecha despacho), badge ⚡ y eliminar; bajan a Bodegas Santiago/Regiones y
+  al Enrutador (que las hereda solo); etiqueta con badge ⚡ Adelanto. NO toca calendario central.
+  Tabla `tiendas_adelanto` + API `/api/tiendas-adelanto` + util `tiendasAdelanto.ts`.
+- **MCP Supabase** (PR #56): `.mcp.json` con el server oficial en `--read-only` apuntando a toolskios;
+  token vía env `SUPABASE_ACCESS_TOKEN` (no versionado). Falta activarlo en cada equipo (ver pendiente 1).
+- 269 tests · tsc OK · build OK en todos.
+
+### Sesión 2026-06-16 (histórico)
 Fecha: 2026-06-16 (tarde — 3 mejoras, PR #36 abierto)
 Rama: `inicio` (al día con main + commit 56d8fd5)
 
