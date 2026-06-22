@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractStoreCode, resolveStoreCode } from '../picking-utils';
+import { extractStoreCode, resolveStoreCode, canonicalStoreCode } from '../picking-utils';
 
 describe('extractStoreCode', () => {
   it('extrae el código de un texto simple', () => {
@@ -63,5 +63,26 @@ describe('resolveStoreCode', () => {
 
   it('sin ningún código → ""', () => {
     expect(resolveStoreCode({ toLocation: 'Picking', origin: 'Abastecimiento' })).toBe('');
+  });
+
+  it('Viña (37VIÑ en Odoo) se canoniza al código del catálogo 37VIN → semáforo hace match', () => {
+    expect(resolveStoreCode({ toLocation: 'WH/PICK/37VIÑ/Stock' })).toBe('37VIN');
+    expect(resolveStoreCode({ toLocation: 'Picking', origin: 'Abastecimiento Comida 37VIÑ Fecha(23/06/2026)' })).toBe('37VIN');
+    // por nombre también
+    expect(resolveStoreCode({ toLocation: 'Picking', origin: 'Abastecimiento Viña del Mar' })).toBe('37VIN');
+  });
+});
+
+describe('canonicalStoreCode', () => {
+  it('colapsa variantes de Ñ al código del catálogo', () => {
+    expect(canonicalStoreCode('37VIÑ')).toBe('37VIN'); // Odoo con Ñ → catálogo con N
+    expect(canonicalStoreCode('37VIN')).toBe('37VIN');
+    expect(canonicalStoreCode('23PEÑ')).toBe('23PEÑ'); // catálogo conserva la Ñ
+    expect(canonicalStoreCode('23PEN')).toBe('23PEÑ'); // variante con N → canónico con Ñ
+  });
+
+  it('código desconocido o vacío se devuelve igual', () => {
+    expect(canonicalStoreCode('NOEXISTE')).toBe('NOEXISTE');
+    expect(canonicalStoreCode('')).toBe('');
   });
 });

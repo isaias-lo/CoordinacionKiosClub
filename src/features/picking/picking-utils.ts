@@ -47,6 +47,28 @@ const STORE_NAME_TO_CODE: Record<string, string> = Object.fromEntries(
   Object.entries(TIENDAS_INICIAL).map(([cod, info]) => [info.n.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), cod])
 );
 
+// Forma "plana" de un código: sin acentos ni Ñ (Ñ→N), mayúsculas. "37VIÑ" y "37VIN" → "37VIN".
+function flatCode(code: string): string {
+  return (code ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+}
+
+// Mapa: forma plana del código del catálogo → código canónico del catálogo.
+// El catálogo es inconsistente con la Ñ ("23PEÑ" la conserva, "37VIN" no), así que
+// distintas grafías de Odoo (37VIÑ vs 37VIN) deben colapsar al mismo código canónico.
+const CANONICAL_BY_FLAT: Record<string, string> = Object.fromEntries(
+  Object.keys(TIENDAS_INICIAL).map(cod => [flatCode(cod), cod])
+);
+
+/**
+ * Canoniza un código de tienda al código exacto del catálogo (TIENDAS_INICIAL),
+ * resolviendo la inconsistencia de la Ñ: "37VIÑ" → "37VIN", "23PEN" → "23PEÑ".
+ * Si no hay coincidencia en el catálogo, devuelve el código tal cual.
+ */
+export function canonicalStoreCode(code: string): string {
+  if (!code) return code;
+  return CANONICAL_BY_FLAT[flatCode(code)] ?? code;
+}
+
 export function getStoreGroup(store: TodayStore): StoreGroupKey {
   const z = TIENDAS_INICIAL[store.cod]?.z ?? '';
   if (z === 'Región' || store.sources.includes('regiones')) return 'region';
@@ -72,9 +94,9 @@ export function parseOrigin(origin: string): { categories: string[]; storeCode: 
     const m = origin.match(/\(([^)]+)\)/);
     if (m) m[1].split(',').forEach(c => { const t = c.trim(); if (t) categories.push(t); });
   }
-  // 1) Try code pattern: 2 digits + 2-4 uppercase letters (e.g. "29CFL", "09LEO")
-  const storeMatch = origin.match(/\b(\d{2}[A-Z]{2,4})\b/);
-  let storeCode = storeMatch?.[1] ?? '';
+  // 1) Try code pattern (Ñ-aware + dígito final): "29CFL", "37VIÑ", "35BN2", "09LEO".
+  //    Usa extractStoreCode (lookarounds) en vez de \b, que no trata la Ñ como palabra.
+  let storeCode = extractStoreCode(origin);
   // 2) Fallback: match store name from TIENDAS_INICIAL (e.g. "Maipu POS 2/..." → "17MAI")
   if (!storeCode) {
     const originNorm = origin.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
@@ -111,11 +133,15 @@ export function extractStoreCode(text: string): string {
  * Identifica la tienda de un picking de forma robusta a typos manuales en el
  * Documento Origen. Prioridad: 1º destino (location_dest_id, columna "A" en Odoo,
  * dato estructurado), 2º origin (texto manual), 3º partner.
+ * El resultado se canoniza al código del catálogo para que el semáforo/bodega
+ * (que usan el código del catálogo, p. ej. "37VIN") hagan match aunque Odoo use
+ * otra grafía de la Ñ (p. ej. "37VIÑ").
  */
 export function resolveStoreCode(p: { toLocation?: string; origin?: string; partner?: string }): string {
-  return extractStoreCode(p.toLocation ?? '')
+  const raw = extractStoreCode(p.toLocation ?? '')
       || parseOrigin(p.origin ?? '').storeCode
       || extractStoreCode(p.partner ?? '');
+  return canonicalStoreCode(raw);
 }
 
 // ─── Stats formatting ─────────────────────────────────────────────────────────
