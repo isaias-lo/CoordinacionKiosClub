@@ -30,9 +30,10 @@ export const MODULE_GROUPS: ModuleGroup[] = [
   {
     id: 'flota', label: 'Flota', color: '#EA580C',
     routes: [
-      { path: '/despacho/control-flota', label: 'Control de Flota'       },
       { path: '/conductor-hub',          label: 'Panel Conductor'        },
       { path: '/panel-operaciones',      label: 'Panel Operaciones'      },
+      // 'Control de Flota' (/despacho/control-flota) se quitó del sidebar: la misma
+      // gestión vive en el Enrutador → tab FLOTA → Gestionar. La ruta sigue activa.
       // '/tiendas' (Recepción del conductor) se accede desde Panel Conductor;
       // se quitó del sidebar para evitar duplicado. La ruta sigue activa.
     ],
