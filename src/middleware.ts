@@ -20,6 +20,11 @@ const PENDING_REDIRECT = '/espera';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Manifiesto público del fiscalizador (QR de la ruta): acceso SIN login.
+  // La página /r/[token] y la API /api/r/[token] ya son públicas; el QR debe poder
+  // abrirse aunque quien escanea no tenga sesión (ni de un rol distinto).
+  if (pathname.startsWith('/r/')) return NextResponse.next();
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
