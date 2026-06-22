@@ -280,6 +280,7 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
 
 // ── Columnas redimensionables (ancho por columna, estilo Sheets) ──────────────
 const COLW_KEY = 'registros_colwidths_v1';
+const VISCOLS_KEY = 'registros_visiblecols_v1';
 const DEFAULT_COLW: Record<string, number> = {
   fecha: 96, cod: 64, tienda: 160, tipo: 80, regimen: 90, transporte: 120,
   carga: 80, region: 150, comuna: 150, peso_kg: 78, estado: 140, n_pallet_bulto: 52,
@@ -390,9 +391,29 @@ export default function RegistrosPage() {
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
   const [openFilter, setOpenFilter] = useState<string | null>(null);
 
+  // Columnas visibles por pestaña (persisten en localStorage). Sin entrada = todas.
+  const [visibleColsMap, setVisibleColsMap] = useState<Record<string, string[]>>({});
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  useEffect(() => {
+    try { setVisibleColsMap(JSON.parse(localStorage.getItem(VISCOLS_KEY) || '{}')); } catch {}
+  }, []);
+
   const tabCfg = TABS.find(t => t.key === tab)!;
-  const cols   = TABLE_COLS[tab];
+  const allCols = TABLE_COLS[tab];
+  const storedVisible = visibleColsMap[tab];
+  const cols   = storedVisible && storedVisible.length ? allCols.filter(c => storedVisible.includes(c)) : allCols;
   const color  = TAB_COLORS[tab];
+
+  const toggleCol = (c: string) => {
+    setVisibleColsMap(prev => {
+      const current = prev[tab] && prev[tab].length ? prev[tab] : allCols;
+      let next = current.includes(c) ? current.filter(x => x !== c) : [...current, c];
+      if (next.length === 0) next = current;           // no permitir ocultar todas
+      const updated = { ...prev, [tab]: allCols.filter(x => next.includes(x)) }; // conserva el orden
+      try { localStorage.setItem(VISCOLS_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
 
   // Columna de orden por defecto: fecha del despacho (o fecha/hora en recepción).
   const defaultSortCol = tab === 'recepcion' ? 'created_at' : 'fecha';
@@ -457,7 +478,8 @@ export default function RegistrosPage() {
     : rows;
 
   // 2) Filtros por columna (valores permitidos por columna; vacío = todos)
-  const activeFilterCols = cols.filter(c => (colFilters[c]?.length ?? 0) > 0);
+  //    Sobre allCols: un filtro activo sigue aplicando aunque la columna se oculte.
+  const activeFilterCols = allCols.filter(c => (colFilters[c]?.length ?? 0) > 0);
   const applyFilters = (list: Record<string, unknown>[], exceptCol?: string) =>
     list.filter(r => activeFilterCols.every(c => c === exceptCol || colFilters[c].includes(String(r[c] ?? ''))));
   const colFiltered = applyFilters(searched);
@@ -501,6 +523,28 @@ export default function RegistrosPage() {
           className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
           ↺ Actualizar
         </button>
+        )}
+        {tab !== 'historial' && (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setColMenuOpen(o => !o)}
+              className="px-3 py-1.5 rounded-xl text-[13px] text-white/60 cursor-pointer hover:bg-white/10 transition-colors border border-white/10">
+              ▦ Columnas
+            </button>
+            {colMenuOpen && (
+              <>
+                <div onClick={() => setColMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 45 }} />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, width: 220, maxHeight: 360, overflowY: 'auto', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.22)', zIndex: 50, padding: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, padding: '4px 8px 6px' }}>Columnas visibles</div>
+                  {allCols.map(c => (
+                    <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', fontSize: 13, color: '#1F2937', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={cols.includes(c)} onChange={() => toggleCol(c)} />
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{COL_LABEL[c] ?? c}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -548,9 +592,9 @@ export default function RegistrosPage() {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-auto px-4 pb-4">
+      <div className="flex-1 min-h-0 overflow-hidden px-4 pb-2 flex flex-col">
         {tab === 'historial' ? (
-          <div className="h-full overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <HistContent />
           </div>
         ) : (<>
@@ -563,8 +607,8 @@ export default function RegistrosPage() {
         )}
 
         {!loading && filtered.length > 0 && (
-          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E5E7EB', background: '#fff' }}>
-            <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
+          <div className="rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col" style={{ border: '1px solid #E5E7EB', background: '#fff' }}>
+            <div className="flex-1 min-h-0 overflow-auto">
               <table className="text-[12px]" style={{ tableLayout: 'fixed', width: cols.reduce((a, c) => a + widthFor(c), 0), borderCollapse: 'separate', borderSpacing: 0 }}>
                 <thead>
                   <tr>
@@ -628,7 +672,7 @@ export default function RegistrosPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2 text-[11px] border-t" style={{ color: '#94A3B8', borderColor: '#F1F5F9' }}>
+            <div className="px-4 py-2 text-[11px] border-t flex-shrink-0" style={{ color: '#94A3B8', borderColor: '#F1F5F9' }}>
               {filtered.length} registros · {tabCfg.label}
               {tab === 'recepcion' && ' · Toca una fila para ver detalle'}
             </div>
