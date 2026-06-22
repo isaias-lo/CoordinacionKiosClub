@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Truck, MapPin, Store, X, History } from 'lucide-react';
+import { ChevronLeft, Truck, MapPin, Store, X, History, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { fmtHoraChile, fmtFechaHoraChile } from '@/lib/fechaChile';
 import { HistContent } from '@/screens/HistScreen';
@@ -79,6 +79,27 @@ function formatCell(col: string, val: unknown): React.ReactNode {
     return fmtFechaHoraChile(String(val));
   }
   return String(val ?? '');
+}
+
+// Clave numérica para ordenar fechas: 'dd/mm/yyyy' (despacho) o ISO (created_at).
+function dateMs(val: unknown): number {
+  const s = String(val ?? '').trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+  const t = Date.parse(s);
+  return isNaN(t) ? -Infinity : t;
+}
+
+const DATE_COLS = new Set(['fecha', 'created_at']);
+
+// Comparador de celdas: fechas por timestamp, números por valor, resto alfabético.
+function compareCells(col: string, a: unknown, b: unknown): number {
+  if (DATE_COLS.has(col)) return dateMs(a) - dateMs(b);
+  const an = Number(a), bn = Number(b);
+  const aNum = String(a ?? '').trim() !== '' && !isNaN(an);
+  const bNum = String(b ?? '').trim() !== '' && !isNaN(bn);
+  if (aNum && bNum) return an - bn;
+  return String(a ?? '').localeCompare(String(b ?? ''), 'es');
 }
 
 // ── Recepcion detail modal ────────────────────────────────────────────────────
@@ -267,6 +288,65 @@ const DEFAULT_COLW: Record<string, number> = {
   receptor: 140, rut: 112,
 };
 
+// ── Menú de filtro por columna (estilo Excel/Sheets) ──────────────────────────
+function ColumnFilterMenu({ values, selected, onApply, onClose, accent }: {
+  values: string[]; selected: string[];
+  onApply: (vals: string[]) => void; onClose: () => void; accent: string;
+}) {
+  const [q, setQ] = useState('');
+  // draft = valores marcados. Sin filtro activo (selected vacío) ⇒ todos marcados.
+  const [draft, setDraft] = useState<Set<string>>(() => new Set(selected.length ? selected : values));
+
+  const shown = q.trim() ? values.filter(v => v.toLowerCase().includes(q.toLowerCase())) : values;
+  const allShownChecked = shown.length > 0 && shown.every(v => draft.has(v));
+  const toggle = (v: string) => setDraft(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  const toggleAllShown = () => setDraft(prev => {
+    const n = new Set(prev);
+    if (allShownChecked) shown.forEach(v => n.delete(v)); else shown.forEach(v => n.add(v));
+    return n;
+  });
+  const apply = () => {
+    const all = values.length > 0 && values.every(v => draft.has(v));
+    onApply(all ? [] : Array.from(draft)); // todos marcados ⇒ sin filtro
+    onClose();
+  };
+
+  return (
+    <div onClick={e => e.stopPropagation()}
+      style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, width: 232, background: '#fff',
+        border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.18)', zIndex: 40,
+        display: 'flex', flexDirection: 'column', overflow: 'hidden', textTransform: 'none', letterSpacing: 'normal' }}>
+      <div style={{ padding: 8, borderBottom: '1px solid #F1F5F9' }}>
+        <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar valor…"
+          style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #E2E8F0', borderRadius: 6, outline: 'none', color: '#0F172A' }} />
+      </div>
+      <button onClick={toggleAllShown}
+        style={{ textAlign: 'left', padding: '6px 10px', fontSize: 12, fontWeight: 700, color: '#334155', background: '#F8FAFC', border: 'none', borderBottom: '1px solid #F1F5F9', cursor: 'pointer' }}>
+        {allShownChecked ? '☑' : '☐'} (Seleccionar todo)
+      </button>
+      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        {shown.map(v => (
+          <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12, color: '#1F2937', cursor: 'pointer' }}>
+            <input type="checkbox" checked={draft.has(v)} onChange={() => toggle(v)} />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v === '' ? '(vacío)' : v}</span>
+          </label>
+        ))}
+        {shown.length === 0 && <div style={{ padding: 10, fontSize: 12, color: '#94A3B8' }}>Sin valores</div>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, padding: 8, borderTop: '1px solid #F1F5F9' }}>
+        <button onClick={() => { onApply([]); onClose(); }}
+          style={{ flex: 1, padding: 6, fontSize: 12, fontWeight: 700, color: '#64748B', background: '#F1F5F9', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+          Limpiar
+        </button>
+        <button onClick={apply}
+          style={{ flex: 1, padding: 6, fontSize: 12, fontWeight: 700, color: '#fff', background: accent, border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+          Aplicar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RegistrosPage() {
@@ -304,9 +384,27 @@ export default function RegistrosPage() {
     window.addEventListener('pointerup', up);
   };
 
+  // Orden (columna + dirección) y filtros por columna (estilo Excel/Sheets)
+  const [sortCol, setSortCol]       = useState<string>('');
+  const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc');
+  const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+
   const tabCfg = TABS.find(t => t.key === tab)!;
   const cols   = TABLE_COLS[tab];
   const color  = TAB_COLORS[tab];
+
+  // Columna de orden por defecto: fecha del despacho (o fecha/hora en recepción).
+  const defaultSortCol = tab === 'recepcion' ? 'created_at' : 'fecha';
+  const effSortCol = sortCol || defaultSortCol;
+
+  // Al cambiar de pestaña, resetear orden y filtros.
+  useEffect(() => { setSortCol(''); setSortDir('desc'); setColFilters({}); setOpenFilter(null); }, [tab]);
+
+  const toggleSort = (col: string) => {
+    if (effSortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortCol(col); setSortDir('asc'); }
+  };
 
   const loadData = useCallback(async (table: string): Promise<Record<string, unknown>[]> => {
     setLoading(true); setError(''); setRows([]);
@@ -353,17 +451,35 @@ export default function RegistrosPage() {
 
   useRealtimeRefresh(tab === 'historial' ? '' : tabCfg.table, silentRefresh);
 
-  const filtered = search.trim()
+  // 1) Búsqueda global
+  const searched = search.trim()
     ? rows.filter(r => cols.some(c => String(r[c] ?? '').toLowerCase().includes(search.toLowerCase())))
     : rows;
 
-  return (
-    <div className="h-full w-full flex flex-col overflow-hidden"
-         style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
+  // 2) Filtros por columna (valores permitidos por columna; vacío = todos)
+  const activeFilterCols = cols.filter(c => (colFilters[c]?.length ?? 0) > 0);
+  const applyFilters = (list: Record<string, unknown>[], exceptCol?: string) =>
+    list.filter(r => activeFilterCols.every(c => c === exceptCol || colFilters[c].includes(String(r[c] ?? ''))));
+  const colFiltered = applyFilters(searched);
 
-      {/* Header */}
+  // 3) Orden (por la columna activa y dirección)
+  const filtered = [...colFiltered].sort((a, b) => {
+    const cmp = compareCells(effSortCol, a[effSortCol], b[effSortCol]);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  // Valores distintos para el desplegable de una columna (respeta los otros filtros)
+  const distinctFor = (col: string): string[] =>
+    Array.from(new Set(applyFilters(searched, col).map(r => String(r[col] ?? ''))))
+      .sort((a, b) => compareCells(col, a, b));
+
+  return (
+    <div className="fixed inset-0 flex flex-col overflow-hidden"
+         style={{ background: '#FFFFFF' }}>
+
+      {/* Header (conserva el azulado) */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
-           style={{ background: 'rgba(26,37,80,0.8)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+           style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <button onClick={() => router.push('/despacho')}
           className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
           style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
@@ -395,7 +511,7 @@ export default function RegistrosPage() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-barlow-condensed text-[14px] font-bold uppercase tracking-wider cursor-pointer transition-all"
             style={tab === t.key
               ? { background: TAB_COLORS[t.key].bg, border: `1px solid ${TAB_COLORS[t.key].border}`, color: TAB_COLORS[t.key].text }
-              : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }}>
+              : { background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#64748B' }}>
             <t.Icon size={13} strokeWidth={2} />
             {t.label}
           </button>
@@ -417,7 +533,7 @@ export default function RegistrosPage() {
       {/* Click hint for recepcion */}
       {tab === 'recepcion' && !loading && filtered.length > 0 && (
         <div className="flex-shrink-0 px-4 py-1">
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Toca una fila para ver el detalle completo (fotos, sellos, firma)</span>
+          <span style={{ fontSize: 11, color: '#94A3B8' }}>Toca una fila para ver el detalle completo (fotos, sellos, firma)</span>
         </div>
       )}
 
@@ -426,8 +542,8 @@ export default function RegistrosPage() {
       <div className="flex-shrink-0 px-4 py-2">
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por tienda, cod, estado…"
-          className="w-full px-3 py-2 rounded-xl text-[14px] text-white placeholder:text-white/30 focus:outline-none border border-white/10 focus:border-white/25 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.07)' }} />
+          className="w-full px-3 py-2 rounded-xl text-[14px] focus:outline-none transition-colors"
+          style={{ background: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0' }} />
       </div>
       )}
 
@@ -438,55 +554,72 @@ export default function RegistrosPage() {
             <HistContent />
           </div>
         ) : (<>
-        {loading && <div className="text-center text-white/40 py-16 text-sm">Cargando datos…</div>}
-        {error && <div className="text-sm text-red-400 text-center py-4 rounded-xl mb-4" style={{ background: 'rgba(211,47,47,0.1)' }}>{error}</div>}
+        {loading && <div className="text-center py-16 text-sm" style={{ color: '#94A3B8' }}>Cargando datos…</div>}
+        {error && <div className="text-sm text-center py-4 rounded-xl mb-4" style={{ background: 'rgba(211,47,47,0.08)', color: '#B91C1C' }}>{error}</div>}
         {!loading && !error && filtered.length === 0 && (
-          <div className="text-center text-white/30 py-16 text-sm">
+          <div className="text-center py-16 text-sm" style={{ color: '#94A3B8' }}>
             {search ? 'Sin resultados para tu búsqueda' : 'No hay registros todavía'}
           </div>
         )}
 
         {!loading && filtered.length > 0 && (
-          <div className="rounded-2xl overflow-hidden"
-               style={{ border: `1px solid ${color.border}`, background: 'rgba(255,255,255,0.03)' }}>
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E5E7EB', background: '#fff' }}>
             <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
               <table className="text-[12px]" style={{ tableLayout: 'fixed', width: cols.reduce((a, c) => a + widthFor(c), 0), borderCollapse: 'separate', borderSpacing: 0 }}>
                 <thead>
                   <tr>
-                    {cols.map(c => (
-                      <th key={c} className="px-3 py-2.5 text-left font-bold uppercase tracking-wider"
+                    {cols.map(c => {
+                      const hasFilter = (colFilters[c]?.length ?? 0) > 0;
+                      return (
+                      <th key={c} className="text-left font-bold uppercase tracking-wider"
                           style={{
-                            width: widthFor(c), color: color.text, background: '#1A2550',
-                            borderBottom: `1px solid ${color.border}`, position: 'sticky', top: 0, zIndex: 2,
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            width: widthFor(c), color: color.text, background: '#F1F5F9',
+                            borderBottom: `2px solid ${color.border}`, borderRight: '1px solid #E5E7EB',
+                            position: 'sticky', top: 0, zIndex: openFilter === c ? 30 : 2, padding: 0,
                           }}>
-                        {COL_LABEL[c] ?? c}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 14px 8px 12px', position: 'relative' }}>
+                          {/* Título = botón de orden */}
+                          <button onClick={() => toggleSort(c)} title="Ordenar por esta columna"
+                            style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: color.text, font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', padding: 0, textAlign: 'left' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{COL_LABEL[c] ?? c}</span>
+                            {effSortCol === c && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                          </button>
+                          {/* Botón de filtro */}
+                          <button onClick={() => setOpenFilter(openFilter === c ? null : c)} title="Filtrar"
+                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 5, cursor: 'pointer',
+                              background: hasFilter ? color.text : 'transparent', border: 'none', color: hasFilter ? '#fff' : '#94A3B8' }}>
+                            <Filter size={12} />
+                          </button>
+                          {openFilter === c && (
+                            <ColumnFilterMenu
+                              values={distinctFor(c)}
+                              selected={colFilters[c] ?? []}
+                              accent={color.text}
+                              onApply={vals => setColFilters(prev => { const n = { ...prev }; if (vals.length) n[c] = vals; else delete n[c]; return n; })}
+                              onClose={() => setOpenFilter(null)}
+                            />
+                          )}
+                        </div>
                         {/* Manija para redimensionar (arrastrar) */}
-                        <span
-                          onPointerDown={e => startResize(c, e)}
-                          title="Arrastra para ajustar el ancho"
-                          style={{
-                            position: 'absolute', top: 0, right: 0, height: '100%', width: 8,
-                            cursor: 'col-resize', touchAction: 'none', userSelect: 'none',
-                            borderRight: '2px solid transparent',
-                          }}
+                        <span onPointerDown={e => startResize(c, e)} title="Arrastra para ajustar el ancho"
+                          style={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 8, cursor: 'col-resize', touchAction: 'none', userSelect: 'none', borderRight: '2px solid transparent' }}
                           onMouseEnter={e => (e.currentTarget.style.borderRight = `2px solid ${color.text}`)}
-                          onMouseLeave={e => (e.currentTarget.style.borderRight = '2px solid transparent')}
-                        />
+                          onMouseLeave={e => (e.currentTarget.style.borderRight = '2px solid transparent')} />
                       </th>
-                    ))}
+                    );})}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((row, ri) => (
                     <tr key={ri}
                         onClick={() => tab === 'recepcion' ? setSelectedRow(row) : undefined}
-                        className="transition-colors hover:bg-white/5"
-                        style={{ cursor: tab === 'recepcion' ? 'pointer' : 'default' }}>
+                        style={{ cursor: tab === 'recepcion' ? 'pointer' : 'default', background: ri % 2 ? '#FAFBFC' : '#fff' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#EEF2FF')}
+                        onMouseLeave={e => (e.currentTarget.style.background = ri % 2 ? '#FAFBFC' : '#fff')}>
                       {cols.map(c => (
-                        <td key={c} className="px-3 py-2 text-white/80"
+                        <td key={c} className="px-3 py-2"
                             title={String(row[c] ?? '')}
-                            style={{ width: widthFor(c), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            style={{ width: widthFor(c), color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderBottom: '1px solid #F1F5F9' }}>
                           {formatCell(c, row[c])}
                         </td>
                       ))}
@@ -495,7 +628,7 @@ export default function RegistrosPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2 text-[11px] text-white/30 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            <div className="px-4 py-2 text-[11px] border-t" style={{ color: '#94A3B8', borderColor: '#F1F5F9' }}>
               {filtered.length} registros · {tabCfg.label}
               {tab === 'recepcion' && ' · Toca una fila para ver detalle'}
             </div>
@@ -503,6 +636,11 @@ export default function RegistrosPage() {
         )}
         </>)}
       </div>
+
+      {/* Backdrop para cerrar el filtro al hacer clic fuera */}
+      {openFilter && (
+        <div onClick={() => setOpenFilter(null)} style={{ position: 'fixed', inset: 0, zIndex: 25 }} />
+      )}
 
       {/* Detail modal */}
       {selectedRow && (
