@@ -205,7 +205,7 @@ export function parseCalendarioAuth(values: string[][]): Record<string, {rm:stri
   if (headerRow < 0) return null;
   
   // Códigos numéricos de Costa y Falcón/Región
-  const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
+  const COSTA_CODES = new Set(['37VIÑ','08RNC','33CON','43CUR','54MPQ']);
   const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
 
   // Columnas: 0=GRUPO, 1=TIPO, 2=LUNES, 3=MARTES, 4=MIÉRCOLES, 5=JUEVES, 6=VIERNES, 7=SÁBADO

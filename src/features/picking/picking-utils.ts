@@ -53,15 +53,15 @@ function flatCode(code: string): string {
 }
 
 // Mapa: forma plana del código del catálogo → código canónico del catálogo.
-// El catálogo es inconsistente con la Ñ ("23PEÑ" la conserva, "37VIN" no), así que
-// distintas grafías de Odoo (37VIÑ vs 37VIN) deben colapsar al mismo código canónico.
+// El catálogo usa Ñ en los códigos canónicos (23PEÑ, 37VIÑ), así que las grafías
+// ASCII de Odoo (23PEN, 37VIN) deben colapsar al canónico con Ñ.
 const CANONICAL_BY_FLAT: Record<string, string> = Object.fromEntries(
   Object.keys(TIENDAS_INICIAL).map(cod => [flatCode(cod), cod])
 );
 
 /**
  * Canoniza un código de tienda al código exacto del catálogo (TIENDAS_INICIAL),
- * resolviendo la inconsistencia de la Ñ: "37VIÑ" → "37VIN", "23PEN" → "23PEÑ".
+ * resolviendo la grafía de la Ñ: "37VIN" → "37VIÑ", "23PEN" → "23PEÑ".
  * Si no hay coincidencia en el catálogo, devuelve el código tal cual.
  */
 export function canonicalStoreCode(code: string): string {
@@ -134,8 +134,8 @@ export function extractStoreCode(text: string): string {
  * Documento Origen. Prioridad: 1º destino (location_dest_id, columna "A" en Odoo,
  * dato estructurado), 2º origin (texto manual), 3º partner.
  * El resultado se canoniza al código del catálogo para que el semáforo/bodega
- * (que usan el código del catálogo, p. ej. "37VIN") hagan match aunque Odoo use
- * otra grafía de la Ñ (p. ej. "37VIÑ").
+ * (que usan el código del catálogo, p. ej. "37VIÑ") hagan match aunque Odoo use
+ * otra grafía de la Ñ (p. ej. "37VIN").
  */
 export function resolveStoreCode(p: { toLocation?: string; origin?: string; partner?: string }): string {
   const raw = extractStoreCode(p.toLocation ?? '')

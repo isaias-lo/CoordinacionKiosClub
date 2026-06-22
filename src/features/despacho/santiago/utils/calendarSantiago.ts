@@ -12,16 +12,14 @@ interface SantiagoCalData {
   [dia: string]: SantiagoCalDay;
 }
 
-// Mapea los códigos del calendario a los códigos usados en tiendasSantiago.ts.
-// fetchCalendarioCompleto() ya convierte cortos→numéricos (BNV→32BNV, etc.),
-// y normalize() elimina tildes, por lo que VIÑ→37VIN y PEÑ→23PEN.
-// tiendasSantiago.ts usa 37VIN (sin Ñ) y 23PEÑ (con Ñ), así que mapeamos
-// las formas sin tilde solo para Peñalolén (que usa Ñ en tiendasSantiago).
+// Mapea los códigos del calendario a los códigos canónicos usados en tiendasSantiago.ts.
+// Peñalolén y Viña usan Ñ en el catálogo (23PEÑ / 37VIÑ), así que cualquier forma
+// sin tilde (PEN/23PEN, VIN/37VIN) se mapea al canónico con Ñ.
 const RM_CODE_MAP: Record<string, string> = {
   PEN: '23PEÑ',   '23PEN': '23PEÑ',   // peñalolén: ambas formas → 23PEÑ
 };
 const COSTA_CODE_MAP: Record<string, string> = {
-  VIN: '37VIN',   '37VIN': '37VIN',   // viña del mar: ambas formas → 37VIN
+  VIN: '37VIÑ',   '37VIN': '37VIÑ',   // viña del mar: ambas formas → 37VIÑ
 };
 
 function toSantiagoDay(rm: string[], costa: string[]): SantiagoCalDay {

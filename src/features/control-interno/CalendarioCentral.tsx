@@ -16,7 +16,7 @@ const GRUPOS: [string, string, string][] = [
 ];
 
 // Mirrors classification logic from useCalendario.ts
-const COSTA_CODES = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
+const COSTA_CODES = new Set(['37VIÑ','08RNC','33CON','43CUR','54MPQ']);
 const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
 
 // Print zone classification

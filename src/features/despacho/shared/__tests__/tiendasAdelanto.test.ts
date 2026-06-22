@@ -8,7 +8,7 @@ describe('zonaForStore', () => {
   });
 
   it('tienda de Costa (z "Costa") → costa', () => {
-    expect(zonaForStore('37VIN')).toBe('costa'); // Viña del Mar
+    expect(zonaForStore('37VIÑ')).toBe('costa'); // Viña del Mar
     expect(zonaForStore('33CON')).toBe('costa'); // Concón
   });
 
@@ -23,6 +23,6 @@ describe('zonaForStore', () => {
   });
 
   it('normaliza a mayúsculas antes de buscar', () => {
-    expect(zonaForStore('37vin')).toBe('costa');
+    expect(zonaForStore('37viñ')).toBe('costa');
   });
 });

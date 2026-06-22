@@ -33,7 +33,7 @@ export const TIENDA_EMAILS: Record<string, string> = {
   '34SMB': 'simonbolivar@kiosclub.com',
   '35BN2': 'buenaventura@kiosclub.com',
   '36CHL': 'chillan@kiosclub.com',
-  '37VIN': 'vinadelmar@kiosclub.com',
+  '37VIÑ': 'vinadelmar@kiosclub.com',
   '38SP2': 'paseosanpedro@kiosclub.com',
   '39PSB': 'paseobalmaceda@kiosclub.com',
   '40LIL': 'laslilas@kiosclub.com',

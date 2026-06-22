@@ -55,7 +55,7 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   "55ITA":{n:"ITA",                        z:"Corredor RM",           v:"09:00-12:00", region:"RM",          correos:"55ita@kiosclub.com"},
   "56PZA":{n:"PZA",                        z:"Corredor RM",           v:"09:00-12:00", region:"RM",          correos:"56pza@kiosclub.com"},
   // ── Costa (Valparaíso) ───────────────────────────────────────────────────
-  "37VIN":{n:"Viña del Mar",              z:"Costa",                v:"09:30-11:30", region:"Valparaíso",  d:"8 Norte 675, Viña del Mar",                                           correos:"vinadelmar@kiosclub.com",        tel_encargado:"56941223668"},
+  "37VIÑ":{n:"Viña del Mar",              z:"Costa",                v:"09:30-11:30", region:"Valparaíso",  d:"8 Norte 675, Viña del Mar",                                           correos:"vinadelmar@kiosclub.com",        tel_encargado:"56941223668"},
   "08RNC":{n:"Reñaca",                    z:"Costa",                v:"09:30-12:00", region:"Valparaíso",  d:"Av. Edmundo Eluchans 1850 Local 10, Reñaca",                          correos:"renaca@kiosclub.com",            tel_encargado:"56974772902"},
   "33CON":{n:"Concón",                    z:"Costa",                v:"09:30-12:30", region:"Valparaíso",  d:"Av. Blanca Estela 1560 Locales 8-9, Concón",                         correos:"concon@kiosclub.com",            tel_encargado:"56923786679"},
   "43CUR":{n:"Curauma",                   z:"Costa",                v:"09:30-13:00", region:"Valparaíso",  d:"Boulevard 68 Local 1, Curauma, Valparaíso",                           correos:"curauma@kiosclub.com",           tel_encargado:"56973939049"},
@@ -88,7 +88,8 @@ export const ALIAS: Record<string, string> = {
   "23PEN":"23PEÑ",
   // Variantes con tilde → código interno ASCII
   "PEÑ":"23PEÑ","PEñ":"23PEÑ","PEG":"23PEÑ",
-  "VIÑ":"37VIN","VIñ":"37VIN",
+  // Viña: canónico con Ñ (como 23PEÑ). Variantes ASCII/tilde → "37VIÑ".
+  "37VIÑ":"37VIÑ","37VIN":"37VIÑ","VIÑ":"37VIÑ","VIñ":"37VIÑ",
   "RÑC":"08RNC","RñC":"08RNC",
   // Códigos cortos antiguos → nuevos códigos numéricos (retrocompatibilidad)
   "BNV":"32BNV","BN2":"35BN2","MAI":"17MAI","SCL":"02SCL","LAS":"12LAS",
@@ -97,7 +98,7 @@ export const ALIAS: Record<string, string> = {
   "FLO":"18FLO","CFL":"29CFL","LP":"05LP","TPS":"01TPS","PIE":"13PIE",
   "TRQ":"10TRQ","PTA":"49PTA","PHU":"30PHU","NUC":"21NUC","PDG":"04PDG",
   "SUB":"19SUB","ILC":"11ILC","BRU":"48BRU","PF":"14PF","VIT":"03VIT",
-  "MUT":"52MUT","VIN":"37VIN","RNC":"08RNC","CON":"33CON","CUR":"43CUR",
+  "MUT":"52MUT","VIN":"37VIÑ","RNC":"08RNC","CON":"33CON","CUR":"43CUR",
   "MPQ":"54MPQ","PSB":"39PSB","SER":"51SER","MCH":"27MCH","TLC":"31TLC",
   "CHL":"36CHL","TRE":"46TRE","SPP":"24SPP","SP2":"38SP2","TEM":"28TEM",
   "PUC":"75PUC","PAN":"76PAN","PTV":"47PTV","PTM":"50PTM","ANA":"41ANA",
@@ -125,7 +126,7 @@ export const GPS_INICIAL: Record<string, [number, number]> = {
   "14PF": [-33.366405,-70.670044],
   "03VIT":[-33.399499,-70.591214],
   "52MUT":[-33.417053,-70.601451],
-  "37VIN":[-33.015089,-71.550552],
+  "37VIÑ":[-33.015089,-71.550552],
   "08RNC":[-32.958038,-71.543483],
   "33CON":[-32.941688,-71.545593],
   "43CUR":[-33.123043,-71.561635],
@@ -145,7 +146,7 @@ export const CD_INICIAL: [number, number] = [-33.412581, -70.632438];
 export const COLS = ['#D42B2B','#1B2A6B','#34C759','#FF9500','#8b5cf6','#22d3ee','#f97316','#ec4899'];
 
 export const PROVIDENCIA        = new Set(['09LEO','40LIL','20CTC','52MUT']);
-export const REGION_V           = new Set(['37VIN','08RNC','33CON']);
+export const REGION_V           = new Set(['37VIÑ','08RNC','33CON']);
 export const CORREDOR_AUTOPISTA = new Set(['43CUR','32BNV','35BN2']);
 
 export const SID = '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
