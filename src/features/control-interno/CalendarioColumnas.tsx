@@ -24,7 +24,7 @@ const GRUPOS: [string, string, string][] = [
   ['general', '📋 GENERAL',   'Vista completa — todos los grupos'],
 ];
 
-const COSTA_CODES    = new Set(['37VIN','08RNC','33CON','43CUR','54MPQ']);
+const COSTA_CODES    = new Set(['37VIÑ','08RNC','33CON','43CUR','54MPQ']);
 const FAL_CODES      = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
 const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']); // Antofagasta + La Serena
 const RM_MALLS       = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST','49PTA']);

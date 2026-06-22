@@ -90,7 +90,7 @@ describe('norm', () => {
   it('resolves short alias codes to full codes', () => {
     expect(norm('LAS')).toBe('12LAS');
     expect(norm('VIT')).toBe('03VIT');
-    expect(norm('VIN')).toBe('37VIN');
+    expect(norm('VIN')).toBe('37VIÑ');
     expect(norm('CFL')).toBe('29CFL');
   });
 
