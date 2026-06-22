@@ -7,9 +7,11 @@ import type {
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
 
+// Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
+// tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
 const defaultState: SantiagoState = {
-  step: 'regimen',
-  regimen: null,
+  step: 'form',
+  regimen: 'Seco',
   currentTienda: null,
   items: {},
 };
@@ -42,14 +44,10 @@ function loadState(): SantiagoState {
     const s = JSON.parse(raw) as SantiagoState & { _savedAt?: number };
     // Reject if the saved state has no timestamp or was written on a different day
     if (!isTodayPush(s._savedAt)) return defaultState;
-    // Si venimos de vuelta desde el Enrutador, retomar el paso guardado (no pedir regimen de nuevo)
-    const resumeForm = typeof window !== 'undefined' && sessionStorage.getItem('santiago_resume_form');
-    if (resumeForm) {
-      sessionStorage.removeItem('santiago_resume_form');
-      s.step = 'form'; // volver desde Enrutador: saltar selector de regimen, ir directo a la lista
-    } else {
-      s.step = 'regimen'; // always start at regime selection on fresh load; user must confirm
-    }
+    // Ya no existe el paso de Régimen: siempre se entra directo a la lista de tiendas.
+    if (typeof window !== 'undefined') sessionStorage.removeItem('santiago_resume_form');
+    s.step = 'form';
+    if (!s.regimen) s.regimen = 'Seco';
     return s;
   } catch {
     return defaultState;
