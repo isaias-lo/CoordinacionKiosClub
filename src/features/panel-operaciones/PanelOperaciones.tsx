@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 
 type Fuente = 'conductor' | 'tienda' | 'pendientes';
 
@@ -339,7 +338,6 @@ function KpiCard({ value, label, color }: { value: number; label: string; color:
 
 // ---- Main component ----
 export default function PanelOperaciones() {
-  const router = useRouter();
   const today  = todayISO();
 
   const [tab,          setTab]          = useState<Fuente>('conductor');
@@ -408,12 +406,6 @@ export default function PanelOperaciones() {
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
-          <button
-            onClick={() => router.push('/control-interno')}
-            style={{ width: 36, height: 36, borderRadius: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          >
-            ‹
-          </button>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.22em', textTransform: 'uppercase' as const }}>Panel</div>
             <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.1 }}>Operaciones</div>

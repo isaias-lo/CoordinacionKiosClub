@@ -1,19 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { REGIONES_TERMINADO_KEY } from './modals/FinishModal';
 
 interface AppHeaderProps {
   onFinish: () => void;
-  backTo?: string;
 }
 
-export function AppHeader({ onFinish, backTo = '/despacho' }: AppHeaderProps) {
-  const { state, flushPending } = useApp();
-  const router = useRouter();
+export function AppHeader({ onFinish }: AppHeaderProps) {
+  const { state } = useApp();
   const [terminated, setTerminated] = useState(false);
   const [terminatedAt, setTerminatedAt] = useState('');
 
@@ -21,11 +18,6 @@ export function AppHeader({ onFinish, backTo = '/despacho' }: AppHeaderProps) {
     const val = localStorage.getItem(REGIONES_TERMINADO_KEY);
     if (val) { setTerminated(true); setTerminatedAt(val); }
   }, []);
-
-  const confirmBack = (dest: string) => {
-    flushPending();
-    router.push(dest);
-  };
 
   const handleReopen = () => {
     if (!confirm('¿Reabrir el despacho del día?')) return;
@@ -37,17 +29,6 @@ export function AppHeader({ onFinish, backTo = '/despacho' }: AppHeaderProps) {
   return (
     <div className="flex items-center px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
          style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-      <button
-        onClick={() => confirmBack(backTo)}
-        className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-        style={{
-          width: 36, height: 36,
-          background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-          border: '1px solid rgba(255,255,255,0.15)',
-          boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
-        }}>
-        <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-      </button>
       <div className="flex flex-col items-center flex-1 min-w-0">
         <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
           NACIONAL

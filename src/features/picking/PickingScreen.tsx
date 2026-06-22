@@ -1091,14 +1091,15 @@ export function PickingScreen() {
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
         style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <button className="lg:hidden border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
-          style={{ background: 'rgba(255,255,255,0.07)' }}
-          onClick={() => panelView === 'planilla' ? setPanelView('stores') : router.push('/')}>
-          {panelView === 'planilla' ? '← Tiendas' : '← Inicio'}
-        </button>
-        <button className="hidden lg:inline-flex border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
-          style={{ background: 'rgba(255,255,255,0.07)' }}
-          onClick={() => router.push('/')}>← Inicio</button>
+        {/* Solo navegación interna en mobile (planilla → lista de tiendas). El "Inicio"
+            se quitó: el sidebar ya provee la navegación a casa. */}
+        {panelView === 'planilla' && (
+          <button className="lg:hidden border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
+            style={{ background: 'rgba(255,255,255,0.07)' }}
+            onClick={() => setPanelView('stores')}>
+            ← Tiendas
+          </button>
+        )}
 
         <div className="flex-1 min-w-0">
           <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight tracking-wide">
