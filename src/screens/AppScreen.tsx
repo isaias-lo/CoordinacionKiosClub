@@ -11,7 +11,7 @@ export function AppScreen() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <AppHeader onFinish={() => setFinishOpen(true)} backTo="/despacho/conteo" />
+      <AppHeader onFinish={() => setFinishOpen(true)} />
 
       <PendingDraftBanner fuente="regiones" />
 

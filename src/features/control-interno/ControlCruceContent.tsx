@@ -781,7 +781,6 @@ export default function ControlCruceContent() {
 
       <PageHeader
         title="Control Cruce"
-        backHref="/control-interno"
         breadcrumbs={[
           { label: 'Control Interno', href: '/control-interno' },
           { label: 'Control Cruce' },

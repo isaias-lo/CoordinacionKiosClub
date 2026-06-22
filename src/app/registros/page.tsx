@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft, Truck, MapPin, Store, X, History, Filter, ChevronUp, ChevronDown } from 'lucide-react';
+import { Truck, MapPin, Store, X, History, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { fmtHoraChile, fmtFechaHoraChile } from '@/lib/fechaChile';
 import { HistContent } from '@/screens/HistScreen';
@@ -351,7 +350,6 @@ function ColumnFilterMenu({ values, selected, onApply, onClose, accent }: {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RegistrosPage() {
-  const router  = useRouter();
   const [tab,         setTab]         = useState<TabKey>('rm');
   const [rows,        setRows]        = useState<Record<string, unknown>[]>([]);
   const [loading,     setLoading]     = useState(false);
@@ -502,11 +500,6 @@ export default function RegistrosPage() {
       {/* Header (conserva el azulado) */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
            style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <button onClick={() => router.push('/despacho')}
-          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
-          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-        </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Registros de Despacho</div>
           <div className="text-[11px] text-white/40 uppercase tracking-widest">{loading ? 'Cargando…' : `${filtered.length} registros`}</div>
