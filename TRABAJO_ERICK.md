@@ -1,24 +1,39 @@
 # Estado actual del trabajo — Erick
 
 ## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-1. **[MCP Supabase — VERIFICAR EN WINDOWS] ⚠ PRIMERO ESTO.**
-   👉 Al decir "hola", Claude debe **preguntar/confirmar si estoy en el PC Windows**. Solo en Windows
-   se hace esta verificación.
-   - Contexto: el `.mcp.json` YA quedó **commiteado** con `npx` + **read+write** + fijado a toolskios
-     (`--project-ref=aiclobncdhxjxdlvkezk`). En la **Mac** está **verificado** (lee y escribe OK).
-   - **Falta probarlo en Windows.** Pasos: (a) `setx SUPABASE_ACCESS_TOKEN "TU_TOKEN"` (mismo token sbp_…);
-     (b) reiniciar VSCode; (c) Claude verifica con un SELECT/escritura de prueba contra toolskios.
-   - **Si en Windows el `npx` directo NO arranca** → cambiar SOLO en ese equipo el `command` del `.mcp.json`
-     a `cmd` con args `["/c","npx",...]` (wrapper de Windows), sin tocar el resto. (No commitear ese ajuste
-     o buscar una forma que sirva a ambos.)
-2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
-   (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
+1. **Verificar en prod lo de hoy** (todo ya mergeado a main):
+   - **QR manifiesto público (#68):** abrir un `/r/<token>` en **incógnito** (sin sesión) → debe mostrar
+     el manifiesto **sin pedir login**.
+   - **Viña 37VIÑ:** en Picking/Bodega Santiago (Costa) aparece como `37 VIÑ`, con su cantidad de pallets
+     y semáforo; el gestor de tiendas muestra/edita `37VIÑ` (sin tienda duplicada 37VIN).
+2. **[MCP Supabase en Windows — DIFERIDO]** Falta `setx SUPABASE_ACCESS_TOKEN "<token sbp_…>"` (el mismo de
+   la Mac) + reiniciar VSCode + decir "prueba Supabase". El `.mcp.json` ya está commiteado (read+write,
+   toolskios). Si `npx` directo no arranca en Windows → wrapper `cmd /c npx` solo en ese equipo.
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-21 (Mac/casa) — MCP Supabase del proyecto operativo en la Mac (read+write, pinned).
-Rama: `inicio` (al día con main = a98a337; PR #36 ya mergeado a prod).
+Fecha: 2026-06-22 (Windows/trabajo) — TODO mergeado a main/producción.
+
+### Qué se hizo hoy (todos mergeados)
+- **#67 Código de Viña 37VIN → 37VIÑ** (canónico con Ñ, como 23PEÑ): catálogo/ALIAS/calendario/costa
+  hardcodes/emails/tests. **SQL de datos corrido** (mig. 054): despacho_rm/regiones, tiendas, ruta_guias,
+  guias_subidas, ruta_tiendas, trazabilidad_unidades, recepcion, tiendas_adelanto, calendario_central; y
+  **picking_*** (picking_pallets/eventos/session_state/prints) con *delete-then-rename* por colisión de
+  pkey (state_key,date) que ya había creado el código nuevo. Quedó sin filas 37VIN.
+- **#68 QR del manifiesto público**: early-return en `middleware.ts` para `/r/<token>` (la página y la API
+  ya eran públicas; solo el middleware redirigía a /login). El fiscalizador ya no necesita sesión.
+- **#65 Quitar botones atrás/Inicio** de 7 módulos (AppHeader/regiones, registros, picking, conductor-hub,
+  panel-operaciones, incidencias, control-cruce). Se conservó la navegación interna útil.
+- **#66 Bodega Santiago entra directo** (se eliminó el paso de Régimen; default 'Seco').
+- **#60 Bodegas**: conteo Pallets/Bultos/Tiendas solo en la columna derecha (desktop); fecha de despacho
+  de Santiago dentro de la columna izquierda (como Regiones).
+- Antes hoy: **#62** sidebar /registros (isAuthPath por segmento), **#63** ver actividad propia en Picking,
+  **#64** canonicalStoreCode (semáforo Viña), **#59/#61** /registros tema claro + filtros + selector de columnas.
+- Migraciones SQL corridas: 053 (tiendas_adelanto, sesión previa), **054** (Viña + picking_*).
+
+### Sesión 2026-06-21 (Mac/casa) — histórico
+MCP Supabase del proyecto operativo en la Mac (read+write, pinned). Rama: `inicio`.
 
 ### Qué se hizo hoy (PR #36, NO mergeado aún)
 - **#1 Guías de Despacho SII en el manifiesto del fiscalizador**: match robusto
