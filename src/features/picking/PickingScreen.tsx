@@ -324,7 +324,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_prints')
-        .select('state_key, printed_at, picker_label, pallets, tipo, printed_by_name')
+        .select('state_key, printed_at, picker_label, pallets, tipo, printed_by_name, print_count, batch')
         .eq('date', todayISO())
         .order('printed_at', { ascending: true });
       if (data) setPrintRecords(data as PrintRecord[]);
@@ -488,6 +488,9 @@ export function PickingScreen() {
           method: 'POST',
           body: JSON.stringify({ slot_id: json.data.id, store_cod: storeCod, tipo, contenido, date }),
         }).catch(err => console.error('[picking] despacho-picking error', err));
+        // Recargar mis propios eventos: así el usuario ve su propia alta en Actividad al
+        // instante (la presencia solo se transmite a otros supervisores).
+        void loadEventos();
       } else {
         setPalletSlots(prev => prev.filter(s => s.id !== tempId));
       }
@@ -497,7 +500,7 @@ export function PickingScreen() {
       showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
       enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
     }
-  }, [pickingFetch, showToast]);
+  }, [pickingFetch, showToast, loadEventos]);
 
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
     if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
@@ -514,12 +517,13 @@ export function PickingScreen() {
         body: JSON.stringify({ id: slot.id, actor_name: presenceRef.current.name }),
       });
       if (!res.ok) setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
+      else void loadEventos(); // ver mi propia baja en Actividad al instante
     } catch {
       setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
     } finally {
       pendingDeleteIds.current.delete(slot.id);
     }
-  }, []);
+  }, [loadEventos]);
 
   // sectionFilter y labelConfig persistidos automáticamente por useLocalStorage
 
@@ -932,8 +936,13 @@ export function PickingScreen() {
       void channelRef.current.track(updated);
     }
 
+    // Recargar los registros propios: la presencia solo se transmite a OTROS supervisores,
+    // así que sin esto el usuario actual no vería sus propias impresiones/reimpresiones en
+    // Actividad (sí las vería un compañero que recarga). El reload lo hace determinista.
+    void loadPrintRecords();
+
     return failures;
-  }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline]);
+  }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords]);
 
   // Imprime y registra SOLO los labels de un picker específico.
   // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
