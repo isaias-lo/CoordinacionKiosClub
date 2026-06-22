@@ -1831,7 +1831,8 @@ export function TiendasPage() {
 
         {/* Stats bar + actions */}
         <div className="flex-shrink-0 bg-navy border-t-4 border-red">
-          <div className="flex">
+          {/* Conteo: en desktop vive en la columna derecha (resumen); aquí solo mobile. */}
+          <div className="flex lg:hidden">
             {(() => {
               const stats = [
                 { v: statP, l: 'Pallets', color: '#93C5FD' },

@@ -1364,7 +1364,9 @@ export function StepForm() {
 
   const renderStatsBar = () => (
     <div className="flex-shrink-0 bg-navy border-t-4 border-red">
-      <div className="flex">
+      {/* Conteo: en desktop el conteo vive en la columna derecha (resumen), así que
+          aquí solo se muestra en mobile para no restar espacio a la lista de tiendas. */}
+      <div className="flex lg:hidden">
         {(() => {
           const stats = [
             { v: statP, l: 'Pallets', color: '#93C5FD' },
@@ -2235,6 +2237,13 @@ export function StepForm() {
   /* ════════════════════════════════════
      ROOT RENDER
   ════════════════════════════════════ */
+  // Fecha de armado/despacho (se muestra dentro de la columna izquierda, como Regiones)
+  const santiagoTodayLabel = new Date(todayKey + 'T12:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const santiagoFechaDespacho = state.fechaDespacho ?? (() => {
+    const t = new Date(); t.setDate(t.getDate() + 1);
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  })();
+
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
@@ -2243,6 +2252,32 @@ export function StepForm() {
         className={`${view === 'resumen' ? 'hidden' : 'flex'} lg:flex flex-1 lg:flex-none flex-col w-full overflow-hidden flex-shrink-0`}
         style={isDesktop ? { width: leftWidth } : undefined}
       >
+
+        {/* Fecha de armado / despacho — dentro de la columna izquierda (igual que Regiones) */}
+        <div style={{
+          padding: '8px 14px', borderBottom: '1px solid var(--border, #E2E5EC)',
+          background: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>Armado</span>
+            <span style={{ fontSize: 12, color: '#555', textTransform: 'capitalize' }}>{santiagoTodayLabel}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>Fecha de despacho</span>
+            <input
+              type="date"
+              value={santiagoFechaDespacho}
+              min={todayKey}
+              onChange={e => dispatch({ type: 'SET_FECHA_DESPACHO', payload: e.target.value })}
+              style={{ border: '1.5px solid #dde3f0', borderRadius: 7, padding: '2px 8px', fontSize: 12, fontWeight: 700, color: '#1a2550', background: '#fff' }}
+            />
+          </div>
+          {state.registrado && (
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#16A34A', fontWeight: 700, background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px' }}>
+              ✓ Registrado
+            </span>
+          )}
+        </div>
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
