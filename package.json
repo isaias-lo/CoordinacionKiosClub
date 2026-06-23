@@ -14,6 +14,7 @@
     "bye": "node scripts/run.cjs bye",
     "sync": "node scripts/run.cjs sync",
     "pr": "node scripts/run.cjs pr",
+    "nueva-tarea": "node scripts/run.cjs nueva-tarea",
     "test": "vitest run",
     "test:watch": "vitest"
   },

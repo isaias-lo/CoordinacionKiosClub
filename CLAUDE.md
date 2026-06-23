@@ -108,16 +108,28 @@ Required in `.env.local`:
 Al iniciar cada sesión, lee TRABAJO.md y resume brevemente en qué estamos.
 Al terminar cualquier tarea importante, actualiza TRABAJO.md con el estado actual sin que te lo pida.
 
-### Comandos "hola" / "bye" / "PR" (continuidad entre PCs trabajo↔casa)
-El usuario trabaja desde dos equipos (trabajo y casa) sobre la MISMA rama. La guía completa está en FLUJO.md.
-- Cuando el usuario diga **"hola"** (o al iniciar): asegúrate de que esté al día — equivale a `npm run hola` (`git fetch` + `git pull --ff-only` de su rama). Avísale si hay cambios locales sin commitear.
-- Cuando el usuario diga **"bye"** (o "me voy"/"adiós"): ejecuta el cierre de jornada — actualiza TRABAJO.md y TRABAJO_<persona>.md, haz `git add -A` + commit (WIP si aplica) y `git push` de su rama. **Nunca abras PR ni subas a `main` con bye** (puede ser trabajo a medias o solo un cambio de equipo).
-- Cuando el usuario diga **"PR"** / **"subir PR"**: abre el Pull Request de su rama hacia `main` (push + `gh pr create --base main --fill`, o el enlace web si `gh` no está). Es una acción DELIBERADA, solo cuando algo está listo para producción. **No mergees solo** — solo abrir el PR para revisión. Equivale a `npm run pr`.
-- Cuando el usuario diga **"sync"**: trae lo último de `main` a su rama de trabajo (`git fetch` + `git merge origin/main`), resolviendo conflictos si los hay, y push. Úsalo antes de un PR o cuando otra herramienta (OpenCode) mergeó algo a main. Equivale a `npm run sync`.
-- Atajos: `npm run hola`, `npm run bye`, `npm run sync`, `npm run pr` (scripts en `scripts/`).
+### Comandos "nueva tarea" / "hola" / "bye" / "PR" / "sync" (continuidad entre PCs trabajo↔casa)
+El usuario trabaja desde dos equipos (trabajo y casa). **Una RAMA NUEVA por tarea desde `main`** — NO se
+reusa una rama vieja (queda atrás de main y se ensucia con auto-commits WIP). Guía completa en FLUJO.md.
+- **"nueva tarea"** (al empezar algo nuevo): crea rama desde main actualizado — `npm run nueva-tarea
+  <fix|feat|chore>/<nombre>` (`git fetch` + `git checkout -b <rama> origin/main`). No empieces trabajo nuevo
+  sobre una rama ya mergeada.
+- **"hola"** (al iniciar): ponlo al día — `npm run hola` (`git fetch` + `git pull --ff-only` de su rama
+  actual). Avísale si hay cambios locales sin commitear. **Si la rama actual ya se mergeó a main y no hay
+  trabajo en curso, sugiérele `nueva-tarea`** (o resetear a main) en vez de seguir sobre una rama vieja.
+- **"bye"** (o "me voy"/"adiós"): cierre de jornada — actualiza TRABAJO.md y TRABAJO_<persona>.md, `git add
+  -A` + commit (WIP si aplica) y `git push` de su rama. **Nunca abras PR ni subas a `main` con bye.**
+- **"PR"** / **"subir PR"**: abre el PR de su rama → `main` (push + `gh pr create --base main --fill`). Acción
+  DELIBERADA, solo cuando está listo para producción. **No mergees solo.** Tras mergear en GitHub esa rama
+  queda obsoleta → para lo siguiente, `nueva-tarea`.
+- **"sync"**: trae lo último de `main` a su rama (`git fetch` + `git merge origin/main`) y push. Úsalo en
+  tareas largas si main avanzó.
+- Atajos: `npm run nueva-tarea <rama>`, `npm run hola`, `npm run bye`, `npm run sync`, `npm run pr`.
 
-### Flujo de ramas / deploy (vigente desde 2026-06-09)
-Trabajar en rama del día y **NO mergear directo a main**: abrir PR con `gh pr create` para que el usuario lo revise/mergee desde GitHub. Vercel solo despliega `main`.
+### Flujo de ramas / deploy
+**Una rama por tarea desde `main`** → PR (`gh pr create --base main`) → el usuario revisa/mergea en GitHub →
+la rama se borra. **NO** mergear directo a main; **NO** reusar una rama ya mergeada para una tarea nueva
+(causa divergencia y commits WIP basura, y obliga a resetear cada sesión). Vercel solo despliega `main`.
 
 ## Skills — activación automática por contexto
 
