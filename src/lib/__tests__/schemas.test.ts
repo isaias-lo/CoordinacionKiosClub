@@ -54,6 +54,22 @@ describe('CreatePickingPalletSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts a valid client_op_id (uuid) and actor_name', () => {
+    const r = CreatePickingPalletSchema.safeParse({
+      ...valid, client_op_id: '3f2504e0-4f89-41d3-9a0c-0305e82c3301', actor_name: 'Luis Cortez',
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects a malformed client_op_id', () => {
+    const r = CreatePickingPalletSchema.safeParse({ ...valid, client_op_id: 'not-a-uuid' });
+    expect(r.success).toBe(false);
+  });
+
+  it('client_op_id and actor_name are optional', () => {
+    expect(CreatePickingPalletSchema.safeParse(valid).success).toBe(true);
+  });
+
   it('accepts optional contenido and refs', () => {
     const result = CreatePickingPalletSchema.safeParse({
       ...valid,
