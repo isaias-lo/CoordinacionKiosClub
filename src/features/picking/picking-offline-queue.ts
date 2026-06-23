@@ -14,6 +14,8 @@ export type OfflineQueueItem =
       op: 'add';
       stateKey: string; storeCod: string; pickerLabel: string;
       tipo: string; contenido: string; refs: string; date: string;
+      clientOpId?: string;  // idempotencia: el replay reusa el mismo id ⇒ no duplica
+      actorName?: string;   // atribución: conserva quién creó aunque se reenvíe offline
     }
   | {
       op: 'print';
@@ -64,6 +66,7 @@ export async function flushPickingQueue(
             date: item.date, store_cod: item.storeCod, state_key: item.stateKey,
             picker_label: item.pickerLabel, tipo: item.tipo,
             contenido: item.contenido, refs: item.refs,
+            client_op_id: item.clientOpId, actor_name: item.actorName,
           }),
         });
       } else {

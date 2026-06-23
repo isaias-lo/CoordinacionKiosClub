@@ -157,6 +157,7 @@ export const CreatePickingPalletSchema = z.object({
   contenido:    z.string().max(50).optional(),
   refs:         z.string().max(500).optional(),
   actor_name:   z.string().max(100).optional(),
+  client_op_id: z.string().uuid().optional(), // idempotencia: mismo id ⇒ no duplica
 });
 
 // ── Conductores ────────────────────────────────────────────────────────────

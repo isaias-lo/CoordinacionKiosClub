@@ -448,6 +448,10 @@ export function PickingScreen() {
 
   const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
     const date = todayISO();
+    // Idempotencia: id de operación único por click. Si el POST se reintenta (red,
+    // doble-click, replay de cola offline), el server deduplica por client_op_id.
+    const clientOpId = crypto.randomUUID();
+    const actorName = presenceRef.current.name;
     // Optimistic update: add a temp slot immediately so the counter in PickerGroupCard
     // reflects the in-flight add. This prevents the rapid-click race condition where
     // clicking + multiple times before the POST returns creates duplicate slots.
@@ -461,14 +465,14 @@ export function PickingScreen() {
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs, actor_name: presenceRef.current.name }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs, actor_name: actorName, client_op_id: clientOpId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
         setPalletSlots(prev => prev.filter(s => s.id !== tempId));
         showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
-        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
+        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date, clientOpId, actorName });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
@@ -498,7 +502,7 @@ export function PickingScreen() {
       console.error('[picking] addPalletSlot network error', e);
       setPalletSlots(prev => prev.filter(s => s.id !== tempId));
       showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
-      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date });
+      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date, clientOpId, actorName });
     }
   }, [pickingFetch, showToast, loadEventos]);
 
@@ -857,7 +861,7 @@ export function PickingScreen() {
     for (const group of groups) {
       const groupSlots = slotsByStateKey[group.stateKey] ?? [];
       for (const slot of groupSlots) {
-        if (!slot.id) continue;
+        if (!slot.id || slot.id < 0) continue;  // saltar slots temporales (aún no persistidos)
         const pNum = palletNumsBySlotId[slot.id];
         if (pNum === undefined) continue;
         const tipo = (slot.tipo as PickerType) ?? 'P';
@@ -946,14 +950,24 @@ export function PickingScreen() {
 
   // Imprime y registra SOLO los labels de un picker específico.
   // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
-  const printGroupLabels = useCallback((group: PickerGroup) => {
+  const printGroupLabels = useCallback(async (group: PickerGroup) => {
+    // Bloquear impresión si el grupo no tiene slots PERSISTIDOS (id real > 0).
+    // Evita el Caso 1: registrar un print sin pallet real → queda en Actividad pero
+    // sin slot en Monitoreo/Bodega y sin código.
+    const persisted = (slotsByStateKey[group.stateKey] ?? []).filter(s => (s.id ?? 0) > 0).length;
+    if (persisted === 0) {
+      showToast('⚠ Agrega al menos un pallet (con conexión) antes de imprimir', '#D97706');
+      return;
+    }
     setSelectionPrint(null);
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(group.stateKey);
+    // 1) Asignar seq + canonical ANTES de registrar/imprimir → la etiqueta lleva código y queda en BD.
+    await assignCanonicalIds([group]);
+    // 2) Registrar la impresión y disparar el print del navegador.
     pendingPrintRef.current = recordPrints([group]);
-    void assignCanonicalIds([group]);
     setDoPrint(true);
-  }, [recordPrints, assignCanonicalIds]);
+  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds]);
 
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);

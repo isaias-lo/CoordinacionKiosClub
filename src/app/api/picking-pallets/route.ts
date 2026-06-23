@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { verifyAuth } from '@/lib/apiAuth';
+import { verifyAuth, verifyActor } from '@/lib/apiAuth';
 import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
 
 const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at';
@@ -66,11 +66,17 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!await verifyAuth(request)) return UNAUTH();
+  const actor = await verifyActor(request);
+  if (!actor) return UNAUTH();
   const parsed = parseBody(CreatePickingPalletSchema, await request.json());
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
-  const { data, error } = await supabaseServer()
+  // Atribución = usuario del JWT (fuente de verdad); el actor_name del cliente es
+  // solo respaldo si el JWT no trae nombre real (degradó al id).
+  const actorName = actor.name !== actor.id ? actor.name : (body.actor_name?.trim() || actor.name);
+
+  const sb = supabaseServer();
+  const { data, error } = await sb
     .from('picking_pallets')
     .insert({
       date:         body.date,
@@ -80,14 +86,29 @@ export async function POST(request: NextRequest) {
       tipo:         body.tipo,
       contenido:    body.contenido ?? 'hogar',
       refs:         body.refs ?? '',
+      client_op_id: body.client_op_id ?? null,
     })
     .select(SELECT_COLS)
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    // Idempotencia: si ya existe un slot con el mismo client_op_id (reintento /
+    // replay de cola offline / doble-click), devolver el existente sin duplicar.
+    if (error.code === '23505' && body.client_op_id) {
+      const { data: existing } = await sb
+        .from('picking_pallets')
+        .select(SELECT_COLS)
+        .eq('client_op_id', body.client_op_id)
+        .maybeSingle();
+      if (existing) return NextResponse.json({ data: existing, idempotent: true });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   logEvento({
     date: body.date, event_type: 'crear', pallet_id: data.id as number,
     state_key: body.state_key, store_cod: body.store_cod, tipo: body.tipo,
-    picker_label: body.picker_label, actor_name: body.actor_name,
+    picker_label: body.picker_label, actor_name: actorName,
   });
   return NextResponse.json({ data });
 }
@@ -127,24 +148,16 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!await verifyAuth(request)) return UNAUTH();
+  const actor = await verifyActor(request);
+  if (!actor) return UNAUTH();
   const body = await request.json() as { id: number; actor_name?: string };
   const sb = supabaseServer();
-  // Capturar datos del slot antes de borrarlo para la auditoría
-  const { data: slot } = await sb
-    .from('picking_pallets')
-    .select('date, state_key, store_cod, tipo, picker_label')
-    .eq('id', body.id)
-    .maybeSingle();
   // Limpiar despacho_rm huérfano antes de borrar el slot — evita filas fantasma
   await sb.from('despacho_rm').delete().eq('picking_slot_id', body.id);
-  const { error } = await sb.from('picking_pallets').delete().eq('id', body.id);
+  // Borrar vía RPC que setea el actor en la transacción: el trigger AFTER DELETE
+  // registra el evento 'eliminar' (única fuente; cubre también borrados manuales).
+  const actorName = actor.name !== actor.id ? actor.name : (body.actor_name?.trim() || actor.name);
+  const { error } = await sb.rpc('fn_delete_picking_pallet', { p_id: body.id, p_actor: actorName });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  logEvento({
-    date: slot?.date as string | undefined, event_type: 'eliminar', pallet_id: body.id,
-    state_key: slot?.state_key as string | undefined, store_cod: slot?.store_cod as string | undefined,
-    tipo: slot?.tipo as string | undefined, picker_label: slot?.picker_label as string | undefined,
-    actor_name: body.actor_name,
-  });
   return NextResponse.json({ ok: true });
 }

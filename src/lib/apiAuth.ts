@@ -17,7 +17,8 @@ function extractBearer(request: NextRequest): string | null {
 interface JwtPayload {
   sub?: string;
   exp?: number;
-  user_metadata?: { role?: string };
+  email?: string;
+  user_metadata?: { role?: string; full_name?: string; name?: string };
 }
 
 async function verifyJwt(token: string): Promise<JwtPayload | null> {
@@ -38,7 +39,7 @@ async function verifyJwt(token: string): Promise<JwtPayload | null> {
   );
   const { data: { user } } = await sb.auth.getUser(token);
   if (!user) return null;
-  return { sub: user.id, user_metadata: user.user_metadata as { role?: string } };
+  return { sub: user.id, email: user.email, user_metadata: user.user_metadata as JwtPayload['user_metadata'] };
 }
 
 // Fallback for the many client call sites that use a bare fetch('/api/...')
@@ -58,7 +59,7 @@ async function verifyFromCookie(request: NextRequest): Promise<JwtPayload | null
   );
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.user) return null;
-  return { sub: session.user.id, user_metadata: session.user.user_metadata as { role?: string } };
+  return { sub: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata as JwtPayload['user_metadata'] };
 }
 
 /** Resolves the auth payload from the Bearer header, falling back to the session cookie. */
@@ -87,4 +88,19 @@ export async function verifyAnyUser(request: NextRequest): Promise<{ id: string;
   const payload = await resolvePayload(request);
   if (!payload?.sub) return null;
   return { id: payload.sub, role: payload.user_metadata?.role ?? '' };
+}
+
+/**
+ * Devuelve el actor autenticado (id + nombre display) para atribuir acciones.
+ * El nombre sale del JWT (user_metadata.full_name/name) con fallback a email/id.
+ * Fuente de verdad de la atribución en server — no depende de lo que mande el cliente.
+ */
+export async function verifyActor(request: NextRequest): Promise<{ id: string; name: string } | null> {
+  const payload = await resolvePayload(request);
+  if (!payload?.sub) return null;
+  const name = payload.user_metadata?.full_name?.trim()
+    || payload.user_metadata?.name?.trim()
+    || payload.email?.trim()
+    || payload.sub;
+  return { id: payload.sub, name };
 }

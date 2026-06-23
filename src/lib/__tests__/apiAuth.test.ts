@@ -41,6 +41,7 @@ vi.mock('@supabase/ssr', () => ({
 let verifyAuth:    (r: NextRequest) => Promise<boolean>;
 let verifyAdmin:   (r: NextRequest) => Promise<boolean>;
 let verifyAnyUser: (r: NextRequest) => Promise<{ id: string; role: string } | null>;
+let verifyActor:   (r: NextRequest) => Promise<{ id: string; name: string } | null>;
 
 beforeAll(async () => {
   // Must stub env BEFORE importing apiAuth — JWT_SECRET is read at module init
@@ -52,6 +53,7 @@ beforeAll(async () => {
   verifyAuth    = mod.verifyAuth;
   verifyAdmin   = mod.verifyAdmin;
   verifyAnyUser = mod.verifyAnyUser;
+  verifyActor   = mod.verifyActor;
 });
 
 afterAll(() => {
@@ -135,5 +137,34 @@ describe('verifyAnyUser', () => {
   it('returns null for expired token', async () => {
     const token = await signToken({ sub: 'user-xyz' }, '-1s');
     expect(await verifyAnyUser(makeReq(`Bearer ${token}`))).toBeNull();
+  });
+});
+
+// ─── verifyActor (atribución desde el JWT) ──────────────────────────────────────
+
+describe('verifyActor', () => {
+  it('returns null when no token', async () => {
+    expect(await verifyActor(makeReq())).toBeNull();
+  });
+
+  it('uses user_metadata.full_name as the actor name', async () => {
+    const token = await signToken({ sub: 'u1', user_metadata: { full_name: 'Luis Cortez' } });
+    expect(await verifyActor(makeReq(`Bearer ${token}`))).toEqual({ id: 'u1', name: 'Luis Cortez' });
+  });
+
+  it('falls back to user_metadata.name, then email, then sub', async () => {
+    const t1 = await signToken({ sub: 'u2', user_metadata: { name: 'Camila' } });
+    expect((await verifyActor(makeReq(`Bearer ${t1}`)))?.name).toBe('Camila');
+
+    const t2 = await signToken({ sub: 'u3', email: 'erick@kios.cl' });
+    expect((await verifyActor(makeReq(`Bearer ${t2}`)))?.name).toBe('erick@kios.cl');
+
+    const t3 = await signToken({ sub: 'u4' });
+    expect((await verifyActor(makeReq(`Bearer ${t3}`)))?.name).toBe('u4'); // degrada al id
+  });
+
+  it('returns null for expired token', async () => {
+    const token = await signToken({ sub: 'u5', user_metadata: { full_name: 'X' } }, '-1s');
+    expect(await verifyActor(makeReq(`Bearer ${token}`))).toBeNull();
   });
 });
