@@ -1,17 +1,15 @@
 # Estado actual del trabajo
 
-## 🔴 PENDIENTE AL LLEGAR — empezar por aquí (2026-06-21)
-1. **[MCP Supabase] VERIFICAR EN WINDOWS — primero esto.** Al decir "hola", Claude debe
-   **confirmar si estoy en el PC Windows**; solo ahí se hace la verificación. En la Mac ya quedó
-   el MCP del proyecto (`.mcp.json`) con `npx`, **read+write**, fijado a toolskios — verificado OK.
-   El cambio está **solo local en la Mac (NO commiteado)**, así que en Windows hay que aplicarlo ahí
-   + `setx SUPABASE_ACCESS_TOKEN` + reiniciar VSCode + probar; si funciona, **recién ahí commitear el
-   `.mcp.json`**. Detalle completo en **TRABAJO_ERICK.md** (pendiente #1).
+## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
+- **Flujo nuevo (desde 2026-06-23):** una **rama por tarea** → `npm run nueva-tarea <fix|feat|chore>/<nombre>`.
+  NO reusar `inicio`. Detalle en CLAUDE.md / FLUJO.md.
+- **En Windows** (cuando estés allá): (1) verificar el `.mcp.json` (`npx`) + `setx SUPABASE_ACCESS_TOKEN`;
+  (2) aplicar el cambio del hook PreCompact (stash en vez de commit) en `~/.claude/settings.json`.
+  Detalle en **TRABAJO_ERICK.md** (pendientes #1 y #2).
 
 ## Última sesión
-Fecha: 2026-06-17 (tarde)
-Rama: feat/actividad-por-fecha (PR pendiente). Hoy mergeados a main: #37 (egress+semáforo+rollover),
-#38 (hora Chile), #39 (fix código Ñ 23PEÑ). Limpieza de filas contaminadas en despacho_sesion hecha.
+Fecha: 2026-06-22/23 — semáforo en prod (PR #57) + flujo de ramas por tarea (PR #69).
+Ramas: una por tarea desde main (se dejó de reusar `inicio`).
 
 ### En curso: Actividad de Picking por fecha
 - `ActivityTab` (wrapper nuevo en components/ActivityTab.tsx): selector Hoy/Ayer + input fecha + resumen
