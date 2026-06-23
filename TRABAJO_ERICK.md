@@ -11,16 +11,29 @@
    - **Si en Windows el `npx` directo NO arranca** → cambiar SOLO en ese equipo el `command` del `.mcp.json`
      a `cmd` con args `["/c","npx",...]` (wrapper de Windows), sin tocar el resto. (No commitear ese ajuste
      o buscar una forma que sirva a ambos.)
-2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
+2. **[Hook PreCompact — APLICAR EN WINDOWS] (solo cuando esté en el PC Windows).**
+   En la **Mac** ya cambié el hook `PreCompact` de `~/.claude/settings.json` para que en vez de
+   `git add -A && git commit WIP` haga un **stash de respaldo** (no ensucia la rama). Ese archivo es
+   **global por equipo** (no está en el repo), así que en Windows hay que aplicar el MISMO cambio a su
+   `~/.claude/settings.json`. Pídele a Claude que lo haga.
+3. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
    (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-21 (Mac/casa) — MCP Supabase del proyecto operativo en la Mac (read+write, pinned).
-Rama: `inicio` (al día con main = a98a337; PR #36 ya mergeado a prod).
+Fecha: 2026-06-22/23 (Mac/casa) — semáforo en prod + **nuevo flujo de ramas por tarea**.
+Rama: ahora **una rama por tarea desde main** (se dejó de reusar `inicio`).
 
-### Qué se hizo hoy (PR #36, NO mergeado aún)
+### Qué se hizo (2026-06-22/23)
+- **Semáforo de bodegas** (barra de progreso con contador, rojo/naranja/verde) → **PR #57 MERGEADO a prod**.
+- **Nuevo flujo de trabajo (PR #69 MERGEADO):** se dejó de reusar `inicio` (causaba divergencia + commits
+  WIP basura cada sesión). Ahora: `npm run nueva-tarea <fix|feat|chore>/<nombre>` crea una rama fresca
+  desde main → trabajar → `PR` → mergear → borrar. Documentado en **CLAUDE.md** y **FLUJO.md**.
+- **Hook PreCompact** (auto-commit WIP) cambiado en la **Mac** a stash de respaldo (ver pendiente #2 para Windows).
+- `inicio` quedó reseteada = main (limpia).
+
+### Sesión 2026-06-21 (PR #36 ya mergeado a prod)
 - **#1 Guías de Despacho SII en el manifiesto del fiscalizador**: match robusto
   (norm + ventana fecha local Chile) en `/api/ruta-guias`; tabla `guias_subidas`
   (mig. 051) para guías subidas en bodega antes del manifiesto (el Enrutador las jala
