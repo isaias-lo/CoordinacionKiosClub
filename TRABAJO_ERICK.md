@@ -1,28 +1,29 @@
 # Estado actual del trabajo — Erick
 
 ## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-1. **[MCP Supabase — VERIFICAR EN WINDOWS] ⚠ PRIMERO ESTO.**
-   👉 Al decir "hola", Claude debe **preguntar/confirmar si estoy en el PC Windows**. Solo en Windows
-   se hace esta verificación.
-   - Contexto: el `.mcp.json` YA quedó **commiteado** con `npx` + **read+write** + fijado a toolskios
-     (`--project-ref=aiclobncdhxjxdlvkezk`). En la **Mac** está **verificado** (lee y escribe OK).
-   - **Falta probarlo en Windows.** Pasos: (a) `setx SUPABASE_ACCESS_TOKEN "TU_TOKEN"` (mismo token sbp_…);
-     (b) reiniciar VSCode; (c) Claude verifica con un SELECT/escritura de prueba contra toolskios.
-   - **Si en Windows el `npx` directo NO arranca** → cambiar SOLO en ese equipo el `command` del `.mcp.json`
-     a `cmd` con args `["/c","npx",...]` (wrapper de Windows), sin tocar el resto. (No commitear ese ajuste
-     o buscar una forma que sirva a ambos.)
-2. **[Hook PreCompact — APLICAR EN WINDOWS] (solo cuando esté en el PC Windows).**
-   En la **Mac** ya cambié el hook `PreCompact` de `~/.claude/settings.json` para que en vez de
-   `git add -A && git commit WIP` haga un **stash de respaldo** (no ensucia la rama). Ese archivo es
-   **global por equipo** (no está en el repo), así que en Windows hay que aplicar el MISMO cambio a su
-   `~/.claude/settings.json`. Pídele a Claude que lo haga.
-3. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
+- ✅ **MCP Supabase en Windows: HECHO (2026-06-24).** Token con `setx` + reinicio de VSCode → **verificado
+  funcionando** (`mcp__supabase__execute_sql` devolvió datos reales de toolskios). Ya se puede correr SQL
+  directo desde Claude en ambos equipos.
+1. **[Hook PreCompact — SOLO si estás en Windows].** En la **Mac** el hook `PreCompact` de
+   `~/.claude/settings.json` ya hace un **stash de respaldo** (en vez de commit WIP). Ese archivo es
+   global por equipo (no está en el repo) → falta aplicar el MISMO cambio en el `~/.claude/settings.json`
+   de Windows. Pídele a Claude que lo haga.
+2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
    (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
+3. (Opcional, visual) Verificar en prod: QR del manifiesto en **incógnito** (sin login) y Viña como `37 VIÑ`.
 
 ---
 
 ## Última sesión
-Fecha: 2026-06-22/23 (Mac/casa) — semáforo en prod + **nuevo flujo de ramas por tarea**.
+Fecha: 2026-06-24 (Windows/trabajo) — **MCP Supabase operativo en Windows** + verificación de datos.
+- Token `SUPABASE_ACCESS_TOKEN` guardado con `setx` + reinicio de VSCode → MCP del proyecto
+  (`mcp__supabase__*`, fijado a toolskios) **verificado funcionando** con un SELECT real.
+- **Migración de Viña confirmada limpia vía MCP**: 0 filas con `37VIN` en tiendas/despacho_rm/picking_pallets;
+  `37VIÑ` es la canónica (1 tienda, 14 en despacho_rm).
+- Sesión sin cambios de código (solo entorno + memoria). Todo lo de la sesión anterior (#60/#65/#66/#67/#68)
+  sigue en prod.
+
+### Sesión 2026-06-22/23 (Mac/casa) — semáforo en prod + nuevo flujo de ramas por tarea
 Rama: ahora **una rama por tarea desde main** (se dejó de reusar `inicio`).
 
 ### Qué se hizo (2026-06-22/23)

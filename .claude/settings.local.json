@@ -32,7 +32,8 @@
       "Bash(npm test *)",
       "Bash(echo \"BUILD_EXIT=$?\")",
       "Bash(git commit *)",
-      "Bash(gh pr create --base main --head inicio --title 'feat\\(despacho+picking\\): guías en manifiesto, auditoría de pallets y 2ª vuelta por fecha de salida' --body ' *)"
+      "Bash(gh pr create --base main --head inicio --title 'feat\\(despacho+picking\\): guías en manifiesto, auditoría de pallets y 2ª vuelta por fecha de salida' --body ' *)",
+      "mcp__supabase__execute_sql"
     ]
   }
 }
