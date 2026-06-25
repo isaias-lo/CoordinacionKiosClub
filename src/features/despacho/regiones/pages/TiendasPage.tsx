@@ -594,6 +594,7 @@ export function TiendasPage() {
     .map(([name, its]) => ({
       cod:    TIENDAS[name]?.cod ?? name,
       nombre: TIENDAS[name]?.name ?? name,
+      g:      'fal' as const,
       p:  its.filter(i => i.pkg === 'pallet').length,
       b:  its.filter(i => i.pkg === 'box').length,
       c:  its.filter(i => i.pkg === 'contenedor').length,
