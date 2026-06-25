@@ -3,7 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyActor } from '@/lib/apiAuth';
 import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
 
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at';
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at, seq, canonical_id';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).

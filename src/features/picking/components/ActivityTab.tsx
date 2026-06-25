@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, Plus, Minus, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
@@ -30,18 +30,21 @@ interface Props {
   palletSlots:  PalletSlot[];
   supervisors:  Record<string, SupervisorPresence>; // otros supervisores en tiempo real
   eventos?:     PickingEvento[];                     // auditoría de altas/bajas de pallets
-  userFilter?:  string | null;                       // mostrar solo esta cuenta (null = todas)
+  userFilters?: Set<string>;                         // mostrar solo estas cuentas (vacío = todas)
   storeFilter?: string | null;                       // mostrar solo esta tienda (null = todas)
   pickerFilter?: string | null;                      // mostrar solo este picker (null = todos)
   typeFilter?:  Set<FilterCat>;                       // tipos a mostrar (vacío = todos)
   onStoreClick?: (cod: string) => void;              // clic en el código de tienda → filtrar
 }
 
+const EMPTY_STR_SET: Set<string> = new Set();
+
 export function SupervisorActivityPanel({
   printRecords, nameChanges, palletSlots, supervisors, eventos = [],
-  userFilter = null, storeFilter = null, pickerFilter = null, typeFilter, onStoreClick,
+  userFilters, storeFilter = null, pickerFilter = null, typeFilter, onStoreClick,
 }: Props) {
   const typeSet = typeFilter ?? EMPTY_TYPE_SET;
+  const userSet = userFilters ?? EMPTY_STR_SET;
 
   // Reincidencia: quién creó y luego borró el mismo pallet en poco tiempo
   const reincidencia = useMemo(() => detectarReincidencia(eventos), [eventos]);
@@ -61,6 +64,18 @@ export function SupervisorActivityPanel({
     }
     return map;
   }, [palletSlots]);
+
+  // #10: número (seq) por pallet_id (si sigue vivo) y BATCH por grupo (state_key) desde las impresiones.
+  const seqByPalletId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const s of palletSlots) if (s.seq != null) m.set(s.id, s.seq);
+    return m;
+  }, [palletSlots]);
+  const batchByStateKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of printRecords) if (r.batch) m.set(r.state_key, r.batch);
+    return m;
+  }, [printRecords]);
 
   const sections = useMemo<Section[]>(() => {
     const byName: Record<string, { dbPrints: PrintRecord[]; presencePrints: SupervisorPrint[]; nameEvs: PickerNameChange[]; palletEvs: PickingEvento[]; isLive: boolean }> = {};
@@ -172,6 +187,8 @@ export function SupervisorActivityPanel({
             tipo:        e.tipo ?? '',
             pickerLabel: e.picker_label ?? '',
             palletId:    e.pallet_id ?? null,
+            seq:         e.pallet_id != null ? (seqByPalletId.get(e.pallet_id) ?? null) : null,
+            batch:       e.state_key ? batchByStateKey.get(e.state_key) : undefined,
           });
         }
 
@@ -186,7 +203,7 @@ export function SupervisorActivityPanel({
         if (b.name === 'Sin atribución') return -1;
         return a.name.localeCompare(b.name);
       });
-  }, [printRecords, nameChanges, palletSlots, supervisors, eventos, unitsByKey]);
+  }, [printRecords, nameChanges, palletSlots, supervisors, eventos, unitsByKey, seqByPalletId, batchByStateKey]);
 
   // IDs de pallets con reincidencia (creó+borró el mismo) → categoría "error"
   const errorPalletIds = useMemo(
@@ -196,7 +213,7 @@ export function SupervisorActivityPanel({
 
   // Secciones tras aplicar los filtros activos (cuenta / tipo / tienda / picker)
   const filteredSections = useMemo(() => sections
-    .filter(s => !userFilter || s.name === userFilter)
+    .filter(s => userSet.size === 0 || userSet.has(s.name))
     .map(s => ({
       ...s,
       events: s.events.filter(ev =>
@@ -205,14 +222,14 @@ export function SupervisorActivityPanel({
         eventMatchesPicker(ev, pickerFilter)),
     }))
     .filter(s => s.events.length > 0),
-    [sections, userFilter, typeSet, storeFilter, pickerFilter, errorPalletIds],
+    [sections, userSet, typeSet, storeFilter, pickerFilter, errorPalletIds],
   );
 
-  // Reincidentes visibles en el panel rojo, respetando el filtro de cuenta
-  const reincidentesVisibles = userFilter ? reincidentes.filter(([name]) => name === userFilter) : reincidentes;
+  // Reincidentes visibles en el panel rojo, respetando el filtro de cuentas
+  const reincidentesVisibles = userSet.size ? reincidentes.filter(([name]) => userSet.has(name)) : reincidentes;
 
   if (filteredSections.length === 0) {
-    const conFiltros = !!userFilter || !!storeFilter || !!pickerFilter || typeSet.size > 0;
+    const conFiltros = userSet.size > 0 || !!storeFilter || !!pickerFilter || typeSet.size > 0;
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center px-8">
         <div className="mb-4 opacity-20"><User size={48} strokeWidth={1.5} className="text-slate-400" /></div>
@@ -296,8 +313,23 @@ export function SupervisorActivityPanel({
                       <span className="font-bold" style={{ color: ev.eventType === 'crear' ? '#15803D' : '#DC2626' }}>
                         {ev.eventType === 'crear' ? 'Creó' : 'Eliminó'}
                       </span> {TIPO_LABEL[ev.tipo] ?? ev.tipo}
+                      {ev.seq != null && (
+                        <span className="font-mono font-bold ml-1" style={{ color: '#0F172A' }}>{ev.tipo}{ev.seq}</span>
+                      )}
                       {ev.pickerLabel ? ` · ${ev.pickerLabel}` : ''}
                     </span>
+                    {ev.batch && (
+                      <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#EDE9FE', color: '#6D28D9' }} title="Transferir Agrupación (Odoo)">
+                        🏷 {ev.batch}
+                      </span>
+                    )}
+                    {ev.palletId != null && (
+                      <span className="flex-shrink-0 font-mono text-[11px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#F1F5F9', color: '#475569' }} title="ID del pallet">
+                        #{ev.palletId}
+                      </span>
+                    )}
                   </>
                 ) : ev.kind === 'print' ? (
                   <>
@@ -406,7 +438,7 @@ async function fetchActivity(date: string): Promise<ActivityData> {
       .select('id, date, event_type, pallet_id, state_key, store_cod, tipo, picker_label, actor_name, created_at')
       .eq('date', date).order('created_at', { ascending: true }),
     supabase.from('picking_pallets')
-      .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at')
+      .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at, seq, canonical_id')
       .eq('date', date).eq('is_active', true).order('created_at', { ascending: true }),
     // picker_name_changes no tiene columna `date`: filtramos por día UTC, igual que
     // el resto del módulo de Picking (las columnas `date` se escriben con todayISO UTC).
@@ -442,7 +474,7 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
   const isToday = selectedDate === today;
 
   // Filtros
-  const [userFilter,   setUserFilter]   = useState<string | null>(null);
+  const [userFilters,  setUserFilters]  = useState<Set<string>>(() => new Set());
   const [storeFilter,  setStoreFilter]  = useState<string | null>(null);
   const [pickerFilter, setPickerFilter] = useState<string | null>(null);
   const [typeFilter,   setTypeFilter]   = useState<Set<FilterCat>>(() => new Set());
@@ -459,7 +491,7 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
 
   // Al cambiar de fecha, limpiar los filtros (las cuentas/tiendas/pickers pueden ser otros)
   useEffect(() => {
-    setUserFilter(null); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set());
+    setUserFilters(new Set()); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set());
   }, [selectedDate]);
 
   const printRecords = isToday ? live.printRecords : (histo?.printRecords ?? []);
@@ -509,8 +541,13 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     if (next.has(cat)) next.delete(cat); else next.add(cat);
     return next;
   });
-  const hasFilters = !!userFilter || !!storeFilter || !!pickerFilter || typeFilter.size > 0;
-  const clearFilters = () => { setUserFilter(null); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set()); };
+  const hasFilters = userFilters.size > 0 || !!storeFilter || !!pickerFilter || typeFilter.size > 0;
+  const clearFilters = () => { setUserFilters(new Set()); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set()); };
+  const toggleUser = (u: string) => setUserFilters(prev => {
+    const next = new Set(prev);
+    if (next.has(u)) next.delete(u); else next.add(u);
+    return next;
+  });
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -556,42 +593,17 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
           <ResumenChip icon={<AlertTriangle size={12} />} label="errores" value={resumen.errores} color="#DC2626"
             active={typeFilter.has('error')} highlight={resumen.errores > 0 && !typeFilter.has('error')}
             onClick={() => toggleType('error')} />
-          <ResumenChip icon={<Tag size={12} />} label="nombres" value={resumen.nombres} color="#7C3AED"
-            active={typeFilter.has('name')} onClick={() => toggleType('name')} />
         </div>
 
-        {/* Fila 3: filtros por cuenta y tienda */}
+        {/* Fila 3: filtros por cuenta (multi) y tienda/picker (buscables) */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Ver:</span>
-          <select
-            value={userFilter ?? ''}
-            onChange={e => setUserFilter(e.target.value || null)}
-            className="text-[12px] px-2 py-1 rounded border bg-white"
-            style={{ borderColor: '#CBD5E1', color: '#334155', maxWidth: 180 }}
-          >
-            <option value="">Todas las cuentas</option>
-            {users.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
+          <MultiSelect values={userFilters} onToggle={toggleUser} onClear={() => setUserFilters(new Set())}
+            options={users} allLabel="Todas las cuentas" />
           <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Tienda:</span>
-          <select
-            value={storeFilter ?? ''}
-            onChange={e => setStoreFilter(e.target.value || null)}
-            className="text-[12px] px-2 py-1 rounded border bg-white"
-            style={{ borderColor: '#CBD5E1', color: '#334155' }}
-          >
-            <option value="">Todas</option>
-            {stores.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <SearchSelect value={storeFilter} onChange={setStoreFilter} options={stores} allLabel="Todas" placeholder="Buscar tienda…" />
           <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Picker:</span>
-          <select
-            value={pickerFilter ?? ''}
-            onChange={e => setPickerFilter(e.target.value || null)}
-            className="text-[12px] px-2 py-1 rounded border bg-white"
-            style={{ borderColor: '#CBD5E1', color: '#334155', maxWidth: 180 }}
-          >
-            <option value="">Todos</option>
-            {pickers.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
+          <SearchSelect value={pickerFilter} onChange={setPickerFilter} options={pickers} allLabel="Todos" placeholder="Buscar picker…" />
           {hasFilters && (
             <button
               type="button"
@@ -616,7 +628,7 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
             palletSlots={palletSlots}
             supervisors={supervisors}
             eventos={eventos}
-            userFilter={userFilter}
+            userFilters={userFilters}
             storeFilter={storeFilter}
             pickerFilter={pickerFilter}
             typeFilter={typeFilter}
@@ -645,4 +657,104 @@ function ResumenChip({ icon, label, value, color, active = false, highlight = fa
   );
   if (!onClick) return <span className={cls} style={style}>{inner}</span>;
   return <button type="button" onClick={onClick} aria-pressed={active} className={cls} style={style}>{inner}</button>;
+}
+
+/** Hook: cierra el dropdown al hacer click fuera. */
+function useClickOutside(open: boolean, onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open, onClose]);
+  return ref;
+}
+
+/** Selector único con búsqueda (Tienda / Picker). null = todas. */
+function SearchSelect({ value, onChange, options, allLabel, placeholder }: {
+  value: string | null; onChange: (v: string | null) => void;
+  options: string[]; allLabel: string; placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useClickOutside(open, () => setOpen(false));
+  const filtered = q.trim() ? options.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : options;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => { setOpen(o => !o); setQ(''); }}
+        className="text-[12px] px-2 py-1 rounded border bg-white inline-flex items-center gap-1"
+        style={{ borderColor: '#CBD5E1', color: value ? '#1E293B' : '#64748B' }}>
+        <span className="truncate" style={{ maxWidth: 140 }}>{value ?? allLabel}</span>
+        <span style={{ color: '#94A3B8' }}>▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-56 bg-white border rounded shadow-lg" style={{ borderColor: '#CBD5E1' }}>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder}
+            className="w-full px-2 py-1.5 text-[12px] border-b outline-none" style={{ borderColor: '#E2E8F0' }} />
+          <div className="max-h-56 overflow-auto py-1">
+            <button type="button" onClick={() => { onChange(null); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50"
+              style={{ color: !value ? '#1E40AF' : '#475569', fontWeight: !value ? 700 : 500 }}>{allLabel}</button>
+            {filtered.map(o => (
+              <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50"
+                style={{ color: value === o ? '#1E40AF' : '#334155', fontWeight: value === o ? 700 : 500 }}>{o}</button>
+            ))}
+            {filtered.length === 0 && <div className="px-3 py-2 text-[11px]" style={{ color: '#94A3B8' }}>Sin resultados</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Selector múltiple con búsqueda (Cuentas). vacío = todas. */
+function MultiSelect({ values, onToggle, onClear, options, allLabel }: {
+  values: Set<string>; onToggle: (v: string) => void; onClear: () => void;
+  options: string[]; allLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useClickOutside(open, () => setOpen(false));
+  const filtered = q.trim() ? options.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : options;
+  const label = values.size === 0 ? allLabel : values.size === 1 ? [...values][0] : `${values.size} cuentas`;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => { setOpen(o => !o); setQ(''); }}
+        className="text-[12px] px-2 py-1 rounded border bg-white inline-flex items-center gap-1"
+        style={{ borderColor: '#CBD5E1', color: values.size ? '#1E293B' : '#64748B' }}>
+        <span className="truncate" style={{ maxWidth: 160 }}>{label}</span>
+        <span style={{ color: '#94A3B8' }}>▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-60 bg-white border rounded shadow-lg" style={{ borderColor: '#CBD5E1' }}>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar cuenta…"
+            className="w-full px-2 py-1.5 text-[12px] border-b outline-none" style={{ borderColor: '#E2E8F0' }} />
+          <div className="max-h-56 overflow-auto py-1">
+            {values.size > 0 && (
+              <button type="button" onClick={onClear}
+                className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50" style={{ color: '#B91C1C', fontWeight: 600 }}>
+                Quitar selección ({values.size})
+              </button>
+            )}
+            {filtered.map(o => {
+              const checked = values.has(o);
+              return (
+                <button key={o} type="button" onClick={() => onToggle(o)}
+                  className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50 flex items-center gap-2" style={{ color: '#334155' }}>
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded border text-[10px] flex-shrink-0"
+                    style={{ borderColor: checked ? '#1E40AF' : '#CBD5E1', background: checked ? '#1E40AF' : '#fff', color: '#fff' }}>
+                    {checked ? '✓' : ''}
+                  </span>
+                  <span className="truncate">{o}</span>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && <div className="px-3 py-2 text-[11px]" style={{ color: '#94A3B8' }}>Sin resultados</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -40,6 +40,8 @@ export interface PalletSlot {
   contenido: string;
   refs: string;
   created_at: string;
+  seq?: number | null;          // ordinal asignado al imprimir (P{seq}/B{seq})
+  canonical_id?: string | null; // código generado al imprimir
 }
 
 export interface PrintRecord {

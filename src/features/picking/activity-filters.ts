@@ -30,6 +30,8 @@ export type PalletEv = {
   tipo:        string;
   pickerLabel: string;
   palletId:    number | null;
+  seq?:        number | null;  // ordinal (P{seq}/B{seq}) si el pallet sigue vivo
+  batch?:      string;          // BATCH (de la impresión del mismo grupo), si existe
 };
 
 export type AnyEv = PrintEv | NameEv | PalletEv;

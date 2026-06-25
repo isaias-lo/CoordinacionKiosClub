@@ -383,7 +383,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at')
+        .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at, seq, canonical_id')
         .eq('date', todayISO())
         .eq('is_active', true)
         .order('created_at', { ascending: true })
