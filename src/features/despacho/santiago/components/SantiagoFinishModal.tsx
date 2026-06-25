@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
 import { useAuth } from '@/components/AuthProvider';
@@ -17,7 +16,6 @@ interface Props { open: boolean; onClose: () => void; }
 export function SantiagoFinishModal({ open, onClose }: Props) {
   const { state, dispatch } = useSantiago();
   const { user } = useAuth();
-  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const { items, regimen } = state;
 
@@ -45,7 +43,7 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     // 1. Escribir en Google Sheets DESPACHO RM e insertar en Supabase despacho_rm
     //    Los IDs ya tienen el formato canónico: P{seq}{cod}{stamp}P, {seq}B{cod}{stamp}B, etc.
     //    Tras la escritura, refrescar la base de datos (sync-despacho) para que el
-    //    dashboard de Inicio quede al día. keepalive: sobrevive al router.push('/').
+    //    dashboard de Inicio quede al día. keepalive: sobrevive al cierre/desmonte.
     sheetsSantiagoWrite(items, regimen!)
       .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
       .catch(() => {});
@@ -63,7 +61,6 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     } catch {}
 
     onClose();
-    router.push('/');
   };
 
   return (

@@ -1426,13 +1426,6 @@ export function StepForm() {
               {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
                 <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded-full">✓ Hoy completo</span>
               )}
-              {activeTiendasCount > 0 && (
-                <button onClick={enrutar}
-                  className="font-barlow-condensed text-[12px] font-bold text-white bg-[rgba(255,255,255,0.15)] hover:bg-[rgba(255,255,255,0.25)] px-2.5 py-1 rounded-full transition-all"
-                  title="Enrutar">
-                  🗺️ Enrutar
-                </button>
-              )}
             </div>
           </div>
           <div className="flex gap-5 mb-2">
@@ -1731,12 +1724,6 @@ export function StepForm() {
             onClick={() => setView('list')}
             className="lg:hidden w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
             title="Volver">←</button>
-          {activeTiendas.length > 0 && (
-            <button onClick={enrutar}
-              className="w-12 flex items-center justify-center py-3.5 bg-navy text-white border-none rounded-card text-[18px] cursor-pointer active:bg-navy-dark transition-all"
-              style={{ boxShadow: '0 4px 14px rgba(26,37,80,0.30)' }}
-              title="Enrutar">🗺️</button>
-          )}
           <button
             onClick={() => { if (confirm('¿Iniciar nuevo despacho? Los datos actuales se perderán.')) dispatch({ type: 'RESET' }); }}
             className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"

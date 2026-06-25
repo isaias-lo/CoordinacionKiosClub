@@ -675,6 +675,19 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         {/* Panel header */}
         <div className="bg-navy px-3 py-2 flex-shrink-0 flex items-center gap-2">
           <span className="font-barlow-condensed text-[13px] font-bold text-white/70 uppercase tracking-widest flex-1">Resumen del día</span>
+          {names.length > 0 && (() => {
+            const totalItems = names.reduce((a, n) => a + (dispatchData[n]?.length ?? 0), 0);
+            const totalSel   = names.reduce((a, n) => a + (selection[n]?.size ?? 0), 0);
+            const allSelected = totalItems > 0 && totalSel === totalItems;
+            return (
+              <button
+                onClick={() => dispatch({ type: 'SELECT_ALL_GLOBAL', selectAll: !allSelected })}
+                className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/90 cursor-pointer transition-colors"
+                title="Seleccionar/Quitar todas las tiendas para exportar">
+                {allSelected ? '✓ Quitar todo' : '☐ Seleccionar todo'}
+              </button>
+            );
+          })()}
           {names.length > 0 && (
             <button
               onClick={() => setExpanded(expanded.size === names.length ? new Set() : new Set(names))}

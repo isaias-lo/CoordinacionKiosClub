@@ -38,6 +38,7 @@ type Action =
   | { type: 'UPDATE_ITEMS'; tienda: string; items: DispatchItem[] }
   | { type: 'TOGGLE_SELECTION'; tienda: string; idx: number }
   | { type: 'TOGGLE_ALL_SELECTION'; tienda: string; count: number }
+  | { type: 'SELECT_ALL_GLOBAL'; selectAll: boolean }
   | { type: 'SET_SHEETS_URL'; payload: string }
   | { type: 'SHOW_TOAST'; msg: string; color?: string }
   | { type: 'HIDE_TOAST' }
@@ -118,6 +119,15 @@ function reducer(state: AppState, action: Action): AppState {
       const allSel = cur && cur.size === action.count;
       const sel = allSel ? new Set<number>() : new Set(Array.from({ length: action.count }, (_, i) => i));
       return { ...state, selection: { ...state.selection, [action.tienda]: sel } };
+    }
+    case 'SELECT_ALL_GLOBAL': {
+      // Selecciona (o limpia) TODOS los items de TODAS las tiendas con items.
+      if (!action.selectAll) return { ...state, selection: {} };
+      const selection: Record<string, Set<number>> = {};
+      for (const [tienda, items] of Object.entries(state.dispatch)) {
+        if (items.length > 0) selection[tienda] = new Set(items.map((_, i) => i));
+      }
+      return { ...state, selection };
     }
     case 'SET_SHEETS_URL':
       if (typeof window !== 'undefined') localStorage.setItem('sheetsUrl', action.payload);
