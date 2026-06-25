@@ -1,8 +1,11 @@
 // Lógica pura del panel "Manual" (texto COD: 2P - 1B). Sin JSX → testeable.
 
+export type ManualGrupo = 'rm' | 'costa' | 'fal';
+
 export interface ManualLine {
   cod: string;
   nombre?: string;
+  g?: ManualGrupo;   // grupo para filtrar (RM / COSTA / REGIONES)
   p: number;
   b: number;
   c: number;

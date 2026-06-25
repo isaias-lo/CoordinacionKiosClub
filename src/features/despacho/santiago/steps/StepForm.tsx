@@ -617,6 +617,7 @@ export function StepForm() {
   const calManualLines: ManualLine[] = activeTiendas.map(([cod, it]) => ({
     cod,
     nombre: getTiendaSantiagoByCod(cod)?.tienda,
+    g: (getTiendaSantiagoByCod(cod)?.region === 'VR' ? 'costa' : 'rm') as 'costa' | 'rm',
     p:  it.filter(i => i.tipo === 'Pallet').length,
     b:  it.filter(i => i.tipo === 'Bulto').length,
     c:  it.filter(i => i.tipo === 'Contenedor').length,

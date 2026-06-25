@@ -1,12 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { X, Copy, Check, Calendar, ClipboardList } from 'lucide-react';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
-import { partsOf, buildManualText, type ManualLine } from './manualText';
+import { partsOf, buildManualText, type ManualLine, type ManualGrupo } from './manualText';
 
 export { partsOf, buildManualText };
 export type { ManualLine };
+
+const GRUPOS: { id: ManualGrupo; label: string }[] = [
+  { id: 'rm',    label: 'RM' },
+  { id: 'costa', label: 'COSTA' },
+  { id: 'fal',   label: 'REGIONES' },
+];
 
 interface Props {
   open: boolean;
@@ -18,15 +24,38 @@ interface Props {
 /**
  * Hoja inferior con dos pestañas, "a la mano" en Santiago y Regiones:
  *  - Calendario: el MISMO calendario general que se ve en Picking (CalendarioColumnas).
- *  - Manual: texto "COD: 2P - 1B" de lo cargado en ESA pantalla, con copiar.
+ *  - Manual: texto "COD: 2P - 1B" de lo cargado, con filtros RM/COSTA/REGIONES (como
+ *    el Enrutador) y botón copiar.
  */
 export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const [tab, setTab]       = useState<'cal' | 'man'>('cal');
   const [copied, setCopied] = useState(false);
+  const [activeGroups, setActiveGroups] = useState<Set<ManualGrupo>>(new Set(['rm', 'costa', 'fal']));
+
+  // Grupos presentes en lo cargado (para mostrar solo los filtros que aplican).
+  const presentGroups = useMemo(() => {
+    const s = new Set<ManualGrupo>();
+    for (const l of lines) if (l.g) s.add(l.g);
+    return GRUPOS.filter(g => s.has(g.id));
+  }, [lines]);
+
+  const filteredLines = useMemo(
+    () => lines.filter(l => !l.g || activeGroups.has(l.g)),
+    [lines, activeGroups],
+  );
 
   if (!open) return null;
 
-  const { text: manualText, withItems, tot } = buildManualText(lines);
+  const toggleGroup = (g: ManualGrupo) => {
+    setActiveGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(g)) { if (next.size > 1) next.delete(g); } // siempre al menos uno
+      else next.add(g);
+      return next;
+    });
+  };
+
+  const { text: manualText, withItems, tot } = buildManualText(filteredLines);
 
   const copy = async () => {
     if (!manualText) return;
@@ -51,13 +80,13 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
   return (
     <div className="fixed inset-0 bg-navy/60 z-[500] flex items-end backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white rounded-t-[20px] px-4 pb-9 pt-5 w-full max-h-[88vh] overflow-y-auto"
+        className="bg-white rounded-t-[20px] px-4 pb-9 pt-5 w-full min-h-[78vh] max-h-[94vh] overflow-y-auto flex flex-col"
         style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.2)' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4" />
+        <div className="w-10 h-1 bg-bg-3 rounded-full mx-auto mb-4 flex-shrink-0" />
 
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
           <h3 className="font-barlow-condensed text-[20px] font-bold text-navy tracking-wide">
             {title}
           </h3>
@@ -66,17 +95,39 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
           </button>
         </div>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-shrink-0">
           <TabBtn id="cal" icon={<Calendar size={16} />}      label="Calendario" />
           <TabBtn id="man" icon={<ClipboardList size={16} />} label="Manual" count={withItems.length} />
         </div>
 
         {tab === 'cal' ? (
           // El mismo calendario general de Picking: solo lectura, vista General.
-          <CalendarioColumnas readOnly forceGeneral />
+          <div className="flex-1">
+            <CalendarioColumnas readOnly forceGeneral />
+          </div>
         ) : (
-          <div>
-            <div className="flex items-center justify-between mb-2">
+          <div className="flex-1 flex flex-col">
+            {/* Filtros RM / COSTA / REGIONES (como el Enrutador) */}
+            {presentGroups.length > 1 && (
+              <div className="flex gap-2 mb-3 flex-shrink-0">
+                {presentGroups.map(({ id, label }) => {
+                  const active = activeGroups.has(id);
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => toggleGroup(id)}
+                      className={`flex-1 h-[34px] rounded-[10px] text-[12px] font-extrabold tracking-wide transition-all border ${
+                        active ? 'bg-red text-white border-red' : 'bg-white border-border text-text-3'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <span className="text-sm text-text-2">
                 {withItems.length} tiendas · {partsOf(tot.p, tot.b, tot.c, tot.ch) || '0'}
               </span>
@@ -89,7 +140,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
                 {copied ? 'Copiado' : 'Copiar todo'}
               </button>
             </div>
-            <pre className="text-[13px] font-mono whitespace-pre-wrap bg-bg-2 rounded-[12px] p-3 text-text min-h-[80px]">
+            <pre className="flex-1 text-[13px] font-mono whitespace-pre-wrap bg-bg-2 rounded-[12px] p-3 text-text min-h-[120px]">
               {manualText || 'Sin items cargados en esta pantalla.'}
             </pre>
           </div>
