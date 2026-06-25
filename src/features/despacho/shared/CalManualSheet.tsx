@@ -2,25 +2,25 @@
 
 import { useState } from 'react';
 import { X, Copy, Check, Calendar, ClipboardList } from 'lucide-react';
-import { partsOf, buildManualText, type ManualLine, type CalendarStore } from './manualText';
+import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
+import { partsOf, buildManualText, type ManualLine } from './manualText';
 
 export { partsOf, buildManualText };
-export type { ManualLine, CalendarStore };
+export type { ManualLine };
 
 interface Props {
   open: boolean;
   onClose: () => void;
   title: string;             // ej. "METROPOLITANA / COSTA" o "REGIONES"
-  calendarStores: CalendarStore[];
   lines: ManualLine[];       // todo lo cargado en ESA pantalla
 }
 
 /**
  * Hoja inferior con dos pestañas, "a la mano" en Santiago y Regiones:
- *  - Calendario del día: tiendas del calendario central para ESA zona.
+ *  - Calendario: el MISMO calendario general que se ve en Picking (CalendarioColumnas).
  *  - Manual: texto "COD: 2P - 1B" de lo cargado en ESA pantalla, con copiar.
  */
-export function CalManualSheet({ open, onClose, title, calendarStores, lines }: Props) {
+export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const [tab, setTab]       = useState<'cal' | 'man'>('cal');
   const [copied, setCopied] = useState(false);
 
@@ -37,21 +37,21 @@ export function CalManualSheet({ open, onClose, title, calendarStores, lines }: 
     } catch { /* clipboard no disponible */ }
   };
 
-  const TabBtn = ({ id, icon, label, count }: { id: 'cal' | 'man'; icon: React.ReactNode; label: string; count: number }) => (
+  const TabBtn = ({ id, icon, label, count }: { id: 'cal' | 'man'; icon: React.ReactNode; label: string; count?: number }) => (
     <button
       onClick={() => setTab(id)}
       className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-card border-none font-barlow-condensed text-[15px] font-bold cursor-pointer transition-colors ${
         tab === id ? 'bg-navy text-white' : 'bg-bg-2 text-text-2'
       }`}
     >
-      {icon}{label} <span className="opacity-70">({count})</span>
+      {icon}{label}{count !== undefined ? <span className="opacity-70"> ({count})</span> : null}
     </button>
   );
 
   return (
     <div className="fixed inset-0 bg-navy/60 z-[500] flex items-end backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white rounded-t-[20px] px-4 pb-9 pt-5 w-full max-h-[85vh] overflow-y-auto"
+        className="bg-white rounded-t-[20px] px-4 pb-9 pt-5 w-full max-h-[88vh] overflow-y-auto"
         style={{ boxShadow: '0 -8px 40px rgba(26,37,80,0.2)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -67,25 +67,13 @@ export function CalManualSheet({ open, onClose, title, calendarStores, lines }: 
         </div>
 
         <div className="flex gap-2 mb-4">
-          <TabBtn id="cal" icon={<Calendar size={16} />}      label="Calendario del día" count={calendarStores.length} />
-          <TabBtn id="man" icon={<ClipboardList size={16} />} label="Manual"             count={withItems.length} />
+          <TabBtn id="cal" icon={<Calendar size={16} />}      label="Calendario" />
+          <TabBtn id="man" icon={<ClipboardList size={16} />} label="Manual" count={withItems.length} />
         </div>
 
         {tab === 'cal' ? (
-          calendarStores.length === 0 ? (
-            <p className="text-sm text-text-3 text-center py-8">No hay tiendas en el calendario para hoy.</p>
-          ) : (
-            <div className="border border-border rounded-[12px] overflow-hidden">
-              {calendarStores.map(s => (
-                <div key={s.cod} className="flex items-center px-3 py-2.5 border-b border-border last:border-b-0 text-[13px]">
-                  <span className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded mr-2">
-                    {s.cod}
-                  </span>
-                  <span className="font-semibold text-text truncate">{s.nombre ?? ''}</span>
-                </div>
-              ))}
-            </div>
-          )
+          // El mismo calendario general de Picking: solo lectura, vista General.
+          <CalendarioColumnas readOnly forceGeneral />
         ) : (
           <div>
             <div className="flex items-center justify-between mb-2">

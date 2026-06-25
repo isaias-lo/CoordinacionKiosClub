@@ -612,8 +612,8 @@ export function StepForm() {
   const tiendaPallets      = tiendaItems.filter(i => i.tipo === 'Pallet').length;
   const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;
 
-  // #6 — datos para la hoja "Calendario / Manual" (zona Santiago: RM + Costa)
-  const calManualStores = todayTiendas.map(t => ({ cod: t.cod, nombre: t.tienda }));
+  // #6 — líneas del "Manual" (lo cargado en esta pantalla). El calendario del sheet es
+  // el general de Picking (CalendarioColumnas), no una lista por zona.
   const calManualLines: ManualLine[] = activeTiendas.map(([cod, it]) => ({
     cod,
     nombre: getTiendaSantiagoByCod(cod)?.tienda,
@@ -2482,7 +2482,6 @@ export function StepForm() {
         open={showCalManual}
         onClose={() => setShowCalManual(false)}
         title="METROPOLITANA / COSTA"
-        calendarStores={calManualStores}
         lines={calManualLines}
       />
     </div>

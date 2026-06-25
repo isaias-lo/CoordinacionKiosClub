@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, GripVertical, ChevronLeft } from 'lucide-react';
+import { Navigation, GripVertical, ChevronLeft, ClipboardList } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
@@ -20,6 +20,7 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
+import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
@@ -218,6 +219,7 @@ export function TiendasPage() {
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
   const [formRows,              setFormRows]              = useState<FormRow[]>([]);
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
+  const [showCalManual,     setShowCalManual]      = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
 
   /* Calendar from Calendario Central (Sheets + localStorage cross-tab sync) */
@@ -584,6 +586,19 @@ export function TiendasPage() {
   const statB = allDispatchItems.filter(i => i.pkg === 'box').length;
   const statCH = allDispatchItems.filter(i => i.pkg === 'chocolate').length;
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
+
+  // #6 — líneas del "Manual" (lo cargado en Regiones). El calendario del sheet es el
+  // general de Picking (CalendarioColumnas).
+  const calManualLines: ManualLine[] = Object.entries(dispatchData)
+    .filter(([, its]) => its.length > 0)
+    .map(([name, its]) => ({
+      cod:    TIENDAS[name]?.cod ?? name,
+      nombre: TIENDAS[name]?.name ?? name,
+      p:  its.filter(i => i.pkg === 'pallet').length,
+      b:  its.filter(i => i.pkg === 'box').length,
+      c:  its.filter(i => i.pkg === 'contenedor').length,
+      ch: its.filter(i => i.pkg === 'chocolate').length,
+    }));
 
   const select  = (name: string) => dispatch({ type: 'SET_TIENDA', payload: selectedTienda === name ? null : name });
 
@@ -1856,6 +1871,13 @@ export function TiendasPage() {
               RESUMEN ({activeTiendasCount})
             </button>
             <button
+              onClick={() => setShowCalManual(true)}
+              className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
+              title="Calendario general / Manual para copiar">
+              <ClipboardList size={16} />
+              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Cal / Manual</span>
+            </button>
+            <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
               className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
               style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
@@ -2038,6 +2060,13 @@ export function TiendasPage() {
           />
         );
       })()}
+
+      <CalManualSheet
+        open={showCalManual}
+        onClose={() => setShowCalManual(false)}
+        title="REGIONES"
+        lines={calManualLines}
+      />
 
     </div>
   );
