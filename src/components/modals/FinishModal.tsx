@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
-import { buildRows, exportToTemplate } from '../../features/despacho/regiones/utils/exportUtils';
+import { buildRows } from '../../features/despacho/regiones/utils/exportUtils';
 import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/sheetsRegiones';
 import type { HistoryEntry } from '../../types';
 
@@ -43,9 +43,9 @@ export function FinishModal({ open, onClose }: Props) {
 
   const finish = async () => {
     onClose();
+    // Registrar NO descarga Excel (eso es solo "Exportar todo" en el Resumen).
+    // buildRows se conserva para el historial y la re-exportación posterior.
     const rows = buildRows(dispatchData);
-    const date = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
-    await exportToTemplate(rows, `despacho_${date}.xlsx`);
 
     const entry: HistoryEntry = {
       date: dispatchDate,
