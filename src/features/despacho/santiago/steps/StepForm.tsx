@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Navigation, GripVertical } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
@@ -9,6 +9,7 @@ import { formatCod } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
+import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
 import { useOdooProgress } from '../../shared/useOdooProgress';
@@ -270,6 +271,7 @@ export function StepForm() {
   /* Combine items (drag-to-merge) — form view */
   const [dragIdx,         setDragIdx]         = useState<number | null>(null);
   const [dropIdx,         setDropIdx]         = useState<number | null>(null);
+  const [showCalManual,   setShowCalManual]   = useState(false);
   const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string } | null>(null);
   const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
   const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
@@ -609,6 +611,17 @@ export function StepForm() {
   const tiendaItems        = currentTienda ? (items[currentTienda.cod] || []) : [];
   const tiendaPallets      = tiendaItems.filter(i => i.tipo === 'Pallet').length;
   const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;
+
+  // #6 — datos para la hoja "Calendario / Manual" (zona Santiago: RM + Costa)
+  const calManualStores = todayTiendas.map(t => ({ cod: t.cod, nombre: t.tienda }));
+  const calManualLines: ManualLine[] = activeTiendas.map(([cod, it]) => ({
+    cod,
+    nombre: getTiendaSantiagoByCod(cod)?.tienda,
+    p:  it.filter(i => i.tipo === 'Pallet').length,
+    b:  it.filter(i => i.tipo === 'Bulto').length,
+    c:  it.filter(i => i.tipo === 'Contenedor').length,
+    ch: it.filter(i => i.tipo === 'Chocolate').length,
+  }));
 
   const isChocolateBulto  = tipo === 'Bulto' && contenido === 'Chocolate';
   const isChocolateTipo   = tipo === 'Chocolate';
@@ -1387,6 +1400,12 @@ export function StepForm() {
           className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
           style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
           RESUMEN ({activeTiendasCount})
+        </button>
+        <button onClick={() => setShowCalManual(true)}
+          className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
+          title="Calendario del día / Manual para copiar">
+          <ClipboardList size={16} />
+          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Cal / Manual</span>
         </button>
         <button onClick={enrutar}
           className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
@@ -2458,6 +2477,14 @@ export function StepForm() {
           />
         );
       })()}
+
+      <CalManualSheet
+        open={showCalManual}
+        onClose={() => setShowCalManual(false)}
+        title="METROPOLITANA / COSTA"
+        calendarStores={calManualStores}
+        lines={calManualLines}
+      />
     </div>
   );
 }
