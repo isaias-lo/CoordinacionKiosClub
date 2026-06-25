@@ -3,19 +3,13 @@
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
-import { useAuth } from '@/components/AuthProvider';
-import { pushSessionState } from '@/lib/userSessionState';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
-
-const todayKey = new Date().toISOString().split('T')[0];
-const SANTIAGO_STATE_KEY = `santiagoState_${todayKey}`;
 
 interface Props { open: boolean; onClose: () => void; }
 
 export function SantiagoFinishModal({ open, onClose }: Props) {
   const { state, dispatch } = useSantiago();
-  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const { items, regimen } = state;
 
@@ -37,28 +31,32 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     return { cod, nombre: tienda?.tienda ?? cod, pallets: p, bultos: b, contenedores: c, chocolates: ch };
   });
 
+  // Fecha de despacho = la elegida o mañana por defecto; armado = hoy. (Igual que StepResumen.)
+  const todayISO = new Date().toISOString().split('T')[0];
+  const fechaDespacho = state.fechaDespacho ?? (() => {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
   const finish = async () => {
     setSaving(true);
 
-    // 1. Escribir en Google Sheets DESPACHO RM e insertar en Supabase despacho_rm
+    // 1. Escribir en Google Sheets DESPACHO RM e insertar en Supabase despacho_rm.
     //    Los IDs ya tienen el formato canónico: P{seq}{cod}{stamp}P, {seq}B{cod}{stamp}B, etc.
     //    Tras la escritura, refrescar la base de datos (sync-despacho) para que el
     //    dashboard de Inicio quede al día. keepalive: sobrevive al cierre/desmonte.
-    sheetsSantiagoWrite(items, regimen!)
+    sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO)
       .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
       .catch(() => {});
 
-    // 2. Marcar como terminado
+    // 2. Marcar como terminado (badge COMPLETADO en el header).
     localStorage.setItem(SANTIAGO_TERMINADO_KEY,
       new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
 
-    // 3. Limpiar estado local y sincronizar Supabase
-    dispatch({ type: 'RESET' });
-    const emptyPayload = { step: 'regimen' as const, regimen: null as null, items: {} };
-    try {
-      await pushSessionState('santiago', emptyPayload, user?.id ?? undefined);
-      localStorage.setItem(SANTIAGO_STATE_KEY, JSON.stringify(emptyPayload));
-    } catch {}
+    // 3. #8: NO borrar tras registrar (como Regiones). Marcar registrado=true → los datos
+    //    quedan en pantalla, "Reabrir" carga lo anterior, y el flag viaja en el push del
+    //    contexto, así PendingDraftBanner NO lo muestra como "sin registrar" al día siguiente.
+    dispatch({ type: 'SET_REGISTRADO', payload: true });
 
     onClose();
   };

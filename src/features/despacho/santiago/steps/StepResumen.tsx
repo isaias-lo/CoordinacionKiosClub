@@ -60,8 +60,12 @@ export function StepResumen() {
 
   const registrar = () => {
     if (!activeTiendas.length) { showToast('No hay items para registrar', '#D97706'); return; }
+    // #8: no doble registro — re-registrar agrega filas duplicadas en Sheets.
+    if (state.registrado) { showToast('Ya registrado hoy · usa "Reabrir" para modificar', '#D97706'); return; }
     sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO);
     dispatch({ type: 'SET_REGISTRADO', payload: true });
+    localStorage.setItem(SANTIAGO_TERMINADO_KEY,
+      new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
     showToast(`✓ Registrado · ${buildSummaryString()}`, '#16A34A');
   };
 
