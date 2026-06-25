@@ -43,11 +43,16 @@ function SantiagoContent() {
     }
   };
 
+  // #8: registrado puede venir del modal o de StepResumen (flag sincronizado) o del
+  // badge local TERMINADO. Cualquiera marca el header como COMPLETADO → evita re-registro.
+  const registered = terminated || state.registrado === true;
+
   const handleReopen = () => {
-    if (!confirm('¿Reabrir el despacho del día?')) return;
+    if (!confirm('¿Reabrir el despacho del día? Podrás modificar y volver a registrar.')) return;
     localStorage.removeItem(SANTIAGO_TERMINADO_KEY);
     setTerminated(false);
     setTerminatedAt('');
+    dispatch({ type: 'SET_REGISTRADO', payload: false });
   };
 
   return (
@@ -78,10 +83,10 @@ function SantiagoContent() {
           )}
         </div>
 
-        {terminated ? (
+        {registered ? (
           <button
             onClick={handleReopen}
-            title={`Terminado a las ${terminatedAt} · Toca para reabrir`}
+            title={`Terminado${terminatedAt ? ` a las ${terminatedAt}` : ''} · Toca para reabrir`}
             className="flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
             style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.50)' }}>
             <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
