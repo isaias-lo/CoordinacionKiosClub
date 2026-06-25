@@ -579,7 +579,17 @@ export default function RutasScreen() {
 
   // ── Fleet handlers ────────────────────────────────────────────────
   function handleToggleFlota(idx: number) {
-    setFlota(prev => prev.map((v, i) => i === idx ? { ...v, on: !v.on } : v));
+    const v = flota[idx];
+    if (!v) return;
+    const newOn = !v.on;
+    setFlota(prev => prev.map((x, i) => i === idx ? { ...x, on: newOn } : x));
+    // Persistir "en servicio" (memoria permanente). Fire-and-forget; el toggle solo
+    // {p,on} no requiere admin (ver /api/flota PATCH).
+    fetch('/api/flota', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p: v.p, on: newOn }),
+    }).catch(() => {});
   }
   function handleToggleTlbd(idx: number) {
     setFlota(prev => prev.map((v, i) => i === idx ? { ...v, tlbd: !v.tlbd } : v));

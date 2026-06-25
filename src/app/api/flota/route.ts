@@ -11,7 +11,8 @@ interface FlotaRow {
   tipo: string;
   porton: boolean | null;
   refrigerado: boolean;
-  activo: boolean;
+  activo: boolean;        // existe en la flota (DELETE = soft delete)
+  en_servicio: boolean;   // memoria del toggle "en servicio" para el ruteo
   es_tlbd: boolean;
   empresa: string;
 }
@@ -24,7 +25,7 @@ function rowToVehiculo(row: FlotaRow): Vehiculo {
     t:          row.tipo,
     porton:     row.porton,
     refrigerado:row.refrigerado,
-    on:         row.activo,
+    on:         row.en_servicio ?? true,  // el toggle de la UI = en_servicio (memoria)
     tlbd:       row.es_tlbd,
     empresa:    row.empresa ?? '',
   };
@@ -38,7 +39,8 @@ function vehiculoToRow(v: Vehiculo): Omit<FlotaRow, never> {
     tipo:        v.t,
     porton:      v.porton ?? null,
     refrigerado: v.refrigerado,
-    activo:      v.on,
+    activo:      true,        // un vehículo recién creado existe en la flota
+    en_servicio: v.on,        // y arranca en servicio según el toggle
     es_tlbd:     v.tlbd,
     empresa:     v.empresa ?? '',
   };
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const { data, error } = await supabaseServer()
     .from('flota_vehiculos')
-    .select('patente,capacidad_p,capacidad_b,tipo,porton,refrigerado,activo,es_tlbd,empresa')
+    .select('patente,capacidad_p,capacidad_b,tipo,porton,refrigerado,activo,en_servicio,es_tlbd,empresa')
     .eq('activo', true)
     .order('created_at', { ascending: true });
 
@@ -83,10 +85,14 @@ export async function POST(request: NextRequest) {
 
 // ── PATCH /api/flota  →  actualiza un vehículo por patente ───────────────
 export async function PATCH(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   const body = await request.json() as Partial<Vehiculo> & { p: string };
   if (!body.p) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
+
+  // El toggle "en servicio" (solo { p, on }) lo puede hacer cualquier despachador
+  // autenticado; las ediciones estructurales (capacidad, tipo, empresa…) son admin.
+  const onlyEnServicio = Object.keys(body).every(k => k === 'p' || k === 'on');
+  const allowed = onlyEnServicio ? await verifyAuth(request) : await verifyAdmin(request);
+  if (!allowed) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   // Build only the fields that were sent
   const updates: Partial<FlotaRow> = {};
@@ -95,7 +101,7 @@ export async function PATCH(request: NextRequest) {
   if (body.t           !== undefined) updates.tipo         = body.t;
   if (body.porton      !== undefined) updates.porton       = body.porton;
   if (body.refrigerado !== undefined) updates.refrigerado  = body.refrigerado;
-  if (body.on          !== undefined) updates.activo       = body.on;
+  if (body.on          !== undefined) updates.en_servicio  = body.on;  // toggle "en servicio" (no toca `activo`)
   if (body.tlbd        !== undefined) updates.es_tlbd      = body.tlbd;
   if (body.empresa     !== undefined) updates.empresa      = body.empresa;
 
