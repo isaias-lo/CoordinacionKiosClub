@@ -158,6 +158,10 @@ export default function RutasScreen() {
 
   const fechaRef = useRef(fecha);
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
+  // Últimas filas de despacho_sesion (de otros equipos), por cod normalizado.
+  // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
+  // los counts llegan antes de que cargue el calendario). #4
+  const sesionRowsRef = useRef<Map<string, SesionRow>>(new Map());
 
   // Chips where the user has manually typed a P/B value — excluded from live sync
   const manuallyEditedRef = useRef<Set<string>>(new Set());
@@ -317,17 +321,14 @@ export default function RutasScreen() {
     const today = todayStr();
 
     function applyRow(row: SesionRow) {
+      const c = norm(row.tienda_cod);
+      sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
-        const c = norm(row.tienda_cod);
         if (manuallyEditedRef.current.has(c)) return prev;
-        if (!prev[c]) {
-          // Inject stores arriving via Supabase that aren't in the calendar yet
-          if ((row.fuente === 'regiones' || row.fuente === 'rm' || row.fuente === 'santiago') && (row.pallets > 0 || row.bultos > 0)) {
-            const grp = row.fuente === 'regiones' ? 'fal' : 'rm';
-            return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: 0, g: grp } };
-          }
-          return prev;
-        }
+        // #4: el calendario manda. despacho_sesion SOLO actualiza los counts de tiendas
+        // que YA están en el calendario del día; NO inyecta tiendas fuera de él (antes
+        // esto arrastraba "tiendas de ayer" / fuera de calendario e inflaba la lista).
+        if (!prev[c]) return prev;
         if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === (row.contenedores ?? 0)) return prev;
         return {
           ...prev,
@@ -519,6 +520,14 @@ export default function RutasScreen() {
       ((calDia as Record<string, string[]>)[grp] || []).forEach(c => {
         if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
       });
+    });
+    // #4: re-aplicar counts de despacho_sesion ya recibidos (solo a tiendas del
+    // calendario; no inyecta). Cubre la carrera "counts llegan antes que el calendario".
+    sesionRowsRef.current.forEach((row, c) => {
+      if (newCalT[c] && !manuallyEditedRef.current.has(c)) {
+        const cc = row.contenedores ?? 0;
+        newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, on: row.pallets > 0 || row.bultos > 0 || cc > 0 };
+      }
     });
     setCalT(newCalT);
   // eslint-disable-next-line react-hooks/exhaustive-deps
