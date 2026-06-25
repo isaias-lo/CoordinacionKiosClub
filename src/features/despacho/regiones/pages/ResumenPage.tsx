@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { GripVertical, ClipboardList } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { buildRows, exportToTemplate } from '../utils/exportUtils';
 import { TIENDAS, getTodayTiendas } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
-import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 
 const TAG: Record<string, string> = {
@@ -43,7 +42,6 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
   const { state, dispatch, showToast } = useApp();
   const { dispatch: dispatchData, selection } = state;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [showCalManual, setShowCalManual] = useState(false);
 
   function toggleExpanded(name: string) {
     setExpanded(prev => {
@@ -89,22 +87,6 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     });
     return a;
   }, { pallets: 0, bultos: 0, chocolates: 0, monto: 0 });
-
-  // #6 — datos para la hoja "Calendario / Manual" (solo Regiones)
-  const calManualStores = todayOrder
-    .map(n => ({ cod: TIENDAS[n]?.cod ?? n, nombre: TIENDAS[n]?.name ?? n }))
-    .filter(s => !!s.cod);
-  const calManualLines: ManualLine[] = names.map(n => {
-    const its = dispatchData[n] || [];
-    return {
-      cod:    TIENDAS[n]?.cod ?? n,
-      nombre: TIENDAS[n]?.name ?? n,
-      p:  its.filter(i => i.pkg === 'pallet').length,
-      b:  its.filter(i => i.pkg === 'box').length,
-      c:  its.filter(i => i.pkg === 'contenedor').length,
-      ch: its.filter(i => i.pkg === 'chocolate').length,
-    };
-  });
 
   const date = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
 
@@ -687,31 +669,12 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     );
   })();
 
-  const calManualEl = (
-    <CalManualSheet
-      open={showCalManual}
-      onClose={() => setShowCalManual(false)}
-      title="REGIONES"
-      calendarStores={calManualStores}
-      lines={calManualLines}
-    />
-  );
-  const calManualBtn = (
-    <button
-      onClick={() => setShowCalManual(true)}
-      className="flex items-center gap-1 font-barlow-condensed text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/90 cursor-pointer transition-colors"
-      title="Calendario del día / Manual para copiar">
-      <ClipboardList size={13} /> Cal / Manual
-    </button>
-  );
-
   if (panel) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-border">
         {/* Panel header */}
         <div className="bg-navy px-3 py-2 flex-shrink-0 flex items-center gap-2">
           <span className="font-barlow-condensed text-[13px] font-bold text-white/70 uppercase tracking-widest flex-1">Resumen del día</span>
-          {calManualBtn}
           {names.length > 0 && (() => {
             const totalItems = names.reduce((a, n) => a + (dispatchData[n]?.length ?? 0), 0);
             const totalSel   = names.reduce((a, n) => a + (selection[n]?.size ?? 0), 0);
@@ -740,22 +703,17 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
         {actionBar}
         {combineModalEl}
         {copyModalEl}
-        {calManualEl}
       </div>
     );
   }
 
   return (
     <div className="flex-1 overflow-y-auto pb-20">
-      <div className="bg-navy px-3 py-2 flex items-center justify-end">
-        {calManualBtn}
-      </div>
       {statsStrip}
       {acordeon}
       {actionBar}
       {combineModalEl}
       {copyModalEl}
-      {calManualEl}
     </div>
   );
 }
