@@ -1448,7 +1448,7 @@ export function StepForm() {
             </div>
           </div>
           <div className="flex gap-5 mb-2">
-            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }) => (
+            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []), { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }) => (
               <div key={l} className="text-center">
                 <div className="font-barlow-condensed text-[24px] font-extrabold leading-none" style={{ color }}>{v}</div>
                 <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
@@ -1472,8 +1472,8 @@ export function StepForm() {
         {/* Mobile stats strip */}
         <div className="lg:hidden bg-navy flex-shrink-0">
           <div className="flex items-center">
-            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }, i) => (
-              <div key={l} className={`flex-1 py-3 text-center ${i < 2 ? 'border-r border-white/10' : ''}`}>
+            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []), { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }, i, arr) => (
+              <div key={l} className={`flex-1 py-3 text-center ${i < arr.length - 1 ? 'border-r border-white/10' : ''}`}>
                 <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
                 <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
               </div>
