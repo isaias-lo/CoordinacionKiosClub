@@ -1880,17 +1880,10 @@ export function TiendasPage() {
             </button>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
-              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95"
-              style={{ background: 'rgba(211,47,47,0.10)', border: '1px solid rgba(211,47,47,0.50)' }}
+              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Ir al Enrutador">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                   style={{
-                     background: 'linear-gradient(145deg, #EF4444, #B91C1C)',
-                     boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)',
-                   }}>
-                <Navigation size={14} color="#fff" strokeWidth={2} />
-              </div>
-              <span className="hidden lg:inline font-barlow-condensed text-[15px] font-bold tracking-widest uppercase" style={{ color: '#B91C1C' }}>Enrutador</span>
+              <Navigation size={16} />
+              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Enrutador</span>
             </button>
           </div>
         </div>

@@ -32,9 +32,10 @@ export function buildManualText(lines: ManualLine[]): {
     (a, l) => ({ p: a.p + l.p, b: a.b + l.b, c: a.c + l.c, ch: a.ch + l.ch }),
     { p: 0, b: 0, c: 0, ch: 0 },
   );
-  const text = withItems.length
+  const n = withItems.length;
+  const text = n
     ? withItems.map(l => `${l.cod}: ${partsOf(l.p, l.b, l.c, l.ch)}`).join('\n')
-      + `\n\nTOTAL: ${partsOf(tot.p, tot.b, tot.c, tot.ch)}`
+      + `\n\nTOTAL: ${partsOf(tot.p, tot.b, tot.c, tot.ch)} - ${n} TIENDA${n === 1 ? '' : 'S'}`
     : '';
   return { text, withItems, tot };
 }
