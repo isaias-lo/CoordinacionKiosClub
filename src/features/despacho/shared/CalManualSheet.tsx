@@ -1,8 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X, Copy, Check, Calendar, ClipboardList } from 'lucide-react';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
+import { fetchCounts, type SesionRow } from '@/lib/despachoSesion';
+import { todayStr } from '@/features/despacho/rutas/utils/helpers';
+import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
 import { partsOf, buildManualText, type ManualLine, type ManualGrupo } from './manualText';
 
 export { partsOf, buildManualText };
@@ -14,27 +17,56 @@ const GRUPOS: { id: ManualGrupo; label: string }[] = [
   { id: 'fal',   label: 'REGIONES' },
 ];
 
+// Fila de despacho_sesion (data global del día) → línea del Manual, con su grupo.
+function rowToLine(r: SesionRow): ManualLine {
+  const cod = r.tienda_cod;
+  const g: ManualGrupo = r.fuente === 'regiones'
+    ? 'fal'
+    : (getTiendaSantiagoByCod(cod)?.region === 'VR' ? 'costa' : 'rm');
+  return { cod, g, p: r.pallets, b: r.bultos, c: r.contenedores, ch: r.chocolates ?? 0 };
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
   title: string;             // ej. "METROPOLITANA / COSTA" o "REGIONES"
-  lines: ManualLine[];       // todo lo cargado en ESA pantalla
+  lines: ManualLine[];       // lo cargado en ESTA pantalla (overlay sobre la data global)
 }
 
 /**
  * Hoja inferior con dos pestañas, "a la mano" en Santiago y Regiones:
  *  - Calendario: el MISMO calendario general que se ve en Picking (CalendarioColumnas).
- *  - Manual: texto "COD: 2P - 1B" de lo cargado, con filtros RM/COSTA/REGIONES (como
- *    el Enrutador) y botón copiar.
+ *  - Manual: muestra TODO el día (RM + COSTA + REGIONES) leyendo la data global
+ *    (despacho_sesion, igual que el Enrutador), con filtros de grupo y botón copiar.
+ *    Se hace overlay de lo cargado en esta pantalla para que vaya sin lag.
  */
 export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const [tab, setTab]       = useState<'cal' | 'man'>('cal');
   const [copied, setCopied] = useState(false);
   const [activeGroups, setActiveGroups] = useState<Set<ManualGrupo>>(new Set(['rm', 'costa', 'fal']));
+  const [globalLines, setGlobalLines] = useState<ManualLine[]>([]);
+
+  // Al abrir, traer la data global del día (todas las bodegas) — como el Enrutador.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchCounts(todayStr()).then(rows => {
+      if (!cancelled) setGlobalLines(rows.map(rowToLine));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Data global + overlay de la pantalla actual (esta pantalla manda para sus cods).
+  const manualSource = useMemo(() => {
+    const map = new Map<string, ManualLine>();
+    for (const gl of globalLines) map.set(gl.cod, gl);
+    for (const ll of lines)       map.set(ll.cod, ll);
+    return [...map.values()];
+  }, [globalLines, lines]);
 
   const filteredLines = useMemo(
-    () => lines.filter(l => !l.g || activeGroups.has(l.g)),
-    [lines, activeGroups],
+    () => manualSource.filter(l => !l.g || activeGroups.has(l.g)),
+    [manualSource, activeGroups],
   );
 
   if (!open) return null;
@@ -100,7 +132,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
           </div>
         ) : (
           <div className="flex-1 flex flex-col">
-            {/* Filtros RM / COSTA / REGIONES — siempre visibles, como el Enrutador */}
+            {/* Filtros RM / COSTA / REGIONES — mismos chips del Enrutador */}
             <div className="flex gap-2 mb-3 flex-shrink-0">
               {GRUPOS.map(({ id, label }) => {
                 const active = activeGroups.has(id);
@@ -108,8 +140,11 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
                   <button
                     key={id}
                     onClick={() => toggleGroup(id)}
+                    style={active ? { boxShadow: '0 2px 8px rgba(212,43,43,0.20)' } : undefined}
                     className={`flex-1 h-[34px] rounded-[10px] text-[12px] font-extrabold tracking-wide transition-all border ${
-                      active ? 'bg-red text-white border-red' : 'bg-white border-border text-text-3'
+                      active
+                        ? 'bg-kred text-white border-kred'
+                        : 'bg-white border-black/[0.10] text-kmuted hover:border-kred/[0.3] hover:text-kred'
                     }`}
                   >
                     {label}
@@ -132,7 +167,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
               </button>
             </div>
             <pre className="flex-1 text-[13px] font-mono whitespace-pre-wrap bg-bg-2 rounded-[12px] p-3 text-text min-h-[120px]">
-              {manualText || 'Sin items cargados en esta pantalla.'}
+              {manualText || 'Sin items cargados.'}
             </pre>
           </div>
         )}

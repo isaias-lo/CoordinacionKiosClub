@@ -329,10 +329,11 @@ export default function RutasScreen() {
         // que YA están en el calendario del día; NO inyecta tiendas fuera de él (antes
         // esto arrastraba "tiendas de ayer" / fuera de calendario e inflaba la lista).
         if (!prev[c]) return prev;
-        if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === (row.contenedores ?? 0)) return prev;
+        const rowCh = row.chocolates ?? 0;
+        if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === (row.contenedores ?? 0) && (prev[c].ch ?? 0) === rowCh) return prev;
         return {
           ...prev,
-          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: prev[c].ch ?? 0, on: row.pallets > 0 || row.bultos > 0 || (row.contenedores ?? 0) > 0 },
+          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: rowCh, on: row.pallets > 0 || row.bultos > 0 || (row.contenedores ?? 0) > 0 || rowCh > 0 },
         };
       });
     }
@@ -526,7 +527,8 @@ export default function RutasScreen() {
     sesionRowsRef.current.forEach((row, c) => {
       if (newCalT[c] && !manuallyEditedRef.current.has(c)) {
         const cc = row.contenedores ?? 0;
-        newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, on: row.pallets > 0 || row.bultos > 0 || cc > 0 };
+        const chh = row.chocolates ?? 0;
+        newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, ch: chh, on: row.pallets > 0 || row.bultos > 0 || cc > 0 || chh > 0 };
       }
     });
     setCalT(newCalT);
