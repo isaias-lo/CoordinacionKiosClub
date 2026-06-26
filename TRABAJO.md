@@ -7,9 +7,9 @@ Retomar la **Segunda vuelta (#9)** — última de las 11 mejoras (el resto ya es
 3. Dile a Claude: **"seguimos con #9, Paso 3 (pendientes/conteo)"**. La lógica pura ya está mergeada en
    `vueltaRegistro.ts`. Para la 2ª prueba, Claude inserta filas de prueba 2099 por Supabase MCP.
 
-⚠️ **Pendiente manual TUYO (Claude no escribe en Sheets):** borrar a mano las filas con fecha
-**31/12/2099** en las HOJAS de Google (CONTROL DESPACHO / DESPACHO RM / DESPACHO REGIONES), restos de la
-prueba del Paso 2. En Supabase ya están limpias.
+✅ **Limpieza de prueba HECHA (2026-06-26):** Erick borró a mano las filas con fecha **31/12/2099** en
+las HOJAS de Google (CONTROL DESPACHO / DESPACHO RM / DESPACHO REGIONES). Supabase y Sheets ya quedaron
+limpios de la prueba del Paso 2.
 
 ---
 
@@ -23,7 +23,7 @@ lógica pura), #87 (#9 Paso 2). Migraciones aplicadas en prod: **057** (flota.en
 - **Paso 2 (#87):** el registro del Enrutador separa RM→`despacho_rm` / Regiones→`despacho_regiones`
   y CONTROL DESPACHO incluye las pendientes. ✅ **VERIFICADO EN VIVO** (fecha de prueba 31/12/2099):
   `despacho_regiones.75PUC` recibió patente (antes era imposible — siempre vacío). Filas 2099 ya
-  borradas de Supabase (faltan las HOJAS, ver aviso arriba).
+  borradas de Supabase **y de las HOJAS** (limpieza hecha 2026-06-26).
 
 ### #9 — próximos pasos (retomar aquí)
 1. **Paso 3 — verificar pendientes (conteo 25→30):** 2ª prueba con fecha 31/12/2099 dejando 1 tienda
