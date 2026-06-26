@@ -32,13 +32,6 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const [copied, setCopied] = useState(false);
   const [activeGroups, setActiveGroups] = useState<Set<ManualGrupo>>(new Set(['rm', 'costa', 'fal']));
 
-  // Grupos presentes en lo cargado (para mostrar solo los filtros que aplican).
-  const presentGroups = useMemo(() => {
-    const s = new Set<ManualGrupo>();
-    for (const l of lines) if (l.g) s.add(l.g);
-    return GRUPOS.filter(g => s.has(g.id));
-  }, [lines]);
-
   const filteredLines = useMemo(
     () => lines.filter(l => !l.g || activeGroups.has(l.g)),
     [lines, activeGroups],
@@ -107,25 +100,23 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
           </div>
         ) : (
           <div className="flex-1 flex flex-col">
-            {/* Filtros RM / COSTA / REGIONES (como el Enrutador) */}
-            {presentGroups.length > 1 && (
-              <div className="flex gap-2 mb-3 flex-shrink-0">
-                {presentGroups.map(({ id, label }) => {
-                  const active = activeGroups.has(id);
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => toggleGroup(id)}
-                      className={`flex-1 h-[34px] rounded-[10px] text-[12px] font-extrabold tracking-wide transition-all border ${
-                        active ? 'bg-red text-white border-red' : 'bg-white border-border text-text-3'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Filtros RM / COSTA / REGIONES — siempre visibles, como el Enrutador */}
+            <div className="flex gap-2 mb-3 flex-shrink-0">
+              {GRUPOS.map(({ id, label }) => {
+                const active = activeGroups.has(id);
+                return (
+                  <button
+                    key={id}
+                    onClick={() => toggleGroup(id)}
+                    className={`flex-1 h-[34px] rounded-[10px] text-[12px] font-extrabold tracking-wide transition-all border ${
+                      active ? 'bg-red text-white border-red' : 'bg-white border-border text-text-3'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <span className="text-sm text-text-2">
