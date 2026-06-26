@@ -1,16 +1,10 @@
 # Estado actual del trabajo — Erick
 
 ## 🔴 PENDIENTE AL LLEGAR — empezar por aquí
-- ✅ **MCP Supabase en Windows: HECHO (2026-06-24).** Token con `setx` + reinicio de VSCode → **verificado
-  funcionando** (`mcp__supabase__execute_sql` devolvió datos reales de toolskios). Ya se puede correr SQL
-  directo desde Claude en ambos equipos.
-1. **[Hook PreCompact — SOLO si estás en Windows].** En la **Mac** el hook `PreCompact` de
-   `~/.claude/settings.json` ya hace un **stash de respaldo** (en vez de commit WIP). Ese archivo es
-   global por equipo (no está en el repo) → falta aplicar el MISMO cambio en el `~/.claude/settings.json`
-   de Windows. Pídele a Claude que lo haga.
-2. (Opcional) Click-through real de las 3 mejoras del PR #36 (ya en prod): instalar Playwright MCP
-   (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) y probar en localhost.
-3. (Opcional, visual) Verificar en prod: QR del manifiesto en **incógnito** (sin login) y Viña como `37 VIÑ`.
+👉 **En casa/Mac: seguir #9 Paso 3** (Segunda vuelta). Plan completo y pasos en **TRABAJO.md**.
+- ✅ **MCP Supabase**: operativo en **ambos equipos** (Windows verificado 2026-06-24, SQL directo).
+- ✅ **Hook PreCompact (stash de respaldo)**: aplicado en **ambos equipos** (Windows 2026-06-26).
+- (Opcional) Playwright MCP para click-through; y verificar en prod QR del manifiesto en incógnito + Viña `37 VIÑ`.
 
 ---
 
