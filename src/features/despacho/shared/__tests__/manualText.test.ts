@@ -22,7 +22,7 @@ describe('buildManualText', () => {
     const { text, withItems, tot } = buildManualText(lines);
     expect(withItems).toHaveLength(2);
     expect(tot).toEqual({ p: 3, b: 1, c: 0, ch: 0 });
-    expect(text).toBe('53VAL: 2P\n47PTV: 1P - 1B\n\nTOTAL: 3P - 1B');
+    expect(text).toBe('53VAL: 2P\n47PTV: 1P - 1B\n\nTOTAL: 3P - 1B - 2 TIENDAS');
   });
 
   it('devuelve texto vacío cuando no hay items', () => {
@@ -37,6 +37,11 @@ describe('buildManualText', () => {
       { cod: 'CH1', p: 0, b: 0, c: 0, ch: 3 },
     ]);
     expect(tot).toEqual({ p: 0, b: 0, c: 2, ch: 3 });
-    expect(text).toContain('TOTAL: 2C - 3CH');
+    expect(text).toContain('TOTAL: 2C - 3CH - 2 TIENDAS');
+  });
+
+  it('usa singular "TIENDA" cuando hay una sola', () => {
+    const { text } = buildManualText([{ cod: 'X', p: 1, b: 0, c: 0, ch: 0 }]);
+    expect(text).toBe('X: 1P\n\nTOTAL: 1P - 1 TIENDA');
   });
 });

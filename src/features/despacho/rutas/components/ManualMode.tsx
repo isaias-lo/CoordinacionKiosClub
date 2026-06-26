@@ -92,8 +92,18 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
     totalBcombinado ? `${totalBcombinado}B` : '',
   ].filter(Boolean).join(' - ') || '0';
 
+  // Conteo de tiendas visibles con carga → se incluye en el TOTAL.
+  const tiendasCount = useMemo(
+    () => visibleStores.filter(cod => {
+      const d = calT[cod];
+      return ((d?.p || 0) + (d?.b || 0) + (d?.ch || 0)) > 0;
+    }).length,
+    [visibleStores, calT],
+  );
+  const totalConTiendas = `${totalParts} - ${tiendasCount} TIENDA${tiendasCount === 1 ? '' : 'S'}`;
+
   const handleCopy = () => {
-    const texto = `${value.trim()}\n\nTOTAL: ${totalParts}`;
+    const texto = `${value.trim()}\n\nTOTAL: ${totalConTiendas}`;
     navigator.clipboard?.writeText(texto).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -146,7 +156,7 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
       <div className="mt-2 flex items-center justify-between px-3.5 py-2.5 rounded-[12px] bg-knavy text-white"
         style={{ boxShadow: '0 2px 10px rgba(27,42,107,0.20)' }}>
         <span className="text-[11px] font-bold uppercase tracking-widest text-white/60">Total</span>
-        <span className="font-mono text-[15px] font-extrabold">{totalParts}</span>
+        <span className="font-mono text-[15px] font-extrabold">{totalConTiendas}</span>
       </div>
 
       <div className="text-[11px] text-kmuted mt-2 leading-relaxed space-y-0.5">
