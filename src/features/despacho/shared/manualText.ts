@@ -33,9 +33,11 @@ export function buildManualText(lines: ManualLine[]): {
     { p: 0, b: 0, c: 0, ch: 0 },
   );
   const n = withItems.length;
+  // En el TOTAL los chocolates se suman como bultos (igual que el Enrutador). En las
+  // líneas por tienda el CH sí se muestra aparte.
   const text = n
     ? withItems.map(l => `${l.cod}: ${partsOf(l.p, l.b, l.c, l.ch)}`).join('\n')
-      + `\n\nTOTAL: ${partsOf(tot.p, tot.b, tot.c, tot.ch)} - ${n} TIENDA${n === 1 ? '' : 'S'}`
+      + `\n\nTOTAL: ${partsOf(tot.p, tot.b + tot.ch, tot.c, 0)} - ${n} TIENDA${n === 1 ? '' : 'S'}`
     : '';
   return { text, withItems, tot };
 }

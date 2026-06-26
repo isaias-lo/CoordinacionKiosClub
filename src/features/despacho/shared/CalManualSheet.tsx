@@ -155,7 +155,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
 
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <span className="text-sm text-text-2">
-                {withItems.length} tiendas · {partsOf(tot.p, tot.b, tot.c, tot.ch) || '0'}
+                {withItems.length} tiendas · {partsOf(tot.p, tot.b + tot.ch, tot.c, 0) || '0'}
               </span>
               <button
                 onClick={copy}
