@@ -107,12 +107,16 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as {
       fecha: string;
+      table?: 'despacho_rm' | 'despacho_regiones';
       updates: { cod: string; conductor: string; patente: string; transporte: string; ruta: string; supervisor: string; vuelta?: number; pioneta_1?: string | null; pioneta_2?: string | null }[];
     };
 
     if (!body.fecha || !Array.isArray(body.updates) || body.updates.length === 0) {
       return NextResponse.json({ error: 'fecha y updates requeridos' }, { status: 400 });
     }
+
+    // Tabla destino del routing: RM/Costa → despacho_rm (default), Regiones → despacho_regiones.
+    const table = body.table === 'despacho_regiones' ? 'despacho_regiones' : 'despacho_rm';
 
     const sb = supabaseServer();
     let updatedDespacho = 0;
@@ -127,10 +131,10 @@ export async function PATCH(request: NextRequest) {
       if (seen.has(upd.cod)) continue;
       seen.add(upd.cod);
 
-      // 1. Actualizar despacho_rm por (fecha, cod) — solo filas no finalizadas.
+      // 1. Actualizar la tabla destino por (fecha, cod) — solo filas no finalizadas.
       // En carga extra (2ª vuelta) se protegen las filas ya despachadas en 1ª vuelta.
       const { data: rmRows } = await sb
-        .from('despacho_rm')
+        .from(table)
         .select('id, seguimiento, conductor, vuelta')
         .eq('fecha', body.fecha)
         .eq('cod', upd.cod);
@@ -140,7 +144,7 @@ export async function PATCH(request: NextRequest) {
 
       if (ids.length > 0) {
         const { error } = await sb
-          .from('despacho_rm')
+          .from(table)
           .update({
             conductor:   upd.conductor,
             patente:     upd.patente,
@@ -154,7 +158,7 @@ export async function PATCH(request: NextRequest) {
             ...(upd.pioneta_2  !== undefined && { pioneta_2:  upd.pioneta_2 }),
           })
           .in('id', ids);
-        if (error) console.error('[despacho-records PATCH] despacho_rm:', error.message);
+        if (error) console.error(`[despacho-records PATCH] ${table}:`, error.message);
         else updatedDespacho += ids.length;
       }
 

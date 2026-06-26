@@ -378,17 +378,9 @@ export function buildDespachoRMRecords(params: {
 // ID,FECHA,COD,TIENDA,TIPO,REGIMEN,TRANSPORTE,PATENTE,CARGA,REGION,COMUNA,
 // TIPO_COMUNA,PESO_KG,ALTO,LARGO,ANCHO,PESO_V,VENTANA,ESTADO,
 // N_PALLET_BULTO,FECHA_LLEGADA,CONDUCTOR,RUTA,SUPERVISOR,GUIA,VALOR
-export function guardarDespachoRMFn(params: {
-  fecha: string;
-  supervisor: string;
-  rutas: Ruta[];
-  tiendas: Record<string, TiendaInfo>;
-}): void {
-  const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
-  if (!records.length) return;
-
-  // Convertir objetos a filas para Google Sheets (26 cols — PATENTE entre TRANSPORTE y CARGA)
-  const rows = records.map(r => [
+// Convierte records a filas para Google Sheets (26 cols — PATENTE entre TRANSPORTE y CARGA).
+function recordsToSheetRows(records: RMRecord[]): (string | number)[][] {
+  return records.map(r => [
     r.id, r.fecha, r.cod, r.tienda, r.tipo, r.regimen, r.transporte, r.patente, r.carga,
     r.region, r.comuna, r.tipo_comuna,
     '', '', '', '', '',   // PESO_KG, ALTO, LARGO, ANCHO, PESO_V
@@ -396,12 +388,46 @@ export function guardarDespachoRMFn(params: {
     r.conductor, r.ruta, r.supervisor,
     '', '',               // GUIA, VALOR
   ]);
+}
 
+function writeDespachoSheet(sheet: 'DESPACHO RM' | 'DESPACHO REGIONES', rows: (string | number)[][]): void {
+  if (!rows.length) return;
   fetch('/api/sheets-write', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows, fuente: 'enrutador' }),
-  }).catch(err => console.error('[guardarDespachoRM]', err));
+    body:    JSON.stringify({ sheet, rows, fuente: 'enrutador' }),
+  }).catch(err => console.error(`[guardarDespacho ${sheet}]`, err));
+}
+
+export function guardarDespachoRMFn(params: {
+  fecha: string;
+  supervisor: string;
+  rutas: Ruta[];
+  tiendas: Record<string, TiendaInfo>;
+}): void {
+  const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
+  writeDespachoSheet('DESPACHO RM', recordsToSheetRows(records));
+}
+
+/**
+ * Registra el routing en DESPACHO RM y DESPACHO REGIONES según el grupo de cada tienda.
+ * RM/Costa → hoja DESPACHO RM; Regiones (fal) → hoja DESPACHO REGIONES. Antes todo iba a
+ * DESPACHO RM y la patente de las tiendas de Regiones se perdía.
+ */
+export function guardarDespachoSplitFn(params: {
+  fecha: string;
+  supervisor: string;
+  rutas: Ruta[];
+  tiendas: Record<string, TiendaInfo>;
+  grupoPorCod: (cod: string) => 'rm' | 'costa' | 'fal' | undefined;
+}): void {
+  const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
+  if (!records.length) return;
+  const rm: RMRecord[]  = [];
+  const reg: RMRecord[] = [];
+  for (const r of records) (params.grupoPorCod(r.cod) === 'fal' ? reg : rm).push(r);
+  writeDespachoSheet('DESPACHO RM', recordsToSheetRows(rm));
+  writeDespachoSheet('DESPACHO REGIONES', recordsToSheetRows(reg));
 }
 
 export function actualizarPionetasRMFn(params: { fecha: string; rutas: Ruta[] }): void {
