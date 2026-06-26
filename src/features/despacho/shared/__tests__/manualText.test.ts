@@ -31,13 +31,24 @@ describe('buildManualText', () => {
     expect(text).toBe('');
   });
 
-  it('incluye contenedores y chocolates en el total', () => {
+  it('en el TOTAL los chocolates se suman como bultos (CH aparte solo en las líneas)', () => {
+    const { text } = buildManualText([
+      { cod: '24SPP', p: 1, b: 1, c: 0, ch: 0 },
+      { cod: '27MCH', p: 1, b: 0, c: 0, ch: 1 },
+    ]);
+    // por línea: CH aparte
+    expect(text).toContain('27MCH: 1P - 1CH');
+    // en el total: 1B + 1CH = 2B
+    expect(text).toContain('TOTAL: 2P - 2B - 2 TIENDAS');
+  });
+
+  it('en el TOTAL los contenedores quedan aparte; el CH se suma a B', () => {
     const { text, tot } = buildManualText([
       { cod: 'CC1', p: 0, b: 0, c: 2, ch: 0 },
-      { cod: 'CH1', p: 0, b: 0, c: 0, ch: 3 },
+      { cod: 'CH1', p: 0, b: 1, c: 0, ch: 3 },
     ]);
-    expect(tot).toEqual({ p: 0, b: 0, c: 2, ch: 3 });
-    expect(text).toContain('TOTAL: 2C - 3CH - 2 TIENDAS');
+    expect(tot).toEqual({ p: 0, b: 1, c: 2, ch: 3 });
+    expect(text).toContain('TOTAL: 4B - 2C - 2 TIENDAS');
   });
 
   it('usa singular "TIENDA" cuando hay una sola', () => {
