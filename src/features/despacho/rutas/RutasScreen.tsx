@@ -15,7 +15,8 @@ import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
-import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoRMFn, actualizarPionetasRMFn } from './utils/sheets';
+import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
+import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
@@ -1053,16 +1054,21 @@ export default function RutasScreen() {
       const pioneta_2 = ruta.v.p2 ?? null;
       return ruta.ts.map(ts => ({ cod: ts.c, conductor, patente, transporte: empresa, ruta: rutaNum, supervisor, vuelta, pioneta_1, pioneta_2 }));
     });
-    if (routingUpdates.length > 0) {
+    // #9: separar por grupo → RM/Costa a despacho_rm, Regiones a despacho_regiones
+    // (antes todo iba a despacho_rm y la patente de Regiones se perdía).
+    const porTabla = splitRoutingPorTabla(routingUpdates, c => calT[c]?.g as Grupo | undefined);
+    (['despacho_rm', 'despacho_regiones'] as const).forEach(table => {
+      const updates = porTabla[table];
+      if (updates.length === 0) return;
       fetch('/api/despacho-records', {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ fecha, updates: routingUpdates }),
-      }).catch(e => console.error('[despacho-records PATCH]', e));
-    }
+        body:    JSON.stringify({ fecha, table, updates }),
+      }).catch(e => console.error(`[despacho-records PATCH ${table}]`, e));
+    });
 
-    // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM en Google Sheets
-    guardarDespachoRMFn({ fecha, supervisor, rutas: results.rutas, tiendas });
+    // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM y DESPACHO REGIONES en Sheets
+    guardarDespachoSplitFn({ fecha, supervisor, rutas: results.rutas, tiendas, grupoPorCod: c => calT[c]?.g as Grupo | undefined });
     actualizarPionetasRMFn({ fecha, rutas: results.rutas });
 
     // 4. SECONDARY (fire-and-forget): escribe en HISTORIAL de Google Sheets directamente
@@ -1088,19 +1094,17 @@ export default function RutasScreen() {
       body:    JSON.stringify({ sheet: 'HISTORIAL', rows: historialRows }),
     }).catch(e => console.error('[historial-sheets]', e));
 
-    // 5. SECONDARY (fire-and-forget): escribe en CONTROL DESPACHO (upsert por fecha::cod)
+    // 5. SECONDARY (fire-and-forget): escribe en CONTROL DESPACHO (upsert por fecha::cod).
+    // #9: incluir las pendientes de 2ª vuelta (patente vacía) para que cuadre el conteo.
     const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
     const diaCD = DIAS[new Date(fecha + 'T12:00').getDay()];
-    const controlMap = new Map<string, { p: number; b: number; v1: string; v2: string }>();
-    results.rutas.forEach(ruta => {
-      const isV2 = ruta.v.tlbd, pat = ruta.v.p;
-      ruta.ts.forEach(t => {
-        const ex = controlMap.get(t.c);
-        if (!ex) controlMap.set(t.c, { p: t.p, b: t.b + ((t as { ch?: number }).ch ?? 0), v1: isV2 ? '' : pat, v2: isV2 ? pat : '' });
-        else if (isV2) ex.v2 = pat; else ex.v1 = pat;
-      });
-    });
-    const controlRows = Array.from(controlMap.entries()).map(([cod, d]) => [fechaDDMM, diaCD, cod, d.p, d.b, d.v1, d.v2]);
+    const rutasControl: RutaControl[] = results.rutas.map(ruta => ({
+      patente: ruta.v.p,
+      tlbd:    !!ruta.v.tlbd,
+      ts:      ruta.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
+    }));
+    const pendientesControl: PendienteControl[] = pendientesV2.map(s => ({ c: s.c, p: s.p, b: s.b, ch: s.ch }));
+    const controlRows = buildControlRows(fechaDDMM, diaCD, rutasControl, pendientesControl);
     if (controlRows.length > 0) {
       fetch('/api/sheets-write', {
         method:  'POST',
