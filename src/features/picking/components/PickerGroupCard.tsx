@@ -178,7 +178,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 { tipo: 'CH' as PickerType, label: 'Chocolates'    },
               ])
               .filter(({ tipo }) => {
-                if (sectionFilter === 'chocolates') return tipo === 'CH';
+                // Sección Chocolates: solo Pallets y Chocolates (no Bultos ni Contenedores).
+                if (sectionFilter === 'chocolates') return tipo === 'P' || tipo === 'CH';
                 if (sectionFilter === 'aseo-comida' || sectionFilter === 'hogar') return tipo !== 'CH';
                 return true; // 'all': show all
               })
