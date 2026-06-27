@@ -454,12 +454,27 @@ export default function InputSection({
               className="w-full h-[42px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none transition-colors placeholder:text-kmuted/50"
             />
           </div>
-          <input
-            type="date"
-            value={fecha}
-            onChange={e => onFecha(e.target.value)}
-            className="w-full h-[38px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-kred focus:outline-none transition-colors"
-          />
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-kmuted">Fecha de salida</span>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => onFecha(hoy)}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-[7px] transition-colors ${fecha === hoy ? 'bg-knavy text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
+                  Hoy
+                </button>
+                <button type="button" onClick={() => onFecha(manana)}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-[7px] transition-colors ${fecha === manana ? 'bg-kred text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
+                  Mañana
+                </button>
+              </div>
+            </div>
+            <input
+              type="date"
+              value={fecha}
+              onChange={e => onFecha(e.target.value)}
+              className="w-full h-[40px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none transition-colors"
+            />
+          </div>
         </div>
 
         {/* Header + Paradas */}
