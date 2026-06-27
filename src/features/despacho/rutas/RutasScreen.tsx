@@ -1095,15 +1095,21 @@ export default function RutasScreen() {
     }).catch(e => console.error('[historial-sheets]', e));
 
     // 5. SECONDARY (fire-and-forget): escribe en CONTROL DESPACHO (upsert por fecha::cod).
-    // #9: incluir las pendientes de 2ª vuelta (patente vacía) para que cuadre el conteo.
+    // #9: las pendientes (lo NO ruteado) se calculan AQUÍ desde results.ts − results.rutas, así
+    // funciona sin importar el modo (auto/manual/arrastrar). Antes solo se poblaban en modo 'cal',
+    // por eso al asignar arrastrando no aparecían en CONTROL DESPACHO ni se guardaban.
     const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
     const diaCD = DIAS[new Date(fecha + 'T12:00').getDay()];
+    const asignadasReg = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)));
+    const pendientesReg = results.ts
+      .filter(t => !asignadasReg.has(t.c) && !t.c.startsWith('_P'))
+      .map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? (t as { ch?: number }).ch ?? 0) }));
     const rutasControl: RutaControl[] = results.rutas.map(ruta => ({
       patente: ruta.v.p,
       tlbd:    !!ruta.v.tlbd,
       ts:      ruta.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
     }));
-    const pendientesControl: PendienteControl[] = pendientesV2.map(s => ({ c: s.c, p: s.p, b: s.b, ch: s.ch }));
+    const pendientesControl: PendienteControl[] = pendientesReg.map(s => ({ c: s.c, p: s.p, b: s.b, ch: s.ch }));
     const controlRows = buildControlRows(fechaDDMM, diaCD, rutasControl, pendientesControl);
     if (controlRows.length > 0) {
       fetch('/api/sheets-write', {
@@ -1113,13 +1119,9 @@ export default function RutasScreen() {
       }).catch(e => console.error('[control-despacho]', e));
     }
 
-    // 6. Actualizar pendientes de 2ª vuelta: remover tiendas ya despachadas
-    if (pendientesV2.length > 0) {
-      const despachadas = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)));
-      const remaining = pendientesV2.filter(s => !despachadas.has(s.c));
-      setPendientesV2(remaining);
-      savePendientesV2(fecha, remaining);
-    }
+    // 6. Guardar las pendientes de 2ª vuelta (cross-device, keyed by fecha) — lo NO ruteado.
+    setPendientesV2(pendientesReg);
+    savePendientesV2(fecha, pendientesReg);
 
     return true; // guardado primario OK → habilita encadenar con manifiestos
   }
