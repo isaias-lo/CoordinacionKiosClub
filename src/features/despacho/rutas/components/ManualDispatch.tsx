@@ -18,9 +18,6 @@ interface Props {
   asignaciones: Record<string, StoreTag[]>;
   onAsignaciones: (a: Record<string, StoreTag[]>) => void;
   onCalcular: () => void;
-  conductores?: string[];
-  onConductorChange: (idx: number, nombre: string) => void;
-  onAgregarConductor: (nombre: string) => void;
   onEliminarParada?: (id: string) => void;
 }
 
@@ -41,13 +38,8 @@ export default function ManualDispatch({
   paradas = [],
   asignaciones, onAsignaciones,
   onCalcular,
-  conductores = [],
-  onConductorChange,
-  onAgregarConductor,
   onEliminarParada,
 }: Props) {
-  const [conductorEditando, setConductorEditando] = useState<string | null>(null);
-  const [nuevoConductor,    setNuevoConductor]    = useState('');
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
   const scrollRaf    = useRef<number | null>(null);
@@ -344,7 +336,6 @@ export default function ManualDispatch({
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {flotaDisp.map((v) => {
-          const realIdx = flota.findIndex(fv => fv.p === v.p);
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
           const isOver  = dragOver === v.p;
@@ -367,105 +358,51 @@ export default function ManualDispatch({
               onDragLeave={handleDragLeave}
               onClick={() => { if (isSelected && dragging) ejecutarDrop(v.p, dragging); }}
             >
-              {/* ── Cabecera: patente + conductor ── */}
-              <div className="px-3 pt-3 pb-2.5 border-b border-black/[0.06]">
-                <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <span className="font-mono font-bold text-[20px] text-ktext leading-none tracking-tight">{v.p}</span>
-                  <div className="flex gap-1 flex-wrap justify-end mt-0.5">
+              {/* ── Cabecera: patente + badges (el conductor se asigna en FLOTA → Gestionar) ── */}
+              <div className="px-2.5 pt-2 pb-1.5 border-b border-black/[0.06]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-bold text-[17px] text-ktext leading-none tracking-tight">{v.p}</span>
+                  <div className="flex gap-1 flex-wrap justify-end">
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded-full font-bold">2ª v.</span>}
                     {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded-full font-semibold">Portón</span>}
                     {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded-full font-semibold">❄ Frío</span>}
                   </div>
                 </div>
-                {v.t && <div className="text-[10px] text-kmuted/60 mb-2 truncate">{v.t}</div>}
-                {conductorEditando === v.p ? (
-                  <div className="flex flex-col gap-1">
-                    <select
-                      autoFocus value={v.ch || ''}
-                      onChange={e => {
-                        if (e.target.value === '___nuevo___') { setNuevoConductor('__mostrar_input__'); }
-                        else { onConductorChange(realIdx, e.target.value); setConductorEditando(null); }
-                      }}
-                      onBlur={() => { if (nuevoConductor !== '__mostrar_input__') setConductorEditando(null); }}
-                      className="text-[11px] font-semibold text-kred bg-white border border-kred rounded px-2 py-1 w-full appearance-none cursor-pointer"
-                    >
-                      <option value="">Sin conductor</option>
-                      {conductores.map(c => <option key={c} value={c}>{c}</option>)}
-                      <option value="___nuevo___">+ Agregar nuevo</option>
-                    </select>
-                    {nuevoConductor === '__mostrar_input__' && (
-                      <input
-                        type="text" placeholder="Nombre conductor" autoFocus
-                        onChange={e => setNuevoConductor(e.target.value)}
-                        onKeyDown={e => {
-                          const target = e.target as HTMLInputElement;
-                          if (e.key === 'Enter' && target.value.trim()) {
-                            onAgregarConductor(target.value.trim());
-                            onConductorChange(realIdx, target.value.trim());
-                            setConductorEditando(null);
-                            setNuevoConductor('');
-                          }
-                        }}
-                        onBlur={e => {
-                          if (nuevoConductor !== '__mostrar_input__' && e.target.value.trim()) {
-                            onAgregarConductor(e.target.value.trim());
-                            onConductorChange(realIdx, e.target.value.trim());
-                          }
-                          setConductorEditando(null);
-                          setNuevoConductor('');
-                        }}
-                        className="text-[11px] border border-kred rounded px-2 py-1 w-full"
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConductorEditando(v.p)}
-                    className="flex items-center gap-2 w-full text-left group rounded-[8px] py-1 hover:bg-kred/[0.05] transition-colors"
-                  >
-                    <span className="text-[13px] shrink-0">👤</span>
-                    <span className="text-[12px] font-semibold text-kmuted group-hover:text-kred truncate transition-colors">
-                      {v.ch || 'Asignar conductor'}
-                    </span>
-                  </button>
-                )}
+                {v.t && <div className="text-[10px] text-kmuted/60 mt-0.5 truncate">{v.t}</div>}
               </div>
 
-              {/* ── Métricas: carga + km ── */}
-              <div className="px-3 py-2.5 border-b border-black/[0.06] space-y-2.5">
+              {/* ── Métricas: carga + km (compacto) ── */}
+              <div className="px-2.5 py-1.5 border-b border-black/[0.06] space-y-1">
                 {/* Capacidad */}
                 <div>
-                  <div className="flex items-baseline justify-between mb-1.5">
+                  <div className="flex items-baseline justify-between mb-1">
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-[22px] font-bold leading-none ${m.overCap ? 'text-red-500' : 'text-ktext'}`}>{m.tp}</span>
-                      <span className="text-[12px] text-kmuted font-semibold">/ {v.c} p</span>
+                      <span className={`text-[16px] font-bold leading-none ${m.overCap ? 'text-red-500' : 'text-ktext'}`}>{m.tp}</span>
+                      <span className="text-[11px] text-kmuted font-semibold">/ {v.c} p</span>
+                      {m.tb > 0 && <span className="text-[10px] text-kmuted">· {m.tb}b</span>}
                     </div>
-                    <span className={`text-[13px] font-bold ${m.overCap ? 'text-red-500' : m.pct > 0.85 ? 'text-amber-500' : 'text-green-600'}`}>
+                    <span className={`text-[12px] font-bold ${m.overCap ? 'text-red-500' : m.pct > 0.85 ? 'text-amber-500' : 'text-green-600'}`}>
                       {Math.round(m.pct * 100)}%{m.overCap && ' ⚠'}
                     </span>
                   </div>
-                  <div className="h-[7px] bg-kbg rounded-full overflow-hidden mb-1.5">
+                  <div className="h-[5px] bg-kbg rounded-full overflow-hidden">
                     <div className={`h-full rounded-full transition-all duration-300 ${pctColor}`} style={{ width: `${Math.min(m.pct * 100, 100)}%` }} />
                   </div>
-                  {m.tb > 0 && <div className="text-[11px] text-kmuted">{m.tb} bulto{m.tb !== 1 ? 's' : ''}</div>}
                 </div>
                 {/* KM estimado */}
                 <div className="flex items-center gap-2">
                   {m.kmEst > 0 ? (
-                    <>
-                      <span className="text-[15px] font-bold text-ktext leading-none">~{m.kmEst} km</span>
-                      <span className="text-[11px] text-kmuted">· {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
-                    </>
+                    <span className="text-[11px] text-kmuted"><span className="font-bold text-ktext">~{m.kmEst} km</span> · {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
                   ) : (
-                    <span className="text-[11px] text-kmuted/40 italic">Sin tiendas aún</span>
+                    <span className="text-[10px] text-kmuted/40 italic">Sin tiendas aún</span>
                   )}
                 </div>
               </div>
 
               {/* ── Tiendas asignadas ── */}
-              <div className="px-3 pb-3 pt-2.5 flex flex-wrap gap-[5px] min-h-[56px] flex-1">
+              <div className="px-2.5 pb-2 pt-1.5 flex flex-wrap gap-[5px] min-h-[42px] flex-1">
                 {stores.length === 0 ? (
-                  <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[44px] ${isOver ? 'border-kred/50 bg-kred/[0.04]' : 'border-black/[0.12]'}`}>
+                  <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-kred/50 bg-kred/[0.04]' : 'border-black/[0.12]'}`}>
                     <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-kred' : 'text-kmuted/50'}`}>
                       {isOver || isSelected ? '↓ Suelta aquí' : 'Arrastra tiendas aquí'}
                     </span>
