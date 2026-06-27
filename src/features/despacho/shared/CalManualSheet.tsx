@@ -41,7 +41,7 @@ interface Props {
  *    Se hace overlay de lo cargado en esta pantalla para que vaya sin lag.
  */
 export function CalManualSheet({ open, onClose, title, lines }: Props) {
-  const [tab, setTab]       = useState<'cal' | 'man'>('cal');
+  const [tab, setTab]       = useState<'cal' | 'man'>('man'); // abre en Manual (se usa más que el calendario)
   const [copied, setCopied] = useState(false);
   const [activeGroups, setActiveGroups] = useState<Set<ManualGrupo>>(new Set(['rm', 'costa', 'fal']));
   const [globalLines, setGlobalLines] = useState<ManualLine[]>([]);
@@ -121,8 +121,8 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
         </div>
 
         <div className="flex gap-2 mb-4 flex-shrink-0">
-          <TabBtn id="cal" icon={<Calendar size={16} />}      label="Calendario" />
           <TabBtn id="man" icon={<ClipboardList size={16} />} label="Manual" count={withItems.length} />
+          <TabBtn id="cal" icon={<Calendar size={16} />}      label="Calendario" />
         </div>
 
         {tab === 'cal' ? (

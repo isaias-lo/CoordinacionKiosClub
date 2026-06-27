@@ -1874,9 +1874,9 @@ export function TiendasPage() {
             <button
               onClick={() => setShowCalManual(true)}
               className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
-              title="Calendario general / Manual para copiar">
+              title="Manual para copiar / Calendario general">
               <ClipboardList size={16} />
-              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Cal / Manual</span>
+              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Manual / Cal</span>
             </button>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
