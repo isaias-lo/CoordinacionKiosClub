@@ -233,14 +233,29 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true, updated: updateData.length > 0 ? seenSheets.size : 0 });
 
       } else {
-        // ── Bodega path: append new rows to Sheets + upsert Supabase ──
-        await gs.spreadsheets.values.append({
-          spreadsheetId:    SPREADSHEET_ID,
-          range:            `${sheet}!A1`,
-          valueInputOption: 'USER_ENTERED',
-          insertDataOption: 'INSERT_ROWS',
-          requestBody:      { values: rows },
+        // ── Bodega path: append SOLO filas nuevas (idempotente por id en col A) ──
+        // Evita duplicar filas en la hoja al re-registrar el mismo despacho (p.ej. el
+        // "Reabrir" de Santiago). El id es estable (usa la fecha de despacho), igual que
+        // el upsert de Supabase. Las filas ya existentes se dejan intactas en la hoja
+        // (no se pisa el ruteo que el Enrutador haya escrito); su data se actualiza igual
+        // en Supabase (upsert por id, más abajo).
+        const idColRes = await gs.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range:         `${sheet}!A:A`,
         });
+        const sheetIdSet = new Set<string>(
+          (idColRes.data.values || []).map(r => String(r?.[0] ?? '')).filter(Boolean),
+        );
+        const newSheetRows = rows.filter(r => !sheetIdSet.has(String(r[0])));
+        if (newSheetRows.length > 0) {
+          await gs.spreadsheets.values.append({
+            spreadsheetId:    SPREADSHEET_ID,
+            range:            `${sheet}!A1`,
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody:      { values: newSheetRows },
+          });
+        }
 
         const ids = records.map(r => r.id);
         const { data: existing } = await sb.from(table).select('id').in('id', ids);
