@@ -121,11 +121,13 @@ function TabIcon({ Icon, from, to, shadow }: { Icon: LIcon; from: string; to: st
   );
 }
 
+// Íconos en tono navy (como el header), sobrios. Se distinguen por forma de ícono +
+// estado activo, no por color.
 const MODES: { id: string; Icon: LIcon; label: string; from: string; to: string; shadow: string }[] = [
-  { id: 'drag',  Icon: Target,     label: 'DESPACHO', from: '#FF5252', to: '#C42020', shadow: 'rgba(196,32,32,0.4)'   },
-  { id: 'cal',   Icon: Calculator, label: 'CALCULAR', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.45)'  },
-  { id: 'man',   Icon: PenLine,    label: 'MANUAL',   from: '#8E8E93', to: '#636366', shadow: 'rgba(99,99,102,0.35)'  },
-  { id: 'flota', Icon: Truck,      label: 'FLOTA',    from: '#059669', to: '#065F46', shadow: 'rgba(6,95,70,0.40)'    },
+  { id: 'drag',  Icon: Target,     label: 'DESPACHO', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
+  { id: 'cal',   Icon: Calculator, label: 'CALCULAR', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
+  { id: 'man',   Icon: PenLine,    label: 'MANUAL',   from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
+  { id: 'flota', Icon: Truck,      label: 'FLOTA',    from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
 ];
 
 /* ── Unified group filter pill ───────────────────────────────────── */
@@ -271,8 +273,8 @@ export default function InputSection({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={onOpenParadas}
-                    style={{ boxShadow: '0 1px 4px rgba(212,43,43,0.18)' }}
-                    className="flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-kred text-white text-[12px] font-bold"
+                    style={{ boxShadow: '0 1px 4px rgba(27,42,107,0.18)' }}
+                    className="flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-knavy text-white text-[12px] font-bold"
                   >
                     <span className="text-[16px] leading-none">+</span>
                     <span>Parada</span>
@@ -397,8 +399,7 @@ export default function InputSection({
                     <div className="p-3">
                       <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                         paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
-                        onCalcular={onCalcularManual} conductores={conductores} onConductorChange={onConductorChange}
-                        onAgregarConductor={onAgregarConductor} onEliminarParada={onEliminarParada} />
+                        onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} />
                     </div>
                   )}
                   {modo === 'cal' && (
@@ -489,8 +490,8 @@ export default function InputSection({
           </div>
           <button
             onClick={onOpenParadas}
-            style={{ boxShadow: '0 1px 4px rgba(212,43,43,0.18)' }}
-            className="flex-shrink-0 flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-kred text-white text-[12px] font-bold hover:bg-kred/90 active:scale-95 transition-all"
+            style={{ boxShadow: '0 1px 4px rgba(27,42,107,0.18)' }}
+            className="flex-shrink-0 flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-knavy text-white text-[12px] font-bold hover:bg-knavy/90 active:scale-95 transition-all"
           >
             <span className="text-[16px] leading-none">+</span>
             <span>Parada</span>
@@ -683,9 +684,6 @@ export default function InputSection({
                     asignaciones={manualAsignaciones}
                     onAsignaciones={onAsignaciones}
                     onCalcular={onCalcularManual}
-                    conductores={conductores}
-                    onConductorChange={onConductorChange}
-                    onAgregarConductor={onAgregarConductor}
                     onEliminarParada={onEliminarParada}
                   />
                 </div>
