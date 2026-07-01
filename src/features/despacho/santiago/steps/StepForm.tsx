@@ -100,12 +100,12 @@ interface ResumenEditState {
 ═══════════════════════════════════════ */
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
-  despachoP, despachoB, despachoC, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
+  despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
-  despachoP?: number; despachoB?: number; despachoC?: number;
+  despachoP?: number; despachoB?: number; despachoC?: number; despachoCH?: number;
   hasGuide?: boolean; storeStatus?: 'none' | 'partial' | 'complete'; storeDoneOps?: number; storeTotalOps?: number;
   onSelect: () => void;
   onAddToday?: () => void;
@@ -115,10 +115,12 @@ function TiendaGridCard({
   const expP     = despachoP ?? 0;
   const expB     = despachoB ?? 0;
   const expC     = despachoC ?? 0;
+  const expCH    = despachoCH ?? 0;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
   const remP = Math.max(0, expP - palletCount);
   const remB = Math.max(0, expB - boxCount);
   const remC = Math.max(0, expC - contenedorCount);
+  const remCH = Math.max(0, expCH - chocolateCount);
   return (
     <div
       onClick={onSelect}
@@ -152,6 +154,7 @@ function TiendaGridCard({
         {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
         {remB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
         {remC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
+        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.45)', background: 'rgba(146,64,14,0.05)', borderColor: 'rgba(146,64,14,0.25)' }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
         {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
         {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
@@ -1366,6 +1369,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
+                  despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[t.cod]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
@@ -1402,6 +1406,7 @@ export function StepForm() {
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
+                  despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[t.cod]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
