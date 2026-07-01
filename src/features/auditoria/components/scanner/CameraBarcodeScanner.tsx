@@ -4,7 +4,13 @@ import { useState, useRef, useEffect } from 'react';
 
 // BarcodeDetector global types are declared in AuditoriaScreen.tsx (same compilation unit)
 
-export function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string) => boolean; onClose: () => void }) {
+export function CameraBarcodeScanner({ onScan, onClose, onManualEntry, manualEntryLabel }: {
+  onScan: (raw: string) => boolean;
+  onClose: () => void;
+  /** Si se provee, el estado sin cámara (iOS <17.4) ofrece volver a digitar manualmente. */
+  onManualEntry?: () => void;
+  manualEntryLabel?: string;
+}) {
   const videoRef      = useRef<HTMLVideoElement>(null);
   const animRef       = useRef<number>(0);
   const streamRef     = useRef<MediaStream | null>(null);
@@ -63,9 +69,10 @@ export function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string
       setStatus('error');
       setErrorType('no-api');
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const manualHint = onManualEntry ? ' Digita el número de la etiqueta o usa la pistola lectora.' : ' Usa la pistola lectora.';
       setErrorMsg(isIOS
-        ? 'Requiere iOS 17.4+ con Safari actualizado. Actualiza iOS o usa la pistola lectora.'
-        : 'Tu navegador no soporta escaneo por cámara. Actualiza Chrome o usa la pistola lectora.');
+        ? `Este iPhone no soporta escaneo por cámara (requiere iOS 17.4+ con Safari actualizado).${manualHint}`
+        : `Tu navegador no soporta escaneo por cámara (actualiza Chrome).${manualHint}`);
       return;
     }
 
@@ -176,6 +183,14 @@ export function CameraBarcodeScanner({ onScan, onClose }: { onScan: (raw: string
               className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-white cursor-pointer"
               style={{ background: 'rgba(37,99,235,0.7)', border: '1px solid rgba(37,99,235,0.5)' }}>
               📸 Tomar foto del código
+            </button>
+          )}
+          {/* Sin cámara (iOS <17.4): volver a digitar el número manualmente */}
+          {errorType === 'no-api' && onManualEntry && (
+            <button onClick={onManualEntry}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-white cursor-pointer"
+              style={{ background: 'rgba(37,99,235,0.75)', border: '1px solid rgba(37,99,235,0.5)' }}>
+              {manualEntryLabel ?? '✏️ Digitar el número manualmente'}
             </button>
           )}
           <button onClick={onClose}
