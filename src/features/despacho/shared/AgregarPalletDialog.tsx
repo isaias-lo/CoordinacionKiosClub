@@ -60,6 +60,8 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
       <CameraBarcodeScanner
         onScan={(raw) => { setScanning(false); setRef(raw); void claim(raw); return true; }}
         onClose={() => setScanning(false)}
+        onManualEntry={() => setScanning(false)}
+        manualEntryLabel="✏️ Digitar el número de la etiqueta"
       />
     );
   }
