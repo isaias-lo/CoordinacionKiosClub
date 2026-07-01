@@ -7,14 +7,18 @@ interface CombineItemsModalProps {
   tgtLabel: string;
   mergedGuia?: string;
   mergedValor?: number;
+  /** [P3] Peso pre-sumado (src+tgt). Se muestra en el campo, editable. */
+  initialPeso?: number;
+  /** [P3] Si es false, no muestra ni exige altura (Contenedor: altura fija). Default true. */
+  askAltura?: boolean;
   onConfirm: (peso: number, alto: number) => void;
   onCancel: () => void;
 }
 
-export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, mergedValor, onConfirm, onCancel }: CombineItemsModalProps) {
-  const [peso, setPeso] = useState('');
+export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, mergedValor, initialPeso, askAltura = true, onConfirm, onCancel }: CombineItemsModalProps) {
+  const [peso, setPeso] = useState(initialPeso != null && initialPeso > 0 ? String(initialPeso) : '');
   const [alto, setAlto] = useState('');
-  const canConfirm = parseFloat(peso) > 0 && parseFloat(alto) > 0;
+  const canConfirm = parseFloat(peso) > 0 && (!askAltura || parseFloat(alto) > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={onCancel}>
@@ -45,17 +49,22 @@ export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, me
             <label className="block text-[11px] font-bold text-text-3 uppercase tracking-wider mb-1">Nuevo peso (kg)</label>
             <input type="number" value={peso} onChange={e => setPeso(e.target.value)} min="0" step="0.1"
               className="w-full border border-border rounded-xl px-3 py-2.5 text-[14px] focus:outline-none focus:border-navy" placeholder="ej. 35" autoFocus />
+            {initialPeso != null && initialPeso > 0 && (
+              <p className="text-[10px] text-text-3 mt-1">Sumado automáticamente ({initialPeso} kg) — ajústalo si hace falta.</p>
+            )}
           </div>
-          <div>
-            <label className="block text-[11px] font-bold text-text-3 uppercase tracking-wider mb-1">Nueva altura (cm)</label>
-            <input type="number" value={alto} onChange={e => setAlto(e.target.value)} min="0" step="1"
-              className="w-full border border-border rounded-xl px-3 py-2.5 text-[14px] focus:outline-none focus:border-navy" placeholder="ej. 120" />
-          </div>
+          {askAltura && (
+            <div>
+              <label className="block text-[11px] font-bold text-text-3 uppercase tracking-wider mb-1">Nueva altura (cm)</label>
+              <input type="number" value={alto} onChange={e => setAlto(e.target.value)} min="0" step="1"
+                className="w-full border border-border rounded-xl px-3 py-2.5 text-[14px] focus:outline-none focus:border-navy" placeholder="ej. 120" />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3">
           <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-[13px] font-bold text-text-2 cursor-pointer bg-white hover:bg-gray-50">Cancelar</button>
-          <button onClick={() => canConfirm && onConfirm(parseFloat(peso), parseFloat(alto))} disabled={!canConfirm}
+          <button onClick={() => canConfirm && onConfirm(parseFloat(peso), askAltura ? parseFloat(alto) : 0)} disabled={!canConfirm}
             className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white cursor-pointer transition-all disabled:opacity-40"
             style={{ background: '#10B981' }}>
             Combinar
