@@ -18,7 +18,7 @@ import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
-import { pushSessionState, fetchSessionState, subscribeToSessionState } from '../../../lib/userSessionState';
+import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
@@ -138,6 +138,8 @@ export default function RutasScreen() {
   const [fecha,      setFecha]      = useState(todayStr);
   const [manualText, setManualText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  // Días PASADOS con asignaciones en el Enrutador pero sin registrar (aviso de recuperación).
+  const [unregisteredDays, setUnregisteredDays] = useState<string[]>([]);
 
   const [results, setResults]           = useState<Results | null>(null);
   const kmTotalRealRef                  = useRef<number | null>(null);
@@ -453,16 +455,18 @@ export default function RutasScreen() {
     });
   }, [calT]);
 
-  // ── Fetch + subscribe manualAsignaciones (cross-device) ──────────
+  // ── Fetch + subscribe manualAsignaciones (cross-device, por fecha) ──────────
+  // Depende de `fecha`: al cambiar el día (p. ej. a uno pasado que quedó sin registrar),
+  // recarga las asignaciones de ESE día. El guard isManualInitRef evita que el push
+  // debounced pise el día recién cargado con las asignaciones del día anterior.
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    isManualInitRef.current = false;
 
-    fetchSessionState('rutas').then(remote => {
-      if (remote && typeof remote === 'object') {
-        const remoteJson = JSON.stringify(remote);
-        setManualAsignaciones(remote as Record<string, StoreItem[]>);
-        lastPushedManualRef.current = remoteJson;
-      }
+    fetchSessionState('rutas', fecha).then(remote => {
+      const remoteObj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
+      setManualAsignaciones(remoteObj);
+      lastPushedManualRef.current = JSON.stringify(remoteObj);
       isManualInitRef.current = true;
     }).catch(() => { isManualInitRef.current = true; });
 
@@ -472,11 +476,11 @@ export default function RutasScreen() {
       if (remoteJson === lastPushedManualRef.current) return;
       lastPushedManualRef.current = remoteJson;
       setManualAsignaciones(state as Record<string, StoreItem[]>);
-    });
+    }, undefined, fecha);
 
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fecha]);
 
   // ── Debounced push manualAsignaciones → Supabase ─────────────────
   useEffect(() => {
@@ -486,12 +490,17 @@ export default function RutasScreen() {
     if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
     debounceManualRef.current = setTimeout(() => {
       lastPushedManualRef.current = json;
-      pushSessionState('rutas', manualAsignaciones, userId).catch(() => {});
+      pushSessionState('rutas', manualAsignaciones, userId, fecha).catch(() => {});
     }, 800);
     return () => {
       if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
     };
-  }, [manualAsignaciones, userId]);
+  }, [manualAsignaciones, userId, fecha]);
+
+  // ── Días pasados con asignaciones sin registrar (aviso de recuperación) ──
+  useEffect(() => {
+    fetchUnregisteredRutasDays().then(setUnregisteredDays).catch(() => {});
+  }, []);
 
   // ── Sync manual text → calT ───────────────────────────────────────
   useEffect(() => {
@@ -1123,6 +1132,10 @@ export default function RutasScreen() {
     setPendientesV2(pendientesReg);
     savePendientesV2(fecha, pendientesReg);
 
+    // 7. Marca este día como REGISTRADO → apaga el aviso de "sin registrar" para esta fecha.
+    void pushSessionState('rutas_reg', { at: new Date().toISOString(), supervisor }, userId, fecha);
+    setUnregisteredDays(prev => prev.filter(d => d !== fecha));
+
     return true; // guardado primario OK → habilita encadenar con manifiestos
   }
 
@@ -1252,6 +1265,35 @@ export default function RutasScreen() {
                 🗑 Descartar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso: días pasados con asignaciones que quedaron SIN registrar (recuperación) */}
+      {unregisteredDays.length > 0 && (
+        <div className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <span className="text-[18px] leading-none mt-0.5">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-bold text-amber-900">
+                {unregisteredDays.length === 1
+                  ? 'Un día quedó con asignaciones sin registrar'
+                  : `${unregisteredDays.length} días quedaron con asignaciones sin registrar`}
+              </div>
+              <div className="text-[12px] text-amber-700 mt-0.5">
+                Las asignaciones se guardaron pero no se creó el manifiesto. Ábrelas y dale “Registrar y crear manifiesto”.
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {unregisteredDays.map(d => (
+                  <button key={d} onClick={() => setFecha(d)}
+                    className="px-2.5 py-1 rounded-lg text-[12px] font-bold bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all">
+                    📅 {d.split('-').reverse().join('/')} — abrir
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={() => setUnregisteredDays([])} title="Ocultar"
+              className="text-amber-500 hover:text-amber-700 text-[16px] leading-none flex-shrink-0">✕</button>
           </div>
         </div>
       )}
