@@ -1800,6 +1800,45 @@ export function StepForm() {
                       <div className="w-2 h-2 rounded-full bg-success" />
                       <span className="text-[11px] text-success font-bold">Agregado</span>
                     </div>
+                    {/* P1: Sumar a Pallet directo en la card guardada (B/CH) sin abrir ✎ */}
+                    {(row.tipo === 'Bulto' || row.tipo === 'Chocolate') && (() => {
+                      const palletTargets = formRows.filter(r => r.id !== row.id && r.tipo === 'Pallet');
+                      if (palletTargets.length === 0) return null;
+                      const getRowLabel = (r: typeof row) => {
+                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
+                        return r.tipo === 'Pallet' ? `P${idx}` : r.tipo === 'Contenedor' ? `C${idx}` : r.tipo === 'Chocolate' ? `CH${idx}` : `B${idx}`;
+                      };
+                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                      return (
+                        <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: 'rgba(37,99,235,0.30)' }}>
+                          {isExpanded ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Sumar a Pallet…</div>
+                              <div className="flex flex-wrap gap-1">
+                                {palletTargets.map(pl => (
+                                  <button key={`sum-${pl.id}`}
+                                    onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl))}
+                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                    style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                                    → {getRowLabel(pl)}
+                                  </button>
+                                ))}
+                                <button onClick={() => setFormMergeState(null)}
+                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
+                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
+                              style={{ border: '1.5px dashed rgba(37,99,235,0.30)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                              SUMAR A PALLET
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               }
