@@ -369,11 +369,6 @@ export function TiendasPage() {
   const allTodayCods  = [...baseTodayCods, ...extraCods.filter(c => !baseTodayCods.includes(c))]
     .filter(c => !removedCods.includes(c));
 
-  const todayNames = Object.values(TIENDAS)
-    .filter(t => allTodayCods.includes(t.cod))
-    .sort((a, b) => allTodayCods.indexOf(a.cod) - allTodayCods.indexOf(b.cod))
-    .map(t => t.name);
-
   const items   = selectedTienda ? (dispatchData[selectedTienda] || []) : [];
   const pdfInfo = selectedTienda ? state.pdfData[selectedTienda] : undefined;
   const hasPdf  = !!pdfInfo;
@@ -1710,21 +1705,6 @@ export function TiendasPage() {
             placeholder="Buscar…"
             className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-red placeholder:text-text-3" />
         </div>
-
-        {/* HOY chips — desktop only; on mobile the grid below already shows status */}
-        {todayNames.length > 0 && (
-          <div className="hidden lg:block px-2 py-2.5 border-b flex-shrink-0 bg-[rgba(211,47,47,0.08)] border-[rgba(211,47,47,0.20)]">
-            <div className="font-barlow-condensed text-[20px] font-extrabold uppercase tracking-widest text-red mb-2 text-center" style={{ letterSpacing: '0.18em' }}>HOY</div>
-            <div className="flex flex-wrap gap-1 justify-center">
-              {todayNames.map(name => (
-                <span key={name} onClick={() => select(name)}
-                  className={`px-2.5 py-1 rounded-full text-[14px] font-bold font-barlow-condensed cursor-pointer border transition-all ${selectedTienda === name ? 'bg-red text-white border-red' : 'bg-[rgba(211,47,47,0.12)] text-red border-[rgba(211,47,47,0.30)]'}`}>
-                  {TIENDAS[name]?.cod ? formatCod(TIENDAS[name].cod) : ''}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Toolbar: Multi-PDF — desktop only */}
         <div className="hidden lg:flex px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 gap-1.5">
