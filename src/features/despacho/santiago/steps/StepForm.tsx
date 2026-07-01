@@ -1364,7 +1364,7 @@ export function StepForm() {
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
-                  chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
+                  chocolateCount={Math.max(tI.filter(i => i.tipo === 'Chocolate').length, pkSlots.filter(s => s.tipo === 'CH').length)}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   hasGuide={!!guides[t.cod]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
                   onSelect={() => selectTienda(t)}
@@ -1400,7 +1400,7 @@ export function StepForm() {
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
-                  chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
+                  chocolateCount={Math.max(tI.filter(i => i.tipo === 'Chocolate').length, pkSlots.filter(s => s.tipo === 'CH').length)}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   hasGuide={!!guides[t.cod]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
                   onSelect={() => selectTienda(t)}
