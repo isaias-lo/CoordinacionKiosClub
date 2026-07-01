@@ -719,16 +719,36 @@ export default function RutasScreen() {
   }
 
   // ── Segunda vuelta: pendientes Supabase ──────────────────────────
-  function savePendientesV2(
+  // ACUMULA en vez de sobrescribir: mantiene las pendientes previas de esa fecha que NO se
+  // asignaron en esta ronda, les une las nuevas no asignadas (counts frescos) y quita las que
+  // se asignaron. Así un registro parcial (p. ej. la 2ª vuelta de un subconjunto) NO borra las
+  // demás pendientes del día; y al asignarlas por fin, dejan de ser pendientes.
+  async function savePendientesV2(
     fechaDespacho: string,
-    stores: { c: string; p: number; b: number; ch: number }[],
-  ): void {
+    noAsignadas: { c: string; p: number; b: number; ch: number }[],
+    asignadas: Set<string>,
+  ): Promise<void> {
+    const byCod = new Map<string, { c: string; p: number; b: number; ch: number }>();
+    try {
+      const { data } = await supabase
+        .from('shared_session_state')
+        .select('state')
+        .eq('fecha', fechaDespacho)
+        .eq('fuente', 'segunda_vuelta')
+        .maybeSingle();
+      const prev = ((data?.state as { stores?: { c: string; p: number; b: number; ch: number }[] } | null)?.stores) ?? [];
+      for (const s of prev) if (!asignadas.has(s.c)) byCod.set(s.c, s); // previas que siguen sin asignar
+    } catch {}
+    for (const s of noAsignadas) byCod.set(s.c, s); // nuevas no asignadas (counts frescos)
+    const stores = [...byCod.values()];
+
     const payload = { savedAt: new Date().toISOString(), fecha: fechaDespacho, stores };
     try { localStorage.setItem('despacho_pendientes_v2', JSON.stringify(payload)); } catch {}
     supabase
       .from('shared_session_state')
       .upsert({ fecha: fechaDespacho, fuente: 'segunda_vuelta', state: payload }, { onConflict: 'fecha,fuente' })
       .then(({ error }) => { if (error) console.error('[pendientes-v2]', error.message); });
+    setPendientesV2(stores);
   }
 
   useEffect(() => {
@@ -757,6 +777,37 @@ export default function RutasScreen() {
       } catch {}
     })();
   }, [fecha]);
+
+  // [Punto 2] Al abrir una fecha PASADA, cargar en el pool TODAS las tiendas de bodega de ese
+  // día (despacho_sesion), no solo las asignadas. Así las que quedaron sin asignar (p. ej. las
+  // que se apartaron para 2ª vuelta) aparecen y se pueden asignar/registrar de forma retroactiva.
+  // Solo AGREGA tiendas que no estén ya en calT (no pisa las asignaciones cargadas).
+  useEffect(() => {
+    if (fecha >= todayStr()) return; // solo días pasados
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchCounts(fecha).catch(() => [] as SesionRow[]);
+      if (cancelled || !rows.length) return;
+      const dia = getDia(fecha);
+      const calDia = (cal[dia] || cal.LU || {}) as Record<string, string[]>;
+      const grpOf = (c: string): string => {
+        for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === c)) return g;
+        return 'rm';
+      };
+      setCalT(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const row of rows) {
+          const c  = norm(row.tienda_cod);
+          const p  = row.pallets, b = row.bultos, cc = row.contenedores ?? 0, ch = row.chocolates ?? 0;
+          if (p === 0 && b === 0 && cc === 0 && ch === 0) continue;
+          if (!next[c]) { next[c] = { on: true, p, b, c: cc, ch, g: grpOf(c) }; changed = true; }
+        }
+        return changed ? next : prev;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [fecha, cal]);
 
   function handleCargarPendientes() {
     if (!pendientesV2.length) return;
@@ -833,10 +884,7 @@ export default function RutasScreen() {
     const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
     const noAsignadas = ts.filter(t => !asignadas.has(t.c) && !t.c.startsWith('_P'));
     const pendV2 = noAsignadas.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? 0) }));
-    setPendientesV2(pendV2);
-    if (pendV2.length > 0) {
-      savePendientesV2(fecha, pendV2);
-    }
+    void savePendientesV2(fecha, pendV2, asignadas);
   }
 
   // ── Calculate manual routes ───────────────────────────────────────
@@ -1137,8 +1185,8 @@ export default function RutasScreen() {
     }
 
     // 6. Guardar las pendientes de 2ª vuelta (cross-device, keyed by fecha) — lo NO ruteado.
-    setPendientesV2(pendientesReg);
-    savePendientesV2(fecha, pendientesReg);
+    //    Acumula con las previas y quita las que se asignaron en esta ronda (no sobrescribe).
+    void savePendientesV2(fecha, pendientesReg, asignadasReg);
 
     // 7. Marca este día como REGISTRADO → apaga el aviso de "sin registrar" para esta fecha.
     void pushSessionState('rutas_reg', { at: new Date().toISOString(), supervisor }, userId, fecha);
