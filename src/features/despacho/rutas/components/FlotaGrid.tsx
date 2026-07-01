@@ -39,6 +39,18 @@ const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-b
 export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota, onPionetaChange }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+
+  // Buscador por patente + "seleccionar todos" aplicado a lo VISIBLE (respeta el filtro).
+  const q = search.trim().toUpperCase();
+  const visibles = flota.map((v, i) => ({ v, i })).filter(({ v }) => !q || v.p.toUpperCase().includes(q));
+  const todosVisiblesOn = visibles.length > 0 && visibles.every(({ v }) => v.on);
+  const toggleTodosVisibles = () => {
+    // Si todos los visibles están activos → desactivarlos; si no → activar los que estén apagados.
+    for (const { v, i } of visibles) {
+      if (todosVisiblesOn ? v.on : !v.on) onToggle(i);
+    }
+  };
   const [nuevoVehiculo, setNuevoVehiculo] = useState<NuevoVehiculoState>({
     p: '', c: 10, b: 20, t: '', ch: '', tel: '',
     porton: null, refrigerado: false, on: true, tlbd: false, empresa: '', p1: '', p2: '',
@@ -183,9 +195,32 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
         💡 Los mismos autos pueden hacer <strong className="text-knavy">1ª y 2ª vuelta</strong>. Marca un vehículo como &quot;2ª Vuelta&quot; cuando regrese al CD para asignarle las tiendas pendientes.
       </div>
 
+      {/* ── Buscador de patente + seleccionar todos ── */}
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          type="text" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar patente…"
+          className="flex-1 h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[13px] font-semibold text-ktext uppercase placeholder:normal-case placeholder:text-kmuted focus:border-kred focus:outline-none"
+        />
+        {search && (
+          <button type="button" onClick={() => setSearch('')}
+            className="h-[38px] px-3 rounded-[10px] bg-kbg border border-black/[0.09] text-[12px] font-bold text-kmuted">✕</button>
+        )}
+        <button
+          type="button" onClick={toggleTodosVisibles} disabled={visibles.length === 0}
+          className="h-[38px] px-3 rounded-[10px] bg-knavy text-white text-[12px] font-bold whitespace-nowrap disabled:opacity-40"
+          title={q ? 'Aplica a los resultados del buscador' : 'Aplica a toda la flota'}
+        >
+          {todosVisiblesOn ? '☐ Ninguno' : '☑ Seleccionar todos'}
+        </button>
+      </div>
+
       {/* ── Grid de tarjetas ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {flota.map((v, i) => (
+        {visibles.length === 0 && (
+          <div className="col-span-full text-center text-[13px] text-kmuted py-6">Sin patentes que coincidan con “{search}”.</div>
+        )}
+        {visibles.map(({ v, i }) => (
           <VehicleCard
             key={v.p} v={v} idx={i}
             conductores={conductores}
