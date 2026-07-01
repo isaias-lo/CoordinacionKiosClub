@@ -45,6 +45,36 @@ export default {
           2: 'var(--color-border-2)',
         },
 
+        /* ── shadcn primitive tokens — backed by CSS vars (index.css) ── */
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
+        },
+        secondary: {
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
+        },
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+
         /* ── Status ── */
         success: '#34C759',
         warn:    '#FF9500',
