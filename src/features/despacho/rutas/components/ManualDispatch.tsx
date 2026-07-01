@@ -42,6 +42,7 @@ export default function ManualDispatch({
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
+  const [selected,          setSelected]          = useState<Set<string>>(new Set()); // P10b: multi-selección del pool
   const scrollRaf    = useRef<number | null>(null);
   const touchState   = useRef<{ active: boolean; item: StoreTag | null; from: string | null; ghost: HTMLElement | null }>({ active: false, item: null, from: null, ghost: null });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,7 +77,57 @@ export default function ManualDispatch({
 
   const flotaDisp = flota.filter(v => v.on);
 
+  // P10b: mover todas las tiendas seleccionadas a una patente (o de vuelta al pool) de una vez
+  function toggleSelect(code: string) {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(code)) n.delete(code); else n.add(code);
+      return n;
+    });
+  }
+  function clearSel() { setSelected(new Set()); }
+
+  function moveSelectedTo(target: string) {
+    const codes = [...selected];
+    if (codes.length === 0) return;
+    const newAsig: Record<string, StoreTag[]> = {};
+    Object.keys(asignaciones).forEach(plate => {
+      newAsig[plate] = (asignaciones[plate] || []).filter(s => !codes.includes(s.c));
+    });
+    const findTag = (code: string): StoreTag | null => {
+      const inPool = pool.find(t => t.c === code);
+      if (inPool) return inPool;
+      const inParada = paradasPool.find(p => p.id === code);
+      if (inParada) return { c: inParada.id, p: inParada.p, b: inParada.b };
+      for (const plate of Object.keys(asignaciones)) {
+        const f = (asignaciones[plate] || []).find(s => s.c === code);
+        if (f) return f;
+      }
+      return null;
+    };
+    const tags = codes.map(findTag).filter((t): t is StoreTag => !!t);
+    if (target !== 'pool') {
+      const vehicle = flota.find(v => v.p === target);
+      const cap     = vehicle?.c || 10;
+      const current = newAsig[target] || [];
+      const usedP   = current.reduce((s, t) => s + t.p, 0);
+      const addP    = tags.reduce((s, t) => s + t.p, 0);
+      if (usedP + addP > cap) {
+        alert(`⚠️ ${vehicle?.p} admite máximo ${cap} pallets. Ya tiene ${usedP}p y quieres sumar ${addP}p. Deselecciona algunas.`);
+        return;
+      }
+      const existing = new Set(current.map(s => s.c));
+      newAsig[target] = [...current, ...tags.filter(t => !existing.has(t.c))];
+    }
+    onAsignaciones(newAsig);
+    clearSel();
+    setDragging(null);
+    setDragOver(null);
+  }
+
   function ejecutarDrop(target: string, item: DraggingState) {
+    // Si arrastras una tienda que está en la selección múltiple, mueve todo el grupo
+    if (selected.size > 0 && selected.has(item.c)) { moveSelectedTo(target); return; }
     const { from, ...store } = item;
     const newAsig = { ...asignaciones };
     if (from !== 'pool') {
@@ -255,6 +306,7 @@ export default function ManualDispatch({
   const totalEstKm    = flotaDisp.reduce((s, v) => s + getMetrics(v.p, v).kmEst, 0);
   const tiendasCount  = tiendasActivas.length + paradasConGps.length;
   const isSelected    = dragging !== null;
+  const hasSelection  = selected.size > 0;
 
   return (
     <div className="space-y-3" ref={containerRef}>
@@ -295,6 +347,13 @@ export default function ManualDispatch({
               {pool.length > 0 ? `${pool.length} restantes` : '✓ Todas asignadas'}
             </span>
           </div>
+          {hasSelection && (
+            <div className="px-4 py-2 bg-kred/[0.05] border-b border-kred/15 flex items-center gap-2 text-[12px]">
+              <span className="font-bold text-kred">{selected.size} seleccionada{selected.size > 1 ? 's' : ''}</span>
+              <span className="text-kmuted">— toca una patente para mover todas a la vez</span>
+              <button onClick={e => { e.stopPropagation(); clearSel(); }} className="ml-auto text-kmuted underline font-semibold">Limpiar</button>
+            </div>
+          )}
           <div className="p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start">
             {pool.length === 0 && paradasPool.length === 0 ? (
               <div className="flex items-center gap-2 text-green-600">
@@ -307,6 +366,8 @@ export default function ManualDispatch({
                   <StoreTagComp
                     key={t.c} store={t} tiendas={tiendas}
                     isDragging={dragging?.c === t.c}
+                    selected={selected.has(t.c)}
+                    onToggleSelect={() => toggleSelect(t.c)}
                     onDragStart={e => handleDragStart(e, t, 'pool')}
                     onDragEnd={handleDragEnd}
                     onTouchStart={e => handleTouchStart(e, t, 'pool')}
@@ -317,6 +378,8 @@ export default function ManualDispatch({
                   <ParadaTagComp
                     key={p.id} parada={p}
                     isDragging={dragging?.c === p.id}
+                    selected={selected.has(p.id)}
+                    onToggleSelect={() => toggleSelect(p.id)}
                     onDragStart={e => handleDragStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
                     onDragEnd={handleDragEnd}
                     onTouchStart={e => handleTouchStart(e, { c: p.id, p: p.p, b: p.b }, 'pool')}
@@ -356,7 +419,10 @@ export default function ManualDispatch({
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
-              onClick={() => { if (isSelected && dragging) ejecutarDrop(v.p, dragging); }}
+              onClick={() => {
+                if (hasSelection) moveSelectedTo(v.p);
+                else if (isSelected && dragging) ejecutarDrop(v.p, dragging);
+              }}
             >
               {/* ── Cabecera: patente + badges (el conductor se asigna en FLOTA → Gestionar) ── */}
               <div className="px-2.5 pt-2 pb-1.5 border-b border-black/[0.06]">
@@ -404,7 +470,7 @@ export default function ManualDispatch({
                 {stores.length === 0 ? (
                   <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-kred/50 bg-kred/[0.04]' : 'border-black/[0.12]'}`}>
                     <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-kred' : 'text-kmuted/50'}`}>
-                      {isOver || isSelected ? '↓ Suelta aquí' : 'Arrastra tiendas aquí'}
+                      {isOver || isSelected ? '↓ Suelta aquí' : hasSelection ? '↓ Toca para mover selección' : 'Arrastra tiendas aquí'}
                     </span>
                   </div>
                 ) : (
@@ -492,8 +558,9 @@ export default function ManualDispatch({
   );
 }
 
-function ParadaTagComp({ parada, isDragging, onDragStart, onDragEnd, onTouchStart, onRemove }: {
+function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove }: {
   parada: Parada; isDragging: boolean;
+  selected?: boolean; onToggleSelect?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
   onTouchStart: (e: React.TouchEvent) => void;
@@ -506,10 +573,22 @@ function ParadaTagComp({ parada, isDragging, onDragStart, onDragEnd, onTouchStar
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
       className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] touch-manipulation ${isDragging
         ? 'opacity-30 scale-95'
-        : isEntrega
-          ? 'bg-blue-50 border-blue-200 text-blue-700 active:bg-blue-100'
-          : 'bg-orange-50 border-orange-200 text-orange-700 active:bg-orange-100'}`}
+        : selected
+          ? `ring-2 ring-kred/40 ${isEntrega ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-orange-100 border-orange-400 text-orange-800'}`
+          : isEntrega
+            ? 'bg-blue-50 border-blue-200 text-blue-700 active:bg-blue-100'
+            : 'bg-orange-50 border-orange-200 text-orange-700 active:bg-orange-100'}`}
     >
+      {onToggleSelect && (
+        <button
+          onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          draggable={false}
+          title="Seleccionar para mover en grupo"
+          className={`w-[16px] h-[16px] rounded-full border flex items-center justify-center text-[9px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-kred border-kred text-white' : 'bg-white border-black/25 text-transparent'}`}
+        >✓</button>
+      )}
       <span className="text-[11px] font-bold">{isEntrega ? '↓' : '↑'}</span>
       <span className="text-[11px] font-semibold truncate max-w-[80px]">{short}</span>
       {(parada.p > 0 || parada.b > 0) && (
@@ -523,8 +602,9 @@ function ParadaTagComp({ parada, isDragging, onDragStart, onDragEnd, onTouchStar
   );
 }
 
-function StoreTagComp({ store, tiendas, isDragging, onDragStart, onDragEnd, onTouchStart, onRemove }: {
+function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove }: {
   store: StoreTag; tiendas: Record<string, TiendaInfo>; isDragging: boolean;
+  selected?: boolean; onToggleSelect?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
   onTouchStart: (e: React.TouchEvent) => void;
@@ -537,9 +617,21 @@ function StoreTagComp({ store, tiendas, isDragging, onDragStart, onDragEnd, onTo
       style={!isDragging ? { boxShadow: '0 1px 3px rgba(212,43,43,0.15)' } : undefined}
       className={`flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] cursor-grab select-none transition-all border min-h-[38px] touch-manipulation ${isDragging
         ? 'opacity-30 scale-95 bg-kred/[0.05] border-kred/20'
-        : 'bg-kred/[0.07] border-kred/[0.25] text-kred active:bg-kred/[0.15]'}`}
+        : selected
+          ? 'bg-kred/[0.15] border-kred text-kred ring-2 ring-kred/40'
+          : 'bg-kred/[0.07] border-kred/[0.25] text-kred active:bg-kred/[0.15]'}`}
       title={info ? `${info.n} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b` : `${store.c} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b`}
     >
+      {onToggleSelect && (
+        <button
+          onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          draggable={false}
+          title="Seleccionar para mover en grupo"
+          className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-kred border-kred text-white' : 'bg-white border-kred/40 text-transparent'}`}
+        >✓</button>
+      )}
       <span className="font-mono font-bold text-[13px]">{formatCod(store.c)}</span>
       <span className="text-[11px] text-kred/60 font-semibold">{store.p}p</span>
       {(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 && (
