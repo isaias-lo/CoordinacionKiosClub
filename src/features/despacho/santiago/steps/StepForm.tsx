@@ -203,8 +203,8 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, onBack, swipe }: {
-  tienda: TiendaSantiago; pallets: number; bultos: number; onBack: () => void;
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe }: {
+  tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
 }) {
   return (
@@ -229,6 +229,16 @@ function TiendaFormHeader({ tienda, pallets, bultos, onBack, swipe }: {
           <div className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{bultos}</div>
           <div className="text-[9px] text-white/50 uppercase tracking-widest">B</div>
         </div>
+        <div className="text-center">
+          <div className="font-barlow-condensed text-[22px] font-extrabold text-[#E9A178] leading-none">{chocolates}</div>
+          <div className="text-[9px] text-white/50 uppercase tracking-widest">CH</div>
+        </div>
+        {contenedores > 0 && (
+          <div className="text-center">
+            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#C4A3E8] leading-none">{contenedores}</div>
+            <div className="text-[9px] text-white/50 uppercase tracking-widest">C</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -612,6 +622,8 @@ export function StepForm() {
   const tiendaItems        = currentTienda ? (items[currentTienda.cod] || []) : [];
   const tiendaPallets      = tiendaItems.filter(i => i.tipo === 'Pallet').length;
   const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;
+  const tiendaChocolates   = tiendaItems.filter(i => i.tipo === 'Chocolate').length;
+  const tiendaContenedores = tiendaItems.filter(i => i.tipo === 'Contenedor').length;
 
   // #6 — líneas del "Manual" (lo cargado en esta pantalla). El calendario del sheet es
   // el general de Picking (CalendarioColumnas), no una lista por zona.
@@ -1787,7 +1799,7 @@ export function StepForm() {
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
@@ -2135,7 +2147,7 @@ export function StepForm() {
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
           {editingIdx !== null && (
