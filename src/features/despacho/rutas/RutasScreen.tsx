@@ -758,6 +758,37 @@ export default function RutasScreen() {
     })();
   }, [fecha]);
 
+  // [Punto 2] Al abrir una fecha PASADA, cargar en el pool TODAS las tiendas de bodega de ese
+  // día (despacho_sesion), no solo las asignadas. Así las que quedaron sin asignar (p. ej. las
+  // que se apartaron para 2ª vuelta) aparecen y se pueden asignar/registrar de forma retroactiva.
+  // Solo AGREGA tiendas que no estén ya en calT (no pisa las asignaciones cargadas).
+  useEffect(() => {
+    if (fecha >= todayStr()) return; // solo días pasados
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchCounts(fecha).catch(() => [] as SesionRow[]);
+      if (cancelled || !rows.length) return;
+      const dia = getDia(fecha);
+      const calDia = (cal[dia] || cal.LU || {}) as Record<string, string[]>;
+      const grpOf = (c: string): string => {
+        for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === c)) return g;
+        return 'rm';
+      };
+      setCalT(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const row of rows) {
+          const c  = norm(row.tienda_cod);
+          const p  = row.pallets, b = row.bultos, cc = row.contenedores ?? 0, ch = row.chocolates ?? 0;
+          if (p === 0 && b === 0 && cc === 0 && ch === 0) continue;
+          if (!next[c]) { next[c] = { on: true, p, b, c: cc, ch, g: grpOf(c) }; changed = true; }
+        }
+        return changed ? next : prev;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [fecha, cal]);
+
   function handleCargarPendientes() {
     if (!pendientesV2.length) return;
     const txt = pendientesV2.map(s => `${s.c} ${s.p}P${s.b ? ' ' + s.b + 'B' : ''}`).join('\n');
