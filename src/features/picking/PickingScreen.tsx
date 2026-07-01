@@ -261,6 +261,20 @@ export function PickingScreen() {
     }, 500);
   }, []);
 
+  // Al renombrar un picker, propaga el nombre a los slots YA creados de ese grupo. Su
+  // picker_label queda congelado al crearse; sin esto, un equipo sin el nombre en sesión
+  // imprimía el nombre viejo del slot (caso 39PSB: se imprimió "Fabian" tras renombrar a
+  // "Zervens"). El UPDATE se propaga por realtime a los demás equipos.
+  const renamePickerSlots = useCallback((stateKey: string, name: string) => {
+    if (!name.trim()) return;
+    supabase.from('picking_pallets')
+      .update({ picker_label: name })
+      .eq('date', todayISO())
+      .eq('state_key', stateKey)
+      .eq('is_active', true)
+      .then(({ error }) => { if (error) console.error('[picking rename slots]', error.message); });
+  }, []);
+
   const [printOnlyStore, setPrintOnlyStore]       = useState<string | null>(null);
   const [printOnlyStateKey, setPrintOnlyStateKey] = useState<string | null>(null);
   const [doPrint, setDoPrint]                     = useState(false);
@@ -1441,6 +1455,7 @@ export function PickingScreen() {
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
+                                renamePickerSlots(group.stateKey, name);
                               }}
                               onTipoPalletsChange={(tipo, n) => {
                                 const current = palletsByTipoAndStateKey[group.stateKey]?.[tipo] ?? 0;
