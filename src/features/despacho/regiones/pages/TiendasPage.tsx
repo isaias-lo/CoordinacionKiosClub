@@ -15,6 +15,7 @@ import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
+import { sumPeso } from '../../shared/combineUtils';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -987,21 +988,46 @@ export function TiendasPage() {
     setFormMergeState(null);
   };
 
-  // Sumar un Bulto/Chocolate a un Pallet: el bulto se elimina (item + slot),
-  // el pallet permanece (lo absorbe físicamente).
-  const sumarBultoAPallet = (bultoRowId: string, palletLabel: string) => {
+  // Sumar un Bulto/Chocolate a un Pallet/Contenedor: el bulto se elimina (item + slot) y
+  // su peso se SUMA al destino (P3 #4). El destino conserva su altura. Sin modal ni altura.
+  const sumarBultoAPallet = (bultoRowId: string, palletLabel: string, palletRowId: string) => {
     if (!selectedTienda) return;
-    const bultoRow = formRows.find(r => r.id === bultoRowId);
-    if (!bultoRow) return;
+    const bultoRow  = formRows.find(r => r.id === bultoRowId);
+    const palletRow = formRows.find(r => r.id === palletRowId);
+    if (!bultoRow || !palletRow) return;
+    const bultoPeso  = bultoRow.savedItem?.peso  ?? (parseFloat(bultoRow.peso)  || 0);
+    const pesoActual = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
+    const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
+
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
-    if (bultoRow.savedItem) {
-      const currentItems = dispatchData[selectedTienda] || [];
-      const idx = currentItems.findIndex(i => i.pkg === bultoRow.savedItem!.pkg && i.orden === bultoRow.savedItem!.orden);
-      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
+
+    // Contexto: un solo UPDATE_ITEMS — quita el bulto guardado (si lo estaba) y suma el peso
+    // al pallet guardado (si lo está). Evita el doble-dispatch con estado desactualizado.
+    const sameItem = (i: DispatchItem, s?: DispatchItem) => !!s && i.pkg === s.pkg && i.orden === s.orden;
+    if (bultoRow.savedItem || palletRow.savedItem) {
+      const cur = dispatchData[selectedTienda] || [];
+      const newItems = cur
+        .filter(i => !sameItem(i, bultoRow.savedItem))
+        .map(i => sameItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
+      dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
     }
-    setFormRows(prev => prev.filter(r => r.id !== bultoRowId));
+
+    // Form: quitar el bulto y reflejar el nuevo peso en el pallet (card + savedItem)
+    setFormRows(prev => prev
+      .filter(r => r.id !== bultoRowId)
+      .map(r => r.id === palletRowId
+        ? { ...r, peso: String(nuevoPeso), savedItem: r.savedItem ? { ...r.savedItem, peso: nuevoPeso } : r.savedItem }
+        : r));
+
+    // BD: actualizar el peso del slot del destino (si tiene slot de picking)
+    const targetSlotId = palletRow.pickingSlotId ?? palletRow.savedItem?.pickingSlotId;
+    if (targetSlotId) {
+      supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', targetSlotId)
+        .then(({ error }) => { if (error) console.error('[sumarBultoAPallet peso]', error.message); });
+    }
+
     setFormMergeState(null);
-    showToast(`Sumado a ${palletLabel}`, '#2563EB');
+    showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
   };
 
   const absorbPickingSlot = (tiendaName: string, type: 'p' | 'b' | 'c' | 'ch') => {
@@ -1228,7 +1254,7 @@ export function TiendasPage() {
                                 <div className="flex flex-wrap gap-1">
                                   {palletTargets.map(pl => (
                                     <button key={`sum-${pl.id}`}
-                                      onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl))}
+                                      onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
                                       className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                       style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
                                       → {getRowLabel(pl)}
@@ -1245,6 +1271,48 @@ export function TiendasPage() {
                                 className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
                                 style={{ border: '1.5px dashed rgba(37,99,235,0.30)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
                                 SUMAR A PALLET
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* P3 #1: Unificar directo en la card guardada (pallet/contenedor) sin abrir ✎ */}
+                      {(row.pkg === 'pallet' || row.pkg === 'contenedor') && (() => {
+                        const combineTargets = formRows.filter(r => r.id !== row.id && r.pkg === row.pkg);
+                        if (combineTargets.length === 0) return null;
+                        const getRowLabel = (r: typeof row) => {
+                          const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+                          return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                        };
+                        const col = row.pkg === 'contenedor'
+                          ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
+                          : { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)', solid: 'rgba(37,99,235,0.45)' };
+                        const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                        return (
+                          <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: col.border }}>
+                            {isExpanded ? (
+                              <div className="flex flex-col gap-1">
+                                <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Unificar con…</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {combineTargets.map(other => (
+                                    <button key={`uni-${other.id}`}
+                                      onClick={() => setFormMergeState({ sourceId: row.id, targetId: other.id })}
+                                      className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                      style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
+                                      {getRowLabel(other)}
+                                    </button>
+                                  ))}
+                                  <button onClick={() => setFormMergeState(null)}
+                                    className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
+                                    style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                                className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
+                                style={{ border: `1.5px dashed ${col.border}`, color: col.color, background: col.bg }}>
+                                UNIFICAR
                               </button>
                             )}
                           </div>
@@ -1370,7 +1438,7 @@ export function TiendasPage() {
                               <div className="flex flex-wrap gap-1">
                                 {palletTargets.map(pl => (
                                   <button key={`sum-${pl.id}`}
-                                    onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl))}
+                                    onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                     style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
                                     → {getRowLabel(pl)}
@@ -2063,11 +2131,16 @@ export function TiendasPage() {
           const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
           return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
         };
+        // [P3] Peso pre-sumado (src+tgt); Contenedor no pregunta altura (fija).
+        const pesoOf = (r: typeof sourceRow) => r.savedItem?.peso ?? (parseFloat(r.peso) || 0);
+        const summedPeso = sumPeso(pesoOf(sourceRow), pesoOf(targetRow));
         return (
           <CombineItemsModal
             pkgLabel={sourceRow.pkg === 'pallet' ? 'Pallets' : sourceRow.pkg === 'box' ? 'Bultos' : 'Contenedores'}
             srcLabel={getLabel(sourceRow)}
             tgtLabel={getLabel(targetRow)}
+            initialPeso={summedPeso}
+            askAltura={sourceRow.pkg !== 'contenedor'}
             onConfirm={(peso, alto) => { void handleFormMergeConfirm(peso, alto); }}
             onCancel={() => setFormMergeState(null)}
           />
