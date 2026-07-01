@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Moon, Sun, ClipboardCheck, Truck } from 'lucide-react';
+import { Moon, Sun, ClipboardCheck, Truck, Star, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { useTheme } from '@/context/ThemeContext';
 import { MODULE_GROUPS } from '@/config/routes';
+import { Card } from '@/components/ui/card';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 function getInitials(name: string): string {
@@ -30,17 +31,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-3 mt-7 mb-2.5 flex items-center gap-2">
       {children}
       <span className="flex-1 h-px bg-border" />
-    </div>
-  );
-}
-
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={`bg-card border border-border rounded-card ${className}`}
-      style={{ boxShadow: 'var(--shadow-card)' }}
-    >
-      {children}
     </div>
   );
 }
@@ -224,9 +214,10 @@ export default function PerfilPage() {
       >
         <button
           onClick={() => router.back()}
-          className="text-white/60 hover:text-white transition-colors text-[13px] font-medium px-3 py-1.5 rounded-full border border-white/10 hover:border-white/20"
+          className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-[13px] font-medium px-3 py-1.5 rounded-full border border-white/10 hover:border-white/20"
         >
-          ← Volver
+          <ArrowLeft size={14} />
+          Volver
         </button>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[22px] font-bold text-white tracking-widest uppercase leading-none">Mi Perfil</div>
@@ -300,7 +291,7 @@ export default function PerfilPage() {
             {profile?.role === 'admin' ? (
               <Card className="px-4 py-3 flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: '#2563EB20' }}>
-                  <span className="text-[14px]">⭐</span>
+                  <Star size={14} style={{ color: '#2563EB' }} />
                 </div>
                 <div>
                   <div className="text-[13px] font-semibold text-text">Acceso completo</div>

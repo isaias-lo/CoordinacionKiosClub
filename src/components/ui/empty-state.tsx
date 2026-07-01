@@ -26,17 +26,14 @@ export function EmptyState({
       ].join(' ')}
     >
       {Icon && (
-        <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-          style={{ background: 'rgba(26,37,80,0.07)' }}
-        >
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-accent">
           <Icon size={26} className="text-text-3" strokeWidth={1.5} />
         </div>
       )}
 
       <h3
-        className="font-barlow-condensed font-bold uppercase tracking-wide mb-1"
-        style={{ fontSize: 16, color: '#1A2550' }}
+        className="font-barlow-condensed font-bold uppercase tracking-wide mb-1 text-foreground"
+        style={{ fontSize: 16 }}
       >
         {title}
       </h3>
