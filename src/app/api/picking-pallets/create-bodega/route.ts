@@ -31,40 +31,56 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = supabaseServer();
-
-    // Siguiente seq = cantidad de slots activos del mismo tipo + 1
-    const { data: existing } = await sb
-      .from('picking_pallets')
-      .select('id')
-      .eq('date', body.date)
-      .eq('store_cod', body.store_cod)
-      .eq('tipo', body.tipo)
-      .eq('is_active', true);
-
-    const seq = (existing?.length ?? 0) + 1;
     const [yyyy, mm, dd] = body.date.split('-');
     const stamp = `${dd}${mm}${yyyy}`;
-    const canonical_id = buildCanonical(body.tipo, seq, body.store_cod, stamp);
 
-    const { data, error } = await sb
-      .from('picking_pallets')
-      .insert({
-        date:         body.date,
-        store_cod:    body.store_cod,
-        state_key:    `${body.store_cod}__bodega`,
-        picker_label: 'Bodega',
-        tipo:         body.tipo,
-        contenido:    body.contenido ?? 'hogar',
-        refs:         '',
-        seq,
-        canonical_id,
-        is_active:    true,
-      })
-      .select('id, store_cod, tipo, contenido, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
-      .single();
+    // El índice único (date, store_cod, tipo, seq) WHERE is_active rechaza seq duplicados.
+    // Al agregar CH rápido, varias requests calculaban el MISMO seq (read-then-insert no atómico)
+    // → los inserts fallaban y los CH "no se agregaban". Reintentamos: recalculamos el siguiente
+    // seq (max+1, robusto ante slots sin seq) y reinsertamos si hay conflicto de unicidad.
+    const MAX_RETRIES = 8;
+    let lastError: { message: string } | null = null;
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data });
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const { data: top } = await sb
+        .from('picking_pallets')
+        .select('seq')
+        .eq('date', body.date)
+        .eq('store_cod', body.store_cod)
+        .eq('tipo', body.tipo)
+        .eq('is_active', true)
+        .not('seq', 'is', null)
+        .order('seq', { ascending: false })
+        .limit(1);
+
+      const seq = ((top?.[0]?.seq as number | undefined) ?? 0) + 1;
+      const canonical_id = buildCanonical(body.tipo, seq, body.store_cod, stamp);
+
+      const { data, error } = await sb
+        .from('picking_pallets')
+        .insert({
+          date:         body.date,
+          store_cod:    body.store_cod,
+          state_key:    `${body.store_cod}__bodega`,
+          picker_label: 'Bodega',
+          tipo:         body.tipo,
+          contenido:    body.contenido ?? 'hogar',
+          refs:         '',
+          seq,
+          canonical_id,
+          is_active:    true,
+        })
+        .select('id, store_cod, tipo, contenido, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
+        .single();
+
+      if (!error) return NextResponse.json({ data });
+
+      // 23505 = unique_violation → otro request tomó este seq; recalcular y reintentar.
+      lastError = error;
+      if (error.code !== '23505') break;
+    }
+
+    return NextResponse.json({ error: lastError?.message ?? 'No se pudo crear el slot' }, { status: 500 });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
