@@ -1,5 +1,5 @@
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
-import type { TodayStore, StoreGroupKey, PickerStatRow } from './picking-types';
+import type { TodayStore, StoreGroupKey, PickerStatRow, PalletSlot } from './picking-types';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 export function todayISO(): string { return new Date().toISOString().slice(0, 10); }
@@ -7,6 +7,38 @@ export function todayISO(): string { return new Date().toISOString().slice(0, 10
 export function stampFromISO(isoDate: string): string {
   const [yyyy, mm, dd] = isoDate.split('-');
   return `${dd}${mm}${yyyy}`;
+}
+
+/**
+ * Un slot en el bucket "Sin asignar" (op de Odoo sin responsable). Bajo el flujo normal el
+ * supervisor asigna un picker ANTES de imprimir, así que estos slots nunca se imprimen. [P6]
+ */
+export function isSinAsignar(pickerLabel: string | null | undefined): boolean {
+  return (pickerLabel ?? '').toLowerCase().trim() === 'sin asignar';
+}
+
+/**
+ * Numeración de etiquetas: rank 1-based dentro de (store_cod, tipo), en orden de creación
+ * (created_at, luego id — determinista e independiente del orden del array, lo que evita que
+ * dos equipos numeren distinto → P7). EXCLUYE el bucket "Sin asignar", cuyos slots fantasma
+ * nunca se imprimen e inflaban el conteo (los CH del picker real salían 4,5,6 en vez de 1,2,3 → P6).
+ * Devuelve { [slotId]: pallet_num }; los slots "Sin asignar" quedan sin entrada.
+ */
+export function computePalletNums(
+  slots: Pick<PalletSlot, 'id' | 'store_cod' | 'tipo' | 'picker_label' | 'created_at'>[],
+): Record<number, number> {
+  const result: Record<number, number> = {};
+  const byStoreTipo: Record<string, typeof slots> = {};
+  for (const s of slots) {
+    if (isSinAsignar(s.picker_label)) continue;
+    const key = `${s.store_cod}::${s.tipo || 'P'}`;
+    (byStoreTipo[key] ??= []).push(s);
+  }
+  for (const group of Object.values(byStoreTipo)) {
+    group.sort((a, b) => (a.created_at !== b.created_at ? (a.created_at < b.created_at ? -1 : 1) : a.id - b.id));
+    group.forEach((s, idx) => { result[s.id] = idx + 1; });
+  }
+  return result;
 }
 
 export function buildCanonicalId(tipo: string, seq: number, cod: string, isoDate: string): string {

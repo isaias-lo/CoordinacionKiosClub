@@ -29,6 +29,7 @@ import {
 import {
   todayISO, getStoreName, parseOrigin, isAbastecimientoOp, resolveStoreCode,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
+  computePalletNums, isSinAsignar,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
 import { StatsTab }           from './components/StatsTab';
@@ -180,19 +181,9 @@ export function PickingScreen() {
 
   // Derived: pallet_num for each slot = its rank (1-based) within (store_cod, tipo) independently.
   // P slots count P-1, P-2...; C slots count C-1, C-2...; B slots count B-1, B-2...
-  const palletNumsBySlotId = useMemo(() => {
-    const result: Record<number, number> = {};
-    const byStoreTipo: Record<string, PalletSlot[]> = {};
-    for (const s of palletSlots) {
-      const key = `${s.store_cod}::${s.tipo || 'P'}`;
-      if (!byStoreTipo[key]) byStoreTipo[key] = [];
-      byStoreTipo[key].push(s);
-    }
-    for (const slots of Object.values(byStoreTipo)) {
-      slots.forEach((s, idx) => { result[s.id] = idx + 1; });
-    }
-    return result;
-  }, [palletSlots]);
+  // Excluye el bucket "Sin asignar" (nunca se imprime) para no correr la numeración de los CH
+  // reales (P6), y ordena por created_at+id de forma determinista (P7). Lógica en computePalletNums.
+  const palletNumsBySlotId = useMemo(() => computePalletNums(palletSlots), [palletSlots]);
 
   // Derived: sorted list of pallet numbers per state_key
   const assignedNumsByStateKey = useMemo(() => {
@@ -1013,9 +1004,13 @@ export function PickingScreen() {
       const allStoreGroups = allGroupedByStore[cod] ?? [];    // for totalPickers count
       const storeSlots     = palletSlots.filter(s => s.store_cod === cod);
       if (storeSlots.length === 0 || storeGroups.length === 0) continue;
-      // Pre-compute total per tipo for this store (P count, C count, B count independently)
+      // Pre-compute total per tipo for this store (P count, C count, B count independently).
+      // Excluye "Sin asignar" para que el total de la etiqueta ("X de Y") coincida con la numeración (P6).
       const totalByTipo: Record<string, number> = {};
-      for (const s of storeSlots) totalByTipo[s.tipo || 'P'] = (totalByTipo[s.tipo || 'P'] ?? 0) + 1;
+      for (const s of storeSlots) {
+        if (isSinAsignar(s.picker_label)) continue;
+        totalByTipo[s.tipo || 'P'] = (totalByTipo[s.tipo || 'P'] ?? 0) + 1;
+      }
 
       const firstSlotTime: Record<string, number> = {};
       for (const s of storeSlots) {
@@ -1037,6 +1032,7 @@ export function PickingScreen() {
         const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || groupSlots[0]?.picker_label || group.key;
         for (const slot of groupSlots) {
           const pNum  = palletNumsBySlotId[slot.id];
+          if (pNum === undefined) continue; // slot sin numerar (bucket "Sin asignar") — no se imprime [P6]
           const tipo  = (slot.tipo as PickerType) ?? 'P';
           const total = totalByTipo[tipo] ?? 1;
           labels.push({
