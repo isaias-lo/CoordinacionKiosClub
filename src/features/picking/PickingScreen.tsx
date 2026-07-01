@@ -948,38 +948,6 @@ export function PickingScreen() {
     return failures;
   }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords]);
 
-  // Guard #1 (caso BNV): avisar antes de imprimir si algún movimiento Odoo referenciado por
-  // los slots a imprimir NO está REALIZADO (state 'done'). Es un AVISO por-movimiento, no un
-  // bloqueo: soporta varios movimientos en estados mixtos (uno done + otro preparado) y deja
-  // decidir al supervisor con el detalle a la vista. Devuelve true si se puede seguir.
-  const confirmarImpresion = useCallback((slots: PalletSlot[]): boolean => {
-    const movNames = new Set<string>();
-    for (const s of slots) {
-      for (const ref of String(s.refs ?? '').split('+')) {
-        const n = ref.trim();
-        if (n) movNames.add(n);
-      }
-    }
-    if (movNames.size === 0) return true; // sin movimiento (ej. CH manual de Bodega) → no aplica
-
-    const estadoPorMov = new Map<string, string>();
-    for (const ops of Object.values(opsMap)) {
-      for (const op of ops) if (movNames.has(op.name)) estadoPorMov.set(op.name, op.state);
-    }
-    const noRealizados = [...movNames].filter(n => (estadoPorMov.get(n) ?? '') !== 'done');
-    if (noRealizados.length === 0) return true; // todos REALIZADOS
-
-    const detalle = noRealizados.map(n => {
-      const st = estadoPorMov.get(n);
-      const label = !st ? 'estado desconocido' : st === 'assigned' ? 'PREPARADO' : st.toUpperCase();
-      return `• ${n} — ${label}`;
-    }).join('\n');
-    return window.confirm(
-      `⚠ ${noRealizados.length} de ${movNames.size} movimiento(s) NO están REALIZADOS:\n\n${detalle}\n\n` +
-      `Imprime solo si estás segur@ de que corresponde a esta tienda.\n\n¿Imprimir de todas formas?`
-    );
-  }, [opsMap]);
-
   // Imprime y registra SOLO los labels de un picker específico.
   // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
   const printGroupLabels = useCallback(async (group: PickerGroup) => {
@@ -991,7 +959,6 @@ export function PickingScreen() {
       showToast('⚠ Agrega al menos un pallet (con conexión) antes de imprimir', '#D97706');
       return;
     }
-    if (!confirmarImpresion(slotsByStateKey[group.stateKey] ?? [])) return;
     setSelectionPrint(null);
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(group.stateKey);
@@ -1000,32 +967,28 @@ export function PickingScreen() {
     // 2) Registrar la impresión y disparar el print del navegador.
     pendingPrintRef.current = recordPrints([group]);
     setDoPrint(true);
-  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, confirmarImpresion]);
+  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds]);
 
   const printStoreLabels = useCallback((cod: string) => {
-    const groups = groupedByStore[cod] ?? [];
-    if (!confirmarImpresion(groups.flatMap(g => slotsByStateKey[g.stateKey] ?? []))) return;
     setSelectionPrint(null);
     setPrintOnlyStateKey(null);
     setPrintOnlyStore(cod);
+    const groups = groupedByStore[cod] ?? [];
     pendingPrintRef.current = recordPrints(groups);
     void assignCanonicalIds(groups);
     setDoPrint(true);
-  }, [groupedByStore, slotsByStateKey, recordPrints, assignCanonicalIds, confirmarImpresion]);
+  }, [groupedByStore, recordPrints, assignCanonicalIds]);
 
   const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
-    if (!confirmarImpresion(slotsByStateKey[stateKey] ?? [])) return;
     setSelectionPrint({ stateKey, palletNums });
     setPrintOnlyStore(null);
     setDoPrint(true);
     // Asignar canonical_id para los slots seleccionados
     const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
     void assignCanonicalIds(allGroups);
-  }, [groupedByStore, slotsByStateKey, assignCanonicalIds, confirmarImpresion]);
+  }, [groupedByStore, assignCanonicalIds]);
 
   const printAll = useCallback(() => {
-    const slots = selectedCods.flatMap(cod => (groupedByStore[cod] ?? []).flatMap(g => slotsByStateKey[g.stateKey] ?? []));
-    if (!confirmarImpresion(slots)) return;
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(null);
     pendingPrintRef.current = Promise.all(
@@ -1033,7 +996,7 @@ export function PickingScreen() {
     ).then(counts => counts.reduce((s, n) => s + n, 0));
     for (const cod of selectedCods) void assignCanonicalIds(groupedByStore[cod] ?? []);
     setDoPrint(true);
-  }, [selectedCods, groupedByStore, slotsByStateKey, recordPrints, assignCanonicalIds, confirmarImpresion]);
+  }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds]);
 
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
   // Datos de impresión — una etiqueta por slot, sección activa del supervisor
