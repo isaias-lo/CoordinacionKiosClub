@@ -502,6 +502,14 @@ export default function RutasScreen() {
     fetchUnregisteredRutasDays().then(setUnregisteredDays).catch(() => {});
   }, []);
 
+  // Descartar un día del aviso de forma PERMANENTE (no solo ocultar): marca ese día como
+  // cerrado en el Enrutador (p. ej. ya se registró a mano en las hojas). Usa el mismo marcador
+  // que el registro ('rutas_reg') para que fetchUnregisteredRutasDays deje de listarlo.
+  const dismissUnregisteredDay = (d: string) => {
+    setUnregisteredDays(prev => prev.filter(x => x !== d));
+    void pushSessionState('rutas_reg', { dismissed: true, at: new Date().toISOString() }, userId, d);
+  };
+
   // ── Sync manual text → calT ───────────────────────────────────────
   useEffect(() => {
     if (modo !== 'man') return;
@@ -1281,18 +1289,26 @@ export default function RutasScreen() {
                   : `${unregisteredDays.length} días quedaron con asignaciones sin registrar`}
               </div>
               <div className="text-[12px] text-amber-700 mt-0.5">
-                Las asignaciones se guardaron pero no se creó el manifiesto. Ábrelas y dale “Registrar y crear manifiesto”.
+                Las asignaciones se guardaron pero no se creó el manifiesto. <b>Abrir</b> para registrarlas,
+                o <b>✕</b> en un día para descartarlo si ya lo manejaste (no vuelve a avisar).
               </div>
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {unregisteredDays.map(d => (
-                  <button key={d} onClick={() => setFecha(d)}
-                    className="px-2.5 py-1 rounded-lg text-[12px] font-bold bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all">
-                    📅 {d.split('-').reverse().join('/')} — abrir
-                  </button>
+                  <div key={d} className="flex items-stretch rounded-lg overflow-hidden bg-amber-500 text-white">
+                    <button onClick={() => setFecha(d)}
+                      className="px-2.5 py-1 text-[12px] font-bold hover:bg-amber-400 active:scale-95 transition-all">
+                      📅 {d.split('-').reverse().join('/')} — abrir
+                    </button>
+                    <button onClick={() => dismissUnregisteredDay(d)}
+                      title="Descartar este día — no volver a avisar"
+                      className="px-2 border-l border-amber-300/70 text-[13px] font-bold leading-none hover:bg-amber-600 active:scale-95 transition-all">
+                      ✕
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
-            <button onClick={() => setUnregisteredDays([])} title="Ocultar"
+            <button onClick={() => setUnregisteredDays([])} title="Ocultar por ahora (vuelve a aparecer al recargar)"
               className="text-amber-500 hover:text-amber-700 text-[16px] leading-none flex-shrink-0">✕</button>
           </div>
         </div>
