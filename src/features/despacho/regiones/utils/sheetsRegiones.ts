@@ -53,9 +53,9 @@ export function buildRows(
   const mm    = fechaISO ? mISO : String(now.getMonth() + 1).padStart(2, '0');
   const yyyy  = fechaISO ? yISO : String(now.getFullYear());
   const stamp = `${dd}${mm}${yyyy}`;
-  const fecha = `${dd}/${mm}/${yyyy}`;
   const transporte = regimen === 'Falabella' ? 'Falabella' : 'Carga';
 
+  // [P4] Fecha armado = fecha operativa (columna FECHA, llave de match cod+fecha con el Enrutador).
   const fechaArmadoFmt = fechaArmadoISO
     ? fechaArmadoISO.split('-').reverse().join('/')
     : `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
@@ -73,8 +73,8 @@ export function buildRows(
         : '';
 
       rows.push([
-        canonicalId(item.pkg, item.orden, tienda.cod, stamp), // ID
-        fecha,                                          // FECHA (despacho)
+        canonicalId(item.pkg, item.orden, tienda.cod, stamp), // ID — mantiene stamp de despacho (idempotencia)
+        fechaArmadoFmt,                                 // FECHA (armado) [P4] — llave de match cod+fecha
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
         item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : item.pkg === 'chocolate' ? 'Bulto CH' : 'Bulto',  // TIPO

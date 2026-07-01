@@ -23,9 +23,9 @@ export function buildRows(
   const mm    = fechaISO ? mISO : String(now.getMonth() + 1).padStart(2, '0');
   const yyyy  = fechaISO ? yISO : String(now.getFullYear());
   const stamp = `${dd}${mm}${yyyy}`;
-  const fecha = `${dd}/${mm}/${yyyy}`;
 
-  // Fecha armado formateada (DD/MM/YYYY), cae a hoy si no se provee
+  // Fecha armado formateada (DD/MM/YYYY), cae a hoy si no se provee.
+  // [P4] Es la fecha operativa: se usa en la columna FECHA (llave de match cod+fecha con el Enrutador).
   const fechaArmadoFmt = fechaArmadoISO
     ? fechaArmadoISO.split('-').reverse().join('/')
     : `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
@@ -41,8 +41,8 @@ export function buildRows(
       const tipoPrefix = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Bulto' ? 'B' : item.tipo === 'Contenedor' ? 'C' : 'CH';
       const tipoLabel  = item.tipo === 'Chocolate' ? 'Bulto CH' : item.tipo;
       rows.push([
-        `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — matches Enrutador format
-        fecha,                                                             // FECHA (despacho)
+        `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — mantiene stamp de despacho (idempotencia del registro)
+        fechaArmadoFmt,                                                    // FECHA (armado) [P4] — llave de match cod+fecha
         cod,                                                               // COD
         tienda.tienda,                                                     // TIENDA
         tipoLabel,                                                         // TIPO
