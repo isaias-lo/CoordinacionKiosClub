@@ -88,6 +88,46 @@ export function computeUnregisteredDays(rows: SessionStateRow[]): string[] {
   return result.sort().reverse(); // más reciente primero
 }
 
+export interface PendienteV2 { c: string; p: number; b: number; ch: number; fechaOrigen: string }
+
+/**
+ * Lógica pura: aplana las filas `segunda_vuelta` (una por fecha) en una lista de tiendas
+ * pendientes, cada una con su `fechaOrigen`. Ignora counts vacíos. Para el tab "2ª VUELTA".
+ */
+export function flattenPendientesV2(rows: { fecha: string; state: unknown }[]): PendienteV2[] {
+  const out: PendienteV2[] = [];
+  for (const r of rows) {
+    const stores = ((r.state as { stores?: { c: string; p?: number; b?: number; ch?: number }[] } | null)?.stores) ?? [];
+    for (const s of stores) {
+      const p = s.p ?? 0, b = s.b ?? 0, ch = s.ch ?? 0;
+      if (p === 0 && b === 0 && ch === 0) continue;
+      out.push({ c: s.c, p, b, ch, fechaOrigen: r.fecha });
+    }
+  }
+  return out;
+}
+
+/**
+ * Pendientes de 2ª vuelta de días PASADOS (fuente `segunda_vuelta`, fecha < hoy), aplanadas con su
+ * fecha origen. Alimenta el pool del tab "2ª VUELTA" del Enrutador.
+ */
+export async function fetchPendientesV2Pasadas(sinceDays = 10): Promise<PendienteV2[]> {
+  const today = todayISO();
+  const since = new Date();
+  since.setDate(since.getDate() - sinceDays);
+  const sinceISO = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, '0')}-${String(since.getDate()).padStart(2, '0')}`;
+
+  const { data, error } = await supabase
+    .from('shared_session_state')
+    .select('fecha, state')
+    .eq('fuente', 'segunda_vuelta')
+    .gte('fecha', sinceISO)
+    .lt('fecha', today);
+
+  if (error) { console.error('[sync:pendientesV2]', error.message); return []; }
+  return flattenPendientesV2((data ?? []) as { fecha: string; state: unknown }[]);
+}
+
 /**
  * Subscribe to real-time changes on the shared state.
  * All users (including other people) trigger this callback when they push changes.

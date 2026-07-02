@@ -19,6 +19,9 @@ interface Props {
   onAsignaciones: (a: Record<string, StoreTag[]>) => void;
   onCalcular: () => void;
   onEliminarParada?: (id: string) => void;
+  /** [2ª VUELTA] Si se provee, cada camión con tiendas muestra "Cerrar camión" (registro por
+   *  camión) y se OCULTA el botón batch de calcular. */
+  onCerrarCamion?: (patente: string) => void;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -39,6 +42,7 @@ export default function ManualDispatch({
   asignaciones, onAsignaciones,
   onCalcular,
   onEliminarParada,
+  onCerrarCamion,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -498,6 +502,19 @@ export default function ManualDispatch({
                   })
                 )}
               </div>
+
+              {/* [2ª VUELTA] Cerrar camión y generar su manifiesto (registro por camión) */}
+              {onCerrarCamion && stores.length > 0 && (
+                <div className="px-2.5 pb-2.5 pt-0.5">
+                  <button
+                    onClick={e => { e.stopPropagation(); onCerrarCamion(v.p); }}
+                    disabled={m.overCap}
+                    className="w-full h-[38px] rounded-[10px] bg-knavy text-white text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-40"
+                  >
+                    🚚 Cerrar camión y manifiesto
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -513,7 +530,7 @@ export default function ManualDispatch({
         </div>
       )}
 
-      {tiendasCount > 0 && (
+      {tiendasCount > 0 && !onCerrarCamion && (
         <button
           onClick={() => {
             if (pendientesTotal > 0) {

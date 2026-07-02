@@ -5,6 +5,8 @@ import { useAuth } from '../../../components/AuthProvider';
 import Header         from './components/Header';
 import InputSection   from './components/InputSection';
 import ResultsSection from './components/ResultsSection';
+import ManualDispatch from './components/ManualDispatch';
+import ManifiestoPanel from './components/ManifiestoPanel';
 import ConfigPanel    from './components/ConfigPanel';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
@@ -18,7 +20,7 @@ import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
-import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays } from '../../../lib/userSessionState';
+import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
@@ -149,6 +151,10 @@ export default function RutasScreen() {
   const [historialMsg,  setHistorialMsg]  = useState('');
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
+  // ── Tab "2ª VUELTA": pendientes de días anteriores, board y manifiesto AISLADOS del día actual ──
+  const [pendientesV2Origen, setPendientesV2Origen] = useState<PendienteV2[]>([]);
+  const [asignacionesV2, setAsignacionesV2]         = useState<Record<string, StoreItem[]>>({});
+  const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
   const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
 
   const [paradasAdicionales, setParadasAdicionales] = useState<Parada[]>([]);
@@ -816,6 +822,98 @@ export default function RutasScreen() {
     setModo('man');
   }
 
+  // ── Tab "2ª VUELTA": cargar pendientes de días anteriores (aislado del día actual) ──
+  useEffect(() => {
+    fetchPendientesV2Pasadas().then(setPendientesV2Origen).catch(() => {});
+  }, []);
+
+  // Pool del tab V2: derivado de las pendientes de días anteriores (con grupo desde el calendario).
+  const calTV2 = useMemo<Record<string, CalData>>(() => {
+    const dia = getDia(todayStr());
+    const calDia = (cal[dia] || cal.LU || {}) as Record<string, string[]>;
+    const grpOf = (cod: string): string => {
+      for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === cod)) return g;
+      return 'rm';
+    };
+    const out: Record<string, CalData> = {};
+    for (const s of pendientesV2Origen) {
+      const cod = norm(s.c);
+      if (!out[cod]) out[cod] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grpOf(cod) };
+      out[cod].p += s.p; out[cod].b += s.b; out[cod].ch += s.ch;
+    }
+    return out;
+  }, [pendientesV2Origen, cal]);
+
+  // Cerrar un camión de 2ª vuelta: registra SOLO ese camión (fecha real HOY, vuelta 2 → patente en
+  // columna "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes de su fecha ORIGEN.
+  function cerrarCamionV2(patente: string) {
+    const stores = asignacionesV2[patente] || [];
+    if (!stores.length) return;
+    const vehicle = flota.find(v => v.p === patente);
+    if (!vehicle) return;
+    const hoy = todayStr();
+    const conductor = vehicle.ch || '';
+    const grupoPorCod = (cod: string): Grupo | undefined =>
+      (calTV2[norm(cod)]?.g ?? calT[norm(cod)]?.g) as Grupo | undefined;
+
+    const ruta: Ruta = {
+      v: { ...vehicle, tlbd: true }, // TLBD → 2ª vuelta (patente a columna v2)
+      ts: stores,
+      tp: stores.reduce((s, t) => s + t.p, 0),
+      tb: stores.reduce((s, t) => s + t.b + (t.ch ?? 0), 0),
+    };
+
+    // 1) despacho_rm / despacho_regiones: conductor/patente/ruta (vuelta 2)
+    const routingUpdates = stores.map(t => ({
+      cod: t.c, conductor, patente, transporte: vehicle.empresa || 'Luis Fica',
+      ruta: '1', supervisor, vuelta: 2, pioneta_1: vehicle.p1 ?? null, pioneta_2: vehicle.p2 ?? null,
+    }));
+    const porTabla = splitRoutingPorTabla(routingUpdates, grupoPorCod);
+    (['despacho_rm', 'despacho_regiones'] as const).forEach(table => {
+      if (!porTabla[table].length) return;
+      fetch('/api/despacho-records', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: hoy, table, updates: porTabla[table] }),
+      }).catch(e => console.error(`[v2 despacho-records ${table}]`, e));
+    });
+
+    // 2) Hojas DESPACHO RM/REGIONES (1 ruta) + pionetas
+    guardarDespachoSplitFn({ fecha: hoy, supervisor, rutas: [ruta], tiendas, grupoPorCod });
+    actualizarPionetasRMFn({ fecha: hoy, rutas: [ruta] });
+
+    // 3) CONTROL DESPACHO: patente en columna "2ª Vuelta" (tlbd=true)
+    const fechaDDMM = hoy.split('-').reverse().join('/');
+    const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const diaCD = DIAS[new Date(hoy + 'T12:00').getDay()];
+    const rutasControl: RutaControl[] = [{ patente, tlbd: true, ts: stores.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 })) }];
+    const controlRows = buildControlRows(fechaDDMM, diaCD, rutasControl, [] as PendienteControl[]);
+    if (controlRows.length) {
+      fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheet: 'CONTROL DESPACHO', rows: controlRows }) }).catch(e => console.error('[v2 control]', e));
+    }
+
+    // 4) HISTORIAL (marca vuelta 2)
+    const histRow: (string | number)[] = [fechaDDMM, fechaTxt(hoy), supervisor, patente, conductor, '2', stores.length, ruta.tp, ruta.tb, 0, stores.map(t => t.c).join(', '), '1'];
+    fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheet: 'HISTORIAL', rows: [histRow] }) }).catch(e => console.error('[v2 historial]', e));
+
+    // 5) Quitar las despachadas de las pendientes de su fecha ORIGEN (acumulativo: quita las asignadas)
+    const despachados = new Set(stores.map(t => t.c));
+    const porOrigen = new Map<string, Set<string>>();
+    for (const p of pendientesV2Origen) {
+      if (despachados.has(p.c)) {
+        if (!porOrigen.has(p.fechaOrigen)) porOrigen.set(p.fechaOrigen, new Set());
+        porOrigen.get(p.fechaOrigen)!.add(p.c);
+      }
+    }
+    porOrigen.forEach((cods, fechaOrigen) => { void savePendientesV2(fechaOrigen, [], cods); });
+
+    // 6) Limpiar estado local + abrir manifiesto de ese camión
+    setAsignacionesV2(prev => { const n = { ...prev }; delete n[patente]; return n; });
+    setPendientesV2Origen(prev => prev.filter(p => !despachados.has(p.c)));
+    setManifiestoV2([ruta]);
+  }
+
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
   useEffect(() => {
     setCerrado(false);
@@ -1442,8 +1540,46 @@ export default function RutasScreen() {
               </div>
             ) : undefined
           }
+          segundaVueltaContent={
+            <div className="h-full overflow-y-auto p-4">
+              {pendientesV2Origen.length === 0 ? (
+                <div className="bg-kbg border border-black/[0.09] rounded-kios2 px-3 py-4 text-[13px] text-kmuted text-center">
+                  No hay pendientes de 2ª vuelta de días anteriores.
+                </div>
+              ) : (
+                <>
+                  <div className="mb-3 text-[12px] text-kmuted">
+                    <span className="font-semibold text-ktext">{pendientesV2Origen.length}</span> tiendas de días
+                    anteriores sin despachar. Asigná un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto.
+                  </div>
+                  <ManualDispatch
+                    calT={calTV2}
+                    flota={flota}
+                    gps={gps}
+                    tiendas={tiendas}
+                    cd={cdRef.current}
+                    asignaciones={asignacionesV2}
+                    onAsignaciones={setAsignacionesV2}
+                    onCalcular={() => {}}
+                    onCerrarCamion={cerrarCamionV2}
+                  />
+                </>
+              )}
+            </div>
+          }
         />
       </main>
+
+      {manifiestoV2 && (
+        <ManifiestoPanel
+          rutas={manifiestoV2}
+          fecha={todayStr()}
+          supervisor={supervisor}
+          tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
+          isOpen={true}
+          onClose={() => setManifiestoV2(null)}
+        />
+      )}
 
       <ParadasAdicionales
         isOpen={paradasOpen}
