@@ -11,6 +11,11 @@ import {
 } from '@/lib/calendarioArmadoSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
+import {
+  Package, Waves, Building2, ClipboardList,
+  CheckCircle2, AlertTriangle, Save, Loader2, Printer, Search,
+  type LucideIcon,
+} from 'lucide-react';
 
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
 const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado', DO: 'Domingo' };
@@ -18,11 +23,14 @@ const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF950
 const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE', DO: '#FFF3EE' };
 
 const GRUPOS: [string, string, string][] = [
-  ['rm',      '📦 RM',        'Bodega Santiago — RM'],
-  ['costa',   '🌊 COSTA',     'Bodega Santiago — V Región'],
-  ['fal',     '🏢 REGIONES',  'Bodega Regiones'],
-  ['general', '📋 GENERAL',   'Vista completa — todos los grupos'],
+  ['rm',      'RM',        'Bodega Santiago — RM'],
+  ['costa',   'COSTA',     'Bodega Santiago — V Región'],
+  ['fal',     'REGIONES',  'Bodega Regiones'],
+  ['general', 'GENERAL',   'Vista completa — todos los grupos'],
 ];
+const GRP_ICON: Record<string, LucideIcon> = {
+  rm: Package, costa: Waves, fal: Building2, general: ClipboardList,
+};
 
 const COSTA_CODES    = new Set(['37VIÑ','08RNC','33CON','43CUR','54MPQ']);
 const FAL_CODES      = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
@@ -304,11 +312,16 @@ export default function CalendarioColumnas({
     }
   }
 
-  const saveLabel = saveStatus === 'saving'  ? '⏳ Guardando...'
-    : saveStatus === 'success' ? '✅ Guardado'
-    : saveStatus === 'error'   ? '⚠️ Error'
-    : hasChanges               ? '💾 Guardar cambios'
+  const saveLabel = saveStatus === 'saving'  ? 'Guardando...'
+    : saveStatus === 'success' ? 'Guardado'
+    : saveStatus === 'error'   ? 'Error'
+    : hasChanges               ? 'Guardar cambios'
     : 'Sin cambios';
+  const SaveIcon: LucideIcon | null = saveStatus === 'saving'  ? Loader2
+    : saveStatus === 'success' ? CheckCircle2
+    : saveStatus === 'error'   ? AlertTriangle
+    : hasChanges               ? Save
+    : null;
 
   /* ── Print ── */
   function handlePrint() {
@@ -436,7 +449,7 @@ export default function CalendarioColumnas({
         background: '#FFFFFF', borderRadius: 20, padding: '40px 20px',
         textAlign: 'center', boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
       }}>
-        <div style={{ fontSize: 36, marginBottom: 10 }}>⚠️</div>
+        <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><AlertTriangle size={36} color="#FF3B30" aria-hidden="true" /></div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#FF3B30' }}>No se pudo cargar el calendario</div>
         <div style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>Revisa la conexión con Supabase</div>
       </div>
@@ -460,9 +473,7 @@ export default function CalendarioColumnas({
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
         {!forceGeneral && GRUPOS.map(([id, lb]) => {
           const active = grp === id;
-          const parts = lb.split(' ');
-          const icon = parts[0];
-          const label = parts.slice(1).join(' ');
+          const Icon = GRP_ICON[id];
           return (
             <button key={id}
               onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
@@ -479,8 +490,8 @@ export default function CalendarioColumnas({
                   : '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
                 transition: 'all 0.17s cubic-bezier(0.34,1.56,0.64,1)',
               }}>
-              <span style={{ fontSize: 17, lineHeight: 1 }}>{icon}</span>
-              {label}
+              <Icon size={16} aria-hidden="true" />
+              {lb}
             </button>
           );
         })}
@@ -543,7 +554,7 @@ export default function CalendarioColumnas({
               color: '#1C1C1E',
               boxShadow: '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
             }}>
-            🖨 Imprimir
+            <Printer size={16} aria-hidden="true" /> Imprimir
           </button>
           {!readOnly && <button
             onClick={handleSave}
@@ -567,6 +578,7 @@ export default function CalendarioColumnas({
               opacity: saveStatus === 'saving' ? 0.7 : 1,
               transition: 'all 0.17s ease',
             }}>
+            {SaveIcon && <SaveIcon size={16} aria-hidden="true" className={saveStatus === 'saving' ? 'animate-spin' : undefined} />}
             {saveLabel}
           </button>}
         </div>
@@ -598,12 +610,13 @@ export default function CalendarioColumnas({
       {grp !== 'general' && !readOnly && <div style={{ position: 'relative', marginBottom: 16 }}>
         <span style={{
           position: 'absolute', left: 14, top: '50%',
-          transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none',
-        }}>🔍</span>
+          transform: 'translateY(-50%)', pointerEvents: 'none',
+          display: 'flex', color: '#8E8E93',
+        }}><Search size={15} aria-hidden="true" /></span>
         <input
           type="text" value={search}
           onChange={e => handleSearch(e.target.value)}
-          placeholder={`Buscar tienda para agregar — ${grpInfo?.[1].replace(/\p{Emoji}/u, '').trim() || ''}...`}
+          placeholder={`Buscar tienda para agregar — ${grpInfo?.[1] || ''}...`}
           style={{
             width: '100%', height: 46, paddingLeft: 42, paddingRight: 16,
             borderRadius: 14, border: '1.5px solid rgba(0,0,0,0.09)',
