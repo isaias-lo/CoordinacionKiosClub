@@ -1,65 +1,30 @@
 # Estado actual del trabajo
 
-## 🔴 PENDIENTE AL LLEGAR (casa/Mac) — empezar por aquí: #9 Paso 3
-Retomar la **Segunda vuelta (#9)** — última de las 11 mejoras (el resto ya está en prod).
-1. `npm run hola` (pull de main).
-2. `npm run nueva-tarea fix/segunda-vuelta-pendientes`.
-3. Dile a Claude: **"seguimos con #9, Paso 3 (pendientes/conteo)"**. La lógica pura ya está mergeada en
-   `vueltaRegistro.ts`. Para la 2ª prueba, Claude inserta filas de prueba 2099 por Supabase MCP.
+## Última sesión
+Fecha: 2026-07-01
+En curso: línea **enterprise visual** (mejoras solo estéticas, un PR pequeño por cambio).
 
-⚠️ **Pendiente manual TUYO (Claude no escribe en Sheets):** borrar a mano las filas con fecha
-**31/12/2099** en las HOJAS de Google (CONTROL DESPACHO / DESPACHO RM / DESPACHO REGIONES), restos de la
-prueba del Paso 2. En Supabase ya están limpias.
+## Hecho
+- **PR #111 (MERGEADO a main):** PR 1 de la línea visual — capa de primitivas enterprise.
+  - `index.css` + `tailwind.config.js`: tokens shadcn (primary/secondary/destructive/accent/muted/
+    popover/background/foreground/input/ring) cableados a la paleta KiosClub, dark-mode aware.
+  - Primitivas nuevas: `ui/card.tsx`, `ui/toolbar.tsx`, `ui/icon-button.tsx`.
+  - `ui/status-badge.tsx` + `ui/empty-state.tsx` tokenizados (misma API).
+  - Piloto: `app/perfil/page.tsx` adopta el Card compartido + emojis→lucide.
+- **Rama actual `chore/config-modelo-flujo`:** config de modelo/flujo (default Sonnet ejecutor,
+  Opus/Fable solo para planificar/revisar) — CLAUDE.md + `.claude/settings*.json`.
 
----
+## Próximos pasos (línea visual enterprise — un PR por ítem, desde main actualizado)
+1. **PR 2 — `style/app-shell-enterprise`:** AppSidebar, AppShell, PageHeader, HubPage
+   (elevación/densidad sobria, estado activo claro, menú móvil consistente).
+2. PR 3 — login/auth. PR 4 — Panel Operaciones. PR 5 — recepción/conductor móvil.
+   PR 6 — auditoría. PR 7 — control interno. PR 8 — enrutador polish.
 
-## #9 — Segunda vuelta (estado)
-PRs del lote (TODOS MERGEADOS): #73–#85 (mejoras #1–#8, #10, #11 + ajustes Cal/Manual), #86 (#9 Paso 1
-lógica pura), #87 (#9 Paso 2). Migraciones aplicadas en prod: **057** (flota.en_servicio),
-**058** (despacho_sesion.chocolates). (Antes: 050 picking_eventos, 051 guias_subidas.)
+## Guardarraíles (línea visual)
+- Solo estético; no tocar `src/features/picking/`, ni lógica de datos/APIs/Odoo/Supabase.
+- No tocar archivos calientes recién mergeados (InputSection, ManualDispatch, CalManualSheet,
+  StepForm, TiendasPage, PickerGroupCard) hasta que no haya trabajo paralelo.
+- Un PR por cambio visual, desde `origin/main` actualizado; no mergear solo.
 
-- **Paso 1 (#86):** lógica pura `src/features/despacho/rutas/utils/vueltaRegistro.ts`
-  (`splitRoutingPorTabla`, `buildControlRows`) + tests. ✅
-- **Paso 2 (#87):** el registro del Enrutador separa RM→`despacho_rm` / Regiones→`despacho_regiones`
-  y CONTROL DESPACHO incluye las pendientes. ✅ **VERIFICADO EN VIVO** (fecha de prueba 31/12/2099):
-  `despacho_regiones.75PUC` recibió patente (antes era imposible — siempre vacío). Filas 2099 ya
-  borradas de Supabase (faltan las HOJAS, ver aviso arriba).
-
-### #9 — próximos pasos (retomar aquí)
-1. **Paso 3 — verificar pendientes (conteo 25→30):** 2ª prueba con fecha 31/12/2099 dejando 1 tienda
-   SIN asignar. Verificar (a) la pendiente se guarda en `shared_session_state('segunda_vuelta')`
-   [revisable en Supabase por Claude] y (b) aparece en CONTROL DESPACHO con patente vacía. Cómo: Claude
-   inserta filas de prueba 2099 (RM+Regiones) por Supabase MCP → en Enrutador fecha 31/12/2099, modo
-   Manual con 3 tiendas, dejar 1 fuera, Calcular Rutas → botón
-   **"📊 REGISTRAR DESPACHO Y GENERAR MANIFIESTOS"** (este es el que guarda) → verificar → limpiar.
-2. **Paso 4 — idempotencia del write de bodega:** el path `sheets-write` de bodega (DESPACHO RM/REGIONES)
-   hace `append` → debe ser **upsert** por fecha+cod. Cierra también el "Reabrir → re-registrar" del #8
-   (que hoy duplica filas en la hoja).
-3. **Autocarga de pendientes al día siguiente:** `pendientesV2` se guarda/lee por la `fecha` del
-   Enrutador; si al día siguiente la vista queda en otra fecha, no calzan. Mostrar aviso/cargar igual.
-
-### Deuda detectada durante #9 (opcional)
-- `despacho-records` PATCH compara fecha `YYYY-MM-DD` pero las tablas guardan `DD/MM/YYYY` → ese PATCH
-  NO actualiza las tablas (el rellenado real ocurre vía la sync de la hoja, que sí funciona). Convertir
-  la fecha en el PATCH para que sea directo/redundante.
-- El Enrutador NO limpia `calT` al cambiar la fecha (sigue mostrando lo de hoy) → debería recargar al
-  cambiar de día. (Estorba las pruebas: hay que borrar el textarea Manual a mano.)
-
----
-
-## Infra (hecho 2026-06-24/26, desde Windows)
-- ✅ **MCP de Supabase operativo en ambos equipos** (Windows: token con `setx` + reinicio de VSCode,
-  verificado con SELECT real). Claude puede correr SQL/diagnósticos directo.
-- ✅ **Hook PreCompact**: en ambos equipos hace un **stash de respaldo** (no `commit WIP`, no ensucia la
-  rama). Windows aplicado 2026-06-26 en `~/.claude/settings.json` (`shell: bash`, usa `git stash create`+`store`).
-- ✅ **Viña `37VIÑ`** verificado limpio en BD (0 rastros de `37VIN`).
-
-## Otros pendientes (revisar vigencia — venían del TRABAJO.md anterior)
-- **Egress Supabase:** rama `fix/egress-realtime-polls` (polls condicionales a Realtime, debounce 2.5s,
-  badge pending 5min). Confirmar si ya se mergeó o sigue pendiente de PR (la org pasó cuota Free, gracia
-  hasta 14-jul-2026).
-- **Semáforo con estados raros:** 24SPP marca verde "Realizado" sin asignación; 38SP2 sale gris estando
-  terminada. Diagnosticar con el SELECT de `picking_session_state('odoo-progress')` por fecha.
-- **UI Actividad de Picking:** los (+)/(−) de eventos de pallet se ven muy chicos en `ActivityTab.tsx`.
-
-[actualizar manualmente o con comando bye]
+## Nota
+Stash `wip-bodega-trabajo-settings` guarda notas de la rama `feat/bodega-layout-hoy-chips`.
