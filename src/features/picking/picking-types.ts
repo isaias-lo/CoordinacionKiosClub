@@ -111,6 +111,7 @@ export const CANONICAL_PICKER_KEYS = [
   'Pickers 6','Pickers 7','Pickers 8','Pickers 9','Pickers 10',
   'Pickers 11','Pickers 12','Pickers 13','Pickers 14','Pickers 15',
   'Pickers 16','Pickers 17','Pickers 18','Adquisiciones','Calidad',
+  'Jefferson Negrete',
 ];
 
 export const STATS_DATE_FROM = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; })();
