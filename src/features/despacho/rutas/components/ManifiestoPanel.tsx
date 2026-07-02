@@ -3,6 +3,20 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
+import { supabase } from '@/lib/supabase';
+
+/* ── Detalle ítem-a-ítem por tienda (para el manifiesto por tienda) ── */
+export interface ItemDetalle {
+  canonical_id: string;
+  tipo: string;      // P | B | C | CH
+  seq: number | null;
+  contenido: string;
+  peso_kg: number | null;
+  alto: number | null;
+  largo: number | null;
+  ancho: number | null;
+  refs: string;      // guías/DTE separadas por +
+}
 
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaManifiesto {
@@ -12,6 +26,7 @@ interface TiendaManifiesto {
   orden: number;
   pallets: number;
   bultos: number;
+  chocolates: number;
   contenedores: number;
 }
 
@@ -28,6 +43,7 @@ interface ManifiestoData {
   tiendas: TiendaManifiesto[];
   total_pallets: number;
   total_bultos: number;
+  total_chocolates: number;
 }
 
 interface Props {
@@ -74,10 +90,11 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
     estado:        'pendiente',
     tiendas: ruta.ts.map((t, i) => {
       const info = infoTienda(t.c, tiendas);
-      return { store_cod: t.c, nombre: info.n, ventana: info.v, orden: i + 1, pallets: t.p, bultos: t.b + ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
+      return { store_cod: t.c, nombre: info.n, ventana: info.v, orden: i + 1, pallets: t.p, bultos: t.b, chocolates: ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
     }),
-    total_pallets: ruta.tp,
-    total_bultos:  ruta.tb,
+    total_pallets:    ruta.ts.reduce((s, t) => s + t.p, 0),
+    total_bultos:     ruta.ts.reduce((s, t) => s + t.b, 0),
+    total_chocolates: ruta.ts.reduce((s, t) => s + ((t as { ch?: number }).ch ?? 0), 0),
   };
 }
 
@@ -94,6 +111,7 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
       <td style="text-align:center;color:#333;">${t.ventana}</td>
       <td style="text-align:center;font-weight:700;">${t.pallets}</td>
       <td style="text-align:center;font-weight:700;">${t.bultos}</td>
+      <td style="text-align:center;font-weight:700;">${t.chocolates}</td>
     </tr>`
   ).join('');
 
@@ -122,14 +140,15 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 
 <div class="sec">Tiendas destino (orden de entrega)</div>
 <table>
-  <thead><tr><th>#</th><th>Tienda</th><th>Ventana horaria</th><th>Pallets</th><th>Bultos</th></tr></thead>
+  <thead><tr><th>#</th><th>Tienda</th><th>Ventana horaria</th><th>Pallets</th><th>Bultos</th><th>Choc.</th></tr></thead>
   <tbody>${filas}</tbody>
 </table>
 
-<div class="totals">
+<div class="totals" style="grid-template-columns:repeat(4,1fr)">
   <div class="tc"><div class="n">${m.tiendas.length}</div><div class="l">Tiendas</div></div>
   <div class="tc"><div class="n">${m.total_pallets}</div><div class="l">Pallets</div></div>
   <div class="tc"><div class="n">${m.total_bultos}</div><div class="l">Bultos</div></div>
+  <div class="tc"><div class="n">${m.total_chocolates}</div><div class="l">Choc.</div></div>
 </div>
 
 <div class="sec">Guías DTE asociadas</div>
@@ -184,6 +203,136 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 
 <div class="footer">
   KiosClub · Centro de Distribución · Generado ${genLabel} · Sistema de Despacho v5.0
+</div>
+</div>`;
+}
+
+/* ── Manifiesto POR TIENDA (detalle ítem-a-ítem, para recepción) ── */
+const TIPO_LABEL: Record<string, string> = { P: 'Pallet', B: 'Bulto', C: 'Contenedor', CH: 'Chocolate' };
+const CONTENIDO_LABEL: Record<string, string> = {
+  hogar: 'Hogar', comida: 'Comida', 'comida-hogar': 'Mixto', 'comida-aseo': 'Comida/Aseo',
+  aseo: 'Aseo', chocolate: 'Chocolate', mixto: 'Mixto',
+};
+
+function guiasDeItems(items: ItemDetalle[]): string[] {
+  const set = new Set<string>();
+  for (const it of items) (it.refs || '').split('+').map(s => s.trim()).filter(Boolean).forEach(g => set.add(g));
+  return [...set];
+}
+
+function buildManifiestoTiendaHTML(
+  t: TiendaManifiesto,
+  info: (TiendaInfo & { _parada?: boolean }) | undefined,
+  items: ItemDetalle[],
+  meta: { fecha: string; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string },
+): string {
+  const fechaLabel = new Date(meta.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
+  const nP  = items.filter(i => i.tipo === 'P').length;
+  const nB  = items.filter(i => i.tipo === 'B').length;
+  const nCH = items.filter(i => i.tipo === 'CH').length;
+  const nC  = items.filter(i => i.tipo === 'C').length;
+  const pesoTotal = Math.round(items.reduce((s, i) => s + (Number(i.peso_kg) || 0), 0) * 10) / 10;
+  const guias = guiasDeItems(items);
+  const qrUrl = `${meta.origin}/recepcion?cod=${encodeURIComponent(t.store_cod)}&p=${nP}&b=${nB + nCH}${guias.length ? `&g=${encodeURIComponent(guias.join(','))}` : ''}`;
+
+  const filas = items.length ? items.map(it => {
+    const dims = it.tipo === 'P' ? '120×100' : (it.alto && it.largo && it.ancho) ? `${it.alto}×${it.largo}×${it.ancho}` : '—';
+    const guia = (it.refs || '').split('+').map(s => s.trim()).filter(Boolean).join(', ') || '—';
+    return `<tr>
+      <td style="width:26px;text-align:center;font-size:15px">☐</td>
+      <td style="font-family:monospace;font-weight:700;font-size:10px">${it.canonical_id}</td>
+      <td><strong>${it.tipo}${it.seq ?? ''}</strong> <span style="color:#555">${TIPO_LABEL[it.tipo] ?? it.tipo}</span></td>
+      <td>${CONTENIDO_LABEL[it.contenido] ?? it.contenido}</td>
+      <td style="text-align:center;font-weight:700">${it.peso_kg ?? '—'}</td>
+      <td style="text-align:center;font-size:9px;color:#555">${dims}</td>
+      <td style="font-size:9px;color:#444">${guia}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" style="text-align:center;color:#888;padding:16px">Sin detalle de ítems etiquetados para esta tienda.</td></tr>`;
+
+  return `<div class="manifiesto-page">
+<div class="hdr">
+  <div>
+    <div class="logo">KIOSClub</div>
+    <div class="razon">Kiosclub American Supermarket SPA</div>
+    <div class="rut">RUT 76.360.868-9</div>
+    <div class="logo-sub">Manifiesto de recepción · Tienda</div>
+  </div>
+  <div>
+    <div class="title">RECEPCIÓN TIENDA</div>
+    <div class="code-lbl">Manifiesto de ruta</div>
+    <div class="code">${meta.codigo_ruta}</div>
+  </div>
+</div>
+
+<div class="meta" style="grid-template-columns:repeat(2,1fr)">
+  <div class="mi"><label>Tienda</label><span>${info?.n ?? t.nombre} (${t.store_cod})</span></div>
+  <div class="mi"><label>Comuna / Zona</label><span>${info?.z ?? '—'}</span></div>
+  <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
+  <div class="mi"><label>Ventana horaria</label><span>${info?.v ?? t.ventana ?? '—'}</span></div>
+  <div class="mi"><label>Patente / Chofer</label><span>${meta.patente} · ${meta.chofer}</span></div>
+  <div class="mi"><label>Supervisor</label><span>${meta.supervisor || '—'}</span></div>
+</div>
+
+<div class="sec">Detalle de la carga — marque cada ítem al recibirlo (coteje el código con la etiqueta física)</div>
+<table>
+  <thead><tr><th>✓</th><th>Código etiqueta</th><th>Ítem</th><th>Contenido</th><th>Peso kg</th><th>Dimensiones</th><th>Guía / DTE</th></tr></thead>
+  <tbody>${filas}</tbody>
+</table>
+
+<div class="totals" style="grid-template-columns:repeat(5,1fr)">
+  <div class="tc"><div class="n">${nP}</div><div class="l">Pallets</div></div>
+  <div class="tc"><div class="n">${nB}</div><div class="l">Bultos</div></div>
+  <div class="tc"><div class="n">${nCH}</div><div class="l">Choc.</div></div>
+  <div class="tc"><div class="n">${nC}</div><div class="l">Cont.</div></div>
+  <div class="tc"><div class="n">${pesoTotal}</div><div class="l">Kg total</div></div>
+</div>
+
+<div class="sec">Guías / DTE asociadas (${guias.length})</div>
+<div style="padding:8px 12px;background:#f5f5f5;border-radius:5px;font-size:11px;color:#333;margin-bottom:14px;border:1px solid #ddd;font-family:monospace">
+  ${guias.length ? guias.join(' · ') : 'Sin guías registradas'}
+</div>
+
+<div class="qr-box">
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(qrUrl)}" width="110" height="110" alt="QR Recepción"/>
+  <div class="qr-info">
+    <div class="badge" style="background:#34C759">Recepción digital</div>
+    <h3>Escanee para recibir</h3>
+    <p>Abre la recepción de esta tienda: descargar guías, confirmar cantidades y dejar observaciones.</p>
+    <div class="qr-url">${qrUrl}</div>
+  </div>
+</div>
+
+<div class="firma-section">
+  <div class="sec" style="margin-bottom:10px">Conformidad de recepción</div>
+  <div style="display:flex;gap:18px;font-size:11px;font-weight:700;color:#333;margin-bottom:10px">
+    <span>☐ Recibido conforme</span><span>☐ Recibido con observaciones</span>
+  </div>
+  <div style="border:1px solid #ccc;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+    <div style="font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:22px">Observaciones (faltantes / daños)</div>
+  </div>
+  <div class="firma-box" style="grid-template-columns:1fr 1fr">
+    <div class="firma">
+      <div class="firma-hdr">Entrega — Chofer</div>
+      <div class="firma-space"></div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Patente</span><span class="firma-field-val">${meta.patente}</span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-val">${meta.chofer}</span></div>
+      </div>
+    </div>
+    <div class="firma">
+      <div class="firma-hdr">Recepción — Tienda</div>
+      <div class="firma-space"></div>
+      <div class="firma-fields">
+        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
+        <div class="firma-field"><span class="firma-field-lbl">Hora</span><span class="firma-field-blank"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  KiosClub · Comprobante de recepción por tienda · ${new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
 </div>
 </div>`;
 }
@@ -251,6 +400,7 @@ ${body}
 /* ── Component ──────────────────────────────────────────── */
 export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
+  const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [saving,  setSaving]  = useState<Record<number, boolean>>({});
   const [saved,   setSaved]   = useState<Record<number, boolean>>({});
   const [toast,   setToast]   = useState<{ msg: string; ok: boolean } | null>(null);
@@ -272,6 +422,40 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     setSaved({});
     setSelected(new Set());
   }, [rutas, fecha, tiendas]);
+
+  // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
+  // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).
+  useEffect(() => {
+    if (!isOpen) return;
+    const cods = [...new Set(rutas.flatMap(r => r.ts.map(t => t.c)))];
+    if (!cods.length) { setItemsByStore({}); return; }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('picking_pallets')
+        .select('store_cod, date, tipo, seq, canonical_id, contenido, peso_kg, alto, largo, ancho, refs')
+        .in('store_cod', cods)
+        .eq('is_active', true)
+        .not('canonical_id', 'is', null)
+        .order('date', { ascending: false })
+        .order('tipo', { ascending: true })
+        .order('seq', { ascending: true });
+      if (cancelled || !data) return;
+      const rows = data as (ItemDetalle & { store_cod: string; date: string })[];
+      const latestDate: Record<string, string> = {};
+      for (const r of rows) if (!latestDate[r.store_cod]) latestDate[r.store_cod] = r.date;
+      const map: Record<string, ItemDetalle[]> = {};
+      for (const r of rows) {
+        if (r.date !== latestDate[r.store_cod]) continue; // solo la fecha vigente por tienda
+        (map[r.store_cod] ??= []).push({
+          canonical_id: r.canonical_id, tipo: r.tipo, seq: r.seq, contenido: r.contenido,
+          peso_kg: r.peso_kg, alto: r.alto, largo: r.largo, ancho: r.ancho, refs: r.refs,
+        });
+      }
+      setItemsByStore(map);
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, rutas]);
 
   // Lock body scroll while panel is open
   useEffect(() => {
@@ -378,6 +562,29 @@ ${bodies}
     }
   }, [selected, guardar]);
 
+  // Imprime las hojas POR TIENDA (detalle ítem-a-ítem) de una o varias rutas.
+  const imprimirHojasTienda = useCallback((idxs: number[]) => {
+    if (!idxs.length) return;
+    const origin = window.location.origin;
+    const bodies = idxs.flatMap(idx => {
+      const m = manifiestos[idx];
+      return m.tiendas.map(t => buildManifiestoTiendaHTML(
+        t, tiendas[t.store_cod] ?? tiendas[t.store_cod.toUpperCase()], itemsByStore[t.store_cod] ?? [],
+        { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin },
+      ));
+    }).join('\n');
+    const html = `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8"/>
+<title>Manifiestos por tienda</title>
+<style>${PRINT_STYLES}</style>
+</head><body>
+${bodies}
+<script>window.onload = () => { setTimeout(() => window.print(), 600); };<\/script>
+</body></html>`;
+    const win = window.open('', '_blank', 'width=850,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  }, [manifiestos, tiendas, itemsByStore, supervisor]);
+
   if (!isOpen) return null;
 
   return (
@@ -427,7 +634,14 @@ ${bodies}
           disabled={selected.size === 0}
           className="px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-40 bg-white/10 hover:bg-white/15"
         >
-          🖨 Imprimir ({selected.size})
+          🖨 Maestro ({selected.size})
+        </button>
+        <button
+          onClick={() => imprimirHojasTienda(Array.from(selected))}
+          disabled={selected.size === 0}
+          className="px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-40 bg-white/10 hover:bg-white/15"
+        >
+          🏪 Hojas por tienda ({selected.size})
         </button>
         <button
           onClick={() => void guardarSeleccionados()}
@@ -507,7 +721,8 @@ ${bodies}
                         </div>
                         <div className="text-[11px] font-mono text-gray-500">
                           {t.pallets > 0 && <span className="mr-1">{t.pallets}P</span>}
-                          {t.bultos > 0  && <span>{t.bultos}B</span>}
+                          {t.bultos > 0  && <span className="mr-1">{t.bultos}B</span>}
+                          {t.chocolates > 0 && <span>{t.chocolates}CH</span>}
                         </div>
                       </div>
                     ))}
@@ -566,7 +781,12 @@ ${bodies}
                   <button onClick={() => imprimir(idx)}
                     className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
                     style={{ background: '#f5f5f5', color: '#444', border: '1px solid #e0e0e0' }}>
-                    🖨️ Imprimir
+                    🖨️ Maestro
+                  </button>
+                  <button onClick={() => imprimirHojasTienda([idx])}
+                    className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
+                    style={{ background: '#EEF2FF', color: '#1B2A6B', border: '1px solid #C7D2FE' }}>
+                    🏪 Hojas x tienda
                   </button>
                 </div>
               </div>
