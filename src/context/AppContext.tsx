@@ -4,6 +4,7 @@ import { createContext, useContext, useReducer, useCallback, useEffect, useRef, 
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
+import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -200,6 +201,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearedAtRef    = useRef<number>(0); // timestamp of last intentional CLEAR_ALL push
   const lastPushCompletedAtRef = useRef<number>(0); // timestamp when last Supabase push completed
   const lastPushTimestampRef   = useRef<number>(0); // pushedAt value included in last push payload
+  const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
+  const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -207,8 +210,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown) => {
-      // Block if local push is pending (debounce) or in-flight (async upsert)
-      if (debounceRef.current !== null || isPushingRef.current) return;
+      // Block if local push is pending (debounce) or in-flight (async upsert).
+      // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
+      if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
       // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to overwrite our data
       if (Date.now() - lastPushCompletedAtRef.current < 3_000) return;
       // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
@@ -274,6 +278,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf, registrado: remote.registrado === true ? true : undefined } });
     };
 
+    // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
+    catchUpRef.current = () => {
+      fetchSessionState('regiones').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+    };
+
     // Initial fetch: use same per-tienda dirty merge as handleRemote.
     // lastPushedRef is pre-seeded from localStorage so the baseline reflects last session's state.
     // Items added since page load (dirty) → local wins; unchanged items → remote wins.
@@ -334,7 +343,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
       pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
-        .finally(() => { isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now(); });
+        .finally(() => {
+          isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now();
+          // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
+          if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
+        });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
     }, 2500);
 
@@ -376,6 +389,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);
+
+  // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
+  useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   return (
     <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending }}>

@@ -430,8 +430,22 @@ export function EstadoPage({ tabBar }: { tabBar?: ReactNode } = {}) {
       applyRemoteGuides(merged);
     }).catch(() => {});
 
-    const unsub = subscribeToSessionState('guides', '', applyRemoteGuides);
-    return unsub;
+    // [P9] Catch-up de guías: re-consulta al reconectar Realtime y al volver a la pestaña/app.
+    const refetchGuides = () => { void fetchSessionState('guides').then(applyRemoteGuides).catch(() => {}); };
+    let realtimeConnected = false;
+    const unsub = subscribeToSessionState('guides', '', applyRemoteGuides, (connected) => {
+      const reconnected = connected && !realtimeConnected;
+      realtimeConnected = connected;
+      if (reconnected) refetchGuides();
+    });
+    const onVis = () => { if (document.visibilityState === 'visible') refetchGuides(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      unsub();
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.dispatch, rebuild]);
 
