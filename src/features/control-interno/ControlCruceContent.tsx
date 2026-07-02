@@ -1216,7 +1216,7 @@ export default function ControlCruceContent() {
         {/* Empty state — filtros sin resultados */}
         {!loading && tableData.length > 0 && filteredCount === 0 && (
           <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', paddingTop: 60, fontSize: 13 }}>
-            <div style={{ fontSize: 28, marginBottom: 12 }}>🔍</div>
+            <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center' }}><Search size={28} aria-hidden="true" /></div>
             Ninguna fila coincide con los filtros activos.
             <br />
             <button
