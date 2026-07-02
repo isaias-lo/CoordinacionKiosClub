@@ -91,6 +91,38 @@ resto del repo (`fix/...`, `feat/...`, `chore/...`).
 
 ---
 
+## 💸 Ahorro de tokens + jornadas largas con Claude
+
+El enemigo #1 de una jornada larga es que **el contexto crece** → se llena → Claude lo comprime →
+cada turno cuesta más y baja la calidad. La estrategia para trabajar más horas, con mejor calidad y
+gastando menos:
+
+### Regla mental: **rama nueva → contexto limpio → tarea enfocada → `bye`**
+
+| Hábito | Qué hacer | Por qué ahorra |
+|---|---|---|
+| **`/clear` entre tareas** | Al cambiar de tarea (ej. de picking a flota), limpia el contexto. Una tarea = un contexto. | Evita arrastrar tokens de una tarea a otra; alarga mucho la jornada |
+| **Confía en la memoria** | Cierra con `bye`, abre con `hola`. `TRABAJO.md` + `claude-mem` guardan la continuidad **fuera** del contexto. | No necesitas mantener todo "en pantalla" para no perder el hilo |
+| **`/compact` a tiempo** | Cuando termines un sub-bloque y el contexto esté cargado, compáctalo tú. | Reduce el costo por turno antes de que se dispare |
+| **Sé específico** | Di el archivo o pantalla concreta ("el buscador en FlotaGrid"), no "revisa la app". | Menos exploración de Claude = menos tokens |
+| **Agrupa pedidos** | Junta cambios relacionados en un mensaje, no goteo de mensajes sueltos. | Menos ida y vuelta |
+
+### Enrutamiento de modelos (ya configurado)
+- Este repo arranca en **Sonnet** (`.claude/settings.json`) — el ejecutor barato.
+- **Tarea simple:** Sonnet hace todo.
+- **Tarea difícil / multi-paso:** Claude planifica con **Opus/Fable** y Sonnet ejecuta.
+- **Al terminar algo importante:** revisión final con **Opus/Fable** (`/code-review`).
+- Cambiar de modelo puntual: `/model`.
+
+### Conectores de la cuenta Claude (Settings → Connectors)
+Cada conector activo se inyecta en **todas** tus sesiones (todos tus proyectos). Deja solo los que usas:
+- ✅ **Dejar:** Supabase.
+- 🟡 **Opcional** (solo si los usas conmigo): Vercel, Google Drive/Gmail/Calendar.
+- 🔴 **Quitar:** Higgsfield, Shopify, Uber, Uber Eats, Indeed — no tienen relación con tu trabajo y
+  son los bloques más pesados. Es el mayor recorte de tokens.
+
+---
+
 ## 📂 Para qué sirve cada archivo
 
 | Archivo | Qué es |
