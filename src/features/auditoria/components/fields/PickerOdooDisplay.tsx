@@ -1,4 +1,5 @@
 'use client';
+import { RefreshCw, Check } from 'lucide-react';
 
 export function PickerOdooDisplay({ picker, odooDetected, onClear }: {
   picker: string; odooDetected?: boolean; onClear: () => void;
@@ -7,7 +8,7 @@ export function PickerOdooDisplay({ picker, odooDetected, onClear }: {
     return (
       <div className="w-full bg-bg border border-dashed border-border rounded-btn px-3 py-3 flex items-center gap-2"
         style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-        <span className="text-text-3 text-[18px] leading-none">🔄</span>
+        <RefreshCw size={16} className="text-text-3 flex-shrink-0" aria-hidden="true" />
         <span className="text-text-3 font-barlow text-[14px]">Asignado automáticamente al cargar la operación Odoo</span>
       </div>
     );
@@ -24,8 +25,8 @@ export function PickerOdooDisplay({ picker, odooDetected, onClear }: {
         ))}
       </div>
       {odooDetected && (
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">
-          Odoo ✓
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(37,99,235,0.10)] text-info border border-info/20">
+          Odoo <Check size={11} aria-hidden="true" />
         </span>
       )}
       <span className="flex-1 text-[13px] text-text-2">{picker}</span>

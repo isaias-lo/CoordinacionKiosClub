@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { Settings } from 'lucide-react';
 
 export function AuditorSelector({ auditor, auditorList, onChange }: {
   auditor: string; auditorList: string[]; onChange: (a: string) => void;
@@ -34,7 +35,7 @@ export function AuditorSelector({ auditor, auditorList, onChange }: {
               placeholder="Buscar auditor…" className="w-full bg-bg border border-border rounded-btn px-3 py-2 text-text font-barlow text-[14px] outline-none focus:border-navy" />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{auditorList.length === 0 ? 'Configura auditores en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{auditorList.length === 0 ? <span className="inline-flex items-center gap-1">Configura auditores en <Settings size={12} aria-hidden="true" /> Configuración</span> : 'Sin resultados'}</div>}
             {filtered.map(name => (
               <div key={name} onClick={() => { onChange(name); setOpen(false); setQuery(''); }}
                 className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 font-barlow text-[14px] ${auditor === name ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>

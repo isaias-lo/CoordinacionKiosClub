@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { Flashlight, CheckCircle2, Lock, Camera, Pencil } from 'lucide-react';
 
 // BarcodeDetector global types are declared in AuditoriaScreen.tsx (same compilation unit)
 
@@ -158,8 +159,9 @@ export function CameraBarcodeScanner({ onScan, onClose, onManualEntry, manualEnt
               <button onClick={() => void toggleTorch()}
                 className="w-9 h-9 rounded-full border flex items-center justify-center text-[18px] cursor-pointer"
                 style={{ borderColor: torchOn ? '#FCD34D' : 'rgba(255,255,255,0.25)', background: torchOn ? 'rgba(252,211,77,0.2)' : 'transparent' }}
-                title={torchOn ? 'Apagar linterna' : 'Encender linterna'}>
-                🔦
+                title={torchOn ? 'Apagar linterna' : 'Encender linterna'}
+                aria-label={torchOn ? 'Apagar linterna' : 'Encender linterna'}>
+                <Flashlight size={18} color={torchOn ? '#FCD34D' : '#fff'} aria-hidden="true" />
               </button>
             )}
             <span className="text-[11px] text-green-400 font-semibold animate-pulse">● Buscando…</span>
@@ -170,19 +172,21 @@ export function CameraBarcodeScanner({ onScan, onClose, onManualEntry, manualEnt
       {/* Body */}
       {status === 'found' ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
-          <div className="text-[64px]">✅</div>
+          <CheckCircle2 size={64} className="text-green-400" aria-hidden="true" />
           <div className="text-white font-bold text-[20px]">¡Código detectado!</div>
         </div>
       ) : status === 'error' ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8 text-center">
-          <div className="text-[52px]">{errorType === 'no-permission' ? '🔒' : '📷'}</div>
+          {errorType === 'no-permission'
+            ? <Lock size={52} className="text-white/80" aria-hidden="true" />
+            : <Camera size={52} className="text-white/80" aria-hidden="true" />}
           <div className="text-white/80 text-[15px] leading-relaxed">{errorMsg}</div>
           {/* Photo fallback: available when BarcodeDetector exists but camera stream failed */}
           {apiAvailable && errorType !== 'no-api' && (
             <button onClick={() => photoInputRef.current?.click()}
               className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-white cursor-pointer"
               style={{ background: 'rgba(37,99,235,0.7)', border: '1px solid rgba(37,99,235,0.5)' }}>
-              📸 Tomar foto del código
+              <Camera size={18} aria-hidden="true" /> Tomar foto del código
             </button>
           )}
           {/* Sin cámara (iOS <17.4): volver a digitar el número manualmente */}
@@ -190,7 +194,7 @@ export function CameraBarcodeScanner({ onScan, onClose, onManualEntry, manualEnt
             <button onClick={onManualEntry}
               className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-white cursor-pointer"
               style={{ background: 'rgba(37,99,235,0.75)', border: '1px solid rgba(37,99,235,0.5)' }}>
-              {manualEntryLabel ?? '✏️ Digitar el número manualmente'}
+              {manualEntryLabel ?? <><Pencil size={18} aria-hidden="true" /> Digitar el número manualmente</>}
             </button>
           )}
           <button onClick={onClose}
@@ -239,7 +243,7 @@ export function CameraBarcodeScanner({ onScan, onClose, onManualEntry, manualEnt
             <button onClick={() => photoInputRef.current?.click()}
               className="flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-[13px] text-white cursor-pointer"
               style={{ background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.25)' }}>
-              📸 Usar foto en su lugar
+              <Camera size={16} aria-hidden="true" /> Usar foto en su lugar
             </button>
           </div>
 
