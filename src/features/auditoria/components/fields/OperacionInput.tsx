@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Search } from 'lucide-react';
 import { SUBTIPO_LABEL, OP_PREFIX } from '../../constants';
 import { buscarOperaciones } from '../../utils/odooApi';
 import { getPickerDisplay } from '../../data/pickerNames';
@@ -46,7 +47,7 @@ export function OperacionInput({ subTipo, codigo, onChange, onSelect, odooConfig
           />
         </div>
         <button onClick={buscar} disabled={s.loading || !fullCodigo} className="px-3 py-2.5 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12" style={{ boxShadow: '0 2px 8px rgba(26,37,80,0.25)' }}>
-          {s.loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
+          {s.loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={16} aria-hidden="true" />}
         </button>
       </div>
       {s.error && <div className="mt-1 text-[11px] text-red">{s.error}</div>}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { Search } from 'lucide-react';
 import { buscarProducto } from '../../utils/odooApi';
 import type { TipoError, ProductoError, ProductoOdoo, OdooConfig } from '../../types';
 import { calcAuditado } from '../../utils/calculos';
@@ -94,7 +95,7 @@ export function ProductSearch({ odooConfig, tiposError, operacionCodes, onAdd, o
             <input type="text" value={codigo} onChange={e => { setCodigo(e.target.value); setFound(null); setError(''); }} onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="[NLAVINF031] o VINF031"
               className="flex-1 bg-white border-[1.5px] border-border rounded-btn px-3 py-2 font-mono text-[13px] outline-none focus:border-navy [-webkit-appearance:none]" />
             <button onClick={buscar} disabled={loading || !codigo.trim()} className="px-3 py-2 bg-navy text-white border-none rounded-btn font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center w-12">
-              {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '🔍'}
+              {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={16} aria-hidden="true" />}
             </button>
           </div>
           {error && <div className="mt-1.5 text-[11px] text-red">{error}</div>}

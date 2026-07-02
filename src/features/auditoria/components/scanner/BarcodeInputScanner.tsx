@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Camera, Check, X } from 'lucide-react';
 
 // Barcode scanner para autocompletar operación (pistola lectora)
 // Usa input NO controlado + eventos nativos para máxima compatibilidad con
@@ -23,8 +24,8 @@ export function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boole
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     const ok = onScan(clean);
     setFeedback(ok
-      ? { ok: true,  msg: '✓ Tienda, picker y contenido asignados' }
-      : { ok: false, msg: '✗ Código no reconocido' }
+      ? { ok: true,  msg: 'Tienda, picker y contenido asignados' }
+      : { ok: false, msg: 'Código no reconocido' }
     );
     if (inputRef.current) inputRef.current.value = '';
     setTimeout(() => setFeedback(null), 3000);
@@ -88,7 +89,7 @@ export function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boole
     <div className="mb-3 rounded-card overflow-hidden border-[1.5px]"
       style={{ borderColor: focused ? '#2563EB' : 'rgba(37,99,235,0.30)', background: 'rgba(37,99,235,0.03)', transition: 'border-color 0.15s' }}>
       <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
-        <span style={{ fontSize: 15 }}>📷</span>
+        <Camera size={15} color="#2563EB" aria-hidden="true" />
         <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Pistola lectora — apunta al código del pallet
         </span>
@@ -117,7 +118,8 @@ export function BarcodeInputScanner({ onScan }: { onScan: (raw: string) => boole
           spellCheck={false}
         />
         {feedback ? (
-          <div className="mt-1 text-[12px] font-semibold" style={{ color: feedback.ok ? '#16A34A' : '#D32F2F' }}>
+          <div className="mt-1 text-[12px] font-semibold flex items-center gap-1" style={{ color: feedback.ok ? '#16A34A' : '#D32F2F' }}>
+            {feedback.ok ? <Check size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
             {feedback.msg}
           </div>
         ) : (

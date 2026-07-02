@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { Settings } from 'lucide-react';
 
 export function PickerNombreSelector({ pickerNombre, pickerNombresList, onChange }: {
   pickerNombre: string; pickerNombresList: string[]; onChange: (n: string) => void;
@@ -43,7 +44,7 @@ export function PickerNombreSelector({ pickerNombre, pickerNombresList, onChange
                 — Sin picker
               </div>
             )}
-            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{uniqueNames.length === 0 ? 'Configura pickers en ⚙ Configuración' : 'Sin resultados'}</div>}
+            {filtered.length === 0 && <div className="py-5 text-center text-text-3 text-[13px]">{uniqueNames.length === 0 ? <span className="inline-flex items-center gap-1">Configura pickers en <Settings size={12} aria-hidden="true" /> Configuración</span> : 'Sin resultados'}</div>}
             {filtered.map(name => (
               <div key={name} onClick={() => { onChange(name); setOpen(false); setQuery(''); }}
                 className={`px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-b-0 font-barlow text-[14px] ${pickerNombre === name ? 'bg-[rgba(26,37,80,0.06)] text-navy font-semibold' : 'text-text hover:bg-bg'}`}>
