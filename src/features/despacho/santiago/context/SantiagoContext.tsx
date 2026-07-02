@@ -6,6 +6,7 @@ import type {
 } from '../types';
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
+import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -150,6 +151,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const isInitializedRef = useRef(false);
   const clearedAtRef         = useRef<number>(0); // timestamp of last intentional RESET push
   const lastPushTimestampRef = useRef<number>(0); // pushedAt value included in last push payload
+  const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
+  const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -162,8 +165,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     });
 
     const handleRemote = (remoteState: unknown) => {
-      // Block if local push is pending (debounce) or in-flight (async upsert)
-      if (debounceRef.current !== null || isPushingRef.current) return;
+      // Block if local push is pending (debounce) or in-flight (async upsert).
+      // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
+      if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       // Reject data without an explicit sessionDate or from a different calendar day
@@ -189,6 +193,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         lastPushedRef.current = remoteStr;
         dispatch({ type: 'LOAD_STATE', payload: remote });
       }
+    };
+
+    // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
+    catchUpRef.current = () => {
+      fetchSessionState('santiago').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
     };
 
     // Initial fetch
@@ -256,7 +265,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       lastPushTimestampRef.current = pushedAt;
       pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
-        .finally(() => { isPushingRef.current = false; });
+        .finally(() => {
+          isPushingRef.current = false;
+          // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
+          if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
+        });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
     }, 2500);
 
@@ -288,6 +301,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       .catch(() => { lastPushedRef.current = prevPushed; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
+
+  // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
+  useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   return (
     <SantiagoContext.Provider value={{ state, dispatch, flushPending }}>
