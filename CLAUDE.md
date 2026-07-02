@@ -104,6 +104,19 @@ Required in `.env.local`:
 - `NEXT_PUBLIC_ODOO_URL`, `NEXT_PUBLIC_ODOO_DB`, `NEXT_PUBLIC_ODOO_USERNAME`, `NEXT_PUBLIC_ODOO_API_KEY`
 - `OTP_SECRET`, `GMAIL_USER`, `GMAIL_APP_PASS`
 
+## Modelo y flujo de trabajo (ahorro de tokens)
+Por defecto este proyecto corre en **Sonnet** (ejecutor, ver `.claude/settings.json`). El objetivo es
+gastar Opus/Fable solo donde aportan y dejar la ejecución en Sonnet.
+
+- **Tarea simple** (ajuste de UI, fix puntual, un archivo — el ~80% de los commits): Sonnet hace todo. NO
+  invoques subagentes ni Opus; sería gasto inútil.
+- **Tarea difícil / multi-paso / de arquitectura**: planifícala con un subagente **Plan** en Opus o Fable
+  (`Agent` con `subagent_type: Plan`, `model: opus` o `fable`). El subagente devuelve el plan; Sonnet lo
+  ejecuta.
+- **Al terminar una tarea importante**: corre el testeo/revisión final con Opus o Fable (subagente de
+  review o `/code-review`), no con Sonnet.
+- Para cambiar el modelo puntualmente en una sesión usa `/model`.
+
 ## Instrucción de sesión
 Al iniciar cada sesión, lee TRABAJO.md y resume brevemente en qué estamos.
 Al terminar cualquier tarea importante, actualiza TRABAJO.md con el estado actual sin que te lo pida.
