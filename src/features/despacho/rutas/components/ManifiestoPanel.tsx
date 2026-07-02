@@ -118,7 +118,8 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
-    <div class="logo">KIOSClub</div>
+    <img src="${origin}/logo-kiosclub.png" alt="KIOS Club" class="logo-img" onerror="this.style.display='none';var n=this.nextElementSibling;if(n)n.style.display='block'"/>
+    <div class="logo" style="display:none">KIOSClub</div>
     <div class="razon">Kiosclub American Supermarket SPA</div>
     <div class="rut">RUT 76.360.868-9</div>
     <div class="logo-sub">Centro de Distribución · Bodega ${m.bodega_origen}</div>
@@ -252,7 +253,8 @@ function buildManifiestoTiendaHTML(
   return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
-    <div class="logo">KIOSClub</div>
+    <img src="${meta.origin}/logo-kiosclub.png" alt="KIOS Club" class="logo-img" onerror="this.style.display='none';var n=this.nextElementSibling;if(n)n.style.display='block'"/>
+    <div class="logo" style="display:none">KIOSClub</div>
     <div class="razon">Kiosclub American Supermarket SPA</div>
     <div class="rut">RUT 76.360.868-9</div>
     <div class="logo-sub">Manifiesto de recepción · Tienda</div>
@@ -344,6 +346,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18
 .manifiesto-page:last-child{page-break-after:auto}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
 .logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
+.logo-img{height:52px;width:auto;display:block;margin-bottom:2px}
 .razon{font-size:11px;font-weight:700;color:#1a2550;margin-top:3px}
 .rut{font-size:10px;font-weight:600;color:#555;margin-top:1px}
 .logo-sub{font-size:9px;color:#555;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
