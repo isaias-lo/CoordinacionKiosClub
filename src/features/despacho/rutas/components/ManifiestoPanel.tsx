@@ -118,7 +118,7 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
-    <img src="${origin}/logo-kiosclub.png" alt="KIOS Club" class="logo-img" onerror="this.style.display='none';var n=this.nextElementSibling;if(n)n.style.display='block'"/>
+    <img src="${origin}/logo-kiosclub.webp" alt="KIOS Club" class="logo-img" onerror="this.style.display='none';var n=this.nextElementSibling;if(n)n.style.display='block'"/>
     <div class="logo" style="display:none">KIOSClub</div>
     <div class="razon">Kiosclub American Supermarket SPA</div>
     <div class="rut">RUT 76.360.868-9</div>
@@ -253,7 +253,7 @@ function buildManifiestoTiendaHTML(
   return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
-    <img src="${meta.origin}/logo-kiosclub.png" alt="KIOS Club" class="logo-img" onerror="this.style.display='none';var n=this.nextElementSibling;if(n)n.style.display='block'"/>
+    <img src="${meta.origin}/logo-kiosclub.webp" alt="KIOS Club" class="logo-img" onerror="this.style.display='none';var n=this.nextElementSibling;if(n)n.style.display='block'"/>
     <div class="logo" style="display:none">KIOSClub</div>
     <div class="razon">Kiosclub American Supermarket SPA</div>
     <div class="rut">RUT 76.360.868-9</div>
