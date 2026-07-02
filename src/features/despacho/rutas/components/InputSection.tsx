@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Target, Calculator, PenLine, Truck, Users, ClipboardList } from 'lucide-react';
+import { Target, Calculator, PenLine, Truck, Users, ClipboardList, RotateCcw } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -54,6 +54,7 @@ interface Props {
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
   rightPanelContent?: React.ReactNode;
+  segundaVueltaContent?: React.ReactNode;
 }
 
 /* ── Sidebar store row ──────────────────────────────────────────── */
@@ -127,6 +128,7 @@ const MODES: { id: string; Icon: LIcon; label: string; from: string; to: string;
   { id: 'drag',  Icon: Target,     label: 'DESPACHO', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
   { id: 'cal',   Icon: Calculator, label: 'CALCULAR', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
   { id: 'man',   Icon: PenLine,    label: 'MANUAL',   from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
+  { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA', from: '#6B21A8', to: '#4C1D95', shadow: 'rgba(76,29,149,0.30)' },
   { id: 'flota', Icon: Truck,      label: 'FLOTA',    from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
 ];
 
@@ -164,6 +166,7 @@ export default function InputSection({
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onLimpiar, onEliminarParada,
   rightPanelContent,
+  segundaVueltaContent,
 }: Props) {
   const dia = getDia(fecha);
   // Fecha de SALIDA: por defecto hoy, pero se arma a veces para mañana (sale al día
@@ -391,6 +394,8 @@ export default function InputSection({
                     )}
                   </div>
                 </div>
+              ) : modo === 'v2' ? (
+                <div className="h-full overflow-hidden">{segundaVueltaContent}</div>
               ) : rightPanelContent ? (
                 <div className="h-full overflow-hidden">{rightPanelContent}</div>
               ) : (
@@ -590,10 +595,10 @@ export default function InputSection({
               {MODES.map(({ id, Icon, label, from, to, shadow }) => (
                 <button
                   key={id}
-                  onClick={() => { if (!rightPanelContent || id === 'flota') onModo(id); }}
+                  onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2') onModo(id); }}
                   style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
                   className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
-                    ${rightPanelContent && id !== 'flota' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
+                    ${rightPanelContent && id !== 'flota' && id !== 'v2' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
                 >
                   <TabIcon Icon={Icon} from={from} to={to} shadow={shadow} />
                   <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
@@ -663,6 +668,10 @@ export default function InputSection({
                 </div>
               )}
             </div>
+          </div>
+        ) : modo === 'v2' ? (
+          <div className="flex-1 overflow-hidden">
+            {segundaVueltaContent}
           </div>
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">
