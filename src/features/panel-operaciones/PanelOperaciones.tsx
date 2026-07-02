@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Truck, Store, AlertTriangle, Camera, CheckCircle2, MapPin, Clock } from 'lucide-react';
 
 type Fuente = 'conductor' | 'tienda' | 'pendientes';
 
@@ -173,8 +174,9 @@ function DetailModal({ rec, onClose }: { rec: Rec; onClose: () => void }) {
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.15em', textTransform: 'uppercase' as const, marginBottom: 4 }}>
-                {rec.fuente === 'conductor' ? '🚚 Entrega Conductor' : '🏪 Recepción Tienda'}
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.15em', textTransform: 'uppercase' as const, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {rec.fuente === 'conductor' ? <Truck size={11} aria-hidden="true" /> : <Store size={11} aria-hidden="true" />}
+                {rec.fuente === 'conductor' ? 'Entrega Conductor' : 'Recepción Tienda'}
               </div>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{rec.tienda}</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>{rec.cod} · {fmtDatetime(rec.created_at)}</div>
@@ -183,8 +185,8 @@ function DetailModal({ rec, onClose }: { rec: Rec; onClose: () => void }) {
           </div>
 
           {diff && (
-            <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#FCA5A5' }}>
-              ⚠️ Diferencias detectadas en cantidades enviadas vs recibidas
+            <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#FCA5A5', display: 'flex', alignItems: 'center', gap: 7 }}>
+              <AlertTriangle size={14} aria-hidden="true" style={{ flexShrink: 0 }} /> Diferencias detectadas en cantidades enviadas vs recibidas
             </div>
           )}
 
@@ -311,10 +313,10 @@ function RecordCard({ rec, onClick }: { rec: Rec; onClick: () => void }) {
             <span style={{ fontSize: 10, fontWeight: 700, background: sc.bg, border: `1px solid ${sc.border}`, color: sc.text, borderRadius: 6, padding: '2px 6px', textTransform: 'capitalize' as const }}>{rec.sello_estado}</span>
           )}
           {diff && (
-            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', borderRadius: 6, padding: '2px 6px' }}>⚠ Dif.</span>
+            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', borderRadius: 6, padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={10} aria-hidden="true" /> Dif.</span>
           )}
           {photoCount > 0 && (
-            <span style={{ fontSize: 10, fontWeight: 600, background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', color: '#C4B5FD', borderRadius: 6, padding: '2px 6px' }}>📷 {photoCount}</span>
+            <span style={{ fontSize: 10, fontWeight: 600, background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', color: '#C4B5FD', borderRadius: 6, padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Camera size={10} aria-hidden="true" /> {photoCount}</span>
           )}
         </div>
       </div>
@@ -422,15 +424,16 @@ export default function PanelOperaciones() {
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 5, marginBottom: 18, background: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: 4 }}>
           {([
-            { f: 'conductor',  label: '🚚 Conductor'    },
-            { f: 'tienda',     label: '🏪 Tienda'       },
-            { f: 'pendientes', label: '⚠ Sin recepción' },
-          ] as { f: Fuente; label: string }[]).map(({ f, label }) => (
+            { f: 'conductor',  label: 'Conductor',     Icon: Truck },
+            { f: 'tienda',     label: 'Tienda',        Icon: Store },
+            { f: 'pendientes', label: 'Sin recepción', Icon: AlertTriangle },
+          ] as { f: Fuente; label: string; Icon: React.ElementType }[]).map(({ f, label, Icon }) => (
             <button
               key={f}
               onClick={() => setTab(f)}
               style={{
                 flex: 1, padding: '10px 4px', borderRadius: 10,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                 fontSize: 11, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' as const, cursor: 'pointer',
                 transition: 'all 0.15s',
                 // Acento azul uniforme para la tab activa (sobrio/empresarial)
@@ -439,7 +442,7 @@ export default function PanelOperaciones() {
                 color: tab === f ? '#fff' : 'rgba(255,255,255,0.4)',
               }}
             >
-              {label}
+              <Icon size={13} aria-hidden="true" /> {label}
             </button>
           ))}
         </div>
@@ -550,7 +553,7 @@ export default function PanelOperaciones() {
               </div>
             ) : pendientes.length === 0 ? (
               <div style={{ textAlign: 'center' as const, padding: '40px 0' }}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                <CheckCircle2 size={34} aria-hidden="true" style={{ color: '#34D399', marginBottom: 10 }} />
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Todas las tiendas tienen recepción</div>
               </div>
             ) : (
@@ -604,9 +607,9 @@ export default function PanelOperaciones() {
                       {/* Extra info */}
                       {(ps.conductor || ps.ventana || ps.ruta) && (
                         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
-                          {ps.conductor && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>🚚 {ps.conductor}</span>}
-                          {ps.ventana   && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>🕐 {ps.ventana}</span>}
-                          {ps.ruta      && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>📍 {ps.ruta}</span>}
+                          {ps.conductor && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Truck size={11} aria-hidden="true" /> {ps.conductor}</span>}
+                          {ps.ventana   && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={11} aria-hidden="true" /> {ps.ventana}</span>}
+                          {ps.ruta      && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={11} aria-hidden="true" /> {ps.ruta}</span>}
                         </div>
                       )}
                     </div>
