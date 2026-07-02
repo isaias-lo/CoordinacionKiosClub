@@ -1,15 +1,17 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { Package, Building2, Waves, Search, type LucideIcon } from 'lucide-react';
 import { formatCod } from '../utils/helpers';
 import type { TiendaInfo } from '../data/tiendas';
 
 const DIAS = ['LU','MA','MI','JU','VI','SA'];
 const GRUPOS: [string, string][] = [
-  ['rm',    '📦 Flota'],
-  ['fal',   '🏢 Regiones'],
-  ['costa', '🌊 Costa'],
+  ['rm',    'Flota'],
+  ['fal',   'Regiones'],
+  ['costa', 'Costa'],
 ];
+const GRP_ICON: Record<string, LucideIcon> = { rm: Package, fal: Building2, costa: Waves };
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 
@@ -127,22 +129,24 @@ export default function ConfigPanel({ isOpen, cal, tiendas, dnom, dcol, onClose,
 
         {/* ── Selector de grupo ── */}
         <div className="px-5 pt-4 pb-3 flex gap-2 flex-wrap border-b border-black/[0.07]">
-          {GRUPOS.map(([id, lb]) => (
+          {GRUPOS.map(([id, lb]) => {
+            const Icon = GRP_ICON[id];
+            return (
             <button
               key={id}
               onClick={() => setCfgGrp(id)}
-              className={`h-[40px] px-5 rounded-full text-[14px] font-bold border-2 transition-all
+              className={`h-[40px] px-5 rounded-full text-[14px] font-bold border-2 transition-all inline-flex items-center gap-1.5
                 ${cfgGrp === id ? 'bg-kred border-kred text-white shadow-md shadow-red-200' : 'bg-white border-black/[0.12] text-kmuted hover:border-kred/[0.3]'}`}
             >
-              {lb}
+              <Icon size={16} aria-hidden="true" /> {lb}
             </button>
-          ))}
+          ); })}
         </div>
 
         {/* ── Buscador ── */}
         <div className="px-5 py-3 border-b border-black/[0.07]">
           <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] pointer-events-none">🔍</span>
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 flex text-kmuted pointer-events-none"><Search size={15} aria-hidden="true" /></span>
             <input
               type="text" value={search}
               onChange={e => handleSearch(e.target.value)}

@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { MapPin, Package, Inbox, Check } from 'lucide-react';
 import { cargarGMaps } from '../utils/maps';
 
 let _geoGMapsIniciado = false;
@@ -125,7 +126,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
 
         <div className="px-4 py-3.5 border-b border-black/[0.09] bg-white flex items-center justify-between sticky top-0 z-10">
           <div>
-            <div className="text-[15px] font-bold text-ktext">📍 Paradas adicionales</div>
+            <div className="text-[15px] font-bold text-ktext inline-flex items-center gap-1.5"><MapPin size={15} aria-hidden="true" /> Paradas adicionales</div>
             <div className="text-[11px] text-kmuted">Entregas o retiros fuera de las tiendas habituales</div>
           </div>
           <button onClick={handleClose} className="w-[32px] h-[32px] rounded-full bg-kbg border border-black/[0.09] flex items-center justify-center text-[16px] text-kmuted hover:text-ktext transition-colors">✕</button>
@@ -152,14 +153,14 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
               <div>
                 <div className="text-[10px] font-bold text-kmuted uppercase tracking-[0.5px] mb-1.5">Tipo de parada</div>
                 <div className="flex gap-2">
-                  {([['entrega', '📦 Entrega', 'Llevas algo'], ['retiro', '📥 Retiro', 'Recoges algo']] as [string, string, string][]).map(([val, lb, hint]) => (
+                  {([['entrega', 'Entrega', 'Llevas algo'], ['retiro', 'Retiro', 'Recoges algo']] as [string, string, string][]).map(([val, lb, hint]) => (
                     <button
                       key={val}
                       onClick={() => setForm(f => ({ ...f, tipo: val }))}
                       className={`flex-1 py-2.5 rounded-[8px] text-[12px] font-semibold border-[1.5px] transition-all
                         ${form.tipo === val ? 'bg-kred/[0.07] border-kred text-kred' : 'bg-kbg border-black/[0.12] text-kmuted'}`}
                     >
-                      <div>{lb}</div>
+                      <div className="flex items-center justify-center gap-1">{val === 'entrega' ? <Package size={14} aria-hidden="true" /> : <Inbox size={14} aria-hidden="true" />} {lb}</div>
                       <div className={`text-[10px] font-normal mt-px ${form.tipo === val ? 'text-kred/70' : 'text-kmuted/60'}`}>{hint}</div>
                     </button>
                   ))}
@@ -185,7 +186,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                   </button>
                 </div>
                 {geo.error    && <div className="text-[11px] text-red-500 mt-1.5">{geo.error}</div>}
-                {geo.formatted && <div className="text-[11px] text-green-600 mt-1.5">✓ {geo.formatted}</div>}
+                {geo.formatted && <div className="text-[11px] text-green-600 mt-1.5 inline-flex items-center gap-1"><Check size={12} aria-hidden="true" /> {geo.formatted}</div>}
               </div>
 
               <div>
@@ -219,14 +220,14 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                 className={`w-full h-[42px] rounded-kios2 text-[13px] font-bold transition-all
                   ${geo.gps ? 'bg-kred text-white shadow-[0_3px_10px_rgba(212,43,43,0.25)] active:scale-[0.98]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
               >
-                {geo.gps ? '✓ Agregar a la ruta' : 'Primero busca la dirección'}
+                {geo.gps ? <span className="inline-flex items-center gap-1.5"><Check size={15} aria-hidden="true" /> Agregar a la ruta</span> : 'Primero busca la dirección'}
               </button>
             </div>
           )}
 
           {paradas.length === 0 ? (
             <div className="text-center py-6">
-              <div className="text-[32px] mb-2">📍</div>
+              <div className="mb-2 flex justify-center text-kmuted"><MapPin size={32} aria-hidden="true" /></div>
               <div className="text-[13px] font-semibold text-ktext mb-1">Sin paradas adicionales</div>
               <div className="text-[12px] text-kmuted leading-relaxed">
                 Agrega paradas para incluir entregas o retiros en cualquier dirección.

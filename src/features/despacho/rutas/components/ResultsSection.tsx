@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { FileText, Loader2, BarChart3, ClipboardList, Check, Flag, AlertTriangle, Star } from 'lucide-react';
 import RouteCard          from './RouteCard';
 import MapSection         from './MapSection';
 import ManifiestoPanel    from './ManifiestoPanel';
@@ -83,7 +84,7 @@ export default function ResultsSection({
             <span className="text-[18px] italic font-bold text-kred">Club</span>
           </div>
           <div className="bg-knavy rounded-[2px] px-1.5 py-0.5 inline-flex gap-[3px] mt-0.5">
-            {[0,1,2,3,4].map(i => <span key={i} className="text-white text-[8px]">★</span>)}
+            {[0,1,2,3,4].map(i => <Star key={i} size={8} className="text-white fill-white" aria-hidden="true" />)}
           </div>
         </div>
         <div className="text-right text-[11px] text-[#888] leading-[1.6] font-mono">
@@ -150,7 +151,7 @@ export default function ResultsSection({
           Nueva consulta
         </button>
         <button onClick={onGenerarPDF} className="btn-pdf flex-1 h-[50px] px-6 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(27,42,107,0.3)]">
-          📄 Exportar PDF
+          <FileText size={16} aria-hidden="true" /> Exportar PDF
         </button>
       </div>
 
@@ -160,7 +161,9 @@ export default function ResultsSection({
           disabled={historialStatus === 'loading'}
           className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
         >
-          {historialStatus === 'loading' ? '⏳ Registrando...' : '📊 REGISTRAR DESPACHO Y GENERAR MANIFIESTOS'}
+          {historialStatus === 'loading'
+            ? <><Loader2 size={16} className="animate-spin" aria-hidden="true" /> Registrando...</>
+            : <><BarChart3 size={16} aria-hidden="true" /> REGISTRAR DESPACHO Y GENERAR MANIFIESTOS</>}
         </button>
         {historialMsg && (
           <div
@@ -179,7 +182,7 @@ export default function ResultsSection({
           className="w-full h-[46px] rounded-kios2 text-white text-[14px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
           style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', boxShadow: '0 4px 14px rgba(26,37,80,0.3)' }}
         >
-          📋 Generar Manifiestos de Ruta
+          <ClipboardList size={16} aria-hidden="true" /> Generar Manifiestos de Ruta
         </button>
         <div className="mt-[5px] text-[10px] text-kmuted text-center">
           Genera el documento único por ruta · incluye QR maestro · reemplaza guías físicas
@@ -192,11 +195,13 @@ export default function ResultsSection({
           onClick={() => setCierreOpen(true)}
           className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy/30 flex items-center justify-center gap-2 transition-all cursor-pointer hover:border-knavy"
         >
-          {cerrado ? '✓ Jornada cerrada — ver resumen' : '🏁 Cierre de jornada'}
+          {cerrado
+            ? <><Check size={16} aria-hidden="true" /> Jornada cerrada — ver resumen</>
+            : <><Flag size={16} aria-hidden="true" /> Cierre de jornada</>}
         </button>
         {pendientesV2.length > 0 && (
-          <div className="mt-[5px] text-[10px] text-kred text-center font-semibold">
-            ⚠ {pendientesV2.length} tienda{pendientesV2.length !== 1 ? 's' : ''} pendiente{pendientesV2.length !== 1 ? 's' : ''} para 2ª vuelta
+          <div className="mt-[5px] text-[10px] text-kred text-center font-semibold flex items-center justify-center gap-1">
+            <AlertTriangle size={12} aria-hidden="true" /> {pendientesV2.length} tienda{pendientesV2.length !== 1 ? 's' : ''} pendiente{pendientesV2.length !== 1 ? 's' : ''} para 2ª vuelta
           </div>
         )}
       </div>

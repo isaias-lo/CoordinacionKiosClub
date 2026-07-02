@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import { Check, AlertTriangle } from 'lucide-react';
 import type { Ruta } from '../utils/routing';
 import { fechaTxt } from '../utils/helpers';
 
@@ -117,14 +118,14 @@ export default function CierreJornadaPanel({
               </div>
               <button
                 onClick={() => { onCargarPendientes(); onClose(); }}
-                className="w-full h-[42px] rounded-kios2 border-2 border-kred text-kred bg-kred/[0.06] text-[13px] font-bold hover:bg-kred/[0.12] transition-colors active:scale-[0.99]"
+                className="w-full h-[42px] rounded-kios2 border-2 border-kred text-kred bg-kred/[0.06] text-[13px] font-bold hover:bg-kred/[0.12] transition-colors active:scale-[0.99] flex items-center justify-center gap-2"
               >
-                ⚠ Cargar pendientes para 2ª vuelta
+                <AlertTriangle size={16} aria-hidden="true" /> Cargar pendientes para 2ª vuelta
               </button>
             </div>
           ) : (
             <div className="bg-white rounded-kios shadow-kios px-4 py-4 text-center mb-3 border border-[#34C759]/30">
-              <div className="text-[13px] font-bold text-[#34C759]">✓ Sin pendientes</div>
+              <div className="text-[13px] font-bold text-[#34C759] inline-flex items-center gap-1"><Check size={15} aria-hidden="true" /> Sin pendientes</div>
               <div className="text-[12px] text-kmuted mt-0.5">Todas las tiendas quedaron asignadas a una ruta.</div>
             </div>
           )}
@@ -145,7 +146,7 @@ export default function CierreJornadaPanel({
             onClick={() => { onListoPorHoy(); onClose(); }}
             className="w-full h-[50px] mt-2 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(27,42,107,0.3)] active:scale-[0.99] transition-transform"
           >
-            ✓ Listo por hoy
+            <Check size={16} aria-hidden="true" /> Listo por hoy
           </button>
           <div className="text-[10px] text-kmuted text-center mt-1.5">
             El despacho ya quedó registrado (historial, control y seguimiento). Esto marca el cierre del día.
