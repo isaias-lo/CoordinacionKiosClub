@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { FileText, Loader2, BarChart3, ClipboardList, Check, Flag, AlertTriangle, Star } from 'lucide-react';
+import { FileText, Loader2, BarChart3, ClipboardList, Check, Flag, AlertTriangle } from 'lucide-react';
 import RouteCard          from './RouteCard';
 import MapSection         from './MapSection';
 import ManifiestoPanel    from './ManifiestoPanel';
@@ -82,15 +82,12 @@ export default function ResultsSection({
     <div id="res" className="mt-[22px]">
 
       <div id="pdfHeader" className="print-flex hidden items-center justify-between pb-3.5 mb-4 border-b-[3px] border-kred">
-        <div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-[22px] font-extrabold text-kred tracking-tight">KIOS</span>
-            <span className="text-[18px] italic font-bold text-kred">Club</span>
-          </div>
-          <div className="bg-knavy rounded-[2px] px-1.5 py-0.5 inline-flex gap-[3px] mt-0.5">
-            {[0,1,2,3,4].map(i => <Star key={i} size={8} className="text-white fill-white" aria-hidden="true" />)}
-          </div>
-        </div>
+        {/* Logo oficial (fondo claro en impresión). Fallback al wordmark si la imagen no carga. */}
+        <img
+          src="/logo-kiosclub.webp"
+          alt="KIOS Club — American Supermarket"
+          className="h-[48px] w-auto"
+        />
         <div className="text-right text-[11px] text-[#888] leading-[1.6] font-mono">
           <div><strong className="text-ktext text-[13px]">Centro de Distribución — Despacho</strong></div>
           <div>Fecha: {fechaLargaTxt(fecha)}</div>
