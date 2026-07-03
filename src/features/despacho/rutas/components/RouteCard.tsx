@@ -1,5 +1,5 @@
 'use client';
-import { Check, Truck } from 'lucide-react';
+import { Check, Truck, AlertTriangle, MapPin, Clock } from 'lucide-react';
 import { dkm, formatCod } from '../utils/helpers';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -51,7 +51,7 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
       </div>
 
       <div className="px-4 py-2.5 border-b border-black/[0.09] flex items-center gap-2.5">
-        <span className="text-[11px] font-semibold text-kmuted uppercase tracking-[0.5px] whitespace-nowrap">🚛 Conductor</span>
+        <span className="text-[11px] font-semibold text-kmuted uppercase tracking-[0.5px] whitespace-nowrap inline-flex items-center gap-1"><Truck size={12} aria-hidden="true" /> Conductor</span>
         <select
           value={r._choferAsignado !== undefined ? r._choferAsignado : r.v.ch}
           onChange={e => onChoferChange(index, e.target.value)}
@@ -82,7 +82,7 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
         <div className="flex justify-between text-[11px] text-kmuted mb-1">
           <span>Ocupación</span>
           {over
-            ? <span className="text-[#ff3b30] font-bold">⚠️ SOBRE CAPACIDAD</span>
+            ? <span className="text-[#ff3b30] font-bold inline-flex items-center gap-1"><AlertTriangle size={13} aria-hidden="true" /> SOBRE CAPACIDAD</span>
             : <span className="font-bold">{r.tp}/{r.v.c}P ({Math.round(pct)}%)</span>
           }
         </div>
@@ -127,7 +127,9 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
                 {inf?.n && <div className="text-[13px] font-semibold text-ktext mt-1 leading-snug">{inf.n}</div>}
                 {inf?._desc && <div className="text-[11px] text-kmuted mt-px">{inf._desc}</div>}
                 <div className={`sdst text-[11px] mt-1 ${leg ? 'text-[#34C759]' : 'text-kmuted'}`}>
-                  {leg ? `📍 ${leg.dist} · ⏳ ${leg.dur} desde punto anterior` : `📍 ~${dist}km del punto anterior`}
+                  {leg
+                    ? <><MapPin size={11} className="inline align-[-1.5px]" aria-hidden="true" /> {leg.dist} · <Clock size={11} className="inline align-[-1.5px]" aria-hidden="true" /> {leg.dur} desde punto anterior</>
+                    : <><MapPin size={11} className="inline align-[-1.5px]" aria-hidden="true" /> ~{dist}km del punto anterior</>}
                 </div>
               </div>
             </div>
@@ -153,8 +155,8 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
               {inf?.d && <div className="text-[11px] text-kmuted mt-px">{inf.d}</div>}
               <div className={`sdst text-[11px] mt-px ${leg ? 'text-[#34C759]' : 'text-kmuted'}`}>
                 {leg
-                  ? `📍 ${leg.dist} · ⏳ ${leg.dur} desde punto anterior`
-                  : `📍 ~${dist}km del punto anterior${inf?.v ? ' · ' + inf.v : ''}`}
+                  ? <><MapPin size={11} className="inline align-[-1.5px]" aria-hidden="true" /> {leg.dist} · <Clock size={11} className="inline align-[-1.5px]" aria-hidden="true" /> {leg.dur} desde punto anterior</>
+                  : <><MapPin size={11} className="inline align-[-1.5px]" aria-hidden="true" /> ~{dist}km del punto anterior{inf?.v ? ' · ' + inf.v : ''}</>}
               </div>
             </div>
           </div>
