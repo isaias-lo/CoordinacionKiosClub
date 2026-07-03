@@ -1,7 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw } from 'lucide-react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
+
+const TAB_ICON = { ruta: Truck, recepcion: Package } as const;
 
 /* ── Types ──────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -232,26 +235,31 @@ export default function ConductorHubPage() {
         </div>
 
         {offline && (
-          <div style={{ marginBottom: 12, padding: '5px 10px', background: 'rgba(255,149,0,0.15)', border: '1px solid rgba(255,149,0,0.3)', borderRadius: 8, fontSize: 10, color: '#FF9500' }}>
-            📴 Modo offline — mostrando datos guardados
+          <div style={{ marginBottom: 12, padding: '5px 10px', background: 'rgba(255,149,0,0.15)', border: '1px solid rgba(255,149,0,0.3)', borderRadius: 8, fontSize: 10, color: '#FF9500', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <WifiOff size={12} aria-hidden="true" /> Modo offline — mostrando datos guardados
           </div>
         )}
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['ruta', '🚚 Mi Ruta'], ['recepcion', '📦 Entregar en Tienda']] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setTab(key)}
-              style={{
-                flex: 1, padding: '10px 8px', border: 'none', cursor: 'pointer',
-                background: 'transparent',
-                borderBottom: tab === key ? '2.5px solid #fff' : '2.5px solid transparent',
-                color: tab === key ? '#fff' : 'rgba(255,255,255,0.4)',
-                fontSize: 12, fontWeight: tab === key ? 800 : 500,
-                transition: 'all 0.15s',
-              }}>
-              {label}
-            </button>
-          ))}
+          {([['ruta', 'Mi Ruta'], ['recepcion', 'Entregar en Tienda']] as const).map(([key, label]) => {
+            const TabIcon = TAB_ICON[key];
+            return (
+              <button key={key} onClick={() => setTab(key)}
+                style={{
+                  flex: 1, padding: '10px 8px', border: 'none', cursor: 'pointer',
+                  background: 'transparent',
+                  borderBottom: tab === key ? '2.5px solid #fff' : '2.5px solid transparent',
+                  color: tab === key ? '#fff' : 'rgba(255,255,255,0.4)',
+                  fontSize: 12, fontWeight: tab === key ? 800 : 500,
+                  transition: 'all 0.15s',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                <TabIcon size={14} aria-hidden="true" />
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -268,7 +276,7 @@ export default function ConductorHubPage() {
 
           {!loading && rutas.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: 40 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🚚</div>
+              <div style={{ marginBottom: 12, color: 'rgba(255,255,255,0.5)' }}><Truck size={40} aria-hidden="true" /></div>
               <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: 600 }}>
                 No hay rutas asignadas hoy para {patente}
               </p>
@@ -380,16 +388,16 @@ export default function ConductorHubPage() {
                         salidaId === r.id ? (
                           // Panel de confirmación activo
                           <div style={{ background: 'rgba(251,146,60,0.10)', border: '1px solid rgba(251,146,60,0.35)', borderRadius: 14, padding: '14px 14px 10px' }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
-                              🚀 Confirmar salida del CD
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Send size={14} aria-hidden="true" /> Confirmar salida del CD
                             </div>
                             {esRefrigerado && (
                               <>
                                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8, lineHeight: 1.6 }}>
                                   Registra la temperatura de salida de la carga.
                                 </div>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10 }}>
-                                  🌡️ Requerido para vehículo refrigerado
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(251,146,60,0.9)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <Thermometer size={13} aria-hidden="true" /> Requerido para vehículo refrigerado
                                 </div>
                                 <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                                   <input
@@ -417,8 +425,8 @@ export default function ConductorHubPage() {
                               <button
                                 onClick={() => void confirmarSalida(r.id)}
                                 disabled={salidaLoading}
-                                style={{ flex: 2, padding: '10px 0', borderRadius: 10, background: salidaLoading ? 'rgba(251,146,60,0.3)' : 'rgba(251,146,60,0.85)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 800, cursor: salidaLoading ? 'not-allowed' : 'pointer' }}>
-                                {salidaLoading ? 'Registrando…' : '✓ Confirmar salida'}
+                                style={{ flex: 2, padding: '10px 0', borderRadius: 10, background: salidaLoading ? 'rgba(251,146,60,0.3)' : 'rgba(251,146,60,0.85)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 800, cursor: salidaLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                {salidaLoading ? 'Registrando…' : <><Check size={14} aria-hidden="true" /> Confirmar salida</>}
                               </button>
                             </div>
                           </div>
@@ -426,13 +434,13 @@ export default function ConductorHubPage() {
                           // Botón para abrir el panel
                           <button
                             onClick={() => { setSalidaId(r.id); setSalidaTemp(''); }}
-                            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: 'rgba(251,146,60,0.12)', border: '1.5px solid rgba(251,146,60,0.4)', color: 'rgba(251,146,60,0.9)', fontSize: 13, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1 }}>
-                            🚀 Confirmar salida del CD
+                            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: 'rgba(251,146,60,0.12)', border: '1.5px solid rgba(251,146,60,0.4)', color: 'rgba(251,146,60,0.9)', fontSize: 13, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <Send size={14} aria-hidden="true" /> Confirmar salida del CD
                           </button>
                         )
                       ) : r.estado === 'en_camino' ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'rgba(0,122,255,0.10)', border: '1px solid rgba(0,122,255,0.25)', borderRadius: 12 }}>
-                          <span style={{ fontSize: 16 }}>🚚</span>
+                          <Truck size={16} color="#60A5FA" aria-hidden="true" />
                           <span style={{ fontSize: 12, fontWeight: 700, color: '#60A5FA' }}>Salida registrada — en ruta</span>
                         </div>
                       ) : null}
@@ -445,8 +453,8 @@ export default function ConductorHubPage() {
 
           {!loading && rutas.length > 0 && (
             <button onClick={() => void cargar(patente)}
-              style={{ padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
-              🔄 Actualizar
+              style={{ padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <RefreshCw size={14} aria-hidden="true" /> Actualizar
             </button>
           )}
         </div>
