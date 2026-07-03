@@ -16,6 +16,7 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
+import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -302,6 +303,22 @@ export function TiendasPage() {
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
     pushCounts('regiones', counts).catch(() => {});
   }, [dispatchData]);
+
+  /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
+     el array de items de la tienda se reemplaza y renumberItems reescribe `orden`, pero el
+     useLayoutEffect (deps [selectedTienda]) NO se re-dispara → el `savedItem` de cada fila
+     queda obsoleto y "SUMAR A PALLET" deja de encontrar el item (UI congelada). Aquí sólo
+     refrescamos la referencia `savedItem` de las filas guardadas; las filas en progreso
+     (no guardadas) se preservan intactas. Deps: identidad del array de la tienda actual. */
+  const selectedItems = selectedTienda ? dispatchData[selectedTienda] : undefined;
+  useEffect(() => {
+    if (!selectedTienda || !selectedItems) return;
+    setFormRows(prev => {
+      const next = reconcileSavedRows(prev, selectedItems);
+      return next === prev ? prev : next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItems, selectedTienda]);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -994,7 +1011,11 @@ export function TiendasPage() {
     if (!selectedTienda) return;
     const bultoRow  = formRows.find(r => r.id === bultoRowId);
     const palletRow = formRows.find(r => r.id === palletRowId);
-    if (!bultoRow || !palletRow) return;
+    if (!bultoRow || !palletRow) {
+      // No debería pasar; si pasa, avisar en vez de quedarse en silencio (evita "freeze").
+      showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
+      return;
+    }
     const bultoPeso  = bultoRow.savedItem?.peso  ?? (parseFloat(bultoRow.peso)  || 0);
     const pesoActual = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
@@ -1002,13 +1023,22 @@ export function TiendasPage() {
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
 
     // Contexto: un solo UPDATE_ITEMS — quita el bulto guardado (si lo estaba) y suma el peso
-    // al pallet guardado (si lo está). Evita el doble-dispatch con estado desactualizado.
-    const sameItem = (i: DispatchItem, s?: DispatchItem) => !!s && i.pkg === s.pkg && i.orden === s.orden;
+    // al pallet guardado (si lo está). El match es por id ESTABLE (pickingSlotId/orden) — no
+    // por pkg+orden, que cambia bajo renumberItems tras un eco remoto (causa del "freeze").
     if (bultoRow.savedItem || palletRow.savedItem) {
       const cur = dispatchData[selectedTienda] || [];
+      // Reconfirmar contra el contexto vigente: si el pallet destino ya no existe (fue
+      // absorbido/renumerado en otro dispositivo), avisar en vez de hacer un no-op silencioso.
+      const targetInCtx = palletRow.savedItem
+        ? findItemForRow(cur, { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })
+        : undefined;
+      if (palletRow.savedItem && !targetInCtx) {
+        showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
+        return;
+      }
       const newItems = cur
-        .filter(i => !sameItem(i, bultoRow.savedItem))
-        .map(i => sameItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
+        .filter(i => !sameStableItem(i, bultoRow.savedItem))
+        .map(i => sameStableItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
     }
 
