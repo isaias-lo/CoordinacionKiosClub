@@ -32,6 +32,9 @@ interface Props {
   onCargarPendientes: () => void;
   onListoPorHoy: () => void;
   cerrado: boolean;
+  // Fase B: cierre por vehículo (1ª vuelta). Set de patentes cerradas + callback de cierre.
+  cerradasV1: Set<string>;
+  onCerrarCamionV1: (patente: string) => void;
 }
 
 export default function ResultsSection({
@@ -40,6 +43,7 @@ export default function ResultsSection({
   onChoferChange, historialStatus, historialMsg,
   onKmTotalReal, onCdUpdate,
   pendientesV2, onCargarPendientes, onListoPorHoy, cerrado,
+  cerradasV1, onCerrarCamionV1,
 }: Props) {
   const { ts, rutas } = results;
   const tp = ts.reduce((s, t) => s + t.p, 0);
@@ -129,6 +133,8 @@ export default function ResultsSection({
           onChoferChange={onChoferChange}
           kmReal={kmPorRuta[ri]}
           legData={legDataPorRuta[ri]}
+          cerrada={cerradasV1.has((r.v.p ?? '').trim().toUpperCase())}
+          onCerrarCamion={onCerrarCamionV1}
         />
       ))}
 

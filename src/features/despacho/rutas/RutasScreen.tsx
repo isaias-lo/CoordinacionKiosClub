@@ -19,6 +19,7 @@ import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
+import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
@@ -151,10 +152,16 @@ export default function RutasScreen() {
   const [historialMsg,  setHistorialMsg]  = useState('');
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
+  // Fase B: patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), keyed por fecha.
+  // Cross-device vía shared_session_state fuente 'rutas_cerradas'. El registro global SALTA estas
+  // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
+  const [cerradasV1, setCerradasV1] = useState<Set<string>>(new Set());
   // ── Tab "2ª VUELTA": pendientes de días anteriores, board y manifiesto AISLADOS del día actual ──
   const [pendientesV2Origen, setPendientesV2Origen] = useState<PendienteV2[]>([]);
   const [asignacionesV2, setAsignacionesV2]         = useState<Record<string, StoreItem[]>>({});
   const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
+  // Fase B: manifiesto de un solo camión cerrado en 1ª vuelta (cierre por vehículo).
+  const [manifiestoV1, setManifiestoV1]             = useState<Ruta[] | null>(null);
   const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
 
   const [paradasAdicionales, setParadasAdicionales] = useState<Parada[]>([]);
@@ -182,6 +189,10 @@ export default function RutasScreen() {
   const lastPushedManualRef = useRef<string>('');
   const debounceManualRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isManualInitRef     = useRef(false);
+
+  // ── Real-time sync: cerradasV1 (patentes cerradas por vehículo) across devices ──
+  const lastPushedCerradasRef = useRef<string>('');
+  const isCerradasInitRef      = useRef(false);
 
   // ── Sync cal from CalendarioCentral (cross-tab) ───────────────────
   useEffect(() => {
@@ -502,6 +513,41 @@ export default function RutasScreen() {
       if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
     };
   }, [manualAsignaciones, userId, fecha]);
+
+  // ── Fetch + subscribe cerradasV1 (cross-device, por fecha) ─────────────────
+  // Mismo patrón que manualAsignaciones: fetch al montar/cambiar fecha + subscribe realtime.
+  // El merge es la UNIÓN (cerrar es monótono) para no perder cierres locales ante ecos viejos.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    isCerradasInitRef.current = false;
+
+    fetchSessionState('rutas_cerradas', fecha).then(remote => {
+      const set = parseCerradas(remote);
+      setCerradasV1(set);
+      lastPushedCerradasRef.current = JSON.stringify([...set].sort());
+      isCerradasInitRef.current = true;
+    }).catch(() => { isCerradasInitRef.current = true; });
+
+    const unsub = subscribeToSessionState('rutas_cerradas', userId ?? '', (state) => {
+      const remote = parseCerradas(state);
+      setCerradasV1(prev => {
+        const merged = mergeCerradas(prev, remote);
+        lastPushedCerradasRef.current = JSON.stringify([...merged].sort());
+        return merged;
+      });
+    }, undefined, fecha);
+
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha]);
+
+  // Persistir cerradasV1 (cross-device). Se llama tras cada cierre por vehículo.
+  const pushCerradasV1 = (next: Set<string>) => {
+    const json = JSON.stringify([...next].sort());
+    if (json === lastPushedCerradasRef.current) return;
+    lastPushedCerradasRef.current = json;
+    void pushSessionState('rutas_cerradas', serializeCerradas(next), userId, fecha).catch(() => {});
+  };
 
   // ── Días pasados con asignaciones sin registrar (aviso de recuperación) ──
   useEffect(() => {
@@ -914,6 +960,92 @@ export default function RutasScreen() {
     setManifiestoV2([ruta]);
   }
 
+  // ── Fase B: postear el summary del día (INSERT en historial_despacho, primario) ──
+  // Nota: /api/historial-despacho hace INSERT (append), NO upsert → hay que postearlo UNA sola
+  // vez por día. Por eso el cierre por vehículo NO postea summary por camión (igual que V2), y
+  // el summary del día se postea solo (a) en el registro global, o (b) al cerrar el ÚLTIMO camión.
+  async function postSummaryDiaFn(rutas: Ruta[]): Promise<void> {
+    const totalPallets = rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.p, 0), 0);
+    const totalBultos  = rutas.reduce((acc, r) => acc + r.ts.reduce((a, t) => a + t.b + ((t as { ch?: number }).ch ?? 0), 0), 0);
+    const totalTiendas = new Set(rutas.flatMap(r => r.ts.map(t => t.c))).size;
+    const totalRutas   = rutas.length;
+    const kmTotal      = Math.round((rutas.reduce((acc, r) => acc + (r._kmReal ?? 0), 0)) * 10) / 10;
+    await fetch('/api/historial-despacho', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fecha, supervisor, totalTiendas, totalPallets, totalBultos, totalRutas, kmTotal,
+        resumen: rutas.map(r => ({
+          patente: r.v.p, conductor: r._choferAsignado || r.v.ch,
+          tiendas: r.ts.map(t => t.c), pallets: r.tp, bultos: r.tb,
+        })),
+      }),
+    });
+  }
+
+  // ── Fase B: Cerrar un camión de 1ª VUELTA (cierre por vehículo) ──────────────────
+  // Registra SOLO ese camión (fecha del día, vuelta 1 → patente en columna v1), genera su
+  // manifiesto y lo añade a `cerradasV1` (cross-device). NO postea el summary del día por
+  // camión (append-only) salvo que con este cierre queden TODAS las rutas cerradas: en ese caso
+  // postea el summary una vez y marca el día `rutas_reg` (igual que el registro global).
+  function cerrarCamionV1(patente: string) {
+    if (!results) return;
+    if (isCerrada(cerradasV1, patente)) return; // ya cerrado → idempotente, no re-escribir
+    const ruta = results.rutas.find(r => normPatente(r.v.p) === normPatente(patente));
+    if (!ruta || ruta.ts.length === 0) return;
+
+    const conductor = ruta._choferAsignado || ruta.v.ch || '';
+    const empresa   = ruta.v.empresa || 'Luis Fica';
+    const grupoPorCod = (cod: string): Grupo | undefined => calT[norm(cod)]?.g as Grupo | undefined;
+
+    // 1) despacho_rm / despacho_regiones: conductor/patente/ruta (vuelta 1)
+    const routingUpdates = ruta.ts.map(t => ({
+      cod: t.c, conductor, patente, transporte: empresa,
+      ruta: '1', supervisor, vuelta: 1, pioneta_1: ruta.v.p1 ?? null, pioneta_2: ruta.v.p2 ?? null,
+    }));
+    const porTabla = splitRoutingPorTabla(routingUpdates, grupoPorCod);
+    (['despacho_rm', 'despacho_regiones'] as const).forEach(table => {
+      if (!porTabla[table].length) return;
+      fetch('/api/despacho-records', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha, table, updates: porTabla[table] }),
+      }).catch(e => console.error(`[v1 despacho-records ${table}]`, e));
+    });
+
+    // 2) Hojas DESPACHO RM/REGIONES (1 ruta) + pionetas
+    guardarDespachoSplitFn({ fecha, supervisor, rutas: [ruta], tiendas, grupoPorCod });
+    actualizarPionetasRMFn({ fecha, rutas: [ruta] });
+
+    // 3) CONTROL DESPACHO: patente en columna "1ª Vuelta" (tlbd=false)
+    const fechaDDMM = fecha.split('-').reverse().join('/');
+    const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const diaCD = DIAS[new Date(fecha + 'T12:00').getDay()];
+    const rutasControl: RutaControl[] = [{ patente, tlbd: false, ts: ruta.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })) }];
+    const controlRows = buildControlRows(fechaDDMM, diaCD, rutasControl, [] as PendienteControl[]);
+    if (controlRows.length) {
+      fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheet: 'CONTROL DESPACHO', rows: controlRows }) }).catch(e => console.error('[v1 control]', e));
+    }
+
+    // 4) HISTORIAL (append, marca vuelta 1) — 1 fila para este camión
+    const histRow: (string | number)[] = [fechaDDMM, fechaTxt(fecha), supervisor, patente, conductor, '1', ruta.ts.length, ruta.tp, ruta.tb, ruta._kmReal ?? 0, ruta.ts.map(t => t.c).join(', '), '1'];
+    fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheet: 'HISTORIAL', rows: [histRow] }) }).catch(e => console.error('[v1 historial]', e));
+
+    // 5) Marcar la patente como cerrada (cross-device) y abrir su manifiesto
+    const next = mergeCerradas(cerradasV1, [patente]);
+    setCerradasV1(next);
+    pushCerradasV1(next);
+    setManifiestoV1([ruta]);
+
+    // 6) Si con este cierre quedan TODAS las rutas cerradas → completar el día:
+    //    postear summary (una vez) y marcar 'rutas_reg' (igual que el registro global).
+    if (todasCerradas(results.rutas, next)) {
+      void postSummaryDiaFn(results.rutas).catch(e => console.error('[v1 summary día]', e));
+      void pushSessionState('rutas_reg', { at: new Date().toISOString(), supervisor, byVehiculo: true }, userId, fecha);
+      setUnregisteredDays(prev => prev.filter(d => d !== fecha));
+    }
+  }
+
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
   useEffect(() => {
     setCerrado(false);
@@ -1206,8 +1338,13 @@ export default function RutasScreen() {
       return false; // No continuar con las sincronizaciones secundarias si Supabase falló
     }
 
+    // Fase B: para las escrituras append-only / de registro por camión, SALTAR las rutas cuyas
+    // patentes ya se cerraron individualmente (cerradasV1) — así el global no DUPLICA en HISTORIAL
+    // (append-only) ni re-registra lo ya cerrado. El summary del día (arriba) sí incluye TODO.
+    const rutasReg = rutasNoCerradas(results.rutas, cerradasV1);
+
     // 2. SECONDARY (fire-and-forget): actualiza conductor/ruta en despacho_rm y picking_pallets
-    const routingUpdates = results.rutas.flatMap((ruta, ri) => {
+    const routingUpdates = rutasReg.flatMap((ruta, ri) => {
       const conductor = ruta._choferAsignado || ruta.v.ch || '';
       const patente   = ruta.v.p;
       const empresa   = ruta.v.empresa || 'Luis Fica';
@@ -1231,13 +1368,16 @@ export default function RutasScreen() {
     });
 
     // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM y DESPACHO REGIONES en Sheets
-    guardarDespachoSplitFn({ fecha, supervisor, rutas: results.rutas, tiendas, grupoPorCod: c => calT[c]?.g as Grupo | undefined });
-    actualizarPionetasRMFn({ fecha, rutas: results.rutas });
+    if (rutasReg.length > 0) {
+      guardarDespachoSplitFn({ fecha, supervisor, rutas: rutasReg, tiendas, grupoPorCod: c => calT[c]?.g as Grupo | undefined });
+      actualizarPionetasRMFn({ fecha, rutas: rutasReg });
+    }
 
     // 4. SECONDARY (fire-and-forget): escribe en HISTORIAL de Google Sheets directamente
     const fechaDDMM = fecha.split('-').reverse().join('/'); // YYYY-MM-DD → DD/MM/YYYY
     const fechaLeg  = fechaTxt(fecha);
-    const historialRows: (string | number)[][] = results.rutas.map((r, ri) => [
+    // Solo las rutas NO cerradas individualmente (evita duplicar en HISTORIAL, append-only).
+    const historialRows: (string | number)[][] = rutasReg.map((r, ri) => [
       fechaDDMM,
       fechaLeg,
       supervisor,
@@ -1251,11 +1391,13 @@ export default function RutasScreen() {
       r.ts.map(t => t.c).join(', '),
       String(ri + 1),
     ]);
-    fetch('/api/sheets-write', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ sheet: 'HISTORIAL', rows: historialRows }),
-    }).catch(e => console.error('[historial-sheets]', e));
+    if (historialRows.length > 0) {
+      fetch('/api/sheets-write', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sheet: 'HISTORIAL', rows: historialRows }),
+      }).catch(e => console.error('[historial-sheets]', e));
+    }
 
     // 5. SECONDARY (fire-and-forget): escribe en CONTROL DESPACHO (upsert por fecha::cod).
     // #9: las pendientes (lo NO ruteado) se calculan AQUÍ desde results.ts − results.rutas, así
@@ -1267,7 +1409,9 @@ export default function RutasScreen() {
     const pendientesReg = results.ts
       .filter(t => !asignadasReg.has(t.c) && !t.c.startsWith('_P'))
       .map(t => ({ c: t.c, p: t.p, b: t.b, ch: (calT[t.c]?.ch ?? (t as { ch?: number }).ch ?? 0) }));
-    const rutasControl: RutaControl[] = results.rutas.map(ruta => ({
+    // Solo las rutas NO cerradas individualmente (las cerradas ya escribieron su fila en CONTROL;
+    // upsert-by-cod es idempotente, pero saltarlas mantiene consistencia con HISTORIAL).
+    const rutasControl: RutaControl[] = rutasReg.map(ruta => ({
       patente: ruta.v.p,
       tlbd:    !!ruta.v.tlbd,
       ts:      ruta.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
@@ -1519,6 +1663,8 @@ export default function RutasScreen() {
                     onCargarPendientes={handleCargarPendientes}
                     onListoPorHoy={handleListoPorHoy}
                     cerrado={cerrado}
+                    cerradasV1={cerradasV1}
+                    onCerrarCamionV1={cerrarCamionV1}
                   />
                 </div>
                 <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
@@ -1578,6 +1724,17 @@ export default function RutasScreen() {
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
           onClose={() => setManifiestoV2(null)}
+        />
+      )}
+
+      {manifiestoV1 && (
+        <ManifiestoPanel
+          rutas={manifiestoV1}
+          fecha={fecha}
+          supervisor={supervisor}
+          tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo & { _parada?: boolean }>}
+          isOpen={true}
+          onClose={() => setManifiestoV1(null)}
         />
       )}
 
