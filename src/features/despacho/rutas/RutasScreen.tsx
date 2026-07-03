@@ -924,7 +924,7 @@ export default function RutasScreen() {
     });
 
     // 2) Hojas DESPACHO RM/REGIONES (1 ruta) + pionetas
-    guardarDespachoSplitFn({ fecha: hoy, supervisor, rutas: [ruta], tiendas, grupoPorCod });
+    void guardarDespachoSplitFn({ fecha: hoy, supervisor, rutas: [ruta], tiendas, grupoPorCod });
     actualizarPionetasRMFn({ fecha: hoy, rutas: [ruta] });
 
     // 3) CONTROL DESPACHO: patente en columna "2ª Vuelta" (tlbd=true)
@@ -1012,7 +1012,7 @@ export default function RutasScreen() {
     });
 
     // 2) Hojas DESPACHO RM/REGIONES (1 ruta) + pionetas
-    guardarDespachoSplitFn({ fecha, supervisor, rutas: [ruta], tiendas, grupoPorCod });
+    void guardarDespachoSplitFn({ fecha, supervisor, rutas: [ruta], tiendas, grupoPorCod });
     actualizarPionetasRMFn({ fecha, rutas: [ruta] });
 
     // 3) CONTROL DESPACHO: patente en columna "1ª Vuelta" (tlbd=false)
@@ -1367,10 +1367,20 @@ export default function RutasScreen() {
       }).catch(e => console.error(`[despacho-records PATCH ${table}]`, e));
     });
 
-    // 3. SECONDARY (fire-and-forget): sincroniza DESPACHO RM y DESPACHO REGIONES en Sheets
+    // 3. SECONDARY: sincroniza DESPACHO RM y DESPACHO REGIONES en Sheets. Si alguna tienda
+    //    ruteada no tenía fila de Bodega, el server la AGREGA y devuelve su cod → avisamos
+    //    (antes esas tiendas se perdían en silencio, ej. 56PZA).
     if (rutasReg.length > 0) {
-      guardarDespachoSplitFn({ fecha, supervisor, rutas: rutasReg, tiendas, grupoPorCod: c => calT[c]?.g as Grupo | undefined });
       actualizarPionetasRMFn({ fecha, rutas: rutasReg });
+      guardarDespachoSplitFn({ fecha, supervisor, rutas: rutasReg, tiendas, grupoPorCod: c => calT[c]?.g as Grupo | undefined })
+        .then(appended => {
+          if (appended.length > 0) {
+            const uniq = [...new Set(appended)];
+            setHistorialMsg(`✓ Guardado · ⚠ ${uniq.length} tienda${uniq.length !== 1 ? 's' : ''} sin datos de Bodega se registró solo con ruteo: ${uniq.join(', ')}`);
+            setHistorialStatus('warn');
+          }
+        })
+        .catch(e => console.error('[guardarDespachoSplit]', e));
     }
 
     // 4. SECONDARY (fire-and-forget): escribe en HISTORIAL de Google Sheets directamente
