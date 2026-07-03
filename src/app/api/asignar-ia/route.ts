@@ -9,8 +9,10 @@ import type { IAStore, IATruck } from '@/features/despacho/rutas/ia/types';
 
 export const maxDuration = 30;
 
-// Modelo configurable por env; por defecto Sonnet (rápido/económico para esta tarea).
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+// Modelo configurable por env. Default: Haiku 4.5 — la tarea es acotada (few-shot + validación en
+// código), así que Haiku la resuelve bien y es ~3× más barato. Para más calidad de inferencia:
+// ANTHROPIC_MODEL=claude-sonnet-4-6 (o el id de Sonnet vigente).
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 
 export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) {
