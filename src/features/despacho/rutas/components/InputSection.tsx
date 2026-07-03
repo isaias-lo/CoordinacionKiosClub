@@ -697,6 +697,8 @@ export default function InputSection({
                     onAsignaciones={onAsignaciones}
                     onCalcular={onCalcularManual}
                     onEliminarParada={onEliminarParada}
+                    onAsignarIA={onAsignarIA}
+                    iaLoading={iaLoading}
                   />
                 </div>
               )}
