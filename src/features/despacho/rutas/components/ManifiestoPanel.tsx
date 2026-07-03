@@ -118,7 +118,7 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
-    <div class="logo">KIOSClub</div>
+    <img src="${origin}/logo-kiosclub.webp" alt="KIOS Club — American Supermarket" style="height:46px;display:block;margin-bottom:3px" onerror="this.outerHTML='<div class=logo>KIOSClub</div>'">
     <div class="razon">Kiosclub American Supermarket SPA</div>
     <div class="rut">RUT 76.360.868-9</div>
     <div class="logo-sub">Centro de Distribución · Bodega ${m.bodega_origen}</div>
@@ -252,7 +252,7 @@ function buildManifiestoTiendaHTML(
   return `<div class="manifiesto-page">
 <div class="hdr">
   <div>
-    <div class="logo">KIOSClub</div>
+    <img src="${meta.origin}/logo-kiosclub.webp" alt="KIOS Club — American Supermarket" style="height:46px;display:block;margin-bottom:3px" onerror="this.outerHTML='<div class=logo>KIOSClub</div>'">
     <div class="razon">Kiosclub American Supermarket SPA</div>
     <div class="rut">RUT 76.360.868-9</div>
     <div class="logo-sub">Manifiesto de recepción · Tienda</div>
