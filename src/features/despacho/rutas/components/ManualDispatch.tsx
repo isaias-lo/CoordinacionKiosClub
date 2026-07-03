@@ -358,13 +358,13 @@ export default function ManualDispatch({
                 type="button"
                 onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignarIA(); }}
                 disabled={iaLoading}
-                className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full text-[12px] font-bold text-white transition-all disabled:opacity-60 active:scale-[0.97]"
-                style={{ background: 'linear-gradient(135deg, #6D5AE6 0%, #8B5CF6 100%)', boxShadow: '0 2px 10px rgba(109,90,230,0.35)' }}
+                className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full text-[12px] font-bold text-white transition-all disabled:opacity-90 active:scale-[0.97] ${iaLoading ? 'ai-glow' : ''}`}
+                style={{ background: 'linear-gradient(135deg, #6D5AE6 0%, #8B5CF6 100%)', boxShadow: iaLoading ? 'none' : '0 2px 10px rgba(109,90,230,0.35)' }}
                 title="Propone la asignación aprendiendo del historial"
               >
                 {iaLoading
                   ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
-                  : <><Sparkles size={14} aria-hidden="true" /> Asignar con IA</>}
+                  : <><Sparkles size={14} aria-hidden="true" /> Asignar</>}
               </button>
             )}
             <span className={`text-[13px] font-bold ${pool.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
