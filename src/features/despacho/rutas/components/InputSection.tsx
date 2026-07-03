@@ -51,6 +51,8 @@ interface Props {
   onAsignaciones: (a: Record<string, StoreAssign[]>) => void;
   onCalcular: () => void;
   onCalcularManual: () => void;
+  onAsignarIA?: () => void;
+  iaLoading?: boolean;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
   rightPanelContent?: React.ReactNode;
@@ -164,7 +166,7 @@ export default function InputSection({
   onConductorChange, onPionetaChange, onAgregarConductor,
   onToggleFlota, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
-  onCalcular, onCalcularManual, onLimpiar, onEliminarParada,
+  onCalcular, onCalcularManual, onAsignarIA, iaLoading, onLimpiar, onEliminarParada,
   rightPanelContent,
   segundaVueltaContent,
 }: Props) {
@@ -404,7 +406,8 @@ export default function InputSection({
                     <div className="p-3">
                       <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                         paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
-                        onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} />
+                        onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
+                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} />
                     </div>
                   )}
                   {modo === 'cal' && (
