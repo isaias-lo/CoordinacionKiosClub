@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { Save, Check, AlertTriangle, Loader2, Lightbulb, Phone, User, Pencil, Trash2, X } from 'lucide-react';
 import type { Vehiculo } from '../data/flota';
 
 interface Props {
@@ -101,10 +102,13 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
             <button
               onClick={onGuardarFlota}
               disabled={flotaStatus === 'saving'}
-              className={`h-[36px] px-3 rounded-[9px] text-[13px] font-bold transition-all border-2 border-knavy/[0.3]
+              className={`h-[36px] px-3 rounded-[9px] text-[13px] font-bold transition-all border-2 border-knavy/[0.3] flex items-center justify-center gap-1.5
                 ${flotaStatus === 'success' ? 'text-[#34C759] border-[#34C759]/30' : flotaStatus === 'error' ? 'text-kred border-kred/30' : 'text-knavy'}`}
             >
-              {flotaStatus === 'saving' ? '⏳' : flotaStatus === 'success' ? '✓ Guardado' : flotaStatus === 'error' ? '⚠️ Error' : '💾 Guardar'}
+              {flotaStatus === 'saving' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                : flotaStatus === 'success' ? <><Check size={15} aria-hidden="true" /> Guardado</>
+                : flotaStatus === 'error' ? <><AlertTriangle size={15} aria-hidden="true" /> Error</>
+                : <><Save size={15} aria-hidden="true" /> Guardar</>}
             </button>
           )}
           <button
@@ -191,8 +195,9 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
       )}
 
       {/* ── Aviso TLBD ── */}
-      <div className="text-[12px] text-kmuted bg-knavy/[0.05] border border-knavy/[0.12] rounded-[10px] px-3.5 py-2.5 mb-4 leading-relaxed">
-        💡 Los mismos autos pueden hacer <strong className="text-knavy">1ª y 2ª vuelta</strong>. Marca un vehículo como &quot;2ª Vuelta&quot; cuando regrese al CD para asignarle las tiendas pendientes.
+      <div className="flex items-start gap-2 text-[12px] text-kmuted bg-knavy/[0.05] border border-knavy/[0.12] rounded-[10px] px-3.5 py-2.5 mb-4 leading-relaxed">
+        <Lightbulb size={15} className="text-knavy flex-shrink-0 mt-0.5" aria-hidden="true" />
+        <span>Los mismos autos pueden hacer <strong className="text-knavy">1ª y 2ª vuelta</strong>. Marca un vehículo como &quot;2ª Vuelta&quot; cuando regrese al CD para asignarle las tiendas pendientes.</span>
       </div>
 
       {/* ── Buscador de patente + seleccionar todos ── */}
@@ -320,9 +325,10 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
               {v.tel && (
                 <button
                   onClick={e => { e.stopPropagation(); setShowTel(s => !s); }}
-                  className="ml-2 text-[14px] text-kmuted hover:text-knavy transition-colors align-middle"
+                  className="ml-2 text-kmuted hover:text-knavy transition-colors align-middle inline-flex"
                   title={showTel ? 'Ocultar teléfono' : 'Ver teléfono'}
-                >📞</button>
+                  aria-label={showTel ? 'Ocultar teléfono' : 'Ver teléfono'}
+                ><Phone size={14} aria-hidden="true" /></button>
               )}
             </div>
             {showTel && v.tel && (
@@ -333,9 +339,9 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
           </div>
 
           {/* Toggle activo */}
-          <div className={`w-[28px] h-[28px] rounded-full border-2 flex items-center justify-center text-[13px] flex-shrink-0 mt-0.5 transition-all
+          <div className={`w-[28px] h-[28px] rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all
             ${v.on ? 'bg-kred border-kred text-white' : 'border-black/[0.15] bg-white'}`}>
-            {v.on ? '✓' : ''}
+            {v.on ? <Check size={16} strokeWidth={3} aria-hidden="true" /> : null}
           </div>
         </div>
 
@@ -362,12 +368,12 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
                 placeholder="Nombre del conductor..."
                 className="flex-1 min-w-0 text-[13px] px-3 h-[36px] rounded-[8px] border border-knavy/[0.4] text-ktext focus:outline-none focus:border-knavy bg-white"
               />
-              <button onClick={confirmarNuevo} className="w-[36px] h-[36px] rounded-[8px] bg-knavy text-white text-[15px] flex items-center justify-center flex-shrink-0">✓</button>
-              <button onClick={cancelarNuevo}  className="w-[36px] h-[36px] rounded-[8px] bg-kbg border border-black/[0.09] text-kmuted text-[15px] flex items-center justify-center flex-shrink-0">✕</button>
+              <button onClick={confirmarNuevo} aria-label="Confirmar conductor" className="w-[36px] h-[36px] rounded-[8px] bg-knavy text-white flex items-center justify-center flex-shrink-0"><Check size={16} aria-hidden="true" /></button>
+              <button onClick={cancelarNuevo}  aria-label="Cancelar" className="w-[36px] h-[36px] rounded-[8px] bg-kbg border border-black/[0.09] text-kmuted flex items-center justify-center flex-shrink-0"><X size={16} aria-hidden="true" /></button>
             </div>
           ) : (
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] pointer-events-none">👤</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 flex text-kmuted pointer-events-none"><User size={14} aria-hidden="true" /></span>
               <select
                 value={v.ch || ''}
                 onChange={handleSelect}
@@ -452,19 +458,20 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
         <div className="flex gap-2">
           <button
             onClick={() => onToggleTlbd(idx)}
-            className={`flex-1 h-[32px] rounded-[7px] text-[12px] font-bold border-2 transition-all
+            className={`flex-1 h-[32px] rounded-[7px] text-[12px] font-bold border-2 transition-all flex items-center justify-center gap-1
               ${v.tlbd ? 'bg-knavy text-white border-knavy' : 'bg-transparent text-kmuted border-black/[0.10] hover:border-knavy/[0.4] hover:text-knavy'}`}
           >
-            {v.tlbd ? '✓ 2ª Vuelta' : '2ª Vuelta'}
+            {v.tlbd ? <><Check size={14} aria-hidden="true" /> 2ª Vuelta</> : '2ª Vuelta'}
           </button>
 
           {onActualizar && (
             <button
               onClick={() => editOpen ? setEditOpen(false) : openEdit()}
-              className={`h-[32px] px-3 rounded-[7px] text-[12px] border transition-all
+              aria-label="Editar vehículo"
+              className={`h-[32px] px-3 rounded-[7px] text-[12px] border transition-all inline-flex items-center justify-center
                 ${editOpen ? 'border-knavy/[0.4] text-knavy bg-knavy/[0.07]' : 'border-black/[0.09] text-kmuted hover:border-knavy/[0.4] hover:text-knavy'}`}
             >
-              ✏️
+              <Pencil size={14} aria-hidden="true" />
             </button>
           )}
 
@@ -477,9 +484,10 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
           ) : (
             <button
               onClick={() => setConfirmDelete(true)}
-              className="h-[32px] px-3 rounded-[7px] text-[12px] text-kmuted border border-black/[0.09] bg-transparent hover:border-kred/[0.4] hover:text-kred transition-all"
+              aria-label="Eliminar vehículo"
+              className="h-[32px] px-3 rounded-[7px] text-[12px] text-kmuted border border-black/[0.09] bg-transparent hover:border-kred/[0.4] hover:text-kred transition-all inline-flex items-center justify-center"
             >
-              🗑
+              <Trash2 size={14} aria-hidden="true" />
             </button>
           )}
         </div>
