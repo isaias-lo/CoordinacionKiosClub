@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, History, Radio, TableProperties } from 'lucide-react';
+import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, History, Radio, TableProperties, Menu, PhoneOff, Circle, Smartphone, Camera, Lock, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -1348,7 +1348,7 @@ export function AuditoriaScreen() {
         </div>
         {/* Mobile: hamburger + profile */}
         <div className="flex md:hidden items-center gap-1">
-          {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} className="border-none bg-white/15 text-white text-[17px] font-bold cursor-pointer px-2.5 py-1.5 rounded-full">☰</button>}
+          {!isAdminAud && <button onClick={() => setMobileMenuOpen(true)} aria-label="Abrir menú" className="border-none bg-white/15 text-white cursor-pointer px-2.5 py-1.5 rounded-full inline-flex items-center justify-center"><Menu size={18} aria-hidden="true" /></button>}
         </div>
         {/* Desktop: profile */}
         <div className="hidden md:flex items-center gap-1">
@@ -1359,7 +1359,7 @@ export function AuditoriaScreen() {
       {!isOnline && (
         <div className="flex-shrink-0 flex items-center gap-2 px-4 py-1.5"
           style={{ background: 'rgba(217,119,6,0.12)', borderBottom: '1px solid rgba(217,119,6,0.25)' }}>
-          <span className="text-[13px]">📵</span>
+          <PhoneOff size={13} className="text-warn" aria-hidden="true" />
           <span className="text-[12px] font-semibold text-warn">Sin conexión — las auditorías se guardarán localmente y se sincronizarán al reconectar</span>
         </div>
       )}
@@ -1435,7 +1435,7 @@ export function AuditoriaScreen() {
                 <div className="mt-4 rounded-2xl overflow-hidden border-2 border-warn" style={{ boxShadow: '0 4px 20px rgba(217,119,6,0.22)' }}>
                   <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg,rgba(217,119,6,0.14),rgba(217,119,6,0.06))' }}>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-[18px] animate-pulse">🔴</span>
+                      <Circle size={16} fill="#DC2626" color="#DC2626" className="animate-pulse" aria-hidden="true" />
                       <span className="font-barlow-condensed text-[15px] font-bold text-warn uppercase tracking-wide">Auditoría activa en otro dispositivo</span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] mb-3">
@@ -1479,9 +1479,9 @@ export function AuditoriaScreen() {
                         }
                         setCrossDeviceRestored(true);
                       }}
-                      className="w-full py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer transition-all active:scale-[0.98]"
+                      className="w-full py-2.5 rounded-btn font-barlow-condensed text-[15px] font-bold text-white cursor-pointer transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                       style={{ background: 'linear-gradient(135deg,#b45309,#d97706)', boxShadow: '0 4px 12px rgba(217,119,6,0.40)' }}>
-                      📲 Continuar aquí
+                      <Smartphone size={16} aria-hidden="true" /> Continuar aquí
                     </button>
                   </div>
                 </div>
@@ -1508,7 +1508,7 @@ export function AuditoriaScreen() {
                   <button type="button" onClick={() => setCameraOpen(true)}
                     className="w-full mt-2 flex items-center justify-center gap-2.5 py-3 rounded-card border-2 cursor-pointer transition-all active:scale-[0.99]"
                     style={{ background: 'rgba(37,99,235,0.06)', borderColor: 'rgba(37,99,235,0.30)', color: '#2563EB' }}>
-                    <span className="text-[22px]">📷</span>
+                    <Camera size={22} aria-hidden="true" />
                     <span className="font-barlow-condensed text-[16px] font-bold">Escanear con cámara</span>
                   </button>
                   <button
@@ -1542,9 +1542,9 @@ export function AuditoriaScreen() {
                       type="button"
                       onClick={() => { (document.activeElement as HTMLElement)?.blur(); void handlePalletIdLookup(palletIdInput); }}
                       disabled={palletIdLoading || !palletIdInput.trim()}
-                      className="w-full mt-2 py-3 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98]"
+                      className="w-full mt-2 py-3 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                       style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)', boxShadow: '0 4px 16px rgba(26,37,80,0.30)' }}>
-                      {palletIdLoading ? '⏳ Buscando…' : '🔍 Buscar pallet'}
+                      {palletIdLoading ? '⏳ Buscando…' : <><Search size={17} aria-hidden="true" /> Buscar pallet</>}
                     </button>
                   )}
 
@@ -1570,9 +1570,9 @@ export function AuditoriaScreen() {
                         type="button"
                         onClick={() => { (document.activeElement as HTMLElement)?.blur(); void handlePalletIdLookup(palletIdInput, palletIdInput2); }}
                         disabled={palletIdLoading || !palletIdInput.trim()}
-                        className="w-full mt-2 py-3 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98]"
+                        className="w-full mt-2 py-3 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer disabled:opacity-40 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                         style={{ background: 'linear-gradient(135deg,#1a2550,#1e3a8a)', boxShadow: '0 4px 16px rgba(26,37,80,0.30)' }}>
-                        {palletIdLoading ? '⏳ Buscando…' : '🔍 Buscar pallets'}
+                        {palletIdLoading ? '⏳ Buscando…' : <><Search size={17} aria-hidden="true" /> Buscar pallets</>}
                       </button>
                     </div>
                   )}
@@ -1604,7 +1604,7 @@ export function AuditoriaScreen() {
               <>
                 {tipoLocked && (
                   <div className="mt-2 mb-1 flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-info bg-[rgba(37,99,235,0.06)] border border-info/20">
-                    <span>🔒</span>
+                    <Lock size={13} aria-hidden="true" />
                     <span className="flex-1">Datos del pallet confirmados</span>
                     <button type="button" onClick={() => setTipoLocked(false)} className="text-info underline cursor-pointer border-none bg-transparent p-0 text-[11px] font-bold">Editar</button>
                   </div>
@@ -1614,7 +1614,7 @@ export function AuditoriaScreen() {
                 {tipoLocked && auditor ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 bg-bg border border-border rounded-btn">
                     <span className="flex-1 font-semibold text-text text-[15px]">{auditor}</span>
-                    <span className="text-[11px] text-text-3">🔒</span>
+                    <Lock size={12} className="text-text-3" aria-hidden="true" />
                   </div>
                 ) : (
                   <AuditorSelector auditor={auditor} auditorList={auditorList} onChange={v => { setAuditor(v); auditorFromProfile.current = false; }} />
@@ -1635,7 +1635,7 @@ export function AuditoriaScreen() {
                 ) : tipoLocked && pickerNombre ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 bg-bg border border-border rounded-btn">
                     <span className="flex-1 font-semibold text-text text-[15px]">{pickerNombre}</span>
-                    <span className="text-[11px] text-text-3">🔒</span>
+                    <Lock size={12} className="text-text-3" aria-hidden="true" />
                   </div>
                 ) : (
                   <PickerNombreSelector pickerNombre={pickerNombre} pickerNombresList={pickerNombresList} onChange={v => { setPickerNombre(v); setPickerNombres(v ? [v] : []); }} />
@@ -1649,7 +1649,7 @@ export function AuditoriaScreen() {
                       <span className="font-mono text-[11px] text-text-3 ml-2">{tienda.cod}</span>
                       <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tienda.area === 'santiago' ? 'bg-[rgba(37,99,235,0.10)] text-info' : 'bg-[rgba(211,47,47,0.10)] text-red'}`}>{tienda.area === 'santiago' ? 'STG' : 'REG'}</span>
                     </div>
-                    <span className="text-[11px] text-text-3">🔒</span>
+                    <Lock size={12} className="text-text-3" aria-hidden="true" />
                   </div>
                 ) : (
                   <div ref={tiendaRef} className="relative">
@@ -1833,7 +1833,7 @@ export function AuditoriaScreen() {
                 {sessionRestored && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-card border border-info/30 text-info text-[12px] font-semibold"
                     style={{ background: 'rgba(37,99,235,0.06)' }}>
-                    <span className="text-[16px]">🔄</span>
+                    <RefreshCw size={16} aria-hidden="true" />
                     <span className="flex-1">Sesión restaurada — el cronómetro continúa desde donde lo dejaste</span>
                     <button onClick={() => setSessionRestored(false)} className="text-info/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
                   </div>
@@ -1842,7 +1842,7 @@ export function AuditoriaScreen() {
                 {crossDeviceRestored && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-card border border-success/30 text-success text-[12px] font-semibold"
                     style={{ background: 'rgba(22,163,74,0.06)' }}>
-                    <span className="text-[16px]">📱</span>
+                    <Smartphone size={16} aria-hidden="true" />
                     <span className="flex-1">Sesión sincronizada desde otro dispositivo — el cronómetro sigue corriendo</span>
                     <button onClick={() => setCrossDeviceRestored(false)} className="text-success/50 text-[18px] leading-none bg-transparent border-none cursor-pointer px-1">×</button>
                   </div>
@@ -1924,7 +1924,7 @@ export function AuditoriaScreen() {
                           <div key={key} className="relative rounded-card overflow-hidden bg-white border-2 border-dashed border-border" style={{ aspectRatio: '1', boxShadow: '0 1px 3px rgba(26,37,80,0.04)' }}>
                             {/* Camera — fills the cell */}
                             <label className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:bg-bg">
-                              <span className="text-[22px]">📷</span>
+                              <Camera size={22} className="text-text-3" aria-hidden="true" />
                               <span className="text-[10px] text-text-3 font-bold">P{n}</span>
                               <input key={`pcam-${key}-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
                                 onChange={async e => {
@@ -1946,7 +1946,7 @@ export function AuditoriaScreen() {
                             </label>
                             {/* Gallery — small corner button */}
                             <label className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center bg-white/90 rounded-full cursor-pointer" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.18)' }}>
-                              <span className="text-[11px]">🖼️</span>
+                              <ImageIcon size={11} className="text-text-3" aria-hidden="true" />
                               <input key={`pgal-${key}-${photoInputVer}`} type="file" accept="image/*" className="hidden"
                                 onChange={async e => {
                                   const f = e.target.files?.[0]; if (!f) return;
@@ -1969,7 +1969,7 @@ export function AuditoriaScreen() {
                         );
                       })}
                     </div>
-                    <div className="text-[10px] text-text-3 mt-1.5 text-center">Toca 📷 para cámara · mantén presionado para galería</div>
+                    <div className="text-[10px] text-text-3 mt-1.5 text-center inline-flex flex-wrap items-center justify-center gap-1 w-full">Toca <Camera size={11} aria-hidden="true" /> para cámara · mantén presionado para galería</div>
                   </div>
                 )}
 
@@ -2083,7 +2083,7 @@ export function AuditoriaScreen() {
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
-                        <span className="text-[26px]">📷</span>
+                        <Camera size={26} className="text-text-3" aria-hidden="true" />
                         <span className="text-[12px] text-red font-semibold">Cámara</span>
                         <span className="text-[10px] text-text-3">1 foto directa</span>
                         <input key={`ecam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
@@ -2113,7 +2113,7 @@ export function AuditoriaScreen() {
                           }} />
                       </label>
                       <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-red/30 rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(211,47,47,0.06)' }}>
-                        <span className="text-[26px]">🖼️</span>
+                        <ImageIcon size={26} className="text-text-3" aria-hidden="true" />
                         <span className="text-[12px] text-red font-semibold">Galería</span>
                         <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                         <input key={`egal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
@@ -2193,7 +2193,7 @@ export function AuditoriaScreen() {
                 )}
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                    <span className="text-[26px]">📷</span>
+                    <Camera size={26} className="text-text-3" aria-hidden="true" />
                     <span className="text-[12px] text-text-2 font-semibold">Cámara</span>
                     <span className="text-[10px] text-text-3">1 foto directa</span>
                     <input key={`fcam-${photoInputVer}`} type="file" accept="image/*" capture="environment" className="hidden"
@@ -2223,7 +2223,7 @@ export function AuditoriaScreen() {
                       }} />
                   </label>
                   <label className="flex flex-col items-center gap-1.5 py-3 px-2 bg-white border-2 border-dashed border-border rounded-card cursor-pointer active:bg-bg text-center" style={{ boxShadow: '0 1px 4px rgba(26,37,80,0.04)' }}>
-                    <span className="text-[26px]">🖼️</span>
+                    <ImageIcon size={26} className="text-text-3" aria-hidden="true" />
                     <span className="text-[12px] text-text-2 font-semibold">Galería</span>
                     <span className="text-[10px] text-text-3">Múltiples a la vez</span>
                     <input key={`fgal-${photoInputVer}`} type="file" accept="image/*" multiple className="hidden"
