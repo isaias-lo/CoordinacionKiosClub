@@ -709,7 +709,7 @@ export default function InputSection({
                   </div>
                   <div className="text-[22px] font-bold text-ktext mb-2">Cálculo automático de rutas</div>
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-4 rounded-full bg-knavy/[0.06] text-knavy text-[11px] font-bold uppercase tracking-wide">
-                    Alternativa a "Despacho" (armado manual)
+                    Alternativa al armado manual (pestaña Despacho)
                   </div>
                   <div className="text-[14px] text-kmuted mb-10 max-w-md leading-relaxed">
                     Úsalo cuando no haya quién arme la ruta a mano: el sistema asigna camiones por cercanía GPS y optimiza el orden de entrega a partir de las tiendas y cantidades del panel izquierdo. Puedes ajustar el resultado después de calcular.
