@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
@@ -22,6 +23,9 @@ interface Props {
   /** [2ª VUELTA] Si se provee, cada camión con tiendas muestra "Cerrar camión" (registro por
    *  camión) y se OCULTA el botón batch de calcular. */
   onCerrarCamion?: (patente: string) => void;
+  /** [IA] Si se provee, muestra "Asignar con IA" en el header del pool. */
+  onAsignarIA?: () => void;
+  iaLoading?: boolean;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -43,6 +47,8 @@ export default function ManualDispatch({
   onCalcular,
   onEliminarParada,
   onCerrarCamion,
+  onAsignarIA,
+  iaLoading,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -342,11 +348,25 @@ export default function ManualDispatch({
           onDragLeave={handleDragLeave}
           onClick={() => { if (dragging) ejecutarDrop('pool', dragging); }}
         >
-          <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3">
-            <div className="flex-1">
+          <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-[120px]">
               <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
               {dragging && <span className="ml-2 text-[12px] text-kred font-semibold animate-pulse">← Suelta aquí</span>}
             </div>
+            {onAsignarIA && pool.length > 0 && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignarIA(); }}
+                disabled={iaLoading}
+                className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full text-[12px] font-bold text-white transition-all disabled:opacity-60 active:scale-[0.97]"
+                style={{ background: 'linear-gradient(135deg, #6D5AE6 0%, #8B5CF6 100%)', boxShadow: '0 2px 10px rgba(109,90,230,0.35)' }}
+                title="Propone la asignación aprendiendo del historial"
+              >
+                {iaLoading
+                  ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
+                  : <><Sparkles size={14} aria-hidden="true" /> Asignar con IA</>}
+              </button>
+            )}
             <span className={`text-[13px] font-bold ${pool.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
               {pool.length > 0 ? `${pool.length} restantes` : '✓ Todas asignadas'}
             </span>

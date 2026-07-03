@@ -141,6 +141,7 @@ export default function RutasScreen() {
   const [fecha,      setFecha]      = useState(todayStr);
   const [manualText, setManualText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  const [iaLoading, setIaLoading] = useState(false);
   // Días PASADOS con asignaciones en el Enrutador pero sin registrar (aviso de recuperación).
   const [unregisteredDays, setUnregisteredDays] = useState<string[]>([]);
 
@@ -1147,6 +1148,36 @@ export default function RutasScreen() {
     setComparisonData({ manual: rebalanceadas, optima: optimaRutas, ts: allItems, extGps, extTiendas, rebalanceada: rebalanceadas !== manualRutas });
   }
 
+  // ── Asistente IA: propone la asignación tienda→patente aprendiendo del historial ──────
+  // Junta las tiendas activas del pool + la flota activa (no-2ªvuelta) → POST /api/asignar-ia →
+  // aplica la propuesta a manualAsignaciones (llena el tablero, se sincroniza) y muestra warnings.
+  async function handleAsignarIA() {
+    const stores = Object.keys(calT)
+      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
+      .map(c => ({ cod: c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
+    const trucks = flota
+      .filter(v => v.on && !v.tlbd)
+      .map(v => ({ patente: v.p, capP: v.c, capB: v.b, refrigerado: !!v.refrigerado, porton: !!v.porton }));
+    if (!stores.length) { setErrors(['No hay tiendas con carga para asignar con IA.']); return; }
+    if (!trucks.length) { setErrors(['No hay camiones activos para asignar.']); return; }
+    setErrors([]);
+    setIaLoading(true);
+    try {
+      const res  = await fetch('/api/asignar-ia', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha, stores, trucks }),
+      });
+      const json = await res.json() as { asignaciones?: Record<string, StoreItem[]>; warnings?: string[]; error?: string };
+      if (!res.ok) { setErrors([`Asistente IA: ${json.error ?? `error ${res.status}`}`]); return; }
+      setManualAsignaciones(json.asignaciones ?? {});
+      setErrors(json.warnings ?? []); // el tablero lleno es la confirmación; solo mostramos avisos si hay
+    } catch {
+      setErrors(['No se pudo conectar con el asistente IA.']);
+    } finally {
+      setIaLoading(false);
+    }
+  }
+
   function rebalanceIfOver(manualRutas: Ruta[], gpsMap: Record<string, number[]>, tiendasData: Record<string, TiendaInfo>): Ruta[] {
     const over = manualRutas.filter(r => r.tp > r.v.c);
     if (!over.length) return manualRutas;
@@ -1645,6 +1676,8 @@ export default function RutasScreen() {
           onAsignaciones={setManualAsignaciones}
           onCalcular={handleCalcular}
           onCalcularManual={handleCalcularManual}
+          onAsignarIA={handleAsignarIA}
+          iaLoading={iaLoading}
           onLimpiar={handleLimpiar}
           onEliminarParada={handleEliminarParada}
           rightPanelContent={
