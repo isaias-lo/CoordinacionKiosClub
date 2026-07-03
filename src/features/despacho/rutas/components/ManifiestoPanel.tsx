@@ -420,7 +420,9 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
   useEffect(() => {
     setManifiestos(rutas.map((r, i) => fromRuta(r, i, fecha, tiendas)));
     setSaved({});
-    setSelected(new Set());
+    // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
+    // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
+    setSelected(new Set(rutas.map((_, i) => i)));
   }, [rutas, fecha, tiendas]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
