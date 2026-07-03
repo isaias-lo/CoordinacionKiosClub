@@ -145,39 +145,13 @@ export function SplashScreen() {
         textAlign: 'center', zIndex: 1,
         animation: 'sp-logo-in 0.8s cubic-bezier(0.34,1.5,0.64,1) 0.55s both',
       }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 'clamp(2px, 0.4vmin, 6px)' }}>
-          <span style={{
-            fontSize: 'clamp(44px, 7vw, 108px)',
-            fontWeight: 800, color: '#d93025',
-            letterSpacing: '-0.02em', lineHeight: 1,
-            fontFamily: 'Barlow Condensed, sans-serif',
-          }}>KIOS</span>
-          <span style={{
-            fontSize: 'clamp(28px, 4.4vw, 68px)',
-            fontStyle: 'italic', fontWeight: 700, color: '#fff',
-            lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif',
-          }}>Club</span>
-        </div>
-
-        {/* Star bar */}
-        <div style={{
-          display: 'flex',
-          gap: 'clamp(3px, 0.5vmin, 7px)',
-          borderRadius: 2,
-          padding: 'clamp(3px, 0.5vmin, 7px) clamp(8px, 1.2vmin, 18px)',
-          background: '#1a3a8f',
-          justifyContent: 'center',
-          marginTop: 'clamp(6px, 1vmin, 14px)',
-          width: 'fit-content', marginLeft: 'auto', marginRight: 'auto',
-        }}>
-          {[0,1,2,3,4].map(i => (
-            <span key={i} style={{
-              color: '#fff',
-              fontSize: 'clamp(8px, 1.1vmin, 15px)',
-              animation: `sp-star-in 0.3s cubic-bezier(0.34,1.5,0.64,1) ${0.85 + i * 0.12}s both`,
-            }}>★</span>
-          ))}
-        </div>
+        {/* Logo oficial en blanco (filtro) para el fondo oscuro del splash. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo-kiosclub.webp"
+          alt="KIOS Club — American Supermarket"
+          style={{ width: 'min(72vw, 400px)', height: 'auto', margin: '0 auto', display: 'block', filter: 'brightness(0) invert(1)' }}
+        />
 
         <div style={{
           marginTop: 'clamp(8px, 1.3vmin, 18px)',

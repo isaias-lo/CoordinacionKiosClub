@@ -153,9 +153,13 @@ export default function LoginPage() {
 
           {/* Logo desktop (original) */}
           <div className="lg-logo-desktop lg-anim-logo text-center mb-10">
-            <div className="font-barlow-condensed text-4xl font-bold text-white tracking-widest mb-1">
-              KiosClub
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-kiosclub.webp"
+              alt="KIOS Club — American Supermarket"
+              className="mx-auto mb-3 w-[260px] max-w-[75%] h-auto"
+              style={{ filter: 'brightness(0) invert(1)' }}
+            />
             <div className="text-[11px] text-white/40 uppercase tracking-widest">
               Sistema de despacho
             </div>
@@ -166,29 +170,12 @@ export default function LoginPage() {
             display: 'none', flexDirection: 'column', alignItems: 'center',
             marginBottom: 32,
           }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-              <span style={{
-                fontSize: 52, fontWeight: 800, color: '#d93025',
-                letterSpacing: '-1px', lineHeight: 1,
-                fontFamily: 'Barlow Condensed, sans-serif',
-              }}>KIOS</span>
-              <span style={{
-                fontSize: 32, fontStyle: 'italic', fontWeight: 700, color: '#fff',
-                lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif',
-              }}>Club</span>
-            </div>
-            <div style={{
-              display: 'flex', gap: 4, borderRadius: 2,
-              padding: '4px 10px', background: '#1a3a8f',
-              marginTop: 7,
-            }}>
-              {[0,1,2,3,4].map(i => (
-                <span key={i} style={{
-                  color: '#fff', fontSize: 9,
-                  animation: `lg-star-in 0.3s cubic-bezier(0.34,1.5,0.64,1) ${0.2 + i * 0.12}s both`,
-                }}>★</span>
-              ))}
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-kiosclub.webp"
+              alt="KIOS Club — American Supermarket"
+              style={{ width: 'min(70vw, 300px)', height: 'auto', filter: 'brightness(0) invert(1)' }}
+            />
             <div style={{
               marginTop: 8, fontSize: 10,
               color: 'rgba(255,255,255,0.35)',
