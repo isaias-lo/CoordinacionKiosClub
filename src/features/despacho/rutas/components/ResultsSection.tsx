@@ -6,6 +6,7 @@ import MapSection         from './MapSection';
 import ManifiestoPanel    from './ManifiestoPanel';
 import CierreJornadaPanel from './CierreJornadaPanel';
 import { fechaTxt, fechaLargaTxt } from '../utils/helpers';
+import { todasCerradas } from '../utils/cierrePorVehiculo';
 import type { Ruta, StoreItem } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
@@ -77,6 +78,11 @@ export default function ResultsSection({
 
   const histBg    = historialStatus === 'success' ? '#EAF7EE' : '#FFF3E0';
   const histColor = historialStatus === 'success' ? '#34C759' : '#FF9500';
+
+  // Fase B: si TODOS los camiones ya se cerraron individualmente, el día ya quedó registrado
+  // (summary + rutas_reg se emiten al cerrar el último). Deshabilitamos el registro global para
+  // no duplicar el summary del día (historial_despacho es append-only).
+  const diaCompleto = todasCerradas(rutas, cerradasV1);
 
   return (
     <div id="res" className="mt-[22px]">
@@ -164,11 +170,13 @@ export default function ResultsSection({
       <div className="mt-[9px] no-print">
         <button
           onClick={() => void handleRegistrarYManifiesto()}
-          disabled={historialStatus === 'loading'}
+          disabled={historialStatus === 'loading' || diaCompleto}
           className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
         >
           {historialStatus === 'loading'
             ? <><Loader2 size={16} className="animate-spin" aria-hidden="true" /> Registrando...</>
+            : diaCompleto
+            ? <><Check size={16} aria-hidden="true" /> Todos los camiones cerrados — día registrado</>
             : <><BarChart3 size={16} aria-hidden="true" /> REGISTRAR DESPACHO Y GENERAR MANIFIESTOS</>}
         </button>
         {historialMsg && (
