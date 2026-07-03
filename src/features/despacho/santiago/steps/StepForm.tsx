@@ -17,6 +17,7 @@ import { StoreProgressBar } from '../../shared/StoreProgressBar';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
+import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -901,6 +902,22 @@ export function StepForm() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTienda?.cod]);
 
+  /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
+     el array de items de la tienda se reemplaza y se renumera `orden`, pero el
+     useLayoutEffect (deps [currentTienda?.cod]) NO se re-dispara → el `savedItem` de cada
+     fila queda obsoleto y "SUMAR A PALLET" puede fallar (UI congelada). Aquí sólo
+     refrescamos la referencia `savedItem` de las filas guardadas; las filas en progreso
+     (no guardadas) se preservan intactas. Deps: identidad del array de la tienda actual. */
+  const currentItems = currentTienda ? items[currentTienda.cod] : undefined;
+  useEffect(() => {
+    if (!currentTienda || !currentItems) return;
+    setFormRows(prev => {
+      const next = reconcileSavedRows(prev, currentItems);
+      return next === prev ? prev : next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentItems, currentTienda?.cod]);
+
   useEffect(() => { setContenido('Hogar'); prevContenidoRef.current = 'Hogar'; }, [tipo]);
 
   useEffect(() => {
@@ -1197,7 +1214,11 @@ export function StepForm() {
     const cod = currentTienda.cod;
     const bultoRow  = formRows.find(r => r.id === bultoRowId);
     const palletRow = formRows.find(r => r.id === palletRowId);
-    if (!bultoRow || !palletRow) return;
+    if (!bultoRow || !palletRow) {
+      // No debería pasar; si pasa, avisar en vez de quedarse en silencio (evita "freeze").
+      showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
+      return;
+    }
     const bultoPeso  = bultoRow.savedItem?.peso  ?? (parseFloat(bultoRow.peso)  || 0);
     const pesoActual = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
@@ -1205,9 +1226,17 @@ export function StepForm() {
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
 
     // Contexto: un solo SET_ITEMS — quita el bulto guardado y suma el peso al pallet guardado,
-    // luego renumera. Evita el doble-dispatch con estado desactualizado.
+    // luego renumera. El match es por id ESTABLE (id propio / pickingSlotId), que sobrevive al
+    // renumerado tras un eco remoto (causa del "freeze"). Se reconfirma contra el contexto vivo.
     if (bultoRow.savedItem || palletRow.savedItem) {
       const cur = items[cod] || [];
+      const targetInCtx = palletRow.savedItem
+        ? findItemForRow(cur, { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })
+        : undefined;
+      if (palletRow.savedItem && !targetInCtx) {
+        showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
+        return;
+      }
       const filtered = cur
         .filter(i => !(bultoRow.savedItem && i.id === bultoRow.savedItem.id))
         .map(i => (palletRow.savedItem && i.id === palletRow.savedItem.id) ? { ...i, peso: nuevoPeso } : i);
