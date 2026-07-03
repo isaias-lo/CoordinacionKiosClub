@@ -1,7 +1,8 @@
 import { supabase } from './supabase';
 
 // 'rutas_reg' = marca de "este día ya se registró en el Enrutador" (para avisar de días sin registrar).
-type Fuente = 'regiones' | 'santiago' | 'guides' | 'rutas' | 'segunda_vuelta' | 'rutas_reg';
+// 'rutas_cerradas' = set de patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), por fecha.
+type Fuente = 'regiones' | 'santiago' | 'guides' | 'rutas' | 'segunda_vuelta' | 'rutas_reg' | 'rutas_cerradas';
 
 function todayISO(): string {
   const d = new Date();

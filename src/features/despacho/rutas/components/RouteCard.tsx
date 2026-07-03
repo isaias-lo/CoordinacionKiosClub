@@ -1,4 +1,5 @@
 'use client';
+import { Check, Truck } from 'lucide-react';
 import { dkm, formatCod } from '../utils/helpers';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -13,9 +14,12 @@ interface Props {
   onChoferChange: (idx: number, nombre: string) => void;
   kmReal?: number;
   legData?: {dist: string; dur: string}[];
+  // Fase B: cierre por vehículo (1ª vuelta). `cerrada` = ya registrada individualmente.
+  cerrada?: boolean;
+  onCerrarCamion?: (patente: string) => void;
 }
 
-export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, onChoferChange, kmReal, legData }: Props) {
+export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, onChoferChange, kmReal, legData, cerrada, onCerrarCamion }: Props) {
   const r    = ruta;
   const pct  = Math.min((r.tp / r.v.c) * 100, 120);
   const over = pct > 100;
@@ -39,6 +43,11 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
         {r.v.porton === true  && <span className="text-[9px] font-semibold text-[#34C759] bg-[#EAF7EE] border border-[#34C759] rounded px-1.5 py-px">Portón</span>}
         {r.v.porton === false && <span className="text-[9px] text-kmuted bg-kbg border border-[#E5E5EA] rounded px-1.5 py-px">Sin portón</span>}
         {r.v.refrigerado      && <span className="text-[9px] font-semibold text-[#5856D6] bg-[#EBEAFC] border border-[#5856D6] rounded px-1.5 py-px">Frío</span>}
+        {cerrada && (
+          <span className="ml-auto text-[9px] font-bold text-[#34C759] bg-[#EAF7EE] border border-[#34C759] rounded px-1.5 py-px flex items-center gap-0.5">
+            <Check size={10} aria-hidden="true" /> Cerrado
+          </span>
+        )}
       </div>
 
       <div className="px-4 py-2.5 border-b border-black/[0.09] flex items-center gap-2.5">
@@ -151,6 +160,24 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
           </div>
         );
       })}
+
+      {/* Fase B: cerrar/registrar SOLO este camión (1ª vuelta) + su manifiesto */}
+      {onCerrarCamion && r.ts.length > 0 && (
+        <div className="px-4 py-2.5 no-print">
+          <button
+            onClick={() => { if (!cerrada) onCerrarCamion(r.v.p); }}
+            disabled={cerrada}
+            className={`w-full h-[38px] rounded-[10px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all
+              ${cerrada
+                ? 'bg-[#EAF7EE] text-[#34C759] border border-[#34C759] cursor-default'
+                : 'bg-knavy text-white active:scale-[0.98] cursor-pointer'}`}
+          >
+            {cerrada
+              ? <><Check size={14} aria-hidden="true" /> Camión cerrado</>
+              : <><Truck size={14} aria-hidden="true" /> Cerrar camión y manifiesto</>}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
