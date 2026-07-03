@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, CheckCircle2, AlertTriangle, XCircle, Truck, Camera, Clock, Lock, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { fmtHoraChile } from '@/lib/fechaChile';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -29,10 +29,10 @@ export interface FotoRegistro {
 type SessionPhase = 'foto-cd' | 'entregas';
 type DeliveryStep = 'sello-llegada' | 'scanner' | 'otp' | 'form' | 'done';
 
-const SELLO_OPTS: { value: SelloEstado; label: string; color: string; bg: string; icon: string }[] = [
-  { value: 'intacto', label: 'Intacto', color: '#10B981', bg: 'rgba(16,185,129,0.12)', icon: '✅' },
-  { value: 'roto',    label: 'Roto',    color: '#EF4444', bg: 'rgba(239,68,68,0.12)',  icon: '⚠️' },
-  { value: 'ausente', label: 'Ausente', color: '#F97316', bg: 'rgba(249,115,22,0.12)', icon: '❌' },
+const SELLO_OPTS: { value: SelloEstado; label: string; color: string; bg: string; icon: LucideIcon }[] = [
+  { value: 'intacto', label: 'Intacto', color: '#10B981', bg: 'rgba(16,185,129,0.12)', icon: CheckCircle2 },
+  { value: 'roto',    label: 'Roto',    color: '#EF4444', bg: 'rgba(239,68,68,0.12)',  icon: AlertTriangle },
+  { value: 'ausente', label: 'Ausente', color: '#F97316', bg: 'rgba(249,115,22,0.12)', icon: XCircle },
 ];
 
 // Detecta el formato del scan: URL con `?cod=...`, ID canónico (P{seq}{cod}{stamp}P, etc.) o legacy.
@@ -259,7 +259,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
 
             <div style={{ background: '#fff', borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
               <div style={{ background: 'linear-gradient(135deg, #1B2A6B 0%, #2D3F8C 100%)', padding: '28px 24px', textAlign: 'center' }}>
-                <div style={{ fontSize: 52, marginBottom: 10 }}>🚛</div>
+                <div style={{ marginBottom: 10, color: '#fff' }}><Truck size={52} aria-hidden="true" /></div>
                 <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Antes de salir del CD</p>
                 <p style={{ margin: 0, fontSize: 19, fontWeight: 800, color: '#fff' }}>Fotografiar sello del vehículo</p>
               </div>
@@ -271,7 +271,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                       Registra el sello intacto del camión antes de salir del centro de distribución. La hora queda guardada automáticamente.
                     </p>
                     <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '26px 16px', border: '2.5px dashed #CBD5E1', borderRadius: 16, cursor: 'pointer', background: '#F8FAFF' }}>
-                      <div style={{ width: 60, height: 60, background: '#EEF2FF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>📸</div>
+                      <div style={{ width: 60, height: 60, background: '#EEF2FF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1B2A6B' }}><Camera size={26} aria-hidden="true" /></div>
                       <span style={{ fontSize: 15, fontWeight: 700, color: '#1B2A6B' }}>Toca para fotografiar el sello</span>
                       <span style={{ fontSize: 12, color: '#9CA3AF' }}>Solo cámara — no se permite galería</span>
                       <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleCdFotoCaptura} />
@@ -282,14 +282,14 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                     <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', marginBottom: 12 }}>
                       <img src={cdFoto.preview} alt="sello CD" style={{ width: '100%', maxHeight: 210, objectFit: 'cover', display: 'block' }} />
                       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.65))', padding: '16px 12px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 13 }}>🕐</span>
+                        <Clock size={13} color="#fff" aria-hidden="true" />
                         <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{formatHora(cdFoto.hora)}</span>
                       </div>
                       <button onClick={() => setCdFoto(null)}
                         style={{ position: 'absolute', top: 8, right: 8, background: '#EF4444', color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                     </div>
                     <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '10px 14px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span>✅</span>
+                      <CheckCircle2 size={16} color="#166534" aria-hidden="true" />
                       <span style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>Foto registrada a las {formatHora(cdFoto.hora)}</span>
                     </div>
                     <button onClick={handleIniciarEntregas}
@@ -343,7 +343,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                     <div style={{ padding: '16px' }}>
                       {!selloLlegada ? (
                         <label style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 14px', border: '2.5px dashed #CBD5E1', borderRadius: 14, cursor: 'pointer', background: '#F8FAFF' }}>
-                          <div style={{ width: 50, height: 50, background: '#EEF2FF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🔒</div>
+                          <div style={{ width: 50, height: 50, background: '#EEF2FF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1B2A6B', flexShrink: 0 }}><Lock size={22} aria-hidden="true" /></div>
                           <div>
                             <div style={{ fontSize: 15, fontWeight: 700, color: '#1B2A6B', marginBottom: 2 }}>Toca para fotografiar el sello</div>
                             <div style={{ fontSize: 12, color: '#9CA3AF' }}>Fotografía el sello intacto antes de abrir el camión</div>
@@ -354,7 +354,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                         <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
                           <img src={selloLlegada.preview} alt="sello llegada" style={{ width: '100%', maxHeight: 170, objectFit: 'cover', display: 'block' }} />
                           <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.65))', padding: '14px 10px 8px', display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <span style={{ fontSize: 13 }}>🕐</span>
+                            <Clock size={13} color="#fff" aria-hidden="true" />
                             <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>{formatHora(selloLlegada.hora)}</span>
                           </div>
                           <button onClick={() => { setSelloLlegada(null); setSelloEstado(null); }}
@@ -369,21 +369,24 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                     <div style={{ background: '#fff', borderRadius: 20, padding: '16px', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
                       <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.1em', textTransform: 'uppercase' }}>¿En qué estado llegó el sello?</p>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        {SELLO_OPTS.map(opt => (
-                          <button key={opt.value} onClick={() => setSelloEstado(opt.value)}
-                            style={{ flex: 1, padding: '14px 0', borderRadius: 14, border: `2px solid ${selloEstado === opt.value ? opt.color : '#E5E7EB'}`, background: selloEstado === opt.value ? opt.bg : '#fff', color: selloEstado === opt.value ? opt.color : '#6B7280', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, transition: 'all 0.15s' }}>
-                            <span style={{ fontSize: 20 }}>{opt.icon}</span>
-                            <span>{opt.label}</span>
-                          </button>
-                        ))}
+                        {SELLO_OPTS.map(opt => {
+                          const Ic = opt.icon;
+                          return (
+                            <button key={opt.value} onClick={() => setSelloEstado(opt.value)}
+                              style={{ flex: 1, padding: '14px 0', borderRadius: 14, border: `2px solid ${selloEstado === opt.value ? opt.color : '#E5E7EB'}`, background: selloEstado === opt.value ? opt.bg : '#fff', color: selloEstado === opt.value ? opt.color : '#6B7280', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, transition: 'all 0.15s' }}>
+                              <Ic size={20} aria-hidden="true" />
+                              <span>{opt.label}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
 
                   {/* CTA */}
                   <button onClick={handleEscanearQR} disabled={!selloLlegada || !selloEstado}
-                    style={{ width: '100%', padding: '18px 0', background: !selloLlegada || !selloEstado ? '#E5E7EB' : '#1B2A6B', color: !selloLlegada || !selloEstado ? '#9CA3AF' : '#fff', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 17, cursor: !selloLlegada || !selloEstado ? 'not-allowed' : 'pointer', boxShadow: !selloLlegada || !selloEstado ? 'none' : '0 4px 20px rgba(27,42,107,0.4)', transition: 'all 0.2s' }}>
-                    {!selloLlegada ? '📸  Toma la foto del sello primero' : !selloEstado ? 'Selecciona el estado del sello' : 'Escanear código de barras →'}
+                    style={{ width: '100%', padding: '18px 0', background: !selloLlegada || !selloEstado ? '#E5E7EB' : '#1B2A6B', color: !selloLlegada || !selloEstado ? '#9CA3AF' : '#fff', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 17, cursor: !selloLlegada || !selloEstado ? 'not-allowed' : 'pointer', boxShadow: !selloLlegada || !selloEstado ? 'none' : '0 4px 20px rgba(27,42,107,0.4)', transition: 'all 0.2s', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    {!selloLlegada ? <><Camera size={18} aria-hidden="true" /> Toma la foto del sello primero</> : !selloEstado ? 'Selecciona el estado del sello' : 'Escanear código de barras →'}
                   </button>
                 </div>
               </div>
@@ -403,8 +406,8 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                   <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al código de barras de la etiqueta</p>
                 </div>
                 {qrError && (
-                  <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0 }}>
-                    ⚠️ {qrError}
+                  <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} aria-hidden="true" /> {qrError}
                   </div>
                 )}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -447,14 +450,14 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
 
                     {otpSentTo && !otpError && (
                       <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', marginBottom: 20 }}>
-                        <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 700, color: '#166534' }}>✅ Código enviado</p>
+                        <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={14} aria-hidden="true" /> Código enviado</p>
                         <p style={{ margin: 0, fontSize: 12, color: '#166534' }}>Correo enviado a <strong>{otpSentTo}</strong></p>
                       </div>
                     )}
 
                     {otpError && (
                       <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', marginBottom: 20 }}>
-                        <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#B91C1C' }}>⚠️ {otpError}</p>
+                        <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} aria-hidden="true" /> {otpError}</p>
                         <button onClick={() => void enviarOTP(qrData.cod)}
                           style={{ fontSize: 12, color: '#1D4ED8', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
                           Reenviar código
@@ -526,7 +529,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
             {/* ── DONE ──────────────────────────────────────────────────── */}
             {step === 'done' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, padding: 32, textAlign: 'center' }}>
-                <div style={{ fontSize: 72, lineHeight: 1 }}>✅</div>
+                <div style={{ lineHeight: 1, color: '#10B981' }}><CheckCircle2 size={72} aria-hidden="true" /></div>
                 <div>
                   <p style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 800, color: '#111827' }}>¡Entrega confirmada!</p>
                   <p style={{ margin: 0, fontSize: 14, color: '#6B7280' }}>

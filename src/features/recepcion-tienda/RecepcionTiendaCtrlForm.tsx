@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Camera, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
@@ -271,7 +272,7 @@ export function RecepcionTiendaCtrlForm({ qrData, canonicalId, onDone, onBack }:
             </div>
           ) : (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: '2px dashed #D1D5DB', borderRadius: 12, cursor: 'pointer' }}>
-              <span style={{ fontSize: 24 }}>📸</span>
+              <Camera size={24} color="#6B7280" aria-hidden="true" />
               <span style={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>Toca para fotografiar el sello</span>
               <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleSelloFile} />
             </label>
@@ -295,7 +296,7 @@ export function RecepcionTiendaCtrlForm({ qrData, canonicalId, onDone, onBack }:
             </div>
           )}
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: '2px dashed #D1D5DB', borderRadius: 12, cursor: 'pointer' }}>
-            <span style={{ fontSize: 24 }}>📷</span>
+            <Camera size={24} color="#6B7280" aria-hidden="true" />
             <div>
               <div style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>
                 {estadoPreviews.length > 0 ? `+ Agregar más fotos (${estadoPreviews.length} agregada${estadoPreviews.length !== 1 ? 's' : ''})` : 'Fotografiar estado del despacho'}
@@ -343,8 +344,8 @@ export function RecepcionTiendaCtrlForm({ qrData, canonicalId, onDone, onBack }:
         </div>
 
         {error && (
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>
-            ⚠️ {error}
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#B91C1C', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <AlertTriangle size={14} aria-hidden="true" /> {error}
           </div>
         )}
 

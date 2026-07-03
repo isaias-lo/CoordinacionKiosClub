@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { BarcodeScanner } from '@/features/tiendas/BarcodeScanner';
 import { RecepcionTiendaCtrlForm } from './RecepcionTiendaCtrlForm';
@@ -140,8 +140,8 @@ export function RecepcionTiendaCtrlScreen() {
               <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al <b>QR del manifiesto</b> o al <b>código de barras</b> de la etiqueta</p>
             </div>
             {qrError && (
-              <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0 }}>
-                ⚠️ {qrError}
+              <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AlertTriangle size={14} aria-hidden="true" /> {qrError}
               </div>
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -156,7 +156,7 @@ export function RecepcionTiendaCtrlScreen() {
 
         {step === 'done' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, gap: 20, padding: 32, textAlign: 'center' }}>
-            <div style={{ fontSize: 72, lineHeight: 1 }}>✅</div>
+            <div style={{ lineHeight: 1, color: '#10B981' }}><CheckCircle2 size={72} aria-hidden="true" /></div>
             <div>
               <p style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800, color: '#111827' }}>¡Recepción confirmada!</p>
               <p style={{ margin: 0, fontSize: 14, color: '#6B7280' }}>
