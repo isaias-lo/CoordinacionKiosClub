@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/registroFaltantes';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -230,7 +231,42 @@ export async function POST(request: NextRequest) {
           if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
 
-        return NextResponse.json({ ok: true, updated: updateData.length > 0 ? seenSheets.size : 0 });
+        // ── Tiendas ruteadas SIN fila previa (no pasaron por Bodega) → APPEND ─────────
+        // Antes se descartaban en silencio (el enrutador es update-only). Ahora se agregan
+        // con los datos de ruteo (idempotente: id determinista por fecha+cod; al re-registrar
+        // la fila ya existe y cae en el update de arriba). Se devuelven los cods agregados
+        // para que el cliente avise ("sin datos de Bodega").
+        const faltaIdx = pickFaltantesIdx(
+          records.map(r => { const rr = r as Record<string, string | null>; return { fecha: rr.fecha, cod: rr.cod }; }),
+          new Set(rowMap.keys()),
+        );
+        const appended: string[] = [];
+        if (faltaIdx.length > 0) {
+          const faltaRows: (string | number)[][] = [];
+          const faltaRecords: Record<string, unknown>[] = [];
+          for (const i of faltaIdx) {
+            const rec   = records[i] as Record<string, unknown>;
+            const genId = faltanteId(String(rec.fecha ?? ''), String(rec.cod ?? ''));
+            const row   = [...rows[i]];
+            if (!row[0]) row[0] = genId;
+            faltaRows.push(row);
+            faltaRecords.push({ ...rec, id: rec.id || genId });
+            appended.push(String(rec.cod ?? ''));
+          }
+          await gs.spreadsheets.values.append({
+            spreadsheetId:    SPREADSHEET_ID,
+            range:            `${sheet}!A1`,
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody:      { values: faltaRows },
+          });
+          const withFuente = fuente ? faltaRecords.map(r => ({ ...r, fuente })) : faltaRecords;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error } = await sb.from(table).upsert(withFuente as any[], { onConflict: 'id' });
+          if (error) console.error(`[sheets-write] Supabase upsert faltantes ${table}:`, error.message);
+        }
+
+        return NextResponse.json({ ok: true, updated: updateData.length > 0 ? seenSheets.size : 0, appended });
 
       } else {
         // ── Bodega path: append SOLO filas nuevas (idempotente por id en col A) ──

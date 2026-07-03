@@ -390,13 +390,22 @@ function recordsToSheetRows(records: RMRecord[]): (string | number)[][] {
   ]);
 }
 
-function writeDespachoSheet(sheet: 'DESPACHO RM' | 'DESPACHO REGIONES', rows: (string | number)[][]): void {
-  if (!rows.length) return;
-  fetch('/api/sheets-write', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet, rows, fuente: 'enrutador' }),
-  }).catch(err => console.error(`[guardarDespacho ${sheet}]`, err));
+// Devuelve los cods que el server AGREGÓ (tiendas ruteadas sin fila previa de Bodega) → el
+// llamador puede avisar. Nunca lanza: ante error de red devuelve [] (fire-and-forget seguro).
+async function writeDespachoSheet(sheet: 'DESPACHO RM' | 'DESPACHO REGIONES', rows: (string | number)[][]): Promise<string[]> {
+  if (!rows.length) return [];
+  try {
+    const res  = await fetch('/api/sheets-write', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ sheet, rows, fuente: 'enrutador' }),
+    });
+    const json = await res.json().catch(() => ({})) as { appended?: string[] };
+    return json.appended ?? [];
+  } catch (err) {
+    console.error(`[guardarDespacho ${sheet}]`, err);
+    return [];
+  }
 }
 
 export function guardarDespachoRMFn(params: {
@@ -406,7 +415,7 @@ export function guardarDespachoRMFn(params: {
   tiendas: Record<string, TiendaInfo>;
 }): void {
   const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
-  writeDespachoSheet('DESPACHO RM', recordsToSheetRows(records));
+  void writeDespachoSheet('DESPACHO RM', recordsToSheetRows(records));
 }
 
 /**
@@ -414,20 +423,24 @@ export function guardarDespachoRMFn(params: {
  * RM/Costa → hoja DESPACHO RM; Regiones (fal) → hoja DESPACHO REGIONES. Antes todo iba a
  * DESPACHO RM y la patente de las tiendas de Regiones se perdía.
  */
-export function guardarDespachoSplitFn(params: {
+// Devuelve los cods de tiendas que se AGREGARON al registrar (ruteadas sin fila de Bodega).
+export async function guardarDespachoSplitFn(params: {
   fecha: string;
   supervisor: string;
   rutas: Ruta[];
   tiendas: Record<string, TiendaInfo>;
   grupoPorCod: (cod: string) => 'rm' | 'costa' | 'fal' | undefined;
-}): void {
+}): Promise<string[]> {
   const records = buildDespachoRMRecords({ ...params, seguimiento: 'Registrado' });
-  if (!records.length) return;
+  if (!records.length) return [];
   const rm: RMRecord[]  = [];
   const reg: RMRecord[] = [];
   for (const r of records) (params.grupoPorCod(r.cod) === 'fal' ? reg : rm).push(r);
-  writeDespachoSheet('DESPACHO RM', recordsToSheetRows(rm));
-  writeDespachoSheet('DESPACHO REGIONES', recordsToSheetRows(reg));
+  const [aRm, aReg] = await Promise.all([
+    writeDespachoSheet('DESPACHO RM', recordsToSheetRows(rm)),
+    writeDespachoSheet('DESPACHO REGIONES', recordsToSheetRows(reg)),
+  ]);
+  return [...aRm, ...aReg];
 }
 
 export function actualizarPionetasRMFn(params: { fecha: string; rutas: Ruta[] }): void {
