@@ -8,6 +8,93 @@ const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2C
 
 const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN TIENDA', 'HISTORIAL', 'CONTROL DESPACHO']);
 
+// ── Caché de sheetId por nombre de hoja (se llena una vez por proceso) ──────────
+// Evita llamar spreadsheets.get en cada request; se invalida solo si el proceso reinicia.
+const sheetIdCache: Record<string, number> = {};
+
+/**
+ * Obtiene el sheetId (número interno) de una hoja por su nombre.
+ * Resultado cacheado en memoria — una sola llamada a la API por nombre por proceso.
+ */
+async function getSheetId(gs: ReturnType<typeof google.sheets>, sheetName: string): Promise<number | null> {
+  if (sheetIdCache[sheetName] !== undefined) return sheetIdCache[sheetName];
+  const meta = await gs.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+    fields: 'sheets.properties',
+  });
+  for (const s of meta.data.sheets ?? []) {
+    const p = s.properties;
+    if (p?.title && p.sheetId !== undefined && p.sheetId !== null) {
+      sheetIdCache[p.title] = p.sheetId;
+    }
+  }
+  return sheetIdCache[sheetName] ?? null;
+}
+
+/**
+ * Parsea un rango A1 devuelto por spreadsheets.values.append (p.ej. "HISTORIAL!A100:L105")
+ * y devuelve { startRow, endRow } en base 0 (para GridRange).
+ * Retorna null si el rango no puede parsearse.
+ */
+function parseUpdatedRange(updatedRange: string | null | undefined): { startRow: number; endRow: number } | null {
+  if (!updatedRange) return null;
+  // Formato: "NombreHoja!A100:L105" o "NombreHoja!A100"
+  const match = updatedRange.match(/!(?:[A-Z]+)(\d+)(?::[A-Z]+(\d+))?/);
+  if (!match) return null;
+  const startRow = parseInt(match[1]) - 1; // A1 notation → 0-indexed
+  const endRow   = match[2] ? parseInt(match[2]) : startRow + 1; // 0-indexed exclusive
+  if (isNaN(startRow) || isNaN(endRow)) return null;
+  return { startRow, endRow };
+}
+
+/**
+ * Aplica formato de fecha (DD/MM/YYYY) a la columna especificada en el rango de filas recién
+ * agregadas. Esto evita que Google Sheets muestre el número serial (p.ej. 46206) en vez
+ * de la fecha legible cuando se hace append con valueInputOption USER_ENTERED.
+ *
+ * Google Sheets interpreta "03/07/2026" como fecha y la convierte al serial 46206.
+ * El serial es correcto internamente, pero sin formato de fecha en la celda aparece como número.
+ * La solución es aplicar un numberFormat { type: 'DATE', pattern: 'dd/mm/yyyy' } post-append.
+ *
+ * @param gs          Instancia de Sheets autenticada
+ * @param sheetName   Nombre de la hoja (para obtener su sheetId)
+ * @param updatedRange Rango devuelto por el append (A1 notation), p.ej. "HISTORIAL!A100:L105"
+ * @param colIndex    Índice 0 de la columna de fecha (0 = col A)
+ */
+async function applyDateFormat(
+  gs: ReturnType<typeof google.sheets>,
+  sheetName: string,
+  updatedRange: string | null | undefined,
+  colIndex: number,
+): Promise<void> {
+  const sheetId = await getSheetId(gs, sheetName);
+  if (sheetId === null) return;
+  const rows = parseUpdatedRange(updatedRange);
+  if (!rows) return;
+  await gs.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: rows.startRow,
+            endRowIndex:   rows.endRow,
+            startColumnIndex: colIndex,
+            endColumnIndex:   colIndex + 1,
+          },
+          cell: {
+            userEnteredFormat: {
+              numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' },
+            },
+          },
+          fields: 'userEnteredFormat.numberFormat',
+        },
+      }],
+    },
+  });
+}
+
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
@@ -253,13 +340,16 @@ export async function POST(request: NextRequest) {
             faltaRecords.push({ ...rec, id: rec.id || genId });
             appended.push(String(rec.cod ?? ''));
           }
-          await gs.spreadsheets.values.append({
+          const faltaAppendRes = await gs.spreadsheets.values.append({
             spreadsheetId:    SPREADSHEET_ID,
             range:            `${sheet}!A1`,
             valueInputOption: 'USER_ENTERED',
             insertDataOption: 'INSERT_ROWS',
             requestBody:      { values: faltaRows },
           });
+          // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206).
+          // DESPACHO RM/REGIONES escribe la fecha en col B (índice 1). Aplicar formato post-append.
+          await applyDateFormat(gs, sheet, faltaAppendRes.data.updates?.updatedRange, 1);
           const withFuente = fuente ? faltaRecords.map(r => ({ ...r, fuente })) : faltaRecords;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error } = await sb.from(table).upsert(withFuente as any[], { onConflict: 'id' });
@@ -359,25 +449,34 @@ export async function POST(request: NextRequest) {
         });
       }
       if (newRows.length > 0) {
-        await gs.spreadsheets.values.append({
+        const appendRes = await gs.spreadsheets.values.append({
           spreadsheetId:    SPREADSHEET_ID,
           range:            'CONTROL DESPACHO!A1',
           valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
           requestBody:      { values: newRows },
         });
+        // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206).
+        // Aplicar formato de fecha en col A de las filas recién insertadas.
+        await applyDateFormat(gs, 'CONTROL DESPACHO', appendRes.data.updates?.updatedRange, 0);
       }
       return NextResponse.json({ ok: true, updated: updateData.length, appended: newRows.length });
     }
 
-    // ── Other allowed sheets (RECEPCIÓN TIENDA etc.) — always append ──
-    await gs.spreadsheets.values.append({
+    // ── Other allowed sheets (HISTORIAL, RECEPCIÓN TIENDA, etc.) — always append ──
+    const otherAppendRes = await gs.spreadsheets.values.append({
       spreadsheetId:    SPREADSHEET_ID,
       range:            `${sheet}!A1`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody:      { values: rows },
     });
+
+    // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206).
+    // HISTORIAL escribe fechaDDMM en col A (índice 0). Aplicar formato de fecha post-append.
+    if (sheet === 'HISTORIAL') {
+      await applyDateFormat(gs, 'HISTORIAL', otherAppendRes.data.updates?.updatedRange, 0);
+    }
 
     return NextResponse.json({ ok: true, written: rows.length });
   } catch (err) {
