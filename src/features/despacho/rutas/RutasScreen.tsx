@@ -1157,7 +1157,7 @@ export default function RutasScreen() {
       .map(c => ({ cod: c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
     const trucks = flota
       .filter(v => v.on && !v.tlbd)
-      .map(v => ({ patente: v.p, capP: v.c, capB: v.b, refrigerado: !!v.refrigerado, porton: !!v.porton }));
+      .map(v => ({ patente: v.p, tipo: v.t, capP: v.c, capB: v.b, refrigerado: !!v.refrigerado, porton: !!v.porton }));
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar con IA.']); return; }
     if (!trucks.length) { setErrors(['No hay camiones activos para asignar.']); return; }
     setErrors([]);
