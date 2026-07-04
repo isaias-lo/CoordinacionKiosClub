@@ -504,6 +504,8 @@ export default function ManualDispatch({
                       <ParadaTagComp
                         key={t.c} parada={parada}
                         isDragging={dragging?.c === t.c}
+                        selected={selected.has(t.c)}
+                        onToggleSelect={() => toggleSelect(t.c)}
                         onDragStart={e => handleDragStart(e, t, v.p)}
                         onDragEnd={handleDragEnd}
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
@@ -513,6 +515,8 @@ export default function ManualDispatch({
                       <StoreTagComp
                         key={t.c} store={t} tiendas={tiendas}
                         isDragging={dragging?.c === t.c}
+                        selected={selected.has(t.c)}
+                        onToggleSelect={() => toggleSelect(t.c)}
                         onDragStart={e => handleDragStart(e, t, v.p)}
                         onDragEnd={handleDragEnd}
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
