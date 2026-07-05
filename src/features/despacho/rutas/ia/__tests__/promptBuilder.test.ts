@@ -7,7 +7,7 @@ const stores: IAStore[] = [
   { cod: '56PZA', p: 2, b: 1, ch: 6 },
 ];
 const trucks: IATruck[] = [
-  { patente: 'PTFZ21', capP: 10, capB: 20, refrigerado: true },
+  { patente: 'PTFZ21', tipo: 'Camión grande', capP: 10, capB: 20, refrigerado: true },
 ];
 const examples: IAExample[] = [
   { fecha: '02/07/2026', asignacion: { PTFZ21: ['05LP', '21NUC'] } },
@@ -20,9 +20,10 @@ describe('buildAsignacionUserPrompt', () => {
     expect(p).toContain('PTFZ21');
     expect(p).toContain('05LP');
     expect(p).toContain('56PZA');
-    expect(p).toContain('capP 10');
-    expect(p).toContain('frío');       // camión refrigerado
-    expect(p).toContain('Corredor RM'); // zona de la tienda
+    expect(p).toContain('10 pallets');    // capacidad
+    expect(p).toContain('Camión grande'); // tipo del camión
+    expect(p).toContain('frío');          // camión refrigerado
+    expect(p).toContain('Corredor RM');   // zona de la tienda
   });
 
   it('sin historial muestra fallback', () => {

@@ -10,14 +10,23 @@ export const IA_SYSTEM_PROMPT = [
   '(patentes) ANTES de calcular la ruta, imitando cómo lo hace el coordinador humano.',
   '',
   'Aprende de los EJEMPLOS históricos (asignaciones reales del coordinador): detecta con qué camión',
-  'suele ir cada zona, qué tiendas se agrupan juntas, y cómo reparte la carga. Respeta SIEMPRE:',
-  '- La capacidad de cada camión (suma de pallets ≤ capP; bultos ≤ capB).',
-  '- Asignar cada tienda a un solo camión. No inventes tiendas ni patentes que no estén en la lista.',
-  '- Preferir agrupar tiendas de la misma zona/corredor en el mismo camión, como en los ejemplos.',
-  '- Si una tienda requiere frío, usar un camión refrigerado.',
+  'suele ir cada zona, qué tiendas se agrupan juntas, qué camión usa para cada corredor y cómo',
+  'reparte la carga. Prioriza replicar esos patrones por encima de cualquier otra heurística.',
+  '',
+  'Reglas OBLIGATORIAS:',
+  '- Capacidad: la suma de pallets de un camión ≤ capP y la de bultos ≤ capB. Nunca la excedas.',
+  '- Cada tienda va a UN solo camión. No inventes tiendas ni patentes fuera de las listas dadas.',
+  '- Frío: una tienda que requiera frío va en un camión refrigerado.',
+  '',
+  'Criterios de calidad (muy importante — el resultado anterior fallaba acá):',
+  '- APROVECHA la flota: intenta asignar TODAS las tiendas. No dejes tiendas sin asignar si hay',
+  '  capacidad libre en algún camión compatible.',
+  '- BALANCEA la carga: no dejes un camión grande casi vacío mientras otros van llenos. Usa el',
+  '  tamaño del camión (grande/mediano/chico) para decidir cuánta carga darle: los grandes llevan más.',
+  '- AGRUPA por zona/corredor: tiendas de la misma zona en el mismo camión, como en los ejemplos.',
   '',
   'Responde ÚNICAMENTE con un objeto JSON: { "PATENTE": ["cod1","cod2"], ... }. Sin texto extra,',
-  'sin explicaciones, sin markdown. Si no puedes asignar una tienda, simplemente no la incluyas.',
+  'sin explicaciones, sin markdown.',
 ].join('\n');
 
 function fmtStores(stores: IAStore[]): string {
@@ -28,7 +37,7 @@ function fmtStores(stores: IAStore[]): string {
 
 function fmtTrucks(trucks: IATruck[]): string {
   return trucks
-    .map(t => `${t.patente} (capP ${t.capP}, capB ${t.capB}${t.refrigerado ? ', frío' : ''}${t.porton ? ', portón' : ''})`)
+    .map(t => `${t.patente} — ${t.tipo || 'camión'} · capacidad ${t.capP} pallets / ${t.capB} bultos${t.refrigerado ? ' · frío' : ''}${t.porton ? ' · portón' : ''}`)
     .join('\n');
 }
 

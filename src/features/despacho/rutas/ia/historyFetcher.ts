@@ -1,29 +1,28 @@
 // Trae el historial real de asignaciones (cómo asignó el coordinador en días pasados) desde
-// shared_session_state fuente 'rutas'. Es la señal de aprendizaje in-context del asistente.
-// Server-only (usa el cliente de servicio de Supabase).
+// Supabase. Es la señal de aprendizaje in-context del asistente. Server-only.
+//
+// Dos fuentes, más señal = mejores propuestas:
+//  1) shared_session_state fuente 'rutas'  → la asignación manual del coordinador (mejor señal).
+//  2) historial_despacho.resumen           → lo efectivamente registrado por día (respaldo/complemento).
+// Se combinan por fecha (gana 'rutas' si existe para ese día) y se toman los últimos N.
 
 import type { IAExample } from './types';
 
-// Cliente mínimo que necesitamos (evita acoplar al tipo completo de @supabase/supabase-js).
-interface MinimalSb {
-  from: (t: string) => {
-    select: (c: string) => {
-      eq: (col: string, val: string) => {
-        order: (col: string, o: { ascending: boolean }) => {
-          limit: (n: number) => Promise<{ data: unknown[] | null }>;
-        };
-      };
-    };
-  };
+// Builder mínimo y encadenable (soporta select().eq().order().limit() y select().order().limit()).
+interface SbFilter {
+  eq: (col: string, val: string) => SbFilter;
+  order: (col: string, o: { ascending: boolean }) => SbFilter;
+  limit: (n: number) => Promise<{ data: unknown[] | null }>;
 }
+interface MinimalSb { from: (t: string) => { select: (c: string) => SbFilter } }
 
 function isoToDDMM(iso: string): string {
   const [y, m, d] = String(iso).split('-');
   return y && m && d ? `${d}/${m}/${y}` : String(iso);
 }
 
-/** state 'rutas' = { patente: [{c,p,b,ch}] } → { patente: [cods] }. Tolerante a formas raras. */
-function normalizeState(state: unknown): Record<string, string[]> {
+/** state 'rutas' = { patente: [{c,p,b,ch}] } → { patente: [cods] }. */
+function normalizeRutasState(state: unknown): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   if (!state || typeof state !== 'object') return out;
   for (const [pat, arr] of Object.entries(state as Record<string, unknown>)) {
@@ -36,25 +35,60 @@ function normalizeState(state: unknown): Record<string, string[]> {
   return out;
 }
 
+/** historial_despacho.resumen = [{patente, tiendas:[cods], ...}] → { patente: [cods] }. */
+function normalizeResumen(resumen: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (!Array.isArray(resumen)) return out;
+  for (const r of resumen) {
+    if (!r || typeof r !== 'object') continue;
+    const pat = String((r as { patente?: unknown }).patente ?? '');
+    const tiendas = (r as { tiendas?: unknown }).tiendas;
+    if (!pat || !Array.isArray(tiendas)) continue;
+    const cods = tiendas.map(String).filter(Boolean);
+    if (cods.length) out[pat] = cods;
+  }
+  return out;
+}
+
 export async function fetchAsignacionHistory(
   sb: MinimalSb,
   opts: { excludeFecha?: string; limit?: number } = {},
 ): Promise<IAExample[]> {
-  const limit = opts.limit ?? 15;
-  const { data } = await sb
-    .from('shared_session_state')
-    .select('fecha, state')
-    .eq('fuente', 'rutas')
-    .order('fecha', { ascending: false })
-    .limit(limit + 5);
-  if (!data) return [];
+  const limit = opts.limit ?? 20;
 
-  const out: IAExample[] = [];
-  for (const row of data as { fecha: string; state: unknown }[]) {
-    if (opts.excludeFecha && row.fecha === opts.excludeFecha) continue;
-    const asignacion = normalizeState(row.state);
-    if (Object.keys(asignacion).length) out.push({ fecha: isoToDDMM(row.fecha), asignacion });
-    if (out.length >= limit) break;
-  }
-  return out;
+  // Mapa fecha(ISO) → asignación. 'rutas' primero (mejor señal); historial_despacho completa huecos.
+  const porFecha = new Map<string, Record<string, string[]>>();
+
+  try {
+    const { data } = await sb
+      .from('shared_session_state')
+      .select('fecha, state')
+      .eq('fuente', 'rutas')
+      .order('fecha', { ascending: false })
+      .limit(limit + 8);
+    for (const row of (data ?? []) as { fecha: string; state: unknown }[]) {
+      if (opts.excludeFecha && row.fecha === opts.excludeFecha) continue;
+      const a = normalizeRutasState(row.state);
+      if (Object.keys(a).length) porFecha.set(row.fecha, a);
+    }
+  } catch { /* sigue con historial_despacho */ }
+
+  try {
+    const { data } = await sb
+      .from('historial_despacho')
+      .select('fecha, resumen')
+      .order('fecha', { ascending: false })
+      .limit(limit + 8);
+    for (const row of (data ?? []) as { fecha: string; resumen: unknown }[]) {
+      if (opts.excludeFecha && row.fecha === opts.excludeFecha) continue;
+      if (porFecha.has(row.fecha)) continue; // ya tenemos 'rutas' para ese día
+      const a = normalizeResumen(row.resumen);
+      if (Object.keys(a).length) porFecha.set(row.fecha, a);
+    }
+  } catch { /* opcional */ }
+
+  return [...porFecha.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // fecha ISO desc
+    .slice(0, limit)
+    .map(([fecha, asignacion]) => ({ fecha: isoToDDMM(fecha), asignacion }));
 }

@@ -12,6 +12,7 @@ export interface IAStore {
 
 export interface IATruck {
   patente: string;
+  tipo?: string;        // "Camión grande", "mediano", "chico"… (para dimensionar la carga)
   capP: number;         // capacidad pallets
   capB: number;         // capacidad bultos
   refrigerado?: boolean;
