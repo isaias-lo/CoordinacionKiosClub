@@ -454,6 +454,67 @@ export default function RutasScreen() {
   // ── Load sheets data ──────────────────────────────────────────────
   useEffect(() => { handleActualizarDatos(); }, []);
 
+  // ── Load tiendas from Supabase (source of truth) ─────────────────
+  // Merges Supabase records over TIENDAS_INICIAL/GPS_INICIAL (which stay as fallback).
+  // Skips inactive stores (activo === false), same criterion as CalendarioColumnas.
+  // Resilient: silently ignores errors so the router keeps working on failure.
+  useEffect(() => {
+    fetch('/api/tiendas')
+      .then(r => r.ok ? r.json() : null)
+      .then((json: {
+        tiendas?: Array<{
+          codigo: string;
+          nombre: string;
+          direccion?: string;
+          region?: string;
+          sector_comuna?: string;
+          corredor?: string;
+          tipo?: string;
+          ventana?: string;
+          frecuencia?: string;
+          lat?: number | null;
+          lon?: number | null;
+          activo?: boolean;
+        }>
+      } | null) => {
+        if (!json?.tiendas?.length) return;
+        const tiendasPatch: Record<string, TiendaInfo> = {};
+        const gpsPatch: Record<string, number[]> = {};
+        for (const t of json.tiendas) {
+          if (t.activo === false) continue;
+          const cod = norm(t.codigo);
+          if (!cod) continue;
+          tiendasPatch[cod] = {
+            n: t.nombre,
+            z: t.sector_comuna || t.corredor || '',
+            v: t.ventana || '',
+            d: t.direccion,
+            region: t.region,
+            corredor: t.corredor,
+            tipo: t.tipo,
+            frecuencia: t.frecuencia,
+          };
+          // Valid Chile GPS range (same bounds as parseTSheetAuth)
+          if (
+            t.lat != null && t.lon != null &&
+            !isNaN(t.lat) && !isNaN(t.lon) &&
+            t.lat > -60 && t.lat < -17 &&
+            t.lon > -76 && t.lon < -66
+          ) {
+            gpsPatch[cod] = [t.lat, t.lon];
+          }
+        }
+        if (Object.keys(tiendasPatch).length > 0) {
+          setTiendas(prev => ({ ...prev, ...tiendasPatch }));
+        }
+        if (Object.keys(gpsPatch).length > 0) {
+          setGps(prev => ({ ...prev, ...gpsPatch }));
+        }
+      })
+      .catch(() => {}); // Resilient: never break the router on API failure
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Sync manual assignments when calT changes ────────────────────
   useEffect(() => {
     setManualAsignaciones(prev => {
