@@ -417,15 +417,15 @@ function RutaCard({
       background: 'white', borderRadius: 18, border: `2px solid ${modified ? 'rgba(249,115,22,0.55)' : 'rgba(0,0,0,0.09)'}`,
       overflow: 'hidden', boxShadow: modified ? '0 4px 20px rgba(249,115,22,0.12)' : '0 2px 8px rgba(0,0,0,0.07)',
     }}>
-      {/* Card header */}
+      {/* Card header — patente PRIMERO (prominente), luego codigo_ruta, luego stats */}
       <div style={{ background: modified ? 'linear-gradient(135deg,#EA580C,#F97316)' : 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <Truck size={20} color="rgba(255,255,255,0.85)" strokeWidth={1.8} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 18, fontWeight: 900, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-              {ruta.codigo_ruta}
+              {ruta.patente}
             </span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'monospace' }}>{ruta.patente}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'monospace' }}>{ruta.codigo_ruta}</span>
             {modified && (
               <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,0.2)', borderRadius: 20, padding: '2px 8px', color: '#fff' }}>
                 ● Modificado {ruta.flota_modificada_at ? timeAgo(ruta.flota_modificada_at) : ''}

@@ -134,7 +134,7 @@ export default function RutasScreen() {
   });
   const [conductores, setConductores] = useState<string[]>([]);
 
-  const [modo,       setModo]       = useState('cal');
+  const [modo,       setModo]       = useState('drag');
   const [grps,       setGrps]       = useState(new Set(['rm']));
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   const [supervisor, setSupervisor] = useState('');
@@ -1083,23 +1083,14 @@ export default function RutasScreen() {
     return { extGps, extTiendas };
   }
 
-  // ── Calculate routes ──────────────────────────────────────────────
+  // ── Calculate routes (modo MANUAL) ───────────────────────────────
+  // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
   function handleCalcular() {
-    let ts: StoreItem[] = [], errs: string[] = [];
-
-    if (modo === 'cal') {
-      Object.keys(calT).forEach(c => {
-        const t = calT[c];
-        if (!t.on) return;
-        if (!t.p && !t.b) { errs.push(`"${c}" sin pallets ni bultos`); return; }
-        ts.push({ c, p: t.p, b: t.b });
-      });
-    } else {
-      const tx = manualText.trim();
-      if (!tx) { setErrors(['Ingresa al menos una tienda.']); return; }
-      const r = parseManual(tx);
-      ts = r.ts; errs = [...errs, ...r.errs];
-    }
+    const errs: string[] = [];
+    const tx = manualText.trim();
+    if (!tx) { setErrors(['Ingresa al menos una tienda.']); return; }
+    const r = parseManual(tx);
+    let ts: StoreItem[] = r.ts; errs.push(...r.errs);
 
     if (errs.length) setErrors(errs); else setErrors([]);
     if (!ts.length) { setErrors(prev => [...prev, 'No hay tiendas válidas.']); return; }

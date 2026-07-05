@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Target, Calculator, PenLine, Truck, Users, ClipboardList, RotateCcw } from 'lucide-react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -125,10 +125,10 @@ function TabIcon({ Icon, from, to, shadow }: { Icon: LIcon; from: string; to: st
 }
 
 // Íconos en tono navy (como el header), sobrios. Se distinguen por forma de ícono +
-// estado activo, no por color.
+// estado activo, no por color. El tab CALCULAR fue eliminado (el botón "Calcular y comparar"
+// del modo DESPACHO ya cubre ese flujo con ComparisonView).
 const MODES: { id: string; Icon: LIcon; label: string; from: string; to: string; shadow: string }[] = [
   { id: 'drag',  Icon: Target,     label: 'DESPACHO', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
-  { id: 'cal',   Icon: Calculator, label: 'CALCULAR', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
   { id: 'man',   Icon: PenLine,    label: 'MANUAL',   from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
   { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA', from: '#6B21A8', to: '#4C1D95', shadow: 'rgba(76,29,149,0.30)' },
   { id: 'flota', Icon: Truck,      label: 'FLOTA',    from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
@@ -410,20 +410,6 @@ export default function InputSection({
                         onAsignarIA={onAsignarIA} iaLoading={iaLoading} />
                     </div>
                   )}
-                  {modo === 'cal' && (
-                    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                      <div style={{ background: 'linear-gradient(145deg,#1B2A6B,#2D3FA0)', boxShadow: '0 8px 32px rgba(27,42,107,0.12)' }}
-                        className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center mb-5">
-                        <Calculator size={26} color="rgba(255,255,255,0.9)" strokeWidth={1.8} />
-                      </div>
-                      <div className="text-[20px] font-bold text-ktext mb-2">Calcular rutas</div>
-                      <div className="text-[13px] text-kmuted mb-8 max-w-xs leading-relaxed">Configura tiendas y cantidades en el panel izquierdo.</div>
-                      <button onClick={onCalcular} style={{ boxShadow: '0 6px 20px rgba(212,43,43,0.32)' }}
-                        className="h-[52px] px-10 rounded-[14px] bg-kred text-white text-[16px] font-bold transition-all active:scale-[0.97] flex items-center gap-2">
-                        <Truck size={16} strokeWidth={2} /> Calcular Rutas
-                      </button>
-                    </div>
-                  )}
                   {modo === 'man' && (
                     <div className="p-4">
                       <ManualMode value={manualText} onChange={onManual} calT={calT} modo={modo} />
@@ -700,37 +686,6 @@ export default function InputSection({
                     onAsignarIA={onAsignarIA}
                     iaLoading={iaLoading}
                   />
-                </div>
-              )}
-
-              {/* 🚛 CALCULAR MODE */}
-              {modo === 'cal' && (
-                <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-                  <div
-                    style={{ boxShadow: '0 8px 32px rgba(27,42,107,0.12)', background: 'linear-gradient(145deg, #1B2A6B, #2D3FA0)' }}
-                    className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mb-6"
-                  >
-                    <Calculator size={32} color="rgba(255,255,255,0.9)" strokeWidth={1.8} />
-                  </div>
-                  <div className="text-[22px] font-bold text-ktext mb-2">Cálculo automático de rutas</div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-4 rounded-full bg-knavy/[0.06] text-knavy text-[11px] font-bold uppercase tracking-wide">
-                    Alternativa al armado manual (pestaña Despacho)
-                  </div>
-                  <div className="text-[14px] text-kmuted mb-10 max-w-md leading-relaxed">
-                    Úsalo cuando no haya quién arme la ruta a mano: el sistema asigna camiones por cercanía GPS y optimiza el orden de entrega a partir de las tiendas y cantidades del panel izquierdo. Puedes ajustar el resultado después de calcular.
-                  </div>
-                  <button
-                    onClick={onCalcular}
-                    style={{ boxShadow: '0 6px 20px rgba(212,43,43,0.32)' }}
-                    className="h-[56px] px-12 rounded-[16px] bg-kred text-white text-[17px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-3"
-                  >
-                    <Truck size={18} strokeWidth={2} /><span>Calcular Rutas</span>
-                  </button>
-                  <div className="mt-6 text-[13px] text-kmuted/60">
-                    {activeCount > 0
-                      ? `${activeCount} tiendas activas con carga`
-                      : 'Activa tiendas en el panel izquierdo primero'}
-                  </div>
                 </div>
               )}
 
