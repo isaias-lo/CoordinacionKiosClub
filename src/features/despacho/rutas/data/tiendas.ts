@@ -51,7 +51,6 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   "18FLO":{n:"Florida",                   z:"Corredor Sur",         v:"09:30-12:00", region:"RM",          d:"Av. Gerónimo de Alderete 1800, La Florida",                           correos:"laflorida@kiosclub.com",         tel_encargado:"56944717280"},
   "29CFL":{n:"Florida Center",            z:"Corredor Sur",         v:"08:30-09:30", region:"RM",          d:"Av. Vicuña Mackenna Ote. 6100 Local 3100, La Florida",               correos:"cencoflorida@kiosclub.com",      tel_encargado:"56942536007"},
   "49PTA":{n:"Los Toros (Puente Alto)",   z:"Corredor Sur",         v:"08:30-09:30", region:"RM",          d:"Los Toros 297 Local 1009, Puente Alto",                               correos:"lostoros@kiosclub.com",          tel_encargado:"56995765854"},
-  CLI:   {n:"Colina",                      z:"Corredor Norte",       v:"09:00-12:00", region:"RM"},
   "55ITA":{n:"ITA",                        z:"Corredor RM",           v:"09:00-12:00", region:"RM",          correos:"55ita@kiosclub.com"},
   "56PZA":{n:"PZA",                        z:"Corredor RM",           v:"09:00-12:00", region:"RM",          correos:"56pza@kiosclub.com"},
   // ── Costa (Valparaíso) ───────────────────────────────────────────────────
@@ -113,7 +112,7 @@ export const GPS_INICIAL: Record<string, [number, number]> = {
   "23PEÑ":[-33.497676,-70.555504], "34SMB":[-33.446862,-70.580861],
   "09LEO":[-33.442166,-70.599243], "40LIL":[-33.428452,-70.595663],
   "06MQH":[-33.412495,-70.566325],
-  "22LGN":[-33.277007,-70.627228], "07CCR":[-33.286836,-70.669258], CLI:[-33.195,-70.6667],
+  "22LGN":[-33.277007,-70.627228], "07CCR":[-33.286836,-70.669258],
   "18FLO":[-33.527866,-70.575826], "29CFL":[-33.511099,-70.605902],
   "05LP": [-33.382757,-70.573066], "01TPS":[-33.347548,-70.542238],
   "13PIE":[-33.324073,-70.538501], "10TRQ":[-33.36159,-70.544865],
