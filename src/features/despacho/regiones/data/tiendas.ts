@@ -1,4 +1,5 @@
 import type { Tienda } from '../../../../types';
+import { MAX_ALTO_CM } from '../../shared/palletLimits';
 
 export const TIENDAS: Record<string, Tienda> = {
   "La Serena (PSB)":   {cod:"39PSB",name:"La Serena (PSB)",   region:"COQUIMBO",      nombre_dest:"tienda la serena",             email:"paseobalmaceda@kiosclub.com", celular:"940443161",rut:"76360868-9",region_sendu:"Coquimbo",                                        comuna:"La Serena",           calle:"Av Balmaceda",                                    numero:"2885", complemento:"Local 133 al 136", str_val:"La Serena"},
@@ -34,9 +35,9 @@ export const CALENDARIO: Record<number, string[]> = {
 };
 
 export const LIMITES = {
-  pallet:    { pesoMax: 1000, altoMax: 175, anchoMax: 130, largoMax: 130 },
-  box:       { pesoMax: 500,  altoMax: 200, anchoMax: 250, largoMax: 250 },
-  chocolate: { pesoMax: 25,   altoMax: 42,  anchoMax: 56,  largoMax: 80  },
+  pallet:    { pesoMax: 1000, altoMax: MAX_ALTO_CM, anchoMax: 130, largoMax: 130 },
+  box:       { pesoMax: 500,  altoMax: 200,         anchoMax: 250, largoMax: 250 },
+  chocolate: { pesoMax: 25,   altoMax: 42,          anchoMax: 56,  largoMax: 80  },
 };
 
 export const CHOCOLATE_DIMS = { largo: 80, ancho: 56, alto: 42, pesoMax: 25 };

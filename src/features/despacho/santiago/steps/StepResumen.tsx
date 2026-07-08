@@ -7,6 +7,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
+import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 
 const todayKey = new Date().toISOString().split('T')[0];
 const SANTIAGO_STATE_KEY = `santiagoState_${todayKey}`;
@@ -266,7 +267,10 @@ export function StepResumen() {
                                 <div>
                                   <div className={LABEL_SM}>Alto cm</div>
                                   <input type="number" value={editAlto} onChange={e => setEditAlto(e.target.value)}
-                                    className={INPUT} />
+                                    max={MAX_ALTO_CM} className={INPUT} />
+                                  {excedeAltoMax(parseFloat(editAlto) || 0) && (
+                                    <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                                  )}
                                 </div>
                                 {editTipo === 'Bulto' && (
                                   <>

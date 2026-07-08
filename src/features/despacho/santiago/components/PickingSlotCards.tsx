@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { supabase } from '../../../../lib/supabase';
+import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 
 export interface PickingSlot {
   id:           number;
@@ -136,10 +137,14 @@ function SlotCard({
           <div className="text-[9px] font-bold text-[#64748B] uppercase tracking-wide mb-1">Alto cm</div>
           <input
             type="number" min="0"
+            max={slot.tipo === 'P' ? MAX_ALTO_CM : undefined}
             value={alto} onChange={e => setAlto(e.target.value)}
             placeholder="—"
             className="w-full border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[13px] font-mono text-navy focus:outline-none focus:border-blue-400 [-webkit-appearance:none]"
           />
+          {slot.tipo === 'P' && excedeAltoMax(parseFloat(alto) || 0) && (
+            <div className="text-[9px] text-[#D97706] mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+          )}
         </div>
         {needsLargoAncho && (
           <>

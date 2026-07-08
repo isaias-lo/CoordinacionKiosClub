@@ -8,6 +8,7 @@ import { TIENDAS, getTodayTiendas } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
+import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 
 const TAG: Record<string, string> = {
   comida:        'bg-[rgba(217,119,6,0.15)] text-warn',
@@ -368,13 +369,16 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
                           <div className="grid grid-cols-4 gap-1 mb-1">
                             {([
                               { label: 'Peso', val: editPeso,  set: setEditPeso  },
-                              { label: 'Alto', val: editAlto,  set: setEditAlto  },
+                              { label: 'Alto', val: editAlto,  set: setEditAlto, max: editPkg === 'pallet' ? MAX_ALTO_CM : undefined },
                               { label: 'Ancho', val: editAncho, set: setEditAncho },
                               { label: 'Largo', val: editLargo, set: setEditLargo },
-                            ] as { label: string; val: string; set: (v: string) => void }[]).map(({ label, val, set }) => (
+                            ] as { label: string; val: string; set: (v: string) => void; max?: number }[]).map(({ label, val, set, max }) => (
                               <div key={label}>
                                 <div className={LABEL_SM}>{label}</div>
-                                <input type="number" value={val} onChange={e => set(e.target.value)} className={INPUT} />
+                                <input type="number" value={val} onChange={e => set(e.target.value)} max={max} className={INPUT} />
+                                {label === 'Alto' && editPkg === 'pallet' && excedeAltoMax(parseFloat(val) || 0) && (
+                                  <div className="text-[9px] text-warn">⚠ máx {MAX_ALTO_CM}</div>
+                                )}
                               </div>
                             ))}
                           </div>

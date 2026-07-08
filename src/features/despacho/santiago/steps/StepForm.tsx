@@ -26,6 +26,7 @@ import { processPdf } from '../../regiones/utils/pdfUtils';
 import { isRegionesCod } from '../../regiones/data/tiendas';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
+import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -1684,9 +1685,12 @@ export function StepForm() {
                                   {!rIsChoc && (
                                     <div>
                                       <div className={LABEL_CLS}>Alto cm</div>
-                                      <input type="number" value={re.alto}
+                                      <input type="number" value={re.alto} max={MAX_ALTO_CM}
                                         onChange={e => setResumenEditing(prev => prev ? { ...prev, alto: e.target.value } : prev)}
                                         className={INPUT_CLS} />
+                                      {excedeAltoMax(parseFloat(re.alto) || 0) && (
+                                        <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                                      )}
                                     </div>
                                   )}
                                   {re.tipo === 'Bulto' && !rIsChoc && (
@@ -2011,8 +2015,11 @@ export function StepForm() {
                       <div>
                         <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
-                          placeholder="cm" inputMode="decimal"
+                          placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM}
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        {excedeAltoMax(parseFloat(row.alto) || 0) && (
+                          <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2258,8 +2265,11 @@ export function StepForm() {
             <>
               <div>
                 <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">Alto (cm)</label>
-                <input type="number" inputMode="decimal" value={alto} onChange={e => setAlto(e.target.value)} placeholder="0"
+                <input type="number" inputMode="decimal" value={alto} onChange={e => setAlto(e.target.value)} placeholder="0" max={MAX_ALTO_CM}
                   className="w-full bg-white border-2 border-border rounded-btn px-3 py-3 lg:py-2.5 text-text font-barlow text-[17px] lg:text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                {excedeAltoMax(parseFloat(alto) || 0) && (
+                  <div className="text-[12px] text-warn mt-1">⚠ Supera el máximo de bodega ({MAX_ALTO_CM} cm)</div>
+                )}
               </div>
               <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded-btn px-3 py-2.5 text-[13px] text-info">
                 Dimensiones fijas: 120 × 100 cm
@@ -2271,7 +2281,11 @@ export function StepForm() {
                 <div key={l} className={l === 'Alto (cm)' ? 'col-span-2' : ''}>
                   <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">{l}</label>
                   <input type="number" inputMode="decimal" value={v} onChange={e => s(e.target.value)} placeholder="0"
+                    max={l === 'Alto (cm)' ? MAX_ALTO_CM : undefined}
                     className="w-full bg-white border-2 border-border rounded-btn px-3 py-3 lg:py-2.5 text-text font-barlow text-[17px] lg:text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                  {l === 'Alto (cm)' && excedeAltoMax(parseFloat(v) || 0) && (
+                    <div className="text-[12px] text-warn mt-1">⚠ Supera el máximo de bodega ({MAX_ALTO_CM} cm)</div>
+                  )}
                 </div>
               ))}
             </div>

@@ -24,6 +24,7 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
+import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -1385,7 +1386,11 @@ export function TiendasPage() {
                         <div>
                           <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
                           <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
+                            max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
                             className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
+                            <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1646,7 +1651,13 @@ export function TiendasPage() {
           <div className="grid grid-cols-2 gap-1.5">
             <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder={currentPkg === 'chocolate' ? 'máx 25' : '500'} inputMode="decimal" className={inputCls} /></Field>
             {currentPkg !== 'contenedor' && currentPkg !== 'chocolate' && (
-              <Field label="Alto cm"><input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal" className={inputCls} /></Field>
+              <Field label="Alto cm">
+                <input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal"
+                  max={currentPkg === 'pallet' ? MAX_ALTO_CM : undefined} className={inputCls} />
+                {currentPkg === 'pallet' && excedeAltoMax(parseFloat(alto) || 0) && (
+                  <div className="text-[10px] text-warn">⚠ máx {MAX_ALTO_CM} cm</div>
+                )}
+              </Field>
             )}
             {currentPkg === 'pallet' ? (
               <div className="col-span-2 flex flex-col gap-1">
