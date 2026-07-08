@@ -63,8 +63,8 @@ describe('buildManifiestoTiendaHTML', () => {
   it('arma el header con TIENDA · FECHA · PATENTE arriba y COMUNA · VENTANA al centro', () => {
     const info = { n: 'Maipú', z: 'Maipú (RM)', v: '09:00-11:00' };
     const html = buildManifiestoTiendaHTML(TIENDA, info, [item()], META);
-    const topMatch = html.match(/tienda-hdr-top">([^<]*)</);
-    const centerMatch = html.match(/tienda-hdr-center">([^<]*)</);
+    const topMatch = html.match(/tienda-hdr-top">([\s\S]*?)<\/div>/);
+    const centerMatch = html.match(/tienda-hdr-center">([\s\S]*?)<\/div>/);
     expect(topMatch?.[1]).toContain('Maipú');
     expect(topMatch?.[1]).toContain('AB1234'); // patente
     expect(topMatch?.[1]).toContain('julio'); // fecha formateada
