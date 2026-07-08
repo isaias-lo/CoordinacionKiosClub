@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { verifyAuth } from '@/lib/apiAuth';
 
 const TABLE = 'control_cruce_skus';
 
 // GET /api/control-cruce/skus?picking_name=XXX&detalle=YYY
 // GET /api/control-cruce/skus?action=counts&picking_names=[...]
 export async function GET(req: NextRequest) {
+  if (!(await verifyAuth(req))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
   const action = req.nextUrl.searchParams.get('action');
 
   // ── counts: conteo bulk por picking+detalle ──
@@ -48,6 +53,10 @@ export async function GET(req: NextRequest) {
 // POST /api/control-cruce/skus  { action: 'counts', picking_names: string[] }
 // POST /api/control-cruce/skus  { picking_name, detalle, sku }
 export async function POST(req: NextRequest) {
+  if (!(await verifyAuth(req))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
   const body = await req.json() as { action?: string; picking_names?: string[]; picking_name?: string; detalle?: string; sku?: string };
 
   // ── counts via POST (evita overflow de URL con muchos pickings) ──
@@ -87,6 +96,10 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/control-cruce/skus  { id }
 export async function DELETE(req: NextRequest) {
+  if (!(await verifyAuth(req))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
   const body = await req.json() as { id?: string };
   if (!body.id) {
     return NextResponse.json({ error: 'id requerido' }, { status: 400 });
