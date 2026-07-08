@@ -4,32 +4,13 @@ import { QRCodeSVG } from 'qrcode.react';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import { supabase } from '@/lib/supabase';
-
-/* ── Detalle ítem-a-ítem por tienda (para el manifiesto por tienda) ── */
-export interface ItemDetalle {
-  canonical_id: string;
-  tipo: string;      // P | B | C | CH
-  seq: number | null;
-  contenido: string;
-  peso_kg: number | null;
-  alto: number | null;
-  largo: number | null;
-  ancho: number | null;
-  refs: string;      // guías/DTE separadas por +
-}
+import {
+  buildManifiestoTiendaHTML,
+  type ItemDetalle,
+  type TiendaManifiesto,
+} from '../utils/manifiestoTienda';
 
 /* ── Types ─────────────────────────────────────────────── */
-interface TiendaManifiesto {
-  store_cod: string;
-  nombre: string;
-  ventana: string;
-  orden: number;
-  pallets: number;
-  bultos: number;
-  chocolates: number;
-  contenedores: number;
-}
-
 interface ManifiestoData {
   idx: number;
   id?: number;
@@ -207,135 +188,9 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 </div>`;
 }
 
-/* ── Manifiesto POR TIENDA (detalle ítem-a-ítem, para recepción) ── */
-const TIPO_LABEL: Record<string, string> = { P: 'Pallet', B: 'Bulto', C: 'Contenedor', CH: 'Chocolate' };
-const CONTENIDO_LABEL: Record<string, string> = {
-  hogar: 'Hogar', comida: 'Comida', 'comida-hogar': 'Mixto', 'comida-aseo': 'Comida/Aseo',
-  aseo: 'Aseo', chocolate: 'Chocolate', mixto: 'Mixto',
-};
-
-function guiasDeItems(items: ItemDetalle[]): string[] {
-  const set = new Set<string>();
-  for (const it of items) (it.refs || '').split('+').map(s => s.trim()).filter(Boolean).forEach(g => set.add(g));
-  return [...set];
-}
-
-function buildManifiestoTiendaHTML(
-  t: TiendaManifiesto,
-  info: (TiendaInfo & { _parada?: boolean }) | undefined,
-  items: ItemDetalle[],
-  meta: { fecha: string; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string },
-): string {
-  const fechaLabel = new Date(meta.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
-  const nP  = items.filter(i => i.tipo === 'P').length;
-  const nB  = items.filter(i => i.tipo === 'B').length;
-  const nCH = items.filter(i => i.tipo === 'CH').length;
-  const nC  = items.filter(i => i.tipo === 'C').length;
-  const pesoTotal = Math.round(items.reduce((s, i) => s + (Number(i.peso_kg) || 0), 0) * 10) / 10;
-  const guias = guiasDeItems(items);
-  const qrUrl = `${meta.origin}/recepcion?cod=${encodeURIComponent(t.store_cod)}&p=${nP}&b=${nB + nCH}${guias.length ? `&g=${encodeURIComponent(guias.join(','))}` : ''}`;
-
-  const filas = items.length ? items.map(it => {
-    const dims = it.tipo === 'P' ? '120×100' : (it.alto && it.largo && it.ancho) ? `${it.alto}×${it.largo}×${it.ancho}` : '—';
-    const guia = (it.refs || '').split('+').map(s => s.trim()).filter(Boolean).join(', ') || '—';
-    return `<tr>
-      <td style="width:26px;text-align:center;font-size:15px">☐</td>
-      <td style="font-family:monospace;font-weight:700;font-size:10px">${it.canonical_id}</td>
-      <td><strong>${it.tipo}${it.seq ?? ''}</strong> <span style="color:#555">${TIPO_LABEL[it.tipo] ?? it.tipo}</span></td>
-      <td>${CONTENIDO_LABEL[it.contenido] ?? it.contenido}</td>
-      <td style="text-align:center;font-weight:700">${it.peso_kg ?? '—'}</td>
-      <td style="text-align:center;font-size:9px;color:#555">${dims}</td>
-      <td style="font-size:9px;color:#444">${guia}</td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="7" style="text-align:center;color:#888;padding:16px">Sin detalle de ítems etiquetados para esta tienda.</td></tr>`;
-
-  return `<div class="manifiesto-page">
-<div class="hdr">
-  <div>
-    <img src="${meta.origin}/logo-kiosclub.webp" alt="KIOS Club — American Supermarket" style="height:46px;display:block;margin-bottom:3px" onerror="this.outerHTML='<div class=logo>KIOSClub</div>'">
-    <div class="razon">Kiosclub American Supermarket SPA</div>
-    <div class="rut">RUT 76.360.868-9</div>
-    <div class="logo-sub">Manifiesto de recepción · Tienda</div>
-  </div>
-  <div>
-    <div class="title">RECEPCIÓN TIENDA</div>
-    <div class="code-lbl">Manifiesto de ruta</div>
-    <div class="code">${meta.codigo_ruta}</div>
-  </div>
-</div>
-
-<div class="meta" style="grid-template-columns:repeat(2,1fr)">
-  <div class="mi"><label>Tienda</label><span>${info?.n ?? t.nombre} (${t.store_cod})</span></div>
-  <div class="mi"><label>Comuna / Zona</label><span>${info?.z ?? '—'}</span></div>
-  <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
-  <div class="mi"><label>Ventana horaria</label><span>${info?.v ?? t.ventana ?? '—'}</span></div>
-  <div class="mi"><label>Patente / Chofer</label><span>${meta.patente} · ${meta.chofer}</span></div>
-  <div class="mi"><label>Supervisor</label><span>${meta.supervisor || '—'}</span></div>
-</div>
-
-<div class="sec">Detalle de la carga — marque cada ítem al recibirlo (coteje el código con la etiqueta física)</div>
-<table>
-  <thead><tr><th>✓</th><th>Código etiqueta</th><th>Ítem</th><th>Contenido</th><th>Peso kg</th><th>Dimensiones</th><th>Guía / DTE</th></tr></thead>
-  <tbody>${filas}</tbody>
-</table>
-
-<div class="totals" style="grid-template-columns:repeat(5,1fr)">
-  <div class="tc"><div class="n">${nP}</div><div class="l">Pallets</div></div>
-  <div class="tc"><div class="n">${nB}</div><div class="l">Bultos</div></div>
-  <div class="tc"><div class="n">${nCH}</div><div class="l">Choc.</div></div>
-  <div class="tc"><div class="n">${nC}</div><div class="l">Cont.</div></div>
-  <div class="tc"><div class="n">${pesoTotal}</div><div class="l">Kg total</div></div>
-</div>
-
-<div class="sec">Guías / DTE asociadas (${guias.length})</div>
-<div style="padding:8px 12px;background:#f5f5f5;border-radius:5px;font-size:11px;color:#333;margin-bottom:14px;border:1px solid #ddd;font-family:monospace">
-  ${guias.length ? guias.join(' · ') : 'Sin guías registradas'}
-</div>
-
-<div class="qr-box">
-  <img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(qrUrl)}" width="110" height="110" alt="QR Recepción"/>
-  <div class="qr-info">
-    <div class="badge" style="background:#34C759">Recepción digital</div>
-    <h3>Escanee para recibir</h3>
-    <p>Abre la recepción de esta tienda: descargar guías, confirmar cantidades y dejar observaciones.</p>
-    <div class="qr-url">${qrUrl}</div>
-  </div>
-</div>
-
-<div class="firma-section">
-  <div class="sec" style="margin-bottom:10px">Conformidad de recepción</div>
-  <div style="display:flex;gap:18px;font-size:11px;font-weight:700;color:#333;margin-bottom:10px">
-    <span>☐ Recibido conforme</span><span>☐ Recibido con observaciones</span>
-  </div>
-  <div style="border:1px solid #ccc;border-radius:6px;padding:10px 12px;margin-bottom:12px">
-    <div style="font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:22px">Observaciones (faltantes / daños)</div>
-  </div>
-  <div class="firma-box" style="grid-template-columns:1fr 1fr">
-    <div class="firma">
-      <div class="firma-hdr">Entrega — Chofer</div>
-      <div class="firma-space"></div>
-      <div class="firma-fields">
-        <div class="firma-field"><span class="firma-field-lbl">Patente</span><span class="firma-field-val">${meta.patente}</span></div>
-        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-val">${meta.chofer}</span></div>
-      </div>
-    </div>
-    <div class="firma">
-      <div class="firma-hdr">Recepción — Tienda</div>
-      <div class="firma-space"></div>
-      <div class="firma-fields">
-        <div class="firma-field"><span class="firma-field-lbl">Nombre</span><span class="firma-field-blank"></span></div>
-        <div class="firma-field"><span class="firma-field-lbl">RUT</span><span class="firma-field-blank"></span></div>
-        <div class="firma-field"><span class="firma-field-lbl">Hora</span><span class="firma-field-blank"></span></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="footer">
-  KiosClub · Comprobante de recepción por tienda · ${new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-</div>
-</div>`;
-}
+/* ── Manifiesto POR TIENDA (detalle ítem-a-ítem, para recepción) ──
+   Construcción del HTML movida a utils/manifiestoTienda.ts (buildManifiestoTiendaHTML) para
+   poder testearla como función pura, sin depender de React/Supabase. */
 
 const PRINT_STYLES = `
 *{box-sizing:border-box;margin:0;padding:0}
@@ -353,6 +208,13 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18
 .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#f0f2f5;padding:10px 14px;border-radius:6px;margin-bottom:14px}
 .mi label{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.4px;display:block;font-weight:600}
 .mi span{font-size:13px;font-weight:700;color:#111}
+.tienda-hdr{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#f0f2f5;padding:12px 16px;border-radius:6px;margin-bottom:14px}
+.tienda-hdr-info{min-width:0}
+.tienda-hdr-top{font-size:16px;font-weight:800;color:#111}
+.tienda-hdr-cod{font-size:11px;font-weight:600;color:#666}
+.tienda-hdr-center{font-size:12px;font-weight:600;color:#444;margin-top:4px}
+.tienda-hdr-qr{flex-shrink:0;text-align:center}
+.tienda-hdr-qr-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
 .sec{font-size:9px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:7px}
 table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px}
 th{background:#1a2550;color:#fff;padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
@@ -435,7 +297,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     void (async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('store_cod, date, tipo, seq, canonical_id, contenido, peso_kg, alto, largo, ancho, refs')
+        .select('id, store_cod, date, tipo, seq, canonical_id, contenido, peso_kg, alto, largo, ancho, refs')
         .in('store_cod', cods)
         .eq('is_active', true)
         .not('canonical_id', 'is', null)
@@ -450,7 +312,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
       for (const r of rows) {
         if (r.date !== latestDate[r.store_cod]) continue; // solo la fecha vigente por tienda
         (map[r.store_cod] ??= []).push({
-          canonical_id: r.canonical_id, tipo: r.tipo, seq: r.seq, contenido: r.contenido,
+          id: r.id, canonical_id: r.canonical_id, tipo: r.tipo, seq: r.seq, contenido: r.contenido,
           peso_kg: r.peso_kg, alto: r.alto, largo: r.largo, ancho: r.ancho, refs: r.refs,
         });
       }
