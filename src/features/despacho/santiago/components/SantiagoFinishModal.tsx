@@ -56,6 +56,9 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     // 3. #8: NO borrar tras registrar (como Regiones). Marcar registrado=true → los datos
     //    quedan en pantalla, "Reabrir" carga lo anterior, y el flag viaja en el push del
     //    contexto, así PendingDraftBanner NO lo muestra como "sin registrar" al día siguiente.
+    // registrado=true → el contexto lo empuja INMEDIATO a shared_session_state (sin esperar el
+    // debounce de 2.5s), así el banner "sin registrar" no reaparece al día siguiente aunque el
+    // usuario navegue a Inicio enseguida. Ver SantiagoContext (push effect).
     dispatch({ type: 'SET_REGISTRADO', payload: true });
 
     onClose();
