@@ -737,22 +737,8 @@ export default function RutasScreen() {
   function handleToggleTlbd(idx: number) {
     setFlota(prev => prev.map((v, i) => i === idx ? { ...v, tlbd: !v.tlbd } : v));
   }
-  function handleConductorChange(idx: number, nombre: string) {
-    setFlota(prev => prev.map((v, i) => i === idx ? { ...v, ch: nombre } : v));
-  }
-  function handlePionetaChange(idx: number, field: 'p1' | 'p2', value: string) {
-    setFlota(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v));
-  }
-  function handleAgregarConductor(nombre: string) {
-    const n = nombre.trim();
-    if (!n) return;
-    setConductores(prev => prev.includes(n) ? prev : [...prev, n]);
-    fetch('/api/conductores', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: n }),
-    }).catch(() => {});
-  }
+  // [Fase 3] Conductor/pionetas ya no se editan en la tarjeta de Vehículos: se asignan por
+  // ruta en FLOTA → Gestionar (post-registro). handleChoferChange (RouteCard) sigue existiendo.
   function handleAgregarVehiculo(vehiculo: Vehiculo) {
     setFlota(prev => [...prev, vehiculo]);
     setFlotaStatus('saving');
@@ -1709,7 +1695,7 @@ export default function RutasScreen() {
 
       <main className="flex-1 overflow-hidden">
         <InputSection
-          flota={flota} conductores={conductores}
+          flota={flota}
           modo={modo} grps={grps} calT={sortedCalT}
           supervisor={supervisor} fecha={fecha}
           manualText={manualText} errors={errors}
@@ -1723,9 +1709,6 @@ export default function RutasScreen() {
           onToggleChip={handleToggleChip}
           onUpdateChip={handleUpdateChip}
           flotaStatus={flotaStatus}
-          onConductorChange={handleConductorChange}
-          onPionetaChange={handlePionetaChange}
-          onAgregarConductor={handleAgregarConductor}
           onToggleFlota={handleToggleFlota}
           onToggleTlbd={handleToggleTlbd}
           onAgregarVehiculo={handleAgregarVehiculo}
