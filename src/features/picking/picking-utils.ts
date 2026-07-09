@@ -148,6 +148,21 @@ export function isAbastecimientoOp(origin: string): boolean {
   return ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw));
 }
 
+/**
+ * Estados de picking Odoo que cuentan para el semáforo de la tienda ("pickeables" =
+ * con stock reservado / accionables por el picker):
+ *   - 'assigned' | 'partially_available' → Listo/Preparado (reservado, se puede pickear)
+ *   - 'done'                              → Realizado/Validado
+ * Se EXCLUYEN 'confirmed' y 'waiting' (demanda sin stock reservado, no pickeables): un
+ * duplicado/backorder en 'confirmed' que nunca pasa a 'done' dejaba la tienda en ámbar
+ * para siempre (caso 05LP: un 2º "Abastecimiento Aseo" en 'confirmed' daba 5/6). Alinea
+ * el conteo con la definición de "pickeable" que ya usa el proxy de Odoo para stock.move.
+ */
+export const PICKEABLE_STATES = new Set(['assigned', 'partially_available', 'done']);
+export function isPickeableState(state: string): boolean {
+  return PICKEABLE_STATES.has(state);
+}
+
 /** Extrae un código de tienda (2 dígitos + 2-4 letras + dígito opcional, ej. "42ANP",
  *  "35BN2") de cualquier texto.
  *  Incluye Ñ en la clase de letras y usa lookarounds en vez de \b: la Ñ NO es carácter

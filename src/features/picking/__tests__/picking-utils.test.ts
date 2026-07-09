@@ -10,10 +10,31 @@ import {
   isAllowedPicker,
   relativeTime,
   isAbastecimientoOp,
+  isPickeableState,
   parseOrigin,
   getStoreName,
   getStoreGroup,
 } from '../picking-utils';
+
+describe('isPickeableState — qué cuenta para el semáforo de tienda', () => {
+  it('pickeables (con stock reservado): assigned, partially_available, done', () => {
+    expect(isPickeableState('assigned')).toBe(true);
+    expect(isPickeableState('partially_available')).toBe(true);
+    expect(isPickeableState('done')).toBe(true);
+  });
+
+  it('NO pickeables (sin stock reservado): confirmed, waiting', () => {
+    // Caso 05LP: un 2º "Abastecimiento Aseo" en confirmed daba 5/6 (dejaba la tienda ámbar).
+    expect(isPickeableState('confirmed')).toBe(false);
+    expect(isPickeableState('waiting')).toBe(false);
+  });
+
+  it('estados desconocidos/vacíos no cuentan', () => {
+    expect(isPickeableState('draft')).toBe(false);
+    expect(isPickeableState('cancel')).toBe(false);
+    expect(isPickeableState('')).toBe(false);
+  });
+});
 
 // ─── stampFromISO ─────────────────────────────────────────────────────────────
 
