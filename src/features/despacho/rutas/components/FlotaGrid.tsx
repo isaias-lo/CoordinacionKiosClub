@@ -1,24 +1,20 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
-import { Save, Check, AlertTriangle, Loader2, Lightbulb, Phone, User, Pencil, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { Save, Check, AlertTriangle, Loader2, Lightbulb, Phone, Pencil, Trash2 } from 'lucide-react';
 import type { Vehiculo } from '../data/flota';
 
+// [Fase 3] Conductor y pionetas se asignan en FLOTA → Gestionar (por ruta, post-registro),
+// no en la tarjeta de Vehículos. Por eso esta tarjeta ya no recibe conductores ni sus handlers.
 interface Props {
   flota: Vehiculo[];
-  conductores: string[];
   flotaStatus?: string;
   onToggle: (idx: number) => void;
   onToggleTlbd: (idx: number) => void;
-  onConductorChange: (idx: number, nombre: string) => void;
-  onAgregarConductor: (nombre: string) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
   onEliminarVehiculo: (idx: number) => void;
   onActualizarVehiculo?: (patente: string, updates: Partial<Vehiculo>) => void;
   onGuardarFlota?: () => void;
-  onPionetaChange: (idx: number, field: 'p1' | 'p2', value: string) => void;
 }
-
-const NUEVO_KEY = '__nuevo__';
 
 interface NuevoVehiculoState {
   p: string; c: number | string; b: number | string; t: string; ch: string; tel: string;
@@ -37,7 +33,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-kred bg-white";
 
-export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota, onPionetaChange }: Props) {
+export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -228,14 +224,10 @@ export default function FlotaGrid({ flota, conductores, flotaStatus, onToggle, o
         {visibles.map(({ v, i }) => (
           <VehicleCard
             key={v.p} v={v} idx={i}
-            conductores={conductores}
             onToggle={onToggle}
             onToggleTlbd={onToggleTlbd}
-            onConductorChange={onConductorChange}
-            onAgregarConductor={onAgregarConductor}
             onEliminar={onEliminarVehiculo}
             onActualizar={onActualizarVehiculo}
-            onPionetaChange={onPionetaChange}
           />
         ))}
       </div>
@@ -248,23 +240,17 @@ interface EditVehiculoState {
   porton: boolean | null; refrigerado: boolean;
 }
 
-function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorChange, onAgregarConductor, onEliminar, onActualizar, onPionetaChange }: {
-  v: Vehiculo; idx: number; conductores: string[];
+function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar }: {
+  v: Vehiculo; idx: number;
   onToggle: (i: number) => void;
   onToggleTlbd: (i: number) => void;
-  onConductorChange: (i: number, n: string) => void;
-  onAgregarConductor: (n: string) => void;
   onEliminar: (i: number) => void;
   onActualizar?: (patente: string, updates: Partial<Vehiculo>) => void;
-  onPionetaChange: (idx: number, field: 'p1' | 'p2', value: string) => void;
 }) {
-  const [modoNuevo, setModoNuevo]         = useState(false);
-  const [nuevoNombre, setNuevoNombre]     = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showTel, setShowTel]             = useState(false);
   const [editOpen, setEditOpen]           = useState(false);
   const [editState, setEditState]         = useState<EditVehiculoState>({ t: '', c: '', b: '', empresa: '', porton: null, refrigerado: false });
-  const inputRef = useRef<HTMLInputElement>(null);
 
   function openEdit() {
     setEditState({ t: v.t, c: String(v.c), b: String(v.b), empresa: v.empresa ?? '', porton: v.porton, refrigerado: v.refrigerado });
@@ -282,24 +268,6 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
     });
     setEditOpen(false);
   }
-
-  useEffect(() => {
-    if (modoNuevo && inputRef.current) inputRef.current.focus();
-  }, [modoNuevo]);
-
-  function handleSelect(e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    if (val === NUEVO_KEY) { setModoNuevo(true); setNuevoNombre(''); }
-    else { onConductorChange(idx, val); }
-  }
-
-  function confirmarNuevo() {
-    const n = nuevoNombre.trim();
-    if (n) { onAgregarConductor(n); onConductorChange(idx, n); }
-    setModoNuevo(false); setNuevoNombre('');
-  }
-
-  function cancelarNuevo() { setModoNuevo(false); setNuevoNombre(''); }
 
   const eInputCls = "w-full text-[13px] px-2.5 h-[34px] rounded-[7px] border border-black/[0.15] text-ktext focus:outline-none focus:border-knavy bg-white";
 
@@ -353,65 +321,8 @@ function VehicleCard({ v, idx, conductores, onToggle, onToggleTlbd, onConductorC
         </div>
       </div>
 
-      {/* ── Bottom: conductor + acciones ── */}
+      {/* ── Bottom: acciones (editar/eliminar). Conductor y pionetas → FLOTA → Gestionar ── */}
       <div className="px-4 pb-4 pt-3 border-t border-black/[0.06]" onClick={e => e.stopPropagation()}>
-
-        {/* Conductor dropdown */}
-        <div className="mb-2.5">
-          <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1.5">Conductor (ruta)</div>
-          {modoNuevo ? (
-            <div className="flex gap-1.5">
-              <input
-                ref={inputRef} type="text" value={nuevoNombre}
-                onChange={e => setNuevoNombre(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmarNuevo(); if (e.key === 'Escape') cancelarNuevo(); }}
-                placeholder="Nombre del conductor..."
-                className="flex-1 min-w-0 text-[13px] px-3 h-[36px] rounded-[8px] border border-knavy/[0.4] text-ktext focus:outline-none focus:border-knavy bg-white"
-              />
-              <button onClick={confirmarNuevo} aria-label="Confirmar conductor" className="w-[36px] h-[36px] rounded-[8px] bg-knavy text-white flex items-center justify-center flex-shrink-0"><Check size={16} aria-hidden="true" /></button>
-              <button onClick={cancelarNuevo}  aria-label="Cancelar" className="w-[36px] h-[36px] rounded-[8px] bg-kbg border border-black/[0.09] text-kmuted flex items-center justify-center flex-shrink-0"><X size={16} aria-hidden="true" /></button>
-            </div>
-          ) : (
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 flex text-kmuted pointer-events-none"><User size={14} aria-hidden="true" /></span>
-              <select
-                value={v.ch || ''}
-                onChange={handleSelect}
-                className={`w-full text-[13px] pl-8 pr-3 h-[36px] rounded-[8px] border appearance-none cursor-pointer focus:outline-none bg-white transition-colors
-                  ${v.ch ? 'border-knavy/[0.4] text-knavy font-semibold' : 'border-black/[0.12] text-kmuted'}`}
-              >
-                <option value="">— Asignar conductor —</option>
-                {conductores.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
-                <option disabled>──────────────</option>
-                <option value={NUEVO_KEY}>➕ Nuevo conductor...</option>
-              </select>
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-kmuted pointer-events-none">▼</span>
-            </div>
-          )}
-        </div>
-
-        {/* Pionetas */}
-        {v.on && (
-          <div className="mb-2.5">
-            <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-1.5">Pionetas (opcional)</div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={v.p1 ?? ''}
-                onChange={e => onPionetaChange(idx, 'p1', e.target.value)}
-                placeholder="Pioneta 1"
-                className="flex-1 text-[13px] px-3 h-[34px] rounded-[8px] border border-black/[0.12] focus:outline-none focus:border-knavy bg-white"
-              />
-              <input
-                type="text"
-                value={v.p2 ?? ''}
-                onChange={e => onPionetaChange(idx, 'p2', e.target.value)}
-                placeholder="Pioneta 2"
-                className="flex-1 text-[13px] px-3 h-[34px] rounded-[8px] border border-black/[0.12] focus:outline-none focus:border-knavy bg-white"
-              />
-            </div>
-          </div>
-        )}
 
         {/* Edit form inline */}
         {editOpen && (

@@ -16,7 +16,6 @@ interface StoreAssign { c: string; p: number; b: number; }
 
 interface Props {
   flota: Vehiculo[];
-  conductores: string[];
   flotaStatus?: string;
   modo: string;
   grps: Set<string>;
@@ -36,9 +35,6 @@ interface Props {
   onToggleGroup: (gid: string) => void;
   onToggleChip: (cod: string) => void;
   onUpdateChip: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
-  onConductorChange: (idx: number, nombre: string) => void;
-  onPionetaChange: (idx: number, field: 'p1' | 'p2', value: string) => void;
-  onAgregarConductor: (nombre: string) => void;
   onToggleFlota: (idx: number) => void;
   onToggleTlbd: (idx: number) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
@@ -159,11 +155,10 @@ function GroupPill({ id, label, active, selected, onClick }: { id: string; label
 
 /* ── Main component ──────────────────────────────────────────────── */
 export default function InputSection({
-  flota, conductores, flotaStatus, modo, grps, calT, supervisor, fecha, manualText, errors,
+  flota, flotaStatus, modo, grps, calT, supervisor, fecha, manualText, errors,
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
   onModo, onToggleGroup, onToggleChip, onUpdateChip,
-  onConductorChange, onPionetaChange, onAgregarConductor,
   onToggleFlota, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onLimpiar, onEliminarParada,
@@ -385,10 +380,8 @@ export default function InputSection({
                     ) : (
                       <div className="px-3 py-3">
                         <FlotaGrid
-                          flota={flota} conductores={conductores} flotaStatus={flotaStatus}
+                          flota={flota} flotaStatus={flotaStatus}
                           onToggle={onToggleFlota} onToggleTlbd={onToggleTlbd}
-                          onConductorChange={onConductorChange} onPionetaChange={onPionetaChange}
-                          onAgregarConductor={onAgregarConductor}
                           onAgregarVehiculo={onAgregarVehiculo} onEliminarVehiculo={onEliminarVehiculo}
                           onActualizarVehiculo={onActualizarVehiculo} onGuardarFlota={onGuardarFlota}
                         />
@@ -647,10 +640,8 @@ export default function InputSection({
               ) : (
                 <div className="px-3 py-3">
                   <FlotaGrid
-                    flota={flota} conductores={conductores} flotaStatus={flotaStatus}
+                    flota={flota} flotaStatus={flotaStatus}
                     onToggle={onToggleFlota} onToggleTlbd={onToggleTlbd}
-                    onConductorChange={onConductorChange} onPionetaChange={onPionetaChange}
-                    onAgregarConductor={onAgregarConductor}
                     onAgregarVehiculo={onAgregarVehiculo} onEliminarVehiculo={onEliminarVehiculo}
                     onActualizarVehiculo={onActualizarVehiculo} onGuardarFlota={onGuardarFlota}
                   />
