@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
-import { getStoreGroup, GROUP_LABELS } from '../picking-utils';
+import { getStoreGroup, GROUP_LABELS, isPickeableState } from '../picking-utils';
 
 const GROUP_STYLE: Record<StoreGroupKey, { bg: string; color: string }> = {
   region:   { bg: 'rgba(37,99,235,0.07)',  color: '#1D4ED8' },
@@ -116,8 +116,9 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const isLoading   = loadingCods.includes(store.cod);
                 const hasError    = errorCods.includes(store.cod);
                 const ops         = opsMap[store.cod] ?? [];
-                // Check completion of the 4 Abastecimiento categories
-                const totalOps = ops.length;
+                // Solo pickeables (assigned/partially_available/done) cuentan para la fracción:
+                // un 'confirmed'/'waiting' sin stock (duplicado/backorder) no debe restar completitud.
+                const totalOps = ops.filter(o => isPickeableState(o.state)).length;
                 const doneOps = ops.filter(o => o.state === 'done').length;
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';

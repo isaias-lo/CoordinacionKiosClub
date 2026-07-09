@@ -27,7 +27,7 @@ import {
   LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY, AUTO_REFRESH_MS, CANONICAL_PICKER_KEYS,
 } from './picking-types';
 import {
-  todayISO, getStoreName, parseOrigin, isAbastecimientoOp, resolveStoreCode,
+  todayISO, getStoreName, parseOrigin, isAbastecimientoOp, resolveStoreCode, isPickeableState,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
   computePalletNums, isSinAsignar,
 } from './picking-utils';
@@ -1379,7 +1379,9 @@ export function PickingScreen() {
                 const storeGroups = groupedByStore[cod] ?? [];
                 const isLoading   = loadingCods.includes(cod);
                 const ops         = opsMap[cod] ?? [];
-                const totalOps = ops.length;
+                // Solo pickeables (assigned/partially_available/done): un 'confirmed'/'waiting'
+                // sin stock (duplicado/backorder) no debe restar completitud a la tienda.
+                const totalOps = ops.filter(o => isPickeableState(o.state)).length;
                 const doneOps = ops.filter(o => o.state === 'done').length;
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';

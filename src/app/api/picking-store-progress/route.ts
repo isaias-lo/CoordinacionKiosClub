@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { isAbastecimientoOp, resolveStoreCode } from '@/features/picking/picking-utils';
+import { isAbastecimientoOp, resolveStoreCode, isPickeableState } from '@/features/picking/picking-utils';
 import { computeStoreStatus } from '@/features/despacho/shared/storeStatus';
 
 function todayISO(): string {
@@ -44,6 +44,9 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
       // para ser robusto a typos manuales en el Documento Origen.
       const storeCode = resolveStoreCode(p);
       if (!storeCode) continue;
+      // Solo pickings pickeables (con stock reservado): un 'confirmed'/'waiting' sin stock
+      // (p.ej. un duplicado/backorder) NO debe inflar el total ni dejar la tienda en ámbar.
+      if (!isPickeableState(p.state)) continue;
       if (!acc[storeCode]) acc[storeCode] = { total: 0, done: 0 };
       acc[storeCode].total += 1;
       if (p.state === 'done') acc[storeCode].done += 1;
