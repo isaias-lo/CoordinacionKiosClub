@@ -48,7 +48,7 @@ function EstadoContent() {
     <div className="absolute inset-0 flex flex-col bg-bg overflow-hidden">
       {/* ── Header oscuro a lo ancho total (mismo color que Picking) ── */}
       <div
-        className="flex-shrink-0 flex items-center px-4 py-3 gap-3"
+        className="mobile-menu-safe flex-shrink-0 flex items-center px-4 py-3 gap-3"
         style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight tracking-wide flex-1">
           Estado / Seguimiento

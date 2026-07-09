@@ -171,6 +171,13 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
   }
 }
 
+/* ── Móvil: reserva el ancho del botón de menú (AppShell: fixed top-3 left-3, lg:hidden)
+   para que el header de cada módulo no quede tapado por él. Solo aplica <lg (el botón se
+   oculta en ≥lg). !important para ganarle al padding inline / px-4 de los headers. ── */
+@media (max-width: 1023px) {
+  .mobile-menu-safe { padding-left: 3.25rem !important; }
+}
+
 /* ── Enrutador: print styles ── */
 @media print {
   @page { size: A4; margin: 15mm; }

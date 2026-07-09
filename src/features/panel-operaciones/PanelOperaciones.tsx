@@ -407,7 +407,7 @@ export default function PanelOperaciones() {
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '16px 16px 48px' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+        <div className="mobile-menu-safe" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.22em', textTransform: 'uppercase' as const }}>Panel</div>
             <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.1 }}>Operaciones</div>

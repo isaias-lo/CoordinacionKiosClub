@@ -522,7 +522,7 @@ export default function UsuariosPage() {
          style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)' }}>
 
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+      <div className="mobile-menu-safe flex-shrink-0 flex items-center gap-3 px-4 py-3"
            style={{ background: 'rgba(26,37,80,0.8)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <button onClick={() => router.push('/')}
           className="px-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"

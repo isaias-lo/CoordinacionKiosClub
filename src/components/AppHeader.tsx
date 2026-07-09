@@ -27,7 +27,7 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
   };
 
   return (
-    <div className="flex items-center px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
+    <div className="mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
          style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
       <div className="flex flex-col items-center flex-1 min-w-0">
         <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">

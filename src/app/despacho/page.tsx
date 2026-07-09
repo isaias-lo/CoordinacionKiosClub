@@ -128,7 +128,7 @@ function DespachoContent() {
   return (
     <div className="despacho-root fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div
-        className="no-print flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
+        className="no-print mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <div className="flex-1 text-center">
           <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>

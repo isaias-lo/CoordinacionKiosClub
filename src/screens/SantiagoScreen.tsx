@@ -58,7 +58,7 @@ function SantiagoContent() {
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div
-        className="flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
+        className="mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
         style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
         <button
           onClick={handleBack}
