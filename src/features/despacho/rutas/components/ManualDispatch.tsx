@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
@@ -26,6 +26,9 @@ interface Props {
   /** [IA] Si se provee, muestra "Asignar con IA" en el header del pool. */
   onAsignarIA?: () => void;
   iaLoading?: boolean;
+  /** [Fase 2] Si se provee, muestra una tira para activar/desactivar camiones sin ir a FLOTA.
+   *  El índice es el de `flota` (mismo que usa FLOTA → Vehículos). */
+  onToggleFlota?: (idx: number) => void;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -49,6 +52,7 @@ export default function ManualDispatch({
   onCerrarCamion,
   onAsignarIA,
   iaLoading,
+  onToggleFlota,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -412,6 +416,32 @@ export default function ManualDispatch({
                 ))}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* [Fase 2] Camiones activos — activar/desactivar sin salir de DESPACHO (reusa el toggle de FLOTA) */}
+      {onToggleFlota && flota.length > 0 && (
+        <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <Truck size={13} className="text-kmuted" aria-hidden="true" />
+            <span className="text-[12px] font-bold text-ktext uppercase tracking-wide">Camiones activos</span>
+            <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
+            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">toca para activar / desactivar</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {flota.map((v, i) => (
+              <button
+                key={v.p} type="button"
+                onClick={() => onToggleFlota(i)}
+                title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
+                className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded-full text-[12px] font-bold font-mono border transition-all active:scale-95
+                  ${v.on ? 'bg-kred text-white border-kred' : 'bg-white text-kmuted border-black/[0.15] hover:border-kred/40'}
+                  ${v.tlbd ? 'border-dashed' : ''}`}
+              >
+                {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
+              </button>
+            ))}
           </div>
         </div>
       )}

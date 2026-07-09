@@ -407,7 +407,7 @@ export default function InputSection({
                       <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                         paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                         onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
-                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} />
+                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} />
                     </div>
                   )}
                   {modo === 'man' && (
@@ -685,6 +685,7 @@ export default function InputSection({
                     onEliminarParada={onEliminarParada}
                     onAsignarIA={onAsignarIA}
                     iaLoading={iaLoading}
+                    onToggleFlota={onToggleFlota}
                   />
                 </div>
               )}
