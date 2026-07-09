@@ -1113,7 +1113,7 @@ export function PickingScreen() {
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
+      <div className="mobile-menu-safe flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
         style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         {/* Solo navegación interna en mobile (planilla → lista de tiendas). El "Inicio"
             se quitó: el sidebar ya provee la navegación a casa. */}

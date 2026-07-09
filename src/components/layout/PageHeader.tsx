@@ -46,7 +46,7 @@ export function PageHeader({
 
   return (
     <header
-      className={`flex items-center gap-3 px-4 flex-shrink-0 ${className}`}
+      className={`mobile-menu-safe flex items-center gap-3 px-4 flex-shrink-0 ${className}`}
       style={{
         height: hasSub ? 64 : 56,
         background: 'var(--gradient-dark-h)',

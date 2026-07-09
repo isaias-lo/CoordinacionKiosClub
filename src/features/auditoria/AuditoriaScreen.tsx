@@ -1269,7 +1269,7 @@ export function AuditoriaScreen() {
   if (isAdminAud && view === 'revision') {
     return (
       <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        <div className="mobile-menu-safe flex items-center gap-2 px-4 py-3 flex-shrink-0"
           style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
           <button onClick={() => setView('hub')}
             className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
@@ -1316,7 +1316,7 @@ export function AuditoriaScreen() {
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
 
       {/* ── HEADER ── */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3"
+      <div className="mobile-menu-safe flex-shrink-0 flex items-center gap-2 px-4 py-3"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
         {isAdminAud
           ? <button onClick={() => setView('hub')}
@@ -2310,7 +2310,7 @@ export function AuditoriaScreen() {
       {/* ── MOBILE OVERLAYS (not for admin-auditoria) ── */}
       {!isAdminAud && view === 'dashboard' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
-          <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+          <div className="mobile-menu-safe flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')}
               className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
               style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
@@ -2323,7 +2323,7 @@ export function AuditoriaScreen() {
       )}
       {!isAdminAud && view === 'ranking' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
-          <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+          <div className="mobile-menu-safe flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')}
               className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
               style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>
@@ -2336,7 +2336,7 @@ export function AuditoriaScreen() {
       )}
       {!isAdminAud && view === 'history' && (
         <div className="fixed inset-0 z-30 md:hidden flex flex-col bg-bg">
-          <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
+          <div className="mobile-menu-safe flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #1e3a8a 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
             <button onClick={() => setView('form')}
               className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
               style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)' }}>

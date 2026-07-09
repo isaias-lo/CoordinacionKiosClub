@@ -73,7 +73,7 @@ export default function IncidenciasPage() {
     <div style={{ minHeight: '100dvh', background: '#0f172a', display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.3)' }}>
+      <div className="mobile-menu-safe" style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.3)' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 2 }}>Trazabilidad</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: 0.5 }}>Incidencias</div>

@@ -206,7 +206,7 @@ export default function PerfilPage() {
 
       {/* ── Header ── */}
       <div
-        className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+        className="mobile-menu-safe flex items-center gap-3 px-4 py-3 flex-shrink-0"
         style={{
           background: 'linear-gradient(135deg, #0D1829 0%, #1e3a8a 100%)',
           boxShadow: '0 2px 16px rgba(13,24,41,0.35)',

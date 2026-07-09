@@ -324,7 +324,7 @@ function AuditoriaAdminContent() {
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+      <div className="mobile-menu-safe flex items-center gap-2 px-4 py-3 flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #1a2550 0%, #5b21b6 100%)', boxShadow: '0 2px 16px rgba(26,37,80,0.30)' }}>
         <button onClick={() => router.push('/auditoria')}
           className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"

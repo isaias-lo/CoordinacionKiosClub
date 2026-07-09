@@ -498,7 +498,7 @@ export default function RegistrosPage() {
          style={{ background: '#FFFFFF' }}>
 
       {/* Header (conserva el azulado) */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+      <div className="mobile-menu-safe flex-shrink-0 flex items-center gap-3 px-4 py-3"
            style={{ background: 'linear-gradient(160deg,#111A3E 0%,#1A2550 60%,#243070 100%)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="flex-1">
           <div className="font-barlow-condensed text-[20px] font-bold text-white tracking-widest uppercase">Registros de Despacho</div>
