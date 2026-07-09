@@ -18,15 +18,16 @@ function formatRut(raw: string): string {
   return `${dotted}-${dv}`;
 }
 
+// Paleta "enterprise claro" (referencia: Config. Tiendas): fondo slate, tarjetas
+// blancas con borde sutil, azul primario #2563EB, textos slate.
 const S: Record<string, React.CSSProperties> = {
-  page:    { minHeight: '100vh', background: '#0F172A', paddingBottom: 40 },
-  header:  { background: '#1B2A6B', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.4)' },
-  iconBox: { width: 36, height: 36, background: 'rgba(255,255,255,0.12)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 },
-  body:    { padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 },
-  card:    { background: '#fff', borderRadius: 20, padding: 18, boxShadow: '0 2px 20px rgba(0,0,0,0.30)' },
-  label:   { display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 6 },
-  input:   { width: '100%', border: '2px solid #E5E7EB', borderRadius: 12, padding: '10px 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box' as const, color: '#1F2937' },
-  sectionTitle: { margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.1em', textTransform: 'uppercase' as const },
+  page:    { minHeight: '100vh', background: '#F8FAFC', paddingBottom: 40 },
+  header:  { background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 },
+  body:    { padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 520, margin: '0 auto' },
+  card:    { background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 18, boxShadow: '0 1px 3px rgba(15,23,42,0.06)' },
+  label:   { display: 'block', fontSize: 12, fontWeight: 600, color: '#64748B', marginBottom: 6 },
+  input:   { width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '11px 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box' as const, color: '#0F172A', background: '#fff' },
+  sectionTitle: { margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' as const },
 };
 
 function inputNum(extra?: React.CSSProperties): React.CSSProperties {
@@ -126,7 +127,7 @@ export function RecepcionClient() {
       canvas.height = rect.height * dpr;
       const ctx = canvas.getContext('2d')!;
       ctx.scale(dpr, dpr);
-      ctx.strokeStyle = '#1B2A6B';
+      ctx.strokeStyle = '#0F172A';
       ctx.lineWidth   = 2.5;
       ctx.lineCap     = 'round';
       ctx.lineJoin    = 'round';
@@ -205,10 +206,10 @@ export function RecepcionClient() {
   /* ── Resolviendo ID canónico ── */
   if (lookupLoading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ textAlign: 'center', color: '#fff' }}>
-          <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.25)', borderTopColor: '#fff', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Buscando datos del pallet…</p>
+      <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ textAlign: 'center', color: '#0F172A' }}>
+          <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#2563EB', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
+          <p style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#334155' }}>Buscando datos del pallet…</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       </div>
@@ -218,11 +219,11 @@ export function RecepcionClient() {
   /* ── QR inválido ── */
   if (!cod || !store) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ textAlign: 'center', color: '#fff' }}>
+      <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ textAlign: 'center', color: '#0F172A' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
           <p style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Código inválido</p>
-          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>
+          <p style={{ fontSize: 14, color: '#94A3B8', marginTop: 8 }}>
             {lookupError || 'El QR escaneado no contiene datos válidos.'}
           </p>
         </div>
@@ -233,18 +234,18 @@ export function RecepcionClient() {
   /* ── Éxito ── */
   if (done) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0F172A', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
+      <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
         <div style={{ fontSize: 64 }}>✅</div>
-        <div style={{ textAlign: 'center', color: '#fff' }}>
+        <div style={{ textAlign: 'center', color: '#0F172A' }}>
           <p style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>¡Recepción confirmada!</p>
-          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 6 }}>{store.n} — {formatCod(cod)}</p>
+          <p style={{ fontSize: 14, color: '#64748B', marginTop: 6 }}>{store.n} — {formatCod(cod)}</p>
         </div>
         {drv && (
           <a href={drv} target="_blank" rel="noopener noreferrer" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             width: '100%', maxWidth: 360, padding: '16px 0',
-            background: '#1B2A6B', color: '#fff', borderRadius: 16, fontWeight: 700,
-            fontSize: 18, textDecoration: 'none', boxShadow: '0 4px 20px rgba(27,42,107,0.50)',
+            background: '#2563EB', color: '#fff', borderRadius: 12, fontWeight: 700,
+            fontSize: 18, textDecoration: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.30)',
           }}>
             ↓ Descargar Guías PDF
           </a>
@@ -259,24 +260,25 @@ export function RecepcionClient() {
   return (
     <div style={S.page}>
       <div style={S.header}>
-        <div style={S.iconBox}>📦</div>
-        <div>
-          <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>KiosClub</p>
-          <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 1.2 }}>Recepción de Despacho</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-kiosclub.webp" alt="KiosClub" style={{ height: 34, width: 'auto', display: 'block' }} />
+        <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: 12 }}>
+          <p style={{ margin: 0, color: '#0F172A', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>Recepción de Despacho</p>
+          <p style={{ margin: 0, color: '#94A3B8', fontSize: 12, lineHeight: 1.25 }}>Confirma la carga recibida</p>
         </div>
       </div>
 
       <div style={S.body}>
         {/* Store card */}
         <div style={S.card}>
-          <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Tienda destino</p>
-          <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#1B2A6B', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
-          <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#1F2937' }}>{store.n}</p>
-          {store.d && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6B7280', lineHeight: 1.45 }}>{store.d}</p>}
+          <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
+          <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#2563EB', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
+          <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#0F172A' }}>{store.n}</p>
+          {store.d && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748B', lineHeight: 1.45 }}>{store.d}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            {p > 0 && <span style={{ background: '#EEF2FF', color: '#1B2A6B', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{p} pallet{p !== 1 ? 's' : ''} enviado{p !== 1 ? 's' : ''}</span>}
+            {p > 0 && <span style={{ background: '#EFF6FF', color: '#2563EB', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{p} pallet{p !== 1 ? 's' : ''} enviado{p !== 1 ? 's' : ''}</span>}
             {b > 0 && <span style={{ background: '#FEF3C7', color: '#D97706', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{b} bulto{b !== 1 ? 's' : ''} enviado{b !== 1 ? 's' : ''}</span>}
-            {guias.length > 0 && <span style={{ background: '#F3F4F6', color: '#6B7280', fontSize: 12, fontFamily: 'monospace', padding: '4px 12px', borderRadius: 99 }}>Guía {guias.join(' · ')}</span>}
+            {guias.length > 0 && <span style={{ background: '#F1F5F9', color: '#64748B', fontSize: 12, fontFamily: 'monospace', padding: '4px 12px', borderRadius: 99 }}>Guía {guias.join(' · ')}</span>}
           </div>
         </div>
 
@@ -328,14 +330,14 @@ export function RecepcionClient() {
             onPointerLeave={onPointerUp}
             style={{
               width: '100%', height: 140,
-              border: `2px ${hasSig ? 'solid #1B2A6B' : 'dashed #D1D5DB'}`,
-              borderRadius: 12, touchAction: 'none', cursor: 'crosshair',
-              background: hasSig ? '#F8FAFF' : '#FAFAFA',
+              border: `${hasSig ? '2px solid #2563EB' : '2px dashed #CBD5E1'}`,
+              borderRadius: 10, touchAction: 'none', cursor: 'crosshair',
+              background: hasSig ? '#EFF6FF' : '#F8FAFC',
               display: 'block',
             }}
           />
           {!hasSig && (
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF', marginTop: 8, marginBottom: 0 }}>
+            <p style={{ textAlign: 'center', fontSize: 12, color: '#94A3B8', marginTop: 8, marginBottom: 0 }}>
               Dibuja tu firma en el área de arriba
             </p>
           )}
@@ -351,17 +353,17 @@ export function RecepcionClient() {
           onClick={handleConfirm}
           disabled={loading}
           style={{
-            width: '100%', padding: '18px 0',
-            background: loading ? '#93C5FD' : '#1B2A6B',
-            color: '#fff', border: 'none', borderRadius: 18, fontWeight: 700, fontSize: 20,
+            width: '100%', padding: '16px 0',
+            background: loading ? '#93C5FD' : '#2563EB',
+            color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 19,
             cursor: loading ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            boxShadow: loading ? 'none' : '0 4px 20px rgba(27,42,107,0.45)',
+            boxShadow: loading ? 'none' : '0 4px 16px rgba(37,99,235,0.30)',
           }}>
           {loading ? <>{Spinner} Guardando…</> : 'Confirmar Recepción'}
         </button>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } } input:focus { border-color: #1B2A6B !important; }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } input:focus { border-color: #2563EB !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }`}</style>
     </div>
   );
 }
