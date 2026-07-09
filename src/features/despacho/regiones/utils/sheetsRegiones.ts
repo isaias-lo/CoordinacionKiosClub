@@ -43,7 +43,7 @@ function canonicalId(pkg: string, orden: string, cod: string, stamp: string): st
 
 export function buildRows(
   dispatchData: Record<string, DispatchItem[]>,
-  regimen: string,
+  transporteChoice: string, // 'Luis Fica' (default) o 'Falabella' — define solo el TRANSPORTE, no el régimen
   fechaISO?: string,        // YYYY-MM-DD — fecha de despacho (puede ser mañana)
   fechaArmadoISO?: string,  // YYYY-MM-DD — fecha en que se armó en Bodega (hoy)
 ): (string | number)[][] {
@@ -53,7 +53,9 @@ export function buildRows(
   const mm    = fechaISO ? mISO : String(now.getMonth() + 1).padStart(2, '0');
   const yyyy  = fechaISO ? yISO : String(now.getFullYear());
   const stamp = `${dd}${mm}${yyyy}`;
-  const transporte = regimen === 'Falabella' ? 'Falabella' : 'Carga';
+  // TRANSPORTE de bodega: default 'Luis Fica' (como Santiago; el Enrutador luego lo sobrescribe
+  // con la empresa del camión asignado). 'Falabella' se conserva como marcador de ese transporte.
+  const transporte = transporteChoice === 'Falabella' ? 'Falabella' : 'Luis Fica';
 
   // [P4] Fecha armado = fecha operativa (columna FECHA, llave de match cod+fecha con el Enrutador).
   const fechaArmadoFmt = fechaArmadoISO
@@ -78,7 +80,7 @@ export function buildRows(
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
         item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : item.pkg === 'chocolate' ? 'Bulto CH' : 'Bulto',  // TIPO
-        regimen,                                        // REGIMEN
+        'Seco',                                         // REGIMEN (producto seco, como Santiago)
         transporte,                                     // TRANSPORTE
         '',                                             // PATENTE (enrutador la completa)
         CARGA_LABEL[item.tipo] ?? item.tipo,            // CARGA
@@ -116,11 +118,11 @@ export function buildRows(
 // captura el error internamente para no romper el flujo de registro.
 export function sheetsRegionesWrite(
   dispatchData: Record<string, DispatchItem[]>,
-  regimen = 'Carga',
+  transporteChoice = 'Luis Fica',
   fechaISO?: string,
   fechaArmadoISO?: string,
 ): Promise<void> {
-  const rows = buildRows(dispatchData, regimen, fechaISO, fechaArmadoISO);
+  const rows = buildRows(dispatchData, transporteChoice, fechaISO, fechaArmadoISO);
   if (!rows.length) return Promise.resolve();
 
   return fetch('/api/sheets-write', {
