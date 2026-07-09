@@ -7,6 +7,7 @@ export const AUTH_PATHS = [
   '/actualizar-contrasena',
   '/espera',
   '/r/',
+  '/recepcion',   // recepción pública por QR del manifiesto de tienda (sin sidebar; scroll propio)
 ];
 
 /**
