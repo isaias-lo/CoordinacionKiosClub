@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  tablaDeGrupo, splitRoutingPorTabla, buildControlRows,
+  tablaDeGrupo, splitRoutingPorTabla, buildControlRows, agruparPorFechaOrigen,
   type RoutingUpdate, type RutaControl, type PendienteControl,
 } from '../utils/vueltaRegistro';
+
+// norm de juguete: solo uppercase (basta para los tests; el real strip-ea acentos/alias)
+const norm = (s: string) => s.toUpperCase();
 
 describe('tablaDeGrupo', () => {
   it('Regiones (fal) → despacho_regiones; RM/Costa → despacho_rm', () => {
@@ -67,5 +70,51 @@ describe('buildControlRows', () => {
     const rows = buildControlRows('25/06/2026', 'Jueves', rutas, [{ c: 'A', p: 3, b: 2, ch: 0 }]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(['25/06/2026', 'Jueves', 'A', 3, 2, 'PAT', '']); // conserva patente
+  });
+});
+
+describe('agruparPorFechaOrigen', () => {
+  const stores = [{ c: '02SCL' }, { c: '05LP' }, { c: '21NUC' }];
+
+  it('registra cada tienda bajo su fecha de ORIGEN (no bajo hoy)', () => {
+    // Todas quedaron pendientes el 06/07; el camión cierra el 07/07 (hoy)
+    const pend = [
+      { c: '02SCL', fechaOrigen: '2026-07-06' },
+      { c: '05LP',  fechaOrigen: '2026-07-06' },
+      { c: '21NUC', fechaOrigen: '2026-07-06' },
+    ];
+    const out = agruparPorFechaOrigen(stores, pend, '2026-07-07', norm);
+    expect([...out.keys()]).toEqual(['2026-07-06']);        // NO 07/07 → sin duplicado
+    expect(out.get('2026-07-06')!.map(s => s.c)).toEqual(['02SCL', '05LP', '21NUC']);
+  });
+
+  it('separa por día cuando las pendientes vienen de fechas distintas', () => {
+    const pend = [
+      { c: '02SCL', fechaOrigen: '2026-07-05' },
+      { c: '05LP',  fechaOrigen: '2026-07-06' },
+      { c: '21NUC', fechaOrigen: '2026-07-06' },
+    ];
+    const out = agruparPorFechaOrigen(stores, pend, '2026-07-07', norm);
+    expect(out.get('2026-07-05')!.map(s => s.c)).toEqual(['02SCL']);
+    expect(out.get('2026-07-06')!.map(s => s.c)).toEqual(['05LP', '21NUC']);
+  });
+
+  it('casa códigos de forma robusta (case-insensitive vía norm)', () => {
+    const out = agruparPorFechaOrigen([{ c: '05lp' }], [{ c: '05LP', fechaOrigen: '2026-07-06' }], '2026-07-07', norm);
+    expect(out.get('2026-07-06')!.map(s => s.c)).toEqual(['05lp']);
+  });
+
+  it('una tienda con MISMO cod pendiente en 2 días se agrupa en ambas fechas', () => {
+    const out = agruparPorFechaOrigen(
+      [{ c: '05LP' }],
+      [{ c: '05LP', fechaOrigen: '2026-07-05' }, { c: '05LP', fechaOrigen: '2026-07-06' }],
+      '2026-07-07', norm,
+    );
+    expect([...out.keys()].sort()).toEqual(['2026-07-05', '2026-07-06']);
+  });
+
+  it('tienda sin origen conocido cae en la fecha fallback (hoy)', () => {
+    const out = agruparPorFechaOrigen([{ c: 'ZZZ' }], [], '2026-07-07', norm);
+    expect(out.get('2026-07-07')!.map(s => s.c)).toEqual(['ZZZ']);
   });
 });
