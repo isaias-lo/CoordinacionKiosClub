@@ -60,16 +60,25 @@ describe('buildManifiestoTiendaHTML', () => {
     expect(html).not.toContain('P201TPS07072026P');
   });
 
-  it('arma el header con TIENDA · FECHA · PATENTE arriba y COMUNA · VENTANA al centro', () => {
-    const info = { n: 'Maipú', z: 'Maipú (RM)', v: '09:00-11:00' };
+  it('arma el header con campos etiquetados (Tienda, Código, Fecha, Patente, Corredor, Ventana)', () => {
+    const info = { n: 'Maipú', z: 'Poniente', v: '09:00-11:00' };
     const html = buildManifiestoTiendaHTML(TIENDA, info, [item()], META);
-    const topMatch = html.match(/tienda-hdr-top">([\s\S]*?)<\/div>/);
-    const centerMatch = html.match(/tienda-hdr-center">([\s\S]*?)<\/div>/);
-    expect(topMatch?.[1]).toContain('Maipú');
-    expect(topMatch?.[1]).toContain('AB1234'); // patente
-    expect(topMatch?.[1]).toContain('julio'); // fecha formateada
-    expect(centerMatch?.[1]).toContain('Maipú (RM)'); // comuna/zona
-    expect(centerMatch?.[1]).toContain('09:00-11:00'); // ventana horaria
+    // El header va desde la grilla de campos hasta la tabla de detalle.
+    const header = html.slice(html.indexOf('tienda-hdr-grid'), html.indexOf('<table>'));
+    // etiquetas
+    expect(header).toContain('>Tienda<');
+    expect(header).toContain('>Código de tienda<');
+    expect(header).toContain('>Fecha<');
+    expect(header).toContain('>Patente<');
+    expect(header).toContain('>Corredor<');
+    expect(header).toContain('>Ventana horaria<');
+    // valores
+    expect(header).toContain('Maipú');       // nombre tienda
+    expect(header).toContain('37MAI');        // código de tienda
+    expect(header).toContain('AB1234');       // patente
+    expect(header).toContain('Poniente');     // corredor (zona)
+    expect(header).toContain('09:00-11:00');  // ventana horaria
+    expect(header).toContain('julio');        // fecha formateada
   });
 
   it('no incluye el campo Supervisor en el header', () => {
