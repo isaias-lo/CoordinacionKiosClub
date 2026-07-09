@@ -18,7 +18,7 @@ import { getDia, norm, todayStr, fechaTxt } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
-import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
+import { splitRoutingPorTabla, buildControlRows, agruparPorFechaOrigen, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
@@ -952,8 +952,11 @@ export default function RutasScreen() {
     return out;
   }, [pendientesV2Origen, cal]);
 
-  // Cerrar un camión de 2ª vuelta: registra SOLO ese camión (fecha real HOY, vuelta 2 → patente en
-  // columna "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes de su fecha ORIGEN.
+  // Cerrar un camión de 2ª vuelta: registra SOLO ese camión (vuelta 2 → patente en columna
+  // "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes de su fecha ORIGEN.
+  // Clave: cada tienda se registra bajo su FECHA DE ORIGEN (el día que quedó pendiente), no "hoy",
+  // para que rellene la "Patente 2. Vuelta" de la fila existente (upsert por fecha::cod) en vez de
+  // crear una fila nueva bajo hoy (bug de duplicado). Una tienda puede venir de varios días.
   function cerrarCamionV2(patente: string) {
     const stores = asignacionesV2[patente] || [];
     if (!stores.length) return;
@@ -963,63 +966,70 @@ export default function RutasScreen() {
     const conductor = vehicle.ch || '';
     const grupoPorCod = (cod: string): Grupo | undefined =>
       (calTV2[norm(cod)]?.g ?? calT[norm(cod)]?.g) as Grupo | undefined;
-
-    const ruta: Ruta = {
-      v: { ...vehicle, tlbd: true }, // TLBD → 2ª vuelta (patente a columna v2)
-      ts: stores,
-      tp: stores.reduce((s, t) => s + t.p, 0),
-      tb: stores.reduce((s, t) => s + t.b + (t.ch ?? 0), 0),
-    };
-
-    // 1) despacho_rm / despacho_regiones: conductor/patente/ruta (vuelta 2)
-    const routingUpdates = stores.map(t => ({
-      cod: t.c, conductor, patente, transporte: vehicle.empresa || 'Luis Fica',
-      ruta: '1', supervisor, vuelta: 2, pioneta_1: vehicle.p1 ?? null, pioneta_2: vehicle.p2 ?? null,
-    }));
-    const porTabla = splitRoutingPorTabla(routingUpdates, grupoPorCod);
-    (['despacho_rm', 'despacho_regiones'] as const).forEach(table => {
-      if (!porTabla[table].length) return;
-      fetch('/api/despacho-records', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha: hoy, table, updates: porTabla[table] }),
-      }).catch(e => console.error(`[v2 despacho-records ${table}]`, e));
-    });
-
-    // 2) Hojas DESPACHO RM/REGIONES (1 ruta) + pionetas
-    void guardarDespachoSplitFn({ fecha: hoy, supervisor, rutas: [ruta], tiendas, grupoPorCod });
-    actualizarPionetasRMFn({ fecha: hoy, rutas: [ruta] });
-
-    // 3) CONTROL DESPACHO: patente en columna "2ª Vuelta" (tlbd=true)
-    const fechaDDMM = hoy.split('-').reverse().join('/');
     const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const diaCD = DIAS[new Date(hoy + 'T12:00').getDay()];
-    const rutasControl: RutaControl[] = [{ patente, tlbd: true, ts: stores.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 })) }];
-    const controlRows = buildControlRows(fechaDDMM, diaCD, rutasControl, [] as PendienteControl[]);
-    if (controlRows.length) {
+
+    // Agrupar las tiendas del camión por su fecha de ORIGEN (fallback a hoy si no se conoce).
+    const porFecha = agruparPorFechaOrigen(stores, pendientesV2Origen, hoy, norm);
+    const manifiestoRutas: Ruta[] = [];
+
+    for (const [fechaReg, grupoStores] of porFecha) {
+      const ruta: Ruta = {
+        v: { ...vehicle, tlbd: true }, // TLBD → 2ª vuelta (patente a columna v2)
+        ts: grupoStores,
+        tp: grupoStores.reduce((s, t) => s + t.p, 0),
+        tb: grupoStores.reduce((s, t) => s + t.b + (t.ch ?? 0), 0),
+      };
+      manifiestoRutas.push(ruta);
+
+      // 1) despacho_rm / despacho_regiones: conductor/patente/ruta (vuelta 2) bajo la fecha ORIGEN
+      const routingUpdates = grupoStores.map(t => ({
+        cod: t.c, conductor, patente, transporte: vehicle.empresa || 'Luis Fica',
+        ruta: '1', supervisor, vuelta: 2, pioneta_1: vehicle.p1 ?? null, pioneta_2: vehicle.p2 ?? null,
+      }));
+      const porTabla = splitRoutingPorTabla(routingUpdates, grupoPorCod);
+      (['despacho_rm', 'despacho_regiones'] as const).forEach(table => {
+        if (!porTabla[table].length) return;
+        fetch('/api/despacho-records', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fecha: fechaReg, table, updates: porTabla[table] }),
+        }).catch(e => console.error(`[v2 despacho-records ${table}]`, e));
+      });
+
+      // 2) Hojas DESPACHO RM/REGIONES (1 ruta) + pionetas — bajo la fecha ORIGEN
+      void guardarDespachoSplitFn({ fecha: fechaReg, supervisor, rutas: [ruta], tiendas, grupoPorCod });
+      actualizarPionetasRMFn({ fecha: fechaReg, rutas: [ruta] });
+
+      // 3) CONTROL DESPACHO: patente en columna "2ª Vuelta" (tlbd=true) → upsert sobre la fila origen
+      const fechaDDMM = fechaReg.split('-').reverse().join('/');
+      const diaCD = DIAS[new Date(fechaReg + 'T12:00').getDay()];
+      const rutasControl: RutaControl[] = [{ patente, tlbd: true, ts: grupoStores.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 })) }];
+      const controlRows = buildControlRows(fechaDDMM, diaCD, rutasControl, [] as PendienteControl[]);
+      if (controlRows.length) {
+        fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sheet: 'CONTROL DESPACHO', rows: controlRows }) }).catch(e => console.error('[v2 control]', e));
+      }
+
+      // 4) HISTORIAL (marca vuelta 2) — bajo la fecha ORIGEN
+      const histRow: (string | number)[] = [fechaDDMM, fechaTxt(fechaReg), supervisor, patente, conductor, '2', grupoStores.length, ruta.tp, ruta.tb, 0, grupoStores.map(t => t.c).join(', '), '1'];
       fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheet: 'CONTROL DESPACHO', rows: controlRows }) }).catch(e => console.error('[v2 control]', e));
+        body: JSON.stringify({ sheet: 'HISTORIAL', rows: [histRow] }) }).catch(e => console.error('[v2 historial]', e));
     }
 
-    // 4) HISTORIAL (marca vuelta 2)
-    const histRow: (string | number)[] = [fechaDDMM, fechaTxt(hoy), supervisor, patente, conductor, '2', stores.length, ruta.tp, ruta.tb, 0, stores.map(t => t.c).join(', '), '1'];
-    fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sheet: 'HISTORIAL', rows: [histRow] }) }).catch(e => console.error('[v2 historial]', e));
-
     // 5) Quitar las despachadas de las pendientes de su fecha ORIGEN (acumulativo: quita las asignadas)
-    const despachados = new Set(stores.map(t => t.c));
+    const despachados = new Set(stores.map(t => norm(t.c)));
     const porOrigen = new Map<string, Set<string>>();
     for (const p of pendientesV2Origen) {
-      if (despachados.has(p.c)) {
+      if (despachados.has(norm(p.c))) {
         if (!porOrigen.has(p.fechaOrigen)) porOrigen.set(p.fechaOrigen, new Set());
-        porOrigen.get(p.fechaOrigen)!.add(p.c);
+        porOrigen.get(p.fechaOrigen)!.add(p.c); // código tal cual está guardado, para casar en savePendientesV2
       }
     }
     porOrigen.forEach((cods, fechaOrigen) => { void savePendientesV2(fechaOrigen, [], cods); });
 
     // 6) Limpiar estado local + abrir manifiesto de ese camión
     setAsignacionesV2(prev => { const n = { ...prev }; delete n[patente]; return n; });
-    setPendientesV2Origen(prev => prev.filter(p => !despachados.has(p.c)));
-    setManifiestoV2([ruta]);
+    setPendientesV2Origen(prev => prev.filter(p => !despachados.has(norm(p.c))));
+    setManifiestoV2(manifiestoRutas);
   }
 
   // ── Fase B: postear el summary del día (INSERT en historial_despacho, primario) ──

@@ -82,3 +82,38 @@ export function buildControlRows(
 
   return [...map.entries()].map(([cod, d]) => [fechaDDMM, dia, cod, d.p, d.b, d.v1, d.v2]);
 }
+
+/**
+ * Agrupa las tiendas de un camión de 2ª vuelta por su fecha de ORIGEN (el día en que quedaron
+ * pendientes). La 2ª vuelta debe registrarse bajo la fecha original → así rellena la columna
+ * "Patente 2. Vuelta" de la fila YA existente (CONTROL DESPACHO y despacho_rm/regiones hacen
+ * upsert por `fecha::cod`) en vez de crear una fila nueva bajo "hoy" (el bug de duplicado).
+ *
+ * - Una tienda que quedó pendiente en varios días se agrupa en CADA una de esas fechas.
+ * - Las tiendas sin origen conocido caen en `fallbackFecha` (hoy).
+ * - `norm` se inyecta para casar códigos de forma robusta (mayúsculas/acentos/alias).
+ */
+export function agruparPorFechaOrigen<T extends { c: string }>(
+  stores: T[],
+  pendientesOrigen: { c: string; fechaOrigen: string }[],
+  fallbackFecha: string,
+  norm: (s: string) => string,
+): Map<string, T[]> {
+  const origenPorCod = new Map<string, string[]>();
+  for (const p of pendientesOrigen) {
+    const k = norm(p.c);
+    const arr = origenPorCod.get(k) ?? [];
+    if (!arr.includes(p.fechaOrigen)) arr.push(p.fechaOrigen);
+    origenPorCod.set(k, arr);
+  }
+  const out = new Map<string, T[]>();
+  for (const t of stores) {
+    const fechas = origenPorCod.get(norm(t.c)) ?? [fallbackFecha];
+    for (const f of fechas) {
+      const arr = out.get(f) ?? [];
+      arr.push(t);
+      out.set(f, arr);
+    }
+  }
+  return out;
+}
