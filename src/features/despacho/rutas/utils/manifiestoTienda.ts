@@ -89,8 +89,14 @@ export function buildManifiestoTiendaHTML(
 
 <div class="tienda-hdr">
   <div class="tienda-hdr-info">
-    <div class="tienda-hdr-top">${info?.n ?? t.nombre} <span class="tienda-hdr-cod">(${t.store_cod})</span> · ${fechaLabel} · ${meta.patente}</div>
-    <div class="tienda-hdr-center">${info?.z ?? '—'} · ${info?.v ?? t.ventana ?? '—'}</div>
+    <div class="tienda-hdr-grid">
+      <div class="mi"><label>Tienda</label><span>${info?.n ?? t.nombre}</span></div>
+      <div class="mi"><label>Código de tienda</label><span>${t.store_cod}</span></div>
+      <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
+      <div class="mi"><label>Patente</label><span>${meta.patente}</span></div>
+      <div class="mi"><label>Corredor</label><span>${info?.z ?? '—'}</span></div>
+      <div class="mi"><label>Ventana horaria</label><span>${info?.v ?? t.ventana ?? '—'}</span></div>
+    </div>
   </div>
   <div class="tienda-hdr-qr">
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrUrl)}" width="100" height="100" alt="QR Recepción"/>

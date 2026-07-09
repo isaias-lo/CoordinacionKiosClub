@@ -210,9 +210,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18
 .mi span{font-size:13px;font-weight:700;color:#111}
 .tienda-hdr{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#f0f2f5;padding:12px 16px;border-radius:6px;margin-bottom:14px}
 .tienda-hdr-info{min-width:0}
-.tienda-hdr-top{font-size:16px;font-weight:800;color:#111}
-.tienda-hdr-cod{font-size:11px;font-weight:600;color:#666}
-.tienda-hdr-center{font-size:12px;font-weight:600;color:#444;margin-top:4px}
+.tienda-hdr-grid{display:grid;grid-template-columns:repeat(3,auto);gap:6px 22px}
 .tienda-hdr-qr{flex-shrink:0;text-align:center}
 .tienda-hdr-qr-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
 .sec{font-size:9px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:7px}
@@ -241,7 +239,27 @@ tr:nth-child(even) td{background:#f8f8f8}
 .firma-field-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;min-width:46px;flex-shrink:0}
 .firma-field-val{font-size:12px;font-weight:800;color:#1a2550;letter-spacing:.4px}
 .firma-field-blank{flex:1;min-height:16px}
-@media print{body{padding:8px 10px}}
+@page{size:letter;margin:9mm}
+/* Evita que estos bloques se partan a mitad de página al imprimir. */
+.qr-box,.firma-section,.firma,.tienda-hdr,.totals,table{break-inside:avoid}
+/* Impresión: compacta el ritmo vertical para que cada manifiesto entre en UNA hoja. */
+@media print{
+  body{padding:0;max-width:none}
+  .hdr{margin-bottom:9px;padding-bottom:7px}
+  .meta,.tienda-hdr{margin-bottom:9px;padding:8px 12px}
+  .sec{margin-bottom:5px}
+  table{margin-bottom:9px}
+  th,td{padding:4px 8px}
+  .totals{margin-bottom:9px}
+  .tc{padding:6px}
+  .tc .n{font-size:22px}
+  .qr-box{margin-bottom:10px;padding:9px 12px}
+  .firma-section{margin-top:10px}
+  .firma-space{height:56px}
+  .firma-fields{padding:7px 10px 8px}
+  .firma-field{padding:4px 0}
+  .footer{margin-top:9px;padding-top:6px}
+}
 `;
 
 function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: string) {
