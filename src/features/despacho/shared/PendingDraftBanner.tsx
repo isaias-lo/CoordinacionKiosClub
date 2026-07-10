@@ -121,7 +121,7 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
       if (fuente === 'santiago') {
         sheetsSantiagoWrite(d.state.items ?? {}, d.state.regimen ?? 'Seco', d.fecha);
       } else {
-        sheetsRegionesWrite(d.state.dispatch ?? {}, 'Carga', d.fecha);
+        sheetsRegionesWrite(d.state.dispatch ?? {}, 'Luis Fica', d.fecha);
       }
       await marcarAtendido(d.fecha);
       setDrafts(prev => prev.filter(x => x.fecha !== d.fecha));
