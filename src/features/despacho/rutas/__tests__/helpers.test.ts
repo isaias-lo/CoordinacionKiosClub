@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dkm, getDia, norm, formatCod, fechaTxt, todayStr } from '../utils/helpers';
+import { dkm, getDia, norm, formatCod, fechaTxt, todayStr, poolPendiente } from '../utils/helpers';
 
 // ─── dkm (Haversine distance) ─────────────────────────────────────────────────
 
@@ -175,5 +175,41 @@ describe('todayStr', () => {
   it('returns the current year', () => {
     const year = new Date().getFullYear().toString();
     expect(todayStr()).toContain(year);
+  });
+});
+
+// ─── poolPendiente ──────────────────────────────────────────────────────────────
+// Snapshot del pool de 2ª vuelta desde el tablero (Fase 3 PR3).
+
+describe('poolPendiente', () => {
+  const cal = (on: boolean, p: number, b = 0, ch = 0) => ({ on, p, b, c: 10, ch });
+
+  it('marca como pendiente lo activo con carga que no está en ningún camión', () => {
+    const calT = { A: cal(true, 3), B: cal(true, 2), C: cal(true, 1) };
+    const asignaciones = { PAT1: [{ c: 'A' }] }; // solo A asignada
+    const { leftover, asignadas } = poolPendiente(calT, asignaciones);
+    expect(leftover.map(s => s.c).sort()).toEqual(['B', 'C']);
+    expect(asignadas.has('A')).toBe(true);
+    expect(leftover.find(s => s.c === 'B')).toMatchObject({ c: 'B', p: 2 });
+  });
+
+  it('una tienda asignada a un camión NO es pendiente aunque el camión no se cierre', () => {
+    const calT = { A: cal(true, 3), B: cal(true, 2) };
+    const asignaciones = { PAT1: [{ c: 'A' }], PAT2: [{ c: 'B' }] }; // todo asignado
+    const { leftover } = poolPendiente(calT, asignaciones);
+    expect(leftover).toEqual([]);
+  });
+
+  it('ignora tiendas inactivas o sin carga', () => {
+    const calT = { A: cal(false, 5), B: cal(true, 0, 0, 0), C: cal(true, 0, 4) };
+    const { leftover } = poolPendiente(calT, {});
+    // A inactiva → fuera; B sin carga → fuera; C con bultos → pendiente
+    expect(leftover.map(s => s.c)).toEqual(['C']);
+  });
+
+  it('cuenta chocolate (ch) como carga', () => {
+    const calT = { A: cal(true, 0, 0, 2) };
+    const { leftover } = poolPendiente(calT, {});
+    expect(leftover).toEqual([{ c: 'A', p: 0, b: 0, ch: 2 }]);
   });
 });

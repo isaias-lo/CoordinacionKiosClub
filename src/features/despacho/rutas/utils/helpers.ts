@@ -43,3 +43,19 @@ export function todayStr(): string {
   const hoy = new Date();
   return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
 }
+
+// [Fase 3] Pool de 2ª vuelta desde el tablero: tiendas ACTIVAS con carga (p/b/ch) que NO están
+// asignadas a ningún camión → quedan pendientes. `asignadas` = códigos ya puestos en algún camión
+// (aunque su camión no se haya cerrado), para acumular/corregir en savePendientesV2 sin pisar
+// pendientes previas del día. Una tienda asignada a un camión NO es pendiente aunque no se cierre.
+export function poolPendiente(
+  calT: Record<string, { on: boolean; p: number; b: number; ch?: number }>,
+  asignaciones: Record<string, { c: string }[]>,
+): { leftover: { c: string; p: number; b: number; ch: number }[]; asignadas: Set<string> } {
+  const asignadas = new Set(Object.values(asignaciones).flat().map(s => s.c));
+  const leftover = Object.keys(calT)
+    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
+    .filter(c => !asignadas.has(c))
+    .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
+  return { leftover, asignadas };
+}
