@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../components/AuthProvider';
 import Header         from './components/Header';
@@ -23,7 +23,8 @@ import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalenda
 import { splitRoutingPorTabla, buildControlRows, agruparPorFechaOrigen, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
-import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
+import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays } from '../../../lib/userSessionState';
+import { type PendienteDerivada } from './utils/segundaVuelta';
 import { supabase } from '../../../lib/supabase';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
@@ -164,7 +165,11 @@ export default function RutasScreen() {
   // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
   const [cerradasV1, setCerradasV1] = useState<Set<string>>(new Set());
   // ── Tab "2ª VUELTA": pendientes de días anteriores, board y manifiesto AISLADOS del día actual ──
-  const [pendientesV2Origen, setPendientesV2Origen] = useState<PendienteV2[]>([]);
+  const [pendientesV2Origen, setPendientesV2Origen] = useState<PendienteDerivada[]>([]);
+  const [v2Fecha, setV2Fecha] = useState<string>(() => {
+    const d = new Date(); d.setDate(d.getDate() - 1); // ayer por defecto
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [asignacionesV2, setAsignacionesV2]         = useState<Record<string, StoreItem[]>>({});
   const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
   // Fase B: manifiesto de un solo camión cerrado en 1ª vuelta (cierre por vehículo).
@@ -957,27 +962,34 @@ export default function RutasScreen() {
     setModo('man');
   }
 
-  // ── Tab "2ª VUELTA": cargar pendientes de días anteriores (aislado del día actual) ──
-  useEffect(() => {
-    fetchPendientesV2Pasadas().then(setPendientesV2Origen).catch(() => {});
+  // ── Tab "2ª VUELTA": carga A MANO por día las tiendas SIN despachar de esa fecha (derivadas de la
+  // fuente de verdad: despacho_rm + despacho_regiones sin patente). No auto-carga: "sin patente" no
+  // siempre es pendiente (días despachados sin grabar patente), así que el coordinador elige el día.
+  // Se ACUMULA en el pool (dedup por cod+fecha) para juntar varios días en un mismo camión.
+  const cargarDiaV2 = useCallback((fechaISO: string) => {
+    if (!fechaISO) return;
+    void fetch(`/api/segunda-vuelta-pendientes?fecha=${fechaISO}`)
+      .then(r => r.json())
+      .then((j: { pendientes?: PendienteDerivada[] }) => {
+        const nuevas = j.pendientes ?? [];
+        setPendientesV2Origen(prev => {
+          const seen = new Set(prev.map(p => `${p.c}::${p.fechaOrigen}`));
+          return [...prev, ...nuevas.filter(p => !seen.has(`${p.c}::${p.fechaOrigen}`))];
+        });
+      })
+      .catch(() => {});
   }, []);
 
-  // Pool del tab V2: derivado de las pendientes de días anteriores (con grupo desde el calendario).
+  // Pool del tab V2: derivado de las pendientes, con el grupo que trae cada una (regiones → 'fal').
   const calTV2 = useMemo<Record<string, CalData>>(() => {
-    const dia = getDia(todayStr());
-    const calDia = (cal[dia] || cal.LU || {}) as Record<string, string[]>;
-    const grpOf = (cod: string): string => {
-      for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === cod)) return g;
-      return 'rm';
-    };
     const out: Record<string, CalData> = {};
     for (const s of pendientesV2Origen) {
       const cod = norm(s.c);
-      if (!out[cod]) out[cod] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grpOf(cod) };
+      if (!out[cod]) out[cod] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: s.grupo };
       out[cod].p += s.p; out[cod].b += s.b; out[cod].ch += s.ch;
     }
     return out;
-  }, [pendientesV2Origen, cal]);
+  }, [pendientesV2Origen]);
 
   // Cerrar un camión de 2ª vuelta: registra SOLO ese camión (vuelta 2 → patente en columna
   // "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes de su fecha ORIGEN.
@@ -1894,15 +1906,46 @@ export default function RutasScreen() {
           }
           segundaVueltaContent={
             <div className="h-full overflow-y-auto p-4">
+              {/* Cargar a mano las tiendas sin despachar de un día (fuente: despacho real, RM + Regiones). */}
+              <div className="mb-3 rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
+                <div className="text-[12px] font-bold text-ktext uppercase tracking-wide mb-2">Cargar pendientes de un día</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="date"
+                    value={v2Fecha}
+                    max={todayStr()}
+                    onChange={e => setV2Fecha(e.target.value)}
+                    className="h-[34px] px-2 rounded-[8px] border border-black/[0.15] text-[13px] text-ktext"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => cargarDiaV2(v2Fecha)}
+                    className="h-[34px] px-3 rounded-[8px] bg-knavy text-white text-[12px] font-bold active:scale-[0.98]"
+                  >
+                    + Cargar día
+                  </button>
+                  {pendientesV2Origen.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setPendientesV2Origen([]); setAsignacionesV2({}); }}
+                      className="h-[34px] px-3 rounded-[8px] bg-white text-kmuted text-[12px] font-semibold border border-black/[0.12]"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1.5 text-[11px] text-kmuted">Trae las tiendas de esa fecha que quedaron sin patente (no despachadas). Podés cargar varios días.</div>
+              </div>
+
               {pendientesV2Origen.length === 0 ? (
                 <div className="bg-kbg border border-black/[0.09] rounded-kios2 px-3 py-4 text-[13px] text-kmuted text-center">
-                  No hay pendientes de 2ª vuelta de días anteriores.
+                  Elegí un día y cargá sus tiendas sin despachar para armar la 2ª vuelta.
                 </div>
               ) : (
                 <>
                   <div className="mb-3 text-[12px] text-kmuted">
-                    <span className="font-semibold text-ktext">{pendientesV2Origen.length}</span> tiendas de días
-                    anteriores sin despachar. Asigná un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto.
+                    <span className="font-semibold text-ktext">{pendientesV2Origen.length}</span> tiendas sin despachar
+                    cargadas. Asigná un camión y cerralo — se registra como 2ª vuelta (bajo su fecha de origen) con su manifiesto.
                   </div>
                   <ManualDispatch
                     calT={calTV2}
