@@ -196,6 +196,10 @@ export default function RutasScreen() {
   const lastPushedManualRef = useRef<string>('');
   const debounceManualRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isManualInitRef     = useRef(false);
+  // ── Real-time sync: asignacionesV2 (2ª vuelta) across devices ────
+  const lastPushedV2Ref     = useRef<string>('');
+  const debounceV2Ref       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isV2InitRef         = useRef(false);
 
   // ── Real-time sync: cerradasV1 (patentes cerradas por vehículo) across devices ──
   const lastPushedCerradasRef = useRef<string>('');
@@ -569,6 +573,49 @@ export default function RutasScreen() {
       if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
     };
   }, [manualAsignaciones, userId, fecha]);
+
+  // ── Fetch + subscribe asignacionesV2 (2ª vuelta) cross-device ─────
+  // La 2ª vuelta se trabaja "hoy" (independiente de la fecha seleccionada). Se sincroniza para que
+  // lo asignado en un dispositivo (p. ej. el móvil) aparezca en el otro (el desktop) y se pueda
+  // cerrar el camión desde cualquiera. Mismo patrón que manualAsignaciones, fuente 'rutas_v2'.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hoy = todayStr();
+    isV2InitRef.current = false;
+
+    fetchSessionState('rutas_v2', hoy).then(remote => {
+      const remoteObj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
+      setAsignacionesV2(remoteObj);
+      lastPushedV2Ref.current = JSON.stringify(remoteObj);
+      isV2InitRef.current = true;
+    }).catch(() => { isV2InitRef.current = true; });
+
+    const unsub = subscribeToSessionState('rutas_v2', userId ?? '', (state) => {
+      if (!state || typeof state !== 'object') return;
+      const remoteJson = JSON.stringify(state);
+      if (remoteJson === lastPushedV2Ref.current) return;
+      lastPushedV2Ref.current = remoteJson;
+      setAsignacionesV2(state as Record<string, StoreItem[]>);
+    }, undefined, hoy);
+
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // ── Debounced push asignacionesV2 → Supabase ─────────────────────
+  useEffect(() => {
+    if (!isV2InitRef.current) return;
+    const json = JSON.stringify(asignacionesV2);
+    if (json === lastPushedV2Ref.current) return;
+    if (debounceV2Ref.current) clearTimeout(debounceV2Ref.current);
+    debounceV2Ref.current = setTimeout(() => {
+      lastPushedV2Ref.current = json;
+      pushSessionState('rutas_v2', asignacionesV2, userId, todayStr()).catch(() => {});
+    }, 800);
+    return () => {
+      if (debounceV2Ref.current) clearTimeout(debounceV2Ref.current);
+    };
+  }, [asignacionesV2, userId]);
 
   // ── Fetch + subscribe cerradasV1 (cross-device, por fecha) ─────────────────
   // Mismo patrón que manualAsignaciones: fetch al montar/cambiar fecha + subscribe realtime.
