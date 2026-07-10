@@ -24,6 +24,8 @@ export const IA_SYSTEM_PROMPT = [
   '- BALANCEA la carga: no dejes un camión grande casi vacío mientras otros van llenos. Usa el',
   '  tamaño del camión (grande/mediano/chico) para decidir cuánta carga darle: los grandes llevan más.',
   '- AGRUPA por zona/corredor: tiendas de la misma zona en el mismo camión, como en los ejemplos.',
+  '- CERCANÍA GPS: si se incluye una "Referencia geográfica", úsala como PISTA de qué tiendas quedan',
+  '  cerca entre sí para acortar la ruta — sin romper los patrones históricos ni la capacidad.',
   '',
   'Responde ÚNICAMENTE con un objeto JSON: { "PATENTE": ["cod1","cod2"], ... }. Sin texto extra,',
   'sin explicaciones, sin markdown.',
@@ -38,6 +40,15 @@ function fmtStores(stores: IAStore[]): string {
 function fmtTrucks(trucks: IATruck[]): string {
   return trucks
     .map(t => `${t.patente} — ${t.tipo || 'camión'} · capacidad ${t.capP} pallets / ${t.capB} bultos${t.refrigerado ? ' · frío' : ''}${t.porton ? ' · portón' : ''}`)
+    .join('\n');
+}
+
+/** Agrupación por cercanía GPS del optimizador (patente → cods). Pista geográfica, no obligatoria. */
+function fmtGpsRef(gpsRef?: Record<string, string[]>): string {
+  if (!gpsRef) return '';
+  return Object.entries(gpsRef)
+    .filter(([, cods]) => cods.length)
+    .map(([pat, cods]) => `  ${pat}: ${cods.join(', ')}`)
     .join('\n');
 }
 
@@ -59,8 +70,10 @@ export function buildAsignacionUserPrompt(params: {
   stores: IAStore[];
   trucks: IATruck[];
   examples: IAExample[];
+  gpsRef?: Record<string, string[]>;  // agrupación por cercanía GPS del optimizador (pista)
 }): string {
-  const { stores, trucks, examples } = params;
+  const { stores, trucks, examples, gpsRef } = params;
+  const gpsSection = fmtGpsRef(gpsRef);
   return [
     '## Ejemplos históricos (asignaciones reales del coordinador)',
     fmtExamples(examples),
@@ -68,6 +81,14 @@ export function buildAsignacionUserPrompt(params: {
     '## Camiones disponibles hoy',
     fmtTrucks(trucks),
     '',
+    ...(gpsSection ? [
+      '## Referencia geográfica (agrupación por cercanía GPS — NO obligatoria)',
+      'El optimizador agrupó así las tiendas por cercanía. Úsala solo como pista de qué tiendas quedan',
+      'cerca entre sí; prioriza los patrones históricos y la capacidad. No copies las patentes de aquí',
+      'si el historial sugiere otra cosa.',
+      gpsSection,
+      '',
+    ] : []),
     '## Tiendas a asignar hoy',
     fmtStores(stores),
     '',

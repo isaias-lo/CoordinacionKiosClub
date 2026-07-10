@@ -35,4 +35,19 @@ describe('buildAsignacionUserPrompt', () => {
     expect(IA_SYSTEM_PROMPT).toContain('JSON');
     expect(IA_SYSTEM_PROMPT.toLowerCase()).toContain('capacidad');
   });
+
+  it('incluye la referencia geográfica cuando se pasa gpsRef', () => {
+    const p = buildAsignacionUserPrompt({ stores, trucks, examples, gpsRef: { PTFZ21: ['05LP', '56PZA'] } });
+    expect(p).toContain('Referencia geográfica');
+    expect(p).toContain('PTFZ21: 05LP, 56PZA');
+  });
+
+  it('sin gpsRef (o vacío) NO incluye la sección geográfica', () => {
+    expect(buildAsignacionUserPrompt({ stores, trucks, examples })).not.toContain('Referencia geográfica');
+    expect(buildAsignacionUserPrompt({ stores, trucks, examples, gpsRef: {} })).not.toContain('Referencia geográfica');
+  });
+
+  it('el system menciona la cercanía GPS como criterio', () => {
+    expect(IA_SYSTEM_PROMPT).toContain('CERCANÍA GPS');
+  });
 });
