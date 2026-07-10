@@ -132,7 +132,6 @@ export default function RutasScreen() {
     } catch {}
     return JSON.parse(JSON.stringify(CAL_INICIAL));
   });
-  const [conductores, setConductores] = useState<string[]>([]);
 
   const [modo,       setModo]       = useState('drag');
   const [grps,       setGrps]       = useState(new Set(['rm']));
@@ -437,18 +436,6 @@ export default function RutasScreen() {
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Load conductores catalog from Supabase ───────────────────────
-  useEffect(() => {
-    fetch('/api/conductores')
-      .then(r => r.ok ? r.json() : null)
-      .then((json: { conductores: { nombre: string }[] } | null) => {
-        if (json?.conductores?.length) {
-          setConductores(json.conductores.map(c => c.nombre));
-        }
-      })
-      .catch(() => {});
   }, []);
 
   // ── Load sheets data ──────────────────────────────────────────────
@@ -1526,11 +1513,6 @@ export default function RutasScreen() {
     return true; // guardado primario OK → habilita encadenar con manifiestos
   }
 
-  // ── Driver change ─────────────────────────────────────────────────
-  function handleChoferChange(ri: number, nombre: string) {
-    if (!results) return;
-    setResults({ ...results, rutas: results.rutas.map((r, i) => i === ri ? { ...r, _choferAsignado: nombre } : r) });
-  }
 
   // ── Config ────────────────────────────────────────────────────────
   function handleOpenConfig()  { setConfigOpen(true);  document.body.style.overflow = 'hidden'; }
@@ -1737,12 +1719,10 @@ export default function RutasScreen() {
                     gps={results.extGps || gps}
                     cd={cdRef.current}
                     flota={flota}
-                    conductores={conductores}
                     onLimpiar={handleLimpiar}
                     onVolver={handleVolverAEdicion}
                     onGenerarPDF={handleGenerarPDF}
                     onGuardarHistorial={handleGuardarHistorial}
-                    onChoferChange={handleChoferChange}
                     historialStatus={historialStatus}
                     historialMsg={historialMsg}
                     onKmTotalReal={km => { kmTotalRealRef.current = km; }}
