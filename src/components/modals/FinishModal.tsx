@@ -6,8 +6,10 @@ import { supabase } from '../../lib/supabase';
 import { buildRows } from '../../features/despacho/regiones/utils/exportUtils';
 import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/sheetsRegiones';
 import type { HistoryEntry } from '../../types';
+import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 
-const todayKey = new Date().toISOString().split('T')[0];
+// Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
+const todayKey = todayStr();
 export const REGIONES_TERMINADO_KEY = `regionesTerminado_${todayKey}`;
 
 interface Props { open: boolean; onClose: () => void; }
