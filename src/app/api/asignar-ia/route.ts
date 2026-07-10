@@ -25,9 +25,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body   = await request.json() as { fecha?: string; stores?: IAStore[]; trucks?: IATruck[] };
+    const body   = await request.json() as { fecha?: string; stores?: IAStore[]; trucks?: IATruck[]; gpsRef?: Record<string, string[]> };
     const stores = Array.isArray(body.stores) ? body.stores : [];
     const trucks = Array.isArray(body.trucks) ? body.trucks : [];
+    const gpsRef = body.gpsRef && typeof body.gpsRef === 'object' && !Array.isArray(body.gpsRef) ? body.gpsRef : undefined;
     if (!stores.length) return NextResponse.json({ error: 'Sin tiendas para asignar' }, { status: 400 });
     if (!trucks.length) return NextResponse.json({ error: 'Sin camiones disponibles' }, { status: 400 });
 
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       model:      MODEL,
       max_tokens: 2048,
       system:     IA_SYSTEM_PROMPT,
-      messages:   [{ role: 'user', content: buildAsignacionUserPrompt({ stores, trucks, examples }) }],
+      messages:   [{ role: 'user', content: buildAsignacionUserPrompt({ stores, trucks, examples, gpsRef }) }],
     });
 
     const raw = msg.content

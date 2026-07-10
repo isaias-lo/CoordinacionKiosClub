@@ -1223,10 +1223,24 @@ export default function RutasScreen() {
     if (!trucks.length) { setErrors(['No hay camiones activos para asignar.']); return; }
     setErrors([]);
     setIaLoading(true);
+
+    // Referencia geográfica: el optimizador agrupa por cercanía GPS (cómputo local, gratis). Se pasa
+    // a la IA como PISTA para combinar patrones históricos + capacidad + cercanía. No es obligatoria.
+    let gpsRef: Record<string, string[]> | undefined;
+    try {
+      const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+      const items: StoreItem[] = stores.map(s => ({ c: s.cod, p: s.p, b: s.b }));
+      const gpsRutas = asignar(items, flota, extGps, cdRef.current, null, null, null, extTiendas);
+      const truckSet = new Set(trucks.map(t => t.patente));
+      const ref: Record<string, string[]> = {};
+      gpsRutas.forEach(r => { if (r.ts.length && truckSet.has(r.v.p)) ref[r.v.p] = r.ts.map(t => t.c); });
+      gpsRef = Object.keys(ref).length ? ref : undefined;
+    } catch { gpsRef = undefined; }
+
     try {
       const res  = await fetch('/api/asignar-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha, stores, trucks }),
+        body: JSON.stringify({ fecha, stores, trucks, gpsRef }),
       });
       const json = await res.json() as { asignaciones?: Record<string, StoreItem[]>; warnings?: string[]; error?: string };
       if (!res.ok) { setErrors([`Asistente IA: ${json.error ?? `error ${res.status}`}`]); return; }
