@@ -29,6 +29,9 @@ interface Props {
   /** [Fase 2] Si se provee, muestra una tira para activar/desactivar camiones sin ir a FLOTA.
    *  El índice es el de `flota` (mismo que usa FLOTA → Vehículos). */
   onToggleFlota?: (idx: number) => void;
+  /** [Fase 3] Oculta el botón batch "Calcular" (para el tab 2ª VUELTA, que solo cierra por camión).
+   *  En DESPACHO se deja visible aunque haya cierre por camión, para que Calcular sea opcional. */
+  hideCalcular?: boolean;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -53,6 +56,7 @@ export default function ManualDispatch({
   onAsignarIA,
   iaLoading,
   onToggleFlota,
+  hideCalcular,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -584,7 +588,7 @@ export default function ManualDispatch({
         </div>
       )}
 
-      {tiendasCount > 0 && !onCerrarCamion && (
+      {tiendasCount > 0 && !hideCalcular && (
         <button
           onClick={() => {
             if (pendientesTotal > 0) {

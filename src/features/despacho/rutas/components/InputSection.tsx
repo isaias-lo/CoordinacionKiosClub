@@ -49,6 +49,7 @@ interface Props {
   onCalcularManual: () => void;
   onAsignarIA?: () => void;
   iaLoading?: boolean;
+  onCerrarCamion?: (patente: string) => void;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
   rightPanelContent?: React.ReactNode;
@@ -161,7 +162,7 @@ export default function InputSection({
   onModo, onToggleGroup, onToggleChip, onUpdateChip,
   onToggleFlota, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
-  onCalcular, onCalcularManual, onAsignarIA, iaLoading, onLimpiar, onEliminarParada,
+  onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
   rightPanelContent,
   segundaVueltaContent,
 }: Props) {
@@ -400,7 +401,7 @@ export default function InputSection({
                       <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                         paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                         onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
-                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} />
+                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} onCerrarCamion={onCerrarCamion} />
                     </div>
                   )}
                   {modo === 'man' && (
@@ -677,6 +678,7 @@ export default function InputSection({
                     onAsignarIA={onAsignarIA}
                     iaLoading={iaLoading}
                     onToggleFlota={onToggleFlota}
+                    onCerrarCamion={onCerrarCamion}
                   />
                 </div>
               )}

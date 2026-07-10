@@ -1032,10 +1032,11 @@ export default function RutasScreen() {
   // manifiesto y lo añade a `cerradasV1` (cross-device). NO postea el summary del día por
   // camión (append-only) salvo que con este cierre queden TODAS las rutas cerradas: en ese caso
   // postea el summary una vez y marca el día `rutas_reg` (igual que el registro global).
-  function cerrarCamionV1(patente: string) {
-    if (!results) return;
+  // rutaOverride: para cerrar desde el board DESPACHO (sin "Calcular"), pasando la ruta armada
+  // desde las asignaciones crudas. Sin override, usa la ruta ya calculada de `results`.
+  function cerrarCamionV1(patente: string, rutaOverride?: Ruta) {
     if (isCerrada(cerradasV1, patente)) return; // ya cerrado → idempotente, no re-escribir
-    const ruta = results.rutas.find(r => normPatente(r.v.p) === normPatente(patente));
+    const ruta = rutaOverride ?? results?.rutas.find(r => normPatente(r.v.p) === normPatente(patente));
     if (!ruta || ruta.ts.length === 0) return;
 
     const conductor = ruta._choferAsignado || ruta.v.ch || '';
@@ -1084,11 +1085,30 @@ export default function RutasScreen() {
 
     // 6) Si con este cierre quedan TODAS las rutas cerradas → completar el día:
     //    postear summary (una vez) y marcar 'rutas_reg' (igual que el registro global).
-    if (todasCerradas(results.rutas, next)) {
+    if (results && todasCerradas(results.rutas, next)) {
       void postSummaryDiaFn(results.rutas).catch(e => console.error('[v1 summary día]', e));
       void pushSessionState('rutas_reg', { at: new Date().toISOString(), supervisor, byVehiculo: true }, userId, fecha);
       setUnregisteredDays(prev => prev.filter(d => d !== fecha));
     }
+  }
+
+  // [Fase 3] Cierre por camión desde el board DESPACHO (1ª vuelta) SIN "Calcular": arma la ruta
+  // desde las asignaciones crudas (manualAsignaciones) + nn (secuencia del manifiesto) y reutiliza
+  // cerrarCamionV1 vía rutaOverride. Mismo modelo que cerrarCamionV2 (2ª vuelta). El "completar
+  // día" se hace con "Listo por hoy" o el registro global.
+  function cerrarCamionV1Board(patente: string) {
+    const stores = manualAsignaciones[patente] || [];
+    if (!stores.length) return;
+    const vehicle = flota.find(v => normPatente(v.p) === normPatente(patente));
+    if (!vehicle) return;
+    const ordered = stores.length > 1 ? nn(stores, gps, cdRef.current) : stores;
+    const ruta: Ruta = {
+      v: vehicle,
+      ts: ordered,
+      tp: ordered.reduce((s, t) => s + t.p, 0),
+      tb: ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0),
+    };
+    cerrarCamionV1(patente, ruta);
   }
 
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
@@ -1705,6 +1725,7 @@ export default function RutasScreen() {
           onCalcularManual={handleCalcularManual}
           onAsignarIA={handleAsignarIA}
           iaLoading={iaLoading}
+          onCerrarCamion={cerrarCamionV1Board}
           onLimpiar={handleLimpiar}
           onEliminarParada={handleEliminarParada}
           rightPanelContent={
@@ -1776,6 +1797,7 @@ export default function RutasScreen() {
                     onAsignaciones={setAsignacionesV2}
                     onCalcular={() => {}}
                     onCerrarCamion={cerrarCamionV2}
+                    hideCalcular={true}
                   />
                 </>
               )}
