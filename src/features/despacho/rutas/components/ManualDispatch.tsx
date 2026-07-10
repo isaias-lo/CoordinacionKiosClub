@@ -324,6 +324,32 @@ export default function ManualDispatch({
 
   return (
     <div className="space-y-3" ref={containerRef}>
+      {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
+      {onToggleFlota && flota.length > 0 && (
+        <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <Truck size={13} className="text-kmuted" aria-hidden="true" />
+            <span className="text-[12px] font-bold text-ktext uppercase tracking-wide">Camiones activos</span>
+            <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
+            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">toca para activar / desactivar</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {flota.map((v, i) => (
+              <button
+                key={v.p} type="button"
+                onClick={() => onToggleFlota(i)}
+                title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
+                className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded-full text-[12px] font-bold font-mono border transition-all active:scale-95
+                  ${v.on ? 'bg-kred text-white border-kred' : 'bg-white text-kmuted border-black/[0.15] hover:border-kred/40'}
+                  ${v.tlbd ? 'border-dashed' : ''}`}
+              >
+                {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {tiendasCount > 0 && (
         <div className="flex gap-2 text-[11px] text-kmuted bg-kbg rounded-kios2 px-3 py-2">
           <span><span className="font-semibold text-ktext">{tiendasCount}</span> tiendas ·</span>
@@ -416,32 +442,6 @@ export default function ManualDispatch({
                 ))}
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* [Fase 2] Camiones activos — activar/desactivar sin salir de DESPACHO (reusa el toggle de FLOTA) */}
-      {onToggleFlota && flota.length > 0 && (
-        <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
-          <div className="flex items-center gap-2 mb-2">
-            <Truck size={13} className="text-kmuted" aria-hidden="true" />
-            <span className="text-[12px] font-bold text-ktext uppercase tracking-wide">Camiones activos</span>
-            <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
-            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">toca para activar / desactivar</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {flota.map((v, i) => (
-              <button
-                key={v.p} type="button"
-                onClick={() => onToggleFlota(i)}
-                title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
-                className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded-full text-[12px] font-bold font-mono border transition-all active:scale-95
-                  ${v.on ? 'bg-kred text-white border-kred' : 'bg-white text-kmuted border-black/[0.15] hover:border-kred/40'}
-                  ${v.tlbd ? 'border-dashed' : ''}`}
-              >
-                {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
-              </button>
-            ))}
           </div>
         </div>
       )}
