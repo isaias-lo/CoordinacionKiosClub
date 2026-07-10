@@ -1,5 +1,5 @@
 'use client';
-import { Check, Truck, AlertTriangle, MapPin, Clock } from 'lucide-react';
+import { Check, AlertTriangle, MapPin, Clock } from 'lucide-react';
 import { dkm, formatCod } from '../utils/helpers';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -12,12 +12,12 @@ interface Props {
   cd: number[];
   kmReal?: number;
   legData?: {dist: string; dur: string}[];
-  // Fase B: cierre por vehículo (1ª vuelta). `cerrada` = ya registrada individualmente.
+  // Fase B: cierre por vehículo (1ª vuelta). `cerrada` = ya registrada individualmente (badge informativo).
+  // El cierre por camión se hace en el board DESPACHO (ver ManualDispatch); aquí solo se muestra el estado.
   cerrada?: boolean;
-  onCerrarCamion?: (patente: string) => void;
 }
 
-export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cerrada, onCerrarCamion }: Props) {
+export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cerrada }: Props) {
   const r    = ruta;
   const pct  = Math.min((r.tp / r.v.c) * 100, 120);
   const over = pct > 100;
@@ -145,24 +145,6 @@ export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cer
           </div>
         );
       })}
-
-      {/* Fase B: cerrar/registrar SOLO este camión (1ª vuelta) + su manifiesto */}
-      {onCerrarCamion && r.ts.length > 0 && (
-        <div className="px-4 py-2.5 no-print">
-          <button
-            onClick={() => { if (!cerrada) onCerrarCamion(r.v.p); }}
-            disabled={cerrada}
-            className={`w-full h-[38px] rounded-[10px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all
-              ${cerrada
-                ? 'bg-[#EAF7EE] text-[#34C759] border border-[#34C759] cursor-default'
-                : 'bg-knavy text-white active:scale-[0.98] cursor-pointer'}`}
-          >
-            {cerrada
-              ? <><Check size={14} aria-hidden="true" /> Camión cerrado</>
-              : <><Truck size={14} aria-hidden="true" /> Cerrar camión y manifiesto</>}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

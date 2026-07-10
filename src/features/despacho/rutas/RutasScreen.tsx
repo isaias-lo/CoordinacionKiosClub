@@ -1753,7 +1753,6 @@ export default function RutasScreen() {
                     onListoPorHoy={handleListoPorHoy}
                     cerrado={cerrado}
                     cerradasV1={cerradasV1}
-                    onCerrarCamionV1={cerrarCamionV1}
                   />
                 </div>
                 <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
