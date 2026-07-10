@@ -1482,7 +1482,13 @@ export default function RutasScreen() {
           setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
         }
       }
-      setTiendas(newTiendas); setGps(newGps); setFlota(newFlota);
+      setTiendas(newTiendas); setGps(newGps);
+      // Preservar el estado "en servicio" (on) que ya está en memoria/Supabase: la carga de Sheets
+      // NO debe resetear qué camiones dejó activos el coordinador (persistencia + cross-device).
+      setFlota(prev => {
+        const onByPat = new Map(prev.map(v => [v.p.toUpperCase(), v.on]));
+        return newFlota.map(v => ({ ...v, on: onByPat.get(v.p.toUpperCase()) ?? v.on }));
+      });
       setUpdateStatus('success');
       setTimeout(() => setUpdateStatus('idle'), 3000);
     } catch (e) {

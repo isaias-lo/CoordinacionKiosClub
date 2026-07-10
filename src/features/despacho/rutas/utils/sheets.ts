@@ -162,7 +162,8 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
       if (row[3]) existente.t = row[3];
       if (row[4]) existente.porton = row[4].toUpperCase() === 'SI' ? true : row[4].toUpperCase() === 'NO' ? false : null;
       if (row[5]) existente.refrigerado = row[5].toUpperCase() === 'SI';
-      if (row[6]) existente.on = row[6].toUpperCase() === 'SI';
+      // NO tocar `on` (en servicio): es el toggle de "Camiones activos", vive en Supabase
+      // (en_servicio) y lo maneja el coordinador. La col "Activo" de Sheets (siempre SI) lo reseteaba.
       if (row[7]) existente.tlbd = row[7].toUpperCase() === 'SI';
       if (row[8]) existente.empresa = row[8];
       if (row[9]) existente.p1 = row[9];
