@@ -1448,7 +1448,12 @@ export default function RutasScreen() {
       ]);
       const newTiendas = { ...tiendas };
       const newGps     = { ...gps };
-      const newFlota   = flota.map(v => ({ ...v }));
+      // F3: la lista de vehículos es la de /api/flota (fuente de verdad, solo activo=true), NO el
+      // closure (FLOTA_INICIAL re-introducía vehículos ya borrados, p. ej. SPJP88). Sheets solo
+      // actualiza campos/pionetas sobre esa base; los borrados no vuelven.
+      const flotaResp = await fetch('/api/flota').then(r => (r.ok ? r.json() : null)).catch(() => null) as { flota?: Vehiculo[] } | null;
+      const baseFlota  = (flotaResp?.flota && flotaResp.flota.length > 0) ? flotaResp.flota : flota;
+      const newFlota   = baseFlota.map(v => ({ ...v }));
       if (t1?.values) parseTSheetAuth(t1.values, newTiendas, newGps);
       if (t2?.values) parseFSheetAuth(t2.values, newFlota);
       if (t3?.values) {
