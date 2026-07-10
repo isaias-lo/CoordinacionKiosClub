@@ -155,3 +155,26 @@ export function asignar(
 
   return rutas.filter(r => r.ts.length > 0);
 }
+
+/** Construye Ruta[] desde una asignación patente→tiendas (manual o IA), ordenando cada camión con
+ *  `nn`. Solo camiones activos (v.on) con tiendas asignadas. Puro y testeable. Se usa para armar
+ *  tanto la ruta manual del coordinador como la propuesta de la IA en la comparación. */
+export function rutasDesdeAsignaciones(
+  asig: Record<string, StoreItem[]>,
+  flota: Vehiculo[],
+  gps: Record<string, number[]>,
+  cd: number[],
+  tiendas: Record<string, TiendaInfo & { v?: string }>,
+): Ruta[] {
+  return flota
+    .filter(v => v.on)
+    .map(v => {
+      const stores = (asig[v.p] || []).map(s => ({ ...s, _v: tiendas[s.c]?.v || '' }));
+      if (!stores.length) return null;
+      const ordered = stores.length > 1 ? nn(stores, gps, cd) : stores;
+      const tp = ordered.reduce((s, t) => s + t.p, 0);
+      const tb = ordered.reduce((s, t) => s + t.b + (t.ch ?? 0), 0);
+      return { v, ts: ordered, tp, tb };
+    })
+    .filter((r): r is Ruta => r !== null);
+}
