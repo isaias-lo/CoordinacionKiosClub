@@ -10,8 +10,6 @@ interface Props {
   tiendas: Record<string, TiendaInfo & { _parada?: boolean; _tipo?: string; _desc?: string }>;
   gps: Record<string, number[]>;
   cd: number[];
-  conductores: string[];
-  onChoferChange: (idx: number, nombre: string) => void;
   kmReal?: number;
   legData?: {dist: string; dur: string}[];
   // Fase B: cierre por vehículo (1ª vuelta). `cerrada` = ya registrada individualmente.
@@ -19,7 +17,7 @@ interface Props {
   onCerrarCamion?: (patente: string) => void;
 }
 
-export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, onChoferChange, kmReal, legData, cerrada, onCerrarCamion }: Props) {
+export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cerrada, onCerrarCamion }: Props) {
   const r    = ruta;
   const pct  = Math.min((r.tp / r.v.c) * 100, 120);
   const over = pct > 100;
@@ -48,21 +46,6 @@ export default function RouteCard({ ruta, index, tiendas, gps, cd, conductores, 
             <Check size={10} aria-hidden="true" /> Cerrado
           </span>
         )}
-      </div>
-
-      <div className="px-4 py-2.5 border-b border-black/[0.09] flex items-center gap-2.5">
-        <span className="text-[11px] font-semibold text-kmuted uppercase tracking-[0.5px] whitespace-nowrap inline-flex items-center gap-1"><Truck size={12} aria-hidden="true" /> Conductor</span>
-        <select
-          value={r._choferAsignado !== undefined ? r._choferAsignado : r.v.ch}
-          onChange={e => onChoferChange(index, e.target.value)}
-          className={`flex-1 h-[34px] px-2.5 rounded-[8px] border-[1.5px] bg-kbg text-[13px] font-sans text-ktext cursor-pointer transition-colors focus:outline-none
-            ${(r._choferAsignado || r.v.ch) ? 'border-knavy bg-knavy/[0.04] text-knavy font-semibold' : 'border-black/[0.09]'}`}
-        >
-          <option value="">— Seleccionar conductor —</option>
-          {conductores.map(nombre => (
-            <option key={nombre} value={nombre}>{nombre}</option>
-          ))}
-        </select>
       </div>
 
       <div className="px-4 py-[11px] border-b border-black/[0.09] flex gap-3.5 items-center">
