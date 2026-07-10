@@ -50,15 +50,44 @@ function normalizeResumen(resumen: unknown): Record<string, string[]> {
   return out;
 }
 
+/** jsonb { patente: [cods] } (p. ej. la columna `final` del feedback) → Record<string,string[]>. */
+function normalizeAsignacion(v: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [pat, cods] of Object.entries(v as Record<string, unknown>)) {
+    if (!Array.isArray(cods)) continue;
+    const c = cods.map(String).filter(Boolean);
+    if (c.length) out[pat] = c;
+  }
+  return out;
+}
+
 export async function fetchAsignacionHistory(
   sb: MinimalSb,
   opts: { excludeFecha?: string; limit?: number } = {},
 ): Promise<IAExample[]> {
   const limit = opts.limit ?? 20;
 
-  // Mapa fecha(ISO) → asignación. 'rutas' primero (mejor señal); historial_despacho completa huecos.
+  // Mapa fecha(ISO) → asignación. Prioridad: feedback IA (ajuste final real) > 'rutas' (manual del
+  // coordinador) > historial_despacho (respaldo). El primero que setea una fecha gana.
   const porFecha = new Map<string, Record<string, string[]>>();
 
+  // 0) ia_asignacion_feedback: la asignación FINAL que el coordinador realmente usó (mejor señal).
+  try {
+    const { data } = await sb
+      .from('ia_asignacion_feedback')
+      .select('fecha, final')
+      .order('created_at', { ascending: false })
+      .limit(limit + 8);
+    for (const row of (data ?? []) as { fecha: string; final: unknown }[]) {
+      if (opts.excludeFecha && row.fecha === opts.excludeFecha) continue;
+      if (porFecha.has(row.fecha)) continue;
+      const a = normalizeAsignacion(row.final);
+      if (Object.keys(a).length) porFecha.set(row.fecha, a);
+    }
+  } catch { /* opcional: sigue con 'rutas' */ }
+
+  // 1) shared_session_state 'rutas': la asignación manual del coordinador.
   try {
     const { data } = await sb
       .from('shared_session_state')
@@ -68,6 +97,7 @@ export async function fetchAsignacionHistory(
       .limit(limit + 8);
     for (const row of (data ?? []) as { fecha: string; state: unknown }[]) {
       if (opts.excludeFecha && row.fecha === opts.excludeFecha) continue;
+      if (porFecha.has(row.fecha)) continue; // ya hay feedback para ese día (mejor señal)
       const a = normalizeRutasState(row.state);
       if (Object.keys(a).length) porFecha.set(row.fecha, a);
     }
