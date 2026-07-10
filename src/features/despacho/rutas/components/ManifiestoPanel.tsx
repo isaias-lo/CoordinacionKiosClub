@@ -18,6 +18,7 @@ interface ManifiestoData {
   fecha: string;
   chofer: string;
   patente: string;
+  transporte: string;
   bodega_origen: string;
   estado: string;
   token_qr?: string;
@@ -67,6 +68,7 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
     fecha,
     chofer:        ruta._choferAsignado || ruta.v.ch || 'Sin asignar',
     patente:       ruta.v.p,
+    transporte:    ruta.v.empresa || 'Luis Fica',   // empresa del camión (FLOTA) → columna TRANSPORTE
     bodega_origen: 'Santiago',
     estado:        'pendiente',
     tiendas: ruta.ts.map((t, i) => {
@@ -114,6 +116,7 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 <div class="meta">
   <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
   <div class="mi"><label>Patente</label><span>${m.patente}</span></div>
+  <div class="mi"><label>Transporte</label><span>${m.transporte}</span></div>
   <div class="mi"><label>Bodega Origen</label><span>${m.bodega_origen}</span></div>
   <div class="mi"><label>N° Tiendas</label><span>${m.tiendas.length}</span></div>
   <div class="mi"><label>Supervisor</label><span>${supervisor || '—'}</span></div>

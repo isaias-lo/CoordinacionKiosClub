@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -17,9 +16,6 @@ export function FinishModal({ open, onClose }: Props) {
   const { state, dispatch, showToast, flushPending } = useApp();
   const { dispatch: dispatchData, dispatchDate } = state;
   const { user } = useAuth();
-  // Transporte de bodega: 'Luis Fica' por defecto (el Enrutador lo sobrescribe con la empresa del
-  // camión); 'Falabella' marca ese transporte. El RÉGIMEN se guarda siempre 'Seco' (como Santiago).
-  const [transporte, setTransporte] = useState<'Luis Fica' | 'Falabella'>('Luis Fica');
 
   if (!open) return null;
 
@@ -77,7 +73,9 @@ export function FinishModal({ open, onClose }: Props) {
     // Tras escribir en Sheets, refrescar la base de datos (despacho_regiones)
     // para que el dashboard de Inicio quede al día sin depender del botón
     // manual "Sincronizar". keepalive: sobrevive si el usuario navega.
-    sheetsRegionesWrite(dispatchData, transporte, fechaDespacho, todayKey)
+    // TRANSPORTE de bodega = 'Luis Fica' (placeholder, igual que Santiago); el Enrutador lo
+    // sobrescribe con la empresa del camión asignado (Luis Fica / Ortiz / Falabella…). REGIMEN='Seco'.
+    sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, todayKey)
       .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
       .catch(() => {});
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
@@ -108,25 +106,7 @@ export function FinishModal({ open, onClose }: Props) {
           </div>
         ))}
 
-        <div className="mt-5 mb-3">
-          <p className="text-xs text-text-2 mb-2 font-semibold uppercase tracking-wide">Transporte</p>
-          <div className="flex gap-2">
-            {(['Luis Fica', 'Falabella'] as const).map(r => (
-              <button
-                key={r}
-                onClick={() => setTransporte(r)}
-                className={`flex-1 py-2.5 rounded-card border font-barlow-condensed text-base font-bold cursor-pointer transition-colors
-                  ${transporte === r
-                    ? 'bg-navy text-white border-navy'
-                    : 'bg-bg-2 text-text-2 border-border'}`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-2.5 mt-3">
+        <div className="flex gap-2.5 mt-5">
           <button onClick={onClose}
             className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer">
             Cancelar
