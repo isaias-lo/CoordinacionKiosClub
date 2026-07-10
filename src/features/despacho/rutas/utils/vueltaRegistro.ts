@@ -89,31 +89,37 @@ export function buildControlRows(
  * "Patente 2. Vuelta" de la fila YA existente (CONTROL DESPACHO y despacho_rm/regiones hacen
  * upsert por `fecha::cod`) en vez de crear una fila nueva bajo "hoy" (el bug de duplicado).
  *
- * - Una tienda que quedó pendiente en varios días se agrupa en CADA una de esas fechas.
- * - Las tiendas sin origen conocido caen en `fallbackFecha` (hoy).
+ * - Una tienda pendiente en varios días se agrupa en CADA fecha, pero CON EL CONTEO DE ESE DÍA:
+ *   el store dragueado trae el total mergeado del pool; acá se reparte según las pendientes por día
+ *   (p. ej. 30PHU total 5 = 3 del 09/07 + 2 del 07/07), sin duplicar el total en ambos días.
+ * - Las tiendas sin origen conocido caen en `fallbackFecha` (hoy) con su conteo tal cual.
  * - `norm` se inyecta para casar códigos de forma robusta (mayúsculas/acentos/alias).
  */
-export function agruparPorFechaOrigen<T extends { c: string }>(
+export function agruparPorFechaOrigen<T extends { c: string; p: number; b: number; ch?: number }>(
   stores: T[],
-  pendientesOrigen: { c: string; fechaOrigen: string }[],
+  pendientesOrigen: { c: string; p: number; b: number; ch?: number; fechaOrigen: string }[],
   fallbackFecha: string,
   norm: (s: string) => string,
 ): Map<string, T[]> {
-  const origenPorCod = new Map<string, string[]>();
-  for (const p of pendientesOrigen) {
-    const k = norm(p.c);
-    const arr = origenPorCod.get(k) ?? [];
-    if (!arr.includes(p.fechaOrigen)) arr.push(p.fechaOrigen);
-    origenPorCod.set(k, arr);
+  // cod → (fechaOrigen → conteo de ESE día). Dedup por (cod, fechaOrigen): gana el último.
+  const porCod = new Map<string, Map<string, { p: number; b: number; ch: number }>>();
+  for (const pd of pendientesOrigen) {
+    const k = norm(pd.c);
+    const m = porCod.get(k) ?? new Map<string, { p: number; b: number; ch: number }>();
+    m.set(pd.fechaOrigen, { p: pd.p, b: pd.b, ch: pd.ch ?? 0 });
+    porCod.set(k, m);
   }
   const out = new Map<string, T[]>();
+  const push = (fecha: string, store: T) => {
+    const arr = out.get(fecha) ?? [];
+    arr.push(store);
+    out.set(fecha, arr);
+  };
   for (const t of stores) {
-    const fechas = origenPorCod.get(norm(t.c)) ?? [fallbackFecha];
-    for (const f of fechas) {
-      const arr = out.get(f) ?? [];
-      arr.push(t);
-      out.set(f, arr);
-    }
+    const dias = porCod.get(norm(t.c));
+    if (!dias || dias.size === 0) { push(fallbackFecha, t); continue; }
+    // Por día, con el conteo de ese día (no el total mergeado del store dragueado).
+    for (const [fecha, cnt] of dias) push(fecha, { ...t, p: cnt.p, b: cnt.b, ch: cnt.ch });
   }
   return out;
 }

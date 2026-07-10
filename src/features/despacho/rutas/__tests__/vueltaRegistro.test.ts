@@ -74,14 +74,18 @@ describe('buildControlRows', () => {
 });
 
 describe('agruparPorFechaOrigen', () => {
-  const stores = [{ c: '02SCL' }, { c: '05LP' }, { c: '21NUC' }];
+  const stores = [
+    { c: '02SCL', p: 3, b: 0 },
+    { c: '05LP',  p: 2, b: 1 },
+    { c: '21NUC', p: 1, b: 0 },
+  ];
 
   it('registra cada tienda bajo su fecha de ORIGEN (no bajo hoy)', () => {
     // Todas quedaron pendientes el 06/07; el camión cierra el 07/07 (hoy)
     const pend = [
-      { c: '02SCL', fechaOrigen: '2026-07-06' },
-      { c: '05LP',  fechaOrigen: '2026-07-06' },
-      { c: '21NUC', fechaOrigen: '2026-07-06' },
+      { c: '02SCL', p: 3, b: 0, fechaOrigen: '2026-07-06' },
+      { c: '05LP',  p: 2, b: 1, fechaOrigen: '2026-07-06' },
+      { c: '21NUC', p: 1, b: 0, fechaOrigen: '2026-07-06' },
     ];
     const out = agruparPorFechaOrigen(stores, pend, '2026-07-07', norm);
     expect([...out.keys()]).toEqual(['2026-07-06']);        // NO 07/07 → sin duplicado
@@ -90,9 +94,9 @@ describe('agruparPorFechaOrigen', () => {
 
   it('separa por día cuando las pendientes vienen de fechas distintas', () => {
     const pend = [
-      { c: '02SCL', fechaOrigen: '2026-07-05' },
-      { c: '05LP',  fechaOrigen: '2026-07-06' },
-      { c: '21NUC', fechaOrigen: '2026-07-06' },
+      { c: '02SCL', p: 3, b: 0, fechaOrigen: '2026-07-05' },
+      { c: '05LP',  p: 2, b: 1, fechaOrigen: '2026-07-06' },
+      { c: '21NUC', p: 1, b: 0, fechaOrigen: '2026-07-06' },
     ];
     const out = agruparPorFechaOrigen(stores, pend, '2026-07-07', norm);
     expect(out.get('2026-07-05')!.map(s => s.c)).toEqual(['02SCL']);
@@ -100,21 +104,25 @@ describe('agruparPorFechaOrigen', () => {
   });
 
   it('casa códigos de forma robusta (case-insensitive vía norm)', () => {
-    const out = agruparPorFechaOrigen([{ c: '05lp' }], [{ c: '05LP', fechaOrigen: '2026-07-06' }], '2026-07-07', norm);
+    const out = agruparPorFechaOrigen([{ c: '05lp', p: 2, b: 0 }], [{ c: '05LP', p: 2, b: 0, fechaOrigen: '2026-07-06' }], '2026-07-07', norm);
     expect(out.get('2026-07-06')!.map(s => s.c)).toEqual(['05lp']);
   });
 
-  it('una tienda con MISMO cod pendiente en 2 días se agrupa en ambas fechas', () => {
+  it('MISMO cod en 2 días: cada día lleva SU conteo, no el total mergeado', () => {
+    // El store dragueado trae el total mergeado del pool (5); cada día debe registrar su parte.
     const out = agruparPorFechaOrigen(
-      [{ c: '05LP' }],
-      [{ c: '05LP', fechaOrigen: '2026-07-05' }, { c: '05LP', fechaOrigen: '2026-07-06' }],
-      '2026-07-07', norm,
+      [{ c: '30PHU', p: 5, b: 0 }],
+      [{ c: '30PHU', p: 3, b: 0, fechaOrigen: '2026-07-09' }, { c: '30PHU', p: 2, b: 0, fechaOrigen: '2026-07-07' }],
+      '2026-07-10', norm,
     );
-    expect([...out.keys()].sort()).toEqual(['2026-07-05', '2026-07-06']);
+    expect([...out.keys()].sort()).toEqual(['2026-07-07', '2026-07-09']);
+    expect(out.get('2026-07-09')![0].p).toBe(3);  // no 5
+    expect(out.get('2026-07-07')![0].p).toBe(2);  // no 5
   });
 
-  it('tienda sin origen conocido cae en la fecha fallback (hoy)', () => {
-    const out = agruparPorFechaOrigen([{ c: 'ZZZ' }], [], '2026-07-07', norm);
+  it('tienda sin origen conocido cae en la fecha fallback (hoy) con su conteo', () => {
+    const out = agruparPorFechaOrigen([{ c: 'ZZZ', p: 4, b: 0 }], [], '2026-07-07', norm);
     expect(out.get('2026-07-07')!.map(s => s.c)).toEqual(['ZZZ']);
+    expect(out.get('2026-07-07')![0].p).toBe(4);
   });
 });
