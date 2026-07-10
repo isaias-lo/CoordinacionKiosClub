@@ -588,46 +588,57 @@ export default function ManualDispatch({
         </div>
       )}
 
+      {/* [Fase 3] Calcular. Con cierre por camión (board DESPACHO) es SECUNDARIO/opcional: el flujo
+          primario es cerrar cada camión arriba. Calcular sigue sirviendo para comparar rutas y
+          definir los pendientes de 2ª vuelta. Sin cierre por camión, se muestra prominente. */}
       {tiendasCount > 0 && !hideCalcular && (
-        <button
-          onClick={() => {
-            if (pendientesTotal > 0) {
-              const ok = confirm(
-                `Quedan ${pendientesTotal} parada${pendientesTotal > 1 ? 's' : ''} sin asignar.\n\n` +
-                `¿Calcular ruta parcial con lo asignado hasta ahora?\n\n` +
-                `Las paradas sin asignar quedarán guardadas para el día siguiente.`
-              );
-              if (!ok) return;
-              // Guardar tiendas pendientes para el día siguiente
-              try {
-                localStorage.setItem('despacho_pendientes', JSON.stringify({
-                  savedAt: new Date().toISOString().split('T')[0],
-                  stores: pool.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
-                }));
-              } catch {}
-            } else {
-              // Todo asignado: limpiar pendientes anteriores si los hubiera
-              try { localStorage.removeItem('despacho_pendientes'); } catch {}
-            }
-            onCalcular();
-          }}
-          disabled={issues.some(i => i.includes('excede'))}
-          style={!issues.some(i => i.includes('excede')) ? {
-            boxShadow: pendientesTotal > 0
-              ? '0 4px 16px rgba(245,158,11,0.35)'
-              : '0 4px 16px rgba(212,43,43,0.32)',
-          } : undefined}
-          className={`w-full h-[56px] rounded-[14px] text-[16px] font-bold transition-all flex items-center justify-center gap-2 mt-1
-            ${issues.some(i => i.includes('excede'))
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-              : pendientesTotal > 0
-                ? 'bg-amber-500 text-white active:scale-[0.98]'
-                : 'bg-kred text-white active:scale-[0.98]'}`}
-        >
-          {pendientesTotal > 0
-            ? `⚠️ Calcular ruta parcial (${pendientesTotal} sin asignar)`
-            : '🔍 Calcular y Comparar Rutas'}
-        </button>
+        <div className={onCerrarCamion ? 'space-y-1.5' : ''}>
+          <button
+            onClick={() => {
+              if (pendientesTotal > 0) {
+                const ok = confirm(
+                  `Quedan ${pendientesTotal} parada${pendientesTotal > 1 ? 's' : ''} sin asignar.\n\n` +
+                  `¿Calcular ruta parcial con lo asignado hasta ahora?\n\n` +
+                  `Las paradas sin asignar quedarán guardadas para el día siguiente.`
+                );
+                if (!ok) return;
+                // Guardar tiendas pendientes para el día siguiente
+                try {
+                  localStorage.setItem('despacho_pendientes', JSON.stringify({
+                    savedAt: new Date().toISOString().split('T')[0],
+                    stores: pool.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
+                  }));
+                } catch {}
+              } else {
+                // Todo asignado: limpiar pendientes anteriores si los hubiera
+                try { localStorage.removeItem('despacho_pendientes'); } catch {}
+              }
+              onCalcular();
+            }}
+            disabled={issues.some(i => i.includes('excede'))}
+            style={!onCerrarCamion && !issues.some(i => i.includes('excede')) ? {
+              boxShadow: pendientesTotal > 0
+                ? '0 4px 16px rgba(245,158,11,0.35)'
+                : '0 4px 16px rgba(212,43,43,0.32)',
+            } : undefined}
+            className={`w-full font-bold transition-all flex items-center justify-center gap-2
+              ${onCerrarCamion ? 'h-[44px] text-[14px] rounded-[12px]' : 'h-[56px] text-[16px] rounded-[14px] mt-1'}
+              ${issues.some(i => i.includes('excede'))
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                : pendientesTotal > 0
+                  ? (onCerrarCamion ? 'bg-amber-50 text-amber-700 border-[1.5px] border-amber-300 active:scale-[0.98]' : 'bg-amber-500 text-white active:scale-[0.98]')
+                  : (onCerrarCamion ? 'bg-white text-kred border-[1.5px] border-kred/40 active:scale-[0.98]' : 'bg-kred text-white active:scale-[0.98]')}`}
+          >
+            {pendientesTotal > 0
+              ? `⚠️ Calcular ruta parcial (${pendientesTotal} sin asignar)`
+              : '🔍 Calcular y Comparar Rutas'}
+          </button>
+          {onCerrarCamion && (
+            <p className="text-[11px] text-kmuted text-center leading-snug px-2">
+              Opcional · o cierra cada camión arriba. Calcular compara rutas y define los pendientes de 2ª vuelta.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

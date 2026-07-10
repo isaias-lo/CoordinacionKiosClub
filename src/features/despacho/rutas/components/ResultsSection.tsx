@@ -30,9 +30,9 @@ interface Props {
   onCargarPendientes: () => void;
   onListoPorHoy: () => void;
   cerrado: boolean;
-  // Fase B: cierre por vehículo (1ª vuelta). Set de patentes cerradas + callback de cierre.
+  // Fase B: patentes ya cerradas (badge "Cerrado" informativo). El cierre por camión se hace
+  // en el board DESPACHO (ManualDispatch), no aquí en el post-ruta.
   cerradasV1: Set<string>;
-  onCerrarCamionV1: (patente: string) => void;
 }
 
 export default function ResultsSection({
@@ -41,7 +41,7 @@ export default function ResultsSection({
   historialStatus, historialMsg,
   onKmTotalReal, onCdUpdate,
   pendientesV2, onCargarPendientes, onListoPorHoy, cerrado,
-  cerradasV1, onCerrarCamionV1,
+  cerradasV1,
 }: Props) {
   const { ts, rutas } = results;
   const tp = ts.reduce((s, t) => s + t.p, 0);
@@ -121,7 +121,6 @@ export default function ResultsSection({
           kmReal={kmPorRuta[ri]}
           legData={legDataPorRuta[ri]}
           cerrada={cerradasV1.has((r.v.p ?? '').trim().toUpperCase())}
-          onCerrarCamion={onCerrarCamionV1}
         />
       ))}
 
