@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { KiosLogo } from '@/components/KiosLogo';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -153,13 +154,7 @@ export default function LoginPage() {
 
           {/* Logo desktop (original) */}
           <div className="lg-logo-desktop lg-anim-logo text-center mb-10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo-kiosclub.webp"
-              alt="KIOS Club — American Supermarket"
-              className="mx-auto mb-3 w-[260px] max-w-[75%] h-auto"
-              style={{ filter: 'brightness(0) invert(1)' }}
-            />
+            <KiosLogo className="mx-auto mb-3" style={{ width: 260, maxWidth: '75%' }} />
             <div className="text-[11px] text-white/40 uppercase tracking-widest">
               Sistema de despacho
             </div>
@@ -170,12 +165,7 @@ export default function LoginPage() {
             display: 'none', flexDirection: 'column', alignItems: 'center',
             marginBottom: 32,
           }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo-kiosclub.webp"
-              alt="KIOS Club — American Supermarket"
-              style={{ width: 'min(70vw, 300px)', height: 'auto', filter: 'brightness(0) invert(1)' }}
-            />
+            <KiosLogo style={{ width: 'min(70vw, 300px)' }} />
             <div style={{
               marginTop: 8, fontSize: 10,
               color: 'rgba(255,255,255,0.35)',

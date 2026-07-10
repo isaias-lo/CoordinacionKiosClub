@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { KiosLogo } from './KiosLogo';
 
 export function SplashScreen() {
   const [visible, setVisible] = useState(false);
@@ -128,14 +129,14 @@ export function SplashScreen() {
           filter: 'drop-shadow(0 0 5px rgba(42,91,215,0.3))',
           animation: 'sp-spin-ccw 4s linear infinite',
         }} />
-        {/* Ring 3 — inner, teal */}
+        {/* Ring 3 — inner, ROJO KIOS (completa la paleta roja+navy de la marca) */}
         <div style={{
           position: 'absolute',
           top: ring2Inset, right: ring2Inset, bottom: ring2Inset, left: ring2Inset,
           borderRadius: '50%',
-          border: '1.5px solid rgba(13,122,110,0.8)',
+          border: '1.5px solid rgba(212,43,43,0.85)',
           borderTopColor: 'transparent', borderLeftColor: 'transparent',
-          filter: 'drop-shadow(0 0 5px rgba(13,122,110,0.3))',
+          filter: 'drop-shadow(0 0 5px rgba(212,43,43,0.35))',
           animation: 'sp-spin-cw 5.5s linear infinite',
         }} />
       </div>
@@ -145,13 +146,8 @@ export function SplashScreen() {
         textAlign: 'center', zIndex: 1,
         animation: 'sp-logo-in 0.8s cubic-bezier(0.34,1.5,0.64,1) 0.55s both',
       }}>
-        {/* Logo oficial en blanco (filtro) para el fondo oscuro del splash. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo-kiosclub.webp"
-          alt="KIOS Club — American Supermarket"
-          style={{ width: 'min(72vw, 400px)', height: 'auto', margin: '0 auto', display: 'block', filter: 'brightness(0) invert(1)' }}
-        />
+        {/* Logo oficial en blanco con las 5 estrellas de la banda en azul (overlay SVG). */}
+        <KiosLogo style={{ width: 'min(72vw, 400px)' }} />
 
         <div style={{
           marginTop: 'clamp(8px, 1.3vmin, 18px)',
