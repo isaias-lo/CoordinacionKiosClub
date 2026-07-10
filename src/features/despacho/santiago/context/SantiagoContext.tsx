@@ -252,8 +252,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedRef.current) return;
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    const doPush = () => {
       debounceRef.current = null;
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.items).length === 0;
@@ -271,7 +270,15 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
           if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
         });
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
-    }, 2500);
+    };
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // `registrado` es un flag CRÍTICO: empujar INMEDIATO (sin el debounce de 2.5s). El usuario
+    // suele ir a Inicio justo tras Registrar → eso desmonta el provider y el cleanup del debounce
+    // solo guarda en localStorage (no empuja a Supabase), así que registrado=true no llegaba a la
+    // BD y PendingDraftBanner mostraba "sin registrar" al día siguiente. Empujarlo ya evita la carrera.
+    if (state.registrado) doPush();
+    else debounceRef.current = setTimeout(doPush, 2500);
 
     return () => {
       if (debounceRef.current) {
