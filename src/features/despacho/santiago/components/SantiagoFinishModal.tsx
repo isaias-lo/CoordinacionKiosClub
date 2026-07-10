@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
+import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -32,7 +33,9 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
   });
 
   // Fecha de despacho = la elegida o mañana por defecto; armado = hoy. (Igual que StepResumen.)
-  const todayISO = new Date().toISOString().split('T')[0];
+  // Fecha de ARMADO = HOY en horario LOCAL (Chile). NO usar toISOString() (da fecha UTC → de
+  // tarde en Chile rueda al día siguiente y el registro salía con la fecha de mañana).
+  const todayISO = todayStr();
   const fechaDespacho = state.fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
