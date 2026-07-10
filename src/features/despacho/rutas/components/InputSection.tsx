@@ -36,6 +36,7 @@ interface Props {
   onToggleChip: (cod: string) => void;
   onUpdateChip: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
   onToggleFlota: (idx: number) => void;
+  ordenActivacion?: Record<string, number>;  // [F2] orden de camiones por recencia de activación
   onToggleTlbd: (idx: number) => void;
   onAgregarVehiculo: (v: Vehiculo) => void;
   onEliminarVehiculo: (idx: number) => void;
@@ -160,7 +161,7 @@ export default function InputSection({
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
   onModo, onToggleGroup, onToggleChip, onUpdateChip,
-  onToggleFlota, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
+  onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
   rightPanelContent,
@@ -401,7 +402,7 @@ export default function InputSection({
                       <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                         paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                         onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
-                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} onCerrarCamion={onCerrarCamion} />
+                        onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
                     </div>
                   )}
                   {modo === 'man' && (
@@ -678,6 +679,7 @@ export default function InputSection({
                     onAsignarIA={onAsignarIA}
                     iaLoading={iaLoading}
                     onToggleFlota={onToggleFlota}
+                    ordenActivacion={ordenActivacion}
                     onCerrarCamion={onCerrarCamion}
                   />
                 </div>

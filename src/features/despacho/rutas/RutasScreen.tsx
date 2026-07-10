@@ -125,6 +125,7 @@ export default function RutasScreen() {
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
   const cdRef                 = useRef<number[]>([...CD_INICIAL]);
   const [flota,   setFlota]   = useState<Vehiculo[]>(() => FLOTA_INICIAL.map(v => ({ ...v })));
+  const [flotaActivadaEn, setFlotaActivadaEn] = useState<Record<string, number>>({}); // [F2] patente→ts de activación
   const [cal,     setCal]     = useState<CalRecord>(() => {
     // Fast-path: use localStorage cache written by CalendarioCentral (if fresh)
     try {
@@ -767,6 +768,8 @@ export default function RutasScreen() {
     if (!v) return;
     const newOn = !v.on;
     setFlota(prev => prev.map((x, i) => i === idx ? { ...x, on: newOn } : x));
+    // [F2] Al activar, registrar el momento → los camiones se ordenan por recencia (último primero).
+    if (newOn) setFlotaActivadaEn(prev => ({ ...prev, [v.p]: Date.now() }));
     // Persistir "en servicio" (memoria permanente). Fire-and-forget; el toggle solo
     // {p,on} no requiere admin (ver /api/flota PATCH).
     fetch('/api/flota', {
@@ -1836,6 +1839,7 @@ export default function RutasScreen() {
           onUpdateChip={handleUpdateChip}
           flotaStatus={flotaStatus}
           onToggleFlota={handleToggleFlota}
+          ordenActivacion={flotaActivadaEn}
           onToggleTlbd={handleToggleTlbd}
           onAgregarVehiculo={handleAgregarVehiculo}
           onEliminarVehiculo={handleEliminarVehiculo}
