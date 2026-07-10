@@ -14,7 +14,7 @@ import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales
 import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
-import { getDia, norm, todayStr, fechaTxt } from './utils/helpers';
+import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
 import { asignar, nn } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
@@ -1109,6 +1109,12 @@ export default function RutasScreen() {
       tb: ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0),
     };
     cerrarCamionV1(patente, ruta);
+
+    // [Fase 3 PR3] Snapshot del pool: lo que quedó SIN asignar a ningún camión pasa a pendiente de
+    // 2ª vuelta. Así, cerrando por camión sin "Calcular", las tiendas sobrantes no se pierden.
+    // savePendientesV2 acumula/corrige (quita las ya asignadas, conserva pendientes previas del día).
+    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones);
+    void savePendientesV2(fecha, leftover, asignadas);
   }
 
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
