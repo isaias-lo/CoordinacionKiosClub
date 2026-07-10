@@ -18,6 +18,7 @@ import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import type { IAStore, IATruck } from './ia/types';
+import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, agruparPorFechaOrigen, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
@@ -1347,7 +1348,19 @@ export default function RutasScreen() {
       return next;
     });
   }
-  function handleUsarRuta(rutas: Ruta[], ts: StoreItem[]) {
+  function handleUsarRuta(rutas: Ruta[], ts: StoreItem[], elegida: 'mia' | 'ia' | 'gps') {
+    // [Fase 4 PR-C] Feedback IA: guarda qué propuso la IA (si la hubo), la asignación final y cuál
+    // se eligió → corpus de aprendizaje. Fire-and-forget: no debe bloquear ni romper el "usar ruta".
+    const comp = comparisonData;
+    if (comp) {
+      const final        = rutasAAsignacion(rutas);
+      const propuesta_ia = comp.fuenteAlt === 'ia' ? rutasAAsignacion(comp.optima) : null;
+      const edit_count   = contarEdiciones(propuesta_ia, final);
+      fetch('/api/ia-feedback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha, fuente: 'despacho', propuesta_ia, final, elegida, edit_count, supervisor }),
+      }).catch(e => console.error('[ia-feedback]', e));
+    }
     setResults({
       ts, rutas,
       extGps:     comparisonData?.extGps,

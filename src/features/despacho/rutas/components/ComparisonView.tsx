@@ -49,7 +49,7 @@ interface Props {
   gps: Record<string, number[]>;
   cd: number[];
   tiendas: Record<string, TiendaInfo>;
-  onUsar: (rutas: Ruta[], ts: StoreItem[]) => void;
+  onUsar: (rutas: Ruta[], ts: StoreItem[], elegida: 'mia' | 'ia' | 'gps') => void;
   onVolver: () => void;
 }
 
@@ -151,7 +151,7 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
-          onClick={() => onUsar(manual, ts)}
+          onClick={() => onUsar(manual, ts, 'mia')}
           className={`h-[52px] rounded-kios2 text-[14px] font-bold transition-all active:scale-[0.98] flex flex-col items-center justify-center gap-0.5
             ${manualEsMejor
               ? 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)]'
@@ -161,7 +161,7 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
           <span className="text-[10px] opacity-70 font-normal">{resManual.totalKm} km est. · {manual.length} vehículo{manual.length !== 1 ? 's' : ''}</span>
         </button>
         <button
-          onClick={() => onUsar(optima, ts)}
+          onClick={() => onUsar(optima, ts, fuenteAlt)}
           className={`h-[52px] rounded-kios2 text-[14px] font-bold transition-all active:scale-[0.98] flex flex-col items-center justify-center gap-0.5
             ${!manualEsMejor
               ? 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)]'
