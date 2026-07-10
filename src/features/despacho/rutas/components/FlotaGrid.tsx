@@ -135,6 +135,14 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
             </Field>
           </div>
 
+          {/* Empresa de transporte → se escribe en la columna TRANSPORTE al registrar/cerrar el camión. */}
+          <div className="mb-3">
+            <Field label="Empresa de transporte">
+              <input type="text" value={nv.empresa} onChange={e => setNv({ empresa: e.target.value })}
+                placeholder="Ej: Luis Fica, Ortiz, Falabella" className={inputCls} />
+            </Field>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mb-3">
             <Field label="Cap. Pallets">
               <input type="number" value={nv.c} onChange={e => setNv({ c: e.target.value })}
