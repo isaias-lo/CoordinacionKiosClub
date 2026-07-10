@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nn, asignar } from '../utils/routing';
+import { nn, asignar, rutasDesdeAsignaciones } from '../utils/routing';
 import type { StoreItem } from '../utils/routing';
 import type { Vehiculo } from '../data/flota';
 
@@ -201,5 +201,40 @@ describe('asignar', () => {
     expect(rutas).toHaveLength(1);
     const codes = rutas[0].ts.map(t => t.c);
     expect(codes[0]).toBe('CLOSE'); // nearest to CD first
+  });
+});
+
+// ─── rutasDesdeAsignaciones (manual o IA → Ruta[]) ──────────────────────────────
+
+describe('rutasDesdeAsignaciones', () => {
+  const V1  = vehicle({ p: 'AAA111', c: 10 });
+  const V2  = vehicle({ p: 'BBB222', c: 10 });
+  const OFF = vehicle({ p: 'CCC333', on: false });
+
+  it('arma una ruta por camión activo con tiendas, con tp/tb', () => {
+    const asig = { AAA111: [store('CLOSE', 2, 3), store('MID', 1, 4)] };
+    const rutas = rutasDesdeAsignaciones(asig, [V1, V2], GPS, CD, {});
+    expect(rutas).toHaveLength(1);
+    expect(rutas[0].v.p).toBe('AAA111');
+    expect(rutas[0].tp).toBe(3); // 2 + 1
+    expect(rutas[0].tb).toBe(7); // 3 + 4
+  });
+
+  it('ignora camiones sin tiendas y camiones inactivos', () => {
+    const asig = { AAA111: [store('CLOSE')], CCC333: [store('MID')] }; // CCC333 está off
+    const rutas = rutasDesdeAsignaciones(asig, [V1, V2, OFF], GPS, CD, {});
+    expect(rutas.map(r => r.v.p)).toEqual(['AAA111']);
+  });
+
+  it('ordena las tiendas del camión con nn (cercanía desde CD)', () => {
+    const asig = { AAA111: [store('FAR'), store('MID'), store('CLOSE')] };
+    const rutas = rutasDesdeAsignaciones(asig, [V1], GPS, CD, {});
+    expect(rutas[0].ts.map(t => t.c)).toEqual(['CLOSE', 'MID', 'FAR']);
+  });
+
+  it('suma chocolate (ch) en tb', () => {
+    const asig = { AAA111: [{ c: 'CLOSE', p: 1, b: 2, ch: 3 }] };
+    const rutas = rutasDesdeAsignaciones(asig, [V1], GPS, CD, {});
+    expect(rutas[0].tb).toBe(5); // 2 + 3
   });
 });

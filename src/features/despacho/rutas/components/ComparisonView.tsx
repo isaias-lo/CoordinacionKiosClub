@@ -41,6 +41,10 @@ interface Props {
     optima: Ruta[];
     ts: StoreItem[];
     rebalanceada?: boolean;
+    // Fase 4 PR-B: qué motor produjo la columna alternativa + estado de la consulta IA.
+    fuenteAlt?: 'ia' | 'gps';
+    iaCargando?: boolean;
+    iaError?: string;
   };
   gps: Record<string, number[]>;
   cd: number[];
@@ -50,7 +54,10 @@ interface Props {
 }
 
 export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolver }: Props) {
-  const { manual, optima, ts, rebalanceada } = data;
+  const { manual, optima, ts, rebalanceada, fuenteAlt = 'gps', iaCargando, iaError } = data;
+  const altEsIA   = fuenteAlt === 'ia';
+  const altIcon   = altEsIA ? '🤖' : '🗺️';
+  const altTitulo = altEsIA ? 'Ruta IA' : 'Ruta Óptima (GPS)';
 
   const resManual = getResumen(manual, gps, cd);
   const resOptima = getResumen(optima, gps, cd);
@@ -81,6 +88,17 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
             ℹ️ Las tiendas que excedían la capacidad de un vehículo fueron redistribuidas automáticamente.
           </div>
         )}
+        {iaCargando && (
+          <div className="mt-2 bg-purple-50 border border-purple-200 rounded-kios2 px-3 py-2 text-[12px] text-purple-700 flex items-center gap-2">
+            <span className="inline-block w-3 h-3 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" aria-hidden="true" />
+            Consultando a la IA… mientras tanto la alternativa es el optimizador GPS.
+          </div>
+        )}
+        {iaError && !iaCargando && (
+          <div className="mt-2 bg-amber-50 border border-amber-200 rounded-kios2 px-3 py-2 text-[12px] text-amber-700">
+            ⚠ La IA no respondió; la alternativa que ves es el <strong>optimizador GPS</strong>.
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -97,7 +115,7 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
           badgeColor={manualEsMejor ? 'green' : 'amber'}
         />
         <SummaryCard
-          title="Ruta Óptima" icon="🤖"
+          title={altTitulo} icon={altIcon}
           rutas={resOptima.withKm} totalKm={resOptima.totalKm}
           avgPct={resOptima.avgPct} issues={resOptima.issues}
           highlighted={!manualEsMejor}
@@ -112,7 +130,7 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <RouteDetail rutas={resManual.withKm} tiendas={tiendas} title="Tu distribución" />
-        <RouteDetail rutas={resOptima.withKm} tiendas={tiendas} title="Distribución óptima" />
+        <RouteDetail rutas={resOptima.withKm} tiendas={tiendas} title={altEsIA ? 'Distribución IA' : 'Distribución óptima'} />
       </div>
 
       {Math.abs(kmDiff) > 2 && (
@@ -149,7 +167,7 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
               ? 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)]'
               : 'bg-white border-[2px] border-kred text-kred'}`}
         >
-          <span>🤖 Usar Ruta Óptima</span>
+          <span>{altIcon} Usar {altEsIA ? 'Ruta IA' : 'Ruta Óptima'}</span>
           <span className="text-[10px] opacity-70 font-normal">{resOptima.totalKm} km est. · {optima.length} vehículo{optima.length !== 1 ? 's' : ''}</span>
         </button>
       </div>

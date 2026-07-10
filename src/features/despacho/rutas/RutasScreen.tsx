@@ -15,8 +15,9 @@ import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
-import { asignar, nn } from './utils/routing';
+import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
+import type { IAStore, IATruck } from './ia/types';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, agruparPorFechaOrigen, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
@@ -83,11 +84,15 @@ interface Results {
 
 interface ComparisonData {
   manual: Ruta[];
-  optima: Ruta[];
+  optima: Ruta[];            // columna alternativa: propuesta IA o, si la IA no está, optimizador GPS
   ts: StoreItem[];
   extGps?: Record<string, number[]>;
   extTiendas?: Record<string, TiendaInfo>;
   rebalanceada?: boolean;
+  // Fase 4 PR-B: transparencia del motor de la columna alternativa.
+  fuenteAlt: 'ia' | 'gps';   // qué motor produjo `optima` (IA o el optimizador GPS de respaldo)
+  iaCargando?: boolean;      // true mientras se consulta la IA en segundo plano (muestra GPS entretanto)
+  iaError?: string;          // si la IA falló → se cayó a GPS; se avisa al usuario
 }
 
 type PendientesGuardados = { savedAt: string; stores: { c: string; p: number; b: number; ch: number }[] };
@@ -146,6 +151,7 @@ export default function RutasScreen() {
 
   const [results, setResults]           = useState<Results | null>(null);
   const kmTotalRealRef                  = useRef<number | null>(null);
+  const comparacionTokenRef             = useRef(0); // evita que una respuesta IA vieja pise una comparación nueva
   const [updateStatus,  setUpdateStatus]  = useState('idle');
   const [historialStatus, setHistorialStatus] = useState('idle');
   const [flotaStatus, setFlotaStatus]     = useState('idle');
@@ -1180,52 +1186,17 @@ export default function RutasScreen() {
   }
 
   // ── Calculate manual routes ───────────────────────────────────────
-  function handleCalcularManual() {
-    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
-
-    const tiendasActivas = Object.keys(calT)
-      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
-      .map(c => ({ c, p: calT[c].p, b: calT[c].b }));
-
-    const paradasItems = paradasAdicionales.filter(p => p.gps).map(p => ({ c: p.id, p: p.p, b: p.b }));
-    const allItems     = [...tiendasActivas, ...paradasItems];
-
-    const manualRutas = flota
-      .filter(v => v.on)
-      .map(v => {
-        const stores = (manualAsignaciones[v.p] || []).map(s => ({
-          ...s, _v: (extTiendas as Record<string, TiendaInfo & {v?:string}>)[s.c]?.v || '',
-        }));
-        if (!stores.length) return null;
-        const ordered = stores.length > 1 ? nn(stores, extGps, cdRef.current) : stores;
-        const tp = ordered.reduce((s, t) => s + t.p, 0);
-        const tb = ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0);
-        return { v, ts: ordered, tp, tb };
-      })
-      .filter((r): r is Ruta => r !== null);
-
-    const rebalanceadas = rebalanceIfOver(manualRutas, extGps, extTiendas);
-    const optimaRutas   = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas);
-    setComparisonData({ manual: rebalanceadas, optima: optimaRutas, ts: allItems, extGps, extTiendas, rebalanceada: rebalanceadas !== manualRutas });
-  }
-
-  // ── Asistente IA: propone la asignación tienda→patente aprendiendo del historial ──────
-  // Junta las tiendas activas del pool + la flota activa (no-2ªvuelta) → POST /api/asignar-ia →
-  // aplica la propuesta a manualAsignaciones (llena el tablero, se sincroniza) y muestra warnings.
-  async function handleAsignarIA() {
-    const stores = Object.keys(calT)
+  // ── IA: helpers compartidos (asignación por IA para el tablero y para la comparación) ────────
+  // Payload para /api/asignar-ia: tiendas activas con carga, camiones disponibles (no-2ªvuelta) y la
+  // referencia por cercanía GPS del optimizador (cómputo local, gratis; pista no obligatoria).
+  function construirPayloadIA(): { stores: IAStore[]; trucks: IATruck[]; gpsRef?: Record<string, string[]> } {
+    const stores: IAStore[] = Object.keys(calT)
       .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
       .map(c => ({ cod: c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
-    const trucks = flota
+    const trucks: IATruck[] = flota
       .filter(v => v.on && !v.tlbd)
       .map(v => ({ patente: v.p, tipo: v.t, capP: v.c, capB: v.b, refrigerado: !!v.refrigerado, porton: !!v.porton }));
-    if (!stores.length) { setErrors(['No hay tiendas con carga para asignar con IA.']); return; }
-    if (!trucks.length) { setErrors(['No hay camiones activos para asignar.']); return; }
-    setErrors([]);
-    setIaLoading(true);
 
-    // Referencia geográfica: el optimizador agrupa por cercanía GPS (cómputo local, gratis). Se pasa
-    // a la IA como PISTA para combinar patrones históricos + capacidad + cercanía. No es obligatoria.
     let gpsRef: Record<string, string[]> | undefined;
     try {
       const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
@@ -1237,17 +1208,84 @@ export default function RutasScreen() {
       gpsRef = Object.keys(ref).length ? ref : undefined;
     } catch { gpsRef = undefined; }
 
+    return { stores, trucks, gpsRef };
+  }
+
+  // Llama a la IA y devuelve la propuesta (patente→tiendas). Lanza si la API falla.
+  async function solicitarAsignacionIA(
+    payload: { stores: IAStore[]; trucks: IATruck[]; gpsRef?: Record<string, string[]> },
+  ): Promise<{ asignaciones: Record<string, StoreItem[]>; warnings: string[] }> {
+    const res  = await fetch('/api/asignar-ia', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha, ...payload }),
+    });
+    const json = await res.json() as { asignaciones?: Record<string, StoreItem[]>; warnings?: string[]; error?: string };
+    if (!res.ok) throw new Error(json.error ?? `error ${res.status}`);
+    return { asignaciones: json.asignaciones ?? {}, warnings: json.warnings ?? [] };
+  }
+
+  function handleCalcularManual() {
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+
+    const tiendasActivas = Object.keys(calT)
+      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
+      .map(c => ({ c, p: calT[c].p, b: calT[c].b }));
+
+    const paradasItems = paradasAdicionales.filter(p => p.gps).map(p => ({ c: p.id, p: p.p, b: p.b }));
+    const allItems     = [...tiendasActivas, ...paradasItems];
+
+    const manualRutas   = rutasDesdeAsignaciones(manualAsignaciones, flota, extGps, cdRef.current, extTiendas);
+    const rebalanceadas = rebalanceIfOver(manualRutas, extGps, extTiendas);
+
+    // Columna alternativa: se muestra YA con el optimizador GPS (síncrono) y, en segundo plano, se
+    // consulta la IA para reemplazarla. Si la IA falla o tarda, queda el GPS con aviso — el usuario
+    // siempre sabe qué motor ve (etiqueta "Ruta IA" 🤖 vs "Ruta Óptima (GPS)" 🗺️ + aviso de caída).
+    const gpsRutas = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas);
+    const token    = ++comparacionTokenRef.current;
+    const payload  = construirPayloadIA();
+    const usaIA    = payload.stores.length > 0 && payload.trucks.length > 0;
+
+    setComparisonData({
+      manual: rebalanceadas, optima: gpsRutas, ts: allItems, extGps, extTiendas,
+      rebalanceada: rebalanceadas !== manualRutas,
+      fuenteAlt: 'gps', iaCargando: usaIA,
+    });
+    if (!usaIA) return;
+
+    void (async () => {
+      try {
+        const { asignaciones } = await solicitarAsignacionIA(payload);
+        if (comparacionTokenRef.current !== token) return; // llegó una comparación más nueva
+        const iaRutas = rutasDesdeAsignaciones(asignaciones, flota, extGps, cdRef.current, extTiendas);
+        if (!iaRutas.length) {
+          setComparisonData(prev => prev ? { ...prev, iaCargando: false, iaError: 'La IA no devolvió asignaciones' } : prev);
+          return;
+        }
+        setComparisonData(prev => prev ? { ...prev, optima: iaRutas, fuenteAlt: 'ia', iaCargando: false, iaError: undefined } : prev);
+      } catch (e) {
+        if (comparacionTokenRef.current !== token) return;
+        const msg = e instanceof Error ? e.message : 'IA no disponible';
+        setComparisonData(prev => prev ? { ...prev, iaCargando: false, iaError: msg } : prev);
+      }
+    })();
+  }
+
+  // ── Asistente IA: propone la asignación tienda→patente aprendiendo del historial ──────
+  // Junta las tiendas activas del pool + la flota activa (no-2ªvuelta) → POST /api/asignar-ia →
+  // aplica la propuesta a manualAsignaciones (llena el tablero, se sincroniza) y muestra warnings.
+  async function handleAsignarIA() {
+    const payload = construirPayloadIA();
+    if (!payload.stores.length) { setErrors(['No hay tiendas con carga para asignar con IA.']); return; }
+    if (!payload.trucks.length) { setErrors(['No hay camiones activos para asignar.']); return; }
+    setErrors([]);
+    setIaLoading(true);
     try {
-      const res  = await fetch('/api/asignar-ia', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha, stores, trucks, gpsRef }),
-      });
-      const json = await res.json() as { asignaciones?: Record<string, StoreItem[]>; warnings?: string[]; error?: string };
-      if (!res.ok) { setErrors([`Asistente IA: ${json.error ?? `error ${res.status}`}`]); return; }
-      setManualAsignaciones(json.asignaciones ?? {});
-      setErrors(json.warnings ?? []); // el tablero lleno es la confirmación; solo mostramos avisos si hay
-    } catch {
-      setErrors(['No se pudo conectar con el asistente IA.']);
+      const { asignaciones, warnings } = await solicitarAsignacionIA(payload);
+      setManualAsignaciones(asignaciones);
+      setErrors(warnings); // el tablero lleno es la confirmación; solo mostramos avisos si hay
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      setErrors([msg ? `Asistente IA: ${msg}` : 'No se pudo conectar con el asistente IA.']);
     } finally {
       setIaLoading(false);
     }
