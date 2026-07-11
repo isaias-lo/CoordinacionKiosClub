@@ -225,7 +225,7 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
       </div>
 
       {/* ── Grid de tarjetas ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {visibles.length === 0 && (
           <div className="col-span-full text-center text-[13px] text-kmuted py-6">Sin patentes que coincidan con “{search}”.</div>
         )}

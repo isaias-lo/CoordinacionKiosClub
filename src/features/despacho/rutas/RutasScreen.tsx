@@ -1920,6 +1920,7 @@ export default function RutasScreen() {
                     onAsignaciones={setAsignacionesV2}
                     onCalcular={() => {}}
                     onCerrarCamion={cerrarCamionV2}
+                    onToggleFlota={handleToggleFlota}
                     hideCalcular={true}
                   />
                 </>
