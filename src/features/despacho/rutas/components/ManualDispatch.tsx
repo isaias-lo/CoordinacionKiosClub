@@ -29,6 +29,8 @@ interface Props {
   /** [Fase 2] Si se provee, muestra una tira para activar/desactivar camiones sin ir a FLOTA.
    *  El índice es el de `flota` (mismo que usa FLOTA → Vehículos). */
   onToggleFlota?: (idx: number) => void;
+  /** [F2] patente → timestamp de última activación; ordena los camiones (el último marcado va primero). */
+  ordenActivacion?: Record<string, number>;
   /** [Fase 3] Oculta el botón batch "Calcular" (para el tab 2ª VUELTA, que solo cierra por camión).
    *  En DESPACHO se deja visible aunque haya cierre por camión, para que Calcular sea opcional. */
   hideCalcular?: boolean;
@@ -56,6 +58,7 @@ export default function ManualDispatch({
   onAsignarIA,
   iaLoading,
   onToggleFlota,
+  ordenActivacion,
   hideCalcular,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
@@ -93,7 +96,10 @@ export default function ManualDispatch({
   const extGps: Record<string, number[]> = { ...gps };
   paradasConGps.forEach(p => { extGps[p.id] = p.gps; });
 
-  const flotaDisp = flota.filter(v => v.on);
+  // [F2] Orden por recencia de activación: el último camión marcado va primero (izq→der).
+  const ordAct = ordenActivacion ?? {};
+  const porRecencia = (a: Vehiculo, b: Vehiculo) => (ordAct[b.p] ?? 0) - (ordAct[a.p] ?? 0);
+  const flotaDisp = flota.filter(v => v.on).sort(porRecencia);
 
   // P10b: mover todas las tiendas seleccionadas a una patente (o de vuelta al pool) de una vez
   function toggleSelect(code: string) {
@@ -338,7 +344,7 @@ export default function ManualDispatch({
             <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">toca para activar / desactivar</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {flota.map((v, i) => (
+            {flota.map((v, i) => ({ v, i })).sort((a, b) => porRecencia(a.v, b.v)).map(({ v, i }) => (
               <button
                 key={v.p} type="button"
                 onClick={() => onToggleFlota(i)}
