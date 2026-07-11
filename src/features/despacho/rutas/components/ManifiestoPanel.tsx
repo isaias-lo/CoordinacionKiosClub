@@ -456,10 +456,16 @@ ${bodies}
     const origin = window.location.origin;
     const bodies = idxs.flatMap(idx => {
       const m = manifiestos[idx];
-      return m.tiendas.map(t => buildManifiestoTiendaHTML(
-        t, tiendas[t.store_cod] ?? tiendas[t.store_cod.toUpperCase()], itemsByStore[t.store_cod] ?? [],
-        { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin },
-      ));
+      return m.tiendas.flatMap(t => {
+        const info = tiendas[t.store_cod] ?? tiendas[t.store_cod.toUpperCase()];
+        const its  = itemsByStore[t.store_cod] ?? [];
+        const meta = { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin };
+        // Req 4: 2 copias por tienda → ORIGINAL (sus N páginas) y luego CEDIBLE (sus N páginas).
+        return [
+          buildManifiestoTiendaHTML(t, info, its, meta, 'ORIGINAL'),
+          buildManifiestoTiendaHTML(t, info, its, meta, 'CEDIBLE'),
+        ];
+      });
     }).join('\n');
     const html = `<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8"/>

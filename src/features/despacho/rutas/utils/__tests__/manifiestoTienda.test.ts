@@ -107,6 +107,19 @@ describe('buildManifiestoTiendaHTML', () => {
     expect(firmasIdx).toBeGreaterThan(observacionesIdx);
   });
 
+  it('marca la copia ORIGINAL vs CEDIBLE en el comprobante', () => {
+    const orig = buildManifiestoTiendaHTML(TIENDA, undefined, [item()], META, 'ORIGINAL');
+    const ced  = buildManifiestoTiendaHTML(TIENDA, undefined, [item()], META, 'CEDIBLE');
+    expect(orig).toContain('>ORIGINAL<');
+    expect(orig).not.toContain('>CEDIBLE<');
+    expect(ced).toContain('>CEDIBLE<');
+    expect(ced).not.toContain('>ORIGINAL<');
+  });
+
+  it('por defecto (sin copia) es ORIGINAL', () => {
+    expect(buildManifiestoTiendaHTML(TIENDA, undefined, [item()], META)).toContain('>ORIGINAL<');
+  });
+
   it('muestra placeholder cuando no hay ítems', () => {
     const html = buildManifiestoTiendaHTML(TIENDA, undefined, [], META);
     expect(html).toContain('Sin detalle de ítems etiquetados para esta tienda.');

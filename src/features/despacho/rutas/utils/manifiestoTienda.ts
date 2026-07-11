@@ -48,7 +48,11 @@ export function buildManifiestoTiendaHTML(
   info: (TiendaInfo & { _parada?: boolean }) | undefined,
   items: ItemDetalle[],
   meta: { fecha: string; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string },
+  copia: 'ORIGINAL' | 'CEDIBLE' = 'ORIGINAL',
 ): string {
+  // Marca de copia (esquina inferior izquierda del comprobante): ORIGINAL (navy) vs CEDIBLE (rojo).
+  const copiaColor = copia === 'ORIGINAL' ? '#1a2550' : '#C62828';
+  const copiaMark  = `<span style="font-weight:900;font-size:11px;letter-spacing:1.5px;padding:3px 12px;border-radius:4px;border:1.5px solid ${copiaColor};color:${copiaColor};white-space:nowrap">${copia}</span>`;
   const fechaLabel = new Date(meta.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
   const nP  = items.filter(i => i.tipo === 'P').length;
   const nB  = items.filter(i => i.tipo === 'B').length;
@@ -154,8 +158,10 @@ export function buildManifiestoTiendaHTML(
   </div>
 </div>
 
-<div class="footer">
-  KiosClub · Comprobante de recepción por tienda · ${new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+<div class="footer" style="display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left">
+  ${copiaMark}
+  <span style="flex:1;text-align:center">KiosClub · Comprobante de recepción por tienda · ${new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+  <span style="width:78px;flex-shrink:0"></span>
 </div>
 </div>`;
 }
