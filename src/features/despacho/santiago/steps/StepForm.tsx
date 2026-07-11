@@ -757,6 +757,7 @@ export function StepForm() {
       const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
       const mapearCont = (raw: string): ContenidoSantiago => {
         const c = (raw ?? '').toLowerCase();
+        if (c.includes('chocolate')) return 'Chocolate';   // [Req 1] pallet/bulto de chocolate → CH
         if (c === 'mixto' || c === 'comida-hogar') return 'Mixto';
         const esComida = c.includes('comida') || c.includes('alimento');
         const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
@@ -1797,7 +1798,7 @@ export function StepForm() {
                                 <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed ${item.tipo === 'Pallet' ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-warn bg-[rgba(217,119,6,0.10)]'}`}>
                                   {item.tipo}
                                 </span>
-                                <span className="text-[12px] font-semibold text-text-2">{item.contenido}</span>
+                                <span className="text-[12px] font-semibold text-text-2">{item.contenido === 'Chocolate' ? 'CH' : item.contenido}</span>
                                 <span className="text-[12px] font-bold text-navy">{item.peso}kg</span>
                               </div>
                               <div className="text-[11px] text-text-3 mt-0.5 truncate">
@@ -1894,7 +1895,7 @@ export function StepForm() {
                     </div>
                     <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
                       <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
-                      <div className="text-text-3">{row.savedItem.contenido}</div>
+                      <div className="text-text-3">{row.savedItem.contenido === 'Chocolate' ? 'CH' : row.savedItem.contenido}</div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-success" />

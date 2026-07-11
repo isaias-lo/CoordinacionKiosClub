@@ -1,4 +1,4 @@
-export type TipoContenido = 'comida' | 'hogar' | 'comida-hogar';
+export type TipoContenido = 'comida' | 'hogar' | 'comida-hogar' | 'chocolate';
 export type TipoPaquete = 'pallet' | 'box' | 'contenedor' | 'chocolate';
 
 export interface Tienda {
