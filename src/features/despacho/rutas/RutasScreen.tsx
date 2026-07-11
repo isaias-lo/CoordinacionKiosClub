@@ -125,7 +125,15 @@ export default function RutasScreen() {
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
   const cdRef                 = useRef<number[]>([...CD_INICIAL]);
   const [flota,   setFlota]   = useState<Vehiculo[]>(() => FLOTA_INICIAL.map(v => ({ ...v })));
-  const [flotaActivadaEn, setFlotaActivadaEn] = useState<Record<string, number>>({}); // [F2] patente→ts de activación
+  // [F2] patente→ts de activación (ordena los camiones). Persiste en localStorage → sobrevive al
+  // recargar en este equipo (no se sincroniza cross-device: es una comodidad de armado local).
+  const [flotaActivadaEn, setFlotaActivadaEn] = useState<Record<string, number>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem('flotaOrdenActivacion') || '{}') as Record<string, number>; } catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('flotaOrdenActivacion', JSON.stringify(flotaActivadaEn)); } catch {}
+  }, [flotaActivadaEn]);
   const [cal,     setCal]     = useState<CalRecord>(() => {
     // Fast-path: use localStorage cache written by CalendarioCentral (if fresh)
     try {
