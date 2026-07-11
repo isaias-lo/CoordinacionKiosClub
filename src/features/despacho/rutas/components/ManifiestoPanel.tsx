@@ -248,20 +248,23 @@ tr:nth-child(even) td{background:#f8f8f8}
 /* Impresión: compacta el ritmo vertical para que cada manifiesto entre en UNA hoja. */
 @media print{
   body{padding:0;max-width:none}
-  .hdr{margin-bottom:9px;padding-bottom:7px}
-  .meta,.tienda-hdr{margin-bottom:9px;padding:8px 12px}
-  .sec{margin-bottom:5px}
-  table{margin-bottom:9px}
-  th,td{padding:4px 8px}
-  .totals{margin-bottom:9px}
-  .tc{padding:6px}
-  .tc .n{font-size:22px}
-  .qr-box{margin-bottom:10px;padding:9px 12px}
-  .firma-section{margin-top:10px}
-  .firma-space{height:56px}
-  .firma-fields{padding:7px 10px 8px}
-  .firma-field{padding:4px 0}
-  .footer{margin-top:9px;padding-top:6px}
+  .hdr{margin-bottom:7px;padding-bottom:6px}
+  .meta,.tienda-hdr{margin-bottom:7px;padding:7px 12px}
+  .sec{margin-bottom:4px;padding-bottom:2px}
+  /* La tabla es lo que más crece con los ítems: se compacta (fuente + padding) para ganar hoja. */
+  table{margin-bottom:7px;font-size:10px}
+  th{padding:3px 8px}
+  td{padding:2px 8px}
+  .totals{margin-bottom:7px}
+  .tc{padding:5px}
+  .tc .n{font-size:20px}
+  .qr-box{margin-bottom:8px;padding:8px 12px}
+  .firma-section{margin-top:6px}
+  .firma-hdr{padding:5px 10px;font-size:9px}
+  .firma-space{height:44px}
+  .firma-fields{padding:5px 10px 6px}
+  .firma-field{padding:3px 0}
+  .footer{margin-top:7px;padding-top:5px}
 }
 `;
 

@@ -127,8 +127,8 @@ export function buildManifiestoTiendaHTML(
 <div style="display:flex;gap:18px;font-size:11px;font-weight:700;color:#333;margin-bottom:8px">
   <span>☐ Recibido conforme</span><span>☐ Recibido con observaciones</span>
 </div>
-<div style="border:1px solid #ccc;border-radius:6px;padding:10px 12px;margin-bottom:18px">
-  <div style="font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:22px">Faltantes / daños</div>
+<div style="border:1px solid #ccc;border-radius:6px;padding:8px 12px;margin-bottom:10px">
+  <div style="font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px">Faltantes / daños</div>
 </div>
 
 <div class="firma-section">
