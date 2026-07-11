@@ -16,6 +16,7 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
+import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -1236,12 +1237,15 @@ export function TiendasPage() {
                 ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
                 ...Array.from({ length: Math.max(0, gCH - unsavedChoc)   }, (_, i) => ({ type: 'ch' as const, border: 'rgba(120,53,15,0.35)',  text: '#92400E', bg: 'rgba(120,53,15,0.03)',   label: 'Choc.',   key: `gCH${i}` })),
               ];
+              // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
+              // VISTA; el estado formRows queda igual y los handlers operan por row.id.
+              const orderedRows = ordenarCardsPorTipo(formRows, r => r.pkg);
               return (
                 <div className="grid grid-cols-2 gap-2 mb-2">
-                  {formRows.map((row, rowIdx) => {
+                  {orderedRows.map((row, rowIdx) => {
                 /* Locked / saved card */
                 const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
-                const pkgIdx   = formRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
+                const pkgIdx   = orderedRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
                 const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
                 if (row.saved && row.savedItem) {
                   return (
