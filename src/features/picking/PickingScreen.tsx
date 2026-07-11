@@ -1049,6 +1049,10 @@ export function PickingScreen() {
           if (pNum === undefined) continue; // slot sin numerar (bucket "Sin asignar") — no se imprime [P6]
           const tipo  = (slot.tipo as PickerType) ?? 'P';
           const total = totalByTipo[tipo] ?? 1;
+          // [Req 1] Un slot de chocolate (CH, o pallet con contenido chocolate) muestra "Chocolate"
+          // como contenido en la etiqueta, aunque las categorías del grupo no lo incluyan.
+          const esChoc   = tipo === 'CH' || String((slot as { contenido?: string }).contenido ?? '').toLowerCase().includes('chocolate');
+          const slotCats = esChoc && !allCategories.some(c => /chocolate/i.test(c)) ? ['Chocolate', ...allCategories] : allCategories;
           labels.push({
             value: `${group.storeCod};${sanitizeForBarcode(label)};${refs};${tipo}${pNum};${cats}`,
             palletNum: pNum,
@@ -1056,7 +1060,7 @@ export function PickingScreen() {
             storeCod: group.storeCod,
             pickerLabel: label,
             responsibleKey: group.key,
-            allCategories,
+            allCategories: slotCats,
             totalPickers: allStoreGroups.length,
             stateKey: group.stateKey,
             tipo,
@@ -1464,7 +1468,10 @@ export function PickingScreen() {
                                 const delta = n - current;
                                 const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
                                 const groupCats = [...new Set(group.operations.flatMap(o => o.categories))];
-                                const contenido = categoriesToContenido(groupCats);
+                                // [Req 1] En la sección Chocolates el pallet ES de chocolate → forzar el
+                                // contenido (aunque las categorías del grupo digan otra cosa). El tipo (P)
+                                // no cambia; solo el contenido, que en la card de bodega se ve como "CH".
+                                const contenido = sectionFilter === 'chocolates' ? 'chocolate' : categoriesToContenido(groupCats);
                                 const groupRefs = group.operations.map(o => o.name).join('+');
                                 if (delta > 0) {
                                   for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs);

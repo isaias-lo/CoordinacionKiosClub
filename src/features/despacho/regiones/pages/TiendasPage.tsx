@@ -54,11 +54,13 @@ const TIPO_CLS: Record<TipoContenido, string> = {
   comida:        'bg-[rgba(217,119,6,0.08)] border-warn text-warn',
   hogar:         'bg-[rgba(124,58,237,0.08)] border-hogar text-hogar',
   'comida-hogar':'bg-[rgba(8,145,178,0.08)] border-mixto text-mixto',
+  chocolate:     'bg-[rgba(120,53,15,0.08)] border-[#92400E] text-[#92400E]',
 };
 const TAG_CLS: Record<string, string> = {
   comida:        'bg-[rgba(217,119,6,0.10)] text-warn',
   hogar:         'bg-[rgba(124,58,237,0.10)] text-hogar',
   'comida-hogar':'bg-[rgba(8,145,178,0.10)] text-mixto',
+  chocolate:     'bg-[rgba(120,53,15,0.10)] text-[#92400E]',
   pallet:        'bg-[rgba(37,99,235,0.10)] text-info',
   box:           'bg-[rgba(217,119,6,0.10)] text-warn',
 };
@@ -405,6 +407,7 @@ export function TiendasPage() {
   const PICKING_PKG: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
   const mapearContenido = (raw: string): TipoContenido => {
     const c = (raw ?? '').toLowerCase();
+    if (c.includes('chocolate')) return 'chocolate';   // [Req 1] pallet/bulto de chocolate → contenido CH
     if (c === 'mixto' || c === 'comida-hogar') return 'comida-hogar';
     const esComida = c.includes('comida') || c.includes('alimento');
     const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
@@ -1779,7 +1782,7 @@ export function TiendasPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.pkg]}`}>{item.orden}</span>
-                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.tipo]}`}>{item.tipo === 'comida' ? 'Comida' : item.tipo === 'hogar' ? 'Hogar' : 'Mixto'}</span>
+                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.tipo]}`}>{item.tipo === 'comida' ? 'Comida' : item.tipo === 'hogar' ? 'Hogar' : item.tipo === 'chocolate' ? 'CH' : 'Mixto'}</span>
                         <span className="text-[13px] font-semibold text-text-2">{item.peso}kg</span>
                       </div>
                       <div className="font-mono text-[11px] text-text-3 mt-0.5 truncate">
