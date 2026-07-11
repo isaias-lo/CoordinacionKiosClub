@@ -17,6 +17,7 @@ import { StoreProgressBar } from '../../shared/StoreProgressBar';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
+import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
@@ -1871,10 +1872,13 @@ export function StepForm() {
               ...Array.from({ length: Math.max(0, gB - unsavedB) }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
               ...Array.from({ length: Math.max(0, gC - unsavedC) }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
             ];
+            // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). El estado
+            // formRows queda igual; solo se ordena la VISTA. Los handlers operan por row.id.
+            const orderedRows = ordenarCardsPorTipo(formRows, r => r.tipo);
             return (
           <div className="grid grid-cols-2 gap-2 mb-2">
-            {formRows.map((row, rowIdx) => {
-              const tipoIdx  = formRows.slice(0, rowIdx + 1).filter(r => r.tipo === row.tipo).length;
+            {orderedRows.map((row, rowIdx) => {
+              const tipoIdx  = orderedRows.slice(0, rowIdx + 1).filter(r => r.tipo === row.tipo).length;
               const rowLabel = row.tipo === 'Pallet' ? `P${tipoIdx}` : row.tipo === 'Contenedor' ? `C${tipoIdx}` : row.tipo === 'Chocolate' ? `CH${tipoIdx}` : `B${tipoIdx}`;
               if (row.saved && row.savedItem) {
                 return (
