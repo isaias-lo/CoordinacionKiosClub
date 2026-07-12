@@ -328,6 +328,59 @@ export function TiendasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItems, selectedTienda]);
 
+  /* [Backfill de slots que llegan tarde] El fetch de picking_pallets es asíncrono; si al
+     recargar la página la tienda ya está seleccionada, el rebuild corre ANTES de que lleguen los
+     slots y no se re-dispara → faltan tarjetas (el P2 no aparece hasta navegar y volver). Aquí
+     agregamos UNA fila por cada slot activo sin tarjeta, SIN tocar las filas existentes. */
+  useEffect(() => {
+    if (!selectedTienda) return;
+    const name = selectedTienda;
+    const fullSlots = pickingSlotsFull[name] ?? [];
+    if (fullSlots.length === 0) return;
+    const PKG_MAP: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
+    const mapCont = (raw: string): TipoContenido => {
+      const c = (raw ?? '').toLowerCase();
+      if (c.includes('chocolate')) return 'chocolate';
+      if (c === 'mixto' || c === 'comida-hogar') return 'comida-hogar';
+      const comida = c.includes('comida') || c.includes('alimento');
+      const hogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
+      if (comida && hogar) return 'comida-hogar';
+      if (comida) return 'comida';
+      return 'hogar';
+    };
+    const cur = dispatchData[name] || [];
+    setFormRows(prev => {
+      const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
+      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH');
+      if (missing.length === 0) return prev;
+      const add: FormRow[] = missing.map(s => {
+        const pkg = PKG_MAP[s.tipo] ?? 'pallet';
+        const saved = cur.find(it => it.pickingSlotId === s.id);
+        if (saved) return {
+          id: `bk-saved-${s.id}`, pkg: saved.pkg, tipo: saved.tipo,
+          peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+          ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
+          guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
+          saved: true, savedItem: saved, pickingSlotId: s.id,
+        };
+        return {
+          id: `bk-pick-${s.id}`, pkg, tipo: mapCont(s.contenido),
+          peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
+          ancho: s.ancho != null ? String(s.ancho) : (pkg === 'pallet' ? '100' : ''),
+          largo: s.largo != null ? String(s.largo) : (pkg === 'pallet' ? '120' : ''),
+          guia: '', valor: '', pickingSlotId: s.id,
+        };
+      });
+      return [...prev, ...add];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickingSlotsFull, selectedTienda, dispatchData]);
+
+  /* [Limpiar contador obsoleto] `consumedPickingSlots` era el mecanismo viejo para "consumir" un
+     slot unificado. Ahora la unificación BORRA el slot, así que quedó obsoleto y un valor viejo
+     en localStorage hace que el badge del tile muestre de menos. Se resetea al montar. */
+  useEffect(() => { setConsumedPickingSlots({}); saveConsumedSlots({}); }, []);
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setExtraCods(loadExtraCods());
