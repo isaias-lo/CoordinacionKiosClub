@@ -926,6 +926,59 @@ export function StepForm() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentItems, currentTienda?.cod]);
 
+  /* [Backfill de slots que llegan tarde] El fetch de picking_pallets es asíncrono; si al
+     recargar la página la tienda ya está seleccionada, el rebuild (useLayoutEffect [cod]) corre
+     ANTES de que lleguen los slots y no se re-dispara → faltan tarjetas (p. ej. el P2 no aparece
+     hasta navegar y volver). Aquí agregamos UNA fila por cada slot activo que aún no tenga
+     tarjeta, SIN tocar las filas existentes (no pisa lo que el usuario está escribiendo). */
+  useEffect(() => {
+    if (!currentTienda) return;
+    const cod = currentTienda.cod;
+    const fullSlots = pickingSlotsFull[cod] ?? [];
+    if (fullSlots.length === 0) return;
+    const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
+    const mapC = (raw: string): ContenidoSantiago => {
+      const c = (raw ?? '').toLowerCase();
+      if (c.includes('chocolate')) return 'Chocolate';
+      if (c === 'mixto' || c === 'comida-hogar') return 'Mixto';
+      const comida = c.includes('comida') || c.includes('alimento');
+      const hogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
+      if (comida && hogar) return 'Mixto';
+      if (comida) return 'Comida';
+      return 'Hogar';
+    };
+    const cur = items[cod] || [];
+    setFormRows(prev => {
+      const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
+      // CH lo maneja el rebuild (auto-agregado); aquí sólo P/B/C que llegaron tarde.
+      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH');
+      if (missing.length === 0) return prev;
+      const add: FormRow[] = missing.map(s => {
+        const saved = cur.find(it => it.pickingSlotId === s.id);
+        if (saved) return {
+          id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
+          peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+          largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
+          saved: true, savedItem: saved, pickingSlotId: s.id,
+        };
+        return {
+          id: `bk-pick-${s.id}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet', contenido: mapC(s.contenido),
+          peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
+          largo: s.largo != null ? String(s.largo) : '', ancho: s.ancho != null ? String(s.ancho) : '',
+          pickingSlotId: s.id,
+        };
+      });
+      return [...prev, ...add];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickingSlotsFull, currentTienda?.cod, items]);
+
+  /* [Limpiar contador obsoleto] `consumedSlotsSant` era el mecanismo viejo para "consumir" un
+     slot unificado (el fantasma "¿Con cuál fue unificado?"). Ahora la unificación BORRA el slot,
+     así que ese contador quedó obsoleto y, si arrastra un valor viejo (localStorage), hace que el
+     badge del tile muestre de menos. Se resetea al montar. */
+  useEffect(() => { setConsumedSlotsSant({}); saveConsumedSlotsS({}); }, []);
+
   useEffect(() => { setContenido('Hogar'); prevContenidoRef.current = 'Hogar'; }, [tipo]);
 
   useEffect(() => {
