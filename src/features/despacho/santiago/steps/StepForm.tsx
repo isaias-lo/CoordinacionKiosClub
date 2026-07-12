@@ -84,10 +84,10 @@ interface FormRow {
   saved?: boolean;
   savedItem?: SantiagoItem;
   pickingSlotId?: number;  // FK a picking_pallets.id
-  // [Unificar inline] Marca de "unión pendiente" en la fila TARGET (P1): el source (P3) ya se
-  // sumó al peso y se ocultó; sólo falta ingresar la altura y dar "Agregar" (confirmarUnionInline).
-  // Guardamos snapshots completos de ambas filas para poder cancelar sin perder nada.
-  mergeFrom?: { source: FormRow; targetPrev: FormRow };
+  // [Unificar inline] La fila TARGET (P1) recién unificada: el source ya se sumó y se borró; P1
+  // quedó reabierta con el peso sumado para ingresar la altura y "Agregar" (guardado normal).
+  // Sólo flag visual (banner + ocultar chooser); el merge ya está persistido.
+  mergeReopened?: boolean;
 }
 
 /* ── Resumen inline state type ── */
@@ -1131,17 +1131,15 @@ export function StepForm() {
   };
 
   // Quitar un form row sin guardar (✕) — también borra su slot.
-  // Si es una unión pendiente (mergeFrom), cancelar en vez de borrar: restaura P1 y P3 sin tocar BD.
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
-    if (row?.mergeFrom) { cancelarUnionInline(row); return; }
     deletePickingSlot(row?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
-  // [Unificar inline] La unificación P3→P1 se hace ahora inline (iniciarUnionInline →
-  // card editable → confirmarUnionInline), conservando el código de P1. Ya no se usa
-  // el modal ni /api/picking-pallets/combine para este flujo.
+  // [Unificar inline] La unificación P3→P1 se hace ahora inline y automática (iniciarUnionInline
+  // suma+borra el source en el acto y reabre el target para la altura), conservando el código de
+  // P1. Ya no se usa el modal ni /api/picking-pallets/combine para este flujo.
 
   // Sumar un Bulto/Chocolate a un Pallet/Contenedor: el bulto se elimina (item + slot) y su
   // peso se SUMA al destino (P3 #4). El destino conserva su altura. Sin modal ni altura.
@@ -1202,97 +1200,78 @@ export function StepForm() {
     showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
   };
 
-  /* ── Unificar pallets/contenedores INLINE (P3 → P1, sin modal) ────────────────────────
-     Toma P3 (source) y P1 (target): suma el peso en P1, oculta P3 y deja P1 como card
-     editable con el peso ya sumado para ingresar la altura y "Agregar". El TARGET conserva
-     su slot/código; a nivel bodega no hay fila en despacho_rm todavía, por eso basta con
-     borrar el slot de P3 (como sumarBultoAPallet). No toca Supabase hasta confirmar.
-     Reconcile-safe: la fila TARGET queda "en progreso" → reconcileSavedRows la preserva. */
+  /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────
+     Igual de automático que sumar un CH a un pallet: SIN modal ni confirmación. El peso de P3
+     se suma a P1; P1 conserva su slot/código; P3 se borra (slot + item) en el acto. Luego P1
+     se reabre como card editable con el peso ya sumado para ingresar/ajustar la altura y
+     "Agregar" (guardado normal). Se actualizan AMBOS cachés de slots (light + full) para que
+     NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe:
+     el slot de P1 guarda el peso sumado, así el rebuild lo pre-rellena. */
   const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow) => {
-    const srcPeso  = sourceRow.savedItem?.peso ?? (parseFloat(sourceRow.peso) || 0);
-    const tgtPeso  = targetRow.savedItem?.peso ?? (parseFloat(targetRow.peso) || 0);
-    const peso     = sumPeso(tgtPeso, srcPeso);
-    const prevAlto = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
-    setFormRows(prev => prev
-      .filter(r => r.id !== sourceRow.id)  // quitar/ocultar la card source (queda stasheada en mergeFrom)
-      .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, peso: String(peso),
-            alto: prevAlto ? String(prevAlto) : '',
-            mergeFrom: { source: sourceRow, targetPrev: targetRow } }
-        : r));
-    setFormMergeState(null);
-  };
+    if (!currentTienda) return;
+    const cod       = currentTienda.cod;
+    const srcPeso   = sourceRow.savedItem?.peso ?? (parseFloat(sourceRow.peso) || 0);
+    const tgtPeso   = targetRow.savedItem?.peso ?? (parseFloat(targetRow.peso) || 0);
+    const nuevoPeso = sumPeso(tgtPeso, srcPeso);
+    const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
+    const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
+    const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
+    const srcCode   = sourceRow.tipo === 'Contenedor' ? 'C' : sourceRow.tipo === 'Chocolate' ? 'CH' : sourceRow.tipo === 'Bulto' ? 'B' : 'P';
 
-  // Commit de la unión: P1 conserva su slot/código; se le actualiza peso+alto, se borra el slot
-  // de P3 y se fusionan sus guías. Modelado sobre sumarBultoAPallet + saveRow.
-  const confirmarUnionInline = (row: FormRow) => {
-    if (!currentTienda || !regimen || !row.mergeFrom) return;
-    const p = parseFloat(row.peso);
-    if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-    const isCont = row.tipo === 'Contenedor';
-    const a = isCont ? CONTENEDOR_ALTO : (parseFloat(row.alto) || 0);
-    if (!isCont && !a) { showToast('Ingresa el alto', '#D97706'); return; }
-    const cod = currentTienda.cod;
-    const { source, targetPrev } = row.mergeFrom;
-    const srcItemId = source.savedItem?.id;
-    const tgtItemId = targetPrev.savedItem?.id;
-    const srcSlot = source.pickingSlotId ?? source.savedItem?.pickingSlotId;
-    const tgtSlot = row.pickingSlotId ?? targetPrev.pickingSlotId ?? targetPrev.savedItem?.pickingSlotId;
-    const fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : (parseFloat(row.largo) || 0);
-    const fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : (parseFloat(row.ancho) || 0);
-    const canonical = targetPrev.savedItem?.canonical_id
-      ?? (pickingSlotsFull[cod] ?? []).find(s => s.id === tgtSlot)?.canonical_id
-      ?? undefined;
-
-    const combined: SantiagoItem = {
-      id: targetPrev.savedItem?.id ?? `${cod}-merge-${Date.now()}`,
-      tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
-      peso: p, alto: a, largo: fL, ancho: fA,
-      pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
-      orden: 'P1', estado: targetPrev.savedItem?.estado ?? ESTADO_DEFAULT,
-      pickingSlotId: tgtSlot, canonical_id: canonical,
-    };
-
-    // 1) Items: quitar source + target viejo, agregar el combinado, renumerar (labels posicionales)
+    // 1) Items: quitar el item del source y el del target (el target se re-agrega al "Agregar").
     const cur = items[cod] || [];
-    const remaining = cur.filter(i => !(srcItemId && i.id === srcItemId) && !(tgtItemId && i.id === tgtItemId));
-    let pc = 0, bc = 0, cc = 0, chc = 0;
-    const renumbered = [...remaining, combined].map(i => ({
-      ...i,
-      orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
-    }));
-    dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
+    const filtered = cur.filter(i =>
+      !(sourceRow.savedItem && i.id === sourceRow.savedItem.id) &&
+      !(targetRow.savedItem && i.id === targetRow.savedItem.id));
+    if (filtered.length !== cur.length) {
+      let pc = 0, bc = 0, cc = 0, chc = 0;
+      const renumbered = filtered.map(i => ({
+        ...i,
+        orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
+      }));
+      dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
+    }
 
-    // 2) Caché de slots: quitar el de P3, reflejar dims nuevas en el de P1
+    // 2) BD: sumar el peso al slot del target; fusionar guías y borrar el slot del source.
+    if (tgtSlot) {
+      supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', tgtSlot)
+        .then(({ error }) => { if (error) console.error('[union peso]', error.message); });
+    }
+    if (tgtSlot && srcSlot) finalizarSlotUnion(tgtSlot, srcSlot);
+    else if (srcSlot) supabase.from('picking_pallets').delete().eq('id', srcSlot)
+      .then(({ error }) => { if (error) console.error('[union delete]', error.message); });
+
+    // 3) Cachés de slots: quitar el del source de AMBOS (full para el rebuild; light para gP/badge,
+    //    así no aparece el fantasma), y reflejar el peso sumado en el slot del target (full).
     setPickingSlotsFull(prev => {
       const next = { ...prev };
       next[cod] = (next[cod] ?? [])
         .filter(s => s.id !== srcSlot)
-        .map(s => s.id === tgtSlot ? { ...s, peso_kg: p, alto: a, largo: fL, ancho: fA } : s);
+        .map(s => s.id === tgtSlot ? { ...s, peso_kg: nuevoPeso } : s);
       return next;
     });
+    setPickingSlots(prev => {
+      const arr = [...(prev[cod] ?? [])];
+      const idx = arr.findIndex(s => s.tipo === srcCode);
+      if (idx >= 0) arr.splice(idx, 1);
+      return { ...prev, [cod]: arr };
+    });
 
-    // 3) Form: la fila source ya se quitó en iniciarUnionInline; dejar el target como card guardada
-    setFormRows(prev => prev.map(r => r.id === row.id
-      ? { ...r, saved: true, savedItem: combined, pickingSlotId: tgtSlot,
-          peso: String(p), alto: String(a), largo: String(fL), ancho: String(fA), mergeFrom: undefined }
-      : r));
-
-    // 4) BD: actualizar el slot de P1 in-place (conserva código), fusionar guías y borrar el de P3
-    if (tgtSlot) {
-      supabase.from('picking_pallets').update({
-        peso_kg: p, alto: a, ancho: fA, largo: fL,
-        peso_v: Math.round((a * fL * fA) / 6000 * 10) / 10 || null,
-      }).eq('id', tgtSlot).then(({ error }) => { if (error) console.error('[union peso]', error.message); });
-    }
-    if (tgtSlot && srcSlot) finalizarSlotUnion(tgtSlot, srcSlot);
-    else deletePickingSlot(srcSlot);
-    showToast('Pallets unificados en P1', '#2563EB');
+    // 4) Form: quitar la card source; reabrir el target como card editable con el peso ya sumado
+    //    y la altura previa pre-rellenada, para ingresar/ajustar la altura y "Agregar".
+    setFormRows(prev => prev
+      .filter(r => r.id !== sourceRow.id)
+      .map(r => r.id === targetRow.id
+        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+            alto: prevAlto ? String(prevAlto) : '', mergeReopened: true }
+        : r));
+    setFormMergeState(null);
+    showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
   };
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
-  // source. Fire-and-forget: en el peor caso queda igual que hoy (sin fusión). El caché local
-  // ya quitó el slot del source en confirmarUnionInline.
+  // source en la BD. Fire-and-forget: en el peor caso queda igual que hoy (sin fusión). El caché
+  // local ya quitó el slot del source en iniciarUnionInline.
   const finalizarSlotUnion = async (targetId: number, sourceId: number) => {
     try {
       const { data } = await supabase.from('picking_pallets').select('id, refs').in('id', [targetId, sourceId]);
@@ -1304,16 +1283,6 @@ export function StepForm() {
       }
       await supabase.from('picking_pallets').delete().eq('id', sourceId);
     } catch (e) { console.error('[finalizarSlotUnion]', e); }
-  };
-
-  // Cancelar la unión antes de confirmar: restaurar P1 y volver a mostrar P3. No toca Supabase.
-  const cancelarUnionInline = (row: FormRow) => {
-    if (!row.mergeFrom) return;
-    const { source, targetPrev } = row.mergeFrom;
-    setFormRows(prev => {
-      const restored = prev.map(r => r.id === row.id ? targetPrev : r);
-      return restored.some(r => r.id === source.id) ? restored : [...restored, source];
-    });
   };
 
   const absorbPickingSlotSant = (cod: string, type: 'p' | 'b' | 'c') => {
@@ -2046,16 +2015,12 @@ export function StepForm() {
                     </span>
                     <button onClick={() => removeUnsavedRow(row.id)} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
-                  {row.mergeFrom && (() => {
-                    const src = row.mergeFrom.source;
-                    const srcPeso = src.savedItem?.peso ?? (parseFloat(src.peso) || 0);
-                    return (
-                      <div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
-                        style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                        ⬦ Unificando · +{srcPeso}kg sumados — ingresa la altura y Agregar
-                      </div>
-                    );
-                  })()}
+                  {row.mergeReopened && (
+                    <div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
+                      style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                      ⬦ Unificado · peso ya sumado — ingresa la altura y Agregar
+                    </div>
+                  )}
                   {!isContRow && !isChocTipo && (
                   <div className="flex gap-0.5 mb-2">
                     {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
@@ -2115,11 +2080,11 @@ export function StepForm() {
                       {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas · máx {CHOCOLATE_DIMS.pesoMax} kg
                     </div>
                   )}
-                  <button onClick={() => row.mergeFrom ? confirmarUnionInline(row) : saveRow(row)} disabled={!canSaveRow}
+                  <button onClick={() => saveRow(row)} disabled={!canSaveRow}
                     className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
-                    {row.mergeFrom ? '+ Agregar (unificar)' : '+ Agregar'}
+                    {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
                   </button>
-                  {!row.mergeFrom && (() => {
+                  {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.tipo === 'Bulto' || row.tipo === 'Chocolate';
                     // Combinar: mismo tipo, sin guardar (combine dimensional)
                     const combineTargets = (row.tipo === 'Pallet' || row.tipo === 'Bulto' || row.tipo === 'Contenedor')
@@ -2702,8 +2667,8 @@ export function StepForm() {
         );
       })()}
 
-      {/* [Unificar inline] El paso final de unificación P3→P1 ya no usa modal flotante:
-          se hace inline con confirmarUnionInline (ver iniciarUnionInline / la card editable). */}
+      {/* [Unificar inline] La unificación P3→P1 ya no usa modal flotante: es automática
+          (iniciarUnionInline) y el target se reabre como card editable para la altura. */}
 
       <CalManualSheet
         open={showCalManual}
