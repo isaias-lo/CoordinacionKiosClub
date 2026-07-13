@@ -32,8 +32,6 @@ const GRP_ICON: Record<string, LucideIcon> = {
   rm: Package, costa: Waves, fal: Building2, general: ClipboardList,
 };
 
-const COSTA_CODES    = new Set(['37VIÑ','08RNC','33CON','43CUR','54MPQ']);
-const FAL_CODES      = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
 const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']); // Antofagasta + La Serena
 const RM_MALLS       = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST','49PTA']);
 
@@ -46,12 +44,6 @@ const TYPE_STYLE: Record<StoreType, { bg: string; text: string; border: string; 
   costa:  { bg: '#CCFBF1', text: '#0F766E', border: '#5EEAD4', label: 'COSTA',         shadow: 'rgba(15,118,110,0.16)' },
   region: { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', label: 'REGIÓN',        shadow: 'rgba(194,65,12,0.16)'  },
 };
-
-function storeGroup(cod: string): 'rm' | 'costa' | 'fal' {
-  if (COSTA_CODES.has(cod)) return 'costa';
-  if (FAL_CODES.has(cod))   return 'fal';
-  return 'rm';
-}
 
 function displayCode(cod: string): string {
   return formatCod(cod.replace('PEN', 'PEÑ').replace('VIN', 'VIÑ'));
@@ -128,6 +120,15 @@ export default function CalendarioColumnas({
       ?? cod;
   }
 
+  // Clasifica una tienda en el grupo del calendario usando la metadata real (Supabase + TIENDAS_INICIAL),
+  // en vez de los sets hardcodeados COSTA_CODES/FAL_CODES que no se actualizan al agregar nuevas tiendas.
+  function getGroup(cod: string): 'rm' | 'costa' | 'fal' {
+    const tipo = getTipo(cod);
+    if (tipo === 'region') return 'fal';
+    if (tipo === 'costa')  return 'costa';
+    return 'rm';
+  }
+
   useEffect(() => {
     const loader = source === 'armado'
       ? fetchCalendarioArmado().then(c => c ?? fetchCalendarioCompleto())
@@ -162,7 +163,7 @@ export default function CalendarioColumnas({
     const qup = q.trim().toUpperCase();
     if (!qup) { setSuggest([]); setShowSug(false); return; }
     const res = Object.keys(tiendasAll).filter(c => {
-      if (storeGroup(c) !== grp) return false;
+      if (getGroup(c) !== grp) return false;
       const nombre = (tiendasAll[c].n || '').toUpperCase();
       return c.indexOf(qup) >= 0 || nombre.indexOf(qup) >= 0;
     }).slice(0, 8);
