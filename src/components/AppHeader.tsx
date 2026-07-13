@@ -2,15 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { Check } from 'lucide-react';
-import { useApp } from '../context/AppContext';
 import { REGIONES_TERMINADO_KEY } from './modals/FinishModal';
+import { BodegaTabs } from '../features/despacho/shared/BodegaTabs';
 
 interface AppHeaderProps {
   onFinish: () => void;
 }
 
 export function AppHeader({ onFinish }: AppHeaderProps) {
-  const { state } = useApp();
   const [terminated, setTerminated] = useState(false);
   const [terminatedAt, setTerminatedAt] = useState('');
 
@@ -29,16 +28,7 @@ export function AppHeader({ onFinish }: AppHeaderProps) {
   return (
     <div className="mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2.5 flex-shrink-0"
          style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-      <div className="flex flex-col items-center flex-1 min-w-0">
-        <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
-          NACIONAL
-        </div>
-        {state.dispatchDate && (
-          <div className="font-barlow-condensed text-[11px] text-white/50 tracking-wide leading-none mt-0.5">
-            {state.dispatchDate}
-          </div>
-        )}
-      </div>
+      <BodegaTabs />
 
       {terminated ? (
         <button
