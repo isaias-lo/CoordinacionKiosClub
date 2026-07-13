@@ -7,7 +7,11 @@
 //      y el middleware la reconocerá sin cambios adicionales.
 // ─────────────────────────────────────────────────────────────────
 
-export type RouteEntry = { path: string; label: string };
+// `hidden`: la ruta sigue REGISTRADA (permisos, middleware, ALL_MODULE_PATHS) pero NO se
+// muestra en el sidebar. Se usa para consolidar Nacional+RM/Costa bajo una sola entrada
+// "Bodega" sin cambiar los permisos (santiago sigue registrada → la regla de prefijo la
+// sigue excluyendo → nadie gana acceso nuevo). El acceso a RM/Costa se hace por el tab.
+export type RouteEntry = { path: string; label: string; hidden?: boolean };
 
 export type ModuleGroup = {
   id:     string;
@@ -23,8 +27,10 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     id: 'despacho', label: 'Despacho', color: '#2563EB',
     routes: [
       { path: '/despacho',               label: 'Enrutador'              },
-      { path: '/despacho/regiones',      label: 'Nacional'               },
-      { path: '/despacho/santiago',      label: 'RM / Costa'             },
+      // Bodega: una sola entrada en el sidebar. RM/Costa queda REGISTRADA (permisos intactos)
+      // pero oculta del sidebar; se llega por el tab dentro del módulo BODEGA.
+      { path: '/despacho/regiones',      label: 'Bodega'                 },
+      { path: '/despacho/santiago',      label: 'RM / Costa', hidden: true },
     ],
   },
   {

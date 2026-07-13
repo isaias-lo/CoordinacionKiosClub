@@ -6,8 +6,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Truck, ClipboardCheck, PackageCheck, Shield,
-  Map, Globe, MapPin, Activity, Navigation as NavIcon,
-  Monitor, Store, FileText, AlertTriangle, Inbox,
+  Map, MapPin, Activity, Navigation as NavIcon,
+  Warehouse, Monitor, Store, FileText, AlertTriangle, Inbox,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun,
 } from 'lucide-react';
@@ -20,7 +20,7 @@ import { MODULE_GROUPS } from '@/config/routes';
 const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/':                        LayoutDashboard,
   '/despacho':                Map,
-  '/despacho/regiones':       Globe,
+  '/despacho/regiones':       Warehouse,
   '/despacho/santiago':       MapPin,
   '/despacho/control-flota':  Truck,
   '/despacho/estado':         Activity,
@@ -317,7 +317,7 @@ export function AppSidebar() {
       {/* ── Module Groups ── */}
       <nav aria-label="Navegación principal" className="flex-1 overflow-y-auto overflow-x-hidden py-1 no-scrollbar">
         {MODULE_GROUPS.map(group => {
-          const accessibleRoutes = group.routes.filter(r => canSee(r.path));
+          const accessibleRoutes = group.routes.filter(r => canSee(r.path) && !r.hidden);
           if (!accessibleRoutes.length) return null;
           return (
             <NavGroup

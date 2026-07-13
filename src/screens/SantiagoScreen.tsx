@@ -14,14 +14,11 @@ function SantiagoContent() {
   const router = useRouter();
   const { profile } = useAuth();
   const { state, dispatch } = useSantiago();
-  const [todayLabel,   setTodayLabel]   = useState('');
   const [modalOpen,    setModalOpen]    = useState(false);
   const [terminated,   setTerminated]   = useState(false);
   const [terminatedAt, setTerminatedAt] = useState('');
 
   useEffect(() => {
-    const d = new Date();
-    setTodayLabel(d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'short' }));
     const val = localStorage.getItem(SANTIAGO_TERMINADO_KEY);
     if (val) { setTerminated(true); setTerminatedAt(val); }
   }, []);
@@ -73,16 +70,7 @@ function SantiagoContent() {
           <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
         </button>
 
-        <div className="flex flex-col items-center flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
-            METROPOLITANA / COSTA
-          </div>
-          {todayLabel && (
-            <div className="font-barlow-condensed text-[11px] text-white/50 tracking-wide capitalize leading-none mt-0.5">
-              {todayLabel}
-            </div>
-          )}
-        </div>
+        <BodegaTabs />
 
         {registered ? (
           <button
@@ -119,8 +107,6 @@ function SantiagoContent() {
         )}
 
       </div>
-
-      <BodegaTabs />
 
       <PendingDraftBanner fuente="santiago" />
 

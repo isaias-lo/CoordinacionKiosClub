@@ -1,8 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { BodegaTabs } from '../shared/BodegaTabs';
 import type { ActividadRow, FuenteActividad } from '@/lib/actividad';
@@ -19,7 +17,6 @@ function hora(iso: string): string {
 }
 
 export function ActividadScreen() {
-  const router = useRouter();
   const [rows, setRows]       = useState<ActividadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fecha, setFecha]     = useState(localDate());
@@ -78,23 +75,11 @@ export function ActividadScreen() {
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
       <div className="mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
            style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-        <button onClick={() => router.push('/despacho/regiones')}
-          className="flex items-center justify-center rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-          style={{ width: 36, height: 36, background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.15)' }}>
-          <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-        </button>
-        <div className="flex flex-col items-center flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[15px] font-bold text-white/90 tracking-widest uppercase leading-tight">
-            Actividad de Bodega
-          </div>
-          <div className="font-barlow-condensed text-[11px] text-white/50 tracking-wide leading-none mt-0.5">
-            {visibles.length} registro{visibles.length === 1 ? '' : 's'}
-          </div>
+        <BodegaTabs />
+        <div className="font-barlow-condensed text-[12px] text-white/60 tracking-wide leading-none flex-shrink-0 tabular-nums w-[44px] text-right">
+          {visibles.length}
         </div>
-        <div style={{ width: 36 }} />
       </div>
-
-      <BodegaTabs />
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white border-b border-bg-2 flex-shrink-0">
