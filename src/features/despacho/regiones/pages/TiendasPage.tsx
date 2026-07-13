@@ -17,6 +17,7 @@ import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { unionRefs } from '../../shared/unifyPallets';
+import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { supabase } from '../../../../lib/supabase';
@@ -937,6 +938,8 @@ export function TiendasPage() {
     const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${orden} agregado`, '#16A34A');
+    logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
+      tiendaNombre: selectedTienda, label: ordenToLabel(orden), peso: p, alto: a, slotId: row.pickingSlotId });
 
     // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
     if (row.pickingSlotId) {
@@ -985,6 +988,8 @@ export function TiendasPage() {
         i.pkg === row.savedItem!.pkg && i.orden === row.savedItem!.orden
       );
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
+      logActividad({ accion: 'eliminar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
+        tiendaNombre: selectedTienda, label: ordenToLabel(row.savedItem.orden), slotId: row.savedItem.pickingSlotId });
     }
     deletePickingSlot(row?.pickingSlotId ?? row?.savedItem?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
@@ -1053,6 +1058,9 @@ export function TiendasPage() {
 
     setFormMergeState(null);
     showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
+    logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
+      tiendaNombre: selectedTienda, sourceLabel: bultoRow.pkg === 'chocolate' ? 'CH' : 'bulto',
+      label: palletLabel, peso: bultoPeso });
   };
 
   /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────
@@ -1061,7 +1069,7 @@ export function TiendasPage() {
      se reabre como card editable con el peso ya sumado para ingresar/ajustar la altura y
      "Agregar" (guardado normal). Se actualizan AMBOS cachés de slots (light + full) para que
      NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe. */
-  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow) => {
+  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!selectedTienda) return;
     const name      = selectedTienda;
     const srcPeso   = sourceRow.savedItem?.peso ?? (parseFloat(sourceRow.peso) || 0);
@@ -1115,6 +1123,8 @@ export function TiendasPage() {
         : r));
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
+    logActividad({ accion: 'unificar', fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod,
+      tiendaNombre: name, sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso });
   };
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
@@ -1401,7 +1411,7 @@ export function TiendasPage() {
                                 <div className="flex flex-wrap gap-1">
                                   {combineTargets.map(other => (
                                     <button key={`uni-${other.id}`}
-                                      onClick={() => iniciarUnionInline(row, other)}
+                                      onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
                                       className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                       style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
                                       {getRowLabel(other)}
@@ -1561,7 +1571,7 @@ export function TiendasPage() {
                                 ))}
                                 {combineTargets.map(other => (
                                   <button key={other.id}
-                                    onClick={() => iniciarUnionInline(row, other)}
+                                    onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                     style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
                                     {getRowLabel(other)}

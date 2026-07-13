@@ -18,6 +18,7 @@ import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { unionRefs } from '../../shared/unifyPallets';
+import { logActividad } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
@@ -1137,6 +1138,9 @@ export function StepForm() {
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
+    logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
+      tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: p, alto: a,
+      contenido: savedItem.contenido, slotId: row.pickingSlotId });
 
     // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
     if (row.pickingSlotId) {
@@ -1178,6 +1182,8 @@ export function StepForm() {
     if (row?.savedItem) {
       const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
+      logActividad({ accion: 'eliminar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
+        tiendaNombre: currentTienda.tienda, label: row.savedItem.orden, slotId: row.savedItem.pickingSlotId });
     }
     deletePickingSlot(row?.pickingSlotId ?? row?.savedItem?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
@@ -1251,6 +1257,8 @@ export function StepForm() {
 
     setFormMergeState(null);
     showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
+    logActividad({ accion: 'sumar', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: currentTienda.tienda,
+      sourceLabel: bultoRow.tipo === 'Chocolate' ? 'CH' : 'bulto', label: palletLabel, peso: bultoPeso });
   };
 
   /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────
@@ -1260,7 +1268,7 @@ export function StepForm() {
      "Agregar" (guardado normal). Se actualizan AMBOS cachés de slots (light + full) para que
      NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe:
      el slot de P1 guarda el peso sumado, así el rebuild lo pre-rellena. */
-  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow) => {
+  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!currentTienda) return;
     const cod       = currentTienda.cod;
     const srcPeso   = sourceRow.savedItem?.peso ?? (parseFloat(sourceRow.peso) || 0);
@@ -1320,6 +1328,8 @@ export function StepForm() {
         : r));
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
+    logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: currentTienda.tienda,
+      sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso });
   };
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
@@ -2029,7 +2039,7 @@ export function StepForm() {
                               <div className="flex flex-wrap gap-1">
                                 {combineTargets.map(other => (
                                   <button key={`uni-${other.id}`}
-                                    onClick={() => iniciarUnionInline(row, other)}
+                                    onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                     style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
                                     {getRowLabel(other)}
@@ -2176,7 +2186,7 @@ export function StepForm() {
                               ))}
                               {combineTargets.map(other => (
                                 <button key={other.id}
-                                  onClick={() => iniciarUnionInline(row, other)}
+                                  onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
                                   className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                   style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
                                   {getRowLabel(other)}

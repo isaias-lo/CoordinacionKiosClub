@@ -7,6 +7,7 @@ import { buildRows } from '../../features/despacho/regiones/utils/exportUtils';
 import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/sheetsRegiones';
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
+import { logActividad } from '@/lib/actividad';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
 const todayKey = todayStr();
@@ -83,6 +84,7 @@ export function FinishModal({ open, onClose }: Props) {
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
     dispatch({ type: 'SET_REGISTRADO', payload: true });
+    logActividad({ accion: 'registrar_dia', fuente: 'nacional', tiendas: withItems.length, pallets: tp, bultos: tb });
     localStorage.setItem(REGIONES_TERMINADO_KEY, new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
     // Forzar el push inmediato del estado con registrado=true a shared_session_state,
     // así el banner "sin registrar" no reaparece al día siguiente ni en otro equipo.

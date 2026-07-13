@@ -6,6 +6,7 @@ import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext'
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
+import { logActividad } from '@/lib/actividad';
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -63,6 +64,7 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     // debounce de 2.5s), así el banner "sin registrar" no reaparece al día siguiente aunque el
     // usuario navegue a Inicio enseguida. Ver SantiagoContext (push effect).
     dispatch({ type: 'SET_REGISTRADO', payload: true });
+    logActividad({ accion: 'registrar_dia', fuente: 'rmcosta', tiendas: withItems.length, pallets: tp, bultos: tb });
 
     onClose();
   };
