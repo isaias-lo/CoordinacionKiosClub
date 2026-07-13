@@ -11,7 +11,7 @@ import { usePathname } from 'next/navigation';
 const TABS: { label: string; href: string }[] = [
   { label: 'Nacional',   href: '/despacho/regiones' },
   { label: 'RM / Costa', href: '/despacho/santiago' },
-  // { label: 'Actividad', href: '/despacho/actividad' },  // se agrega en el módulo Actividad
+  { label: 'Actividad',  href: '/despacho/actividad' },
 ];
 
 export function BodegaTabs() {
