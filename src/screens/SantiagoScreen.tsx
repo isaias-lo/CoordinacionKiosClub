@@ -7,6 +7,7 @@ import { SantiagoProvider, useSantiago, SANTIAGO_TERMINADO_KEY } from '../featur
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { SantiagoFinishModal } from '../features/despacho/santiago/components/SantiagoFinishModal';
 import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
+import { BodegaTabs } from '../features/despacho/shared/BodegaTabs';
 import { useAuth } from '../components/AuthProvider';
 
 function SantiagoContent() {
@@ -118,6 +119,8 @@ function SantiagoContent() {
         )}
 
       </div>
+
+      <BodegaTabs />
 
       <PendingDraftBanner fuente="santiago" />
 
