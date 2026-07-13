@@ -77,6 +77,7 @@ export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   "53VAL":{n:"Valdivia",                  z:"Región",               v:"09:00-10:00", region:"Los Ríos",    d:"Errázuriz 1102-1298, Local 1078, Valdivia",                           correos:"53valdivia@kiosclub.com",        tel_encargado:"56926109718"},
   "47PTV":{n:"Puerto Varas",              z:"Región",               v:"09:00-10:00", region:"Los Lagos",   d:"Vicente Pérez Rosales 1285, Puerto Varas",                            correos:"puertovaras@kiosclub.com",       tel_encargado:"56931774652"},
   "50PTM":{n:"Puerto Montt",              z:"Región",               v:"08:00-10:00", region:"Los Lagos",   d:"Illapel 10, Puerto Montt",                                            correos:"puertomontt@kiosclub.com",       tel_encargado:"56995040635"},
+  "57CAS":{n:"Castro",                   z:"Región",               v:"",             region:"Los Lagos",   d:"Ignacio Serrano 574, Castro",                                         correos:"despachocd@kiosclub.com",        tel_encargado:"56920159964"},
 };
 
 export const ALIAS: Record<string, string> = {
