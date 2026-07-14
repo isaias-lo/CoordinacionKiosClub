@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { BodegaTabs } from '../shared/BodegaTabs';
+import { BodegaHeader } from '../shared/BodegaHeader';
 import type { ActividadRow, FuenteActividad } from '@/lib/actividad';
 
 function localDate(): string {
@@ -73,13 +73,11 @@ export function ActividadScreen() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <div className="mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
-           style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-        <BodegaTabs />
-        <div className="font-barlow-condensed text-[12px] text-white/60 tracking-wide leading-none flex-shrink-0 tabular-nums w-[44px] text-right">
-          {visibles.length}
+      <BodegaHeader right={
+        <div className="font-barlow-condensed text-[12px] text-white/60 tracking-wide leading-none flex-shrink-0 tabular-nums text-right">
+          {visibles.length} reg.
         </div>
-      </div>
+      } />
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white border-b border-bg-2 flex-shrink-0">
