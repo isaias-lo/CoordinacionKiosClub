@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_cache } from 'next/cache';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 
 // Credentials are read from server-side env vars only — never from the request body.
@@ -17,6 +18,25 @@ const UID_TTL_MS = 24 * 60 * 60 * 1000;
 // picking_type_ids para "Despacho Tiendas" — datos estáticos, se cachean por fecha.
 let _pickingTypeIds: number[] = [];
 let _pickingTypeDateKey = '';
+
+// URL de Odoo con https:// ya prefijado — computado una sola vez al iniciar el módulo.
+const SRV_URL_PROCESSED = (() => {
+  const u = process.env.ODOO_URL ?? process.env.NEXT_PUBLIC_ODOO_URL ?? '';
+  return u && !u.startsWith('http') ? 'https://' + u : u;
+})();
+
+// Tipo de picking mapeado para el cliente (picking_batch_operations y picking_today_operations).
+type BatchPicking = {
+  id: number; name: string; origin: string; partner: string;
+  fromLocation: string; toLocation: string; state: string;
+  scheduledDate: string; dateDone: string | null; pickingType: string;
+  responsible: string; responsibleId: number | null; lineCount: number; batch: string;
+};
+
+// In-flight deduplication: si llegan dos requests idénticos en la misma instancia lambda
+// antes de que el primero complete, el segundo espera el resultado del primero
+// en vez de disparar otra query a Odoo.
+const _inflightBatch = new Map<string, Promise<Record<string, BatchPicking[]>>>();
 
 /** Formatea una Date como 'YYYY-MM-DD' usando la hora LOCAL (no UTC). */
 function localDateStr(d: Date): string {
@@ -69,6 +89,127 @@ async function odooRpc(baseUrl: string, params: OdooRpcParams): Promise<unknown>
 
   return data.result;
 }
+
+// ─── picking_batch_operations — lógica extraída a scope de módulo para unstable_cache ──
+// Acepta (cods, todayStr, includeDoneToday) como args serializables.
+// Lee uid/url/db/apiKey del estado del módulo (constantes + caché de auth).
+async function _runBatchQuery(
+  cods: string[],
+  todayStr: string,
+  includeDoneToday: boolean,
+): Promise<Record<string, BatchPicking[]>> {
+  const url    = SRV_URL_PROCESSED;
+  const db     = SRV_DB;
+  const apiKey = SRV_API_KEY;
+  const uid    = _cachedUid;
+  if (!uid || !url || !db || !apiKey) throw new Error('Config Odoo no disponible para batch');
+
+  // Picking type cache por fecha (misma lógica que en picking_today_operations)
+  if (_pickingTypeDateKey !== todayStr) {
+    try {
+      const ptRows = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+          [[['name', 'ilike', 'Despacho Tiendas']]],
+          { fields: ['id'], limit: 10 },
+        ],
+      })) as Array<{ id: number }>;
+      _pickingTypeIds    = ptRows.map(r => r.id);
+      _pickingTypeDateKey = todayStr;
+    } catch { /* usa caché anterior */ }
+  }
+
+  const desde = todayStr + ' 00:00:00';
+  const hasta = todayStr + ' 23:59:59';
+  const dateCond: unknown[] = includeDoneToday
+    ? ['|',
+        '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta],
+        '&', ['date_done',      '>=', desde], ['date_done',      '<=', hasta]]
+    : [['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta]];
+
+  const domain: unknown[] = [
+    ['state', 'not in', ['draft', 'cancel']],
+    ['origin', 'not ilike', 'AUDITORIA'],
+    ...dateCond,
+  ];
+  if (_pickingTypeIds.length > 0) {
+    domain.push(['picking_type_id', 'in', _pickingTypeIds]);
+  } else {
+    domain.push(['origin', 'ilike', 'Abastecimiento']);
+  }
+
+  const allPickings = (await odooRpc(url, {
+    service: 'object', method: 'execute_kw',
+    args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
+      fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
+               'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id'],
+      limit: 2000,
+      order: 'scheduled_date asc',
+    }],
+  })) as Array<{
+    id: number; name: string; origin: string | false;
+    partner_id: [number, string] | false;
+    location_id: [number, string]; location_dest_id: [number, string];
+    state: string; scheduled_date: string | false; date_done: string | false;
+    picking_type_id: [number, string]; user_id: [number, string] | false;
+    batch_id: [number, string] | false;
+  }>;
+
+  const allIds = allPickings.map(p => p.id);
+  let linesByPicking: Record<number, number> = {};
+  try {
+    if (allIds.length) {
+      const moves = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.move', 'search_read',
+          [[['picking_id', 'in', allIds], ['state', 'in', ['assigned', 'partially_available', 'done']]]],
+          { fields: ['picking_id'], limit: 10000 },
+        ],
+      })) as Array<{ picking_id: [number, string] | false }>;
+      for (const mv of moves) {
+        if (!Array.isArray(mv.picking_id)) continue;
+        const pid = mv.picking_id[0];
+        linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
+      }
+    }
+  } catch { /* lineCount stays 0 — non-critical */ }
+
+  const byStore: Record<string, BatchPicking[]> = {};
+  for (const cod of cods) byStore[cod] = [];
+  for (const p of allPickings) {
+    const origin = typeof p.origin === 'string' ? p.origin.toUpperCase() : '';
+    const loc    = Array.isArray(p.location_dest_id) ? (p.location_dest_id[1] as string).toUpperCase() : '';
+    const mapped: BatchPicking = {
+      id:            p.id,
+      name:          p.name,
+      origin:        typeof p.origin === 'string' ? p.origin : '',
+      partner:       Array.isArray(p.partner_id) ? p.partner_id[1] : '',
+      fromLocation:  Array.isArray(p.location_id) ? p.location_id[1] : '',
+      toLocation:    Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
+      state:         p.state,
+      scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
+      dateDone:      typeof p.date_done === 'string' ? p.date_done : null,
+      pickingType:   Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
+      responsible:   Array.isArray(p.user_id) ? p.user_id[1] : '',
+      responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
+      lineCount:     linesByPicking[p.id] ?? 0,
+      batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
+    };
+    for (const cod of cods) {
+      if (origin.includes(cod) || loc.includes(cod)) { byStore[cod].push(mapped); break; }
+    }
+  }
+  return byStore;
+}
+
+// Caché de 30 s en el Data Cache de Vercel — compartido entre todas las lambdas del
+// mismo deployment. Sólo el primer request en una ventana de 30 s llega a Odoo;
+// el resto lee el resultado cacheado sin tocar el servidor Odoo.
+const cachedBatchQuery = unstable_cache(
+  _runBatchQuery,
+  ['odoo-picking-batch'],
+  { revalidate: 30 },
+);
 
 export async function POST(req: NextRequest) {
   if (!checkRateLimit(`odoo:${getClientIp(req)}`, { max: 30, windowMs: 60_000 }))
@@ -419,126 +560,32 @@ export async function POST(req: NextRequest) {
     }
 
     /* ── picking_batch_operations ── */
-    // Una sola query reemplaza N llamadas paralelas a picking_today_operations.
-    // Devuelve { byStore: Record<cod, PickingResult[]> } para todas las tiendas pedidas.
     if (action === 'picking_batch_operations') {
-      const cods = ((body.cods as string[] | undefined) ?? []).map(c => c.toUpperCase()).filter(Boolean);
-      if (!cods.length) return NextResponse.json({ byStore: {} });
+      const rawCods = ((body.cods as string[] | undefined) ?? []).map(c => c.toUpperCase()).filter(Boolean);
+      if (!rawCods.length) return NextResponse.json({ byStore: {} });
 
-      const now = new Date();
-      const todayStr = localDateStr(now);
+      const todayStr        = localDateStr(new Date());
+      const includeDoneToday = body.includeDoneToday ?? false;
+      // Ordenar cods para que el mismo conjunto siempre genere la misma cache key
+      const sortedCods = [...rawCods].sort();
+      const batchKey   = `${sortedCods.join(',')}:${todayStr}:${includeDoneToday}`;
 
-      // Picking type cache — reutiliza la misma lógica que picking_today_operations
-      const batchDateKey = todayStr;
-      if (_pickingTypeDateKey !== batchDateKey) {
-        try {
-          const ptRows = (await odooRpc(url, {
-            service: 'object', method: 'execute_kw',
-            args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
-              [[['name', 'ilike', 'Despacho Tiendas']]],
-              { fields: ['id'], limit: 10 },
-            ],
-          })) as Array<{ id: number }>;
-          _pickingTypeIds    = ptRows.map(r => r.id);
-          _pickingTypeDateKey = batchDateKey;
-        } catch { /* usa caché anterior */ }
+      // 1. In-flight deduplication — si ya hay una query idéntica en curso en esta instancia,
+      //    espera su resultado en vez de hacer otra llamada a Odoo.
+      const inflight = _inflightBatch.get(batchKey);
+      if (inflight) {
+        return NextResponse.json({ byStore: await inflight });
       }
 
-      const desde = todayStr + ' 00:00:00';
-      const hasta = todayStr + ' 23:59:59';
-      const dateCond: unknown[] = body.includeDoneToday
-        ? ['|',
-            '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta],
-            '&', ['date_done', '>=', desde],       ['date_done', '<=', hasta]]
-        : [['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta]];
-
-      const domain: unknown[] = [
-        ['state', 'not in', ['draft', 'cancel']],
-        ['origin', 'not ilike', 'AUDITORIA'],
-        ...dateCond,
-      ];
-      if (_pickingTypeIds.length > 0) {
-        domain.push(['picking_type_id', 'in', _pickingTypeIds]);
-      } else {
-        domain.push(['origin', 'ilike', 'Abastecimiento']);
-      }
-
-      const allPickings = (await odooRpc(url, {
-        service: 'object',
-        method: 'execute_kw',
-        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
-          fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
-                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id'],
-          limit: 2000,
-          order: 'scheduled_date asc',
-        }],
-      })) as Array<{
-        id: number; name: string; origin: string | false;
-        partner_id: [number, string] | false;
-        location_id: [number, string]; location_dest_id: [number, string];
-        state: string; scheduled_date: string | false; date_done: string | false;
-        picking_type_id: [number, string]; user_id: [number, string] | false;
-        batch_id: [number, string] | false;
-      }>;
-
-      const allIds = allPickings.map(p => p.id);
-      let linesByPicking: Record<number, number> = {};
+      // 2. cachedBatchQuery usa unstable_cache con 30 s de revalidation en el Data Cache de
+      //    Vercel (compartido entre todas las lambdas). Solo el primer request en 30 s va a Odoo.
+      const promise = cachedBatchQuery(sortedCods, todayStr, includeDoneToday);
+      _inflightBatch.set(batchKey, promise);
       try {
-        if (allIds.length) {
-          const moves = (await odooRpc(url, {
-            service: 'object', method: 'execute_kw',
-            args: [db, uid, apiKey, 'stock.move', 'search_read',
-              [[['picking_id', 'in', allIds],
-                ['state', 'in', ['assigned', 'partially_available', 'done']]]],
-              { fields: ['picking_id'], limit: 10000 },
-            ],
-          })) as Array<{ picking_id: [number, string] | false }>;
-          for (const mv of moves) {
-            if (!Array.isArray(mv.picking_id)) continue;
-            const pid = mv.picking_id[0];
-            linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
-          }
-        }
-      } catch { /* lineCount stays 0 — non-critical */ }
-
-      // Agrupar por cod: un picking pertenece a una tienda si su origin o su location_dest
-      // contiene el código (case-insensitive), igual que el dominio ilike de single-store.
-      const byStore: Record<string, Array<{
-        id: number; name: string; origin: string; partner: string;
-        fromLocation: string; toLocation: string; state: string;
-        scheduledDate: string; dateDone: string | null; pickingType: string;
-        responsible: string; responsibleId: number | null; lineCount: number; batch: string;
-      }>> = {};
-      for (const cod of cods) byStore[cod] = [];
-
-      for (const p of allPickings) {
-        const origin = typeof p.origin === 'string' ? p.origin.toUpperCase() : '';
-        const loc    = Array.isArray(p.location_dest_id) ? (p.location_dest_id[1] as string).toUpperCase() : '';
-        const mapped = {
-          id:            p.id,
-          name:          p.name,
-          origin:        typeof p.origin === 'string' ? p.origin : '',
-          partner:       Array.isArray(p.partner_id) ? p.partner_id[1] : '',
-          fromLocation:  Array.isArray(p.location_id) ? p.location_id[1] : '',
-          toLocation:    Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
-          state:         p.state,
-          scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
-          dateDone:      typeof p.date_done === 'string' ? p.date_done : null,
-          pickingType:   Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
-          responsible:   Array.isArray(p.user_id) ? p.user_id[1] : '',
-          responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
-          lineCount:     linesByPicking[p.id] ?? 0,
-          batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
-        };
-        for (const cod of cods) {
-          if (origin.includes(cod) || loc.includes(cod)) {
-            byStore[cod].push(mapped);
-            break;
-          }
-        }
+        return NextResponse.json({ byStore: await promise });
+      } finally {
+        _inflightBatch.delete(batchKey);
       }
-
-      return NextResponse.json({ byStore });
     }
 
     /* ── picking_stats_range ── */
@@ -1120,7 +1167,7 @@ export async function POST(req: NextRequest) {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'stock.move', 'search_read',
             [[['picking_id', 'in', parsedPickingIds], ['move_orig_ids', '!=', false]]],
-            { fields: ['id', 'picking_id', 'move_orig_ids'], limit: 99999 },
+            { fields: ['id', 'picking_id', 'move_orig_ids'], limit: 10000 },
           ],
         })) as Array<{ id: number; picking_id: [number, string] | false; move_orig_ids: number[] }>;
 
