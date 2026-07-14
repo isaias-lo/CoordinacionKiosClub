@@ -8,6 +8,16 @@ const SRV_DB       = process.env.ODOO_DB       ?? process.env.NEXT_PUBLIC_ODOO_D
 const SRV_USERNAME = process.env.ODOO_USERNAME ?? process.env.NEXT_PUBLIC_ODOO_USERNAME ?? '';
 const SRV_API_KEY  = process.env.ODOO_API_KEY  ?? process.env.NEXT_PUBLIC_ODOO_API_KEY  ?? '';
 
+// ── Caches de módulo ──────────────────────────────────────────────────────────
+// uid: ID permanente del usuario en Odoo — no cambia salvo rotación de credenciales.
+let _cachedUid: number | null = null;
+let _uidExpiry = 0;
+const UID_TTL_MS = 24 * 60 * 60 * 1000;
+
+// picking_type_ids para "Despacho Tiendas" — datos estáticos, se cachean por fecha.
+let _pickingTypeIds: number[] = [];
+let _pickingTypeDateKey = '';
+
 /** Formatea una Date como 'YYYY-MM-DD' usando la hora LOCAL (no UTC). */
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -68,6 +78,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       action: string;
       query?: string;
+      cods?: string[];
       pickings?: string[];
       dateFrom?: string;
       dateTo?: string;
@@ -106,17 +117,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Configuración Odoo no disponible en el servidor.' }, { status: 503 });
     }
 
-    // Authenticate — returns uid (number) or false if wrong credentials
-    const uid = (await odooRpc(url, {
-      service: 'common',
-      method: 'authenticate',
-      args: [db, username, apiKey, {}],
-    })) as number | false | null;
+    // Authenticate — usa caché de módulo para evitar un RPC por cada request.
+    // El uid es el ID permanente del usuario en la DB de Odoo; no cambia salvo rotación
+    // de credenciales. TTL de 24 h es conservador; en la práctica dura indefinidamente.
+    let uid: number;
+    {
+      const nowMs = Date.now();
+      if (_cachedUid !== null && nowMs < _uidExpiry) {
+        uid = _cachedUid;
+      } else {
+        const raw = (await odooRpc(url, {
+          service: 'common',
+          method: 'authenticate',
+          args: [db, username, apiKey, {}],
+        })) as number | false | null;
 
-    if (!uid) {
-      return NextResponse.json({
-        error: `Credenciales incorrectas para la base de datos "${db}". Verifica usuario y contraseña/API key.`,
-      }, { status: 401 });
+        if (!raw) {
+          _cachedUid = null; // invalida caché ante credencial incorrecta
+          return NextResponse.json({
+            error: `Credenciales incorrectas para la base de datos "${db}". Verifica usuario y contraseña/API key.`,
+          }, { status: 401 });
+        }
+        _cachedUid = raw;
+        _uidExpiry = nowMs + UID_TTL_MS;
+        uid = raw;
+      }
     }
 
     /* ── test_connection: just verify auth works ── */
@@ -281,18 +306,22 @@ export async function POST(req: NextRequest) {
       const now = new Date();
       const todayStr = localDateStr(now);
 
-      // Find picking_type IDs for "Despacho Tiendas" — query first, then filter by ID
-      let pickingTypeIds: number[] = [];
-      try {
-        const ptRows = (await odooRpc(url, {
-          service: 'object', method: 'execute_kw',
-          args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
-            [[['name', 'ilike', 'Despacho Tiendas']]],
-            { fields: ['id'], limit: 10 },
-          ],
-        })) as Array<{ id: number }>;
-        pickingTypeIds = ptRows.map(r => r.id);
-      } catch { /* if this fails, skip the filter and return all */ }
+      // Find picking_type IDs for "Despacho Tiendas" — cached by date to avoid extra RPC.
+      const todayKey = localDateStr(new Date());
+      if (_pickingTypeDateKey !== todayKey) {
+        try {
+          const ptRows = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+              [[['name', 'ilike', 'Despacho Tiendas']]],
+              { fields: ['id'], limit: 10 },
+            ],
+          })) as Array<{ id: number }>;
+          _pickingTypeIds    = ptRows.map(r => r.id);
+          _pickingTypeDateKey = todayKey;
+        } catch { /* si falla, usa el caché anterior o vacío */ }
+      }
+      const pickingTypeIds = _pickingTypeIds;
 
       const desde = todayStr + ' 00:00:00';
       const hasta = todayStr + ' 23:59:59';
@@ -387,6 +416,129 @@ export async function POST(req: NextRequest) {
           batch: Array.isArray(p.batch_id) ? p.batch_id[1] : '',
         })),
       });
+    }
+
+    /* ── picking_batch_operations ── */
+    // Una sola query reemplaza N llamadas paralelas a picking_today_operations.
+    // Devuelve { byStore: Record<cod, PickingResult[]> } para todas las tiendas pedidas.
+    if (action === 'picking_batch_operations') {
+      const cods = ((body.cods as string[] | undefined) ?? []).map(c => c.toUpperCase()).filter(Boolean);
+      if (!cods.length) return NextResponse.json({ byStore: {} });
+
+      const now = new Date();
+      const todayStr = localDateStr(now);
+
+      // Picking type cache — reutiliza la misma lógica que picking_today_operations
+      const batchDateKey = todayStr;
+      if (_pickingTypeDateKey !== batchDateKey) {
+        try {
+          const ptRows = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+              [[['name', 'ilike', 'Despacho Tiendas']]],
+              { fields: ['id'], limit: 10 },
+            ],
+          })) as Array<{ id: number }>;
+          _pickingTypeIds    = ptRows.map(r => r.id);
+          _pickingTypeDateKey = batchDateKey;
+        } catch { /* usa caché anterior */ }
+      }
+
+      const desde = todayStr + ' 00:00:00';
+      const hasta = todayStr + ' 23:59:59';
+      const dateCond: unknown[] = body.includeDoneToday
+        ? ['|',
+            '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta],
+            '&', ['date_done', '>=', desde],       ['date_done', '<=', hasta]]
+        : [['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta]];
+
+      const domain: unknown[] = [
+        ['state', 'not in', ['draft', 'cancel']],
+        ['origin', 'not ilike', 'AUDITORIA'],
+        ...dateCond,
+      ];
+      if (_pickingTypeIds.length > 0) {
+        domain.push(['picking_type_id', 'in', _pickingTypeIds]);
+      } else {
+        domain.push(['origin', 'ilike', 'Abastecimiento']);
+      }
+
+      const allPickings = (await odooRpc(url, {
+        service: 'object',
+        method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
+          fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
+                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id'],
+          limit: 2000,
+          order: 'scheduled_date asc',
+        }],
+      })) as Array<{
+        id: number; name: string; origin: string | false;
+        partner_id: [number, string] | false;
+        location_id: [number, string]; location_dest_id: [number, string];
+        state: string; scheduled_date: string | false; date_done: string | false;
+        picking_type_id: [number, string]; user_id: [number, string] | false;
+        batch_id: [number, string] | false;
+      }>;
+
+      const allIds = allPickings.map(p => p.id);
+      let linesByPicking: Record<number, number> = {};
+      try {
+        if (allIds.length) {
+          const moves = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.move', 'search_read',
+              [[['picking_id', 'in', allIds],
+                ['state', 'in', ['assigned', 'partially_available', 'done']]]],
+              { fields: ['picking_id'], limit: 10000 },
+            ],
+          })) as Array<{ picking_id: [number, string] | false }>;
+          for (const mv of moves) {
+            if (!Array.isArray(mv.picking_id)) continue;
+            const pid = mv.picking_id[0];
+            linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
+          }
+        }
+      } catch { /* lineCount stays 0 — non-critical */ }
+
+      // Agrupar por cod: un picking pertenece a una tienda si su origin o su location_dest
+      // contiene el código (case-insensitive), igual que el dominio ilike de single-store.
+      const byStore: Record<string, Array<{
+        id: number; name: string; origin: string; partner: string;
+        fromLocation: string; toLocation: string; state: string;
+        scheduledDate: string; dateDone: string | null; pickingType: string;
+        responsible: string; responsibleId: number | null; lineCount: number; batch: string;
+      }>> = {};
+      for (const cod of cods) byStore[cod] = [];
+
+      for (const p of allPickings) {
+        const origin = typeof p.origin === 'string' ? p.origin.toUpperCase() : '';
+        const loc    = Array.isArray(p.location_dest_id) ? (p.location_dest_id[1] as string).toUpperCase() : '';
+        const mapped = {
+          id:            p.id,
+          name:          p.name,
+          origin:        typeof p.origin === 'string' ? p.origin : '',
+          partner:       Array.isArray(p.partner_id) ? p.partner_id[1] : '',
+          fromLocation:  Array.isArray(p.location_id) ? p.location_id[1] : '',
+          toLocation:    Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
+          state:         p.state,
+          scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
+          dateDone:      typeof p.date_done === 'string' ? p.date_done : null,
+          pickingType:   Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
+          responsible:   Array.isArray(p.user_id) ? p.user_id[1] : '',
+          responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
+          lineCount:     linesByPicking[p.id] ?? 0,
+          batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
+        };
+        for (const cod of cods) {
+          if (origin.includes(cod) || loc.includes(cod)) {
+            byStore[cod].push(mapped);
+            break;
+          }
+        }
+      }
+
+      return NextResponse.json({ byStore });
     }
 
     /* ── picking_stats_range ── */
@@ -1077,17 +1229,22 @@ export async function POST(req: NextRequest) {
       const now = new Date();
       const todayStr = localDateStr(now);
 
-      let pickingTypeIds: number[] = [];
-      try {
-        const ptRows = (await odooRpc(url, {
-          service: 'object', method: 'execute_kw',
-          args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
-            [[['name', 'ilike', 'Despacho Tiendas']]],
-            { fields: ['id'], limit: 10 },
-          ],
-        })) as Array<{ id: number }>;
-        pickingTypeIds = ptRows.map(r => r.id);
-      } catch { /* skip */ }
+      // Reusar caché de picking_type_ids (cargada por picking_today_operations o batch)
+      const todayKeyMS = localDateStr(now);
+      if (_pickingTypeDateKey !== todayKeyMS) {
+        try {
+          const ptRows = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
+              [[['name', 'ilike', 'Despacho Tiendas']]],
+              { fields: ['id'], limit: 10 },
+            ],
+          })) as Array<{ id: number }>;
+          _pickingTypeIds    = ptRows.map(r => r.id);
+          _pickingTypeDateKey = todayKeyMS;
+        } catch { /* usa caché anterior */ }
+      }
+      const pickingTypeIds = _pickingTypeIds;
 
       const domain: unknown[] = [
         ['state', 'not in', ['draft', 'cancel']],

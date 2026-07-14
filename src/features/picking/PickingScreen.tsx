@@ -704,7 +704,7 @@ export function PickingScreen() {
   useEffect(() => {
     if (selectedCods.length > 0) {
       setPanelView('planilla');
-      selectedCods.forEach(cod => void fetchOpsForStore(cod));
+      void fetchBatchOps(selectedCods); // un solo request en vez de N paralelos
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -726,6 +726,45 @@ export function PickingScreen() {
     }
     return result;
   }, [selectedCods, opsMap]);
+
+  // Batch fetch: reemplaza N llamadas paralelas con un solo request para todas las tiendas.
+  const fetchBatchOps = useCallback(async (cods: string[]) => {
+    if (!hasOdoo || !cods.length) return;
+    setLoadingCods(prev => [...prev, ...cods.filter(c => !prev.includes(c))]);
+    try {
+      const res = await fetch('/api/odoo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'picking_batch_operations', cods }),
+      });
+      const data = (await res.json()) as {
+        byStore?: Record<string, Array<{
+          id: number; name: string; origin: string; partner: string;
+          fromLocation: string; toLocation: string; state: string;
+          scheduledDate: string; dateDone: string | null; pickingType: string;
+          responsible: string; responsibleId: number | null; lineCount: number; batch?: string;
+        }>>;
+        error?: string;
+      };
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
+      const updates: Record<string, PickingOperation[]> = {};
+      for (const [cod, pickings] of Object.entries(data.byStore ?? {})) {
+        updates[cod] = (pickings as typeof pickings)
+          .filter(p => isAbastecimientoOp(p.origin) && !p.origin.toUpperCase().startsWith('AUDITORIA'))
+          .map(p => {
+            const { categories, originDate } = parseOrigin(p.origin);
+            return { ...p, categories, storeCodeFromOrigin: resolveStoreCode(p), originDate };
+          });
+      }
+      setOpsMap(prev => ({ ...prev, ...updates }));
+      setErrorCods(prev => prev.filter(c => !cods.includes(c)));
+      setLastRefresh(new Date());
+    } catch (e) {
+      console.error('[picking:batch]', e);
+      setErrorCods(prev => [...new Set([...prev, ...cods.filter(c => !prev.includes(c))])]);
+    } finally {
+      setLoadingCods(prev => prev.filter(c => !cods.includes(c)));
+    }
+  }, [hasOdoo]);
 
   const fetchOpsForStore = useCallback(async (cod: string) => {
     if (!hasOdoo) return;
@@ -765,14 +804,24 @@ export function PickingScreen() {
     }
   }, [hasOdoo, odooConfig]);
 
-  // Auto-refresh silencioso cada 3 minutos para tiendas seleccionadas
+  // Auto-refresh silencioso cada 3 minutos — batch + pausa cuando la pestaña está oculta.
   useEffect(() => {
     if (selectedCods.length === 0) return;
     const id = setInterval(() => {
-      selectedCods.forEach(cod => void fetchOpsForStore(cod));
+      if (document.visibilityState !== 'hidden') void fetchBatchOps(selectedCods);
     }, AUTO_REFRESH_MS);
     return () => clearInterval(id);
-  }, [selectedCods, fetchOpsForStore]);
+  }, [selectedCods, fetchBatchOps]);
+
+  // Refresca cuando la pestaña vuelve a ser visible tras haber estado oculta.
+  useEffect(() => {
+    if (selectedCods.length === 0) return;
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') void fetchBatchOps(selectedCods);
+    };
+    document.addEventListener('visibilitychange', handleVisible);
+    return () => document.removeEventListener('visibilitychange', handleVisible);
+  }, [selectedCods, fetchBatchOps]);
 
   // NOTA: el progreso de Odoo para el semáforo de Bodega lo calcula ahora UNA sola fuente
   // —el refresco batch del servidor en GET /api/picking-store-progress, que atribuye los
@@ -1370,7 +1419,7 @@ export function PickingScreen() {
                   )}
                 </div>
                 <button
-                  onClick={() => selectedCods.forEach(cod => void fetchOpsForStore(cod))}
+                  onClick={() => void fetchBatchOps(selectedCods)}
                   disabled={loadingCods.length > 0}
                   className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer border rounded px-3 py-1.5 transition-all disabled:opacity-40"
                   style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
