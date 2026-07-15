@@ -201,7 +201,10 @@ export default function ConductorHubPage() {
 
   /* ── Hub (autenticado) ──────────────────────────────── */
   return (
-    <div style={{ background: '#0f172a', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+    // Altura ACOTADA (fixed inset:0) + overflow hidden → el tab con flex:1/overflow:auto
+    // scrollea internamente. Con minHeight:100dvh el contenedor crecía y el app-shell lo
+    // recortaba (no dejaba scrollear la ruta). Mismo patrón que las pantallas de bodega.
+    <div style={{ background: '#0f172a', position: 'fixed', inset: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', padding: '18px 18px 0', flexShrink: 0 }}>
@@ -462,7 +465,9 @@ export default function ConductorHubPage() {
 
       {/* ── Tab: Entregar en Tienda ──────────────────────── */}
       {tab === 'recepcion' && (
-        <RecepcionTiendaScreen onBack={() => setTab('ruta')} embedded />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <RecepcionTiendaScreen onBack={() => setTab('ruta')} embedded />
+        </div>
       )}
     </div>
   );
