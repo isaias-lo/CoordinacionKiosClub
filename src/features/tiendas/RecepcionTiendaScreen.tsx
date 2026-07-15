@@ -386,7 +386,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                   {/* CTA */}
                   <button onClick={handleEscanearQR} disabled={!selloLlegada || !selloEstado}
                     style={{ width: '100%', padding: '18px 0', background: !selloLlegada || !selloEstado ? '#E5E7EB' : '#1B2A6B', color: !selloLlegada || !selloEstado ? '#9CA3AF' : '#fff', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 17, cursor: !selloLlegada || !selloEstado ? 'not-allowed' : 'pointer', boxShadow: !selloLlegada || !selloEstado ? 'none' : '0 4px 20px rgba(27,42,107,0.4)', transition: 'all 0.2s', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    {!selloLlegada ? <><Camera size={18} aria-hidden="true" /> Toma la foto del sello primero</> : !selloEstado ? 'Selecciona el estado del sello' : 'Escanear código de barras →'}
+                    {!selloLlegada ? <><Camera size={18} aria-hidden="true" /> Toma la foto del sello primero</> : !selloEstado ? 'Selecciona el estado del sello' : 'Escanear QR del manifiesto →'}
                   </button>
                 </div>
               </div>
@@ -402,8 +402,8 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
                   </button>
                 </div>
                 <div style={{ padding: '4px 20px 10px', textAlign: 'center', flexShrink: 0 }}>
-                  <p style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear código de barras</p>
-                  <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apunta la cámara al código de barras de la etiqueta</p>
+                  <p style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 700, color: '#1F2937' }}>Escanear QR del manifiesto</p>
+                  <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>Apuntá la cámara al <strong>QR del manifiesto de la tienda</strong></p>
                 </div>
                 {qrError && (
                   <div style={{ margin: '0 16px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#B91C1C', fontWeight: 500, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -503,7 +503,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
 
                     <button onClick={() => setStep('scanner')}
                       style={{ width: '100%', background: 'none', border: 'none', color: '#9CA3AF', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: '6px 0' }}>
-                      ← Volver a escanear código
+                      ← Volver a escanear
                     </button>
                   </div>
                 </div>
