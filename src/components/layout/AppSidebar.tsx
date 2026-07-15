@@ -218,7 +218,7 @@ export function AppSidebar() {
     despachador: 'Despachador', admin: 'Admin',
     'recepcion-tienda': 'Recepción',     'supervisor-picking': 'Sup. Abastecimiento',
     'asistente-despacho': 'Asistente', 'coordinador-flota': 'Coord. Flota',
-    supervisor: 'Supervisor',
+    supervisor: 'Supervisor', conductor: 'Conductor',
   };
 
   const sidebarW = effectiveCollapsed ? 64 : 220;

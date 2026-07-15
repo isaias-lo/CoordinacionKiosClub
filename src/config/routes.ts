@@ -157,6 +157,7 @@ export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
   'admin':               ['*'],
   'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/perfil'],
   'coordinador-flota':   ['/despacho', '/despacho/control-flota', '/despacho/config-tiendas', '/panel-choferes', '/perfil'],
+  'conductor':           ['/conductor-hub', '/tiendas', '/perfil'],
 };
 
 export const SYSTEM_ROLE_HOME: Record<string, string> = {
@@ -169,4 +170,5 @@ export const SYSTEM_ROLE_HOME: Record<string, string> = {
   'admin':               '/',
   'asistente-despacho':  '/despacho',
   'coordinador-flota':   '/despacho',
+  'conductor':           '/conductor-hub',
 };
