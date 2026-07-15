@@ -1060,7 +1060,7 @@ export function TiendasPage() {
     showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: bultoRow.pkg === 'chocolate' ? 'CH' : 'bulto',
-      label: palletLabel, peso: bultoPeso });
+      label: palletLabel, peso: bultoPeso, slotId: targetSlotId });
   };
 
   /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────
@@ -1124,7 +1124,7 @@ export function TiendasPage() {
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
     logActividad({ accion: 'unificar', fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod,
-      tiendaNombre: name, sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso });
+      tiendaNombre: name, sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso, slotId: tgtSlot });
   };
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del

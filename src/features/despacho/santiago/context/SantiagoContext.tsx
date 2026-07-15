@@ -161,7 +161,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
     const normalize = (s: SyncableState): SyncableState => ({
       ...s,
-      step: (s.step as string) === 'resumen' ? 'form' : s.step,
+      // Pasos deprecados ('resumen', 'regimen') → 'form' (ya no hay selección de régimen).
+      step: ['resumen', 'regimen'].includes(s.step as string) ? 'form' : s.step,
     });
 
     const handleRemote = (remoteState: unknown) => {
