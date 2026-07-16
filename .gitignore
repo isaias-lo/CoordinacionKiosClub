@@ -42,6 +42,13 @@ next-env.d.ts
 *.njsproj
 *.sln
 *.sw?
+# Archivos sueltos en raíz que no deben publicarse
+/*.jpg
+/*.jpeg
+/*.png
+/*.txt
+.env.example
+
 # Archivos internos de operación del equipo — no se publican
 CLAUDE.md
 FLUJO.md
