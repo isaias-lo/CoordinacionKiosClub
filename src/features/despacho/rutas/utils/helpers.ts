@@ -27,11 +27,14 @@ export function formatCod(cod: string): string {
 
 /**
  * Detecta el código de tienda CONOCIDO al inicio del nombre de un archivo de guía/manifiesto.
- * Usa el número inicial Y las letras Y el dígito final del código: elige el código conocido MÁS
- * LARGO que sea prefijo del nombre, con límite (el carácter siguiente NO puede ser alfanumérico).
- * Así "38SP2-14-04-2026.pdf" → "38SP2" (no "38SP"), y "24SPP" no se confunde con "38SP2".
- * Fallback: si el nombre trae el código escrito distinto (ej. "38PSP" → alias "38SP2"), lo resuelve
- * por regex canónico + alias y verifica que exista en la lista de códigos. Devuelve null si no hay match.
+ * Resuelve dos problemas reales de los nombres que llegan:
+ *   1. Nombre con el código COMPLETO: "38SP2-14-04-2026.pdf" → "38SP2" (elige el código conocido
+ *      MÁS LARGO que sea prefijo, con límite → no se queda en "38SP" ni se confunde con "24SPP").
+ *   2. Nombre con el código TRUNCADO (sin el dígito final): "38SP-16-07-2026.pdf" → "38SP2".
+ *      Se expande el token al ÚNICO código conocido que lo extiende (38SP→38SP2, 24SP→24SPP);
+ *      si hay más de uno (ambiguo) NO se adivina.
+ *   3. Nombre con el código escrito distinto: alias explícito (38PSP→38SP2, 35BNT→35BN2).
+ * Devuelve null si no reconoce ningún código.
  */
 export function matchCodArchivo(
   fileName: string,
@@ -40,20 +43,32 @@ export function matchCodArchivo(
 ): string | null {
   const stripAcc = (s: string) => s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const nameU = stripAcc(fileName.replace(/\.pdf$/i, ''));
+  const codesU = codes.map(c => ({ raw: c, u: stripAcc(c) })).filter(c => c.u);
+
+  // 1) Código conocido MÁS LARGO que sea prefijo del nombre, con límite no-alfanumérico.
   let best = '';
   let bestLen = 0;
-  for (const k of codes) {
-    const ku = stripAcc(k);
-    if (ku && nameU.startsWith(ku) && !/[A-Z0-9]/.test(nameU.charAt(ku.length)) && ku.length > bestLen) {
-      best = k; bestLen = ku.length;
+  for (const { raw, u } of codesU) {
+    if (nameU.startsWith(u) && !/[A-Z0-9]/.test(nameU.charAt(u.length)) && u.length > bestLen) {
+      best = raw; bestLen = u.length;
     }
   }
   if (best) return best;
-  const m = nameU.match(/^(\d{1,2}[A-ZÑ]{2,5}\d?)/);
-  if (m) {
-    const cand = aliases[m[1]] ?? m[1];
-    if (codes.includes(cand)) return cand;
-  }
+
+  // 2) Token de código al inicio del nombre (número inicial + letras + dígito final opcional).
+  const token = nameU.match(/^(\d{1,2}[A-ZÑ]{2,5}\d?)/)?.[1];
+  if (!token) return null;
+
+  // 3) Alias explícito (código escrito distinto) o token que ya es un código exacto.
+  if (aliases[token] && codes.includes(aliases[token])) return aliases[token];
+  const exact = codesU.find(c => c.u === token);
+  if (exact) return exact.raw;
+
+  // 4) Código truncado: expandir al ÚNICO código conocido que empieza con el token
+  //    (ej. "38SP" → "38SP2", "24SP" → "24SPP"). Ambiguo (>1) → no se adivina.
+  const expand = codesU.filter(c => c.u.startsWith(token) && c.u.length > token.length);
+  if (expand.length === 1) return expand[0].raw;
+
   return null;
 }
 
