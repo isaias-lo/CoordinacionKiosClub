@@ -63,7 +63,20 @@
       "Bash(gh pr create --base main --head chore/ui-enterprise-primitives --title 'feat\\(ui\\): primitivas enterprise + tokens shadcn cableados + piloto perfil [visual PR 1]' --body ' *)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(gh pr create --base main --head fix/bodega-unificar-fantasma --title 'fix\\(bodega\\): unificar pallets automático como CH→Pallet \\(sin fantasma, navegación-safe\\)' --body ' *)",
+      "Bash(rm -rf .next)",
+      "Bash(grep -n \"id: \\\\`pick-\\\\|id: \\\\`saved-\\\\|s.peso_kg != null\\\\|peso: row.peso_kg\\\\|SANT_TIPO\\\\|full\\\\[cod\\\\]\\\\|baseSlots\" src/features/despacho/regiones/pages/TiendasPage.tsx)",
+      "Bash(gh pr create --base main --head fix/bodega-slots-reload-contador --title 'fix\\(bodega\\): slots que llegan tarde al recargar + contador de tile obsoleto' --body ' *)",
+      "Bash(gh pr *)",
+      "Bash(gh pr create --base main --head feat/bodega-tabs --title 'feat\\(bodega\\): barra de tabs BODEGA \\(Nacional / RM-Costa\\)' --body ' *)",
+      "mcp__supabase__apply_migration",
+      "Bash(grep -n \"const saveRow = \\\\|const iniciarUnionInline = \\\\|const sumarBultoAPallet = \\\\|const deleteSavedRow = \\\\|iniciarUnionInline\\(row, other\\)\\\\|showToast\\(\\\\`✓ \\\\${savedItem.orden}\\\\|showToast\\(\\\\`Sumado a \\\\|currentTienda.tienda\\\\|import { sumPeso }\" src/features/despacho/santiago/steps/StepForm.tsx)",
+      "Bash(grep -n \"const saveRow = \\\\|const iniciarUnionInline = \\\\|const sumarBultoAPallet = \\\\|const deleteSavedRow = \\\\|showToast\\(\\\\`✓ \\\\${orden} agregado\\\\`\\\\|showToast\\(\\\\`Sumado a \\\\|Unificado \\(+\\\\|iniciarUnionInline\\(row, other\\)\\\\|import { sumPeso }\\\\|const TIENDAS \" src/features/despacho/regiones/pages/TiendasPage.tsx)",
+      "Bash(gh pr create --base main --head feat/bodega-actividad --title 'feat\\(bodega\\): tab Actividad — trazabilidad \"quién hizo qué\" por usuario' --body ' *)",
+      "Bash(gh pr create --base main --head feat/bodega-header-tabs --title 'refactor\\(bodega\\): tabs en el banner + sidebar consolidado en \"Bodega\"' --body ' *)",
+      "Bash(grep -rn \"export function norm\\\\|const norm\\\\|\\\\[A-Z\\\\]{2\\\\|\\\\[0-9\\\\]{0,2}\\\\|SEÑOR\\\\|SENOR\\\\|SE.OR\\\\|match\\(\" src/features/despacho/rutas/utils/helpers.ts)",
+      "Bash(grep -rnE \"\\\\[A-Z[^]]*\\\\]\\\\{2|\\\\\\\\\\\\\\\\d\\\\{0,2\\\\}\\\\[A-Z|\\\\[0-9\\\\]\\\\{0,2\\\\}\\\\[A-Z\" src/)"
     ]
   }
 }

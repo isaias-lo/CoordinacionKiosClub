@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../data/tiendasSantiago';
-import { formatCod } from '../../rutas/utils/helpers';
+import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
@@ -398,13 +398,10 @@ export function StepForm() {
     let assigned = 0, skipped = 0;
     for (const file of Array.from(files)) {
       const clean = file.name.replace(/\.pdf$/i, '');
-      const match = clean.match(/^(\d{1,2}[A-ZÁÉÍÓÚÑ]{2,4}\d?)/i);
-      if (!match) { skipped++; continue; }
-      const rawCodMatch = match[1].toUpperCase();
-      const rawCod = GUIDE_COD_ALIAS[rawCodMatch] || rawCodMatch;  // resolver alias (ej. 35BNT → 35BN2)
-      const norm   = rawCod.normalize('NFD').replace(/[̀-ͯ]/g, '');
-      const storeCod = codMap[rawCod] || codMap[norm]
-        || Object.keys(codMap).find(k => k.normalize('NFD').replace(/[̀-ͯ]/g, '') === norm);
+      // Código de tienda CONOCIDO más largo con el que empieza el nombre (número inicial + letras +
+      // dígito final). Evita que "38SP2" se lea como "38SP" o se confunda con "24SPP".
+      // Fallback (alias, ej. 35BNT → 35BN2) resuelto dentro del helper.
+      const storeCod = matchCodArchivo(file.name, Object.keys(codMap), GUIDE_COD_ALIAS);
       if (!storeCod) { skipped++; continue; }
       try {
         const data = await processPdf(file);
