@@ -25,6 +25,38 @@ export function formatCod(cod: string): string {
   return cod.replace(/^(\d+)([A-Za-zÑñ])/, '$1 $2');
 }
 
+/**
+ * Detecta el código de tienda CONOCIDO al inicio del nombre de un archivo de guía/manifiesto.
+ * Usa el número inicial Y las letras Y el dígito final del código: elige el código conocido MÁS
+ * LARGO que sea prefijo del nombre, con límite (el carácter siguiente NO puede ser alfanumérico).
+ * Así "38SP2-14-04-2026.pdf" → "38SP2" (no "38SP"), y "24SPP" no se confunde con "38SP2".
+ * Fallback: si el nombre trae el código escrito distinto (ej. "38PSP" → alias "38SP2"), lo resuelve
+ * por regex canónico + alias y verifica que exista en la lista de códigos. Devuelve null si no hay match.
+ */
+export function matchCodArchivo(
+  fileName: string,
+  codes: string[],
+  aliases: Record<string, string> = {},
+): string | null {
+  const stripAcc = (s: string) => s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const nameU = stripAcc(fileName.replace(/\.pdf$/i, ''));
+  let best = '';
+  let bestLen = 0;
+  for (const k of codes) {
+    const ku = stripAcc(k);
+    if (ku && nameU.startsWith(ku) && !/[A-Z0-9]/.test(nameU.charAt(ku.length)) && ku.length > bestLen) {
+      best = k; bestLen = ku.length;
+    }
+  }
+  if (best) return best;
+  const m = nameU.match(/^(\d{1,2}[A-ZÑ]{2,5}\d?)/);
+  if (m) {
+    const cand = aliases[m[1]] ?? m[1];
+    if (codes.includes(cand)) return cand;
+  }
+  return null;
+}
+
 export function fechaTxt(fechaStr: string): string {
   if (!fechaStr) return '';
   return new Date(fechaStr + 'T12:00:00').toLocaleDateString('es-CL', {

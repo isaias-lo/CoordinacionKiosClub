@@ -73,7 +73,7 @@ export function StepResumen() {
   const doReset = async () => {
     dispatch({ type: 'RESET' });
     // Push empty state immediately — don't rely on debounce (cancelled on navigation)
-    const emptyPayload = { step: 'regimen' as const, regimen: null, items: {} };
+    const emptyPayload = { step: 'form' as const, regimen: 'Seco' as const, items: {} };
     try {
       await pushSessionState('santiago', emptyPayload, user?.id ?? undefined);
       localStorage.setItem(SANTIAGO_STATE_KEY, JSON.stringify(emptyPayload));

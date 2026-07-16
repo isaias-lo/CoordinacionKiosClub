@@ -6,7 +6,7 @@ import { Navigation, GripVertical, ChevronLeft, ClipboardList } from 'lucide-rea
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
-import { formatCod } from '../../rutas/utils/helpers';
+import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { useOdooProgress } from '../../shared/useOdooProgress';
@@ -786,14 +786,13 @@ export function TiendasPage() {
     Object.values(TIENDAS).forEach(t => { codToName[t.cod] = t.name; });
     let assigned = 0, skipped = 0;
     for (const file of Array.from(files)) {
-      /* Lee el código completo al inicio del nombre: ej. "53VAL" de "53VAL-14-04-2026_163720_ORIGINAL.pdf" */
+      /* Detecta el código de tienda CONOCIDO más largo con el que empieza el nombre (número inicial +
+         letras + dígito final). Así "38SP2" no se confunde con "38SP" ni con "24SPP".
+         Ej: "53VAL-14-04-2026...pdf" → 53VAL; "38SP2-...pdf" → 38SP2. */
       const cleanName = file.name.replace(/\.pdf$/i, '');
-      const match = cleanName.match(/^(\d{2}[A-Z]{2,3}\d?)/);
-      if (!match) { console.warn('[PDF Multi] Sin código reconocible:', file.name); skipped++; continue; }
-      const COD_ALIASES: Record<string, string> = { '38PSP': '38SP2' };
-      const cod = COD_ALIASES[match[1]] ?? match[1];
+      const cod = matchCodArchivo(file.name, Object.keys(codToName), { '38PSP': '38SP2' });
+      if (!cod) { console.warn('[PDF Multi] Sin código reconocible:', file.name); skipped++; continue; }
       const storeName = codToName[cod];
-      if (!storeName) { console.warn('[PDF Multi] Código no encontrado:', match[1], 'en', file.name); skipped++; continue; }
       try {
         const data = await processPdf(file);
         /* Si el PDF no tiene guías internas, usa el nombre del archivo (código completo) como referencia */
@@ -1060,7 +1059,7 @@ export function TiendasPage() {
     showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: bultoRow.pkg === 'chocolate' ? 'CH' : 'bulto',
-      label: palletLabel, peso: bultoPeso });
+      label: palletLabel, peso: bultoPeso, slotId: targetSlotId });
   };
 
   /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────
@@ -1124,7 +1123,7 @@ export function TiendasPage() {
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
     logActividad({ accion: 'unificar', fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod,
-      tiendaNombre: name, sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso });
+      tiendaNombre: name, sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso, slotId: tgtSlot });
   };
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
