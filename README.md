@@ -1,50 +1,37 @@
-# KiosClub — Sistema de Despacho
+# KiosClub — Plataforma de Gestión de Despacho
 
-Aplicación web interna para gestionar el despacho diario de productos desde bodega hacia tiendas, tanto a nivel nacional (Regiones) como en la Región Metropolitana (Santiago), con enrutamiento de vehículos y auditoría de operaciones contra Odoo.
+Plataforma web interna para gestionar el ciclo completo de despacho: desde la preparación en bodega hasta la confirmación de entrega en tienda. Integra Odoo como ERP central y extiende su operativa con visibilidad en tiempo real, generación de documentos de transporte y trazabilidad del proceso.
 
 ---
 
-## Funcionalidades
+## Módulos principales
 
-### Bodega Regiones (`/despacho/regiones`)
-- Selección de tienda destino con datos de la guía (orden, tipo de contenido, paquete, dimensiones, peso, valor)
-- Lectura automática de PDF de guías para extraer números de orden y montos
-- Exportación a Excel usando una plantilla predefinida (con fallback al template embebido si el guardado en `localStorage` está corrupto)
-- Envío automático de registros a Google Sheets (`DespachoRegiones`) con selector de transporte **Carga / Falabella**
-- Columnas enviadas a Sheets: ID, fecha, código tienda, tipo cargamento, régimen, transporte, tipo de carga, región/comuna destino, tipo de comuna (Urbano/Extraurbano), peso, dimensiones, peso volumétrico, estado, guía, valor
+### Picking (`/picking`)
+Tablero de supervisión del picking en bodega conectado a Odoo en tiempo real. Muestra las operaciones activas agrupadas por tienda y por operador, con su estado, cantidad de líneas y prioridad. Se actualiza automáticamente en segundo plano. Genera el documento de picking con código de barras que acompaña cada pallet durante el despacho.
 
-### Bodega Santiago (`/despacho/santiago`)
-- Flujo por pasos: selección de régimen → formulario de ítems → resumen en tiempo real
-- Formulario individual (un ítem a la vez) y formulario multi-ítem con preset de cantidades
-- Calendario de tiendas para hoy con soporte de agregar/retirar tiendas del día
-- Panel resumen con edición inline de cualquier ítem ya agregado
-- Botón **Enrutar** disponible en tiempo real desde la vista de lista y desde el resumen (mobile y desktop)
-- Envío a Google Sheets (`DespachoSantiago`)
+### Despacho Regiones (`/despacho/regiones`)
+Gestión del despacho hacia tiendas fuera de la Región Metropolitana. Cubre el registro de guías, la generación automática de la plantilla Sendu (etiquetas para el transportista Falabella) y el manifiesto para el conductor. También registra la patente del vehículo en carga y gestiona la confirmación de recepción fotográfica en tienda.
 
-### Enrutador (`/despacho/santiago/rutas`)
-- Pre-carga automática de las tiendas y cantidades (pallets/bultos) registradas en Bodega Santiago
-- Modos: **Calendario** (asignación automática por día) y **Manual** (texto libre)
-- Asignación óptima de tiendas a vehículos con algoritmo nearest-neighbor por capacidad de pallets
-- Vista de comparación Manual vs. Óptima con rebalanceo automático si un vehículo queda sobre su capacidad
-- Paradas adicionales (entregas/retiros externos con geolocalización Google Maps)
-- Sección de configuración de calendarios semanales por corredor
-- Exportación de rutas a PDF e historial en Google Sheets
-- Actualización de datos de tiendas, flota y calendario desde Google Sheets
+### Despacho Santiago (`/despacho/santiago`)
+Flujo de registro de despacho para la Región Metropolitana y Costa. Maneja el calendario de tiendas del día, los ítems por tienda (pallets/bultos) y el envío de registros a Google Sheets.
+
+### Rutas (`/despacho/rutas`)
+Optimización de recorridos para el área metropolitana. Integra Google Maps para calcular rutas eficientes considerando tipo de tienda (mall, strip center), ventanas horarias de recepción y capacidad de la flota. Permite ajuste manual ante imprevistos (cortes de ruta, desvíos) y exporta las rutas a PDF.
+
+### Control de flota (`/despacho/control-flota`)
+Administración de la flota de vehículos: capacidad, patente y conductor asignado. Los conductores registran la carga escaneando el código de barras de cada pallet y asociándolo a la patente del vehículo.
+
+### Estado de despacho (`/despacho/estado`)
+Panel de trazabilidad: permite consultar el estado de cualquier despacho por código, ver qué salió, en qué vehículo y si fue confirmado en destino.
+
+### Recepción en tienda (`/recepcion-tienda`)
+Flujo de confirmación de entrega. El encargado de tienda escanea el QR del manifiesto y sube una fotografía de los pallets recibidos como evidencia de recepción conforme.
 
 ### Auditoría (`/auditoria`)
-- Búsqueda de operaciones de salida (albaranes) en Odoo por código de operación
-- Proxy server-side (`/api/odoo`) que autentica contra Odoo vía JSON-RPC sin exponer credenciales al browser
-- Configuración de conexión (URL, base de datos, usuario, API Key) guardada en `localStorage`
-- Envío de resultados a Google Sheets (`Auditoria`)
+Consulta de operaciones de salida en Odoo (albaranes/transferencias) por código. Permite revisar el historial de movimientos de una tienda y enviarlo a Google Sheets para análisis.
 
-### Historial (`/historial`)
-- Listado de todos los despachos de Regiones realizados (guardados en `localStorage`)
-- Vista por tienda con totales de pallets, bultos, peso y monto
-- Re-exportación de cualquier despacho anterior a Excel
-
-### Pantalla de inicio (`/`)
-- Estadísticas acumuladas: días despachados, pallets totales y bultos totales
-- Acceso directo a Regiones, Santiago, Rutas, Auditoría e Historial
+### Panel de operaciones (`/panel-operaciones`)
+Vista consolidada del estado operativo del día para el equipo de coordinación.
 
 ---
 
@@ -55,12 +42,29 @@ Aplicación web interna para gestionar el despacho diario de productos desde bod
 | Framework | Next.js 15 (App Router) |
 | UI | React 19 + Tailwind CSS 3 |
 | Lenguaje | TypeScript 5 |
-| PDF | pdfjs-dist 5 |
-| Excel | xlsx (SheetJS) |
-| Mapas | Google Maps API (rutas) |
-| Persistencia | localStorage |
-| Integración externa | Google Apps Script (Sheets) · Odoo JSON-RPC |
+| Base de datos / Auth | Supabase (PostgreSQL + Auth + Realtime) |
+| ERP | Odoo — integración vía JSON-RPC (proxy server-side) |
+| Mapas | Google Maps API |
+| Documentos | pdfjs-dist · xlsx (SheetJS) |
+| Google Sheets | Google Sheets API (service account) |
+| Transporte | Sendu API (etiquetas y guías regiones) |
 | Despliegue | Vercel |
+
+---
+
+## Autenticación y roles
+
+El acceso está controlado por Supabase Auth con roles definidos en el JWT:
+
+| Rol | Acceso |
+|---|---|
+| `admin` | Acceso total, bypassa todos los permisos |
+| `despachador` | Módulos de despacho (regiones, santiago, rutas) |
+| `supervisor-picking` | Módulo de picking |
+| `auditor` / `admin-auditoria` | Módulo de auditoría |
+| `recepcion-tienda` | Confirmación de recepción |
+| `coordinador-flota` | Control de flota |
+| `supervisor` | Vista consolidada |
 
 ---
 
@@ -70,24 +74,37 @@ Aplicación web interna para gestionar el despacho diario de productos desde bod
 npm install
 ```
 
-Crear `.env.local` con la clave de Google Maps:
+Crear `.env.local` con las siguientes variables:
 
 ```env
-NEXT_PUBLIC_GOOGLE_MAPS_KEY=tu_clave_aqui
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Odoo
+NEXT_PUBLIC_ODOO_URL=
+NEXT_PUBLIC_ODOO_DB=
+NEXT_PUBLIC_ODOO_USERNAME=
+NEXT_PUBLIC_ODOO_API_KEY=
+
+# Google
+GOOGLE_SPREADSHEET_ID=
+GOOGLE_SERVICE_ACCOUNT_JSON=
+
+# Auth OTP
+OTP_SECRET=
+GMAIL_USER=
+GMAIL_APP_PASS=
 ```
 
 ## Desarrollo
 
 ```bash
-npm run dev
-# http://localhost:3000
-```
-
-## Compilación
-
-```bash
-npm run build
-npm start
+npm run dev       # http://localhost:3000
+npm run build     # Build de producción
+npm test          # Tests unitarios (vitest)
+npm run lint      # Linting
 ```
 
 ---
@@ -96,61 +113,41 @@ npm start
 
 ```
 src/
-├── app/
-│   ├── page.tsx                          # Pantalla de inicio
-│   ├── auditoria/page.tsx                # Auditoría Odoo
-│   ├── historial/page.tsx                # Historial de despachos
+├── app/                          # Rutas Next.js (App Router)
+│   ├── api/                      # API Routes (server-side)
+│   │   ├── odoo/                 # Proxy JSON-RPC → Odoo
+│   │   ├── tiendas/              # Sync Google Sheets ↔ Supabase
+│   │   └── ...
+│   └── [feature]/page.tsx        # Páginas por módulo
+│
+├── features/                     # Lógica de dominio por módulo
+│   ├── picking/                  # Picking en bodega
+│   │   ├── PickingScreen.tsx
+│   │   ├── hooks/usePickingOdoo.ts
+│   │   └── components/
 │   ├── despacho/
-│   │   ├── regiones/page.tsx             # Bodega Regiones
-│   │   └── santiago/
-│   │       ├── page.tsx                  # Bodega Santiago
-│   │       └── rutas/page.tsx            # Enrutador
-│   └── api/
-│       └── odoo/route.ts                 # Proxy server-side Odoo
+│   │   ├── regiones/             # Despacho a regiones
+│   │   ├── santiago/             # Despacho RM
+│   │   ├── rutas/                # Optimización de rutas
+│   │   ├── estado/               # Trazabilidad
+│   │   └── control-flota/        # Gestión de flota
+│   ├── auditoria/                # Auditoría Odoo
+│   ├── tiendas/                  # Recepción QR en tienda
+│   └── control-interno/          # Admin: tiendas, calendario
 │
-├── features/
-│   ├── auditoria/
-│   │   ├── AuditoriaScreen.tsx
-│   │   ├── data/todasLasTiendas.ts
-│   │   └── utils/odooApi.ts · sheetsAuditoria.ts
-│   │
-│   └── despacho/
-│       ├── regiones/
-│       │   ├── pages/TiendasPage.tsx · ResumenPage.tsx
-│       │   ├── components/TabBar · StatsBar · BottomBar
-│       │   ├── data/tiendas.ts
-│       │   └── utils/exportUtils · pdfUtils · sheetsRegiones
-│       │
-│       ├── santiago/
-│       │   ├── SantiagoPage.tsx
-│       │   ├── steps/StepRegimen · StepForm · StepResumen
-│       │   ├── context/SantiagoContext.tsx
-│       │   ├── data/tiendasSantiago.ts
-│       │   └── utils/sheetsSantiago.ts
-│       │
-│       └── rutas/
-│           ├── RutasScreen.tsx
-│           ├── components/
-│           │   ├── InputSection · CalendarMode · ManualMode
-│           │   ├── ResultsSection · RouteCard · ComparisonView
-│           │   ├── ManualDispatch · ParadasAdicionales
-│           │   ├── ConfigPanel · Header · MapSection · FlotaGrid
-│           ├── data/tiendas · flota · calendar
-│           └── utils/routing · maps · sheets · helpers
+├── lib/                          # Utilidades compartidas
+│   ├── supabase.ts               # Cliente browser
+│   ├── supabaseServer.ts         # Cliente server (service role)
+│   └── apiAuth.ts                # Validación JWT API routes
 │
-├── components/                           # Componentes globales (Toast, modals…)
-├── context/AppContext.tsx                # Estado global (despacho regiones, toast)
-├── data/template.ts                      # Plantilla Excel embebida (base64)
-└── types.ts                              # DispatchItem · Tienda · HistoryEntry
+└── components/                   # Componentes globales
+    └── AuthProvider.tsx          # Contexto de autenticación
 ```
 
 ---
 
-## Tipos de dato principales
+## Integración con Odoo
 
-- **`DispatchItem`** — paquete (pallet o bulto) con orden, tipo de contenido, guía, peso, dimensiones y valor (Regiones)
-- **`SantiagoItem`** — ítem de despacho Santiago con tipo, contenido, dimensiones, peso volumétrico y estado
-- **`TiendaSantiago`** — tienda RM con código, dirección, ventana horaria y días de despacho
-- **`HistoryEntry`** — snapshot de un día de despacho guardado en historial
-- **`StoreItem`** — tienda con pallets/bultos para el enrutador `{ c, p, b }`
-- **`Vehiculo`** — vehículo de la flota con capacidad, patente y conductor
+Todas las llamadas a Odoo pasan por el proxy server-side `/api/odoo` — el browser nunca se comunica directamente con el ERP. El proxy autentica con credenciales de servicio, mantiene caché del UID de autenticación (24h) y de los tipos de picking (por día), y utiliza un sistema de deduplicación de requests en vuelo para evitar saturación de workers.
+
+Para el picking, la acción `picking_batch_operations` consolida en 2 RPCs lo que antes requería N × 4 RPCs paralelos (uno por tienda seleccionada).

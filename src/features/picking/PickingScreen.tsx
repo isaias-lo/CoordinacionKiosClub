@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
 import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
-import { getOdooConfig } from '@/features/auditoria/utils/odooApi'; // deprecated — config now server-side
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
@@ -18,20 +17,21 @@ import { fetchNotificacionesPendientes, subscribeToNotificaciones } from '@/lib/
 
 // ─── Local modules ────────────────────────────────────────────────────────────
 import type {
-  PickingOperation, PickerGroup, TodayStore, OdooConfig,
+  PickingOperation, PickerGroup, TodayStore,
   PickingSession, PalletSlot, PrintRecord, SessionStateRow,
   SupervisorPrint, PickerNameChange, SupervisorPresence, PickerType, SectionFilter,
 } from './picking-types';
 import {
   SAVED_NAMES_KEY, SESSION_KEY, SECTION_FILTER_KEY, COLS_PER_ROW_KEY,
-  LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY, AUTO_REFRESH_MS, CANONICAL_PICKER_KEYS,
+  LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY, CANONICAL_PICKER_KEYS,
 } from './picking-types';
 import {
-  todayISO, getStoreName, parseOrigin, isAbastecimientoOp, resolveStoreCode, isPickeableState,
+  todayISO, getStoreName, isPickeableState,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
   computePalletNums, isSinAsignar,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
+import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
 import { ActivityTab } from './components/ActivityTab';
@@ -72,9 +72,6 @@ export function PickingScreen() {
   const router = useRouter();
   const { profile } = useAuth();
   const { showToast } = useApp();
-
-  const odooConfig: OdooConfig = getOdooConfig() ?? { url: '', db: '', username: '', apiKey: '' };
-  const hasOdoo = !!odooConfig.url;
 
   // Auth token for authenticated picking API calls
   const tokenRef = useRef<string>('');
@@ -132,10 +129,11 @@ export function PickingScreen() {
   const session = useMemo(() => loadSession(), []);
 
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
-  const [opsMap, setOpsMap]             = useState<Record<string, PickingOperation[]>>(session.opsMap ?? {});
-  const [loadingCods, setLoadingCods]   = useState<string[]>([]);
-  const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
-  const [refreshingId, setRefreshingId] = useState<number | null>(null);
+
+  const {
+    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId,
+    fetchBatchOps, fetchOpsForStore, refreshOp,
+  } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
   const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
   const [adelantoDialogOpen, setAdelantoDialogOpen] = useState(false);
@@ -211,8 +209,6 @@ export function PickingScreen() {
     }
     return result;
   }, [palletSlots, palletNumsBySlotId]);
-
-  const [errorCods, setErrorCods]         = useState<string[]>([]);
 
   const [labelConfig, setLabelConfig]     = useLocalStorage<LabelConfig>(LABEL_CONFIG_KEY, DEFAULT_LABEL_CONFIG);
   const [canonicalNames, setCanonicalNames] = useLocalStorage<Record<string, string>>(CANONICAL_NAMES_KEY, {});
@@ -727,102 +723,6 @@ export function PickingScreen() {
     return result;
   }, [selectedCods, opsMap]);
 
-  // Batch fetch: reemplaza N llamadas paralelas con un solo request para todas las tiendas.
-  const fetchBatchOps = useCallback(async (cods: string[]) => {
-    if (!hasOdoo || !cods.length) return;
-    setLoadingCods(prev => [...prev, ...cods.filter(c => !prev.includes(c))]);
-    try {
-      const res = await fetch('/api/odoo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'picking_batch_operations', cods }),
-      });
-      const data = (await res.json()) as {
-        byStore?: Record<string, Array<{
-          id: number; name: string; origin: string; partner: string;
-          fromLocation: string; toLocation: string; state: string;
-          scheduledDate: string; dateDone: string | null; pickingType: string;
-          responsible: string; responsibleId: number | null; lineCount: number; batch?: string;
-        }>>;
-        error?: string;
-      };
-      if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
-      const updates: Record<string, PickingOperation[]> = {};
-      for (const [cod, pickings] of Object.entries(data.byStore ?? {})) {
-        updates[cod] = (pickings as typeof pickings)
-          .filter(p => isAbastecimientoOp(p.origin) && !p.origin.toUpperCase().startsWith('AUDITORIA'))
-          .map(p => {
-            const { categories, originDate } = parseOrigin(p.origin);
-            return { ...p, categories, storeCodeFromOrigin: resolveStoreCode(p), originDate };
-          });
-      }
-      setOpsMap(prev => ({ ...prev, ...updates }));
-      setErrorCods(prev => prev.filter(c => !cods.includes(c)));
-      setLastRefresh(new Date());
-    } catch (e) {
-      console.error('[picking:batch]', e);
-      setErrorCods(prev => [...new Set([...prev, ...cods.filter(c => !prev.includes(c))])]);
-    } finally {
-      setLoadingCods(prev => prev.filter(c => !cods.includes(c)));
-    }
-  }, [hasOdoo]);
-
-  const fetchOpsForStore = useCallback(async (cod: string) => {
-    if (!hasOdoo) return;
-    setLoadingCods(prev => [...prev, cod]);
-    try {
-      const res  = await fetch('/api/odoo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'picking_today_operations', config: odooConfig, query: cod }),
-      });
-      const data = (await res.json()) as {
-        pickings?: Array<{
-          id: number; name: string; origin: string; partner: string;
-          fromLocation: string; toLocation: string; state: string;
-          scheduledDate: string; dateDone: string | null; pickingType: string;
-          responsible: string; responsibleId: number | null; lineCount: number;
-          batch?: string;
-        }>;
-        error?: string;
-      };
-      if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
-      const parsed: PickingOperation[] = (data.pickings ?? [])
-        .filter(p => isAbastecimientoOp(p.origin) && !p.origin.toUpperCase().startsWith('AUDITORIA'))
-        .map(p => {
-          const { categories, originDate } = parseOrigin(p.origin);
-          // Identifica la tienda por destino (columna "A") con respaldo al origin/partner,
-          // para ser robusto a typos manuales en el Documento Origen.
-          return { ...p, categories, storeCodeFromOrigin: resolveStoreCode(p), originDate };
-        });
-      setOpsMap(prev => ({ ...prev, [cod]: parsed }));
-      setErrorCods(prev => prev.filter(c => c !== cod));
-      setLastRefresh(new Date());
-    } catch (e) {
-      console.error('[picking]', e);
-      setErrorCods(prev => prev.includes(cod) ? prev : [...prev, cod]);
-    } finally {
-      setLoadingCods(prev => prev.filter(c => c !== cod));
-    }
-  }, [hasOdoo, odooConfig]);
-
-  // Auto-refresh silencioso cada 3 minutos — batch + pausa cuando la pestaña está oculta.
-  useEffect(() => {
-    if (selectedCods.length === 0) return;
-    const id = setInterval(() => {
-      if (document.visibilityState !== 'hidden') void fetchBatchOps(selectedCods);
-    }, AUTO_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [selectedCods, fetchBatchOps]);
-
-  // Refresca cuando la pestaña vuelve a ser visible tras haber estado oculta.
-  useEffect(() => {
-    if (selectedCods.length === 0) return;
-    const handleVisible = () => {
-      if (document.visibilityState === 'visible') void fetchBatchOps(selectedCods);
-    };
-    document.addEventListener('visibilitychange', handleVisible);
-    return () => document.removeEventListener('visibilitychange', handleVisible);
-  }, [selectedCods, fetchBatchOps]);
-
   // NOTA: el progreso de Odoo para el semáforo de Bodega lo calcula ahora UNA sola fuente
   // —el refresco batch del servidor en GET /api/picking-store-progress, que atribuye los
   // pickings por tienda con `resolveStoreCode` sobre TODAS las tiendas—. Antes PickingScreen
@@ -840,27 +740,6 @@ export function PickingScreen() {
     }
     setPanelView('planilla');
   }, [selectedCods, opsMap, fetchOpsForStore]);
-
-  const refreshOp = useCallback(async (op: PickingOperation, storeCod: string) => {
-    if (!hasOdoo) return;
-    setRefreshingId(op.id);
-    try {
-      const res  = await fetch('/api/odoo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'picking_check_state', config: odooConfig, query: op.name }),
-      });
-      const data = (await res.json()) as { state?: string; dateDone?: string | null };
-      if (res.ok && data.state) {
-        setOpsMap(prev => ({
-          ...prev,
-          [storeCod]: (prev[storeCod] ?? []).map(o =>
-            o.id === op.id ? { ...o, state: data.state!, dateDone: data.dateDone ?? o.dateDone } : o
-          ),
-        }));
-      }
-    } catch { /* silent */ }
-    setRefreshingId(null);
-  }, [hasOdoo, odooConfig]);
 
   // Grupos cuyo movimiento es de OTRO DÍA (arrastre/error de Odoo). Regla de negocio:
   // el picking siempre se cierra el mismo día → un movimiento con fecha de origen válida y
@@ -1309,7 +1188,7 @@ export function PickingScreen() {
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
-            <StatsTab odooConfig={odooConfig} hasOdoo={hasOdoo} canonicalNames={canonicalNames} />
+            <StatsTab hasOdoo={hasOdoo} canonicalNames={canonicalNames} />
           )}
 
           {/* ── Tab content: Actividad ── */}

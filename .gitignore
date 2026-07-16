@@ -42,6 +42,16 @@ next-env.d.ts
 *.njsproj
 *.sln
 *.sw?
-# Archivos de sesión personal — sí se commitean (uno por desarrollador)
-# TRABAJO_ERICK.md y TRABAJO_ISAIAS.md son rastreados por git
+# Archivos internos de operación del equipo — no se publican
+CLAUDE.md
+FLUJO.md
+TRABAJO.md
+TRABAJO.md.local
+TRABAJO_ERICK.md
+TRABAJO_ISAIAS.md
+
+# Configuración de herramientas de desarrollo local
+.claude/
+.opencode/
+
 .vercel
