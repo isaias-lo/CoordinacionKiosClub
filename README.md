@@ -1,70 +1,96 @@
 # KiosClub — Plataforma de Gestión de Despacho
 
-Plataforma web interna para gestionar el ciclo completo de despacho: desde la preparación en bodega hasta la confirmación de entrega en tienda. Integra Odoo como ERP central y extiende su operativa con visibilidad en tiempo real, generación de documentos de transporte y trazabilidad del proceso.
+Plataforma web interna que cubre el ciclo completo de despacho de KiosClub: desde la preparación de pedidos en bodega hasta la confirmación de entrega en tienda. Está integrada con Odoo (ERP) y Google Sheets, y es utilizada por los equipos de bodega, despacho, conductores y encargados de tienda.
 
 ---
 
-## Módulos principales
+## Módulos
 
 ### Picking (`/picking`)
-Tablero de supervisión del picking en bodega conectado a Odoo en tiempo real. Muestra las operaciones activas agrupadas por tienda y por operador, con su estado, cantidad de líneas y prioridad. Se actualiza automáticamente en segundo plano. Genera el documento de picking con código de barras que acompaña cada pallet durante el despacho.
+Tablero en tiempo real para supervisores de bodega. Muestra todas las operaciones de picking activas en Odoo agrupadas por tienda y por operador: estado, cantidad de líneas y prioridad. Desde aquí se genera el **documento de picking** con código de barras que viaja físicamente con cada pallet durante todo el proceso de despacho.
+
+### Despacho Hub (`/despacho`)
+Pantalla de inicio del módulo de despacho. Acceso rápido a los sub-módulos según el perfil del usuario.
 
 ### Despacho Regiones (`/despacho/regiones`)
-Gestión del despacho hacia tiendas fuera de la Región Metropolitana. Cubre el registro de guías, la generación automática de la plantilla Sendu (etiquetas para el transportista Falabella) y el manifiesto para el conductor. También registra la patente del vehículo en carga y gestiona la confirmación de recepción fotográfica en tienda.
+Gestión del despacho hacia tiendas fuera de la Región Metropolitana. Permite registrar las guías del día, genera automáticamente la plantilla de Sendu (sistema de transporte de Falabella) con todos los datos de la tienda destino, y produce el **manifiesto** que el conductor entrega en cada punto de entrega.
 
 ### Despacho Santiago (`/despacho/santiago`)
-Flujo de registro de despacho para la Región Metropolitana y Costa. Maneja el calendario de tiendas del día, los ítems por tienda (pallets/bultos) y el envío de registros a Google Sheets.
+Registro de despacho para tiendas de la Región Metropolitana y Costa. Muestra el calendario de tiendas activas para el día, permite ingresar los ítems por tienda (pallets y bultos) y sincroniza los registros con Google Sheets.
 
-### Rutas (`/despacho/rutas`)
-Optimización de recorridos para el área metropolitana. Integra Google Maps para calcular rutas eficientes considerando tipo de tienda (mall, strip center), ventanas horarias de recepción y capacidad de la flota. Permite ajuste manual ante imprevistos (cortes de ruta, desvíos) y exporta las rutas a PDF.
+### Rutas (`/despacho/santiago/rutas`)
+Planificación y optimización de recorridos para el área metropolitana. Asigna tiendas a vehículos considerando tipo de tienda (mall, strip center), ventanas horarias de recepción y capacidad de carga. Integra Google Maps para visualizar el recorrido y detectar cortes o desvíos. Exporta la ruta a PDF para el conductor.
 
-### Control de flota (`/despacho/control-flota`)
-Administración de la flota de vehículos: capacidad, patente y conductor asignado. Los conductores registran la carga escaneando el código de barras de cada pallet y asociándolo a la patente del vehículo.
+### Control de Flota (`/despacho/control-flota`)
+Administración de vehículos disponibles y sus asignaciones del día. Los conductores registran la **carga en el camión** escaneando el código de barras de cada pallet y vinculándolo a la patente del vehículo, dejando trazabilidad de qué salió en qué camión y a qué hora.
 
-### Estado de despacho (`/despacho/estado`)
-Panel de trazabilidad: permite consultar el estado de cualquier despacho por código, ver qué salió, en qué vehículo y si fue confirmado en destino.
+### Panel de Conductores (`/panel-choferes`) · Hub Conductor (`/conductor-hub`) · Chofer (`/chofer`)
+Interfaz para conductores. Muestra las entregas del día asignadas, permite registrar la carga en el vehículo mediante pistola de códigos de barras y consultar el detalle de cada parada.
 
-### Recepción en tienda (`/recepcion-tienda`)
-Flujo de confirmación de entrega. El encargado de tienda escanea el QR del manifiesto y sube una fotografía de los pallets recibidos como evidencia de recepción conforme.
+### Estado de Despacho (`/despacho/estado`)
+Panel de trazabilidad. Permite consultar en tiempo real el estado de cualquier despacho: qué salió, en qué vehículo, si fue entregado y si hay evidencia fotográfica de recepción en tienda.
 
-### Auditoría (`/auditoria`)
-Consulta de operaciones de salida en Odoo (albaranes/transferencias) por código. Permite revisar el historial de movimientos de una tienda y enviarlo a Google Sheets para análisis.
+### Conteo (`/despacho/conteo`)
+Módulo de conteo de unidades para verificación de carga antes del despacho.
 
-### Panel de operaciones (`/panel-operaciones`)
-Vista consolidada del estado operativo del día para el equipo de coordinación.
+### Recepción en Tienda (`/recepcion-tienda`) · (`/recepcion`)
+Flujo de confirmación de entrega para encargados de tienda. Al recibir el pedido, el encargado escanea el QR del manifiesto y sube una **fotografía de los pallets** como evidencia de recepción conforme. Cierra el ciclo del despacho con respaldo visual.
+
+### Validación de Tienda (`/validacion-tienda`)
+Verificación de identidad y acceso para el flujo de recepción en tienda mediante OTP.
+
+### Auditoría (`/auditoria`) · Auditoría Admin (`/auditoria-admin`)
+Módulo de auditoría de bodega integrado con Odoo. Permite revisar operaciones de salida (albaranes) por código, registrar resultados de auditoría (correcto, cruce, faltante, sobrante) con detalle por producto, y exportar los registros a Google Sheets y PDF. La vista admin incluye dashboard de métricas, historial completo y estadísticas por picker.
+
+### Control Cruce (`/control-cruce`) · (`/control-interno/control-cruce`)
+Verificación de cruces entre pedidos: detecta unidades que llegaron a una tienda distinta a la de origen.
+
+### Panel de Operaciones (`/panel-operaciones`)
+Vista consolidada del estado operativo del día para el equipo de coordinación: resumen de pickings, despachos en curso y entregas confirmadas.
+
+### Incidencias (`/incidencias`)
+Registro y seguimiento de incidencias del proceso logístico (entregas incompletas, daños, retrasos).
+
+### Historial (`/historial`)
+Consulta de despachos históricos con totales por tienda, fecha y tipo de carga.
+
+### Control Interno (`/control-interno`)
+Panel de administración operativa: gestión del calendario de despacho semanal y configuración de tiendas activas.
+
+### Administración (`/admin`)
+Panel exclusivo para administradores: gestión de usuarios y roles (`/admin/usuarios`), configuración del calendario central (`/admin/calendario`) y administración de tiendas (`/admin/tiendas`).
 
 ---
 
-## Tecnologías
+## Stack tecnológico
 
 | Capa | Tecnología |
 |---|---|
 | Framework | Next.js 15 (App Router) |
-| UI | React 19 + Tailwind CSS 3 |
+| UI | React 19 + Tailwind CSS |
 | Lenguaje | TypeScript 5 |
 | Base de datos / Auth | Supabase (PostgreSQL + Auth + Realtime) |
-| ERP | Odoo — integración vía JSON-RPC (proxy server-side) |
+| ERP | Odoo — integración vía JSON-RPC |
 | Mapas | Google Maps API |
-| Documentos | pdfjs-dist · xlsx (SheetJS) |
-| Google Sheets | Google Sheets API (service account) |
-| Transporte | Sendu API (etiquetas y guías regiones) |
+| Transporte Regiones | Sendu (Falabella) |
+| Documentos | PDF.js · SheetJS |
+| Sheets | Google Sheets API |
 | Despliegue | Vercel |
 
 ---
 
-## Autenticación y roles
+## Roles y acceso
 
-El acceso está controlado por Supabase Auth con roles definidos en el JWT:
-
-| Rol | Acceso |
+| Rol | Módulos habilitados |
 |---|---|
-| `admin` | Acceso total, bypassa todos los permisos |
-| `despachador` | Módulos de despacho (regiones, santiago, rutas) |
-| `supervisor-picking` | Módulo de picking |
-| `auditor` / `admin-auditoria` | Módulo de auditoría |
-| `recepcion-tienda` | Confirmación de recepción |
-| `coordinador-flota` | Control de flota |
-| `supervisor` | Vista consolidada |
+| `admin` | Acceso total |
+| `despachador` | Despacho, rutas, estado, conteo |
+| `supervisor-picking` | Picking |
+| `auditor` / `admin-auditoria` | Auditoría |
+| `recepcion-tienda` | Recepción en tienda |
+| `coordinador-flota` | Control de flota, panel choferes |
+| `supervisor` | Panel de operaciones |
+| `asistente-despacho` | Vistas de apoyo al despacho |
 
 ---
 
@@ -72,39 +98,36 @@ El acceso está controlado por Supabase Auth con roles definidos en el JWT:
 
 ```bash
 npm install
+npm run dev   # http://localhost:3000
 ```
 
-Crear `.env.local` con las siguientes variables:
+Variables de entorno requeridas en `.env.local`:
 
 ```env
-# Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# Odoo
 NEXT_PUBLIC_ODOO_URL=
 NEXT_PUBLIC_ODOO_DB=
 NEXT_PUBLIC_ODOO_USERNAME=
 NEXT_PUBLIC_ODOO_API_KEY=
 
-# Google
 GOOGLE_SPREADSHEET_ID=
 GOOGLE_SERVICE_ACCOUNT_JSON=
 
-# Auth OTP
 OTP_SECRET=
 GMAIL_USER=
 GMAIL_APP_PASS=
 ```
 
-## Desarrollo
+## Comandos
 
 ```bash
-npm run dev       # http://localhost:3000
-npm run build     # Build de producción
-npm test          # Tests unitarios (vitest)
-npm run lint      # Linting
+npm run dev      # Servidor de desarrollo
+npm run build    # Build de producción
+npm test         # Tests unitarios (Vitest)
+npm run lint     # Linting (ESLint)
 ```
 
 ---
@@ -113,41 +136,28 @@ npm run lint      # Linting
 
 ```
 src/
-├── app/                          # Rutas Next.js (App Router)
-│   ├── api/                      # API Routes (server-side)
-│   │   ├── odoo/                 # Proxy JSON-RPC → Odoo
-│   │   ├── tiendas/              # Sync Google Sheets ↔ Supabase
-│   │   └── ...
-│   └── [feature]/page.tsx        # Páginas por módulo
+├── app/                    # Rutas y páginas (Next.js App Router)
+│   └── api/                # API Routes server-side
+│       ├── odoo/           # Proxy Odoo JSON-RPC
+│       ├── tiendas/        # Sync tiendas ↔ Google Sheets
+│       └── ...
 │
-├── features/                     # Lógica de dominio por módulo
-│   ├── picking/                  # Picking en bodega
-│   │   ├── PickingScreen.tsx
-│   │   ├── hooks/usePickingOdoo.ts
-│   │   └── components/
+├── features/               # Lógica de dominio por módulo
+│   ├── picking/            # Picking en bodega + hook Odoo
 │   ├── despacho/
-│   │   ├── regiones/             # Despacho a regiones
-│   │   ├── santiago/             # Despacho RM
-│   │   ├── rutas/                # Optimización de rutas
-│   │   ├── estado/               # Trazabilidad
-│   │   └── control-flota/        # Gestión de flota
-│   ├── auditoria/                # Auditoría Odoo
-│   ├── tiendas/                  # Recepción QR en tienda
-│   └── control-interno/          # Admin: tiendas, calendario
+│   │   ├── regiones/       # Despacho regiones + Sendu
+│   │   ├── santiago/       # Despacho RM
+│   │   ├── rutas/          # Optimización de rutas + Google Maps
+│   │   ├── estado/         # Trazabilidad de despachos
+│   │   └── control-flota/  # Gestión de flota y carga
+│   ├── auditoria/          # Auditoría de bodega
+│   ├── tiendas/            # Recepción QR en tienda
+│   └── control-interno/    # Admin calendario y tiendas
 │
-├── lib/                          # Utilidades compartidas
-│   ├── supabase.ts               # Cliente browser
-│   ├── supabaseServer.ts         # Cliente server (service role)
-│   └── apiAuth.ts                # Validación JWT API routes
+├── lib/                    # Utilidades compartidas
+│   ├── supabase.ts         # Cliente Supabase (browser)
+│   ├── supabaseServer.ts   # Cliente Supabase (server)
+│   └── apiAuth.ts          # Validación JWT para API routes
 │
-└── components/                   # Componentes globales
-    └── AuthProvider.tsx          # Contexto de autenticación
+└── components/             # Componentes globales (Auth, Toast, etc.)
 ```
-
----
-
-## Integración con Odoo
-
-Todas las llamadas a Odoo pasan por el proxy server-side `/api/odoo` — el browser nunca se comunica directamente con el ERP. El proxy autentica con credenciales de servicio, mantiene caché del UID de autenticación (24h) y de los tipos de picking (por día), y utiliza un sistema de deduplicación de requests en vuelo para evitar saturación de workers.
-
-Para el picking, la acción `picking_batch_operations` consolida en 2 RPCs lo que antes requería N × 4 RPCs paralelos (uno por tienda seleccionada).
