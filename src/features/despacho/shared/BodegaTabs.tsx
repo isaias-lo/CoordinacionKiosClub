@@ -19,7 +19,7 @@ export function BodegaTabs() {
   return (
     <div className="flex bg-white border-b-2 border-bg-2 flex-shrink-0 print:hidden">
       {TABS.map((tab, i) => {
-        const active = pathname === tab.href || pathname.startsWith(tab.href + '/');
+        const active = !!pathname && (pathname === tab.href || pathname.startsWith(tab.href + '/'));
         return (
           <Link
             key={tab.href}

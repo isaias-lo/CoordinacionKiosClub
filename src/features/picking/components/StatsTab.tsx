@@ -2,14 +2,13 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { RotateCcw, Printer } from 'lucide-react';
-import type { OdooConfig, PickerStatRow, StatsCache } from '../picking-types';
+import type { PickerStatRow, StatsCache } from '../picking-types';
 import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
 import { fmtDuration, fmtSecs, isAllowedPicker } from '../picking-utils';
 
 type SortKey = keyof PickerStatRow;
 
 interface Props {
-  odooConfig:     OdooConfig;
   hasOdoo:        boolean;
   canonicalNames: Record<string, string>;
 }
@@ -55,7 +54,7 @@ const COLS: {
   },
 ];
 
-export function StatsTab({ odooConfig, hasOdoo, canonicalNames }: Props) {
+export function StatsTab({ hasOdoo, canonicalNames }: Props) {
   const [cache, setCache] = useState<StatsCache | null>(() => {
     if (typeof window === 'undefined') return null;
     try { return JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null') as StatsCache | null; }
@@ -81,7 +80,7 @@ export function StatsTab({ odooConfig, hasOdoo, canonicalNames }: Props) {
       const res  = await fetch('/api/odoo', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ action: 'picking_stats_range', config: odooConfig, dateFrom: from, dateTo: to }),
+        body:    JSON.stringify({ action: 'picking_stats_range', dateFrom: from, dateTo: to }),
         signal:  AbortSignal.timeout(90_000),
       });
       const data = (await res.json()) as { stats?: PickerStatRow[]; error?: string };
@@ -94,7 +93,7 @@ export function StatsTab({ odooConfig, hasOdoo, canonicalNames }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [hasOdoo, odooConfig, dateFrom, dateTo]);
+  }, [hasOdoo, dateFrom, dateTo]);
 
   function applyDateChange() {
     const fmt = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });

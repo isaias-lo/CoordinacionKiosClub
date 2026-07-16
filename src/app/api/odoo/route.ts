@@ -959,7 +959,6 @@ export async function POST(req: NextRequest) {
         );
         actTypeIds = matched.map(t => t.id);
         for (const t of matched) typeNameMap.set(t.id, t.name);
-        console.log(`[get_control_activities] activity types encontrados: ${matched.map(t => `${t.id}=${t.name}`).join(', ') || 'NINGUNO'} (total en Odoo: ${allActTypes.length})`);
       } catch (err) {
         console.error('[get_control_activities] error obteniendo tipos:', err);
       }
@@ -1075,7 +1074,6 @@ export async function POST(req: NextRequest) {
       for (const msg of messages) {
         const detalle = parseDetalle(msg.body ?? '');
         if (!detalle) {
-          console.log(`[get_control_activities] msg ${msg.id} picking=${msg.record_name} sin detalle, body preview: ${(msg.body ?? '').substring(0, 150)}`);
           continue;
         }
         const pickingName = msg.record_name ?? '';
@@ -1151,7 +1149,6 @@ export async function POST(req: NextRequest) {
           });
         }
         pendingActivitiesCount = pendingActivities.length;
-        console.log(`[get_control_activities] pending: ${pendingActivities.length} total, ${parsed.filter(p => p.estado !== 'COMPLETADO').length} parseados OK`);
       }
 
       if (!parsed.length) return NextResponse.json({ rows: [], total: 0 });
