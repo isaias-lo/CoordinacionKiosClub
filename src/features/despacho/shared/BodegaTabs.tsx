@@ -20,7 +20,7 @@ export function BodegaTabs() {
   return (
     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar print:hidden flex-1 min-w-0 justify-center">
       {TABS.map(tab => {
-        const active = pathname === tab.href || pathname.startsWith(tab.href + '/');
+        const active = !!pathname && (pathname === tab.href || pathname.startsWith(tab.href + '/'));
         return (
           <Link
             key={tab.href}
