@@ -1479,9 +1479,23 @@ export function StepForm() {
     <div className="flex-1 overflow-y-auto">
       {todayList.length > 0 && (
         <div>
-          <div className="px-3 py-2 bg-[rgba(211,47,47,0.10)] border-b border-[rgba(211,47,47,0.20)] sticky top-0 z-10 flex items-baseline gap-2">
+          <div className="px-3 py-2 bg-[rgba(211,47,47,0.10)] border-b border-[rgba(211,47,47,0.20)] sticky top-0 z-10 flex items-center gap-2">
             <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">HOY</span>
             <span className="font-barlow-condensed text-[10px] text-red/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
+            <span className="ml-auto flex items-center gap-2.5">
+              {rmProg.total > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span className="font-barlow-condensed text-[10px] font-bold uppercase tracking-wider text-text-3">RM</span>
+                  <SectionCount done={rmProg.done} total={rmProg.total} />
+                </span>
+              )}
+              {costaProg.total > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span className="font-barlow-condensed text-[10px] font-bold uppercase tracking-wider text-text-3">Costa</span>
+                  <SectionCount done={costaProg.done} total={costaProg.total} />
+                </span>
+              )}
+            </span>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
             {todayList.map(t => {
@@ -2565,9 +2579,9 @@ export function StepForm() {
             className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-red placeholder:text-text-3 transition-all" />
           <div className="flex gap-2 mt-2">
             {([
-              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-red border-red',            prog: rmProg    },
-              { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]', prog: costaProg },
-            ]).map(({ id, label, active_bg, prog }) => {
+              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-red border-red' },
+              { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
+            ]).map(({ id, label, active_bg }) => {
               const active = selectedGrps.has(id);
               return (
                 <button key={id}
@@ -2577,10 +2591,9 @@ export function StepForm() {
                     else next.add(id);
                     return next;
                   })}
-                  className={`font-barlow-condensed text-[16px] font-extrabold pl-5 pr-3 py-2 rounded-full border-2 tracking-widest uppercase transition-all cursor-pointer select-none flex items-center gap-2
+                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded-full border-2 tracking-widest uppercase transition-all cursor-pointer select-none
                     ${active ? `${active_bg} text-white shadow-md` : 'bg-white text-text-3 border-border'}`}>
                   {label}
-                  <SectionCount done={prog.done} total={prog.total} onColor={active} />
                 </button>
               );
             })}
