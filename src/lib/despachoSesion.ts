@@ -17,9 +17,11 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Write counts for today to Supabase (upsert). Fire-and-forget. */
+/** Write counts for today to Supabase (upsert) and drop stale rows. Fire-and-forget. */
 export async function pushCounts(fuente: 'regiones' | 'santiago', counts: CountMap): Promise<void> {
   const entries = Object.entries(counts);
+  // Sin tiendas cargadas → no tocar nada. Evita borrar la data del día durante el arranque,
+  // cuando dispatchData aún no se hidrató (guarda anti-wipe).
   if (entries.length === 0) return;
 
   const { data: { session } } = await supabase.auth.getSession();
@@ -40,6 +42,18 @@ export async function pushCounts(fuente: 'regiones' | 'santiago', counts: CountM
   await supabase.from('despacho_sesion').upsert(rows, {
     onConflict: 'fecha,fuente,tienda_cod',
   });
+
+  // Mantener despacho_sesion en sync con la pantalla: borrar las filas de HOY de esta fuente
+  // cuyas tiendas ya NO tienen carga (se quitaron o vaciaron). Sin esto, una tienda cargada y
+  // luego retirada quedaba como "fantasma" en el Manual/Enrutador (upsert nunca borra).
+  const keep = entries.map(([cod]) => `"${cod}"`).join(',');
+  try {
+    await supabase.from('despacho_sesion')
+      .delete()
+      .eq('fecha', fecha)
+      .eq('fuente', fuente)
+      .not('tienda_cod', 'in', `(${keep})`);
+  } catch { /* fire-and-forget: un fallo al limpiar no debe romper el guardado */ }
 }
 
 /** Fetch all counts for a given date. */
