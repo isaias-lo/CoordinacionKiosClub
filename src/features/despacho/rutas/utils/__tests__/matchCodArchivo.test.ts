@@ -10,6 +10,19 @@ describe('matchCodArchivo', () => {
     expect(matchCodArchivo('38SP2-14-04-2026_163720_ORIGINAL.pdf', CODS)).toBe('38SP2');
   });
 
+  it('reconoce el código TRUNCADO en el nombre (38SP → 38SP2) — caso real del PDF', () => {
+    expect(matchCodArchivo('38SP-16-07-2026_102922_CEDIBLE.pdf', CODS)).toBe('38SP2');
+  });
+
+  it('expande un token truncado al único código conocido (24SP → 24SPP)', () => {
+    expect(matchCodArchivo('24SP-16-07-2026.pdf', CODS)).toBe('24SPP');
+  });
+
+  it('NO adivina cuando el token truncado es ambiguo (dos códigos posibles)', () => {
+    // "38SP" prefija tanto 38SP2 como 38SPX → no se puede decidir → null.
+    expect(matchCodArchivo('38SP-16-07-2026.pdf', ['38SP2', '38SPX'])).toBeNull();
+  });
+
   it('no confunde 24SPP con 38SP2 (usa el número inicial)', () => {
     expect(matchCodArchivo('24SPP-14-04-2026.pdf', CODS)).toBe('24SPP');
   });
