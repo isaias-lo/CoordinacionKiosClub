@@ -14,6 +14,8 @@ import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, San
 import { type PickingSlot } from '../components/PickingSlotCards';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { StoreProgressBar } from '../../shared/StoreProgressBar';
+import { SectionCount } from '../../shared/SectionCount';
+import { sectionProgress } from '../../shared/sectionProgress';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
@@ -638,6 +640,10 @@ export function StepForm() {
   const statB              = allItems.filter(i => i.tipo === 'Bulto').length;
   const statCH             = allItems.filter(i => i.tipo === 'Chocolate').length;
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
+  // Contador "terminadas/total del día" por sección (desde todayTiendas = todas las del día,
+  // sin importar el filtro RM/Costa activo). Costa = region 'VR'. Terminada = tienda con carga.
+  const rmProg    = sectionProgress(todayTiendas.filter(t => t.region !== 'VR'), t => (items[t.cod]?.length ?? 0) > 0);
+  const costaProg = sectionProgress(todayTiendas.filter(t => t.region === 'VR'), t => (items[t.cod]?.length ?? 0) > 0);
   const activeTiendas      = [
     ...allTodayCods.filter(c => (items[c] || []).length > 0).map(c => [c, items[c]] as [string, typeof items[string]]),
     ...Object.entries(items).filter(([c, it]) => it.length > 0 && !allTodayCods.includes(c)),
@@ -2559,9 +2565,9 @@ export function StepForm() {
             className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-red placeholder:text-text-3 transition-all" />
           <div className="flex gap-2 mt-2">
             {([
-              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-red border-red' },
-              { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
-            ]).map(({ id, label, active_bg }) => {
+              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-red border-red',            prog: rmProg    },
+              { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]', prog: costaProg },
+            ]).map(({ id, label, active_bg, prog }) => {
               const active = selectedGrps.has(id);
               return (
                 <button key={id}
@@ -2571,9 +2577,10 @@ export function StepForm() {
                     else next.add(id);
                     return next;
                   })}
-                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded-full border-2 tracking-widest uppercase transition-all cursor-pointer select-none
+                  className={`font-barlow-condensed text-[16px] font-extrabold pl-5 pr-3 py-2 rounded-full border-2 tracking-widest uppercase transition-all cursor-pointer select-none flex items-center gap-2
                     ${active ? `${active_bg} text-white shadow-md` : 'bg-white text-text-3 border-border'}`}>
                   {label}
+                  <SectionCount done={prog.done} total={prog.total} onColor={active} />
                 </button>
               );
             })}

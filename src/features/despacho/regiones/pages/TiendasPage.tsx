@@ -11,6 +11,8 @@ import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCal
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { StoreProgressBar } from '../../shared/StoreProgressBar';
+import { SectionCount } from '../../shared/SectionCount';
+import { sectionProgress } from '../../shared/sectionProgress';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
@@ -662,6 +664,8 @@ export function TiendasPage() {
   const statB = allDispatchItems.filter(i => i.pkg === 'box').length;
   const statCH = allDispatchItems.filter(i => i.pkg === 'chocolate').length;
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
+  // Contador "terminadas/total del día" (Nacional): terminada = tienda con carga registrada.
+  const nacProg = sectionProgress(today, t => (dispatchData[t.name]?.length ?? 0) > 0);
 
   // #6 — líneas del "Manual" (lo cargado en Regiones). El calendario del sheet es el
   // general de Picking (CalendarioColumnas).
@@ -1969,11 +1973,15 @@ export function TiendasPage() {
               onDragLeave={handleAddDragLeave}
               onDrop={handleAddDrop}
               className={`transition-colors ${addDropActive ? 'bg-[rgba(211,47,47,0.07)]' : ''}`}>
-              <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all ${addDropActive ? 'bg-[rgba(211,47,47,0.18)] border-red/60' : 'bg-[rgba(211,47,47,0.10)] border-[rgba(211,47,47,0.20)]'}`}>
+              <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all flex items-center gap-2 ${addDropActive ? 'bg-[rgba(211,47,47,0.18)] border-red/60' : 'bg-[rgba(211,47,47,0.10)] border-[rgba(211,47,47,0.20)]'}`}>
                 <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">
                   {addDropActive ? '↓ Suelta aquí' : 'HOY'}
                 </span>
-                {!addDropActive && <span className="font-barlow-condensed text-[11px] text-red/50 ml-2 uppercase tracking-wide">arrastra aquí</span>}
+                {!addDropActive && <span className="font-barlow-condensed text-[11px] text-red/50 uppercase tracking-wide">arrastra aquí</span>}
+                {!addDropActive && <span className="ml-auto flex items-center gap-1.5">
+                  <span className="font-barlow-condensed text-[10px] font-bold uppercase tracking-wider text-text-3">Nacional</span>
+                  <SectionCount done={nacProg.done} total={nacProg.total} />
+                </span>}
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                 {today.map(t => {
