@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Plus, X } from 'lucide-react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, BarcodeCard, PropRow } from '@/features/despacho/shared/BarcodeCard';
-import { CANONICAL_PICKER_KEYS } from '../picking-types';
+import { buildPickerKeyList, isCustomPickerKey } from '../picking-utils';
 
 // ─── PickerNameRow ────────────────────────────────────────────────────────────
 
-function PickerNameRow({ pickerKey, savedValue, onSave }: {
+function PickerNameRow({ pickerKey, savedValue, onSave, onRemove }: {
   pickerKey: string; savedValue: string;
   onSave: (key: string, val: string) => void;
+  /** Solo para pickers agregados (custom): muestra la ✕ para eliminarlos. */
+  onRemove?: (key: string) => void;
 }) {
   const [draft,  setDraft]  = useState(savedValue);
   const [status, setStatus] = useState<'idle' | 'saved'>('idle');
@@ -28,8 +30,8 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b last:border-b-0" style={{ borderColor: '#F1F5F9' }}>
-      <span className="font-mono text-[12px] font-bold w-24 shrink-0 truncate" style={{ color: '#1E293B' }}>
+    <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: '#F1F5F9' }}>
+      <span className="font-mono text-[12px] font-bold w-24 shrink-0 truncate" style={{ color: '#1E293B' }} title={pickerKey}>
         {pickerKey}
       </span>
       <input
@@ -46,8 +48,15 @@ function PickerNameRow({ pickerKey, savedValue, onSave }: {
           Guardar
         </button>
       ) : status === 'saved' ? (
-        <span className="text-[12px] font-semibold shrink-0" style={{ color: '#16A34A' }}>✓ Guardado</span>
-      ) : <span className="w-16 shrink-0" />}
+        <span className="text-[12px] font-semibold shrink-0" style={{ color: '#16A34A' }}>✓</span>
+      ) : null}
+      {onRemove && !isDirty && (
+        <button onClick={() => onRemove(pickerKey)} title="Eliminar picker"
+          className="shrink-0 flex items-center justify-center w-6 h-6 rounded cursor-pointer border-none"
+          style={{ background: '#FEF2F2', color: '#DC2626' }}>
+          <X size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -101,10 +110,33 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
     );
   }
 
+  const [newPicker, setNewPicker] = useState('');
+  const pickerKeys = buildPickerKeyList(canonicalNames);
+
   const handleNameSave = (key: string, val: string) => {
     const next = { ...canonicalNames };
     if (val.trim()) next[key] = val.trim(); else delete next[key];
     onCanonicalNamesChange(next, key, val.trim(), currentUserName);
+  };
+
+  const handleAddPicker = () => {
+    const key = newPicker.trim();
+    if (!key) return;
+    if (pickerKeys.some(k => k.toLowerCase() === key.toLowerCase())) {
+      window.alert(`Ya existe un picker o pistola con el nombre "${key}".`);
+      return;
+    }
+    // Se crea con nombre inicial = la propia key (para que persista en Supabase y se vea);
+    // luego se puede editar como cualquier otro. Se propaga a todos por realtime.
+    onCanonicalNamesChange({ ...canonicalNames, [key]: key }, key, key, currentUserName);
+    setNewPicker('');
+  };
+
+  const handleRemovePicker = (key: string) => {
+    if (!window.confirm(`¿Eliminar el picker/pistola "${key}"?\n\nDesaparecerá para todos.`)) return;
+    const next = { ...canonicalNames };
+    delete next[key];
+    onCanonicalNamesChange(next, key, '', currentUserName); // display_name '' → borra la fila en Supabase
   };
 
   return (
@@ -200,26 +232,35 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
               Nombres de pickers
             </div>
             <div className="text-[12px] mt-0.5" style={{ color: '#94A3B8' }}>
-              Se aplican automáticamente al asignar operaciones
+              Se aplican automáticamente al asignar operaciones · agrega pickers o pistolas nuevos
             </div>
           </div>
-          <div className="rounded overflow-hidden" style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div className="flex flex-col sm:flex-row">
-              <div className="flex-1 sm:border-r" style={{ borderColor: '#E2E8F0' }}>
-                {CANONICAL_PICKER_KEYS.slice(0, 7).map(key => (
-                  <PickerNameRow key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''} onSave={handleNameSave} />
-                ))}
-              </div>
-              <div className="flex-1 sm:border-r" style={{ borderColor: '#E2E8F0' }}>
-                {CANONICAL_PICKER_KEYS.slice(7, 14).map(key => (
-                  <PickerNameRow key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''} onSave={handleNameSave} />
-                ))}
-              </div>
-              <div className="flex-1">
-                {CANONICAL_PICKER_KEYS.slice(14).map(key => (
-                  <PickerNameRow key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''} onSave={handleNameSave} />
-                ))}
-              </div>
+          <div className="rounded overflow-hidden max-w-full" style={{ background: '#fff', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            {/* Agregar picker / pistola nuevo */}
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: '#E2E8F0', background: '#F8FAFC' }}>
+              <input
+                type="text" value={newPicker}
+                placeholder="Nuevo picker o pistola (ej. Pickers 19, Mario Patiño)…"
+                onChange={e => setNewPicker(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddPicker(); } }}
+                className="flex-1 min-w-0 border rounded px-2.5 py-1.5 text-[13px] bg-white outline-none"
+                style={{ borderColor: '#E2E8F0', color: '#334155' }}
+              />
+              <button onClick={handleAddPicker} disabled={!newPicker.trim()}
+                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold rounded cursor-pointer shrink-0 border-none disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: '#1E40AF', color: '#fff' }}>
+                <Plus size={13} /> Agregar
+              </button>
+            </div>
+            {/* Rejilla responsiva: se acomoda sola (3→2→1 columnas) según el ancho, nunca se corta. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+              {pickerKeys.map(key => (
+                <PickerNameRow
+                  key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''}
+                  onSave={handleNameSave}
+                  onRemove={isCustomPickerKey(key) ? handleRemovePicker : undefined}
+                />
+              ))}
             </div>
           </div>
         </div>

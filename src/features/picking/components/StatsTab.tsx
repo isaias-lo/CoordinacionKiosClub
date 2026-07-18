@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { RotateCcw, Printer } from 'lucide-react';
 import type { PickerStatRow, StatsCache } from '../picking-types';
 import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
-import { fmtDuration, fmtSecs, isAllowedPicker } from '../picking-utils';
+import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
 
 type SortKey = keyof PickerStatRow;
 
@@ -103,14 +103,21 @@ export function StatsTab({ hasOdoo, canonicalNames }: Props) {
     void loadStats(pendingFrom, pendingTo);
   }
 
+  // Pickers "conocidos" = built-in + custom agregados desde Config → así los pickers nuevos
+  // (Pickers 19, Mario Patiño…) también aparecen en Estadísticas.
+  const knownPickers = useMemo(
+    () => new Set(buildPickerKeyList(canonicalNames).map(k => k.toLowerCase().trim())),
+    [canonicalNames],
+  );
+
   const sorted = useMemo(() => {
     if (!cache) return [];
-    return [...cache.rows.filter(r => isAllowedPicker(r.name))].sort((a, b) => {
+    return [...cache.rows.filter(r => isAllowedPicker(r.name) || knownPickers.has(r.name.toLowerCase().trim()))].sort((a, b) => {
       const av = a[sortKey], bv = b[sortKey];
       const cmp = typeof av === 'string' ? (av as string).localeCompare(bv as string) : (av as number) - (bv as number);
       return sortAsc ? cmp : -cmp;
     });
-  }, [cache, sortKey, sortAsc]);
+  }, [cache, sortKey, sortAsc, knownPickers]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(v => !v);

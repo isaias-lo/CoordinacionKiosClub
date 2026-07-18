@@ -23,12 +23,12 @@ import type {
 } from './picking-types';
 import {
   SAVED_NAMES_KEY, SESSION_KEY, SECTION_FILTER_KEY, COLS_PER_ROW_KEY,
-  LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY, CANONICAL_PICKER_KEYS,
+  LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY,
 } from './picking-types';
 import {
   todayISO, getStoreName, isPickeableState,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
-  computePalletNums, isSinAsignar,
+  computePalletNums, isSinAsignar, buildPickerKeyList,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
@@ -582,11 +582,13 @@ export function PickingScreen() {
     setColsPerRow(n); // persisted automatically by useLocalStorage
   }, [setColsPerRow]);
 
-  // Case-insensitive lookup: Odoo may return "pickers 3" while canonical key is "Pickers 3"
+  // Case-insensitive lookup: Odoo may return "pickers 3" while canonical key is "Pickers 3".
+  // Busca contra la lista fusionada (built-in + custom agregados) para que los pickers nuevos
+  // resuelvan su nombre configurado igual que los de fábrica.
   const getCanonicalName = useCallback((key: string): string => {
     if (canonicalNames[key]) return canonicalNames[key];
-    const lower = key.toLowerCase();
-    const match = CANONICAL_PICKER_KEYS.find(k => k.toLowerCase() === lower);
+    const lower = key.toLowerCase().trim();
+    const match = buildPickerKeyList(canonicalNames).find(k => k.toLowerCase().trim() === lower);
     return match ? (canonicalNames[match] ?? '') : '';
   }, [canonicalNames]);
 

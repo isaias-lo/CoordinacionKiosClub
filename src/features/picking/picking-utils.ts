@@ -1,5 +1,6 @@
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { TodayStore, StoreGroupKey, PickerStatRow, PalletSlot } from './picking-types';
+import { CANONICAL_PICKER_KEYS } from './picking-types';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 export function todayISO(): string { return new Date().toISOString().slice(0, 10); }
@@ -219,6 +220,41 @@ export function isAllowedPicker(name: string): boolean {
   const m = n.match(/^pickers?\s+(\d+)$/);
   if (m) { const num = parseInt(m[1]); return num >= 1 && num <= 18; }
   return n.includes('adquisicion') || n.includes('adquisición') || n.includes('calidad');
+}
+
+// ─── Pickers dinámicos (built-in + custom agregados desde Config) ───────────────
+const BUILTIN_PICKER_LC = new Set(CANONICAL_PICKER_KEYS.map(k => k.toLowerCase().trim()));
+
+/** True si la key NO es built-in → es un picker/pistola agregado desde Config. */
+export function isCustomPickerKey(key: string): boolean {
+  return !BUILTIN_PICKER_LC.has(key.toLowerCase().trim());
+}
+
+/**
+ * Lista ordenada de keys de pickers a mostrar y gestionar en Config: las built-in (en su
+ * orden) + las custom presentes en `canonicalNames` (agregadas desde el panel). Dedup
+ * case-insensitive. Las custom "Pickers N" se ordenan por número; el resto, alfabético.
+ * Se usa también para resolver nombres (getCanonicalName) y para el filtro de Estadísticas,
+ * de modo que un picker agregado sea "de primera clase" en todo el flujo.
+ */
+export function buildPickerKeyList(canonicalNames: Record<string, string>): string[] {
+  const seen = new Set(BUILTIN_PICKER_LC);
+  const custom: string[] = [];
+  for (const k of Object.keys(canonicalNames)) {
+    const lc = k.toLowerCase().trim();
+    if (seen.has(lc)) continue;
+    seen.add(lc);
+    custom.push(k);
+  }
+  const numOf = (k: string) => { const m = k.toLowerCase().match(/^pickers?\s+(\d+)$/); return m ? parseInt(m[1]) : null; };
+  custom.sort((a, b) => {
+    const na = numOf(a), nb = numOf(b);
+    if (na !== null && nb !== null) return na - nb;
+    if (na !== null) return -1;
+    if (nb !== null) return 1;
+    return a.localeCompare(b);
+  });
+  return [...CANONICAL_PICKER_KEYS, ...custom];
 }
 
 // ─── Auditoría de pallets (crear / eliminar) ───────────────────────────────────
