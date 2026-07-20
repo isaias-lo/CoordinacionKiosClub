@@ -7,6 +7,7 @@ import { useApp } from '../../../../context/AppContext';
 import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '../utils/calendarSantiago';
+import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -408,7 +409,9 @@ export function StepForm() {
       try {
         const data = await processPdf(file);
         if (!data.guias.length) data.guias = [{ num: clean, total: 0 }];
-        newGuides[storeCod] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum };
+        // Indexar por clave canónica (guideKey) para que la card refleje la guía sin importar la
+        // variante Unicode del código con Ñ (37VIÑ/23PEÑ pueden venir en NFC, NFD o sin tilde).
+        newGuides[guideKey(storeCod)] = { fileName: file.name, guias: data.guias.map(g => g.num), totalSum: data.totalSum };
 
         // Subir el PDF (con timbres) al storage y registrar la guía para que el
         // manifiesto la muestre/descargue. En bodega suele subirse antes de existir
@@ -1512,7 +1515,7 @@ export function StepForm() {
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
-                  hasGuide={!!guides[t.cod]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
+                  hasGuide={!!guides[guideKey(t.cod)]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -1549,7 +1552,7 @@ export function StepForm() {
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
-                  hasGuide={!!guides[t.cod]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
+                  hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
