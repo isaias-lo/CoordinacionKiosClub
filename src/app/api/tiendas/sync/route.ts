@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { normalizeCod, COD_RE } from './normalizeCod';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -26,18 +27,6 @@ function parseFloat_(s: string): number | null {
   const n = parseFloat(s.replace(',', '.'));
   return isNaN(n) ? null : n;
 }
-
-// Same normalization as norm() in helpers.ts — strips accents incl. Ñ→N
-function normalizeCod(raw: string): string {
-  return raw.trim().toUpperCase()
-    .replace(/Ñ/g, 'N')
-    .replace(/[ÁÀÂÄ]/g, 'A').replace(/[ÉÈÊË]/g, 'E')
-    .replace(/[ÍÌÎÏ]/g, 'I').replace(/[ÓÒÔÖ]/g, 'O')
-    .replace(/[ÚÙÛÜ]/g, 'U');
-}
-
-// Valid store code: 0-2 digits, 2-5 uppercase letters (Ñ permitida, ej. 23PEÑ), optional digit
-const COD_RE = /^[0-9]{0,2}[A-ZÑ]{2,5}[0-9]?$/;
 
 export async function POST(request: NextRequest) {
   if (!await verifyAdmin(request))
