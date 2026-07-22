@@ -961,9 +961,9 @@ export function TiendasPage() {
     const row = formRows.find(r => r.id === rowId);
     if (!row?.savedItem) return;
     const currentItems = dispatchData[selectedTienda] || [];
-    const idx = currentItems.findIndex(i =>
-      i.pkg === row.savedItem!.pkg && i.orden === row.savedItem!.orden
-    );
+    // Match por clave ESTABLE (pickingSlotId), no por pkg+orden: dos chocolates comparten pkg y
+    // pueden tener el mismo orden → el match frágil borraba el ítem equivocado (perdía el otro).
+    const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
     if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
   };
@@ -987,9 +987,8 @@ export function TiendasPage() {
     const row = formRows.find(r => r.id === rowId);
     if (row?.savedItem) {
       const currentItems = dispatchData[selectedTienda] || [];
-      const idx = currentItems.findIndex(i =>
-        i.pkg === row.savedItem!.pkg && i.orden === row.savedItem!.orden
-      );
+      // Match por clave ESTABLE (pickingSlotId), no por pkg+orden (frágil: borraba el ítem equivocado).
+      const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
       logActividad({ accion: 'eliminar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
         tiendaNombre: selectedTienda, label: ordenToLabel(row.savedItem.orden), slotId: row.savedItem.pickingSlotId });
