@@ -35,6 +35,14 @@ describe('sameStableItem', () => {
     const b: RegItem = { pkg: 'pallet', orden: 'pallet3', peso: 10, pickingSlotId: 5 };
     expect(sameStableItem(a, b)).toBe(true);
   });
+  it('NO empareja dos ítems con el MISMO orden pero distinto slot (bug: borraba el chocolate equivocado)', () => {
+    // Dos chocolates con el mismo orden (colisión) pero de slots distintos: editar/borrar uno
+    // no debe emparejar (y borrar) al otro.
+    const choc1: RegItem = { pkg: 'chocolate', orden: 'chocolate1', peso: 20, pickingSlotId: 11 };
+    const choc2: RegItem = { pkg: 'chocolate', orden: 'chocolate1', peso: 20, pickingSlotId: 22 };
+    expect(sameStableItem(choc1, choc2)).toBe(false);
+    expect(sameStableItem(choc2, choc2)).toBe(true); // cada uno solo empareja consigo mismo
+  });
   it('empareja por orden cuando no hay slot', () => {
     expect(sameStableItem({ orden: 'pallet2' }, { orden: 'pallet2' })).toBe(true);
     expect(sameStableItem({ orden: 'pallet2' }, { orden: 'pallet1' })).toBe(false);
