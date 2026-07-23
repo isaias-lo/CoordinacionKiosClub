@@ -198,12 +198,15 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 const PRINT_STYLES = `
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18px 20px;max-width:780px;margin:auto}
-/* Cada hoja llena el alto de la página (letter − márgenes) y es contenedor relativo, para
-   ANCLAR el footer (ORIGINAL/CEDIBLE) al fondo con position:absolute → queda SIEMPRE en la
-   esquina inferior izquierda al margen, fuera del flujo, sin depender del alto de las firmas.
-   min-height 258mm ≈ 261.4mm de área imprimible (letter, margen 9mm), con holgura para no forzar
-   una hoja en blanco; padding-bottom reserva el espacio del footer para que el contenido no lo tape. */
-.manifiesto-page{page-break-after:always;position:relative;min-height:258mm;padding-bottom:34px}
+/* Cada hoja empuja el footer (ORIGINAL/CEDIBLE) al fondo: es contenedor relativo y el footer va
+   con position:absolute → queda SIEMPRE en la esquina inferior izquierda al margen, fuera del flujo,
+   sin depender del alto de las firmas.
+   min-height CONSERVADOR (230mm): al imprimir desde el navegador el área útil real suele ser ~245mm
+   (usa sus propios márgenes, no los 9mm del @page). Si el bloque fuera tan alto como la hoja "teórica"
+   (258mm), se pasa del área imprimible y el footer se va a una 2ª hoja casi en blanco (se duplican las
+   páginas). 230mm entra siempre y deja el footer cerca del borde inferior. padding-bottom reserva su
+   espacio para que el contenido no lo tape. */
+.manifiesto-page{page-break-after:always;position:relative;min-height:230mm;padding-bottom:34px}
 .manifiesto-page:last-child{page-break-after:auto}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
 .logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
