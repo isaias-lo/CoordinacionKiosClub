@@ -198,11 +198,12 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 const PRINT_STYLES = `
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:18px 20px;max-width:780px;margin:auto}
-/* Cada hoja llena el alto de la página (letter − márgenes) y es columna flex, para poder
-   anclar el footer (con ORIGINAL/CEDIBLE) al fondo con margin-top:auto, sin que suba/baje
-   según el tamaño de las cajas de firma. 258mm ≈ 261.4mm de área imprimible con margen 9mm,
-   con holgura para no forzar una hoja en blanco. */
-.manifiesto-page{page-break-after:always;display:flex;flex-direction:column;min-height:258mm}
+/* Cada hoja llena el alto de la página (letter − márgenes) y es contenedor relativo, para
+   ANCLAR el footer (ORIGINAL/CEDIBLE) al fondo con position:absolute → queda SIEMPRE en la
+   esquina inferior izquierda al margen, fuera del flujo, sin depender del alto de las firmas.
+   min-height 258mm ≈ 261.4mm de área imprimible (letter, margen 9mm), con holgura para no forzar
+   una hoja en blanco; padding-bottom reserva el espacio del footer para que el contenido no lo tape. */
+.manifiesto-page{page-break-after:always;position:relative;min-height:258mm;padding-bottom:34px}
 .manifiesto-page:last-child{page-break-after:auto}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C62828;padding-bottom:10px;margin-bottom:14px}
 .logo{font-size:24px;font-weight:900;color:#C62828;letter-spacing:-1px}
@@ -234,7 +235,7 @@ tr:nth-child(even) td{background:#f8f8f8}
 .qr-info p{font-size:10px;color:#444;line-height:1.5}
 .qr-url{font-size:8px;color:#888;font-family:monospace;margin-top:5px;word-break:break-all}
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:#FF9500;color:#fff;margin-bottom:4px}
-.footer{font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px;margin-top:auto}
+.footer{position:absolute;left:0;right:0;bottom:0;background:#fff;font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px}
 .firma-section{margin-top:18px}
 .firma-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
 .firma{border:1.5px solid #bbb;border-radius:6px;overflow:hidden}
@@ -268,7 +269,7 @@ tr:nth-child(even) td{background:#f8f8f8}
   .firma-space{height:44px}
   .firma-fields{padding:5px 10px 6px}
   .firma-field{padding:3px 0}
-  .footer{padding-top:5px}  /* margin-top:auto se mantiene → footer anclado al fondo de la hoja */
+  .footer{padding-top:5px}  /* position:absolute (regla base) mantiene el footer anclado al fondo */
 }
 `;
 
