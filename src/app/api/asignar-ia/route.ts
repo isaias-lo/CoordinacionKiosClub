@@ -12,7 +12,9 @@ export const maxDuration = 30;
 // Modelo configurable por env. Default: Sonnet — mejor razonamiento para balancear carga entre
 // camiones e inferir los patrones del coordinador (Haiku dejaba camiones grandes casi vacíos).
 // Para abaratar: ANTHROPIC_MODEL=claude-haiku-4-5-20251001.
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+// OJO: el ID debe existir/estar vigente; un modelo retirado (ej. el viejo 'claude-sonnet-4-6')
+// hace fallar la llamada → el enrutador cae al optimizador GPS ("La IA no respondió").
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
 export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) {
