@@ -645,8 +645,11 @@ export function StepForm() {
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
   // Contador "terminadas/total del día" por sección (desde todayTiendas = todas las del día,
   // sin importar el filtro RM/Costa activo). Costa = region 'VR'. Terminada = tienda con carga.
-  const rmProg    = sectionProgress(todayTiendas.filter(t => t.region !== 'VR'), t => (items[t.cod]?.length ?? 0) > 0);
-  const costaProg = sectionProgress(todayTiendas.filter(t => t.region === 'VR'), t => (items[t.cod]?.length ?? 0) > 0);
+  // "Terminada" = movimientos de Odoo completos (semáforo verde, done === total), la MISMA señal
+  // que la barra "X/Y movimientos" de la card. No cuenta carga registrada (items) ni guía subida.
+  const isTiendaTerminada = (cod: string) => odooProgress.get(cod)?.status === 'complete';
+  const rmProg    = sectionProgress(todayTiendas.filter(t => t.region !== 'VR'), t => isTiendaTerminada(t.cod));
+  const costaProg = sectionProgress(todayTiendas.filter(t => t.region === 'VR'), t => isTiendaTerminada(t.cod));
   const activeTiendas      = [
     ...allTodayCods.filter(c => (items[c] || []).length > 0).map(c => [c, items[c]] as [string, typeof items[string]]),
     ...Object.entries(items).filter(([c, it]) => it.length > 0 && !allTodayCods.includes(c)),

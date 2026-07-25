@@ -665,7 +665,9 @@ export function TiendasPage() {
   const statCH = allDispatchItems.filter(i => i.pkg === 'chocolate').length;
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
   // Contador "terminadas/total del día" (Nacional): terminada = tienda con carga registrada.
-  const nacProg = sectionProgress(today, t => (dispatchData[t.name]?.length ?? 0) > 0);
+  // "Terminada" = movimientos de Odoo completos (semáforo verde, done === total), la MISMA señal
+  // que la barra "X/Y" de la card. Antes contaba carga registrada (items), que no coincide con el verde.
+  const nacProg = sectionProgress(today, t => odooProgress.get(t.cod)?.status === 'complete');
 
   // #6 — líneas del "Manual" (lo cargado en Regiones). El calendario del sheet es el
   // general de Picking (CalendarioColumnas).
