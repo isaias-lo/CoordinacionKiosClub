@@ -60,6 +60,17 @@ export function RecepcionClient() {
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
 
+  // OTP de recepción: la tienda pide un código a SU correo (tiendas.correos) y lo ingresa para
+  // poder confirmar. El QR solo no basta → verifica identidad sin crear un usuario por tienda.
+  const [otpSent,     setOtpSent]     = useState(false);
+  const [otpCode,     setOtpCode]     = useState('');
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpToken,    setOtpToken]    = useState('');
+  const [otpEmail,    setOtpEmail]    = useState('');
+  const [otpMasked,   setOtpMasked]   = useState('');
+  const [otpBusy,     setOtpBusy]     = useState(false);
+  const [otpError,    setOtpError]    = useState('');
+
   const store = TIENDAS_INICIAL[cod];
   const guias = g ? g.split(',').filter(Boolean) : [];
 
@@ -168,6 +179,45 @@ export function RecepcionClient() {
     setHasSig(false);
   }
 
+  const maskEmail = (e: string): string => {
+    const [u, dom] = e.split('@');
+    if (!dom) return e;
+    const uu = u.length <= 2 ? `${u[0]}*` : `${u.slice(0, 2)}***`;
+    return `${uu}@${dom}`;
+  };
+
+  const enviarCodigo = async () => {
+    setOtpBusy(true); setOtpError('');
+    try {
+      const res = await fetch('/api/recepcion-otp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod: cod, store_name: store?.n || cod }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'No se pudo enviar el código');
+      setOtpMasked(maskEmail(d.email_sent_to || ''));
+      setOtpSent(true);
+    } catch (e: unknown) {
+      setOtpError(e instanceof Error ? e.message : 'Error al enviar el código');
+    } finally { setOtpBusy(false); }
+  };
+
+  const verificarCodigo = async () => {
+    if (otpCode.trim().length !== 6) { setOtpError('Ingresa los 6 dígitos'); return; }
+    setOtpBusy(true); setOtpError('');
+    try {
+      const res = await fetch('/api/recepcion-otp', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod: cod, otp: otpCode.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.valid) throw new Error(d.error || 'Código incorrecto');
+      setOtpToken(d.token); setOtpEmail(d.email); setOtpVerified(true);
+    } catch (e: unknown) {
+      setOtpError(e instanceof Error ? e.message : 'Código incorrecto');
+    } finally { setOtpBusy(false); }
+  };
+
   const handleConfirm = async () => {
     if (!receptor.trim()) { setError('Ingresa el nombre del receptor'); return; }
     if (!rut.trim())      { setError('Ingresa el RUT'); return; }
@@ -191,6 +241,9 @@ export function RecepcionClient() {
           rut: rut.trim(),
           signatureDataUrl,
           canonicalId: canonId || undefined,
+          otpToken,
+          otpEmail,
+          codigoVerificacion: otpCode.trim(),
         }),
       });
       const data = await res.json();
@@ -250,6 +303,61 @@ export function RecepcionClient() {
             ↓ Descargar Guías PDF
           </a>
         )}
+      </div>
+    );
+  }
+
+  /* ── Paso 1: verificación por código al correo de la tienda ── */
+  if (!otpVerified) {
+    return (
+      <div style={S.page}>
+        <div style={S.header}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-kiosclub.webp" alt="KiosClub" style={{ height: 34, width: 'auto', display: 'block' }} />
+          <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: 12 }}>
+            <p style={{ margin: 0, color: '#0F172A', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>Recepción de Despacho</p>
+            <p style={{ margin: 0, color: '#94A3B8', fontSize: 12, lineHeight: 1.25 }}>Verifica tu tienda para continuar</p>
+          </div>
+        </div>
+        <div style={S.body}>
+          <div style={S.card}>
+            <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
+            <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#2563EB', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#0F172A' }}>{store.n}</p>
+          </div>
+          <div style={S.card}>
+            {!otpSent ? (
+              <>
+                <p style={{ margin: '0 0 14px', fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+                  Para confirmar la recepción te enviaremos un <strong>código de 6 dígitos</strong> al correo registrado de la tienda.
+                </p>
+                <button onClick={enviarCodigo} disabled={otpBusy}
+                  style={{ width: '100%', padding: '14px 0', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer', opacity: otpBusy ? 0.6 : 1 }}>
+                  {otpBusy ? 'Enviando…' : 'Enviar código'}
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 4px', fontSize: 14, color: '#334155' }}>Código enviado a:</p>
+                <p style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#1B2A6B' }}>{otpMasked}</p>
+                <label style={S.label}>Ingresa el código</label>
+                <input value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric" placeholder="––––––"
+                  style={{ ...inputNum(), letterSpacing: 8, marginBottom: 12 }} />
+                <button onClick={verificarCodigo} disabled={otpBusy}
+                  style={{ width: '100%', padding: '14px 0', background: '#16A34A', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer', opacity: otpBusy ? 0.6 : 1 }}>
+                  {otpBusy ? 'Verificando…' : 'Verificar y continuar'}
+                </button>
+                <button onClick={enviarCodigo} disabled={otpBusy}
+                  style={{ width: '100%', marginTop: 8, padding: '10px 0', background: 'transparent', color: '#64748B', border: 'none', fontSize: 13, cursor: 'pointer' }}>
+                  Reenviar código
+                </button>
+              </>
+            )}
+            {otpError && <p style={{ margin: '12px 0 0', color: '#DC2626', fontSize: 13, textAlign: 'center' }}>{otpError}</p>}
+          </div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }

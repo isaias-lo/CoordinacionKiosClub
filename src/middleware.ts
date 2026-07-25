@@ -25,6 +25,12 @@ export async function middleware(request: NextRequest) {
   // abrirse aunque quien escanea no tenga sesión (ni de un rol distinto).
   if (pathname.startsWith('/r/')) return NextResponse.next();
 
+  // Recepción de tienda (QR del manifiesto): página pública, PERO protegida por OTP — la tienda
+  // solo puede confirmar tras recibir e ingresar el código enviado a su correo (tiendas.correos).
+  // Así no se crea un usuario por tienda (55+) y se verifica identidad. El submit /api/recepcion
+  // exige el token del OTP (verifyOtpToken).
+  if (pathname === '/recepcion') return NextResponse.next();
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
