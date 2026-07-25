@@ -8,18 +8,21 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendOTPEmail(to: string, storeName: string, otp: string): Promise<void> {
+export async function sendOTPEmail(to: string, storeName: string, otp: string, origin?: string): Promise<void> {
+  // Logo REAL servido desde el mismo dominio (igual que el manifiesto: `${origin}/logo-kiosclub.webp`).
+  // Si no se pasa origin, cae al logo de texto para no romper el correo.
+  // logo-kiosclub-email.webp = versión con fondo BLANCO pegado (sin alpha): el logo normal es
+  // transparente y Gmail lo compone sobre NEGRO. Este aplanado evita el recuadro negro.
+  const logoHtml = origin
+    ? `<img src="${origin}/logo-kiosclub-email.webp" alt="KIOS Club — American Supermarket" width="200" style="max-width:200px;height:auto;display:inline-block;border-radius:8px;" />`
+    : `<span style="font-size:32px;font-weight:900;color:#C62828;letter-spacing:-1px;">KIOS<span style="font-style:italic;">Club</span></span>`;
   await transporter.sendMail({
     from: `"KiosClub Despacho" <${process.env.GMAIL_USER}>`,
     to,
     subject: `Código de recepción: ${otp} — KiosClub`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8faff; border-radius: 16px;">
-        <div style="text-align: center; margin-bottom: 28px;">
-          <span style="font-size: 32px; font-weight: 900; color: #C62828; letter-spacing: -1px;">
-            KIOS<span style="font-style: italic;">Club</span>
-          </span>
-        </div>
+        <div style="text-align: center; margin-bottom: 28px;">${logoHtml}</div>
 
         <div style="background: #1B2A6B; border-radius: 12px; padding: 28px 24px; text-align: center; margin-bottom: 24px;">
           <p style="margin: 0 0 8px; font-size: 13px; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 2px;">Código de recepción</p>

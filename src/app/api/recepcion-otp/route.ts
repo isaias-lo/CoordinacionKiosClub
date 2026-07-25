@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
   // Envía el correo
   try {
-    await sendOTPEmail(email, store_name ?? store_cod, otp);
+    await sendOTPEmail(email, store_name ?? store_cod, otp, new URL(request.url).origin);
   } catch (mailErr) {
     const msg = mailErr instanceof Error ? mailErr.message : String(mailErr);
     return NextResponse.json({ error: `Error enviando correo: ${msg}` }, { status: 500 });
