@@ -102,7 +102,14 @@ export const RecepcionSchema = z.object({
   pionetas:              z.string().max(200).optional().default(''),
   receptor:              z.string().min(1).max(100),
   rut:                   z.string().min(1).max(12),
-  signatureDataUrl:      z.string().startsWith('data:image/'),
+  // Firma dibujada: ahora OPCIONAL — el acuse de recibo (recibiConforme) es el que confirma.
+  signatureDataUrl:      z.string().startsWith('data:image/').optional().or(z.literal('')),
+  // Acuse de recibo: true = "Recibí conforme", false = "Recibí con observaciones".
+  recibiConforme:        z.boolean().optional(),
+  // Cómo confirmó: 'dibujo' (firmó) o 'acuse' (solo marcó el acuse). Registro, no validación.
+  firmaMetodo:           z.string().max(20).optional().default(''),
+  // Fotos de recepción como data URLs base64 (el server las sube a `recepcion-fotos`).
+  recepcionFotos:        z.array(z.string()).max(8).optional().default([]),
   otpToken:              z.string().optional(),
   otpEmail:              z.string().email().optional(),
   observaciones:         z.string().max(500).optional().default(''),

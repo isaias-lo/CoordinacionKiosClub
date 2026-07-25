@@ -6,6 +6,7 @@ import { verifyOtpToken } from '@/lib/otpToken';
 import { verifyAnyUser } from '@/lib/apiAuth';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
+import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
 
 interface RecepcionBody {
   cod: string;
@@ -21,7 +22,12 @@ interface RecepcionBody {
   pionetas?: string;
   receptor: string;
   rut: string;
-  signatureDataUrl: string;
+  signatureDataUrl?: string;
+  // Acuse de recibo (reemplaza la firma obligatoria)
+  recibiConforme?: boolean;
+  firmaMetodo?: string;
+  // Fotos de recepción (data URLs base64 → se suben a `recepcion-fotos`)
+  recepcionFotos?: string[];
   // Auth fields for conductor OTP flow
   otpToken?: string;
   otpEmail?: string;
@@ -102,23 +108,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Upload signature to Supabase Storage
-    const base64Data = body.signatureDataUrl.replace(/^data:image\/png;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    const filename = `firma_${body.cod}_${Date.now()}.png`;
+    // Firma OPCIONAL: solo se sube si el receptor dibujó una. El acuse (recibiConforme)
+    // es lo que confirma la recepción. Sin firma → firma_url = ''.
+    let publicUrl = '';
+    const firma = parseDataUrl(body.signatureDataUrl);
+    if (firma) {
+      const buffer = Buffer.from(firma.base64, 'base64');
+      const filename = `firma_${body.cod}_${Date.now()}.${firma.ext}`;
+      const { error: uploadError } = await sb.storage
+        .from('signatures')
+        .upload(filename, buffer, { contentType: firma.contentType, upsert: false });
+      if (uploadError) throw new Error(uploadError.message);
+      publicUrl = sb.storage.from('signatures').getPublicUrl(filename).data.publicUrl;
+    }
 
-    const { error: uploadError } = await sb.storage
-      .from('signatures')
-      .upload(filename, buffer, { contentType: 'image/png', upsert: false });
+    // Fotos de recepción: llegan como data URLs base64 y se suben (service role) al
+    // bucket público `recepcion-fotos`. Server-mediated para no depender de sesión anónima.
+    const recepcionFotoUrls: string[] = [];
+    for (const [i, dataUrl] of (body.recepcionFotos ?? []).slice(0, RECEP_MAX_FOTOS).entries()) {
+      const foto = parseDataUrl(dataUrl);
+      if (!foto) continue;
+      const buf = Buffer.from(foto.base64, 'base64');
+      const fname = `recep_${body.cod}_${Date.now()}_${i + 1}.${foto.ext}`;
+      const { error: fErr } = await sb.storage
+        .from('recepcion-fotos')
+        .upload(fname, buf, { contentType: foto.contentType, upsert: false });
+      if (fErr) throw new Error(fErr.message);
+      recepcionFotoUrls.push(sb.storage.from('recepcion-fotos').getPublicUrl(fname).data.publicUrl);
+    }
 
-    if (uploadError) throw new Error(uploadError.message);
+    const acuse = typeof body.recibiConforme === 'boolean' ? acuseLabel(body.recibiConforme) : '';
 
-    const { data: { publicUrl } } = sb.storage
-      .from('signatures')
-      .getPublicUrl(filename);
-
-    // Insert record
-    const { error: insertError } = await sb.from('recepcion').insert({
+    // Insert record (devuelve id para armar el link de la galería pública)
+    const { data: inserted, error: insertError } = await sb.from('recepcion').insert({
       cod:                  body.cod,
       tienda:               body.tienda,
       direccion:            body.direccion,
@@ -142,12 +164,22 @@ export async function POST(request: NextRequest) {
       cd_salida_url:        body.cdSalidaUrl           ?? '',
       cd_salida_hora:       body.cdSalidaHora          ?? '',
       estado_fotos:         body.estadoFotoUrls        ?? [],
+      recepcion_fotos:      recepcionFotoUrls,
+      recibi_conforme:      typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
+      acuse_recibo:         acuse,
+      firma_metodo:         body.firmaMetodo           ?? '',
       codigo_verificacion:  body.codigoVerificacion    ?? '',
       canonical_id:         body.canonicalId           ?? null,
       fuente:               'conductor',
-    });
+    }).select('id').single();
 
     if (insertError) throw new Error(insertError.message);
+
+    // Link a la galería pública de fotos de recepción (para la columna del Sheet).
+    const origin = new URL(request.url).origin;
+    const galeriaUrl = recepcionFotoUrls.length && inserted?.id
+      ? `${origin}/recepcion/galeria/${inserted.id}`
+      : '';
 
     // Auto-transición: si la tienda ya registró su recepción para hoy, comparamos
     // cantidades. Si coinciden con lo enviado por el conductor → 'Recibido';
@@ -212,6 +244,10 @@ export async function POST(request: NextRequest) {
       body.cdSalidaHora       ?? '',                   // Hora CD Salida
       (body.estadoFotoUrls ?? []).length.toString(),   // N° Fotos Estado
       body.observaciones      ?? '',                   // Observaciones
+      acuse,                                            // Acuse de recibo (col NUEVA al final)
+      galeriaUrl                                        // Fotos de recepción (col NUEVA al final)
+        ? `=HYPERLINK("${galeriaUrl}","Ver fotos (${recepcionFotoUrls.length})")`
+        : '',
     ]);
 
     // ── PUNTO 3: actualizar trazabilidad_unidades ─────────────────────
@@ -219,6 +255,7 @@ export async function POST(request: NextRequest) {
     if (body.canonicalId || body.cod) {
       const hayIncidencia = !!(
         body.tipoIncidencia ||
+        body.recibiConforme === false ||
         (body.selloEstado && body.selloEstado !== 'intacto') ||
         body.palletsSent !== body.palletsRecibidos ||
         body.bultosSent  !== body.bultosRecibidos
@@ -234,6 +271,7 @@ export async function POST(request: NextRequest) {
           body.selloSalidaUrl,
           body.cdSalidaUrl,
           ...(body.estadoFotoUrls ?? []),
+          ...recepcionFotoUrls,
         ].filter(Boolean) as string[],
       };
       if (body.tipoIncidencia)      trazUpdate.tipo_incidencia        = body.tipoIncidencia;

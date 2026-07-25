@@ -255,6 +255,39 @@ function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: ()
             </div>
           )}
 
+          {/* Acuse de recibo */}
+          {!!(row.acuse_recibo && String(row.acuse_recibo).trim()) && (() => {
+            const acuse = String(row.acuse_recibo);
+            const conforme = acuse.toLowerCase().includes('conforme') && !acuse.toLowerCase().includes('observ');
+            return (
+              <div style={{ background: conforme ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)', borderRadius: 12, padding: '10px 14px', border: `1px solid ${conforme ? 'rgba(16,185,129,0.3)' : 'rgba(249,115,22,0.3)'}` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Acuse de recibo</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: conforme ? '#10B981' : '#F97316' }}>{conforme ? '✓ ' : '⚠ '}{acuse}</div>
+              </div>
+            );
+          })()}
+
+          {/* Fotos de recepción */}
+          {(() => {
+            const fotosRecep = (row.recepcion_fotos as string[]) ?? [];
+            if (!fotosRecep.length) return null;
+            return (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                  Fotos de recepción ({fotosRecep.length})
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  {fotosRecep.map((url, i) => (
+                    <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', position: 'relative', borderRadius: 10, overflow: 'hidden', textDecoration: 'none' }}>
+                      <img src={url} alt={`recepción ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                      <div style={{ position: 'absolute', top: 4, left: 6, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 5px', borderRadius: 5 }}>#{i + 1}</div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Observaciones */}
           {!!(row.observaciones && String(row.observaciones).trim()) && (
             <div style={{ background: '#FFFBEB', borderRadius: 12, padding: '12px 14px', border: '1px solid #FDE68A' }}>
