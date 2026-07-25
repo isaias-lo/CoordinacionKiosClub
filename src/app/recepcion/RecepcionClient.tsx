@@ -4,6 +4,18 @@ import { useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
+import { processPhoto } from '../../features/auditoria/utils/photos';
+import { RECEP_MAX_FOTOS } from '../../lib/recepcionMedia';
+
+/** Lee un File como data URL base64 (para enviarlo al server, que lo sube a Storage). */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    r.readAsDataURL(file);
+  });
+}
 
 function formatRut(raw: string): string {
   // Strip everything except digits and K, cap at 9 chars
@@ -35,6 +47,18 @@ function inputNum(extra?: React.CSSProperties): React.CSSProperties {
   return { ...S.input, fontSize: 20, fontWeight: 700, textAlign: 'center', ...extra };
 }
 
+// Botón grande de acuse (conforme / con observaciones). `active` lo pinta con su color.
+function acuseBtn(active: boolean, color: string): React.CSSProperties {
+  return {
+    padding: '14px 10px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    border: `2px solid ${active ? color : '#E2E8F0'}`,
+    background: active ? color : '#fff',
+    color: active ? '#fff' : '#475569',
+    lineHeight: 1.2, textAlign: 'center', transition: 'all .15s',
+    boxShadow: active ? `0 4px 14px ${color}44` : 'none',
+  };
+}
+
 export function RecepcionClient() {
   const params  = useSearchParams();
   const urlCod  = params?.get('cod') ?? '';
@@ -60,6 +84,15 @@ export function RecepcionClient() {
   const [hasSig,     setHasSig]     = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
+
+  // Acuse de recibo (reemplaza la firma obligatoria): null = sin elegir aún.
+  const [recibiConforme, setRecibiConforme] = useState<boolean | null>(null);
+  const [observaciones,  setObservaciones]  = useState('');
+
+  // Fotos de recepción: se comprimen en el navegador y se envían base64 al server.
+  const [fotos,        setFotos]        = useState<File[]>([]);
+  const [fotoPreviews, setFotoPreviews] = useState<string[]>([]);
+  const [fotoBusy,     setFotoBusy]     = useState(false);
 
   // OTP de recepción: la tienda pide un código a SU correo (tiendas.correos) y lo ingresa para
   // poder confirmar. El QR solo no basta → verifica identidad sin crear un usuario por tienda.
@@ -112,6 +145,9 @@ export function RecepcionClient() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const lastRef    = useRef({ x: 0, y: 0 });
+  // Longitud total trazada: solo consideramos "firma real" tras superar un umbral,
+  // así un toque/punto accidental no marca la firma como válida.
+  const sigLenRef  = useRef(0);
 
   // Libera el overflow del app-shell para que la página pueda hacer scroll
   useEffect(() => {
@@ -166,8 +202,10 @@ export function RecepcionClient() {
     ctx.moveTo(lastRef.current.x, lastRef.current.y);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
+    const dx = pos.x - lastRef.current.x, dy = pos.y - lastRef.current.y;
+    sigLenRef.current += Math.hypot(dx, dy);
     lastRef.current = pos;
-    setHasSig(true);
+    if (sigLenRef.current > 40 && !hasSig) setHasSig(true);
   }
 
   function onPointerUp() { drawingRef.current = false; }
@@ -177,7 +215,31 @@ export function RecepcionClient() {
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.getContext('2d')!.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    sigLenRef.current = 0;
     setHasSig(false);
+  }
+
+  // ── Fotos de recepción: comprime en el navegador y agrega a la lista ──
+  async function onAddFotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // permite volver a elegir la misma foto
+    if (!files.length) return;
+    setFotoBusy(true);
+    try {
+      const room = RECEP_MAX_FOTOS - fotos.length;
+      for (const file of files.slice(0, Math.max(0, room))) {
+        const { compressed, previewUrl } = await processPhoto(file);
+        setFotos(prev => [...prev, compressed]);
+        setFotoPreviews(prev => [...prev, previewUrl]);
+      }
+    } finally {
+      setFotoBusy(false);
+    }
+  }
+
+  function removeFoto(i: number) {
+    setFotoPreviews(prev => { const u = prev[i]; if (u) URL.revokeObjectURL(u); return prev.filter((_, k) => k !== i); });
+    setFotos(prev => prev.filter((_, k) => k !== i));
   }
 
   const maskEmail = (e: string): string => {
@@ -220,13 +282,19 @@ export function RecepcionClient() {
   };
 
   const handleConfirm = async () => {
-    if (!receptor.trim()) { setError('Ingresa el nombre del receptor'); return; }
-    if (!rut.trim())      { setError('Ingresa el RUT'); return; }
-    if (!hasSig)          { setError('Por favor firma antes de confirmar'); return; }
+    if (!receptor.trim())          { setError('Ingresa el nombre del receptor'); return; }
+    if (!rut.trim())               { setError('Ingresa el RUT'); return; }
+    if (recibiConforme === null)   { setError('Selecciona el acuse: "Recibí conforme" o "Recibí con observaciones"'); return; }
+    if (recibiConforme === false && !observaciones.trim()) {
+      setError('Describe las observaciones antes de confirmar'); return;
+    }
+    if (fotoBusy) { setError('Espera a que terminen de procesarse las fotos'); return; }
     setError('');
     setLoading(true);
     try {
-      const signatureDataUrl = canvasRef.current!.toDataURL('image/png');
+      // Firma opcional: solo se envía si dibujó algo real (supera el umbral).
+      const signatureDataUrl = hasSig ? canvasRef.current!.toDataURL('image/png') : '';
+      const recepcionFotos = await Promise.all(fotos.map(fileToDataUrl));
       const res = await fetch('/api/recepcion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,6 +309,10 @@ export function RecepcionClient() {
           receptor: receptor.trim(),
           rut: rut.trim(),
           signatureDataUrl,
+          recibiConforme,
+          firmaMetodo: hasSig ? 'dibujo' : 'acuse',
+          observaciones: observaciones.trim(),
+          recepcionFotos,
           canonicalId: canonId || undefined,
           otpToken,
           otpEmail,
@@ -423,10 +495,64 @@ export function RecepcionClient() {
           </div>
         </div>
 
-        {/* Firma */}
+        {/* Acuse de recibo (reemplaza la firma obligatoria) */}
+        <div style={S.card}>
+          <p style={S.sectionTitle}>Acuse de recibo</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <button type="button" onClick={() => setRecibiConforme(true)} style={acuseBtn(recibiConforme === true, '#16A34A')}>
+              ✓ Recibí conforme
+            </button>
+            <button type="button" onClick={() => setRecibiConforme(false)} style={acuseBtn(recibiConforme === false, '#D97706')}>
+              ⚠ Recibí con observaciones
+            </button>
+          </div>
+          {recibiConforme === false && (
+            <div style={{ marginTop: 12 }}>
+              <label style={S.label}>Observaciones</label>
+              <textarea
+                value={observaciones}
+                onChange={e => setObservaciones(e.target.value)}
+                rows={3}
+                maxLength={500}
+                placeholder="Describe la diferencia o el problema (ej: 1 pallet dañado, faltan 3 bultos…)"
+                style={{ ...S.input, resize: 'vertical', minHeight: 80, fontSize: 14, lineHeight: 1.5 }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Fotos de recepción */}
         <div style={S.card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={S.sectionTitle}>Firma del receptor</p>
+            <p style={{ ...S.sectionTitle, margin: 0 }}>Fotos de recepción <span style={{ color: '#CBD5E1' }}>(opcional)</span></p>
+            <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>{fotos.length}/{RECEP_MAX_FOTOS}</span>
+          </div>
+          {fotoPreviews.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+              {fotoPreviews.map((url, i) => (
+                <div key={i} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`foto ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                  <button type="button" onClick={() => removeFoto(i)} style={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.75)', color: '#fff', fontSize: 15, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {fotos.length < RECEP_MAX_FOTOS && (
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px 0', border: '2px dashed #CBD5E1', borderRadius: 10, cursor: fotoBusy ? 'wait' : 'pointer', color: '#475569', fontSize: 14, fontWeight: 700, background: '#F8FAFC' }}>
+              {fotoBusy ? 'Procesando…' : '📷 Agregar fotos'}
+              <input type="file" accept="image/*" capture="environment" multiple onChange={onAddFotos} disabled={fotoBusy} style={{ display: 'none' }} />
+            </label>
+          )}
+          <p style={{ textAlign: 'center', fontSize: 12, color: '#94A3B8', marginTop: 8, marginBottom: 0 }}>
+            Fotos de la carga recibida (estado, daños, sellos…).
+          </p>
+        </div>
+
+        {/* Firma (opcional) */}
+        <div style={S.card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <p style={{ ...S.sectionTitle, margin: 0 }}>Firma del receptor <span style={{ color: '#CBD5E1' }}>(opcional)</span></p>
             {hasSig && (
               <button onClick={clearSig} style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                 Borrar
@@ -449,7 +575,7 @@ export function RecepcionClient() {
           />
           {!hasSig && (
             <p style={{ textAlign: 'center', fontSize: 12, color: '#94A3B8', marginTop: 8, marginBottom: 0 }}>
-              Dibuja tu firma en el área de arriba
+              Puedes firmar aquí si lo deseas — el acuse de arriba ya confirma la recepción.
             </p>
           )}
         </div>
