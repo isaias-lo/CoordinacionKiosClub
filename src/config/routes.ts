@@ -62,7 +62,6 @@ export const MODULE_GROUPS: ModuleGroup[] = [
   {
     id: 'otros', label: 'Otros', color: '#6B7280',
     routes: [
-      { path: '/recepcion-tienda', label: 'Recepción Tienda'  },
       { path: '/validacion-tienda', label: 'Validación Tienda' },
     ],
   },
@@ -144,7 +143,7 @@ const DESPACHO_FULL = [
   '/despacho/conteo', '/despacho/control-flota', '/despacho/estado',
   '/despacho/config-tiendas', '/panel-choferes', '/conductor-hub',
   '/panel-operaciones', '/registros', '/tiendas', '/control-interno',
-  '/recepcion-tienda', '/validacion-tienda', '/incidencias', '/perfil',
+  '/validacion-tienda', '/incidencias', '/perfil',
 ];
 
 export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
@@ -152,7 +151,6 @@ export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
   'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
   'despachador':         DESPACHO_FULL,
   'supervisor':          DESPACHO_FULL,
-  'recepcion-tienda':    ['/tiendas', '/recepcion-tienda', '/control-interno', '/validacion-tienda', '/perfil'],
   'supervisor-picking':  ['/picking', '/perfil'],
   'admin':               ['*'],
   'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/perfil'],
@@ -165,7 +163,6 @@ export const SYSTEM_ROLE_HOME: Record<string, string> = {
   'admin-auditoria':     '/auditoria',
   'despachador':         '/',
   'supervisor':          '/',
-  'recepcion-tienda':    '/tiendas',
   'supervisor-picking':  '/picking',
   'admin':               '/',
   'asistente-despacho':  '/despacho',

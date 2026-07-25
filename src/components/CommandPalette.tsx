@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, LayoutDashboard, Truck, ClipboardCheck, PackageCheck,
   Shield, Map, Globe, MapPin, BarChart3, Activity, Monitor, Store,
-  FileText, AlertTriangle, Inbox, CheckSquare, Settings2,
+  FileText, AlertTriangle, CheckSquare, Settings2,
   Users, CalendarDays, LogOut, RefreshCw, Navigation as NavIcon,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -28,7 +28,6 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/registros':               FileText,
   '/incidencias':             AlertTriangle,
   '/control-interno':         Shield,
-  '/recepcion-tienda':        Inbox,
   '/validacion-tienda':       CheckSquare,
   '/admin/tiendas':           Settings2,
   '/admin/usuarios':          Users,

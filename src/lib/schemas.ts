@@ -110,6 +110,8 @@ export const RecepcionSchema = z.object({
   firmaMetodo:           z.string().max(20).optional().default(''),
   // Fotos de recepción como data URLs base64 (el server las sube a `recepcion-fotos`).
   recepcionFotos:        z.array(z.string()).max(8).optional().default([]),
+  // Origen: 'tienda' (QR+OTP) → hoja RECEPCIÓN/TIENDA; resto (chofer) → ENTREGA/TIENDA.
+  origen:                z.enum(['tienda', 'conductor']).optional(),
   otpToken:              z.string().optional(),
   otpEmail:              z.string().email().optional(),
   observaciones:         z.string().max(500).optional().default(''),

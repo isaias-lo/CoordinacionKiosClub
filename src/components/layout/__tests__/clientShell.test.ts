@@ -28,8 +28,8 @@ describe('isAuthPath — qué rutas van SIN sidebar (auth/públicas)', () => {
     expect(isAuthPath('/recepcion?cod=29CFL&p=1&b=1')).toBe(false); // el query no es parte del pathname
   });
 
-  it('/recepcion NO afecta a /recepcion-tienda (límite de segmento, lleva sidebar)', () => {
-    expect(isAuthPath('/recepcion-tienda')).toBe(false);
+  it('/recepcion es límite de segmento (otras rutas /recepcion* llevan sidebar)', () => {
+    expect(isAuthPath('/recepcion-otra')).toBe(false);
   });
 
   it('rutas normales de la app NO son auth (llevan sidebar)', () => {

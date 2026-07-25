@@ -31,8 +31,7 @@ export async function middleware(request: NextRequest) {
   // exige el token del OTP (verifyOtpToken).
   if (pathname === '/recepcion') return NextResponse.next();
 
-  // Galería pública de fotos de recepción (link del Sheet ENTREGA/TIENDA). Solo lectura por id.
-  // OJO: NO usar startsWith('/recepcion') porque abriría /recepcion-tienda (flujo con login).
+  // Galería pública de fotos de recepción (link del Sheet RECEPCIÓN/TIENDA). Solo lectura por id.
   if (pathname.startsWith('/recepcion/galeria/')) return NextResponse.next();
 
   let response = NextResponse.next({ request });

@@ -313,6 +313,7 @@ export function RecepcionClient() {
           firmaMetodo: hasSig ? 'dibujo' : 'acuse',
           observaciones: observaciones.trim(),
           recepcionFotos,
+          origen: 'tienda',   // recepción de la tienda → hoja RECEPCIÓN/TIENDA
           canonicalId: canonId || undefined,
           otpToken,
           otpEmail,
