@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { sendOTPEmail } from '@/lib/gmail';
+import { createOtpToken } from '@/lib/otpToken';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 
 function generateOTP(): string {
@@ -117,11 +118,19 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  // Código correcto — marca como usado
+  // Código correcto — marca como usado y emite un token firmado (HMAC) para que el submit
+  // (/api/recepcion → verifyOtpToken) valide server-side que la recepción pasó por el OTP.
   await supabaseServer()
     .from('otp_recepcion')
     .update({ used: true })
     .eq('id', record.id);
 
-  return NextResponse.json({ valid: true });
+  const { data: tienda } = await supabaseServer()
+    .from('tiendas')
+    .select('correos')
+    .eq('codigo', store_cod)
+    .single();
+  const email = (tienda?.correos as string | null) ?? '';
+
+  return NextResponse.json({ valid: true, token: createOtpToken(email, otp.trim()), email });
 }
