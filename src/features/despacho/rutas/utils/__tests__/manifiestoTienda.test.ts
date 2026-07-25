@@ -94,7 +94,9 @@ describe('buildManifiestoTiendaHTML', () => {
     expect(hdrIdx).toBeGreaterThan(-1);
     expect(qrIdx).toBeGreaterThan(hdrIdx);
     expect(qrIdx).toBeLessThan(tableIdx);
-    expect(html).toContain('api.qrserver.com');
+    // El QR se genera localmente (data URI), sin depender de servicios externos.
+    expect(html).toContain('data:image/gif;base64,');
+    expect(html).not.toContain('api.qrserver.com');
   });
 
   it('ordena guías → observaciones → firmas debajo del detalle de carga', () => {

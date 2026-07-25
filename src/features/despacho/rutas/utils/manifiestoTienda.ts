@@ -3,6 +3,7 @@
 // sin depender de React/Supabase. NO afecta el manifiesto MAESTRO (buildManifiestoHTML/fromRuta
 // en ManifiestoPanel.tsx), que sigue viviendo ahí.
 import type { TiendaInfo } from '../data/tiendas';
+import { qrDataUri } from '@/lib/qrLocal';
 
 /* ── Tienda dentro de un manifiesto de ruta (compartido con ManifiestoPanel) ── */
 export interface TiendaManifiesto {
@@ -103,7 +104,7 @@ export function buildManifiestoTiendaHTML(
     </div>
   </div>
   <div class="tienda-hdr-qr">
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrUrl)}" width="100" height="100" alt="QR Recepción"/>
+    <img src="${qrDataUri(qrUrl)}" width="100" height="100" alt="QR Recepción"/>
     <div class="tienda-hdr-qr-lbl">Escanear para recibir</div>
   </div>
 </div>

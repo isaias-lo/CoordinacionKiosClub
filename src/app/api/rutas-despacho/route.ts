@@ -47,7 +47,9 @@ export async function POST(request: NextRequest) {
   };
 
   const token    = crypto.randomUUID();
-  const tokenExp = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  // Vigencia del QR Maestro para fiscalización: 30 días (antes 48h, muy corto para auditar
+  // después). El token es un UUID no adivinable, así que extenderlo es de bajo riesgo.
+  const tokenExp = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: ruta, error: rutaErr } = await supabaseServer()
     .from('rutas_despacho')
