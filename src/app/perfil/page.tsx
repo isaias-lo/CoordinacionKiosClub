@@ -59,7 +59,6 @@ const ROLE_LABELS: Record<string, string> = {
   'admin-auditoria': 'Admin Auditoría',
   despachador: 'Despachador',
   admin: 'Administrador',
-  'recepcion-tienda': 'Recepción Tienda',
   'supervisor-picking': 'Sup. Abastecimiento',
   'asistente-despacho': 'Asistente Despacho',
   'coordinador-flota': 'Coordinador Flota',

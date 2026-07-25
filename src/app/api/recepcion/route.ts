@@ -7,6 +7,7 @@ import { verifyAnyUser } from '@/lib/apiAuth';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
 import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
+import { buildSheetRow } from '@/lib/sheetRow';
 
 interface RecepcionBody {
   cod: string;
@@ -28,6 +29,9 @@ interface RecepcionBody {
   firmaMetodo?: string;
   // Fotos de recepción (data URLs base64 → se suben a `recepcion-fotos`)
   recepcionFotos?: string[];
+  // Origen del registro: 'tienda' = recepción de la tienda (QR+OTP) → hoja RECEPCIÓN/TIENDA.
+  // Cualquier otro (chofer) → hoja ENTREGA/TIENDA. Solo decide la hoja destino.
+  origen?: string;
   // Auth fields for conductor OTP flow
   otpToken?: string;
   otpEmail?: string;
@@ -66,15 +70,25 @@ function getAuth() {
   });
 }
 
-async function writeToSheet(row: (string | number)[]) {
+// Escribe por NOMBRE de encabezado (no por posición): lee la fila 1 de la hoja y alinea
+// cada valor a su columna. Así las columnas se pueden reordenar sin cruzar datos.
+async function writeToSheet(sheetName: string, record: Record<string, string | number>) {
   const auth = getAuth();
   const gs   = google.sheets({ version: 'v4', auth });
+  let headers: string[] = [];
+  try {
+    const hdr = await gs.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range:         `${sheetName}!1:1`,
+    });
+    headers = (hdr.data.values?.[0] as string[] | undefined) ?? [];
+  } catch { headers = []; }
   await gs.spreadsheets.values.append({
     spreadsheetId:    SPREADSHEET_ID,
-    range:            'ENTREGA/TIENDA!A1',
+    range:            `${sheetName}!A1`,
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
-    requestBody:      { values: [row] },
+    requestBody:      { values: [buildSheetRow(headers, record)] },
   });
 }
 
@@ -211,7 +225,11 @@ export async function POST(request: NextRequest) {
       sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaHoy),
     ]);
 
-    // Write to ENTREGA/TIENDA sheet
+    // Escribir a la hoja correcta según el origen:
+    //   'tienda' (QR+OTP de la tienda) → RECEPCIÓN/TIENDA
+    //   resto (chofer / entrega)       → ENTREGA/TIENDA
+    // La escritura es por NOMBRE de encabezado, así cada hoja recibe solo las columnas
+    // que tiene y se pueden reordenar sin cruzar datos.
     const now  = new Date();
     const dd   = String(now.getDate()).padStart(2, '0');
     const mm   = String(now.getMonth() + 1).padStart(2, '0');
@@ -219,36 +237,38 @@ export async function POST(request: NextRequest) {
     const hh   = String(now.getHours()).padStart(2, '0');
     const min  = String(now.getMinutes()).padStart(2, '0');
 
-    await writeToSheet([
-      `${dd}/${mm}/${yyyy} ${hh}:${min}`,             // Fecha/Hora
-      body.cod,                                        // Código
-      body.tienda,                                     // Tienda
-      body.direccion,                                  // Dirección
-      body.conductor      ?? '',                       // Conductor
-      body.pionetas       ?? '',                       // Pionetas
-      body.palletsSent,                                // Pallets Enviados
-      body.bultosSent,                                 // Bultos Enviados
-      body.contenedoresSent      ?? 0,                 // Contenedores Enviados
-      body.palletsRecibidos,                           // Pallets Recibidos
-      body.bultosRecibidos,                            // Bultos Recibidos
-      body.contenedoresRecibidos ?? 0,                 // Contenedores Recibidos
-      body.receptor,                                   // Receptor
-      body.rut,                                        // RUT
-      publicUrl,                                       // Firma
-      body.selloEstado        ?? '',                   // Estado Sello
-      body.selloLlegadaUrl    ?? '',                   // Foto Sello Llegada
-      body.selloLlegadaHora   ?? '',                   // Hora Sello Llegada
-      body.selloSalidaUrl     ?? '',                   // Foto Sello Salida
-      body.selloSalidaHora    ?? '',                   // Hora Sello Salida
-      body.cdSalidaUrl        ?? '',                   // Foto CD Salida
-      body.cdSalidaHora       ?? '',                   // Hora CD Salida
-      (body.estadoFotoUrls ?? []).length.toString(),   // N° Fotos Estado
-      body.observaciones      ?? '',                   // Observaciones
-      acuse,                                            // Acuse de recibo (col NUEVA al final)
-      galeriaUrl                                        // Fotos de recepción (col NUEVA al final)
+    const sheetName = body.origen === 'tienda' ? 'RECEPCIÓN/TIENDA' : 'ENTREGA/TIENDA';
+    const record: Record<string, string | number> = {
+      'Fecha/Hora':             `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+      'Código':                 body.cod,
+      'Tienda':                 body.tienda,
+      'Dirección':              body.direccion,
+      'Conductor':              body.conductor ?? '',
+      'Pionetas':               body.pionetas ?? '',
+      'Pallets Enviados':       body.palletsSent,
+      'Bultos Enviados':        body.bultosSent,
+      'Contenedores Enviados':  body.contenedoresSent ?? 0,
+      'Pallets Recibidos':      body.palletsRecibidos,
+      'Bultos Recibidos':       body.bultosRecibidos,
+      'Contenedores Recibidos': body.contenedoresRecibidos ?? 0,
+      'Receptor':               body.receptor,
+      'RUT':                    body.rut,
+      'Firma':                  publicUrl,
+      'Estado Sello':           body.selloEstado ?? '',
+      'Foto Sello Llegada':     body.selloLlegadaUrl ?? '',
+      'Hora Sello Llegada':     body.selloLlegadaHora ?? '',
+      'Foto Sello Salida':      body.selloSalidaUrl ?? '',
+      'Hora Sello Salida':      body.selloSalidaHora ?? '',
+      'Foto CD Salida':         body.cdSalidaUrl ?? '',
+      'Hora CD Salida':         body.cdSalidaHora ?? '',
+      'N° Fotos Estado':        (body.estadoFotoUrls ?? []).length.toString(),
+      'Observaciones':          body.observaciones ?? '',
+      'Acuse de recibo':        acuse,
+      'Fotos de recepción':     galeriaUrl
         ? `=HYPERLINK("${galeriaUrl}","Ver fotos (${recepcionFotoUrls.length})")`
         : '',
-    ]);
+    };
+    await writeToSheet(sheetName, record);
 
     // ── PUNTO 3: actualizar trazabilidad_unidades ─────────────────────
     // Usamos canonicalId si existe; sino buscamos por store_cod + EN_RUTA

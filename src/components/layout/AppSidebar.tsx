@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Truck, ClipboardCheck, PackageCheck, Shield,
   Map, MapPin, Activity, Navigation as NavIcon,
-  Warehouse, Monitor, Store, FileText, AlertTriangle, Inbox,
+  Warehouse, Monitor, Store, FileText, AlertTriangle,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun,
 } from 'lucide-react';
@@ -31,7 +31,6 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/incidencias':             AlertTriangle,
   '/control-interno':                Shield,
   '/control-interno/control-cruce': ArrowLeftRight,
-  '/recepcion-tienda':               Inbox,
   '/validacion-tienda':       CheckSquare,
   '/admin/tiendas':           Settings2,
   '/despacho/config-tiendas': Settings2,
@@ -216,7 +215,7 @@ export function AppSidebar() {
   const roleLabel: Record<string, string> = {
     auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría',
     despachador: 'Despachador', admin: 'Admin',
-    'recepcion-tienda': 'Recepción',     'supervisor-picking': 'Sup. Abastecimiento',
+    'supervisor-picking': 'Sup. Abastecimiento',
     'asistente-despacho': 'Asistente', 'coordinador-flota': 'Coord. Flota',
     supervisor: 'Supervisor', conductor: 'Conductor',
   };

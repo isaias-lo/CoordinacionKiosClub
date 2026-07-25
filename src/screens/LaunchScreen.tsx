@@ -28,7 +28,7 @@ interface QuickTile {
 const ROLE_LABEL: Record<string, string> = {
   auditor: 'Auditor', 'admin-auditoria': 'Admin Auditoría',
   despachador: 'Despachador', admin: 'Administrador',
-  'recepcion-tienda': 'Recepción', 'supervisor-picking': 'Sup. Abastecimiento',
+  'supervisor-picking': 'Sup. Abastecimiento',
   'asistente-despacho': 'Asistente', 'coordinador-flota': 'Coord. Flota',
   supervisor: 'Supervisor',
 };
@@ -51,7 +51,6 @@ export function LaunchScreen() {
   const [pendingCount, setPendingCount] = useState(0);
 
   const isAdmin          = profile?.role === 'admin';
-  const isRecepcion      = profile?.role === 'recepcion-tienda';
   const isSupervisorPick = profile?.role === 'supervisor-picking';
 
   /* React Query hooks */
@@ -151,26 +150,6 @@ export function LaunchScreen() {
   const firstName = (profile?.full_name ?? 'Usuario').split(' ')[0];
 
   /* Role-specific overrides */
-  if (isRecepcion) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 bg-kbg">
-        <button
-          onClick={() => router.push('/tiendas')}
-          className="flex flex-col items-center gap-3 p-8 bg-card rounded-kios shadow-card2 border border-border/60 hover:shadow-kios transition-all active:scale-[0.98] min-w-[220px]"
-        >
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.12)' }}>
-            <Store size={28} className="text-success" strokeWidth={1.6} />
-          </div>
-          <div className="text-center">
-            <div className="font-barlow-condensed text-lg font-bold text-text uppercase tracking-wide">Tiendas / Recepción</div>
-            <div className="text-[12px] text-text-3 mt-0.5">Confirmar recepción de despacho</div>
-          </div>
-          <ArrowRight size={16} className="text-text-3" />
-        </button>
-      </div>
-    );
-  }
-
   if (isSupervisorPick) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 bg-kbg">
