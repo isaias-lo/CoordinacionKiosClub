@@ -1,6 +1,7 @@
 'use client';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { qrDataUri } from '@/lib/qrLocal';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import { supabase } from '@/lib/supabase';
@@ -142,7 +143,7 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 
 <div class="sec">QR Maestro de Ruta</div>
 <div class="qr-box">
-  <img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(qrUrl)}" width="110" height="110" alt="QR Ruta"/>
+  <img src="${qrDataUri(qrUrl)}" width="110" height="110" alt="QR Ruta"/>
   <div class="qr-info">
     <div class="badge">Pendiente</div>
     <h3>Acceso Digital Completo</h3>
