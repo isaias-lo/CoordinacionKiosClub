@@ -18,11 +18,12 @@ function formatRut(raw: string): string {
   return `${dotted}-${dv}`;
 }
 
-// Paleta "enterprise claro" (referencia: Config. Tiendas): fondo slate, tarjetas
-// blancas con borde sutil, azul primario #2563EB, textos slate.
+// Paleta "enterprise" (referencia: manifiesto del fiscalizador /r/[token]): header navy #1a2550,
+// tipografía Segoe UI, tarjetas blancas con borde sutil, navy como color primario, textos slate.
+const NAVY = '#1a2550';
 const S: Record<string, React.CSSProperties> = {
-  page:    { minHeight: '100vh', background: '#F8FAFC', paddingBottom: 40 },
-  header:  { background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 },
+  page:    { minHeight: '100vh', background: '#F8FAFC', paddingBottom: 40, fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", color: '#0F172A' },
+  header:  { background: NAVY, padding: '18px 20px', color: '#fff' },
   body:    { padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 520, margin: '0 auto' },
   card:    { background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 18, boxShadow: '0 1px 3px rgba(15,23,42,0.06)' },
   label:   { display: 'block', fontSize: 12, fontWeight: 600, color: '#64748B', marginBottom: 6 },
@@ -256,12 +257,28 @@ export function RecepcionClient() {
     }
   };
 
+  // Header corporativo (navy) reutilizado en el paso OTP y en el formulario.
+  const Header = (
+    <div style={S.header}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, maxWidth: 520, margin: '0 auto' }}>
+        <div style={{ background: '#fff', borderRadius: 12, padding: '8px 12px', flexShrink: 0, boxShadow: '0 3px 12px rgba(0,0,0,0.28)' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-kiosclub-email.webp" alt="KIOS Club — American Supermarket" style={{ height: 40, width: 'auto', display: 'block' }} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', lineHeight: 1.08 }}>Recepción de Tienda</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 4, fontWeight: 500 }}>Confirma la carga recibida · KiosClub</div>
+        </div>
+      </div>
+    </div>
+  );
+
   /* ── Resolviendo ID canónico ── */
   if (lookupLoading) {
     return (
       <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ textAlign: 'center', color: '#0F172A' }}>
-          <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#2563EB', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#1a2550', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
           <p style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#334155' }}>Buscando datos del pallet…</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -297,7 +314,7 @@ export function RecepcionClient() {
           <a href={drv} target="_blank" rel="noopener noreferrer" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             width: '100%', maxWidth: 360, padding: '16px 0',
-            background: '#2563EB', color: '#fff', borderRadius: 12, fontWeight: 700,
+            background: '#1a2550', color: '#fff', borderRadius: 12, fontWeight: 700,
             fontSize: 18, textDecoration: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.30)',
           }}>
             ↓ Descargar Guías PDF
@@ -311,18 +328,11 @@ export function RecepcionClient() {
   if (!otpVerified) {
     return (
       <div style={S.page}>
-        <div style={S.header}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-kiosclub.webp" alt="KiosClub" style={{ height: 34, width: 'auto', display: 'block' }} />
-          <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: 12 }}>
-            <p style={{ margin: 0, color: '#0F172A', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>Recepción de Despacho</p>
-            <p style={{ margin: 0, color: '#94A3B8', fontSize: 12, lineHeight: 1.25 }}>Verifica tu tienda para continuar</p>
-          </div>
-        </div>
+        {Header}
         <div style={S.body}>
           <div style={S.card}>
             <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
-            <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#2563EB', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
+            <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#1a2550', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
             <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#0F172A' }}>{store.n}</p>
           </div>
           <div style={S.card}>
@@ -332,7 +342,7 @@ export function RecepcionClient() {
                   Para confirmar la recepción te enviaremos un <strong>código de 6 dígitos</strong> al correo registrado de la tienda.
                 </p>
                 <button onClick={enviarCodigo} disabled={otpBusy}
-                  style={{ width: '100%', padding: '14px 0', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer', opacity: otpBusy ? 0.6 : 1 }}>
+                  style={{ width: '100%', padding: '14px 0', background: '#1a2550', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer', opacity: otpBusy ? 0.6 : 1 }}>
                   {otpBusy ? 'Enviando…' : 'Enviar código'}
                 </button>
               </>
@@ -367,24 +377,17 @@ export function RecepcionClient() {
 
   return (
     <div style={S.page}>
-      <div style={S.header}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-kiosclub.webp" alt="KiosClub" style={{ height: 34, width: 'auto', display: 'block' }} />
-        <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: 12 }}>
-          <p style={{ margin: 0, color: '#0F172A', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>Recepción de Despacho</p>
-          <p style={{ margin: 0, color: '#94A3B8', fontSize: 12, lineHeight: 1.25 }}>Confirma la carga recibida</p>
-        </div>
-      </div>
+      {Header}
 
       <div style={S.body}>
         {/* Store card */}
         <div style={S.card}>
           <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
-          <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#2563EB', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
+          <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#1a2550', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
           <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#0F172A' }}>{store.n}</p>
           {store.d && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748B', lineHeight: 1.45 }}>{store.d}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            {p > 0 && <span style={{ background: '#EFF6FF', color: '#2563EB', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{p} pallet{p !== 1 ? 's' : ''} enviado{p !== 1 ? 's' : ''}</span>}
+            {p > 0 && <span style={{ background: '#EFF6FF', color: '#1a2550', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{p} pallet{p !== 1 ? 's' : ''} enviado{p !== 1 ? 's' : ''}</span>}
             {b > 0 && <span style={{ background: '#FEF3C7', color: '#D97706', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 99 }}>{b} bulto{b !== 1 ? 's' : ''} enviado{b !== 1 ? 's' : ''}</span>}
             {guias.length > 0 && <span style={{ background: '#F1F5F9', color: '#64748B', fontSize: 12, fontFamily: 'monospace', padding: '4px 12px', borderRadius: 99 }}>Guía {guias.join(' · ')}</span>}
           </div>
@@ -438,7 +441,7 @@ export function RecepcionClient() {
             onPointerLeave={onPointerUp}
             style={{
               width: '100%', height: 140,
-              border: `${hasSig ? '2px solid #2563EB' : '2px dashed #CBD5E1'}`,
+              border: `${hasSig ? '2px solid #1a2550' : '2px dashed #CBD5E1'}`,
               borderRadius: 10, touchAction: 'none', cursor: 'crosshair',
               background: hasSig ? '#EFF6FF' : '#F8FAFC',
               display: 'block',
@@ -462,7 +465,7 @@ export function RecepcionClient() {
           disabled={loading}
           style={{
             width: '100%', padding: '16px 0',
-            background: loading ? '#93C5FD' : '#2563EB',
+            background: loading ? '#93C5FD' : '#1a2550',
             color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 19,
             cursor: loading ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
@@ -471,7 +474,7 @@ export function RecepcionClient() {
           {loading ? <>{Spinner} Guardando…</> : 'Confirmar Recepción'}
         </button>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } } input:focus { border-color: #2563EB !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } input:focus { border-color: #1a2550 !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }`}</style>
     </div>
   );
 }
