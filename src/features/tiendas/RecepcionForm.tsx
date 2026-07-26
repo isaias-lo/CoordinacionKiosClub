@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
@@ -58,7 +58,6 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
   const [receptor,       setReceptor]       = useState('');
   const [rut,            setRut]            = useState('');
   const [observaciones,  setObservaciones]  = useState('');
-  const [hasSig,         setHasSig]         = useState(false);
 
   // Verification
   const [phase,      setPhase]      = useState<Phase>('filling');
@@ -76,10 +75,6 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const drawingRef = useRef(false);
-  const lastRef    = useRef({ x: 0, y: 0 });
-
   useEffect(() => {
     return () => {
       estadoPreviews.forEach(url => URL.revokeObjectURL(url));
@@ -87,47 +82,6 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    const init = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width) { requestAnimationFrame(init); return; }
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width  = rect.width  * dpr;
-      canvas.height = rect.height * dpr;
-      const ctx = canvas.getContext('2d')!;
-      ctx.scale(dpr, dpr);
-      ctx.strokeStyle = '#1B2A6B'; ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    };
-    requestAnimationFrame(init);
-  }, []);
-
-  function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-  function onDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    drawingRef.current = true; lastRef.current = getPos(e);
-  }
-  function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!drawingRef.current) return;
-    const ctx = canvasRef.current!.getContext('2d')!;
-    const pos = getPos(e);
-    ctx.beginPath(); ctx.moveTo(lastRef.current.x, lastRef.current.y);
-    ctx.lineTo(pos.x, pos.y); ctx.stroke();
-    lastRef.current = pos; setHasSig(true);
-  }
-  function onUp() { drawingRef.current = false; }
-  function clearSig() {
-    const canvas = canvasRef.current; if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.getContext('2d')!.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-    setHasSig(false);
-  }
 
   function addEstadoFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -157,7 +111,6 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
     if (!conductor.trim()) { setError('Ingresa el nombre del conductor'); return; }
     if (!receptor.trim())  { setError('Ingresa el nombre del receptor'); return; }
     if (!rut.trim())       { setError('Ingresa el RUT'); return; }
-    if (!hasSig)           { setError('Se requiere firma del receptor'); return; }
     setError(''); setLoading(true);
     try {
       const { data } = await supabase.from('tiendas').select('correos').eq('codigo', cod).single();
@@ -240,8 +193,6 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
         estadoFotoUrls.push(await uploadPhoto(estadoFiles[i], `${uid}_estado${i + 1}.${ext}`));
       }
 
-      const signatureDataUrl = canvasRef.current!.toDataURL('image/png');
-
       const res = await fetch('/api/recepcion', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,7 +212,7 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
           selloLlegadaUrl,   selloLlegadaHora:  selloLlegada.hora,
           selloSalidaUrl,    selloSalidaHora:   selloSalida.hora,
           cdSalidaUrl,       cdSalidaHora:      cdFoto?.hora ?? '',
-          estadoFotoUrls,    signatureDataUrl,
+          estadoFotoUrls,
           codigoVerificacion: code,
           otpToken:          otpToken,
           otpEmail:          storeEmail,
@@ -539,18 +490,7 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
             style={{ ...S.input, resize: 'none', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5 }} />
         </div>
 
-        {/* Firma */}
-        <div style={S.card}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={S.sectionTitle}>Firma del receptor <span style={{ color: '#EF4444' }}>*</span></p>
-            {hasSig && <button onClick={clearSig} style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>Borrar</button>}
-          </div>
-          <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
-            style={{ width: '100%', height: 140, border: `2px ${hasSig ? 'solid #1B2A6B' : 'dashed #D1D5DB'}`, borderRadius: 12, touchAction: 'none', cursor: 'crosshair', background: hasSig ? '#F8FAFF' : '#FAFAFA', display: 'block' }} />
-          {!hasSig && <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF', margin: '8px 0 0' }}>Dibuja tu firma en el área de arriba</p>}
-        </div>
-
-        {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>⚠️ {error}</div>}
+        {error &&<div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>⚠️ {error}</div>}
 
         <button onClick={handleNextStep} disabled={loading}
           style={{ width: '100%', padding: '18px 0', background: loading ? '#93C5FD' : '#1B2A6B', color: '#fff', border: 'none', borderRadius: 18, fontWeight: 700, fontSize: 18, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: loading ? 'none' : '0 4px 20px rgba(27,42,107,0.45)' }}>
