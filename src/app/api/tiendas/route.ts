@@ -3,6 +3,8 @@ import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateTiendaSchema } from '@/lib/schemas';
+import { normalizeCod } from './sync/normalizeCod';
+import { serializeActivo } from './activo';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 const SHEET_TIENDAS  = 'TIENDAS';
@@ -44,7 +46,7 @@ interface TiendaBody {
 
 function buildSheetRow(t: TiendaBody): string[] {
   return [
-    t.codigo?.trim().toUpperCase() ?? '',
+    normalizeCod(t.codigo ?? ''),
     t.nombre?.trim() ?? '',
     t.direccion      ?? '',
     t.region         ?? '',
@@ -61,7 +63,7 @@ function buildSheetRow(t: TiendaBody): string[] {
     t.supervisor     ?? '',
     t.tel_supervisor ?? '',
     t.transportista  ?? '',
-    t.activo !== false ? 'TRUE' : 'FALSE',
+    serializeActivo(t.activo !== false),
   ];
 }
 
@@ -106,6 +108,30 @@ async function syncTiendaToSheets(tienda: TiendaBody): Promise<void> {
   }
 }
 
+/** Elimina la fila de una tienda en el Sheet TIENDAS (por código), si existe. */
+async function deleteRowFromSheets(codigo: string): Promise<void> {
+  const auth = await getAuth();
+  const gs   = google.sheets({ version: 'v4', auth });
+  const cod  = normalizeCod(codigo);
+
+  // Localiza la pestaña (sheetId) y la fila del código.
+  const meta = await gs.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(title,sheetId))' });
+  const sheetId = meta.data.sheets?.find(s => s.properties?.title === SHEET_TIENDAS)?.properties?.sheetId;
+  if (sheetId == null) return;
+
+  const readRes = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${SHEET_TIENDAS}!A1:A1000` });
+  const rows = readRes.data.values || [];
+  const idx  = rows.findIndex(r => normalizeCod(String(r?.[0] ?? '')) === cod);
+  if (idx < 0) return; // no está en el Sheet → nada que borrar
+
+  await gs.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: { requests: [
+      { deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } },
+    ] },
+  });
+}
+
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -136,7 +162,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await sb
       .from('tiendas')
       .upsert({
-        codigo:         body.codigo.trim().toUpperCase(),
+        codigo:         normalizeCod(body.codigo),
         nombre:         body.nombre.trim(),
         direccion:      body.direccion      ?? '',
         region:         body.region         ?? '',
@@ -171,14 +197,21 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  if (!await verifyAdmin(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+
   try {
     const { searchParams } = new URL(request.url);
-    const codigo = searchParams.get('codigo');
+    const codigo = normalizeCod(searchParams.get('codigo') ?? '');
     if (!codigo) return NextResponse.json({ error: 'codigo requerido' }, { status: 400 });
 
     const sb = supabaseServer();
     const { error } = await sb.from('tiendas').delete().eq('codigo', codigo);
     if (error) throw error;
+
+    // Refleja el borrado en el Sheet (evita fila huérfana). Fire-and-forget.
+    deleteRowFromSheets(codigo).catch(e => console.error('[DELETE /api/tiendas:sheets]', e));
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[DELETE /api/tiendas]', err);
