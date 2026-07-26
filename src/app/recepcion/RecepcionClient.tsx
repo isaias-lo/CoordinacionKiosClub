@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { processPhoto } from '../../features/auditoria/utils/photos';
@@ -81,7 +81,6 @@ export function RecepcionClient() {
   const [bultosRec,  setBultosRec]  = useState(String(urlB));
   const [receptor,   setReceptor]   = useState('');
   const [rut,        setRut]        = useState('');
-  const [hasSig,     setHasSig]     = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
 
@@ -142,13 +141,6 @@ export function RecepcionClient() {
     return () => { cancelled = true; };
   }, [canonId]);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawingRef = useRef(false);
-  const lastRef    = useRef({ x: 0, y: 0 });
-  // Longitud total trazada: solo consideramos "firma real" tras superar un umbral,
-  // así un toque/punto accidental no marca la firma como válida.
-  const sigLenRef  = useRef(0);
-
   // Libera el overflow del app-shell para que la página pueda hacer scroll
   useEffect(() => {
     const html = document.documentElement;
@@ -163,61 +155,6 @@ export function RecepcionClient() {
     };
   }, []);
 
-  // Inicializa el canvas con DPR scaling — espera al layout real
-  useEffect(() => {
-    const initCanvas = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width) { requestAnimationFrame(initCanvas); return; }
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width  = rect.width  * dpr;
-      canvas.height = rect.height * dpr;
-      const ctx = canvas.getContext('2d')!;
-      ctx.scale(dpr, dpr);
-      ctx.strokeStyle = '#0F172A';
-      ctx.lineWidth   = 2.5;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
-    };
-    requestAnimationFrame(initCanvas);
-  }, []);
-
-  function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-
-  function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    drawingRef.current = true;
-    lastRef.current    = getPos(e);
-  }
-
-  function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!drawingRef.current) return;
-    const ctx = canvasRef.current!.getContext('2d')!;
-    const pos = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(lastRef.current.x, lastRef.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    const dx = pos.x - lastRef.current.x, dy = pos.y - lastRef.current.y;
-    sigLenRef.current += Math.hypot(dx, dy);
-    lastRef.current = pos;
-    if (sigLenRef.current > 40 && !hasSig) setHasSig(true);
-  }
-
-  function onPointerUp() { drawingRef.current = false; }
-
-  function clearSig() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.getContext('2d')!.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-    sigLenRef.current = 0;
-    setHasSig(false);
-  }
 
   // ── Fotos de recepción: comprime en el navegador y agrega a la lista ──
   async function onAddFotos(e: React.ChangeEvent<HTMLInputElement>) {
@@ -292,8 +229,6 @@ export function RecepcionClient() {
     setError('');
     setLoading(true);
     try {
-      // Firma opcional: solo se envía si dibujó algo real (supera el umbral).
-      const signatureDataUrl = hasSig ? canvasRef.current!.toDataURL('image/png') : '';
       const recepcionFotos = await Promise.all(fotos.map(fileToDataUrl));
       const res = await fetch('/api/recepcion', {
         method: 'POST',
@@ -308,9 +243,7 @@ export function RecepcionClient() {
           bultosRecibidos:  parseInt(bultosRec)  || 0,
           receptor: receptor.trim(),
           rut: rut.trim(),
-          signatureDataUrl,
           recibiConforme,
-          firmaMetodo: hasSig ? 'dibujo' : 'acuse',
           observaciones: observaciones.trim(),
           recepcionFotos,
           origen: 'tienda',   // recepción de la tienda → hoja RECEPCIÓN/TIENDA
@@ -548,37 +481,6 @@ export function RecepcionClient() {
           <p style={{ textAlign: 'center', fontSize: 12, color: '#94A3B8', marginTop: 8, marginBottom: 0 }}>
             Fotos de la carga recibida (estado, daños, sellos…).
           </p>
-        </div>
-
-        {/* Firma (opcional) */}
-        <div style={S.card}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={{ ...S.sectionTitle, margin: 0 }}>Firma del receptor <span style={{ color: '#CBD5E1' }}>(opcional)</span></p>
-            {hasSig && (
-              <button onClick={clearSig} style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
-                Borrar
-              </button>
-            )}
-          </div>
-          <canvas
-            ref={canvasRef}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerLeave={onPointerUp}
-            style={{
-              width: '100%', height: 140,
-              border: `${hasSig ? '2px solid #1a2550' : '2px dashed #CBD5E1'}`,
-              borderRadius: 10, touchAction: 'none', cursor: 'crosshair',
-              background: hasSig ? '#EFF6FF' : '#F8FAFC',
-              display: 'block',
-            }}
-          />
-          {!hasSig && (
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#94A3B8', marginTop: 8, marginBottom: 0 }}>
-              Puedes firmar aquí si lo deseas — el acuse de arriba ya confirma la recepción.
-            </p>
-          )}
         </div>
 
         {error && (

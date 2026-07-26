@@ -122,19 +122,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Firma OPCIONAL: solo se sube si el receptor dibujó una. El acuse (recibiConforme)
-    // es lo que confirma la recepción. Sin firma → firma_url = ''.
-    let publicUrl = '';
-    const firma = parseDataUrl(body.signatureDataUrl);
-    if (firma) {
-      const buffer = Buffer.from(firma.base64, 'base64');
-      const filename = `firma_${body.cod}_${Date.now()}.${firma.ext}`;
-      const { error: uploadError } = await sb.storage
-        .from('signatures')
-        .upload(filename, buffer, { contentType: firma.contentType, upsert: false });
-      if (uploadError) throw new Error(uploadError.message);
-      publicUrl = sb.storage.from('signatures').getPublicUrl(filename).data.publicUrl;
-    }
+    // La firma dibujada se eliminó: el acuse de recibo (recibiConforme) + el OTP al correo
+    // de la tienda son la confirmación. firma_url queda vacío en registros nuevos.
 
     // Fotos de recepción: llegan como data URLs base64 y se suben (service role) al
     // bucket público `recepcion-fotos`. Server-mediated para no depender de sesión anónima.
@@ -168,7 +157,7 @@ export async function POST(request: NextRequest) {
       pionetas:             body.pionetas  ?? '',
       receptor:             body.receptor,
       rut:                  body.rut,
-      firma_url:            publicUrl,
+      firma_url:            '',
       observaciones:        body.observaciones        ?? '',
       sello_estado:         body.selloEstado           ?? '',
       sello_llegada_url:    body.selloLlegadaUrl       ?? '',
@@ -253,7 +242,6 @@ export async function POST(request: NextRequest) {
       'Contenedores Recibidos': body.contenedoresRecibidos ?? 0,
       'Receptor':               body.receptor,
       'RUT':                    body.rut,
-      'Firma':                  publicUrl,
       'Estado Sello':           body.selloEstado ?? '',
       'Foto Sello Llegada':     body.selloLlegadaUrl ?? '',
       'Hora Sello Llegada':     body.selloLlegadaHora ?? '',
