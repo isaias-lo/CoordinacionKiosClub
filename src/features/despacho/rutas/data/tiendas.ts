@@ -20,6 +20,8 @@ export interface TiendaInfo {
 
 export const TIENDAS_INICIAL: Record<string, TiendaInfo> = {
   // ── Región Metropolitana ──────────────────────────────────────────────────
+  "OFIKC":{n:"Oficina Kios Club",         z:"Corredor Oriente",     v:"08:00-15:00", region:"RM",          d:"Av. Vitacura 2909, Las Condes"},
+  "26ALC":{n:"Alto las Condes",           z:"Corredor Oriente",     v:"",            region:"RM",          d:"Av. Pdte. Kennedy Lateral 9001, Las Condes"},
   "32BNV":{n:"Buenaventura",              z:"Corredor Poniente",    v:"09:00-12:00", region:"RM",          d:"San Ignacio 500, Quilicura",                                          correos:"buenaventura@kiosclub.com",      tel_encargado:"56932280943"},
   "35BN2":{n:"Buenaventura 2",            z:"Corredor Poniente",    v:"09:00-12:00", region:"RM",          d:"San Ignacio 500, Quilicura",                                          correos:"buenaventura@kiosclub.com",      tel_encargado:"Pendiente"},
   "14PF": {n:"Pedro Fontova",             z:"Corredor Poniente",    v:"09:30-10:00", region:"RM",          d:"Av. Pedro Fontova 6251, Huechuraba",                                  correos:"pedrofontova@kiosclub.com",      tel_encargado:"56940086711"},
@@ -106,6 +108,7 @@ export const ALIAS: Record<string, string> = {
 };
 
 export const GPS_INICIAL: Record<string, [number, number]> = {
+  "OFIKC":[-33.412029,-70.602629], "26ALC":[-33.388088,-70.545343],
   "32BNV":[-33.331041,-70.702658], "35BN2":[-33.331041,-70.702658],
   "17MAI":[-33.481094,-70.751884],
   "02SCL":[-33.391885,-70.506455], "12LAS":[-33.371694,-70.513811], "45EST":[-33.385302,-70.531448],
