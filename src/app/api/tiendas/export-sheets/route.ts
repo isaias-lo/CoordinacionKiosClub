@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { serializeActivo } from '../activo';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 const SHEET_TIENDAS  = 'TIENDAS';
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
       t.supervisor    ?? '',
       t.tel_supervisor ?? '',
       t.transportista ?? '',
-      t.activo !== false ? 'TRUE' : 'FALSE',
+      serializeActivo(t.activo !== false),
     ]);
 
     await gs.spreadsheets.values.batchUpdate({

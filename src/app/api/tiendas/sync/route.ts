@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 import { verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { normalizeCod, COD_RE } from './normalizeCod';
+import { looksLikeHeader, rowToTienda } from './parseRows';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -22,11 +23,6 @@ function getAuth() {
   });
 }
 
-function parseFloat_(s: string): number | null {
-  if (!s) return null;
-  const n = parseFloat(s.replace(',', '.'));
-  return isNaN(n) ? null : n;
-}
 
 export async function POST(request: NextRequest) {
   if (!await verifyAdmin(request))
@@ -53,39 +49,13 @@ export async function POST(request: NextRequest) {
 
       if (!COD_RE.test(cod)) {
         // Solo reportar filas que parecen ser tiendas reales (no títulos ni encabezados)
-        const looksLikeHeader = !raw
-          || raw.length > 15                          // título demasiado largo
-          || /[⚡📦🏪|—–]/u.test(raw)               // emojis o separadores de título
-          || /^(CÓDIGO|COD|TIENDA|NOMBRE|N°|#)/i.test(raw); // encabezados de columna
-        if (!looksLikeHeader) {
+        if (!looksLikeHeader(raw)) {
           skipped.push({ row: i + 1, raw, reason: `Código "${cod}" no coincide con formato esperado` });
         }
         continue;
       }
 
-      const lat = parseFloat_(row[10] ?? '');
-      const lon = parseFloat_(row[11] ?? '');
-
-      rows.push({
-        codigo:         cod,
-        nombre:         row[1]?.trim() ?? '',
-        direccion:      row[2]?.trim() ?? '',
-        region:         row[3]?.trim() ?? '',
-        sector_comuna:  row[4]?.trim() ?? '',
-        corredor:       row[5]?.trim() ?? '',
-        tipo:           row[6]?.trim() ?? '',
-        ventana:        row[7]?.trim() ?? '',
-        frecuencia:     row[8]?.trim() ?? '',
-        prom_por_dia:   row[9]?.trim() ?? '',
-        lat,
-        lon,
-        correos:        row[12]?.trim() ?? '',
-        tel_encargado:  row[13]?.trim() ?? '',
-        supervisor:     row[14]?.trim() ?? '',
-        tel_supervisor: row[15]?.trim() ?? '',
-        transportista:  row[16]?.trim() ?? '',
-        activo:         (row[17]?.trim().toUpperCase() ?? 'SI') !== 'NO',
-      });
+      rows.push(rowToTienda(row));
     }
 
     if (!rows.length) {
