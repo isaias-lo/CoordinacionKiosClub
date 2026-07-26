@@ -78,13 +78,13 @@ async function syncTiendaToSheets(tienda: TiendaBody): Promise<void> {
   });
 
   const rows  = readRes.data.values || [];
-  const cod   = tienda.codigo.trim().toUpperCase();
+  const cod   = normalizeCod(tienda.codigo);
   const newRow = buildSheetRow(tienda);
 
   // Find existing row (skip header — it won't match a store code)
   let existingIdx = -1;
   for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i]?.[0] ?? '').trim().toUpperCase() === cod) {
+    if (normalizeCod(String(rows[i]?.[0] ?? '')) === cod) {
       existingIdx = i + 1; // convert to 1-indexed sheet row
       break;
     }
