@@ -252,8 +252,10 @@ export async function POST(request: NextRequest) {
       'N° Fotos Estado':        (body.estadoFotoUrls ?? []).length.toString(),
       'Observaciones':          body.observaciones ?? '',
       'Acuse de recibo':        acuse,
+      // OJO: separador ';' — la hoja está en locale es_ES, donde HYPERLINK usa ';'
+      // (con ',' da "Error de análisis de fórmula" / #ERROR!).
       'Fotos de recepción':     galeriaUrl
-        ? `=HYPERLINK("${galeriaUrl}","Ver fotos (${recepcionFotoUrls.length})")`
+        ? `=HYPERLINK("${galeriaUrl}";"Ver fotos (${recepcionFotoUrls.length})")`
         : '',
     };
     await writeToSheet(sheetName, record);
