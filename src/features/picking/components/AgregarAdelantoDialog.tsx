@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { mergeTiendas, type DbTiendaRow } from '@/features/despacho/rutas/data/tiendasMerge';
 import { addTiendaAdelanto, zonaForStore, type ZonaAdelanto } from '@/features/despacho/shared/tiendasAdelanto';
 
 interface Props {
@@ -33,14 +34,24 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
+  // Catálogo = estático + tiendas de la BD (Config), para que las nuevas sean buscables.
+  const [dbRows, setDbRows] = useState<DbTiendaRow[]>([]);
+  useEffect(() => {
+    fetch('/api/tiendas')
+      .then(r => r.ok ? r.json() : null)
+      .then((j: { tiendas?: DbTiendaRow[] } | null) => { if (j?.tiendas) setDbRows(j.tiendas); })
+      .catch(() => {}); // resiliente: si falla, queda el catálogo estático
+  }, []);
+  const catalogo = useMemo(() => mergeTiendas(TIENDAS_INICIAL, dbRows), [dbRows]);
+
   const results = useMemo(() => {
     const upper = q.trim().toUpperCase();
     if (!upper) return [] as { cod: string; name: string }[];
-    return Object.entries(TIENDAS_INICIAL)
+    return Object.entries(catalogo)
       .filter(([cod, info]) => cod.includes(upper) || info.n.toUpperCase().includes(upper))
       .slice(0, 12)
       .map(([cod, info]) => ({ cod, name: info.n }));
-  }, [q]);
+  }, [q, catalogo]);
 
   function pick(store: { cod: string; name: string }) {
     setSel(store);

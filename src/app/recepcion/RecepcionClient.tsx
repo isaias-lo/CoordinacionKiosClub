@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
+import { TIENDAS_INICIAL, type TiendaInfo } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { processPhoto } from '../../features/auditoria/utils/photos';
 import { RECEP_MAX_FOTOS } from '../../lib/recepcionMedia';
@@ -75,6 +75,10 @@ export function RecepcionClient() {
   const [b,   setB]   = useState(urlB);
   const [lookupLoading, setLookupLoading] = useState(Boolean(canonId));
   const [lookupError,   setLookupError]   = useState('');
+  // Tienda resuelta desde la BD (endpoint público) cuando el cod NO está en el catálogo estático.
+  // Permite que una tienda creada en Config (solo BD) funcione en recepción sin tocar código.
+  const [dbStore,      setDbStore]      = useState<TiendaInfo | null>(null);
+  const [storeLoading, setStoreLoading] = useState(Boolean(urlCod && !TIENDAS_INICIAL[urlCod] && !canonId));
 
   const [done,       setDone]       = useState(false);
   const [palletsRec, setPalletsRec] = useState(String(urlP));
@@ -104,7 +108,7 @@ export function RecepcionClient() {
   const [otpBusy,     setOtpBusy]     = useState(false);
   const [otpError,    setOtpError]    = useState('');
 
-  const store = TIENDAS_INICIAL[cod];
+  const store = TIENDAS_INICIAL[cod] ?? dbStore ?? undefined;
   const guias = g ? g.split(',').filter(Boolean) : [];
 
   // Si llega un id canónico, resolver contra /api/pallet-lookup para hidratar
@@ -124,6 +128,9 @@ export function RecepcionClient() {
         };
         const d = json.data;
         if (!cancelled && d?.cod) {
+          // Si el cod resuelto no está en el estático, marca que hay que buscarlo en la BD
+          // (evita el parpadeo de "Código inválido" antes de que corra el efecto de BD).
+          if (!TIENDAS_INICIAL[d.cod]) setStoreLoading(true);
           setCod(d.cod);
           setP(d.n_pallets);
           setB(d.n_bultos);
@@ -140,6 +147,35 @@ export function RecepcionClient() {
     })();
     return () => { cancelled = true; };
   }, [canonId]);
+
+  // Si el cod NO está en el catálogo estático, resolverlo contra la BD (endpoint público).
+  // Así una tienda creada en Config (solo BD) también funciona en la recepción por QR.
+  useEffect(() => {
+    if (!cod) { setStoreLoading(false); return; }
+    if (TIENDAS_INICIAL[cod]) { setDbStore(null); setStoreLoading(false); return; }
+    let cancelled = false;
+    setStoreLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/tiendas/public?cod=${encodeURIComponent(cod)}`);
+        if (!res.ok) { if (!cancelled) setDbStore(null); return; }
+        const json = await res.json() as {
+          tienda?: { nombre: string; direccion?: string; sector_comuna?: string; ventana?: string };
+        };
+        const t = json.tienda;
+        if (!cancelled && t) {
+          setDbStore({ n: t.nombre, d: t.direccion, z: t.sector_comuna || '', v: t.ventana || '' });
+        } else if (!cancelled) {
+          setDbStore(null);
+        }
+      } catch {
+        if (!cancelled) setDbStore(null);
+      } finally {
+        if (!cancelled) setStoreLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cod]);
 
   // Libera el overflow del app-shell para que la página pueda hacer scroll
   useEffect(() => {
@@ -279,8 +315,8 @@ export function RecepcionClient() {
     </div>
   );
 
-  /* ── Resolviendo ID canónico ── */
-  if (lookupLoading) {
+  /* ── Resolviendo ID canónico o tienda desde la BD ── */
+  if (lookupLoading || storeLoading) {
     return (
       <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ textAlign: 'center', color: '#0F172A' }}>
