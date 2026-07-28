@@ -51,7 +51,7 @@ export function useOdooProgress(): Map<string, StoreProgress> {
       timer = setTimeout(() => { void load(); }, 800);
     };
     const channel = supabase
-      .channel('odoo-progress-shared')
+      .channel(`odoo-progress-${Math.random().toString(36).slice(2, 7)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'picking_session_state', filter: `tipo=eq.odoo-progress` }, debounced)
       .subscribe();
     return () => { supabase.removeChannel(channel); if (timer) clearTimeout(timer); };
