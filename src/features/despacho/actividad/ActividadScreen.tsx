@@ -67,7 +67,7 @@ export function ActividadScreen() {
   // Feed en vivo: al llegar un insert que coincide con los filtros de fecha/fuente activos, recargar.
   useEffect(() => {
     const ch = supabase
-      .channel('actividad_bodega_feed')
+      .channel(`actividad-bodega-${Math.random().toString(36).slice(2, 7)}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'actividad_bodega' }, payload => {
         const r = payload.new as ActividadRow;
         const f = filtersRef.current;

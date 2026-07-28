@@ -398,6 +398,12 @@ export function PickingScreen() {
   }, []);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
+  // Polling fallback: si algún evento de INSERT fue perdido por el WebSocket
+  // (corte breve, throttle de Supabase), el ciclo de 60 s lo recupera.
+  useEffect(() => {
+    const id = setInterval(() => { void loadPalletSlots(); }, 60_000);
+    return () => clearInterval(id);
+  }, [loadPalletSlots]);
   // Incremental realtime: apply INSERT/UPDATE/DELETE deltas directly to local state
   // instead of doing a full DB reload on every event. Eliminates the query storm where
   // N supervisors each reload the full table on every change.
@@ -419,8 +425,11 @@ export function PickingScreen() {
         });
 
         if (eventType === 'INSERT') {
-          const isActive = (newRow as { is_active?: boolean }).is_active;
-          if (isActive !== false) {
+          const isActive   = (newRow as { is_active?: boolean }).is_active;
+          const stateKey   = (newRow as { state_key?: string }).state_key ?? '';
+          const pickerLbl  = (newRow as { picker_label?: string }).picker_label ?? '';
+          const isBodega   = stateKey.endsWith('__bodega') || pickerLbl === 'Bodega';
+          if (isActive !== false && !isBodega) {
             const slot = toSlot(newRow as Record<string, unknown>);
             setPalletSlots(prev =>
               prev.some(s => s.id === slot.id) ? prev : [...prev, slot]
