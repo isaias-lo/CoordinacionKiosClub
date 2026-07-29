@@ -9,6 +9,17 @@ import { serializeActivo } from './activo';
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 const SHEET_TIENDAS  = 'TIENDAS';
 
+// El guardado espera el sync a Sheets; le damos margen pero acotado.
+export const maxDuration = 20;
+
+/** Corre una promesa con timeout: si Sheets se cuelga, no bloquea el request. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms)),
+  ]);
+}
+
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
@@ -187,9 +198,18 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     // Fire-and-forget: sync to Google Sheets (doesn't block response)
-    syncTiendaToSheets(body).catch(e => console.error('[POST /api/tiendas:sheets]', e));
+    // Auto-sync a Sheets: se ESPERA y se reporta el resultado (antes era fire-and-forget que
+    // se tragaba los errores → el usuario creía que estaba sincronizado). Si falla, la tienda
+    // igual quedó guardada en la BD (fuente de verdad); el UI avisa para reintentar.
+    let sheetSynced = true;
+    try {
+      await withTimeout(syncTiendaToSheets(body), 8000);
+    } catch (e) {
+      sheetSynced = false;
+      console.error('[POST /api/tiendas:sheets]', e);
+    }
 
-    return NextResponse.json({ tienda: data });
+    return NextResponse.json({ tienda: data, sheetSynced });
   } catch (err) {
     console.error('[POST /api/tiendas]', err);
     return NextResponse.json({ error: 'Error al guardar tienda' }, { status: 500 });
@@ -210,9 +230,15 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error;
 
     // Refleja el borrado en el Sheet (evita fila huérfana). Fire-and-forget.
-    deleteRowFromSheets(codigo).catch(e => console.error('[DELETE /api/tiendas:sheets]', e));
+    let sheetSynced = true;
+    try {
+      await withTimeout(deleteRowFromSheets(codigo), 8000);
+    } catch (e) {
+      sheetSynced = false;
+      console.error('[DELETE /api/tiendas:sheets]', e);
+    }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, sheetSynced });
   } catch (err) {
     console.error('[DELETE /api/tiendas]', err);
     return NextResponse.json({ error: 'Error al eliminar tienda' }, { status: 500 });
