@@ -29,6 +29,9 @@ export interface PickingSession {
   selectedCods: string[];
   opsMap: Record<string, PickingOperation[]>;
   pickerDisplayNames: Record<string, string>;
+  /** ISO del último fetch REAL a Odoo del opsMap. Si no es de hoy, el semáforo no se restaura
+   *  (evita arrastrar el estado "verde/listo" del día anterior con la pestaña abierta). */
+  opsMapFetchedAt?: string;
 }
 
 export interface PalletSlot {
