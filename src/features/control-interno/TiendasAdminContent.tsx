@@ -119,6 +119,7 @@ export default function TiendasAdminContent({
   const [modal,     setModal]     = useState<'add' | 'edit' | null>(null);
   const [form,      setForm]      = useState<Tienda>(EMPTY);
   const [saving,    setSaving]    = useState(false);
+  const [togglingCod, setTogglingCod] = useState<string | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
   const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
@@ -192,15 +193,25 @@ export default function TiendasAdminContent({
           setMsgType('ok'); setMsg(`${base} · Google Sheets sincronizado ✓`);
         }
       } else { setMsgType('err'); setMsg(data.error ?? 'Error'); }
+    } catch {
+      setMsgType('err'); setMsg('No se pudo guardar (error de conexión o tiempo de espera). Reintenta.');
     } finally { setSaving(false); }
   }
 
   async function handleToggleActivo(t: Tienda) {
-    const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, activo: !t.activo }) });
-    const data = await res.json().catch(() => ({})) as { sheetSynced?: boolean };
-    await load();
-    if (data.sheetSynced === false) {
-      setMsgType('err'); setMsg('Estado actualizado en la BD, pero ⚠ Google Sheets no se sincronizó.');
+    if (togglingCod) return;               // evita doble clic mientras sincroniza
+    setTogglingCod(t.codigo);
+    try {
+      const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, activo: !t.activo }) });
+      const data = await res.json().catch(() => ({})) as { sheetSynced?: boolean };
+      await load();
+      if (data.sheetSynced === false) {
+        setMsgType('err'); setMsg('Estado actualizado en la BD, pero ⚠ Google Sheets no se sincronizó.');
+      }
+    } catch {
+      setMsgType('err'); setMsg('No se pudo actualizar el estado (conexión). Reintenta.');
+    } finally {
+      setTogglingCod(null);
     }
   }
 
@@ -429,11 +440,13 @@ export default function TiendasAdminContent({
                       {/* Actions */}
                       {canEditTiendas && (
                         <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 10 }}>
-                          <button onClick={() => handleToggleActivo(t)}
-                            style={{ flex: 1, height: 32, borderRadius: 7, border: `1px solid ${t.activo ? '#FECACA' : '#BBF7D0'}`, background: t.activo ? '#FEF2F2' : '#F0FDF4', color: t.activo ? '#DC2626' : '#16A34A', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                            {t.activo
-                              ? <><ToggleLeft size={13} /> Desactivar</>
-                              : <><ToggleRight size={13} /> Activar</>
+                          <button onClick={() => handleToggleActivo(t)} disabled={togglingCod === t.codigo}
+                            style={{ flex: 1, height: 32, borderRadius: 7, border: `1px solid ${t.activo ? '#FECACA' : '#BBF7D0'}`, background: t.activo ? '#FEF2F2' : '#F0FDF4', color: t.activo ? '#DC2626' : '#16A34A', fontSize: 12, fontWeight: 700, cursor: togglingCod === t.codigo ? 'wait' : 'pointer', opacity: togglingCod === t.codigo ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                            {togglingCod === t.codigo
+                              ? '…'
+                              : t.activo
+                                ? <><ToggleLeft size={13} /> Desactivar</>
+                                : <><ToggleRight size={13} /> Activar</>
                             }
                           </button>
                           <button onClick={() => openEdit(t)}
