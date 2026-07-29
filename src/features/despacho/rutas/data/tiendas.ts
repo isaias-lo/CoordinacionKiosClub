@@ -104,7 +104,7 @@ export const ALIAS: Record<string, string> = {
   "MPQ":"54MPQ","PSB":"39PSB","SER":"51SER","MCH":"27MCH","TLC":"31TLC",
   "CHL":"36CHL","TRE":"46TRE","SPP":"24SPP","SP2":"38SP2","TEM":"28TEM",
   "PUC":"75PUC","PAN":"76PAN","PTV":"47PTV","PTM":"50PTM","ANA":"41ANA",
-  "ANP":"42ANP","VAL":"53VAL","ITA":"55ITA","PZA":"56PZA",
+  "ANP":"42ANP","VAL":"53VAL","ITA":"55ITA","PZA":"56PZA","CAS":"57CAS",
 };
 
 export const GPS_INICIAL: Record<string, [number, number]> = {
