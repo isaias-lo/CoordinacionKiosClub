@@ -1,4 +1,4 @@
-import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { TIENDAS_INICIAL, type TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 
 export type ZonaAdelanto = 'rm' | 'costa' | 'fal';
 
@@ -20,8 +20,9 @@ export interface TiendaAdelanto {
  *  - cualquier otra  → 'fal'   (Bodega Regiones / NACIONAL).
  * Es solo un default; la UI permite ajustarlo manualmente.
  */
-export function zonaForStore(cod: string): ZonaAdelanto {
-  const info = TIENDAS_INICIAL[(cod ?? '').toUpperCase()];
+export function zonaForStore(cod: string, tienda?: TiendaInfo): ZonaAdelanto {
+  // Si se pasa la info fusionada (BD + estático), se usa esa; sino cae al catálogo estático.
+  const info = tienda ?? TIENDAS_INICIAL[(cod ?? '').toUpperCase()];
   if (!info) return 'rm';
   if ((info.z ?? '').trim().toLowerCase() === 'costa') return 'costa';
   const region = (info.region ?? '').trim().toUpperCase();

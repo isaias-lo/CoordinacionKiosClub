@@ -3,9 +3,17 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { sendOTPEmail } from '@/lib/gmail';
 import { createOtpToken } from '@/lib/otpToken';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
+import { normalizeCod } from '@/app/api/tiendas/sync/normalizeCod';
+import { ALIAS } from '@/features/despacho/rutas/data/tiendas';
 
 function generateOTP(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/** Código canónico para el lookup en `tiendas` (igual criterio que /api/tiendas/public). */
+function canonCod(c: string): string {
+  const n = normalizeCod(c ?? '');
+  return ALIAS[n] ?? n;
 }
 
 /** POST — genera OTP y lo envía al correo de la tienda */
@@ -30,7 +38,7 @@ export async function POST(request: NextRequest) {
   const { data: tienda } = await supabaseServer()
     .from('tiendas')
     .select('correos')
-    .eq('codigo', store_cod)
+    .eq('codigo', canonCod(store_cod))
     .single();
 
   const email = tienda?.correos as string | null;
@@ -128,7 +136,7 @@ export async function PUT(request: NextRequest) {
   const { data: tienda } = await supabaseServer()
     .from('tiendas')
     .select('correos')
-    .eq('codigo', store_cod)
+    .eq('codigo', canonCod(store_cod))
     .single();
   const email = (tienda?.correos as string | null) ?? '';
 

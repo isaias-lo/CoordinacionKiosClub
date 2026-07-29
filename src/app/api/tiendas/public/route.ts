@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { normalizeCod } from '../sync/normalizeCod';
 import { ALIAS } from '@/features/despacho/rutas/data/tiendas';
+import { isValidChileGps } from '@/features/despacho/rutas/data/tiendasMerge';
 
 /**
  * GET /api/tiendas/public?cod=XXX — lectura PÚBLICA (sin auth) de UNA tienda por código.
@@ -21,16 +22,26 @@ export async function GET(request: NextRequest) {
   const cod  = ALIAS[norm] ?? norm; // resuelve alias corto/legacy → canónico
   if (!cod) return NextResponse.json({ error: 'cod requerido' }, { status: 400 });
 
-  const { data } = await supabaseServer()
-    .from('tiendas')
-    .select('codigo, nombre, direccion, region, sector_comuna, ventana, activo, lat, lon')
-    .eq('codigo', cod)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabaseServer()
+      .from('tiendas')
+      .select('codigo, nombre, direccion, region, sector_comuna, ventana, activo, lat, lon')
+      .eq('codigo', cod)
+      .maybeSingle();
 
-  // 404 genérico (no revela si existe pero está inactiva)
-  if (!data || data.activo === false) {
+    // 404 genérico (no revela si existe pero está inactiva). Falla cerrado ante error de BD.
+    if (error || !data || data.activo === false) {
+      if (error) console.error('[GET /api/tiendas/public]', error.message);
+      return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 });
+    }
+
+    // No devolver coordenadas inválidas (evita pines fuera de Chile en el consumidor).
+    const lat = isValidChileGps(data.lat, data.lon) ? data.lat : null;
+    const lon = isValidChileGps(data.lat, data.lon) ? data.lon : null;
+
+    return NextResponse.json({ tienda: { ...data, lat, lon } });
+  } catch (err) {
+    console.error('[GET /api/tiendas/public]', err);
     return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 });
   }
-
-  return NextResponse.json({ tienda: data });
 }

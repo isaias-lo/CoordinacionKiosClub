@@ -55,7 +55,7 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
 
   function pick(store: { cod: string; name: string }) {
     setSel(store);
-    setZona(zonaForStore(store.cod)); // default automático; el usuario puede cambiarlo
+    setZona(zonaForStore(store.cod, catalogo[store.cod])); // default desde catálogo fusionado (incluye BD)
     setError(null);
   }
 
