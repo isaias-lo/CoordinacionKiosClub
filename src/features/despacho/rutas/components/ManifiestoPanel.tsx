@@ -251,7 +251,7 @@ tr:nth-child(even) td{background:#f8f8f8}
 .firma-field-lbl{font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;min-width:46px;flex-shrink:0}
 .firma-field-val{font-size:12px;font-weight:800;color:#1a2550;letter-spacing:.4px}
 .firma-field-blank{flex:1;min-height:16px}
-@page{size:letter;margin:9mm}
+@page{size:letter;margin:6mm}
 /* Evita que estos bloques se partan a mitad de página al imprimir. */
 .qr-box,.firma-section,.firma,.tienda-hdr,.totals,table{break-inside:avoid}
 /* Impresión: compacta el ritmo vertical para que cada manifiesto entre en UNA hoja. */
