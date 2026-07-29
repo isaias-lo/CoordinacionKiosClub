@@ -6,6 +6,12 @@ import type { TiendaInfo } from '../data/tiendas';
 export interface StoreItem { c: string; p: number; b: number; ch?: number; _v?: string; }
 export interface Ruta { v: Vehiculo; ts: StoreItem[]; tp: number; tb: number; _choferAsignado?: string; _kmReal?: number; }
 
+// Grupos de ruteo curados SUR / NORTE (códigos cortos legacy). Extraídos de asignar() para que
+// sean visibles, exportados y testeables (antes estaban INLINE dentro de la función). Mismos
+// miembros y mismo comportamiento (membresía por código). Curación de negocio, como PROVIDENCIA.
+export const GRUPO_SUR_SET   = new Set(['CFL', 'FLO', 'PTA', 'PEN', 'SMB']);
+export const GRUPO_NORTE_SET = new Set(['PIE', 'TPS', 'TRQ', 'PQA', 'EST', 'LP']);
+
 export function nn(tiendas: StoreItem[], gps: Record<string, number[]>, cd: number[]): StoreItem[] {
   if (tiendas.length <= 1) return tiendas;
   let pend = tiendas.slice(), ruta: StoreItem[] = [];
@@ -64,12 +70,10 @@ export function asignar(
   const tProv  = ts.filter(t => _prov.has(t.c) && !asignadas[t.c]);
   tProv.forEach(t => { asignadas[t.c] = 1; });
 
-  const GRUPO_SUR_SET: Record<string,number>  = {CFL:1,FLO:1,PTA:1,PEN:1,SMB:1};
-  const tSur   = ts.filter(t => GRUPO_SUR_SET[t.c] && !asignadas[t.c]);
+  const tSur   = ts.filter(t => GRUPO_SUR_SET.has(t.c) && !asignadas[t.c]);
   tSur.forEach(t => { asignadas[t.c] = 1; });
 
-  const GRUPO_NORTE_SET: Record<string,number> = {PIE:1,TPS:1,TRQ:1,PQA:1,EST:1,LP:1};
-  const tNorte = ts.filter(t => GRUPO_NORTE_SET[t.c] && !asignadas[t.c]);
+  const tNorte = ts.filter(t => GRUPO_NORTE_SET.has(t.c) && !asignadas[t.c]);
   tNorte.forEach(t => { asignadas[t.c] = 1; });
 
   const tCentro = ts.filter(t => !asignadas[t.c]);
