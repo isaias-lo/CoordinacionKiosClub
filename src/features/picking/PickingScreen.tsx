@@ -26,7 +26,7 @@ import {
   LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY,
 } from './picking-types';
 import {
-  todayISO, getStoreName, isPickeableState,
+  todayISO, getStoreName, isPickeableState, isFetchedToday,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
   computePalletNums, isSinAsignar, buildPickerKeyList,
 } from './picking-utils';
@@ -57,7 +57,10 @@ function loadSession(): Partial<PickingSession> {
     if (!raw) return {};
     const s = JSON.parse(raw) as PickingSession;
     if (s.date !== todayISO()) return {};
-    return s;
+    // El semáforo (opsMap) solo se restaura si fue traído de Odoo HOY. Con la pestaña abierta
+    // cruzando la medianoche, la sesión se re-guarda con la fecha de hoy pero el opsMap sigue
+    // siendo de ayer ("lavado de fecha"); isFetchedToday lo descarta para no mostrar el verde de ayer.
+    return isFetchedToday(s.opsMapFetchedAt) ? s : { ...s, opsMap: {} };
   } catch { return {}; }
 }
 
@@ -606,10 +609,12 @@ export function PickingScreen() {
     localStorage.setItem(SAVED_NAMES_KEY, JSON.stringify(pickerDisplayNames));
   }, [pickerDisplayNames]);
 
-  // Persistir sesión en sessionStorage cuando cambia el estado relevante
+  // Persistir sesión en sessionStorage cuando cambia el estado relevante.
+  // opsMapFetchedAt = hora real del último fetch a Odoo (lastRefresh), para que loadSession
+  // pueda descartar un opsMap de otro día aunque la sesión se re-guarde con la fecha de hoy.
   useEffect(() => {
-    saveSession({ date: todayISO(), selectedCods, opsMap, pickerDisplayNames });
-  }, [selectedCods, opsMap, pickerDisplayNames]);
+    saveSession({ date: todayISO(), selectedCods, opsMap, pickerDisplayNames, opsMapFetchedAt: lastRefresh?.toISOString() });
+  }, [selectedCods, opsMap, pickerDisplayNames, lastRefresh]);
 
   // Disparar impresión después del re-render:
   // 1) espera a que recordPrints termine (registro en Supabase)

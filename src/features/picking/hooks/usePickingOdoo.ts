@@ -136,10 +136,17 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
 
   useEffect(() => {
     if (selectedCods.length === 0) return;
+    // Refresco INMEDIATO al entrar / al cambiar la selección, con debounce de 400ms para no
+    // disparar durante la carga (el churn de selectedCods se estabiliza). Así el semáforo
+    // refleja el estado REAL de Odoo desde el inicio, sin tener que dar clic tienda por tienda.
+    // Odoo protegido: caché de 30s + dedup in-flight en /api/odoo → no se agrega carga real.
+    const debounce = setTimeout(() => {
+      if (document.visibilityState !== 'hidden') void fetchBatchOps(selectedCods);
+    }, 400);
     const id = setInterval(() => {
       if (document.visibilityState !== 'hidden') void fetchBatchOps(selectedCods);
     }, AUTO_REFRESH_MS);
-    return () => clearInterval(id);
+    return () => { clearTimeout(debounce); clearInterval(id); };
   }, [selectedCods, fetchBatchOps]);
 
   // Refresca al volver a la pestaña tras haber estado oculta.
