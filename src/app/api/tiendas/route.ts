@@ -187,9 +187,20 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     // Fire-and-forget: sync to Google Sheets (doesn't block response)
-    syncTiendaToSheets(body).catch(e => console.error('[POST /api/tiendas:sheets]', e));
+    // Auto-sync a Sheets: se ESPERA y se reporta el resultado (antes era fire-and-forget que
+    // se tragaba los errores → el usuario creía que estaba sincronizado). Si falla, la tienda
+    // igual quedó guardada en la BD (fuente de verdad); el UI avisa para reintentar.
+    let sheetSynced = true;
+    let sheetError: string | undefined;
+    try {
+      await syncTiendaToSheets(body);
+    } catch (e) {
+      sheetSynced = false;
+      sheetError = e instanceof Error ? e.message : String(e);
+      console.error('[POST /api/tiendas:sheets]', e);
+    }
 
-    return NextResponse.json({ tienda: data });
+    return NextResponse.json({ tienda: data, sheetSynced, sheetError });
   } catch (err) {
     console.error('[POST /api/tiendas]', err);
     return NextResponse.json({ error: 'Error al guardar tienda' }, { status: 500 });
@@ -210,9 +221,15 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error;
 
     // Refleja el borrado en el Sheet (evita fila huérfana). Fire-and-forget.
-    deleteRowFromSheets(codigo).catch(e => console.error('[DELETE /api/tiendas:sheets]', e));
+    let sheetSynced = true;
+    try {
+      await deleteRowFromSheets(codigo);
+    } catch (e) {
+      sheetSynced = false;
+      console.error('[DELETE /api/tiendas:sheets]', e);
+    }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, sheetSynced });
   } catch (err) {
     console.error('[DELETE /api/tiendas]', err);
     return NextResponse.json({ error: 'Error al eliminar tienda' }, { status: 500 });

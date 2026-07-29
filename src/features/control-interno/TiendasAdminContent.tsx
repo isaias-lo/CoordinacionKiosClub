@@ -180,17 +180,28 @@ export default function TiendasAdminContent({
     setSaving(true);
     try {
       const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      const data = await res.json() as { tienda?: Tienda; error?: string };
+      const data = await res.json() as { tienda?: Tienda; sheetSynced?: boolean; error?: string };
       if (data.tienda) {
+        const wasAdd = modal === 'add';
         setModal(null); await load();
-        setMsgType('ok'); setMsg(modal === 'add' ? 'Tienda agregada' : 'Tienda actualizada');
+        const base = wasAdd ? 'Tienda agregada' : 'Tienda actualizada';
+        if (data.sheetSynced === false) {
+          setMsgType('err');
+          setMsg(`${base} en la BD, pero ⚠ no se pudo sincronizar a Google Sheets. Reintenta con "DB → Sheets".`);
+        } else {
+          setMsgType('ok'); setMsg(`${base} · Google Sheets sincronizado ✓`);
+        }
       } else { setMsgType('err'); setMsg(data.error ?? 'Error'); }
     } finally { setSaving(false); }
   }
 
   async function handleToggleActivo(t: Tienda) {
-    await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, activo: !t.activo }) });
+    const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, activo: !t.activo }) });
+    const data = await res.json().catch(() => ({})) as { sheetSynced?: boolean };
     await load();
+    if (data.sheetSynced === false) {
+      setMsgType('err'); setMsg('Estado actualizado en la BD, pero ⚠ Google Sheets no se sincronizó.');
+    }
   }
 
   function f(k: keyof Tienda) {
