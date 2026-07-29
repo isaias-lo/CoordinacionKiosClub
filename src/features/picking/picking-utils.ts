@@ -5,6 +5,18 @@ import { CANONICAL_PICKER_KEYS } from './picking-types';
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 export function todayISO(): string { return new Date().toISOString().slice(0, 10); }
 
+/**
+ * ¿El opsMap guardado fue traído de Odoo HOY (día LOCAL)? Se usa para no restaurar el
+ * semáforo del día anterior con la pestaña abierta cruzando la medianoche. Compara por día
+ * local en ambos lados (no UTC), que es donde estaba el hueco del check anterior.
+ */
+export function isFetchedToday(opsMapFetchedAt: string | undefined, now: Date = new Date()): boolean {
+  if (!opsMapFetchedAt) return false;
+  const d = new Date(opsMapFetchedAt);
+  if (isNaN(d.getTime())) return false;
+  return d.toDateString() === now.toDateString();
+}
+
 export function stampFromISO(isoDate: string): string {
   const [yyyy, mm, dd] = isoDate.split('-');
   return `${dd}${mm}${yyyy}`;

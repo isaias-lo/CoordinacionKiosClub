@@ -26,7 +26,7 @@ import {
   LABEL_CONFIG_KEY, CANONICAL_NAMES_KEY,
 } from './picking-types';
 import {
-  todayISO, getStoreName, isPickeableState,
+  todayISO, getStoreName, isPickeableState, isFetchedToday,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
   computePalletNums, isSinAsignar, buildPickerKeyList,
 } from './picking-utils';
@@ -59,10 +59,8 @@ function loadSession(): Partial<PickingSession> {
     if (s.date !== todayISO()) return {};
     // El semáforo (opsMap) solo se restaura si fue traído de Odoo HOY. Con la pestaña abierta
     // cruzando la medianoche, la sesión se re-guarda con la fecha de hoy pero el opsMap sigue
-    // siendo de ayer ("lavado de fecha"); esto lo descarta para no mostrar el verde de ayer.
-    const fetchedToday = s.opsMapFetchedAt
-      && new Date(s.opsMapFetchedAt).toDateString() === new Date().toDateString();
-    return fetchedToday ? s : { ...s, opsMap: {} };
+    // siendo de ayer ("lavado de fecha"); isFetchedToday lo descarta para no mostrar el verde de ayer.
+    return isFetchedToday(s.opsMapFetchedAt) ? s : { ...s, opsMap: {} };
   } catch { return {}; }
 }
 
