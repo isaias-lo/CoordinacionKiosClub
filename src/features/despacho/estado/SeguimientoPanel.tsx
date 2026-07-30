@@ -69,6 +69,7 @@ const REC_COLS: ColDef[] = [
   { key: 'receptor',               label: 'Receptor',      defaultWidth: 120, minWidth: 70  },
   { key: 'rut',                    label: 'RUT',           defaultWidth: 110, minWidth: 70  },
   { key: 'observaciones',          label: 'Observaciones', defaultWidth: 180, minWidth: 90  },
+  { key: 'editado',                label: 'Editado',       defaultWidth: 120, minWidth: 70  },
   // ── Columnas adicionales (ocultas por defecto, disponibles en el menú) ──────
   { key: 'contenedores_sent',      label: 'C. Env',        defaultWidth: 60,  minWidth: 45  },
   { key: 'contenedores_recibidos', label: 'C. Rec',        defaultWidth: 60,  minWidth: 45  },
@@ -88,7 +89,7 @@ const DEFAULT_VISIBLE_DISP = new Set([
 const DEFAULT_VISIBLE_REC = new Set([
   'created_at', 'cod', 'tienda',
   'pallets_sent', 'pallets_recibidos', 'bultos_sent', 'bultos_recibidos',
-  'diferencias', 'acuse_recibo', 'conductor', 'receptor', 'rut', 'observaciones',
+  'diferencias', 'acuse_recibo', 'conductor', 'receptor', 'rut', 'observaciones', 'editado',
 ]);
 
 const LS_DISP = 'estado_vcols_disp';
@@ -165,6 +166,7 @@ function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
   const estadoFotos    = (row.estado_fotos as string[]) ?? [];
   const recepcionFotos = (row.recepcion_fotos as string[]) ?? [];
   const fechaHora   = row.created_at ? fmtFechaHoraChile(String(row.created_at)) : '—';
+  const historial = (row.historial_ediciones as { ts: string; receptor: string; rut: string; cambios: { campo: string; de: unknown; a: unknown }[] }[] | null) ?? [];
 
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, overflowY: 'auto', padding: '20px 16px 40px' }}>
@@ -247,6 +249,29 @@ function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
           {!!(row.observaciones && String(row.observaciones).trim()) && <div style={{ background: '#FFFBEB', borderRadius: 12, padding: '12px 14px', border: '1px solid #FDE68A' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Observaciones</div>
             <div style={{ fontSize: 13, color: '#78350F', lineHeight: 1.5 }}>{String(row.observaciones)}</div>
+          </div>}
+
+          {historial.length > 0 && <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>✎ Historial de ediciones ({historial.length})</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {historial.map((e, i) => (
+                <div key={i} style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#6B21A8' }}>{e.receptor || '—'}{e.rut ? <span style={{ fontFamily: 'monospace', fontWeight: 500, color: '#9333EA', marginLeft: 6 }}>{e.rut}</span> : null}</span>
+                    <span style={{ fontSize: 10, color: '#A78BDA' }}>{e.ts ? fmtFechaHoraChile(e.ts) : ''}</span>
+                  </div>
+                  {Array.isArray(e.cambios) && e.cambios.length > 0 && (
+                    <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {e.cambios.map((c, j) => (
+                        <div key={j} style={{ fontSize: 11.5, color: '#4C1D6B' }}>
+                          <strong>{c.campo}:</strong> <span style={{ color: '#9CA3AF' }}>{c.de == null || c.de === '' ? '—' : String(c.de)}</span> → <strong>{c.a == null || c.a === '' ? '—' : String(c.a)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>}
 
           {!!row.codigo_verificacion && <div style={{ background: '#F0F4FF', borderRadius: 12, padding: '10px 14px' }}>
@@ -517,6 +542,12 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
     if (col.key === 'n_fotos') {
       const nf = (row.recepcion_fotos as string[] | null)?.length ?? 0;
       return nf > 0 ? <span style={{ fontWeight: 700, color: '#1B2A6B' }}>{nf}</span> : <span style={{ color: '#C0C7D4' }}>—</span>;
+    }
+    if (col.key === 'editado') {
+      const nEd = Number(row.ediciones ?? 0);
+      if (!nEd) return <span style={{ color: '#C0C7D4' }}>—</span>;
+      const cuando = row.editado_en ? fmtFechaHoraChile(String(row.editado_en)) : '';
+      return <span title={cuando} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#7C3AED', background: 'rgba(124,58,237,0.12)', padding: '3px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>✎ Editado {nEd > 1 ? `×${nEd}` : ''}</span>;
     }
     if (['pallets_sent','bultos_sent','pallets_recibidos','bultos_recibidos','contenedores_sent','contenedores_recibidos'].includes(col.key) && val != null) {
       return <span style={{ fontWeight: 700, color: '#1B2A6B' }}>{String(val)}</span>;
