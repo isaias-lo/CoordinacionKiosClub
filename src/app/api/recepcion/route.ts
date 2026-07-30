@@ -8,6 +8,7 @@ import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
 import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
 import { buildSheetRow } from '@/lib/sheetRow';
+import { nuevoSeguimientoRecepcion, elegirFechaDespacho, type DespachoCandidato } from '@/lib/recepcionEstado';
 
 interface RecepcionBody {
   cod: string;
@@ -58,6 +59,20 @@ const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2C
 function todayFecha(): string {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+/** Fecha (DD/MM/YYYY) del despacho que una recepción debe actualizar, mirando rm y regiones.
+ *  El armado puede ocurrir un día distinto al de la recepción, así que no asumimos "hoy".
+ *  La elección (activo más avanzado / más reciente) vive pura en `elegirFechaDespacho`. */
+async function fechaDespachoParaRecepcion(
+  sb: ReturnType<typeof supabaseServer>,
+  cod: string,
+): Promise<string | null> {
+  const [{ data: rm }, { data: reg }] = await Promise.all([
+    sb.from('despacho_rm').select('fecha, seguimiento, created_at').eq('cod', cod).order('created_at', { ascending: false }).limit(20),
+    sb.from('despacho_regiones').select('fecha, seguimiento, created_at').eq('cod', cod).order('created_at', { ascending: false }).limit(20),
+  ]);
+  return elegirFechaDespacho([...(rm ?? []), ...(reg ?? [])] as DespachoCandidato[]);
 }
 
 function getAuth() {
@@ -173,7 +188,9 @@ export async function POST(request: NextRequest) {
       firma_metodo:         body.firmaMetodo           ?? '',
       codigo_verificacion:  body.codigoVerificacion    ?? '',
       canonical_id:         body.canonicalId           ?? null,
-      fuente:               'conductor',
+      // Origen del registro: la tienda (QR+OTP) → 'tienda'; el chofer/entrega → 'conductor'.
+      // (Antes estaba hardcodeado a 'conductor', lo que hacía inalcanzable 'Diferencia'/'Recibido'.)
+      fuente:               body.origen === 'tienda' ? 'tienda' : 'conductor',
     }).select('id').single();
 
     if (insertError) throw new Error(insertError.message);
@@ -184,35 +201,60 @@ export async function POST(request: NextRequest) {
       ? `${origin}/recepcion/galeria/${inserted.id}`
       : '';
 
-    // Auto-transición: si la tienda ya registró su recepción para hoy, comparamos
-    // cantidades. Si coinciden con lo enviado por el conductor → 'Recibido';
-    // si hay diferencia → 'Diferencia'. Sin recepción previa → 'Entregado'.
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data: prevTiendaRecep } = await sb
-      .from('recepcion')
-      .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos')
-      .eq('cod', body.cod)
-      .eq('fuente', 'tienda')
-      .gte('created_at', todayStart.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Auto-transición del seguimiento (lógica pura en recepcionEstado.ts):
+    //  - origen 'tienda' (la tienda confirma): compara enviado vs recibido (mismo registro)
+    //    → 'Recibido' si coincide, 'Diferencia' si no.
+    //  - chofer/entrega: si la tienda YA registró recepción hoy se respeta ese resultado;
+    //    si no, 'Entregado'.
+    const esTienda = body.origen === 'tienda';
 
-    let nuevoEstado: 'Entregado' | 'Recibido' | 'Diferencia' = 'Entregado';
-    if (prevTiendaRecep) {
-      const hayDiferencia =
-        (body.palletsSent      ?? 0) !== (prevTiendaRecep.pallets_recibidos      ?? 0) ||
-        (body.bultosSent       ?? 0) !== (prevTiendaRecep.bultos_recibidos       ?? 0) ||
-        (body.contenedoresSent ?? 0) !== (prevTiendaRecep.contenedores_recibidos ?? 0);
-      nuevoEstado = hayDiferencia ? 'Diferencia' : 'Recibido';
+    // Solo el caso chofer necesita la recepción previa de la TIENDA (si existe hoy).
+    let recibidoTiendaPrevio: { pallets: number; bultos: number; contenedores: number } | null = null;
+    if (!esTienda) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const { data: prev } = await sb
+        .from('recepcion')
+        .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos')
+        .eq('cod', body.cod)
+        .eq('fuente', 'tienda')
+        .gte('created_at', todayStart.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (prev) {
+        recibidoTiendaPrevio = {
+          pallets:      prev.pallets_recibidos      ?? 0,
+          bultos:       prev.bultos_recibidos       ?? 0,
+          contenedores: prev.contenedores_recibidos ?? 0,
+        };
+      }
     }
-    const fechaHoy = todayFecha();
 
-    await Promise.all([
-      sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaHoy),
-      sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaHoy),
-    ]);
+    const nuevoEstado = nuevoSeguimientoRecepcion({
+      origen:   body.origen ?? '',
+      enviado:  { pallets: body.palletsSent      ?? 0, bultos: body.bultosSent      ?? 0, contenedores: body.contenedoresSent      ?? 0 },
+      recibido: { pallets: body.palletsRecibidos ?? 0, bultos: body.bultosRecibidos ?? 0, contenedores: body.contenedoresRecibidos ?? 0 },
+      recibidoTiendaPrevio,
+    });
+
+    // Fecha del despacho a actualizar: la de la fila más reciente de esta tienda (el armado
+    // puede ser de un día distinto al de la recepción). Fallback: hoy.
+    const fechaDespacho = (await fechaDespachoParaRecepcion(sb, body.cod)) ?? todayFecha();
+
+    // 'Entregado' NO debe pisar un estado más avanzado ya alcanzado (Recibido/Diferencia).
+    if (nuevoEstado === 'Entregado') {
+      const noFinal = ['Registrado', 'Pendiente', 'En camino'];
+      await Promise.all([
+        sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaDespacho).in('seguimiento', noFinal),
+        sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaDespacho).in('seguimiento', noFinal),
+      ]);
+    } else {
+      await Promise.all([
+        sb.from('despacho_rm').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaDespacho),
+        sb.from('despacho_regiones').update({ seguimiento: nuevoEstado }).eq('cod', body.cod).eq('fecha', fechaDespacho),
+      ]);
+    }
 
     // Escribir a la hoja correcta según el origen:
     //   'tienda' (QR+OTP de la tienda) → RECEPCIÓN/TIENDA

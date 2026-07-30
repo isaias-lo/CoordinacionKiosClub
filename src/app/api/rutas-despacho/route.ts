@@ -268,6 +268,10 @@ export async function PATCH(request: NextRequest) {
   const { error } = await sb.from('rutas_despacho').update({ estado: body.estado }).eq('id', body.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // 1b. Reflejar el estado por-tienda (columna que leen chofer / fiscalizador / conductor-hub).
+  //     Antes quedaba congelada en 'pendiente' porque nadie la actualizaba tras crear la ruta.
+  await sb.from('ruta_tiendas').update({ estado_entrega: body.estado }).eq('ruta_id', body.id);
+
   // 2. Sincronizar seguimiento en despacho_rm / despacho_regiones (fire-and-forget)
   const seguimiento = ESTADO_TO_SEGUIMIENTO[body.estado];
   if (seguimiento) {
