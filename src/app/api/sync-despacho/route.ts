@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { isDataRow, makeRmMapper, makeRegionesMapper } from './parseRows';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID ?? '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -19,77 +20,8 @@ async function getAuth() {
   });
 }
 
-function num(v: string | number | undefined): number | null {
-  const p = parseFloat(String(v ?? ''));
-  return isNaN(p) ? null : p;
-}
-
-function isDataRow(row: (string | number)[]): boolean {
-  const id = String(row[0] ?? '').trim();
-  return id !== '' && id.toLowerCase() !== 'id';
-}
-
-// DESPACHO RM/REGIONES — 26 cols (PATENTE insertada entre TRANSPORTE[6] y CARGA[8])
-function toRmRecord(row: (string | number)[]) {
-  return {
-    id:             String(row[0]  ?? ''),
-    fecha:          String(row[1]  ?? ''),
-    cod:            String(row[2]  ?? ''),
-    tienda:         String(row[3]  ?? ''),
-    tipo:           String(row[4]  ?? ''),
-    regimen:        String(row[5]  ?? ''),
-    transporte:     String(row[6]  ?? ''),
-    patente:        String(row[7]  ?? ''),
-    carga:          String(row[8]  ?? ''),
-    region:         String(row[9]  ?? ''),
-    comuna:         String(row[10] ?? ''),
-    tipo_comuna:    String(row[11] ?? ''),
-    peso_kg:        num(row[12]),
-    alto:           num(row[13]),
-    largo:          num(row[14]),
-    ancho:          num(row[15]),
-    peso_v:         num(row[16]),
-    ventana:        String(row[17] ?? ''),
-    estado:         String(row[18] ?? ''),
-    n_pallet_bulto: String(row[19] ?? ''),
-    fecha_llegada:  String(row[20] ?? ''),
-    conductor:      String(row[21] ?? ''),
-    ruta:           String(row[22] ?? ''),
-    supervisor:     String(row[23] ?? ''),
-    pioneta_1:      row[26] ? String(row[26]) : null,
-    pioneta_2:      row[27] ? String(row[27]) : null,
-    seguimiento:    'Registrado',
-  };
-}
-
-function toRegionesRecord(row: (string | number)[]) {
-  return {
-    id:             String(row[0]  ?? ''),
-    fecha:          String(row[1]  ?? ''),
-    cod:            String(row[2]  ?? ''),
-    tienda:         String(row[3]  ?? ''),
-    tipo:           String(row[4]  ?? ''),
-    regimen:        String(row[5]  ?? ''),
-    transporte:     String(row[6]  ?? ''),
-    patente:        String(row[7]  ?? ''),
-    carga:          String(row[8]  ?? ''),
-    region:         String(row[9]  ?? ''),
-    comuna:         String(row[10] ?? ''),
-    tipo_comuna:    String(row[11] ?? ''),
-    peso_kg:        num(row[12]),
-    alto:           num(row[13]),
-    largo:          num(row[14]),
-    ancho:          num(row[15]),
-    peso_v:         num(row[16]),
-    ventana:        String(row[17] ?? ''),
-    estado:         String(row[18] ?? ''),
-    n_pallet_bulto: String(row[19] ?? ''),
-    fecha_llegada:  String(row[20] ?? ''),
-    guia:           String(row[21] ?? ''),
-    valor:          num(row[22]),
-    seguimiento:    'Registrado',
-  };
-}
+// DESPACHO RM/REGIONES ahora se leen por NOMBRE de encabezado (ver ./parseRows), no por
+// posición → las columnas se pueden reordenar sin cruzar datos.
 
 // POST /api/sync-despacho
 // Reads DESPACHO RM and DESPACHO REGIONES from Google Sheets and upserts
@@ -107,8 +39,11 @@ export async function POST(request: NextRequest) {
       gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'DESPACHO REGIONES' }),
     ]);
 
-    const rmRecords  = (rmResp.data.values  ?? []).filter(isDataRow).map(toRmRecord);
-    const regRecords = (regResp.data.values ?? []).filter(isDataRow).map(toRegionesRecord);
+    // La 1ª fila es el encabezado → mapeo por nombre; el resto son filas de datos.
+    const rmValues  = rmResp.data.values  ?? [];
+    const regValues = regResp.data.values ?? [];
+    const rmRecords  = rmValues.filter(isDataRow).map(makeRmMapper(rmValues[0] ?? []));
+    const regRecords = regValues.filter(isDataRow).map(makeRegionesMapper(regValues[0] ?? []));
 
     const errors: string[] = [];
 
