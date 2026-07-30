@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
+import { esSeguimientoValido } from '@/lib/recepcionEstado';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
@@ -162,7 +163,10 @@ export async function POST(request: NextRequest) {
           ruta:               baseRm.ruta       ?? '',
           supervisor:         baseRm.supervisor ?? '',
           transporte:         baseRm.transporte ?? 'Luis Fica',
-          seguimiento:        'Listo para despachar',
+          // Hereda el seguimiento del slot combinado si es válido; si no (o si es el valor
+          // inválido legacy 'Listo para despachar'), vuelve al inicial 'Registrado'.
+          // 'Listo para despachar' NO es un estado del semáforo → rompía los contadores.
+          seguimiento:        esSeguimientoValido(baseRm.seguimiento) ? baseRm.seguimiento : 'Registrado',
         });
       }
     }
