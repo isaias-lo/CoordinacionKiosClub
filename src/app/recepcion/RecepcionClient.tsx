@@ -6,7 +6,6 @@ import { TIENDAS_INICIAL, type TiendaInfo } from '../../features/despacho/rutas/
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { processPhoto } from '../../features/auditoria/utils/photos';
 import { RECEP_MAX_FOTOS } from '../../lib/recepcionMedia';
-import { enqueueRecepcion, flushRecepcionQueue } from './recepcion-offline-queue';
 
 /** id de operación (idempotencia). crypto.randomUUID con fallback para navegadores viejos. */
 function newOpId(): string {
@@ -94,7 +93,6 @@ export function RecepcionClient() {
   const [storeLoading, setStoreLoading] = useState(Boolean(urlCod && !TIENDAS_INICIAL[urlCod] && !canonId));
 
   const [done,       setDone]       = useState(false);
-  const [offlineSaved, setOfflineSaved] = useState(false);
   const [palletsRec, setPalletsRec] = useState(String(urlP));
   const [bultosRec,  setBultosRec]  = useState(String(urlB));
 
@@ -155,14 +153,6 @@ export function RecepcionClient() {
     })();
     return () => { cancelled = true; };
   }, [cod]);
-
-  // Reenvío de recepciones encoladas (sin señal) al recuperar conexión.
-  useEffect(() => {
-    const flush = () => { void flushRecepcionQueue(); };
-    flush();
-    window.addEventListener('online', flush);
-    return () => window.removeEventListener('online', flush);
-  }, []);
 
   // Si llega un id canónico, resolver contra /api/pallet-lookup para hidratar
   // cod + cantidades esperadas. Si falla, dejamos el flujo "Código inválido".
@@ -337,30 +327,26 @@ export function RecepcionClient() {
         otpToken,
         otpEmail,
         codigoVerificacion: otpCode.trim(),
-        clientOpId: clientOpIdRef.current,   // idempotencia (reintento/offline no duplica)
+        clientOpId: clientOpIdRef.current,   // idempotencia: reenviar el mismo intento no duplica
         // Edición de una recepción ya existente (re-identificando persona):
         ...(editMode && existente ? { editar: true, recepcionId: existente.id } : {}),
       };
 
-      let res: Response;
-      try {
-        res = await fetch('/api/recepcion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyPayload),
-        });
-      } catch {
-        // Sin señal al enviar: se encola y se reenvía al reconectar. Idempotente por clientOpId.
-        enqueueRecepcion({ clientOpId: clientOpIdRef.current, body: bodyPayload, ts: Date.now() });
-        setOfflineSaved(true);
-        setDone(true);
-        return;
-      }
+      const res = await fetch('/api/recepcion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error');
       setDone(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar. Intenta de nuevo.');
+      // Sin cola offline: si no hay señal, se muestra el error (no un falso "guardado").
+      // El clientOpId hace que reintentar sea idempotente → volver a enviar NO duplica.
+      const online = typeof navigator === 'undefined' || navigator.onLine;
+      setError(online
+        ? (e instanceof Error ? e.message : 'Error al guardar. Intenta de nuevo.')
+        : 'Sin conexión. Revisa la señal e intenta de nuevo — reenviar no duplica el registro.');
     } finally {
       setLoading(false);
     }
@@ -428,17 +414,10 @@ export function RecepcionClient() {
   if (done) {
     return (
       <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
-        <div style={{ fontSize: 64 }}>{offlineSaved ? '📶' : '✅'}</div>
+        <div style={{ fontSize: 64 }}>✅</div>
         <div style={{ textAlign: 'center', color: '#0F172A' }}>
-          <p style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>
-            {offlineSaved ? 'Guardado sin conexión' : '¡Recepción confirmada!'}
-          </p>
+          <p style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>¡Recepción confirmada!</p>
           <p style={{ fontSize: 14, color: '#64748B', marginTop: 6 }}>{store.n} — {formatCod(cod)}</p>
-          {offlineSaved && (
-            <p style={{ fontSize: 13, color: '#B45309', marginTop: 10, maxWidth: 320 }}>
-              Se enviará automáticamente cuando el equipo recupere señal. No cierres la app hasta entonces.
-            </p>
-          )}
         </div>
         {drv && (
           <a href={drv} target="_blank" rel="noopener noreferrer" style={{

@@ -59,6 +59,20 @@ interface RecepcionBody {
   recepcionId?: number;
 }
 
+/** Fila previa cargada para editar (con auditoría + validación de ownership). */
+interface PrevRecepcion {
+  pallets_recibidos: number | null;
+  bultos_recibidos: number | null;
+  contenedores_recibidos: number | null;
+  acuse_recibo: string | null;
+  observaciones: string | null;
+  recepcion_fotos: string[] | null;
+  ediciones: number | null;
+  historial_ediciones: EdicionEntry[] | null;
+  cod: string | null;
+  fuente: string | null;
+}
+
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
 function todayFecha(): string {
@@ -119,6 +133,8 @@ async function writeToSheet(sheetName: string, record: Record<string, string | n
  * (accountability: al editar se re-identifica). Público (flujo de recepción por QR).
  */
 export async function GET(request: NextRequest) {
+  if (!checkRateLimit(`recepcion-get:${getClientIp(request)}`, { max: 60, windowMs: 600_000 }))
+    return tooManyRequests();
   const cod = new URL(request.url).searchParams.get('cod')?.trim();
   if (!cod) return NextResponse.json({ data: null });
 
@@ -168,15 +184,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Idempotencia: si este client_op_id ya se procesó (reintento / flush de cola offline /
-    // doble tap), NO se crea un duplicado — se devuelve el registro existente.
+    // Idempotencia: si este client_op_id ya se procesó (reintento / doble tap), NO se crea
+    // un duplicado — se devuelve el registro existente. La garantía dura la da el índice único
+    // parcial en Supabase (ver más abajo el manejo de la violación 23505 en el INSERT).
     if (body.clientOpId) {
       const { data: yaExiste } = await sb
         .from('recepcion')
         .select('id')
         .eq('client_op_id', body.clientOpId)
+        .limit(1)
         .maybeSingle();
       if (yaExiste) return NextResponse.json({ ok: true, id: yaExiste.id, duplicate: true });
+    }
+
+    // Edición: cargar la fila previa y VALIDAR antes de subir fotos (evita fotos huérfanas en
+    // reintentos + valida ownership: solo la MISMA tienda puede editar SU recepción).
+    let prevEdit: PrevRecepcion | null = null;
+    if (body.editar && body.recepcionId) {
+      const { data: prev, error: prevErr } = await sb
+        .from('recepcion')
+        .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos, acuse_recibo, observaciones, recepcion_fotos, ediciones, historial_ediciones, cod, fuente')
+        .eq('id', body.recepcionId)
+        .maybeSingle();
+      if (prevErr) throw new Error(prevErr.message);
+      if (!prev) return NextResponse.json({ error: 'Recepción a editar no encontrada' }, { status: 404 });
+      // Ownership: la fila debe ser de la MISMA tienda (cod) y una recepción de tienda.
+      if (prev.cod !== body.cod || prev.fuente !== 'tienda') {
+        return NextResponse.json({ error: 'No autorizado a editar esta recepción' }, { status: 403 });
+      }
+      // Idempotencia de la edición: si esta misma operación ya se aplicó, no repetir.
+      const historialPrev = (prev.historial_ediciones as EdicionEntry[] | null) ?? [];
+      if (body.clientOpId && historialPrev.some(e => e.clientOpId === body.clientOpId)) {
+        return NextResponse.json({ ok: true, id: body.recepcionId, duplicate: true });
+      }
+      prevEdit = prev as PrevRecepcion;
     }
 
     // La firma dibujada se eliminó: el acuse de recibo (recibiConforme) + el OTP al correo
@@ -214,39 +255,27 @@ export async function POST(request: NextRequest) {
     let esEdicion  = false;
     let numEdicion = 0;
 
-    if (body.editar && body.recepcionId) {
+    if (body.editar && body.recepcionId && prevEdit) {
       // ── EDICIÓN con auditoría ────────────────────────────────────────────────
-      // Se re-identificó la persona (receptor+rut vienen en el body, obligatorios). NO se
-      // sobreescribe el receptor/rut ORIGINAL de la fila — cada edición registra SU propia
-      // persona + los campos que cambió en historial_ediciones (accountability).
-      const { data: prev, error: prevErr } = await sb
-        .from('recepcion')
-        .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos, acuse_recibo, observaciones, recepcion_fotos, ediciones, historial_ediciones')
-        .eq('id', body.recepcionId)
-        .maybeSingle();
-      if (prevErr) throw new Error(prevErr.message);
-      if (!prev) return NextResponse.json({ error: 'Recepción a editar no encontrada' }, { status: 404 });
-
-      // Idempotencia de la edición: si esta misma operación (clientOpId) ya se aplicó (reintento
-      // offline), no la repetimos.
-      const historialPrev = (prev.historial_ediciones as EdicionEntry[] | null) ?? [];
-      if (body.clientOpId && historialPrev.some(e => e.clientOpId === body.clientOpId)) {
-        return NextResponse.json({ ok: true, id: body.recepcionId, duplicate: true });
-      }
+      // `prevEdit` ya fue cargado y validado (ownership + idempotencia) antes de subir fotos.
+      // Se re-identificó la persona (receptor+rut del body). NO se sobreescribe el receptor/rut
+      // ORIGINAL — cada edición registra SU propia persona + cambios en historial_ediciones.
+      // Los contenedores conservan el valor previo si el cliente no los envía (no pisar a 0).
+      const contenedoresEd = body.contenedoresRecibidos ?? prevEdit.contenedores_recibidos ?? 0;
 
       const entry: EdicionEntry = buildEdicionEntry({
         clientOpId: body.clientOpId,
         prev: {
-          pallets_recibidos:      prev.pallets_recibidos,
-          bultos_recibidos:       prev.bultos_recibidos,
-          contenedores_recibidos: prev.contenedores_recibidos,
-          acuse_recibo:           prev.acuse_recibo,
-          observaciones:          prev.observaciones,
+          pallets_recibidos:      prevEdit.pallets_recibidos,
+          bultos_recibidos:       prevEdit.bultos_recibidos,
+          contenedores_recibidos: prevEdit.contenedores_recibidos,
+          acuse_recibo:           prevEdit.acuse_recibo,
+          observaciones:          prevEdit.observaciones,
         },
         next: {
           pallets_recibidos:      body.palletsRecibidos,
           bultos_recibidos:       body.bultosRecibidos,
-          contenedores_recibidos: body.contenedoresRecibidos ?? 0,
+          contenedores_recibidos: contenedoresEd,
           acuse_recibo:           acuse,
           observaciones:          body.observaciones ?? '',
         },
@@ -254,15 +283,15 @@ export async function POST(request: NextRequest) {
         rut:      body.rut,
       });
 
-      const historial = [...historialPrev, entry];
-      fotosFinal      = [...((prev.recepcion_fotos as string[] | null) ?? []), ...recepcionFotoUrls];
-      numEdicion      = ((prev.ediciones as number | null) ?? 0) + 1;
+      const historial = [...(prevEdit.historial_ediciones ?? []), entry];
+      fotosFinal      = [...(prevEdit.recepcion_fotos ?? []), ...recepcionFotoUrls];
+      numEdicion      = (prevEdit.ediciones ?? 0) + 1;
       esEdicion       = true;
 
       const { error: updErr } = await sb.from('recepcion').update({
         pallets_recibidos:      body.palletsRecibidos,
         bultos_recibidos:       body.bultosRecibidos,
-        contenedores_recibidos: body.contenedoresRecibidos ?? 0,
+        contenedores_recibidos: contenedoresEd,
         observaciones:          body.observaciones ?? '',
         recibi_conforme:        typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
         acuse_recibo:           acuse,
@@ -275,7 +304,7 @@ export async function POST(request: NextRequest) {
       recepcionId = body.recepcionId;
     } else {
       // ── INSERT (primera recepción) ───────────────────────────────────────────
-      const { data: inserted, error: insertError } = await sb.from('recepcion').insert({
+      const filaBase = {
         cod:                  body.cod,
         tienda:               body.tienda,
         direccion:            body.direccion,
@@ -305,14 +334,28 @@ export async function POST(request: NextRequest) {
         firma_metodo:         body.firmaMetodo           ?? '',
         codigo_verificacion:  body.codigoVerificacion    ?? '',
         canonical_id:         body.canonicalId           ?? null,
-        client_op_id:         body.clientOpId            ?? null,
         // Origen del registro: la tienda (QR+OTP) → 'tienda'; el chofer/entrega → 'conductor'.
         // (Antes estaba hardcodeado a 'conductor', lo que hacía inalcanzable 'Diferencia'/'Recibido'.)
         fuente:               body.origen === 'tienda' ? 'tienda' : 'conductor',
-      }).select('id').single();
+      };
 
-      if (insertError) throw new Error(insertError.message);
-      recepcionId = inserted!.id as number;
+      let ins = await sb.from('recepcion').insert({ ...filaBase, client_op_id: body.clientOpId ?? null }).select('id').single();
+
+      // #2 Tolerancia si la migración aún no corrió (columna client_op_id inexistente): reintenta
+      //    sin ella para no romper TODA recepción. (Insurance; la migración DEBE correr antes del deploy.)
+      if (ins.error && /client_op_id/i.test(ins.error.message)) {
+        ins = await sb.from('recepcion').insert(filaBase).select('id').single();
+      }
+
+      // #6 Idempotencia a nivel DB: si el índice único parcial rechaza un duplicado concurrente
+      //    (23505), devolvemos el registro ya existente en vez de un 500 crudo.
+      if (ins.error && (ins.error as { code?: string }).code === '23505' && body.clientOpId) {
+        const { data: ya } = await sb.from('recepcion').select('id').eq('client_op_id', body.clientOpId).limit(1).maybeSingle();
+        if (ya) return NextResponse.json({ ok: true, id: ya.id, duplicate: true });
+      }
+
+      if (ins.error) throw new Error(ins.error.message);
+      recepcionId = ins.data!.id as number;
     }
 
     // Link a la galería pública de fotos de recepción (para la columna del Sheet).

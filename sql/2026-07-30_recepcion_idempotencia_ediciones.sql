@@ -2,7 +2,8 @@
 -- Correr en Supabase → SQL Editor → Run ANTES de mergear/desplegar la PR. Idempotente.
 --
 --   client_op_id        : id único generado por el cliente por cada envío. Permite que un
---                         reintento (cola offline / doble tap) NO cree un duplicado.
+--                         reintento (doble tap / reenvío manual sin señal) NO cree un duplicado.
+--                         El índice único parcial de abajo hace que la garantía la dé la BD.
 --   editado_en          : timestamp de la última edición de la recepción.
 --   ediciones           : contador de ediciones (0 = nunca editada).
 --   historial_ediciones : bitácora jsonb; cada edición agrega
