@@ -47,6 +47,7 @@ export default function ConductorHubPage() {
   const [rutas,        setRutas]        = useState<RutaData[]>([]);
   const [loading,      setLoading]      = useState(false);
   const [offline,      setOffline]      = useState(false);
+  const [cacheTs,      setCacheTs]      = useState<number | null>(null);
   const [expanded,     setExpanded]     = useState<number | null>(null);
   const [tab,          setTab]          = useState<'ruta' | 'recepcion'>('ruta');
   // Confirmar salida CD (PUNTO 2 trazabilidad)
@@ -83,14 +84,16 @@ export default function ConductorHubPage() {
       const json  = await res.json() as { data: RutaData[] };
       const data  = json.data ?? [];
       setRutas(data);
+      setCacheTs(Date.now());
       localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), patente: pat, data }));
     } catch {
       try {
         const raw = localStorage.getItem(CACHE_KEY);
         if (raw) {
-          const cached = JSON.parse(raw) as { patente: string; data: RutaData[] };
+          const cached = JSON.parse(raw) as { ts?: number; patente: string; data: RutaData[] };
           if (cached.patente.toUpperCase() === pat.toUpperCase()) {
             setRutas(cached.data);
+            setCacheTs(cached.ts ?? null);
             setOffline(true);
           }
         }
@@ -238,8 +241,9 @@ export default function ConductorHubPage() {
         </div>
 
         {offline && (
-          <div style={{ marginBottom: 12, padding: '5px 10px', background: 'rgba(255,149,0,0.15)', border: '1px solid rgba(255,149,0,0.3)', borderRadius: 8, fontSize: 10, color: '#FF9500', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <WifiOff size={12} aria-hidden="true" /> Modo offline — mostrando datos guardados
+          <div style={{ marginBottom: 12, padding: '7px 10px', background: 'rgba(255,149,0,0.15)', border: '1px solid rgba(255,149,0,0.3)', borderRadius: 8, fontSize: 10, color: '#FF9500', display: 'flex', alignItems: 'flex-start', gap: 6, lineHeight: 1.4 }}>
+            <WifiOff size={12} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0 }} />
+            <span>Modo offline — datos guardados{cacheTs ? ` (última sincronización ${new Date(cacheTs).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : ''}. Sirven de respaldo para mostrar al fiscalizador en ruta.</span>
           </div>
         )}
 

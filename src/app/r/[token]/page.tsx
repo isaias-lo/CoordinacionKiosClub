@@ -82,19 +82,30 @@ const S = {
 export default function RutaPublicaPage() {
   const params = useParams<{ token: string }>();
   const token = params?.token ?? '';
-  const [ruta,    setRuta]    = useState<RutaData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [ruta,      setRuta]      = useState<RutaData | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(false);
 
   useEffect(() => {
     if (!token) return;
+    const cacheKey = `r_cache_${token}`;
     fetch(`/api/r/${token}`)
       .then(r => r.json())
       .then((json: { data?: RutaData; error?: string }) => {
-        if (json.error) setError(json.error);
-        else setRuta(json.data ?? null);
+        if (json.error) { setError(json.error); return; }
+        setRuta(json.data ?? null);
+        // Guardar la última carga → permite re-abrir/re-escanear sin señal (fiscalización en ruta).
+        if (json.data) { try { localStorage.setItem(cacheKey, JSON.stringify(json.data)); } catch { /* cuota */ } }
       })
-      .catch(() => setError('Error de conexión'))
+      .catch(() => {
+        // Sin señal: usar la última carga guardada de ESTE token, si existe.
+        try {
+          const raw = localStorage.getItem(cacheKey);
+          if (raw) { setRuta(JSON.parse(raw) as RutaData); setFromCache(true); }
+          else setError('Sin conexión y sin datos guardados de esta ruta.');
+        } catch { setError('Error de conexión'); }
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -149,6 +160,12 @@ export default function RutaPublicaPage() {
       </div>
 
       <div style={S.body}>
+
+        {fromCache && (
+          <div style={{ margin: '12px 0 0', padding: '9px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, fontSize: 12, color: '#9a3412', lineHeight: 1.45 }}>
+            📴 <strong>Sin conexión</strong> — mostrando la última versión guardada de esta ruta. Puede no reflejar el estado más reciente.
+          </div>
+        )}
 
         {/* Info ruta */}
         <div style={S.section}>
