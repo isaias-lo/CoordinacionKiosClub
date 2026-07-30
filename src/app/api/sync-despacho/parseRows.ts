@@ -23,6 +23,25 @@ export function isDataRow(row: (string | number)[]): boolean {
   return id !== '' && id.toLowerCase() !== 'id';
 }
 
+/** Etiquetas de encabezado que cada hoja debe tener (para avisar si alguna cambió). */
+export const RM_HEADERS = [
+  'ID', 'FECHA', 'COD', 'TIENDA', 'TIPO', 'REGIMEN', 'TRANSPORTE', 'PATENTE', 'CARGA', 'REGION',
+  'COMUNA', 'TIPO_COMUNA', 'PESO_KG', 'ALTO', 'LARGO', 'ANCHO', 'PESO_V', 'VENTANA', 'ESTADO',
+  'N_PALLET_BULTO', 'FECHA_LLEGADA', 'CONDUCTOR', 'RUTA', 'SUPERVISOR', 'PIONETA 1', 'PIONETA 2',
+];
+export const REGIONES_HEADERS = [
+  'ID', 'FECHA', 'COD', 'TIENDA', 'TIPO', 'REGIMEN', 'TRANSPORTE', 'PATENTE', 'CARGA', 'REGION',
+  'COMUNA', 'TIPO_COMUNA', 'PESO_KG', 'ALTO', 'LARGO', 'ANCHO', 'PESO_V', 'VENTANA', 'ESTADO',
+  'N_PALLET_BULTO', 'FECHA_LLEGADA', 'GUIA', 'VALOR',
+];
+
+/** Etiquetas esperadas que NO aparecen en el encabezado real → esos campos caen a fallback
+ *  posicional. Sirve para loggear y detectar si alguien renombró/cambió una columna. */
+export function missingHeaders(headers: (string | number)[], expected: string[]): string[] {
+  const present = new Set(headers.map(normHeader));
+  return expected.filter(e => !present.has(normHeader(e)));
+}
+
 /** Getter por nombre de encabezado con fallback a una posición fija. */
 export function makeReader(headers: (string | number)[]) {
   const idx = new Map<string, number>();

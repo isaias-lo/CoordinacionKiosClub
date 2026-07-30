@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normHeader, isDataRow, makeReader, makeRmMapper, makeRegionesMapper } from '../parseRows';
+import { normHeader, isDataRow, makeReader, makeRmMapper, makeRegionesMapper, missingHeaders, RM_HEADERS, REGIONES_HEADERS } from '../parseRows';
 
 // Encabezados reales de las hojas (30 cols, idénticos en RM y REGIONES).
 const HEADERS = [
@@ -66,6 +66,17 @@ describe('makeRmMapper', () => {
     expect(rec.patente).toBe('PPPP11');
     expect(rec.conductor).toBe('Pedro');
     expect(rec.tienda).toBe('La Reina');
+  });
+});
+
+describe('missingHeaders', () => {
+  it('no falta ninguna con los encabezados reales', () => {
+    expect(missingHeaders(HEADERS, RM_HEADERS)).toEqual([]);
+    expect(missingHeaders(HEADERS, REGIONES_HEADERS)).toEqual([]);
+  });
+  it('detecta un encabezado renombrado (ej. PESO_KG → "PESO KG")', () => {
+    const hdr = HEADERS.map(h => h === 'PESO_KG' ? 'PESO KG' : h);
+    expect(missingHeaders(hdr, RM_HEADERS)).toEqual(['PESO_KG']);
   });
 });
 

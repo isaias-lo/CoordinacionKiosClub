@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { isDataRow, makeRmMapper, makeRegionesMapper } from './parseRows';
+import { isDataRow, makeRmMapper, makeRegionesMapper, missingHeaders, RM_HEADERS, REGIONES_HEADERS } from './parseRows';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID ?? '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -42,6 +42,13 @@ export async function POST(request: NextRequest) {
     // La 1ª fila es el encabezado → mapeo por nombre; el resto son filas de datos.
     const rmValues  = rmResp.data.values  ?? [];
     const regValues = regResp.data.values ?? [];
+
+    // Aviso si alguna columna esperada cambió de nombre (esos campos caerían a fallback posicional).
+    const rmMiss  = missingHeaders(rmValues[0]  ?? [], RM_HEADERS);
+    const regMiss = missingHeaders(regValues[0] ?? [], REGIONES_HEADERS);
+    if (rmMiss.length)  console.warn('[sync-despacho] DESPACHO RM: encabezados no encontrados (fallback posicional):', rmMiss);
+    if (regMiss.length) console.warn('[sync-despacho] DESPACHO REGIONES: encabezados no encontrados (fallback posicional):', regMiss);
+
     const rmRecords  = rmValues.filter(isDataRow).map(makeRmMapper(rmValues[0] ?? []));
     const regRecords = regValues.filter(isDataRow).map(makeRegionesMapper(regValues[0] ?? []));
 
