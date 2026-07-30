@@ -8,7 +8,7 @@ import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
 import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
 import { buildSheetRow } from '@/lib/sheetRow';
-import { nuevoSeguimientoRecepcion, elegirFechaDespacho, type DespachoCandidato } from '@/lib/recepcionEstado';
+import { nuevoSeguimientoRecepcion, elegirFechaDespacho, hayDiferencia, type DespachoCandidato } from '@/lib/recepcionEstado';
 
 interface RecepcionBody {
   cod: string;
@@ -153,6 +153,16 @@ export async function POST(request: NextRequest) {
         .upload(fname, buf, { contentType: foto.contentType, upsert: false });
       if (fErr) throw new Error(fErr.message);
       recepcionFotoUrls.push(sb.storage.from('recepcion-fotos').getPublicUrl(fname).data.publicUrl);
+    }
+
+    // Auto-diferencia (defensa server-side): si la tienda recibió distinto a lo enviado, la
+    // recepción NO puede quedar 'conforme' aunque el cliente lo mande (p.ej. cola offline con
+    // estado viejo). Se fuerza el acuse a "con observaciones".
+    if (body.origen === 'tienda' && hayDiferencia(
+      { pallets: body.palletsSent      ?? 0, bultos: body.bultosSent      ?? 0, contenedores: body.contenedoresSent      ?? 0 },
+      { pallets: body.palletsRecibidos ?? 0, bultos: body.bultosRecibidos ?? 0, contenedores: body.contenedoresRecibidos ?? 0 },
+    )) {
+      body.recibiConforme = false;
     }
 
     const acuse = typeof body.recibiConforme === 'boolean' ? acuseLabel(body.recibiConforme) : '';

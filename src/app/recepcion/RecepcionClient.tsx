@@ -111,6 +111,16 @@ export function RecepcionClient() {
   const store = TIENDAS_INICIAL[cod] ?? dbStore ?? undefined;
   const guias = g ? g.split(',').filter(Boolean) : [];
 
+  // Auto-diferencia: si lo recibido NO coincide con lo enviado (p/b del QR), la recepción
+  // NO puede ser "conforme" → se fuerza el acuse a "con observaciones" y se pide describir.
+  const palletsRecNum = parseInt(palletsRec) || 0;
+  const bultosRecNum  = parseInt(bultosRec)  || 0;
+  const hayDiferencia = palletsRecNum !== p || bultosRecNum !== b;
+
+  useEffect(() => {
+    if (hayDiferencia && recibiConforme !== false) setRecibiConforme(false);
+  }, [hayDiferencia, recibiConforme]);
+
   // Si llega un id canónico, resolver contra /api/pallet-lookup para hidratar
   // cod + cantidades esperadas. Si falla, dejamos el flujo "Código inválido".
   useEffect(() => {
@@ -448,6 +458,15 @@ export function RecepcionClient() {
               <input type="number" min="0" inputMode="numeric" value={bultosRec} onChange={e => setBultosRec(e.target.value)} style={inputNum()} />
             </div>
           </div>
+          {hayDiferencia && (
+            <div style={{ marginTop: 12, background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.35)', borderRadius: 10, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+              <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.45 }}>
+                <strong>Diferencia detectada.</strong> Enviado {p} pallets / {b} bultos · Recibido {palletsRecNum} pallets / {bultosRecNum} bultos.
+                <br />No se puede marcar “Recibí conforme”: registra las observaciones abajo.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Datos del receptor */}
@@ -469,7 +488,7 @@ export function RecepcionClient() {
         <div style={S.card}>
           <p style={S.sectionTitle}>Acuse de recibo</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <button type="button" onClick={() => setRecibiConforme(true)} style={acuseBtn(recibiConforme === true, '#16A34A')}>
+            <button type="button" disabled={hayDiferencia} onClick={() => { if (!hayDiferencia) setRecibiConforme(true); }} style={{ ...acuseBtn(recibiConforme === true, '#16A34A'), opacity: hayDiferencia ? 0.4 : 1, cursor: hayDiferencia ? 'not-allowed' : 'pointer' }}>
               ✓ Recibí conforme
             </button>
             <button type="button" onClick={() => setRecibiConforme(false)} style={acuseBtn(recibiConforme === false, '#D97706')}>

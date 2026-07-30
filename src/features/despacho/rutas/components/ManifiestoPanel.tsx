@@ -5,6 +5,7 @@ import { qrDataUri } from '@/lib/qrLocal';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import { supabase } from '@/lib/supabase';
+import { norm } from '@/features/despacho/rutas/utils/helpers';
 import {
   buildManifiestoTiendaHTML,
   type ItemDetalle,
@@ -296,6 +297,7 @@ ${body}
 export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
+  const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
   const [saving,  setSaving]  = useState<Record<number, boolean>>({});
   const [saved,   setSaved]   = useState<Record<number, boolean>>({});
   const [toast,   setToast]   = useState<{ msg: string; ok: boolean } | null>(null);
@@ -350,6 +352,22 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
         });
       }
       setItemsByStore(map);
+
+      // Guías DTE (PDF en Drive) por tienda → botón "Descargar Guías" del QR de recepción.
+      // guias_subidas guarda el código normalizado; nos quedamos con la subida más reciente.
+      const codsNorm = [...new Set(cods.map(norm))];
+      const { data: gs } = await supabase
+        .from('guias_subidas')
+        .select('store_cod, drive_url, fecha')
+        .in('store_cod', codsNorm)
+        .not('drive_url', 'is', null)
+        .order('fecha', { ascending: false });
+      if (cancelled) return;
+      const dmap: Record<string, string> = {};
+      for (const r of (gs ?? []) as { store_cod: string; drive_url: string }[]) {
+        if (!dmap[r.store_cod]) dmap[r.store_cod] = r.drive_url; // más reciente por fecha
+      }
+      setDriveByStore(dmap);
     })();
     return () => { cancelled = true; };
   }, [isOpen, rutas]);
@@ -468,7 +486,9 @@ ${bodies}
       return m.tiendas.flatMap(t => {
         const info = tiendas[t.store_cod] ?? tiendas[t.store_cod.toUpperCase()];
         const its  = itemsByStore[t.store_cod] ?? [];
-        const meta = { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin };
+        const driveId = driveByStore[norm(t.store_cod)];
+        const driveUrl = driveId ? `https://drive.google.com/file/d/${driveId}/view` : undefined;
+        const meta = { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin, driveUrl };
         // Req 4: 2 copias por tienda → ORIGINAL (sus N páginas) y luego CEDIBLE (sus N páginas).
         return [
           buildManifiestoTiendaHTML(t, info, its, meta, 'ORIGINAL'),

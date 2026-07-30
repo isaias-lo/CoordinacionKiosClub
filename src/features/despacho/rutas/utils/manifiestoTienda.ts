@@ -44,11 +44,25 @@ export function guiasDeItems(items: ItemDetalle[]): string[] {
   return [...set];
 }
 
+/**
+ * URL de recepción que codifica el QR por tienda. `driveUrl` opcional → RecepcionClient
+ * muestra el botón "Descargar Guías PDF" al terminar. Pura y testeable (el QR se genera
+ * localmente y no expone la URL como texto en el HTML).
+ */
+export function buildRecepcionQrUrl(params: {
+  origin: string; store_cod: string; nP: number; nBch: number; guias: string[]; driveUrl?: string;
+}): string {
+  const { origin, store_cod, nP, nBch, guias, driveUrl } = params;
+  return `${origin}/recepcion?cod=${encodeURIComponent(store_cod)}&p=${nP}&b=${nBch}`
+    + (guias.length ? `&g=${encodeURIComponent(guias.join(','))}` : '')
+    + (driveUrl ? `&drv=${encodeURIComponent(driveUrl)}` : '');
+}
+
 export function buildManifiestoTiendaHTML(
   t: TiendaManifiesto,
   info: (TiendaInfo & { _parada?: boolean }) | undefined,
   items: ItemDetalle[],
-  meta: { fecha: string; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string },
+  meta: { fecha: string; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string; driveUrl?: string },
   copia: 'ORIGINAL' | 'CEDIBLE' = 'ORIGINAL',
 ): string {
   // Marca de copia (esquina inferior izquierda del comprobante): ORIGINAL (navy) vs CEDIBLE (rojo).
@@ -61,7 +75,9 @@ export function buildManifiestoTiendaHTML(
   const nC  = items.filter(i => i.tipo === 'C').length;
   const pesoTotal = Math.round(items.reduce((s, i) => s + (Number(i.peso_kg) || 0), 0) * 10) / 10;
   const guias = guiasDeItems(items);
-  const qrUrl = `${meta.origin}/recepcion?cod=${encodeURIComponent(t.store_cod)}&p=${nP}&b=${nB + nCH}${guias.length ? `&g=${encodeURIComponent(guias.join(','))}` : ''}`;
+  // `drv` = link a las Guías DTE (PDF en Drive) de esta tienda → RecepcionClient muestra el botón
+  // "Descargar Guías PDF" al terminar la recepción. Sin drv, no aparece el botón.
+  const qrUrl = buildRecepcionQrUrl({ origin: meta.origin, store_cod: t.store_cod, nP, nBch: nB + nCH, guias, driveUrl: meta.driveUrl });
 
   const filas = items.length ? items.map(it => {
     const dims = it.tipo === 'P' ? '120×100' : (it.alto && it.largo && it.ancho) ? `${it.alto}×${it.largo}×${it.ancho}` : '—';

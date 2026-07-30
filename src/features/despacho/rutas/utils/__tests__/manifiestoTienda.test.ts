@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildManifiestoTiendaHTML, guiasDeItems, type ItemDetalle, type TiendaManifiesto } from '../manifiestoTienda';
+import { buildManifiestoTiendaHTML, guiasDeItems, buildRecepcionQrUrl, type ItemDetalle, type TiendaManifiesto } from '../manifiestoTienda';
 
 function item(overrides: Partial<ItemDetalle> = {}): ItemDetalle {
   return {
@@ -36,6 +36,27 @@ const META = {
   supervisor: 'María Soto',
   origin: 'https://enrutador.kiosclub.cl',
 };
+
+describe('buildRecepcionQrUrl', () => {
+  const base = { origin: 'https://x.cl', store_cod: '37MAI', nP: 2, nBch: 3, guias: [] as string[] };
+
+  it('arma la URL base con cod, p y b', () => {
+    expect(buildRecepcionQrUrl(base)).toBe('https://x.cl/recepcion?cod=37MAI&p=2&b=3');
+  });
+
+  it('incluye &g cuando hay guías (codificadas)', () => {
+    expect(buildRecepcionQrUrl({ ...base, guias: ['F1', 'F2'] })).toContain('&g=F1%2CF2');
+  });
+
+  it('incluye &drv con el link de Drive codificado (#9 guías SII)', () => {
+    const url = buildRecepcionQrUrl({ ...base, driveUrl: 'https://drive.google.com/file/d/ABC/view' });
+    expect(url).toContain('&drv=https%3A%2F%2Fdrive.google.com%2Ffile%2Fd%2FABC%2Fview');
+  });
+
+  it('NO incluye &drv cuando no hay driveUrl', () => {
+    expect(buildRecepcionQrUrl(base)).not.toContain('drv=');
+  });
+});
 
 describe('guiasDeItems', () => {
   it('separa por "+", recorta espacios y descarta vacíos', () => {
