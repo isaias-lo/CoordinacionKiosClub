@@ -95,15 +95,22 @@ export default function RutaPublicaPage() {
       .then((json: { data?: RutaData; error?: string }) => {
         if (json.error) { setError(json.error); return; }
         setRuta(json.data ?? null);
-        // Guardar la última carga → permite re-abrir/re-escanear sin señal (fiscalización en ruta).
-        if (json.data) { try { localStorage.setItem(cacheKey, JSON.stringify(json.data)); } catch { /* cuota */ } }
+        // Guardar la última carga (con timestamp) → re-abrir/re-escanear sin señal en ruta.
+        if (json.data) { try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: json.data })); } catch { /* cuota */ } }
       })
       .catch(() => {
-        // Sin señal: usar la última carga guardada de ESTE token, si existe.
+        // Sin señal: usar la última carga guardada de ESTE token, si es válida y no muy vieja.
         try {
           const raw = localStorage.getItem(cacheKey);
-          if (raw) { setRuta(JSON.parse(raw) as RutaData); setFromCache(true); }
-          else setError('Sin conexión y sin datos guardados de esta ruta.');
+          const parsed = raw ? JSON.parse(raw) as { ts?: number; data?: RutaData } : null;
+          const cached = parsed?.data;
+          const fresca = !!parsed?.ts && (Date.now() - parsed.ts) < 7 * 24 * 60 * 60 * 1000; // 7 días
+          if (cached && Array.isArray(cached.ruta_tiendas) && fresca) {
+            setRuta(cached);
+            setFromCache(true);
+          } else {
+            setError('Sin conexión y sin datos guardados válidos de esta ruta.');
+          }
         } catch { setError('Error de conexión'); }
       })
       .finally(() => setLoading(false));

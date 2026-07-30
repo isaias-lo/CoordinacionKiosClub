@@ -83,6 +83,12 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
   };
 }
 
+/** Escapa texto para interpolar seguro en el HTML impreso (nombres/folios vienen de datos
+ *  libres de bodega; un `<`, `&` o `"` rompería el layout del manifiesto). */
+function esc(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
 /* ── Print helper (single) ──────────────────────────────── */
 function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: string, foliosByStore?: Record<string, string[]>): string {
   // Solo hay QR si la ruta está guardada (tiene token). Antes, sin token, el QR apuntaba a
@@ -109,8 +115,8 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   const foliosRows = m.tiendas.map(t => {
     const fs = foliosByStore?.[t.store_cod] ?? [];
     return `<tr>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;color:#333;">${t.nombre} <span style="color:#999;font-size:9px;">(${t.store_cod})</span></td>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;font-family:monospace;font-size:10px;color:#111;">${fs.length ? fs.join(', ') : '<span style="color:#bbb">—</span>'}</td>
+      <td style="padding:3px 8px;border-bottom:1px solid #eee;color:#333;">${esc(t.nombre)} <span style="color:#999;font-size:9px;">(${esc(t.store_cod)})</span></td>
+      <td style="padding:3px 8px;border-bottom:1px solid #eee;font-family:monospace;font-size:10px;color:#111;">${fs.length ? esc(fs.join(', ')) : '<span style="color:#bbb">—</span>'}</td>
     </tr>`;
   }).join('');
   const totalFolios = m.tiendas.reduce((s, t) => s + (foliosByStore?.[t.store_cod]?.length ?? 0), 0);
@@ -157,7 +163,7 @@ ${totalFolios ? `<table style="width:100%;border-collapse:collapse;font-size:11p
   <thead><tr><th style="text-align:left;padding:4px 8px;background:#f5f5f5;border-bottom:1px solid #ddd;">Tienda</th><th style="text-align:left;padding:4px 8px;background:#f5f5f5;border-bottom:1px solid #ddd;">Folios DTE</th></tr></thead>
   <tbody>${foliosRows}</tbody>
 </table>` : `<div style="padding:8px 12px;background:#f5f5f5;border-radius:5px;font-size:11px;color:#444;margin-bottom:14px;border:1px solid #ddd;">
-  Sin folios DTE vinculados aún. Se vinculan al subir las guías en Bodega / Estado.
+  Sin folios DTE en los ítems etiquetados de esta ruta. Se toman de las guías (refs) al armar/etiquetar en Bodega.
 </div>`}
 
 <div class="sec">QR Maestro de Ruta</div>
