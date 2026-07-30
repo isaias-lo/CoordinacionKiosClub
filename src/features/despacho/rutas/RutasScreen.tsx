@@ -15,6 +15,7 @@ import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
+import { esFantasmaCalT } from './utils/calTFantasma';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import type { IAStore, IATruck } from './ia/types';
@@ -727,15 +728,18 @@ export default function RutasScreen() {
       ...((calDia as Record<string, string[]>).costa || []),
       ...((calDia as Record<string, string[]>).rm    || []),
     ];
+    // Oculta "fantasmas": códigos fuera del catálogo Y sin cantidades (típico: un código
+    // tecleado por error que quedó en localStorage, ej. "ALC" en vez de "26ALC").
+    const visible = (c: string) => calT[c] && !esFantasmaCalT(calT[c], !!tiendas[c]);
     const result: Record<string, CalData> = {};
-    canonical.forEach(c => { if (calT[c]) result[c] = calT[c]; });
+    canonical.forEach(c => { if (visible(c)) result[c] = calT[c]; });
     const groupOrder: Record<string, number> = { fal: 0, costa: 1, rm: 2 };
     const extras = Object.keys(calT)
-      .filter(c => !result[c])
+      .filter(c => !result[c] && visible(c))
       .sort((a, b) => (groupOrder[calT[a].g || 'fal'] ?? 0) - (groupOrder[calT[b].g || 'fal'] ?? 0));
     extras.forEach(c => { result[c] = calT[c]; });
     return result;
-  }, [calT, cal, fecha]);
+  }, [calT, cal, fecha, tiendas]);
 
   // ── Sync calT → manual text ───────────────────────────────────────
   // La generación del texto (con tabs RM/COSTA/REGIONES, CH y totales)
