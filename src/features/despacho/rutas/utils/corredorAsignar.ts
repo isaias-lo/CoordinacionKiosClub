@@ -9,6 +9,8 @@
  * zona y para agrupar/mostrar tiendas nuevas correctamente en el Enrutador.
  */
 
+import { TIENDAS_INICIAL, GPS_INICIAL } from '../data/tiendas';
+
 export type Coord = [number, number]; // [lat, lng]
 
 /** Comuna = último segmento de la dirección ("Av X 123, Las Condes" → "LAS CONDES"). */
@@ -82,4 +84,20 @@ export function corredorDeTienda(
   const comuna = (t.comuna ? String(t.comuna) : parseComuna(t.direccion)).toUpperCase().trim();
   if (comuna && comunaMap[comuna]) return comunaMap[comuna];
   return null;
+}
+
+// ── Conveniencia: mapas derivados del catálogo estático (memoizados) ──────────────
+let _centroides: Record<string, Coord> | null = null;
+let _comunaMap: Record<string, string> | null = null;
+
+/**
+ * Auto-asigna el corredor usando los mapas del catálogo estático (centroides GPS + comuna→zona).
+ * Para tests unitarios de la lógica, usar `corredorDeTienda` con mapas inyectados.
+ */
+export function corredorAuto(t: {
+  lat?: number | null; lng?: number | null; comuna?: string | null; direccion?: string | null;
+}): string | null {
+  _centroides ??= buildZonaCentroides(TIENDAS_INICIAL, GPS_INICIAL);
+  _comunaMap  ??= buildComunaZonaMap(TIENDAS_INICIAL);
+  return corredorDeTienda(t, _centroides, _comunaMap);
 }

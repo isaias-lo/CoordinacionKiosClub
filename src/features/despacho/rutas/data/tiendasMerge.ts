@@ -3,6 +3,7 @@
 // Config aparezcan en toda la app sin tocar código, usando el estático como respaldo.
 import { normalizeCod } from '@/app/api/tiendas/sync/normalizeCod';
 import type { TiendaInfo } from './tiendas';
+import { corredorAuto } from '../utils/corredorAsignar';
 
 /** Fila de la tabla `tiendas` (subconjunto usado para fusionar). */
 export interface DbTiendaRow {
@@ -40,6 +41,7 @@ export function isValidChileGps(lat?: number | null, lon?: number | null): boole
 export function mergeTiendas(
   staticMap: Record<string, TiendaInfo>,
   dbRows: DbTiendaRow[],
+  corredorFn: (t: { lat?: number | null; lng?: number | null; comuna?: string | null; direccion?: string | null }) => string | null = corredorAuto,
 ): Record<string, TiendaInfo> {
   const merged: Record<string, TiendaInfo> = { ...staticMap };
   for (const t of dbRows ?? []) {
@@ -50,7 +52,11 @@ export function mergeTiendas(
     merged[cod] = {
       ...base,
       n: t.nombre || base?.n || cod,
-      z: t.sector_comuna || t.corredor || base?.z || '',
+      // `z` = CORREDOR de la tienda (para display/agrupación). Prioridad: corredor explícito de
+      // la BD → corredor del catálogo estático → auto-asignado por GPS/comuna → comuna (último
+      // recurso). Antes la comuna PISABA el corredor (26ALC mostraba "Las Condes" en vez de
+      // "Corredor Oriente"). No afecta el ruteo (`asignar` no usa `z`).
+      z: t.corredor || base?.z || corredorFn({ lat: t.lat, lng: t.lon, comuna: t.sector_comuna, direccion: t.direccion }) || t.sector_comuna || '',
       v: t.ventana ?? base?.v ?? '',
       d: t.direccion || base?.d,
       region: t.region || base?.region,
