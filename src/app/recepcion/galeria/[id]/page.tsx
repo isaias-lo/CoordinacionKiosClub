@@ -1,6 +1,7 @@
 import { supabaseServer } from '@/lib/supabaseServer';
 import { parseRecepcionId } from '@/lib/recepcionMedia';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
+import { PublicScrollFix } from '@/components/PublicScrollFix';
 
 // Lee la fila de recepción por request → siempre dinámica.
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,7 @@ function fmtFecha(iso?: string | null): string {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", color: '#0F172A' }}>
+      <PublicScrollFix />
       <div style={{ background: NAVY, padding: '18px 20px', color: '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, maxWidth: 640, margin: '0 auto' }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: '8px 12px', flexShrink: 0, boxShadow: '0 3px 12px rgba(0,0,0,0.28)' }}>
