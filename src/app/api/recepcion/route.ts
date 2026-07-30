@@ -8,7 +8,8 @@ import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
 import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
 import { buildSheetRow } from '@/lib/sheetRow';
-import { nuevoSeguimientoRecepcion, elegirFechaDespacho, type DespachoCandidato } from '@/lib/recepcionEstado';
+import { nuevoSeguimientoRecepcion, elegirFechaDespacho, hayDiferencia, type DespachoCandidato } from '@/lib/recepcionEstado';
+import { buildEdicionEntry, type EdicionEntry } from '@/lib/recepcionAudit';
 
 interface RecepcionBody {
   cod: string;
@@ -52,6 +53,24 @@ interface RecepcionBody {
   temperaturaLlegada?: number;
   usuarioRecepcion?: string;
   regimen?: string;
+  // Idempotencia + edición con auditoría (PR C2)
+  clientOpId?: string;
+  editar?: boolean;
+  recepcionId?: number;
+}
+
+/** Fila previa cargada para editar (con auditoría + validación de ownership). */
+interface PrevRecepcion {
+  pallets_recibidos: number | null;
+  bultos_recibidos: number | null;
+  contenedores_recibidos: number | null;
+  acuse_recibo: string | null;
+  observaciones: string | null;
+  recepcion_fotos: string[] | null;
+  ediciones: number | null;
+  historial_ediciones: EdicionEntry[] | null;
+  cod: string | null;
+  fuente: string | null;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -107,6 +126,34 @@ async function writeToSheet(sheetName: string, record: Record<string, string | n
   });
 }
 
+/**
+ * GET /api/recepcion?cod=XX — ¿ya recibió esta tienda hoy?
+ * Devuelve la recepción de la tienda (fuente='tienda') más reciente de HOY para armar la
+ * pantalla "Ya fue recibido" + permitir editar. NO expone receptor/rut de la persona anterior
+ * (accountability: al editar se re-identifica). Público (flujo de recepción por QR).
+ */
+export async function GET(request: NextRequest) {
+  if (!checkRateLimit(`recepcion-get:${getClientIp(request)}`, { max: 60, windowMs: 600_000 }))
+    return tooManyRequests();
+  const cod = new URL(request.url).searchParams.get('cod')?.trim();
+  if (!cod) return NextResponse.json({ data: null });
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { data } = await supabaseServer()
+    .from('recepcion')
+    .select('id, cod, tienda, pallets_sent, bultos_sent, contenedores_sent, pallets_recibidos, bultos_recibidos, contenedores_recibidos, acuse_recibo, observaciones, created_at, editado_en, ediciones')
+    .eq('cod', cod)
+    .eq('fuente', 'tienda')
+    .gte('created_at', todayStart.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return NextResponse.json({ data: data ?? null });
+}
+
 export async function POST(request: NextRequest) {
   if (!checkRateLimit(`recepcion:${getClientIp(request)}`, { max: 20, windowMs: 600_000 }))
     return tooManyRequests();
@@ -137,6 +184,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Idempotencia: si este client_op_id ya se procesó (reintento / doble tap), NO se crea
+    // un duplicado — se devuelve el registro existente. La garantía dura la da el índice único
+    // parcial en Supabase (ver más abajo el manejo de la violación 23505 en el INSERT).
+    if (body.clientOpId) {
+      const { data: yaExiste } = await sb
+        .from('recepcion')
+        .select('id')
+        .eq('client_op_id', body.clientOpId)
+        .limit(1)
+        .maybeSingle();
+      if (yaExiste) return NextResponse.json({ ok: true, id: yaExiste.id, duplicate: true });
+    }
+
+    // Edición: cargar la fila previa y VALIDAR antes de subir fotos (evita fotos huérfanas en
+    // reintentos + valida ownership: solo la MISMA tienda puede editar SU recepción).
+    let prevEdit: PrevRecepcion | null = null;
+    if (body.editar && body.recepcionId) {
+      const { data: prev, error: prevErr } = await sb
+        .from('recepcion')
+        .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos, acuse_recibo, observaciones, recepcion_fotos, ediciones, historial_ediciones, cod, fuente')
+        .eq('id', body.recepcionId)
+        .maybeSingle();
+      if (prevErr) throw new Error(prevErr.message);
+      if (!prev) return NextResponse.json({ error: 'Recepción a editar no encontrada' }, { status: 404 });
+      // Ownership: la fila debe ser de la MISMA tienda (cod) y una recepción de tienda.
+      if (prev.cod !== body.cod || prev.fuente !== 'tienda') {
+        return NextResponse.json({ error: 'No autorizado a editar esta recepción' }, { status: 403 });
+      }
+      // Idempotencia de la edición: si esta misma operación ya se aplicó, no repetir.
+      const historialPrev = (prev.historial_ediciones as EdicionEntry[] | null) ?? [];
+      if (body.clientOpId && historialPrev.some(e => e.clientOpId === body.clientOpId)) {
+        return NextResponse.json({ ok: true, id: body.recepcionId, duplicate: true });
+      }
+      prevEdit = prev as PrevRecepcion;
+    }
+
     // La firma dibujada se eliminó: el acuse de recibo (recibiConforme) + el OTP al correo
     // de la tienda son la confirmación. firma_url queda vacío en registros nuevos.
 
@@ -155,50 +238,130 @@ export async function POST(request: NextRequest) {
       recepcionFotoUrls.push(sb.storage.from('recepcion-fotos').getPublicUrl(fname).data.publicUrl);
     }
 
+    // Auto-diferencia (defensa server-side): si la tienda recibió distinto a lo enviado, la
+    // recepción NO puede quedar 'conforme' aunque el cliente lo mande (p.ej. cola offline con
+    // estado viejo). Se fuerza el acuse a "con observaciones".
+    if (body.origen === 'tienda' && hayDiferencia(
+      { pallets: body.palletsSent      ?? 0, bultos: body.bultosSent      ?? 0, contenedores: body.contenedoresSent      ?? 0 },
+      { pallets: body.palletsRecibidos ?? 0, bultos: body.bultosRecibidos ?? 0, contenedores: body.contenedoresRecibidos ?? 0 },
+    )) {
+      body.recibiConforme = false;
+    }
+
     const acuse = typeof body.recibiConforme === 'boolean' ? acuseLabel(body.recibiConforme) : '';
 
-    // Insert record (devuelve id para armar el link de la galería pública)
-    const { data: inserted, error: insertError } = await sb.from('recepcion').insert({
-      cod:                  body.cod,
-      tienda:               body.tienda,
-      direccion:            body.direccion,
-      pallets_sent:            body.palletsSent,
-      bultos_sent:             body.bultosSent,
-      contenedores_sent:       body.contenedoresSent      ?? 0,
-      pallets_recibidos:       body.palletsRecibidos,
-      bultos_recibidos:        body.bultosRecibidos,
-      contenedores_recibidos:  body.contenedoresRecibidos ?? 0,
-      conductor:            body.conductor ?? '',
-      pionetas:             body.pionetas  ?? '',
-      receptor:             body.receptor,
-      rut:                  body.rut,
-      firma_url:            '',
-      observaciones:        body.observaciones        ?? '',
-      sello_estado:         body.selloEstado           ?? '',
-      sello_llegada_url:    body.selloLlegadaUrl       ?? '',
-      sello_llegada_hora:   body.selloLlegadaHora      ?? '',
-      sello_salida_url:     body.selloSalidaUrl        ?? '',
-      sello_salida_hora:    body.selloSalidaHora       ?? '',
-      cd_salida_url:        body.cdSalidaUrl           ?? '',
-      cd_salida_hora:       body.cdSalidaHora          ?? '',
-      estado_fotos:         body.estadoFotoUrls        ?? [],
-      recepcion_fotos:      recepcionFotoUrls,
-      recibi_conforme:      typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
-      acuse_recibo:         acuse,
-      firma_metodo:         body.firmaMetodo           ?? '',
-      codigo_verificacion:  body.codigoVerificacion    ?? '',
-      canonical_id:         body.canonicalId           ?? null,
-      // Origen del registro: la tienda (QR+OTP) → 'tienda'; el chofer/entrega → 'conductor'.
-      // (Antes estaba hardcodeado a 'conductor', lo que hacía inalcanzable 'Diferencia'/'Recibido'.)
-      fuente:               body.origen === 'tienda' ? 'tienda' : 'conductor',
-    }).select('id').single();
+    let recepcionId: number;
+    let fotosFinal = recepcionFotoUrls;
+    let esEdicion  = false;
+    let numEdicion = 0;
 
-    if (insertError) throw new Error(insertError.message);
+    if (body.editar && body.recepcionId && prevEdit) {
+      // ── EDICIÓN con auditoría ────────────────────────────────────────────────
+      // `prevEdit` ya fue cargado y validado (ownership + idempotencia) antes de subir fotos.
+      // Se re-identificó la persona (receptor+rut del body). NO se sobreescribe el receptor/rut
+      // ORIGINAL — cada edición registra SU propia persona + cambios en historial_ediciones.
+      // Los contenedores conservan el valor previo si el cliente no los envía (no pisar a 0).
+      const contenedoresEd = body.contenedoresRecibidos ?? prevEdit.contenedores_recibidos ?? 0;
+
+      const entry: EdicionEntry = buildEdicionEntry({
+        clientOpId: body.clientOpId,
+        prev: {
+          pallets_recibidos:      prevEdit.pallets_recibidos,
+          bultos_recibidos:       prevEdit.bultos_recibidos,
+          contenedores_recibidos: prevEdit.contenedores_recibidos,
+          acuse_recibo:           prevEdit.acuse_recibo,
+          observaciones:          prevEdit.observaciones,
+        },
+        next: {
+          pallets_recibidos:      body.palletsRecibidos,
+          bultos_recibidos:       body.bultosRecibidos,
+          contenedores_recibidos: contenedoresEd,
+          acuse_recibo:           acuse,
+          observaciones:          body.observaciones ?? '',
+        },
+        receptor: body.receptor,
+        rut:      body.rut,
+      });
+
+      const historial = [...(prevEdit.historial_ediciones ?? []), entry];
+      fotosFinal      = [...(prevEdit.recepcion_fotos ?? []), ...recepcionFotoUrls];
+      numEdicion      = (prevEdit.ediciones ?? 0) + 1;
+      esEdicion       = true;
+
+      const { error: updErr } = await sb.from('recepcion').update({
+        pallets_recibidos:      body.palletsRecibidos,
+        bultos_recibidos:       body.bultosRecibidos,
+        contenedores_recibidos: contenedoresEd,
+        observaciones:          body.observaciones ?? '',
+        recibi_conforme:        typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
+        acuse_recibo:           acuse,
+        recepcion_fotos:        fotosFinal,
+        editado_en:             new Date().toISOString(),
+        ediciones:              numEdicion,
+        historial_ediciones:    historial,
+      }).eq('id', body.recepcionId);
+      if (updErr) throw new Error(updErr.message);
+      recepcionId = body.recepcionId;
+    } else {
+      // ── INSERT (primera recepción) ───────────────────────────────────────────
+      const filaBase = {
+        cod:                  body.cod,
+        tienda:               body.tienda,
+        direccion:            body.direccion,
+        pallets_sent:            body.palletsSent,
+        bultos_sent:             body.bultosSent,
+        contenedores_sent:       body.contenedoresSent      ?? 0,
+        pallets_recibidos:       body.palletsRecibidos,
+        bultos_recibidos:        body.bultosRecibidos,
+        contenedores_recibidos:  body.contenedoresRecibidos ?? 0,
+        conductor:            body.conductor ?? '',
+        pionetas:             body.pionetas  ?? '',
+        receptor:             body.receptor,
+        rut:                  body.rut,
+        firma_url:            '',
+        observaciones:        body.observaciones        ?? '',
+        sello_estado:         body.selloEstado           ?? '',
+        sello_llegada_url:    body.selloLlegadaUrl       ?? '',
+        sello_llegada_hora:   body.selloLlegadaHora      ?? '',
+        sello_salida_url:     body.selloSalidaUrl        ?? '',
+        sello_salida_hora:    body.selloSalidaHora       ?? '',
+        cd_salida_url:        body.cdSalidaUrl           ?? '',
+        cd_salida_hora:       body.cdSalidaHora          ?? '',
+        estado_fotos:         body.estadoFotoUrls        ?? [],
+        recepcion_fotos:      recepcionFotoUrls,
+        recibi_conforme:      typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
+        acuse_recibo:         acuse,
+        firma_metodo:         body.firmaMetodo           ?? '',
+        codigo_verificacion:  body.codigoVerificacion    ?? '',
+        canonical_id:         body.canonicalId           ?? null,
+        // Origen del registro: la tienda (QR+OTP) → 'tienda'; el chofer/entrega → 'conductor'.
+        // (Antes estaba hardcodeado a 'conductor', lo que hacía inalcanzable 'Diferencia'/'Recibido'.)
+        fuente:               body.origen === 'tienda' ? 'tienda' : 'conductor',
+      };
+
+      let ins = await sb.from('recepcion').insert({ ...filaBase, client_op_id: body.clientOpId ?? null }).select('id').single();
+
+      // #2 Tolerancia si la migración aún no corrió (columna client_op_id inexistente): reintenta
+      //    sin ella para no romper TODA recepción. (Insurance; la migración DEBE correr antes del deploy.)
+      if (ins.error && /client_op_id/i.test(ins.error.message)) {
+        ins = await sb.from('recepcion').insert(filaBase).select('id').single();
+      }
+
+      // #6 Idempotencia a nivel DB: si el índice único parcial rechaza un duplicado concurrente
+      //    (23505), devolvemos el registro ya existente en vez de un 500 crudo.
+      if (ins.error && (ins.error as { code?: string }).code === '23505' && body.clientOpId) {
+        const { data: ya } = await sb.from('recepcion').select('id').eq('client_op_id', body.clientOpId).limit(1).maybeSingle();
+        if (ya) return NextResponse.json({ ok: true, id: ya.id, duplicate: true });
+      }
+
+      if (ins.error) throw new Error(ins.error.message);
+      recepcionId = ins.data!.id as number;
+    }
 
     // Link a la galería pública de fotos de recepción (para la columna del Sheet).
     const origin = new URL(request.url).origin;
-    const galeriaUrl = recepcionFotoUrls.length && inserted?.id
-      ? `${origin}/recepcion/galeria/${inserted.id}`
+    const galeriaUrl = fotosFinal.length && recepcionId
+      ? `${origin}/recepcion/galeria/${recepcionId}`
       : '';
 
     // Auto-transición del seguimiento (lógica pura en recepcionEstado.ts):
@@ -292,12 +455,16 @@ export async function POST(request: NextRequest) {
       'Foto CD Salida':         body.cdSalidaUrl ?? '',
       'Hora CD Salida':         body.cdSalidaHora ?? '',
       'N° Fotos Estado':        (body.estadoFotoUrls ?? []).length.toString(),
-      'Observaciones':          body.observaciones ?? '',
+      // En una edición, la fila del Sheet queda marcada "[Editado #N]" (bitácora cronológica):
+      // cada edición agrega una fila nueva con SU receptor (el editor) y sus observaciones.
+      'Observaciones':          esEdicion
+        ? `[Editado #${numEdicion}] ${body.observaciones ?? ''}`.trim()
+        : (body.observaciones ?? ''),
       'Acuse de recibo':        acuse,
       // OJO: separador ';' — la hoja está en locale es_ES, donde HYPERLINK usa ';'
       // (con ',' da "Error de análisis de fórmula" / #ERROR!).
       'Fotos de recepción':     galeriaUrl
-        ? `=HYPERLINK("${galeriaUrl}";"Ver fotos (${recepcionFotoUrls.length})")`
+        ? `=HYPERLINK("${galeriaUrl}";"Ver fotos (${fotosFinal.length})")`
         : '',
     };
     await writeToSheet(sheetName, record);

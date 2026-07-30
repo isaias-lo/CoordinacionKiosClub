@@ -1,11 +1,23 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TIENDAS_INICIAL, type TiendaInfo } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { processPhoto } from '../../features/auditoria/utils/photos';
 import { RECEP_MAX_FOTOS } from '../../lib/recepcionMedia';
+
+/** id de operación (idempotencia). crypto.randomUUID con fallback para navegadores viejos. */
+function newOpId(): string {
+  try { return crypto.randomUUID(); }
+  catch { return `op-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+}
+
+interface RecepcionExistente {
+  id: number; pallets_sent: number; bultos_sent: number;
+  pallets_recibidos: number; bultos_recibidos: number;
+  acuse_recibo: string | null; created_at: string; ediciones: number | null;
+}
 
 /** Lee un File como data URL base64 (para enviarlo al server, que lo sube a Storage). */
 function fileToDataUrl(file: File): Promise<string> {
@@ -83,6 +95,12 @@ export function RecepcionClient() {
   const [done,       setDone]       = useState(false);
   const [palletsRec, setPalletsRec] = useState(String(urlP));
   const [bultosRec,  setBultosRec]  = useState(String(urlB));
+
+  // Recibir una vez + editar: lookup de recepción existente para esta tienda hoy.
+  const [existente,   setExistente]   = useState<RecepcionExistente | null>(null);
+  const [existLoading, setExistLoading] = useState(true);
+  const [editMode,    setEditMode]    = useState(false);
+  const clientOpIdRef = useRef<string>(newOpId());
   const [receptor,   setReceptor]   = useState('');
   const [rut,        setRut]        = useState('');
   const [loading,    setLoading]    = useState(false);
@@ -110,6 +128,31 @@ export function RecepcionClient() {
 
   const store = TIENDAS_INICIAL[cod] ?? dbStore ?? undefined;
   const guias = g ? g.split(',').filter(Boolean) : [];
+
+  // Auto-diferencia: si lo recibido NO coincide con lo enviado (p/b del QR), la recepción
+  // NO puede ser "conforme" → se fuerza el acuse a "con observaciones" y se pide describir.
+  const palletsRecNum = parseInt(palletsRec) || 0;
+  const bultosRecNum  = parseInt(bultosRec)  || 0;
+  const hayDiferencia = palletsRecNum !== p || bultosRecNum !== b;
+
+  useEffect(() => {
+    if (hayDiferencia && recibiConforme !== false) setRecibiConforme(false);
+  }, [hayDiferencia, recibiConforme]);
+
+  // ¿Esta tienda ya registró su recepción hoy? → pantalla "Ya fue recibido" + Editar.
+  useEffect(() => {
+    if (!cod) { setExistLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/recepcion?cod=${encodeURIComponent(cod)}`);
+        const json = await res.json() as { data: RecepcionExistente | null };
+        if (!cancelled) setExistente(json.data ?? null);
+      } catch { /* sin señal: seguimos como recepción nueva */ }
+      finally { if (!cancelled) setExistLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [cod]);
 
   // Si llega un id canónico, resolver contra /api/pallet-lookup para hidratar
   // cod + cantidades esperadas. Si falla, dejamos el flujo "Código inválido".
@@ -266,37 +309,61 @@ export function RecepcionClient() {
     setLoading(true);
     try {
       const recepcionFotos = await Promise.all(fotos.map(fileToDataUrl));
+      const bodyPayload = {
+        cod,
+        tienda: store?.n || cod,
+        direccion: store?.d || '',
+        palletsSent: p,
+        bultosSent: b,
+        palletsRecibidos: parseInt(palletsRec) || 0,
+        bultosRecibidos:  parseInt(bultosRec)  || 0,
+        receptor: receptor.trim(),
+        rut: rut.trim(),
+        recibiConforme,
+        observaciones: observaciones.trim(),
+        recepcionFotos,
+        origen: 'tienda',   // recepción de la tienda → hoja RECEPCIÓN/TIENDA
+        canonicalId: canonId || undefined,
+        otpToken,
+        otpEmail,
+        codigoVerificacion: otpCode.trim(),
+        clientOpId: clientOpIdRef.current,   // idempotencia: reenviar el mismo intento no duplica
+        // Edición de una recepción ya existente (re-identificando persona):
+        ...(editMode && existente ? { editar: true, recepcionId: existente.id } : {}),
+      };
+
       const res = await fetch('/api/recepcion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cod,
-          tienda: store?.n || cod,
-          direccion: store?.d || '',
-          palletsSent: p,
-          bultosSent: b,
-          palletsRecibidos: parseInt(palletsRec) || 0,
-          bultosRecibidos:  parseInt(bultosRec)  || 0,
-          receptor: receptor.trim(),
-          rut: rut.trim(),
-          recibiConforme,
-          observaciones: observaciones.trim(),
-          recepcionFotos,
-          origen: 'tienda',   // recepción de la tienda → hoja RECEPCIÓN/TIENDA
-          canonicalId: canonId || undefined,
-          otpToken,
-          otpEmail,
-          codigoVerificacion: otpCode.trim(),
-        }),
+        body: JSON.stringify(bodyPayload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error');
       setDone(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar. Intenta de nuevo.');
+      // Sin cola offline: si no hay señal, se muestra el error (no un falso "guardado").
+      // El clientOpId hace que reintentar sea idempotente → volver a enviar NO duplica.
+      const online = typeof navigator === 'undefined' || navigator.onLine;
+      setError(online
+        ? (e instanceof Error ? e.message : 'Error al guardar. Intenta de nuevo.')
+        : 'Sin conexión. Revisa la señal e intenta de nuevo — reenviar no duplica el registro.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Entrar en modo edición: re-identificar persona (nombre+RUT en blanco), cantidades
+  // pre-cargadas para ajustar, acuse reseteado, y una NUEVA operación (clientOpId) idempotente.
+  const iniciarEdicion = () => {
+    if (!existente) return;
+    setEditMode(true);
+    setReceptor('');
+    setRut('');
+    setPalletsRec(String(existente.pallets_recibidos ?? ''));
+    setBultosRec(String(existente.bultos_recibidos ?? ''));
+    setRecibiConforme(null);
+    setObservaciones('');
+    clientOpIdRef.current = newOpId();
   };
 
   // Header corporativo (navy) reutilizado en el paso OTP y en el formulario.
@@ -316,7 +383,7 @@ export function RecepcionClient() {
   );
 
   /* ── Resolviendo ID canónico o tienda desde la BD ── */
-  if (lookupLoading || storeLoading) {
+  if (lookupLoading || storeLoading || existLoading) {
     return (
       <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ textAlign: 'center', color: '#0F172A' }}>
@@ -362,6 +429,42 @@ export function RecepcionClient() {
             ↓ Descargar Guías PDF
           </a>
         )}
+      </div>
+    );
+  }
+
+  /* ── Ya fue recibido (recibir una vez + editar) ── */
+  if (existente && !editMode) {
+    const difEx = existente.pallets_recibidos !== existente.pallets_sent || existente.bultos_recibidos !== existente.bultos_sent;
+    const nEd   = existente.ediciones ?? 0;
+    return (
+      <div style={S.page}>
+        {Header}
+        <div style={S.body}>
+          <div style={S.card}>
+            <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
+            <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#1a2550', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 17, fontWeight: 700, color: '#0F172A' }}>{store.n}</p>
+          </div>
+          <div style={{ ...S.card, background: difEx ? 'rgba(217,119,6,0.08)' : 'rgba(16,163,74,0.08)', border: `1px solid ${difEx ? 'rgba(217,119,6,0.35)' : 'rgba(16,163,74,0.30)'}` }}>
+            <p style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, color: difEx ? '#B45309' : '#15803D' }}>
+              {difEx ? '⚠️ Ya recibido (con diferencia)' : '✅ Esta tienda ya fue recibida hoy'}
+            </p>
+            <p style={{ margin: 0, fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+              Recibido: <strong>{existente.pallets_recibidos} pallets · {existente.bultos_recibidos} bultos</strong>
+              {existente.acuse_recibo ? <> — {existente.acuse_recibo}</> : null}.
+            </p>
+            {nEd > 0 && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#92400E' }}>✎ Editado {nEd} {nEd === 1 ? 'vez' : 'veces'}.</p>}
+          </div>
+          <button onClick={iniciarEdicion}
+            style={{ width: '100%', padding: '14px 0', background: '#1a2550', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>
+            ✎ Editar recepción
+          </button>
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 1.5 }}>
+            Al editar deberás <strong>ingresar tu nombre y RUT nuevamente</strong> y verificar el código de la tienda. Queda registrado quién hizo el cambio.
+          </p>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -422,6 +525,14 @@ export function RecepcionClient() {
       {Header}
 
       <div style={S.body}>
+        {editMode && (
+          <div style={{ background: 'rgba(26,37,80,0.06)', border: '1px solid rgba(26,37,80,0.25)', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#1a2550' }}>✎ Editando recepción</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#475569', lineHeight: 1.45 }}>
+              Ingresa <strong>tu</strong> nombre y RUT (los de quien edita ahora). Queda registrado el cambio.
+            </p>
+          </div>
+        )}
         {/* Store card */}
         <div style={S.card}>
           <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
@@ -448,6 +559,15 @@ export function RecepcionClient() {
               <input type="number" min="0" inputMode="numeric" value={bultosRec} onChange={e => setBultosRec(e.target.value)} style={inputNum()} />
             </div>
           </div>
+          {hayDiferencia && (
+            <div style={{ marginTop: 12, background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.35)', borderRadius: 10, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+              <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.45 }}>
+                <strong>Diferencia detectada.</strong> Enviado {p} pallets / {b} bultos · Recibido {palletsRecNum} pallets / {bultosRecNum} bultos.
+                <br />No se puede marcar “Recibí conforme”: registra las observaciones abajo.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Datos del receptor */}
@@ -469,7 +589,7 @@ export function RecepcionClient() {
         <div style={S.card}>
           <p style={S.sectionTitle}>Acuse de recibo</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <button type="button" onClick={() => setRecibiConforme(true)} style={acuseBtn(recibiConforme === true, '#16A34A')}>
+            <button type="button" disabled={hayDiferencia} onClick={() => { if (!hayDiferencia) setRecibiConforme(true); }} style={{ ...acuseBtn(recibiConforme === true, '#16A34A'), opacity: hayDiferencia ? 0.4 : 1, cursor: hayDiferencia ? 'not-allowed' : 'pointer' }}>
               ✓ Recibí conforme
             </button>
             <button type="button" onClick={() => setRecibiConforme(false)} style={acuseBtn(recibiConforme === false, '#D97706')}>
@@ -536,7 +656,7 @@ export function RecepcionClient() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             boxShadow: loading ? 'none' : '0 4px 16px rgba(37,99,235,0.30)',
           }}>
-          {loading ? <>{Spinner} Guardando…</> : 'Confirmar Recepción'}
+          {loading ? <>{Spinner} Guardando…</> : (editMode ? 'Guardar cambios' : 'Confirmar Recepción')}
         </button>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } input:focus { border-color: #1a2550 !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }`}</style>

@@ -129,6 +129,10 @@ export const RecepcionSchema = z.object({
   temperaturaLlegada:    z.number().min(-50).max(100).optional(),
   usuarioRecepcion:      z.string().max(100).optional(),
   regimen:               z.string().max(50).optional(),
+  // Idempotencia + edición con auditoría (PR C2):
+  clientOpId:            z.string().max(64).optional(),   // reintento/offline no duplica
+  editar:                z.boolean().optional(),          // true = editar recepción existente
+  recepcionId:           z.number().int().positive().optional(), // id a editar
 });
 
 // ── Recepción Tienda ───────────────────────────────────────────────────────
