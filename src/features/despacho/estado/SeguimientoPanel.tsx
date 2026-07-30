@@ -158,11 +158,15 @@ function PhotoThumb({ url, label, hora }: { url: string; label: string; hora?: s
 }
 
 function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
-  const palletsSent = Number(row.pallets_sent ?? 0);
-  const bultosSent  = Number(row.bultos_sent  ?? 0);
-  const palletsRec  = Number(row.pallets_recibidos ?? 0);
-  const bultosRec   = Number(row.bultos_recibidos  ?? 0);
   const match       = !resumenDiferencia(row).hayDiferencia;
+  // Comparativa por unidad (Pallets / Bultos / Contenedores). Se muestra una fila si hubo
+  // ENVIADO o RECIBIDO > 0 → así aparecen también las diferencias donde lo enviado era 0
+  // (antes se ocultaban los bultos/contenedores si `sent === 0`).
+  const lineasCant = ([
+    { label: 'Pallets',      sent: Number(row.pallets_sent ?? 0),      rec: Number(row.pallets_recibidos ?? 0) },
+    { label: 'Bultos',       sent: Number(row.bultos_sent ?? 0),       rec: Number(row.bultos_recibidos ?? 0) },
+    { label: 'Contenedores', sent: Number(row.contenedores_sent ?? 0), rec: Number(row.contenedores_recibidos ?? 0) },
+  ]).filter(l => l.sent > 0 || l.rec > 0);
   const estadoFotos    = (row.estado_fotos as string[]) ?? [];
   const recepcionFotos = (row.recepcion_fotos as string[]) ?? [];
   const fechaHora   = row.created_at ? fmtFechaHoraChile(String(row.created_at)) : '—';
@@ -185,16 +189,48 @@ function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
         </div>
 
         <div style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <div style={{ background: match ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)', borderRadius: 14, padding: '14px 16px', border: `1px solid ${match ? 'rgba(16,185,129,0.3)' : 'rgba(249,115,22,0.3)'}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: match ? '#10B981' : '#F97316', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-              {match ? '✅ Sin diferencia' : '⚠️ Diferencia detectada'}
+          <div style={{ background: match ? 'rgba(16,185,129,0.06)' : 'rgba(249,115,22,0.06)', borderRadius: 16, padding: 16, border: `1px solid ${match ? 'rgba(16,185,129,0.28)' : 'rgba(249,115,22,0.32)'}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{match ? '✅' : '⚠️'}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: match ? '#15803D' : '#C2410C', letterSpacing: '0.01em' }}>
+                {match ? 'Recepción sin diferencias' : 'Diferencia detectada'}
+              </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}>ENVIADO</div><div /><div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}>RECIBIDO</div>
-              {palletsSent > 0 && <><div style={{ fontSize: 20, fontWeight: 800, color: '#1B2A6B' }}>{palletsSent}</div><div style={{ fontSize: 11, color: '#9CA3AF', alignSelf: 'center' }}>pallets</div><div style={{ fontSize: 20, fontWeight: 800, color: palletsRec === palletsSent ? '#10B981' : '#EF4444' }}>{palletsRec}</div></>}
-              {bultosSent  > 0 && <><div style={{ fontSize: 20, fontWeight: 800, color: '#D97706' }}>{bultosSent}</div><div style={{ fontSize: 11, color: '#9CA3AF', alignSelf: 'center' }}>bultos</div><div style={{ fontSize: 20, fontWeight: 800, color: bultosRec === bultosSent ? '#10B981' : '#EF4444' }}>{bultosRec}</div></>}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.9fr', gap: 6, fontSize: 9.5, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: 7, borderBottom: '1px solid rgba(15,23,42,0.07)' }}>
+              <div>Unidad</div>
+              <div style={{ textAlign: 'center' }}>Enviado</div>
+              <div style={{ textAlign: 'center' }}>Recibido</div>
+              <div style={{ textAlign: 'center' }}>Dif.</div>
             </div>
+            {lineasCant.map((l, i) => {
+              const dif = l.rec - l.sent;
+              const igual = dif === 0;
+              return (
+                <div key={l.label} style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.9fr', gap: 6, alignItems: 'center', padding: '9px 0', borderBottom: i < lineasCant.length - 1 ? '1px solid rgba(15,23,42,0.04)' : 'none' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: '#374151' }}>{l.label}</div>
+                  <div style={{ textAlign: 'center', fontSize: 19, fontWeight: 800, color: '#1B2A6B' }}>{l.sent}</div>
+                  <div style={{ textAlign: 'center', fontSize: 19, fontWeight: 800, color: igual ? '#15803D' : '#DC2626' }}>{l.rec}</div>
+                  <div style={{ textAlign: 'center' }}>
+                    {igual
+                      ? <span style={{ fontSize: 13, color: '#CBD5E1' }}>—</span>
+                      : <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: dif > 0 ? '#D97706' : '#DC2626', padding: '2px 9px', borderRadius: 99, whiteSpace: 'nowrap' }}>{dif > 0 ? '+' : ''}{dif}</span>}
+                  </div>
+                </div>
+              );
+            })}
+            {lineasCant.length === 0 && <div style={{ fontSize: 12, color: '#9CA3AF', paddingTop: 8 }}>Sin cantidades registradas.</div>}
           </div>
+
+          {!!row.acuse_recibo && (() => {
+            const a = String(row.acuse_recibo);
+            const ok = a.toLowerCase().includes('conforme') && !a.toLowerCase().includes('observ');
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Acuse</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, padding: '4px 12px', borderRadius: 99, background: ok ? 'rgba(21,128,61,0.1)' : 'rgba(217,119,6,0.12)', color: ok ? '#15803D' : '#B45309' }}>{ok ? '✓ ' : '⚠ '}{a}</span>
+              </div>
+            );
+          })()}
 
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Personal</div>
