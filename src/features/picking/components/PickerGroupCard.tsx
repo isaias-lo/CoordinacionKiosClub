@@ -41,13 +41,14 @@ interface Props {
   myName?: string;           // nombre del supervisor actual para detectar impresiones propias vs ajenas
   sectionFilter?: SectionFilter;
   adelanto?: { fecha_despacho: string | null }; // si la tienda es un adelanto
+  otroDia?: boolean; // fecha del "Documento origen" en Odoo distinta a hoy — solo advertencia
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
   group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange,
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
-  lastPrint, myName, sectionFilter, adelanto,
+  lastPrint, myName, sectionFilter, adelanto, otroDia,
 }: Props) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -79,6 +80,15 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
   return (
     <div className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor, boxShadow: shadow }}>
+      {/* Advertencia: fecha del Documento origen (Odoo) distinta a hoy */}
+      {otroDia && (
+        <div className="px-4 py-2 flex items-center gap-2" style={{ background: '#FFFBEB', borderBottom: '1px solid #FDE68A' }}>
+          <AlertTriangle size={13} style={{ color: '#92400E', flexShrink: 0 }} />
+          <span className="text-[12px] font-medium" style={{ color: '#92400E' }}>
+            La fecha del documento origen no coincide con hoy — verifica antes de trabajarlo
+          </span>
+        </div>
+      )}
       {/* Card header */}
       <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: 'var(--color-border)', background: '#fff' }}>
         <span className="font-mono text-[12px] font-semibold shrink-0 px-2 py-0.5 rounded"

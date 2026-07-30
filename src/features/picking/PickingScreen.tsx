@@ -757,10 +757,11 @@ export function PickingScreen() {
     setPanelView('planilla');
   }, [selectedCods, opsMap, fetchOpsForStore]);
 
-  // Grupos cuyo movimiento es de OTRO DÍA (arrastre/error de Odoo). Regla de negocio:
-  // el picking siempre se cierra el mismo día → un movimiento con fecha de origen válida y
-  // distinta de hoy nunca es legítimo. Se ocultan del flujo (no se trabaja contra ellos).
-  // Conservador: si la fecha está vacía/ilegible se trata como de hoy (beneficio de la duda).
+  // Grupos cuyo texto de "Documento origen" trae una fecha distinta a hoy (typo o plantilla
+  // vieja en Odoo). YA vienen filtrados por scheduled_date=hoy (campo estructurado, confiable)
+  // al traerlos de Odoo, así que esta fecha de texto libre es solo una señal de advertencia —
+  // no se ocultan, se muestran igual con un aviso para que el supervisor decida.
+  // Conservador: si la fecha está vacía/ilegible NO se marca como advertencia (beneficio de la duda).
   const otroDiaGroupKeys = useMemo(() => {
     const d = new Date();
     const todayDMY = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -780,14 +781,13 @@ export function PickingScreen() {
 
   const filteredGroups = useMemo(() => {
     return allGroups.filter(g => {
-      if (otroDiaGroupKeys.has(g.stateKey)) return false;          // ocultar movimientos de otro día
       if (sectionFilter === 'all') return true;
       const cats = new Set(g.operations.flatMap(o => o.categories));
       if (sectionFilter === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
       if (sectionFilter === 'chocolates')  return cats.has('Chocolates');
       return cats.has('Hogar');
     });
-  }, [allGroups, sectionFilter, otroDiaGroupKeys]);
+  }, [allGroups, sectionFilter]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
@@ -1303,8 +1303,8 @@ export function PickingScreen() {
                       : `${filteredGroups.length} picker${filteredGroups.length !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`}
                   </div>
                   {otroDiaCount > 0 && (
-                    <div className="text-[11px] text-text-3 mt-0.5">
-                      {otroDiaCount} movimiento{otroDiaCount !== 1 ? 's' : ''} de otro día oculto{otroDiaCount !== 1 ? 's' : ''} (error de Odoo — no {otroDiaCount !== 1 ? 'son' : 'es'} de hoy)
+                    <div className="text-[11px] text-amber-600 font-medium mt-0.5">
+                      ⚠ {otroDiaCount} movimiento{otroDiaCount !== 1 ? 's' : ''} con fecha de origen distinta a hoy — revisa antes de trabajar{otroDiaCount !== 1 ? 'los' : 'lo'}
                     </div>
                   )}
                   {lastRefresh && (
@@ -1402,6 +1402,7 @@ export function PickingScreen() {
                               palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
                               sectionFilter={sectionFilter}
                               adelanto={adelantoByCod[group.storeCod]}
+                              otroDia={otroDiaGroupKeys.has(group.stateKey)}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
