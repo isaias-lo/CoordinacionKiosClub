@@ -9,6 +9,7 @@ import { parseBody, RecepcionSchema } from '@/lib/schemas';
 import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
 import { buildSheetRow } from '@/lib/sheetRow';
 import { nuevoSeguimientoRecepcion, elegirFechaDespacho, hayDiferencia, type DespachoCandidato } from '@/lib/recepcionEstado';
+import { buildEdicionEntry, type EdicionEntry } from '@/lib/recepcionAudit';
 
 interface RecepcionBody {
   cod: string;
@@ -52,6 +53,10 @@ interface RecepcionBody {
   temperaturaLlegada?: number;
   usuarioRecepcion?: string;
   regimen?: string;
+  // Idempotencia + edición con auditoría (PR C2)
+  clientOpId?: string;
+  editar?: boolean;
+  recepcionId?: number;
 }
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -107,6 +112,32 @@ async function writeToSheet(sheetName: string, record: Record<string, string | n
   });
 }
 
+/**
+ * GET /api/recepcion?cod=XX — ¿ya recibió esta tienda hoy?
+ * Devuelve la recepción de la tienda (fuente='tienda') más reciente de HOY para armar la
+ * pantalla "Ya fue recibido" + permitir editar. NO expone receptor/rut de la persona anterior
+ * (accountability: al editar se re-identifica). Público (flujo de recepción por QR).
+ */
+export async function GET(request: NextRequest) {
+  const cod = new URL(request.url).searchParams.get('cod')?.trim();
+  if (!cod) return NextResponse.json({ data: null });
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { data } = await supabaseServer()
+    .from('recepcion')
+    .select('id, cod, tienda, pallets_sent, bultos_sent, contenedores_sent, pallets_recibidos, bultos_recibidos, contenedores_recibidos, acuse_recibo, observaciones, created_at, editado_en, ediciones')
+    .eq('cod', cod)
+    .eq('fuente', 'tienda')
+    .gte('created_at', todayStart.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return NextResponse.json({ data: data ?? null });
+}
+
 export async function POST(request: NextRequest) {
   if (!checkRateLimit(`recepcion:${getClientIp(request)}`, { max: 20, windowMs: 600_000 }))
     return tooManyRequests();
@@ -135,6 +166,17 @@ export async function POST(request: NextRequest) {
       if (!rm && !reg) {
         return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
       }
+    }
+
+    // Idempotencia: si este client_op_id ya se procesó (reintento / flush de cola offline /
+    // doble tap), NO se crea un duplicado — se devuelve el registro existente.
+    if (body.clientOpId) {
+      const { data: yaExiste } = await sb
+        .from('recepcion')
+        .select('id')
+        .eq('client_op_id', body.clientOpId)
+        .maybeSingle();
+      if (yaExiste) return NextResponse.json({ ok: true, id: yaExiste.id, duplicate: true });
     }
 
     // La firma dibujada se eliminó: el acuse de recibo (recibiConforme) + el OTP al correo
@@ -167,48 +209,116 @@ export async function POST(request: NextRequest) {
 
     const acuse = typeof body.recibiConforme === 'boolean' ? acuseLabel(body.recibiConforme) : '';
 
-    // Insert record (devuelve id para armar el link de la galería pública)
-    const { data: inserted, error: insertError } = await sb.from('recepcion').insert({
-      cod:                  body.cod,
-      tienda:               body.tienda,
-      direccion:            body.direccion,
-      pallets_sent:            body.palletsSent,
-      bultos_sent:             body.bultosSent,
-      contenedores_sent:       body.contenedoresSent      ?? 0,
-      pallets_recibidos:       body.palletsRecibidos,
-      bultos_recibidos:        body.bultosRecibidos,
-      contenedores_recibidos:  body.contenedoresRecibidos ?? 0,
-      conductor:            body.conductor ?? '',
-      pionetas:             body.pionetas  ?? '',
-      receptor:             body.receptor,
-      rut:                  body.rut,
-      firma_url:            '',
-      observaciones:        body.observaciones        ?? '',
-      sello_estado:         body.selloEstado           ?? '',
-      sello_llegada_url:    body.selloLlegadaUrl       ?? '',
-      sello_llegada_hora:   body.selloLlegadaHora      ?? '',
-      sello_salida_url:     body.selloSalidaUrl        ?? '',
-      sello_salida_hora:    body.selloSalidaHora       ?? '',
-      cd_salida_url:        body.cdSalidaUrl           ?? '',
-      cd_salida_hora:       body.cdSalidaHora          ?? '',
-      estado_fotos:         body.estadoFotoUrls        ?? [],
-      recepcion_fotos:      recepcionFotoUrls,
-      recibi_conforme:      typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
-      acuse_recibo:         acuse,
-      firma_metodo:         body.firmaMetodo           ?? '',
-      codigo_verificacion:  body.codigoVerificacion    ?? '',
-      canonical_id:         body.canonicalId           ?? null,
-      // Origen del registro: la tienda (QR+OTP) → 'tienda'; el chofer/entrega → 'conductor'.
-      // (Antes estaba hardcodeado a 'conductor', lo que hacía inalcanzable 'Diferencia'/'Recibido'.)
-      fuente:               body.origen === 'tienda' ? 'tienda' : 'conductor',
-    }).select('id').single();
+    let recepcionId: number;
+    let fotosFinal = recepcionFotoUrls;
+    let esEdicion  = false;
+    let numEdicion = 0;
 
-    if (insertError) throw new Error(insertError.message);
+    if (body.editar && body.recepcionId) {
+      // ── EDICIÓN con auditoría ────────────────────────────────────────────────
+      // Se re-identificó la persona (receptor+rut vienen en el body, obligatorios). NO se
+      // sobreescribe el receptor/rut ORIGINAL de la fila — cada edición registra SU propia
+      // persona + los campos que cambió en historial_ediciones (accountability).
+      const { data: prev, error: prevErr } = await sb
+        .from('recepcion')
+        .select('pallets_recibidos, bultos_recibidos, contenedores_recibidos, acuse_recibo, observaciones, recepcion_fotos, ediciones, historial_ediciones')
+        .eq('id', body.recepcionId)
+        .maybeSingle();
+      if (prevErr) throw new Error(prevErr.message);
+      if (!prev) return NextResponse.json({ error: 'Recepción a editar no encontrada' }, { status: 404 });
+
+      // Idempotencia de la edición: si esta misma operación (clientOpId) ya se aplicó (reintento
+      // offline), no la repetimos.
+      const historialPrev = (prev.historial_ediciones as EdicionEntry[] | null) ?? [];
+      if (body.clientOpId && historialPrev.some(e => e.clientOpId === body.clientOpId)) {
+        return NextResponse.json({ ok: true, id: body.recepcionId, duplicate: true });
+      }
+
+      const entry: EdicionEntry = buildEdicionEntry({
+        clientOpId: body.clientOpId,
+        prev: {
+          pallets_recibidos:      prev.pallets_recibidos,
+          bultos_recibidos:       prev.bultos_recibidos,
+          contenedores_recibidos: prev.contenedores_recibidos,
+          acuse_recibo:           prev.acuse_recibo,
+          observaciones:          prev.observaciones,
+        },
+        next: {
+          pallets_recibidos:      body.palletsRecibidos,
+          bultos_recibidos:       body.bultosRecibidos,
+          contenedores_recibidos: body.contenedoresRecibidos ?? 0,
+          acuse_recibo:           acuse,
+          observaciones:          body.observaciones ?? '',
+        },
+        receptor: body.receptor,
+        rut:      body.rut,
+      });
+
+      const historial = [...historialPrev, entry];
+      fotosFinal      = [...((prev.recepcion_fotos as string[] | null) ?? []), ...recepcionFotoUrls];
+      numEdicion      = ((prev.ediciones as number | null) ?? 0) + 1;
+      esEdicion       = true;
+
+      const { error: updErr } = await sb.from('recepcion').update({
+        pallets_recibidos:      body.palletsRecibidos,
+        bultos_recibidos:       body.bultosRecibidos,
+        contenedores_recibidos: body.contenedoresRecibidos ?? 0,
+        observaciones:          body.observaciones ?? '',
+        recibi_conforme:        typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
+        acuse_recibo:           acuse,
+        recepcion_fotos:        fotosFinal,
+        editado_en:             new Date().toISOString(),
+        ediciones:              numEdicion,
+        historial_ediciones:    historial,
+      }).eq('id', body.recepcionId);
+      if (updErr) throw new Error(updErr.message);
+      recepcionId = body.recepcionId;
+    } else {
+      // ── INSERT (primera recepción) ───────────────────────────────────────────
+      const { data: inserted, error: insertError } = await sb.from('recepcion').insert({
+        cod:                  body.cod,
+        tienda:               body.tienda,
+        direccion:            body.direccion,
+        pallets_sent:            body.palletsSent,
+        bultos_sent:             body.bultosSent,
+        contenedores_sent:       body.contenedoresSent      ?? 0,
+        pallets_recibidos:       body.palletsRecibidos,
+        bultos_recibidos:        body.bultosRecibidos,
+        contenedores_recibidos:  body.contenedoresRecibidos ?? 0,
+        conductor:            body.conductor ?? '',
+        pionetas:             body.pionetas  ?? '',
+        receptor:             body.receptor,
+        rut:                  body.rut,
+        firma_url:            '',
+        observaciones:        body.observaciones        ?? '',
+        sello_estado:         body.selloEstado           ?? '',
+        sello_llegada_url:    body.selloLlegadaUrl       ?? '',
+        sello_llegada_hora:   body.selloLlegadaHora      ?? '',
+        sello_salida_url:     body.selloSalidaUrl        ?? '',
+        sello_salida_hora:    body.selloSalidaHora       ?? '',
+        cd_salida_url:        body.cdSalidaUrl           ?? '',
+        cd_salida_hora:       body.cdSalidaHora          ?? '',
+        estado_fotos:         body.estadoFotoUrls        ?? [],
+        recepcion_fotos:      recepcionFotoUrls,
+        recibi_conforme:      typeof body.recibiConforme === 'boolean' ? body.recibiConforme : null,
+        acuse_recibo:         acuse,
+        firma_metodo:         body.firmaMetodo           ?? '',
+        codigo_verificacion:  body.codigoVerificacion    ?? '',
+        canonical_id:         body.canonicalId           ?? null,
+        client_op_id:         body.clientOpId            ?? null,
+        // Origen del registro: la tienda (QR+OTP) → 'tienda'; el chofer/entrega → 'conductor'.
+        // (Antes estaba hardcodeado a 'conductor', lo que hacía inalcanzable 'Diferencia'/'Recibido'.)
+        fuente:               body.origen === 'tienda' ? 'tienda' : 'conductor',
+      }).select('id').single();
+
+      if (insertError) throw new Error(insertError.message);
+      recepcionId = inserted!.id as number;
+    }
 
     // Link a la galería pública de fotos de recepción (para la columna del Sheet).
     const origin = new URL(request.url).origin;
-    const galeriaUrl = recepcionFotoUrls.length && inserted?.id
-      ? `${origin}/recepcion/galeria/${inserted.id}`
+    const galeriaUrl = fotosFinal.length && recepcionId
+      ? `${origin}/recepcion/galeria/${recepcionId}`
       : '';
 
     // Auto-transición del seguimiento (lógica pura en recepcionEstado.ts):
@@ -302,12 +412,16 @@ export async function POST(request: NextRequest) {
       'Foto CD Salida':         body.cdSalidaUrl ?? '',
       'Hora CD Salida':         body.cdSalidaHora ?? '',
       'N° Fotos Estado':        (body.estadoFotoUrls ?? []).length.toString(),
-      'Observaciones':          body.observaciones ?? '',
+      // En una edición, la fila del Sheet queda marcada "[Editado #N]" (bitácora cronológica):
+      // cada edición agrega una fila nueva con SU receptor (el editor) y sus observaciones.
+      'Observaciones':          esEdicion
+        ? `[Editado #${numEdicion}] ${body.observaciones ?? ''}`.trim()
+        : (body.observaciones ?? ''),
       'Acuse de recibo':        acuse,
       // OJO: separador ';' — la hoja está en locale es_ES, donde HYPERLINK usa ';'
       // (con ',' da "Error de análisis de fórmula" / #ERROR!).
       'Fotos de recepción':     galeriaUrl
-        ? `=HYPERLINK("${galeriaUrl}";"Ver fotos (${recepcionFotoUrls.length})")`
+        ? `=HYPERLINK("${galeriaUrl}";"Ver fotos (${fotosFinal.length})")`
         : '',
     };
     await writeToSheet(sheetName, record);
