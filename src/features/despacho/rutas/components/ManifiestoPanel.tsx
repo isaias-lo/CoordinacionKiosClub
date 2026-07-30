@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import {
   buildManifiestoTiendaHTML,
+  guiasDeItems,
   type ItemDetalle,
   type TiendaManifiesto,
 } from '../utils/manifiestoTienda';
@@ -83,9 +84,19 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
   };
 }
 
+/** Escapa texto para interpolar seguro en el HTML impreso (nombres/folios vienen de datos
+ *  libres de bodega; un `<`, `&` o `"` rompería el layout del manifiesto). */
+function esc(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
 /* ── Print helper (single) ──────────────────────────────── */
-function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: string): string {
-  const qrUrl = m.token_qr ? `${origin}/r/${m.token_qr}` : `${origin}/despacho/estado`;
+function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: string, foliosByStore?: Record<string, string[]>): string {
+  // Solo hay QR si la ruta está guardada (tiene token). Antes, sin token, el QR apuntaba a
+  // /despacho/estado (ruta PROTEGIDA → pedía login al fiscalizador). Ahora: sin token, no se
+  // imprime un QR inválido; se muestra un aviso.
+  const tieneToken = !!m.token_qr;
+  const qrUrl = tieneToken ? `${origin}/r/${m.token_qr}` : '';
   const fechaLabel = new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
   const genLabel   = new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -99,6 +110,17 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
       <td style="text-align:center;font-weight:700;">${t.chocolates}</td>
     </tr>`
   ).join('');
+
+  // Folios DTE por tienda → el PAPEL queda autosuficiente para fiscalización sin señal
+  // (antes solo decía "escanee el QR"). Los folios salen de itemsByStore (refs) vía guiasDeItems.
+  const foliosRows = m.tiendas.map(t => {
+    const fs = foliosByStore?.[t.store_cod] ?? [];
+    return `<tr>
+      <td style="padding:3px 8px;border-bottom:1px solid #eee;color:#333;">${esc(t.nombre)} <span style="color:#999;font-size:9px;">(${esc(t.store_cod)})</span></td>
+      <td style="padding:3px 8px;border-bottom:1px solid #eee;font-family:monospace;font-size:10px;color:#111;">${fs.length ? esc(fs.join(', ')) : '<span style="color:#bbb">—</span>'}</td>
+    </tr>`;
+  }).join('');
+  const totalFolios = m.tiendas.reduce((s, t) => s + (foliosByStore?.[t.store_cod]?.length ?? 0), 0);
 
   return `<div class="manifiesto-page">
 <div class="hdr">
@@ -137,22 +159,27 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   <div class="tc"><div class="n">${m.total_chocolates}</div><div class="l">Choc.</div></div>
 </div>
 
-<div class="sec">Guías DTE asociadas</div>
-<div style="padding:8px 12px;background:#f5f5f5;border-radius:5px;font-size:11px;color:#444;margin-bottom:14px;border:1px solid #ddd;">
-  Las guías se vinculan desde Estado/Seguimiento. Escanee el QR para acceso digital completo.
-</div>
+<div class="sec">Guías DTE asociadas (folios SII)${totalFolios ? ` — ${totalFolios} folio${totalFolios !== 1 ? 's' : ''}` : ''}</div>
+${totalFolios ? `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;border:1px solid #ddd;">
+  <thead><tr><th style="text-align:left;padding:4px 8px;background:#f5f5f5;border-bottom:1px solid #ddd;">Tienda</th><th style="text-align:left;padding:4px 8px;background:#f5f5f5;border-bottom:1px solid #ddd;">Folios DTE</th></tr></thead>
+  <tbody>${foliosRows}</tbody>
+</table>` : `<div style="padding:8px 12px;background:#f5f5f5;border-radius:5px;font-size:11px;color:#444;margin-bottom:14px;border:1px solid #ddd;">
+  Sin folios DTE en los ítems etiquetados de esta ruta. Se toman de las guías (refs) al armar/etiquetar en Bodega.
+</div>`}
 
 <div class="sec">QR Maestro de Ruta</div>
-<div class="qr-box">
+${tieneToken ? `<div class="qr-box">
   <img src="${qrDataUri(qrUrl)}" width="110" height="110" alt="QR Ruta"/>
   <div class="qr-info">
     <div class="badge">Pendiente</div>
     <h3>Acceso Digital Completo</h3>
     <p>Escanee para ver guías, estado de entrega, productos y folios SII asociados a esta ruta.</p>
-    <p>Funciona para fiscalización rápida sin necesidad de guías físicas.</p>
+    <p>Los folios SII también están impresos arriba, para fiscalización sin señal.</p>
     <div class="qr-url">${qrUrl}</div>
   </div>
-</div>
+</div>` : `<div style="padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:5px;font-size:11px;color:#9a3412;margin-bottom:14px;">
+  <strong>Guarda la ruta</strong> para generar el QR Maestro de fiscalización. Los folios SII impresos arriba ya sirven como respaldo en papel.
+</div>`}
 
 <div class="firma-section">
   <div class="sec" style="margin-bottom:10px">Firmas y Conformidad</div>
@@ -278,8 +305,8 @@ tr:nth-child(even) td{background:#f8f8f8}
 }
 `;
 
-function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: string) {
-  const body = buildManifiestoHTML(m, supervisor, origin);
+function imprimirManifiesto(m: ManifiestoData, supervisor: string, origin: string, foliosByStore?: Record<string, string[]>) {
+  const body = buildManifiestoHTML(m, supervisor, origin, foliosByStore);
   const html = `<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8"/>
 <title>Manifiesto ${m.codigo_ruta}</title>
@@ -446,15 +473,22 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     }
   }, [manifiestos, showToast]);
 
+  // Folios DTE por tienda de un manifiesto (para imprimirlos en el maestro). itemsByStore.refs.
+  const foliosDeManifiesto = useCallback((m: ManifiestoData): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const t of m.tiendas) out[t.store_cod] = guiasDeItems(itemsByStore[t.store_cod] ?? []);
+    return out;
+  }, [itemsByStore]);
+
   const imprimir = useCallback((idx: number) => {
-    imprimirManifiesto(manifiestos[idx], supervisor, window.location.origin);
-  }, [manifiestos, supervisor]);
+    imprimirManifiesto(manifiestos[idx], supervisor, window.location.origin, foliosDeManifiesto(manifiestos[idx]));
+  }, [manifiestos, supervisor, foliosDeManifiesto]);
 
   const imprimirSeleccionados = useCallback(() => {
     const idxs = Array.from(selected);
     if (idxs.length === 0) return;
     const origin = window.location.origin;
-    const bodies = idxs.map(i => buildManifiestoHTML(manifiestos[i], supervisor, origin)).join('\n');
+    const bodies = idxs.map(i => buildManifiestoHTML(manifiestos[i], supervisor, origin, foliosDeManifiesto(manifiestos[i]))).join('\n');
     const titulo = idxs.length === 1
       ? `Manifiesto ${manifiestos[idxs[0]].codigo_ruta}`
       : `Manifiestos (${idxs.length})`;
@@ -468,7 +502,7 @@ ${bodies}
 </body></html>`;
     const win = window.open('', '_blank', 'width=850,height=700');
     if (win) { win.document.write(html); win.document.close(); }
-  }, [selected, manifiestos, supervisor]);
+  }, [selected, manifiestos, supervisor, foliosDeManifiesto]);
 
   const guardarSeleccionados = useCallback(async () => {
     const idxs = Array.from(selected);
