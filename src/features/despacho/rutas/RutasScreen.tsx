@@ -15,6 +15,7 @@ import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
+import { fluyeSinCalendario } from './utils/codigosEspeciales';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
@@ -191,6 +192,8 @@ export default function RutasScreen() {
 
   const fechaRef = useRef(fecha);
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
+  const tiendasRef = useRef(tiendas);
+  useEffect(() => { tiendasRef.current = tiendas; }, [tiendas]);
   // Últimas filas de despacho_sesion (de otros equipos), por cod normalizado.
   // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
   // los counts llegan antes de que cargue el calendario). #4
@@ -366,15 +369,23 @@ export default function RutasScreen() {
       sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
         if (manuallyEditedRef.current.has(c)) return prev;
-        // #4: el calendario manda. despacho_sesion SOLO actualiza los counts de tiendas
-        // que YA están en el calendario del día; NO inyecta tiendas fuera de él (antes
-        // esto arrastraba "tiendas de ayer" / fuera de calendario e inflaba la lista).
-        if (!prev[c]) return prev;
         const rowCh = row.chocolates ?? 0;
-        if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === (row.contenedores ?? 0) && (prev[c].ch ?? 0) === rowCh) return prev;
+        const cc = row.contenedores ?? 0;
+        const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || rowCh > 0;
+        if (!prev[c]) {
+          // El calendario manda para las tiendas normales. EXCEPCIÓN: solo la Oficina Kios Club
+          // (OFIKC, recados internos) fluye sin estar en el calendario. Se inyecta si: es un
+          // código-excepción, se está viendo HOY (los rows son de hoy), tiene cantidades, y el
+          // calendario YA cargó (calT no vacío) — para no saltarse el init del calendario.
+          if (!fluyeSinCalendario(c) || fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
+          const reg = tiendasRef.current[c]?.region;
+          const g = row.fuente === 'regiones' ? 'fal' : (reg === 'VR' || reg === 'V') ? 'costa' : 'rm';
+          return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: cc, ch: rowCh, g } };
+        }
+        if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === cc && (prev[c].ch ?? 0) === rowCh) return prev;
         return {
           ...prev,
-          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: row.contenedores ?? 0, ch: rowCh, on: row.pallets > 0 || row.bultos > 0 || (row.contenedores ?? 0) > 0 || rowCh > 0 },
+          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: cc, ch: rowCh, on: hasCounts },
         };
       });
     }
@@ -705,13 +716,20 @@ export default function RutasScreen() {
         if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
       });
     });
-    // #4: re-aplicar counts de despacho_sesion ya recibidos (solo a tiendas del
-    // calendario; no inyecta). Cubre la carrera "counts llegan antes que el calendario".
+    // #4: re-aplicar counts de despacho_sesion ya recibidos. Cubre la carrera "counts llegan
+    // antes que el calendario". A las tiendas del calendario les actualiza los counts; a OFIKC
+    // (excepción, fuera del calendario) la inyecta si fue armada hoy con cantidades.
     sesionRowsRef.current.forEach((row, c) => {
-      if (newCalT[c] && !manuallyEditedRef.current.has(c)) {
-        const cc = row.contenedores ?? 0;
-        const chh = row.chocolates ?? 0;
-        newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, ch: chh, on: row.pallets > 0 || row.bultos > 0 || cc > 0 || chh > 0 };
+      if (manuallyEditedRef.current.has(c)) return;
+      const cc = row.contenedores ?? 0;
+      const chh = row.chocolates ?? 0;
+      const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || chh > 0;
+      if (newCalT[c]) {
+        newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, ch: chh, on: hasCounts };
+      } else if (fluyeSinCalendario(c) && hasCounts) {
+        const reg = tiendasRef.current[c]?.region;
+        const g = row.fuente === 'regiones' ? 'fal' : (reg === 'VR' || reg === 'V') ? 'costa' : 'rm';
+        newCalT[c] = { on: true, p: row.pallets, b: row.bultos, c: cc, ch: chh, g };
       }
     });
     setCalT(newCalT);
