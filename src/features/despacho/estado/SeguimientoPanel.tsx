@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { fmtFechaHoraChile } from '@/lib/fechaChile';
 import { CombineAlertsPanel } from './CombineAlertsPanel';
+import { resumenDiferencia } from './recepcionDiff';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SubTab = 'rm' | 'regiones' | 'recepcion';
@@ -55,16 +56,26 @@ const RM_COLS: ColDef[] = [
 ];
 
 const REC_COLS: ColDef[] = [
-  { key: 'created_at',        label: 'Fecha/Hora',  defaultWidth: 130, minWidth: 90  },
-  { key: 'cod',               label: 'Cod',         defaultWidth: 80,  minWidth: 50  },
-  { key: 'tienda',            label: 'Tienda',      defaultWidth: 170, minWidth: 80  },
-  { key: 'pallets_sent',      label: 'P. Env',      defaultWidth: 65,  minWidth: 45  },
-  { key: 'bultos_sent',       label: 'B. Env',      defaultWidth: 65,  minWidth: 45  },
-  { key: 'pallets_recibidos', label: 'P. Rec',      defaultWidth: 65,  minWidth: 45  },
-  { key: 'bultos_recibidos',  label: 'B. Rec',      defaultWidth: 65,  minWidth: 45  },
-  { key: 'conductor',         label: 'Conductor',   defaultWidth: 130, minWidth: 70  },
-  { key: 'pionetas',          label: 'Pionetas',    defaultWidth: 140, minWidth: 80  },
-  { key: 'receptor',          label: 'Receptor',    defaultWidth: 130, minWidth: 70  },
+  { key: 'created_at',             label: 'Fecha/Hora',    defaultWidth: 130, minWidth: 90  },
+  { key: 'cod',                    label: 'Cod',           defaultWidth: 80,  minWidth: 50  },
+  { key: 'tienda',                 label: 'Tienda',        defaultWidth: 170, minWidth: 80  },
+  { key: 'pallets_sent',           label: 'P. Env',        defaultWidth: 60,  minWidth: 45  },
+  { key: 'pallets_recibidos',      label: 'P. Rec',        defaultWidth: 60,  minWidth: 45  },
+  { key: 'bultos_sent',            label: 'B. Env',        defaultWidth: 60,  minWidth: 45  },
+  { key: 'bultos_recibidos',       label: 'B. Rec',        defaultWidth: 60,  minWidth: 45  },
+  { key: 'diferencias',            label: 'Diferencias',   defaultWidth: 130, minWidth: 80  },
+  { key: 'acuse_recibo',           label: 'Acuse',         defaultWidth: 155, minWidth: 90  },
+  { key: 'conductor',              label: 'Conductor',     defaultWidth: 130, minWidth: 70  },
+  { key: 'receptor',               label: 'Receptor',      defaultWidth: 120, minWidth: 70  },
+  { key: 'rut',                    label: 'RUT',           defaultWidth: 110, minWidth: 70  },
+  { key: 'observaciones',          label: 'Observaciones', defaultWidth: 180, minWidth: 90  },
+  // ── Columnas adicionales (ocultas por defecto, disponibles en el menú) ──────
+  { key: 'contenedores_sent',      label: 'C. Env',        defaultWidth: 60,  minWidth: 45  },
+  { key: 'contenedores_recibidos', label: 'C. Rec',        defaultWidth: 60,  minWidth: 45  },
+  { key: 'pionetas',               label: 'Pionetas',      defaultWidth: 130, minWidth: 80  },
+  { key: 'n_fotos',                label: 'N° Fotos',      defaultWidth: 75,  minWidth: 55  },
+  { key: 'direccion',              label: 'Dirección',     defaultWidth: 200, minWidth: 90  },
+  { key: 'fuente',                 label: 'Fuente',        defaultWidth: 90,  minWidth: 60  },
 ];
 
 const ALL_COLS = [...RM_COLS, ...REC_COLS];
@@ -74,7 +85,11 @@ const DEFAULT_VISIBLE_DISP = new Set([
   'fecha', 'cod', 'tienda', 'tipo', 'n_pallet_bulto',
   'peso_kg', 'conductor', 'ruta', 'estado', 'seguimiento',
 ]);
-const DEFAULT_VISIBLE_REC = new Set(REC_COLS.map(c => c.key));
+const DEFAULT_VISIBLE_REC = new Set([
+  'created_at', 'cod', 'tienda',
+  'pallets_sent', 'pallets_recibidos', 'bultos_sent', 'bultos_recibidos',
+  'diferencias', 'acuse_recibo', 'conductor', 'receptor', 'rut', 'observaciones',
+]);
 
 const LS_DISP = 'estado_vcols_disp';
 const LS_REC  = 'estado_vcols_rec';
@@ -146,8 +161,9 @@ function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
   const bultosSent  = Number(row.bultos_sent  ?? 0);
   const palletsRec  = Number(row.pallets_recibidos ?? 0);
   const bultosRec   = Number(row.bultos_recibidos  ?? 0);
-  const match       = palletsRec === palletsSent && bultosRec === bultosSent;
-  const estadoFotos = (row.estado_fotos as string[]) ?? [];
+  const match       = !resumenDiferencia(row).hayDiferencia;
+  const estadoFotos    = (row.estado_fotos as string[]) ?? [];
+  const recepcionFotos = (row.recepcion_fotos as string[]) ?? [];
   const fechaHora   = row.created_at ? fmtFechaHoraChile(String(row.created_at)) : '—';
 
   return createPortal(
@@ -194,6 +210,18 @@ function RecepcionModal({ row, onClose }: { row: Row; onClose: () => void }) {
               <PhotoThumb url={String(row.cd_salida_url ?? '')}     label="CD Salida"     hora={String(row.cd_salida_hora ?? '')} />
               <PhotoThumb url={String(row.sello_llegada_url ?? '')} label="Sello llegada" hora={String(row.sello_llegada_hora ?? '')} />
               <PhotoThumb url={String(row.sello_salida_url ?? '')}  label="Sello salida"  hora={String(row.sello_salida_hora ?? '')} />
+            </div>
+          </div>}
+
+          {recepcionFotos.length > 0 && <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Fotos de recepción ({recepcionFotos.length})</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {recepcionFotos.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', position: 'relative', borderRadius: 10, overflow: 'hidden', textDecoration: 'none' }}>
+                  <img src={url} alt={`recepción ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                  <div style={{ position: 'absolute', top: 4, left: 6, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 5px', borderRadius: 5 }}>#{i + 1}</div>
+                </a>
+              ))}
             </div>
           </div>}
 
@@ -474,7 +502,23 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
     if (col.key === 'created_at' && val) {
       return fmtFechaHoraChile(String(val));
     }
-    if (['pallets_sent','bultos_sent','pallets_recibidos','bultos_recibidos'].includes(col.key) && val != null) {
+    if (col.key === 'diferencias') {
+      const { hayDiferencia, detalles } = resumenDiferencia(row);
+      return hayDiferencia
+        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#C26A3A', background: 'rgba(194,106,58,0.13)', padding: '3px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>⚠ {detalles.join(' · ')}</span>
+        : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#36996A', background: 'rgba(54,153,106,0.13)', padding: '3px 10px', borderRadius: 99 }}>✓ Sin dif.</span>;
+    }
+    if (col.key === 'acuse_recibo') {
+      const a = String(val ?? '');
+      if (!a) return <span style={{ color: '#C0C7D4' }}>—</span>;
+      const conforme = a.toLowerCase().includes('conforme') && !a.toLowerCase().includes('observ');
+      return <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: conforme ? 'rgba(54,153,106,0.13)' : 'rgba(217,119,6,0.12)', color: conforme ? '#36996A' : '#B45309' }}>{conforme ? '✓ ' : '⚠ '}{a}</span>;
+    }
+    if (col.key === 'n_fotos') {
+      const nf = (row.recepcion_fotos as string[] | null)?.length ?? 0;
+      return nf > 0 ? <span style={{ fontWeight: 700, color: '#1B2A6B' }}>{nf}</span> : <span style={{ color: '#C0C7D4' }}>—</span>;
+    }
+    if (['pallets_sent','bultos_sent','pallets_recibidos','bultos_recibidos','contenedores_sent','contenedores_recibidos'].includes(col.key) && val != null) {
       return <span style={{ fontWeight: 700, color: '#1B2A6B' }}>{String(val)}</span>;
     }
     return <span style={{ color: val ? '#374151' : '#C0C7D4' }}>{val ? String(val) : '—'}</span>;
