@@ -2,28 +2,23 @@
 
 import { useState } from 'react';
 import { AppProvider } from '../context/AppContext';
-import { EstadoPage } from '../features/despacho/estado/EstadoPage';
 import { SeguimientoPanel } from '../features/despacho/estado/SeguimientoPanel';
-import { ScannerPanel } from '../features/despacho/estado/ScannerPanel';
 import { HistContent } from '../screens/HistScreen';
 import { useAuth } from '../components/AuthProvider';
 
-type View = 'etiquetas' | 'escaneo' | 'estado' | 'historial';
+type View = 'estado' | 'historial';
 
 function EstadoContent() {
   const { can } = useAuth();
-  const [view, setView] = useState<View>('etiquetas');
+  const [view, setView] = useState<View>('estado');
 
+  // Tabs "Etiquetas" (Zebra) y "Escaneo" removidos: las etiquetas salen de Picking y las
+  // guías se suben en Bodega → esas vistas no se usaban aquí. Quedan Estado e Historial.
   const tabs: { id: View; label: string }[] = [
-    { id: 'etiquetas', label: 'Etiquetas' },
-    { id: 'escaneo',   label: 'Escaneo'   },
     { id: 'estado',    label: 'Estado'    },
     { id: 'historial', label: 'Historial' },
   ];
 
-  // Barra de tabs (idéntica a Picking). En Etiquetas se inyecta como primer
-  // hijo del panel derecho (pegada a la columna, sin hueco); en las demás
-  // vistas (full-width) se renderiza arriba desde aquí.
   const tabBar = (
     <div className="flex flex-shrink-0 overflow-x-auto" style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
       {tabs.map(({ id, label }) => {
@@ -56,13 +51,7 @@ function EstadoContent() {
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Etiquetas: layout columna + panel derecho → los tabs van pegados a
-            la columna (se inyectan dentro de la vista). */}
-        {view === 'etiquetas' && <EstadoPage tabBar={tabBar} />}
-
-        {/* Demás vistas: full-width → tabs arriba a lo ancho. */}
-        {view !== 'etiquetas' && tabBar}
-        {view === 'escaneo'   && <ScannerPanel />}
+        {tabBar}
         {view === 'estado'    && <SeguimientoPanel canSync={can('estado/seguimiento', 'edit')} />}
         {view === 'historial' && <HistContent />}
       </div>
