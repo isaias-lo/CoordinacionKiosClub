@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { qrDataUri } from '@/lib/qrLocal';
+import { guiaHref } from '@/lib/guiaUrl';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import { supabase } from '@/lib/supabase';
@@ -521,7 +522,10 @@ ${bodies}
         const info = tiendas[t.store_cod] ?? tiendas[t.store_cod.toUpperCase()];
         const its  = itemsByStore[t.store_cod] ?? [];
         const driveId = driveByStore[norm(t.store_cod)];
-        const driveUrl = driveId ? `https://drive.google.com/file/d/${driveId}/view` : undefined;
+        // `driveByStore` ya es la URL completa (Supabase Storage). NO envolverla en Drive: hacerlo
+        // producía https://drive.google.com/file/d/<URL_SUPABASE>/view → "Archivo no encontrado" al
+        // descargar las guías desde la recepción. guiaHref la usa tal cual (y tolera IDs legado).
+        const driveUrl = driveId ? guiaHref(driveId) : undefined;
         const meta = { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin, driveUrl };
         // Req 4: 2 copias por tienda → ORIGINAL (sus N páginas) y luego CEDIBLE (sus N páginas).
         return [
