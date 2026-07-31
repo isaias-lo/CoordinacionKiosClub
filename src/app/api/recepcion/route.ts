@@ -225,17 +225,25 @@ export async function POST(request: NextRequest) {
 
     // Fotos de recepción: llegan como data URLs base64 y se suben (service role) al
     // bucket público `recepcion-fotos`. Server-mediated para no depender de sesión anónima.
+    // Subida por-foto TOLERANTE: si una foto falla (tamaño, red, política del bucket) se OMITE y
+    // se sigue — antes un solo fallo lanzaba y tumbaba TODA la recepción (perdiendo la confirmación
+    // de la tienda, que es lo importante). Las fallidas se cuentan y se reportan en la respuesta.
     const recepcionFotoUrls: string[] = [];
+    let fotosOmitidas = 0;
     for (const [i, dataUrl] of (body.recepcionFotos ?? []).slice(0, RECEP_MAX_FOTOS).entries()) {
       const foto = parseDataUrl(dataUrl);
-      if (!foto) continue;
-      const buf = Buffer.from(foto.base64, 'base64');
-      const fname = `recep_${body.cod}_${Date.now()}_${i + 1}.${foto.ext}`;
-      const { error: fErr } = await sb.storage
-        .from('recepcion-fotos')
-        .upload(fname, buf, { contentType: foto.contentType, upsert: false });
-      if (fErr) throw new Error(fErr.message);
-      recepcionFotoUrls.push(sb.storage.from('recepcion-fotos').getPublicUrl(fname).data.publicUrl);
+      if (!foto) { fotosOmitidas++; continue; }
+      try {
+        const buf = Buffer.from(foto.base64, 'base64');
+        const fname = `recep_${body.cod}_${Date.now()}_${i + 1}.${foto.ext}`;
+        const { error: fErr } = await sb.storage
+          .from('recepcion-fotos')
+          .upload(fname, buf, { contentType: foto.contentType, upsert: false });
+        if (fErr) { console.error('[recepcion foto]', fErr.message); fotosOmitidas++; continue; }
+        recepcionFotoUrls.push(sb.storage.from('recepcion-fotos').getPublicUrl(fname).data.publicUrl);
+      } catch (e) {
+        console.error('[recepcion foto]', e instanceof Error ? e.message : e); fotosOmitidas++;
+      }
     }
 
     // Auto-diferencia (defensa server-side): si la tienda recibió distinto a lo enviado, la
@@ -467,7 +475,13 @@ export async function POST(request: NextRequest) {
         ? `=HYPERLINK("${galeriaUrl}";"Ver fotos (${fotosFinal.length})")`
         : '',
     };
-    await writeToSheet(sheetName, record);
+    // No-fatal: la recepción YA está en la BD (fuente de verdad). Si Google Sheets falla (auth,
+    // hoja renombrada, cuota, red) NO debe devolver 500 y hacer creer que la recepción falló.
+    try {
+      await writeToSheet(sheetName, record);
+    } catch (e) {
+      console.error('[recepcion sheet]', e instanceof Error ? e.message : e);
+    }
 
     // ── PUNTO 3: actualizar trazabilidad_unidades ─────────────────────
     // Usamos canonicalId si existe; sino buscamos por store_cod + EN_RUTA
@@ -529,9 +543,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...(fotosOmitidas ? { fotosOmitidas } : {}) });
   } catch (err) {
     console.error('Recepcion error:', err);
-    return NextResponse.json({ error: 'Failed to save reception' }, { status: 500 });
+    // Exponer el motivo real (herramienta interna, sin logs de Vercel a mano): antes decía siempre
+    // "Failed to save reception" sin causa, imposible de diagnosticar en vivo.
+    const detalle = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `No se pudo guardar la recepción: ${detalle}` }, { status: 500 });
   }
 }
