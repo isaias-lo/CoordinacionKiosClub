@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fechaChile, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile } from '@/lib/fechaChile';
+import { fechaChile, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO } from '@/lib/fechaChile';
 
 describe('fechaChile', () => {
   it('devuelve formato YYYY-MM-DD', () => {
@@ -61,5 +61,26 @@ describe('fmtHoraChile / fmtFechaChile / fmtFechaHoraChile', () => {
     expect(fmtHoraChile(null)).toBe('—');
     expect(fmtFechaChile(undefined)).toBe('—');
     expect(fmtFechaHoraChile('no-es-fecha')).toBe('—');
+  });
+});
+
+describe('odooDateToISO', () => {
+  it('marca la Z en un datetime naive de Odoo (UTC sin zona)', () => {
+    expect(odooDateToISO('2026-07-29 14:32:11')).toBe('2026-07-29T14:32:11Z');
+  });
+
+  it('con la Z marcada, fmtHoraChile convierte UTC → Chile una sola vez', () => {
+    // 14:32 UTC (invierno, UTC-4) = 10:32 Chile
+    expect(fmtHoraChile(odooDateToISO('2026-06-16 14:32:11'))).toBe('10:32');
+  });
+
+  it('null/undefined/vacío → null', () => {
+    expect(odooDateToISO(null)).toBeNull();
+    expect(odooDateToISO(undefined)).toBeNull();
+    expect(odooDateToISO('')).toBeNull();
+  });
+
+  it('formato ya ISO se pasa tal cual (no lo toca)', () => {
+    expect(odooDateToISO('2026-07-29T14:32:11Z')).toBe('2026-07-29T14:32:11Z');
   });
 });

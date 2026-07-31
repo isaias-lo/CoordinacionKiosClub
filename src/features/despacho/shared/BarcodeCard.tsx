@@ -2,13 +2,14 @@
 
 import { useEffect, useRef } from 'react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { fmtHoraChile, odooDateToISO } from '@/lib/fechaChile';
 
 // ─── LabelConfig ─────────────────────────────────────────────────────────────
 
 export interface LabelConfig {
   borderWidth: number;           // 0–4
   pickerFontSize: number;        // 20–50
-  storeFontSize: number;         // 80–200
+  storeFontSize: number;         // 80–240
   catFontSize: number;           // 12–30
   barcodeBarWidth: number;       // 1–4
   barcodeHeight: number;         // 40–130
@@ -16,20 +17,24 @@ export interface LabelConfig {
   showResponsable: boolean;
   showCategories: boolean;
   showStoreName: boolean;
-  dateFontSize: number;          // 8–20
+  dateFontSize: number;          // 8–48
   palletNumSize: number;         // 50–120
   storeNameFontSize: number;     // 24–72
   cornerRadius: number;          // 0–20
   showDate: boolean;
   slotIdFontSize: number;        // 10–28
+  batchFontSize: number;         // 14–60
+  finishTimeFontSize: number;    // 12–48
+  showBatch: boolean;
+  showFinishTime: boolean;
 }
 
 export const DEFAULT_LABEL_CONFIG: LabelConfig = {
-  borderWidth: 2, pickerFontSize: 34, storeFontSize: 128, catFontSize: 22,
+  borderWidth: 2, pickerFontSize: 34, storeFontSize: 150, catFontSize: 22,
   barcodeBarWidth: 2, barcodeHeight: 113, barcodeContainerWidth: 85,
   showResponsable: true, showCategories: true, showStoreName: true,
-  dateFontSize: 12, palletNumSize: 80, storeNameFontSize: 52, cornerRadius: 12, showDate: true,
-  slotIdFontSize: 18,
+  dateFontSize: 30, palletNumSize: 80, storeNameFontSize: 52, cornerRadius: 12, showDate: true,
+  slotIdFontSize: 18, batchFontSize: 34, finishTimeFontSize: 28, showBatch: true, showFinishTime: true,
 };
 
 // ─── Slider CSS ───────────────────────────────────────────────────────────────
@@ -161,7 +166,7 @@ export function BarcodeCard({
   value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories,
   totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId,
   audited, subLabel, footerExtra, storeName: storeNameProp,
-  adelanto, adelantoFecha,
+  adelanto, adelantoFecha, batch, finishedAt,
 }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
@@ -173,6 +178,8 @@ export function BarcodeCard({
   storeName?: string;
   adelanto?: boolean;             // marca visual de tienda agregada como adelanto
   adelantoFecha?: string | null;  // fecha de despacho a mostrar en la etiqueta
+  batch?: string;                 // "Transferir Agrupación" de Odoo (ej. BATCH/39934)
+  finishedAt?: string | null;     // date_done de Odoo (naive UTC) — hora de término del picking
 }) {
   const storeName = storeNameProp ?? getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -297,6 +304,40 @@ export function BarcodeCard({
             ))}
           </div>
         )}
+
+        {/* Batch (Transferir Agrupación) + Hora término — solo etiqueta grande, solo si hay dato */}
+        {!compact && (() => {
+          const showBatchVal  = !!batch && cfg.showBatch;
+          const showFinishVal = !!finishedAt && cfg.showFinishTime;
+          if (!showBatchVal && !showFinishVal) return null;
+          const microStyle = { fontSize: 12, color: '#888', fontWeight: 700 as const, textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
+          return (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+              padding: '8px 0', marginBottom: 8,
+              borderTop: '1px solid #E5E7EB', borderBottom: '1px solid #E5E7EB',
+            }}>
+              <div>
+                {showBatchVal && (
+                  <>
+                    <div style={microStyle}>Agrupación</div>
+                    <div style={{ fontSize: cfg.batchFontSize, fontWeight: 900, color: '#111', fontFamily: 'monospace', lineHeight: 1.1 }}>{batch}</div>
+                  </>
+                )}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {showFinishVal && (
+                  <>
+                    <div style={microStyle}>Término</div>
+                    <div style={{ fontSize: cfg.finishTimeFontSize, fontWeight: 900, color: '#111', lineHeight: 1.1 }}>
+                      {fmtHoraChile(odooDateToISO(finishedAt))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Centro: código + nombre + dirección */}
         <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: s.centerPad }}>
