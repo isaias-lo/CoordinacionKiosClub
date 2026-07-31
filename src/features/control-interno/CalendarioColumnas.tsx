@@ -14,13 +14,15 @@ import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 import {
   Package, Waves, Building2, ClipboardList,
   CheckCircle2, AlertTriangle, Save, Loader2, Printer, Search,
+  Plus, X, Check,
   type LucideIcon,
 } from 'lucide-react';
 
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
 const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado', DO: 'Domingo' };
-const DCOL: Record<string, string> = { LU: '#007AFF', MA: '#34C759', MI: '#FF9500', JU: '#AF52DE', VI: '#FF2D55', SA: '#00C7BE', DO: '#FF6B35' };
-const DLIGHT: Record<string, string> = { LU: '#EBF4FF', MA: '#EDFFF4', MI: '#FFF8ED', JU: '#F5EFFE', VI: '#FFEBEE', SA: '#E5FFFE', DO: '#FFF3EE' };
+// Columna de "hoy" (única distinción por día — el resto de columnas quedan neutras). new
+// Date().getDay(): 0=domingo..6=sábado → se remapea a la posición de DIAS (lunes primero).
+const TODAY_DIA = DIAS[(new Date().getDay() + 6) % 7];
 
 const GRUPOS: [string, string, string][] = [
   ['rm',      'RM',        'Bodega Santiago — RM'],
@@ -38,11 +40,13 @@ const RM_MALLS       = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST',
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type StoreType = 'mall' | 'street' | 'costa' | 'region';
 
-const TYPE_STYLE: Record<StoreType, { bg: string; text: string; border: string; label: string; shadow: string }> = {
-  mall:   { bg: '#EDE9FE', text: '#5B21B6', border: '#C4B5FD', label: 'MALL',          shadow: 'rgba(91,33,182,0.16)'  },
-  street: { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD', label: 'STREET CENTER', shadow: 'rgba(29,78,216,0.16)'  },
-  costa:  { bg: '#CCFBF1', text: '#0F766E', border: '#5EEAD4', label: 'COSTA',         shadow: 'rgba(15,118,110,0.16)' },
-  region: { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', label: 'REGIÓN',        shadow: 'rgba(194,65,12,0.16)'  },
+// Chip plano compartido (fondo/texto neutros) + acento de color solo en el borde izquierdo —
+// reemplaza los chips pastel con sombra de color por el sistema de diseño enterprise.
+const TYPE_STYLE: Record<StoreType, { accent: string; label: string }> = {
+  mall:   { accent: '#1E40AF', label: 'MALL' },
+  street: { accent: '#475569', label: 'STREET CENTER' },
+  costa:  { accent: '#2563EB', label: 'COSTA' },
+  region: { accent: '#D97706', label: 'REGIÓN' },
 };
 
 function displayCode(cod: string): string {
@@ -80,6 +84,18 @@ export default function CalendarioColumnas({
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
   const pendingResolveRef = useRef<string[]>([]);
   const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string }>>({});
+  const firstDayBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Modal de días: cierre con Escape + foco inicial en el primer día (accesibilidad).
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setPickerOpen(false); setPickerCod(''); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    firstDayBtnRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [pickerOpen]);
 
   useEffect(() => {
     fetch('/api/tiendas')
@@ -429,16 +445,16 @@ export default function CalendarioColumnas({
   if (loading) {
     return (
       <div style={{
-        background: '#FFFFFF', borderRadius: 20, padding: '60px 20px',
+        background: '#fff', borderRadius: 8, border: '1px solid #E2E8F0', padding: '60px 20px',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
-        boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
       }}>
         <div style={{
-          width: 38, height: 38, border: '3px solid #E5E5EA',
-          borderTopColor: '#007AFF', borderRadius: '50%',
+          width: 32, height: 32, border: '3px solid #E2E8F0',
+          borderTopColor: '#1E40AF', borderRadius: '50%',
           animation: 'spin 0.75s linear infinite',
         }} />
-        <div style={{ fontSize: 14, color: '#8E8E93', fontWeight: 500 }}>Cargando calendario...</div>
+        <div style={{ fontSize: 13, color: '#64748B', fontWeight: 500 }}>Cargando calendario...</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -447,12 +463,12 @@ export default function CalendarioColumnas({
   if (!local) {
     return (
       <div style={{
-        background: '#FFFFFF', borderRadius: 20, padding: '40px 20px',
-        textAlign: 'center', boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+        background: '#fff', borderRadius: 8, border: '1px solid #E2E8F0', padding: '40px 20px',
+        textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
       }}>
-        <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><AlertTriangle size={36} color="#FF3B30" aria-hidden="true" /></div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#FF3B30' }}>No se pudo cargar el calendario</div>
-        <div style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>Revisa la conexión con Supabase</div>
+        <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><AlertTriangle size={32} color="#DC2626" aria-hidden="true" /></div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#DC2626' }}>No se pudo cargar el calendario</div>
+        <div style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>Revisa la conexión con Supabase</div>
       </div>
     );
   }
@@ -468,118 +484,112 @@ export default function CalendarioColumnas({
         onMarkPendingResolve={id => { pendingResolveRef.current.push(id); }}
       />
     )}
-    <div style={{ background: '#F2F2F7', borderRadius: 20, padding: '20px 16px 24px' }}>
+    <div style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0', padding: '16px 16px 20px' }}>
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-        {!forceGeneral && GRUPOS.map(([id, lb]) => {
-          const active = grp === id;
-          const Icon = GRP_ICON[id];
-          return (
-            <button key={id}
-              onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
-              style={{
-                height: 42, padding: '0 18px', borderRadius: 100,
-                fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: active
-                  ? 'linear-gradient(175deg, #E53535 0%, #C12828 100%)'
-                  : '#FFFFFF',
-                color: active ? '#FFFFFF' : '#1C1C1E',
-                boxShadow: active
-                  ? '0 4px 18px rgba(193,40,40,0.38), 0 1px 0 rgba(255,255,255,0.2) inset'
-                  : '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
-                transition: 'all 0.17s cubic-bezier(0.34,1.56,0.64,1)',
-              }}>
-              <Icon size={16} aria-hidden="true" />
-              {lb}
-            </button>
-          );
-        })}
+        {!forceGeneral && (
+          <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0' }}>
+            {GRUPOS.map(([id, lb]) => {
+              const active = grp === id;
+              const Icon = GRP_ICON[id];
+              return (
+                <button key={id}
+                  onClick={() => { setGrp(id); setSearch(''); setSuggest([]); setShowSug(false); }}
+                  style={{
+                    padding: '10px 16px', border: 'none', background: 'transparent', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 13, fontWeight: 500,
+                    color: active ? '#1E40AF' : '#64748B',
+                    borderBottom: active ? '2px solid #1E40AF' : '2px solid transparent',
+                    marginBottom: -1,
+                  }}>
+                  <Icon size={14} aria-hidden="true" />
+                  {lb}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Day count stepper */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 2,
-          background: '#FFFFFF', borderRadius: 100, height: 42,
-          padding: '0 6px 0 12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.09), inset 0 1px 0 rgba(255,255,255,0.95)',
+          background: '#fff', borderRadius: 6, height: 34,
+          border: '1px solid #E2E8F0', padding: '0 4px 0 10px',
         }}>
-          <span style={{ fontSize: 12, color: '#8E8E93', fontWeight: 600, marginRight: 4, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, color: '#64748B', fontWeight: 500, marginRight: 4, whiteSpace: 'nowrap' }}>
             Días:
           </span>
           <button
             onClick={() => updateVisibleCount(visibleCount - 1)}
             disabled={visibleCount <= 1}
+            aria-label="Mostrar un día menos"
             style={{
-              width: 30, height: 30, borderRadius: '50%', border: 'none',
-              background: visibleCount <= 1 ? 'transparent' : '#F2F2F7',
+              width: 26, height: 26, borderRadius: 4, border: 'none',
+              background: 'transparent',
               cursor: visibleCount <= 1 ? 'default' : 'pointer',
-              fontSize: 18, color: visibleCount <= 1 ? '#C7C7CC' : '#1C1C1E',
+              fontSize: 16, color: visibleCount <= 1 ? '#CBD5E1' : '#334155',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 700, transition: 'background 0.12s',
+              fontWeight: 700,
             }}>−</button>
           <span style={{
-            fontSize: 15, fontWeight: 800, color: '#1C1C1E',
-            minWidth: 22, textAlign: 'center',
+            fontSize: 13, fontWeight: 600, color: '#0F172A',
+            minWidth: 18, textAlign: 'center',
           }}>{visibleCount}</span>
           <button
             onClick={() => updateVisibleCount(visibleCount + 1)}
             disabled={visibleCount >= 7}
+            aria-label="Mostrar un día más"
             style={{
-              width: 30, height: 30, borderRadius: '50%', border: 'none',
-              background: visibleCount >= 7 ? 'transparent' : '#F2F2F7',
+              width: 26, height: 26, borderRadius: 4, border: 'none',
+              background: 'transparent',
               cursor: visibleCount >= 7 ? 'default' : 'pointer',
-              fontSize: 18, color: visibleCount >= 7 ? '#C7C7CC' : '#1C1C1E',
+              fontSize: 16, color: visibleCount >= 7 ? '#CBD5E1' : '#334155',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 700, transition: 'background 0.12s',
+              fontWeight: 700,
             }}>+</button>
           <span style={{
-            fontSize: 11, color: DCOL[visibleDias[visibleDias.length - 1]],
-            fontWeight: 700, marginLeft: 4, marginRight: 2,
+            fontSize: 11, color: '#64748B',
+            fontWeight: 600, marginLeft: 4, marginRight: 2,
           }}>{DNOM[visibleDias[visibleDias.length - 1]]?.slice(0, 3).toUpperCase()}</span>
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {lastSaved && (
-            <span style={{ fontSize: 11, color: '#8E8E93', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 11, color: '#94A3B8', fontFamily: 'monospace' }}>
               Guardado {lastSaved}
             </span>
           )}
           <button
             onClick={handlePrint}
             style={{
-              height: 42, padding: '0 18px', borderRadius: 100,
-              fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
+              height: 34, padding: '0 14px', borderRadius: 6,
+              fontSize: 13, fontWeight: 500, border: '1px solid #E2E8F0', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 6,
-              background: '#FFFFFF',
-              color: '#1C1C1E',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.09), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
+              background: '#fff', color: '#334155',
             }}>
-            <Printer size={16} aria-hidden="true" /> Imprimir
+            <Printer size={14} aria-hidden="true" /> Imprimir
           </button>
           {!readOnly && <button
             onClick={handleSave}
             disabled={saveStatus === 'saving' || !hasChanges}
             style={{
-              height: 42, padding: '0 20px', borderRadius: 100,
-              fontSize: 14, fontWeight: 700, border: 'none',
+              height: 34, padding: '0 16px', borderRadius: 6,
+              fontSize: 13, fontWeight: 500, border: 'none',
               cursor: hasChanges && saveStatus !== 'saving' ? 'pointer' : 'default',
               display: 'flex', alignItems: 'center', gap: 6,
               background: saveStatus === 'success'
-                ? 'linear-gradient(175deg, #30D158 0%, #25A244 100%)'
+                ? '#16A34A'
                 : saveStatus === 'error'
-                ? 'linear-gradient(175deg, #FF453A 0%, #CC2D22 100%)'
+                ? '#DC2626'
                 : hasChanges
-                ? 'linear-gradient(175deg, #0A84FF 0%, #0062CC 100%)'
-                : '#E5E5EA',
-              color: hasChanges || saveStatus !== 'idle' ? '#fff' : '#8E8E93',
-              boxShadow: hasChanges
-                ? '0 4px 18px rgba(0,98,204,0.36), inset 0 1px 0 rgba(255,255,255,0.2)'
-                : 'none',
+                ? '#1E40AF'
+                : '#F1F5F9',
+              color: hasChanges || saveStatus !== 'idle' ? '#fff' : '#94A3B8',
               opacity: saveStatus === 'saving' ? 0.7 : 1,
-              transition: 'all 0.17s ease',
             }}>
-            {SaveIcon && <SaveIcon size={16} aria-hidden="true" className={saveStatus === 'saving' ? 'animate-spin' : undefined} />}
+            {SaveIcon && <SaveIcon size={14} aria-hidden="true" className={saveStatus === 'saving' ? 'animate-spin' : undefined} />}
             {saveLabel}
           </button>}
         </div>
@@ -596,12 +606,11 @@ export default function CalendarioColumnas({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
           {(Object.entries(TYPE_STYLE) as [StoreType, typeof TYPE_STYLE[StoreType]][]).map(([type, s]) => (
             <div key={type} style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '5px 13px', borderRadius: 100,
-              background: s.bg, border: `1.5px solid ${s.border}`,
-              boxShadow: `0 2px 6px ${s.shadow}, inset 0 1px 0 rgba(255,255,255,0.6)`,
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 6,
+              background: '#F1F5F9', border: '1px solid #E2E8F0', borderLeft: `3px solid ${s.accent}`,
             }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: s.text }}>{s.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{s.label}</span>
             </div>
           ))}
         </div>
@@ -610,27 +619,28 @@ export default function CalendarioColumnas({
       {/* ── Search (oculta en General y en readOnly) ── */}
       {grp !== 'general' && !readOnly && <div style={{ position: 'relative', marginBottom: 16 }}>
         <span style={{
-          position: 'absolute', left: 14, top: '50%',
+          position: 'absolute', left: 12, top: '50%',
           transform: 'translateY(-50%)', pointerEvents: 'none',
-          display: 'flex', color: '#8E8E93',
+          display: 'flex', color: '#94A3B8',
         }}><Search size={15} aria-hidden="true" /></span>
+        <label htmlFor="cal-search-tienda" className="sr-only">Buscar tienda para agregar</label>
         <input
+          id="cal-search-tienda"
           type="text" value={search}
           onChange={e => handleSearch(e.target.value)}
           placeholder={`Buscar tienda para agregar — ${grpInfo?.[1] || ''}...`}
           style={{
-            width: '100%', height: 46, paddingLeft: 42, paddingRight: 16,
-            borderRadius: 14, border: '1.5px solid rgba(0,0,0,0.09)',
-            background: '#FFFFFF', color: '#1C1C1E', fontSize: 14,
+            width: '100%', height: 38, paddingLeft: 38, paddingRight: 16,
+            borderRadius: 6, border: '1px solid #E2E8F0',
+            background: '#fff', color: '#0F172A', fontSize: 13,
             outline: 'none', boxSizing: 'border-box',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
           }}
         />
         {showSug && (
-          <div style={{
-            position: 'absolute', top: 50, left: 0, right: 0,
-            background: '#FFFFFF', border: '1.5px solid rgba(0,0,0,0.08)',
-            borderRadius: 16, boxShadow: '0 12px 36px rgba(0,0,0,0.14)',
+          <div role="listbox" style={{
+            position: 'absolute', top: 42, left: 0, right: 0,
+            background: '#fff', border: '1px solid #E2E8F0',
+            borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.10)',
             zIndex: 50, maxHeight: 260, overflowY: 'auto',
           }}>
             {suggest.map(c => {
@@ -638,36 +648,33 @@ export default function CalendarioColumnas({
               const ts = TYPE_STYLE[tipo];
               const yaEsta = DIAS.some(d => local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(c));
               return (
-                <div key={c} onClick={() => handleAgregar(c)}
+                <div key={c} role="option" aria-selected={false} onClick={() => handleAgregar(c)}
                   style={{
-                    padding: '11px 16px', cursor: 'pointer', display: 'flex',
+                    padding: '10px 14px', cursor: 'pointer', display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between',
-                    borderBottom: '1px solid rgba(0,0,0,0.05)', transition: 'background 0.12s',
+                    borderBottom: '1px solid #F1F5F9', transition: 'background 0.12s',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#F2F2F7')}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
-                      fontFamily: 'monospace', fontSize: 15, fontWeight: 800,
-                      color: ts.text, background: ts.bg,
-                      padding: '3px 9px', borderRadius: 9,
-                      border: `1.5px solid ${ts.border}`,
-                      boxShadow: `0 2px 6px ${ts.shadow}`,
+                      fontFamily: 'monospace', fontSize: 13, fontWeight: 700,
+                      color: '#475569', background: '#F1F5F9',
+                      padding: '3px 8px', borderRadius: 4, borderLeft: `3px solid ${ts.accent}`,
                     }}>
                       {displayCode(c)}
                     </span>
-                    <span style={{ fontSize: 13, color: '#3C3C43' }}>{getNombre(c)}</span>
+                    <span style={{ fontSize: 13, color: '#334155' }}>{getNombre(c)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {yaEsta && <span style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic' }}>ya existe</span>}
+                    {yaEsta && <span style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>ya existe</span>}
                     <div style={{
-                      width: 28, height: 28, borderRadius: '50%',
-                      background: 'linear-gradient(175deg, #E53535 0%, #C12828 100%)',
+                      width: 24, height: 24, borderRadius: 4,
+                      background: '#1E40AF',
                       color: '#fff', display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', fontSize: 18, fontWeight: 700,
-                      boxShadow: '0 3px 10px rgba(193,40,40,0.38)',
-                    }}>+</div>
+                      justifyContent: 'center',
+                    }}><Plus size={14} aria-hidden="true" /></div>
                   </div>
                 </div>
               );
@@ -679,32 +686,37 @@ export default function CalendarioColumnas({
       {/* ── General view: days as columns, stores as chips (PDF-style) ── */}
       {grp === 'general' && (() => {
         type GZone = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
-        const GZONE: Record<GZone, { bg: string; text: string; border: string; shadow: string; label: string }> = {
-          rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1', shadow: 'rgba(51,65,85,0.14)',    label: 'RM'             },
-          mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF', shadow: 'rgba(136,19,55,0.14)',   label: 'Mall RM'        },
-          costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4', shadow: 'rgba(19,78,74,0.14)',    label: 'Costa'          },
-          norte: { bg: '#FEF08A', text: '#713F12', border: '#FDE047', shadow: 'rgba(113,63,18,0.14)',   label: 'Regiones Norte' },
-          sur:   { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC', shadow: 'rgba(12,74,110,0.14)',   label: 'Regiones Sur'   },
+        const GZONE: Record<GZone, { accent: string; label: string }> = {
+          rm:    { accent: '#475569', label: 'RM'             },
+          mall:  { accent: '#1E40AF', label: 'Mall RM'        },
+          costa: { accent: '#2563EB', label: 'Costa'          },
+          norte: { accent: '#D97706', label: 'Regiones Norte' },
+          sur:   { accent: '#16A34A', label: 'Regiones Sur'   },
         };
         return (
           <div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
               {(Object.entries(GZONE) as [GZone, typeof GZONE[GZone]][]).map(([z, zc]) => (
-                <div key={z} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 100, background: zc.bg, border: `1.5px solid ${zc.border}`, boxShadow: `0 2px 6px ${zc.shadow}` }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: zc.text }}>{zc.label}</span>
+                <div key={z} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: '#F1F5F9', border: '1px solid #E2E8F0', borderLeft: `3px solid ${zc.accent}` }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{zc.label}</span>
                 </div>
               ))}
             </div>
-            <div style={{ overflowX: 'auto', borderRadius: 18, background: '#FFFFFF', boxShadow: '0 2px 16px rgba(0,0,0,0.07)' }}>
+            <div style={{ overflowX: 'auto', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
                 <thead>
                   <tr>
                     {visibleDias.map(dia => {
                       const count = (local![dia]?.rm?.length || 0) + (local![dia]?.costa?.length || 0) + (local![dia]?.fal?.length || 0);
+                      const isToday = dia === TODAY_DIA;
                       return (
-                        <th key={dia} style={{ background: DLIGHT[dia], padding: '13px 10px 10px', borderBottom: `3px solid ${DCOL[dia]}`, borderRight: '1px solid rgba(0,0,0,0.05)', minWidth: 118, textAlign: 'center' }}>
-                          <div style={{ fontSize: 13, fontWeight: 800, color: DCOL[dia], letterSpacing: '0.05em' }}>{DNOM[dia].toUpperCase()}</div>
-                          <div style={{ fontSize: 12, color: DCOL[dia], opacity: 0.75, marginTop: 3, fontWeight: 600 }}>{count} tiendas</div>
+                        <th key={dia} style={{
+                          background: '#F8FAFC', padding: '13px 10px 10px',
+                          borderBottom: isToday ? '2px solid #1E40AF' : '2px solid #E2E8F0',
+                          borderRight: '1px solid #E2E8F0', minWidth: 118, textAlign: 'center',
+                        }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#1E40AF' : '#0F172A', letterSpacing: '0.05em' }}>{DNOM[dia].toUpperCase()}</div>
+                          <div style={{ fontSize: 12, color: '#64748B', marginTop: 3, fontWeight: 500 }}>{count} tiendas</div>
                         </th>
                       );
                     })}
@@ -722,15 +734,15 @@ export default function CalendarioColumnas({
                         ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as GZone })),
                       ];
                       return (
-                        <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid rgba(0,0,0,0.05)', background: '#FFFFFF', minWidth: 118 }}>
+                        <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid #E2E8F0', background: '#fff', minWidth: 118 }}>
                           {stores.length === 0 ? (
-                            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.18)', fontStyle: 'italic', textAlign: 'center', padding: '18px 6px', border: '2px dashed rgba(0,0,0,0.08)', borderRadius: 12, marginTop: 2 }}>
+                            <div style={{ fontSize: 12, color: '#CBD5E1', fontStyle: 'italic', textAlign: 'center', padding: '18px 6px', border: '2px dashed #E2E8F0', borderRadius: 6, marginTop: 2 }}>
                               Sin tiendas
                             </div>
                           ) : stores.map(({ cod, zone }) => {
                             const zc = GZONE[zone];
                             return (
-                              <div key={cod} style={{ background: zc.bg, color: zc.text, border: `1.5px solid ${zc.border}`, borderRadius: 10, padding: '6px 10px', marginBottom: 5, fontSize: 15, fontWeight: 800, fontFamily: 'monospace', textAlign: 'center', boxShadow: `0 2px 6px ${zc.shadow}` }}>
+                              <div key={cod} style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #E2E8F0', borderLeft: `3px solid ${zc.accent}`, borderRadius: 6, padding: '6px 10px', marginBottom: 5, fontSize: 15, fontWeight: 700, fontFamily: 'monospace', textAlign: 'center' }}>
                                 {displayCode(cod)}
                               </div>
                             );
@@ -747,35 +759,38 @@ export default function CalendarioColumnas({
       })()}
 
       {grp !== 'general' && <div style={{
-        overflowX: 'auto', borderRadius: 18,
-        background: '#FFFFFF',
-        boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)',
+        overflowX: 'auto', borderRadius: 8,
+        background: '#fff', border: '1px solid #E2E8F0',
       }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
           <thead>
             <tr>
-              {visibleDias.map(dia => (
-                <th key={dia} style={{
-                  background: DLIGHT[dia],
-                  padding: '13px 10px 10px',
-                  borderBottom: `3px solid ${DCOL[dia]}`,
-                  borderRight: '1px solid rgba(0,0,0,0.05)',
-                  minWidth: 118, textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: DCOL[dia], letterSpacing: '0.05em' }}>
-                    {DNOM[dia].toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: 13, color: DCOL[dia], opacity: 0.80, marginTop: 4, fontWeight: 700 }}>
-                    {(local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || []).length} tiendas
-                  </div>
-                </th>
-              ))}
+              {visibleDias.map(dia => {
+                const isToday = dia === TODAY_DIA;
+                return (
+                  <th key={dia} style={{
+                    background: '#F8FAFC',
+                    padding: '13px 10px 10px',
+                    borderBottom: isToday ? '2px solid #1E40AF' : '2px solid #E2E8F0',
+                    borderRight: '1px solid #E2E8F0',
+                    minWidth: 118, textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#1E40AF' : '#0F172A', letterSpacing: '0.05em' }}>
+                      {DNOM[dia].toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748B', marginTop: 4, fontWeight: 600 }}>
+                      {(local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || []).length} tiendas
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             <tr>
               {visibleDias.map(dia => {
                 const tiendas = local[dia]?.[grp as 'rm' | 'costa' | 'fal'] || [];
+                const isDragOverCol = dragOver?.dia === dia;
                 return (
                   <td key={dia}
                     onDragEnter={readOnly ? undefined : e => {
@@ -792,8 +807,9 @@ export default function CalendarioColumnas({
                     style={{
                       verticalAlign: 'top',
                       padding: '8px 6px 10px',
-                      borderRight: '1px solid rgba(0,0,0,0.05)',
-                      background: '#FFFFFF',
+                      borderRight: '1px solid #E2E8F0',
+                      background: isDragOverCol ? '#EFF6FF' : '#fff',
+                      boxShadow: isDragOverCol ? 'inset 0 0 0 2px #1E40AF' : 'none',
                       minWidth: 118,
                     }}
                   >
@@ -802,15 +818,11 @@ export default function CalendarioColumnas({
                       const ts   = TYPE_STYLE[tipo];
                       const nombre = getNombre(cod);
                       const showLineBefore = dragOver?.dia === dia && dragOver?.idx === i;
+                      const isDragging = ddRef.current.dia === dia && ddRef.current.cod === cod;
                       return (
                         <div key={cod}>
                           {showLineBefore && (
-                            <div style={{
-                              height: 3, borderRadius: 2,
-                              background: '#007AFF',
-                              margin: '2px 2px 4px',
-                              boxShadow: '0 0 8px rgba(0,122,255,0.55)',
-                            }} />
+                            <div style={{ height: 3, borderRadius: 2, background: '#1E40AF', margin: '2px 2px 4px' }} />
                           )}
                           <div
                             draggable={!readOnly}
@@ -826,35 +838,34 @@ export default function CalendarioColumnas({
                             title={nombre}
                             style={{
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              background: ts.bg, color: ts.text,
-                              border: `1.5px solid ${ts.border}`,
-                              borderRadius: 12, padding: '8px 11px', marginBottom: 6,
-                              fontSize: 15, fontWeight: 800, fontFamily: 'monospace',
+                              background: '#F1F5F9', color: '#334155',
+                              border: '1px solid #E2E8F0', borderLeft: `3px solid ${ts.accent}`,
+                              borderRadius: 6, padding: '8px 11px', marginBottom: 6,
+                              fontSize: 15, fontWeight: 700, fontFamily: 'monospace',
                               cursor: 'grab', userSelect: 'none',
-                              boxShadow: `0 2px 8px ${ts.shadow}, inset 0 1px 0 rgba(255,255,255,0.55)`,
-                              transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+                              opacity: isDragging ? 0.4 : 1,
+                              transition: 'background 0.12s ease',
                             }}
-                            onMouseEnter={e => {
-                              (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
-                              (e.currentTarget as HTMLElement).style.boxShadow = `0 5px 14px ${ts.shadow}, inset 0 1px 0 rgba(255,255,255,0.55)`;
-                            }}
-                            onMouseLeave={e => {
-                              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-                              (e.currentTarget as HTMLElement).style.boxShadow = `0 2px 8px ${ts.shadow}, inset 0 1px 0 rgba(255,255,255,0.55)`;
-                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#E2E8F0'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#F1F5F9'; }}
                           >
                             <span style={{ letterSpacing: '0.01em' }}>{displayCode(cod)}</span>
-                            {!readOnly && <span
-                              onClick={e => { e.stopPropagation(); remove(dia, cod); }}
-                              style={{
-                                marginLeft: 8, fontSize: 11, opacity: 0.4,
-                                cursor: 'pointer', lineHeight: 1,
-                                fontFamily: 'sans-serif', transition: 'opacity 0.15s',
-                                padding: '1px 3px', borderRadius: 4,
-                              }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0.4'; }}
-                            >✕</span>}
+                            {!readOnly && (
+                              <button type="button" draggable={false}
+                                onClick={e => { e.stopPropagation(); remove(dia, cod); }}
+                                aria-label={`Quitar ${displayCode(cod)} de ${DNOM[dia]}`}
+                                style={{
+                                  marginLeft: 8, opacity: 0.45,
+                                  cursor: 'pointer', lineHeight: 1,
+                                  transition: 'opacity 0.15s',
+                                  padding: 3, borderRadius: 4,
+                                  border: 'none', background: 'transparent', color: '#334155',
+                                  display: 'flex', alignItems: 'center',
+                                }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0.45'; }}
+                              ><X size={12} /></button>
+                            )}
                           </div>
                         </div>
                       );
@@ -862,19 +873,14 @@ export default function CalendarioColumnas({
 
                     {/* Insert indicator after last chip */}
                     {dragOver?.dia === dia && dragOver?.idx === tiendas.length && (
-                      <div style={{
-                        height: 3, borderRadius: 2,
-                        background: '#007AFF',
-                        margin: '2px 2px 4px',
-                        boxShadow: '0 0 8px rgba(0,122,255,0.55)',
-                      }} />
+                      <div style={{ height: 3, borderRadius: 2, background: '#1E40AF', margin: '2px 2px 4px' }} />
                     )}
 
                     {tiendas.length === 0 && (
                       <div style={{
-                        fontSize: 12, color: 'rgba(0,0,0,0.18)', fontStyle: 'italic',
+                        fontSize: 12, color: '#CBD5E1', fontStyle: 'italic',
                         textAlign: 'center', padding: '18px 6px',
-                        border: '2px dashed rgba(0,0,0,0.08)', borderRadius: 12, marginTop: 2,
+                        border: '2px dashed #E2E8F0', borderRadius: 6, marginTop: 2,
                       }}>
                         Sin tiendas
                       </div>
@@ -890,68 +896,67 @@ export default function CalendarioColumnas({
       {/* ── Day picker modal ── */}
       {pickerOpen && createPortal(
         <div
+          role="presentation"
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(10px)',
+            background: 'rgba(15,23,42,0.45)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
           onClick={e => { if (e.target === e.currentTarget) { setPickerOpen(false); setPickerCod(''); } }}
         >
-          <div style={{
-            background: '#FFFFFF', borderRadius: 26,
-            padding: '26px 22px 22px', width: 'min(320px, 88vw)',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.08)',
+          <div role="dialog" aria-modal="true" aria-labelledby="cal-picker-title" style={{
+            background: '#fff', borderRadius: 8, border: '1px solid #E2E8F0',
+            padding: '20px 20px 18px', width: 'min(320px, 88vw)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.10)',
           }}>
             {(() => {
               const tipo = getTipo(pickerCod);
               const ts = TYPE_STYLE[tipo];
               return (
                 <>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1C1C1E', marginBottom: 3 }}>
+                  <div id="cal-picker-title" style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', marginBottom: 3 }}>
                     Agregar{' '}
                     <span style={{
-                      color: ts.text, background: ts.bg,
-                      padding: '3px 9px', borderRadius: 9,
-                      fontFamily: 'monospace', fontWeight: 800,
-                      border: `1.5px solid ${ts.border}`,
-                      boxShadow: `0 2px 6px ${ts.shadow}`,
+                      color: '#475569', background: '#F1F5F9',
+                      padding: '3px 8px', borderRadius: 4, borderLeft: `3px solid ${ts.accent}`,
+                      fontFamily: 'monospace', fontWeight: 700,
                     }}>
                       {displayCode(pickerCod)}
                     </span>
                   </div>
-                  <div style={{ fontSize: 13, color: '#8E8E93', marginBottom: 3, fontWeight: 500 }}>
+                  <div style={{ fontSize: 13, color: '#64748B', marginBottom: 3, fontWeight: 500 }}>
                     {getNombre(pickerCod)}
                   </div>
-                  <div style={{ fontSize: 12, color: '#C7C7CC', marginBottom: 18 }}>
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 16 }}>
                     Elige uno o más días · toca de nuevo para quitar
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-                    {DIAS.map(d => {
+                    {DIAS.map((d, di) => {
                       const yaEsta = local?.[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(pickerCod);
                       return (
-                        <button key={d} onClick={() => handlePickerConfirm(pickerCod, d)}
+                        <button key={d}
+                          ref={di === 0 ? firstDayBtnRef : undefined}
+                          onClick={() => handlePickerConfirm(pickerCod, d)}
                           style={{
-                            height: 44, borderRadius: 13, fontSize: 13, fontWeight: 600,
-                            border: `2px solid ${DCOL[d]}`,
-                            color: yaEsta ? '#fff' : DCOL[d],
-                            background: yaEsta ? DCOL[d] : DLIGHT[d],
+                            height: 40, borderRadius: 6, fontSize: 13, fontWeight: 500,
+                            border: yaEsta ? '1px solid #1E40AF' : '1px solid #E2E8F0',
+                            color: yaEsta ? '#fff' : '#334155',
+                            background: yaEsta ? '#1E40AF' : '#fff',
                             cursor: 'pointer',
-                            boxShadow: yaEsta ? `0 2px 8px ${DCOL[d]}55` : `0 2px 8px rgba(0,0,0,0.07)`,
-                            transition: 'all 0.14s ease',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                           }}>
-                          {DNOM[d]}{yaEsta ? ' ✓' : ''}
+                          {DNOM[d]}{yaEsta && <Check size={12} aria-hidden="true" />}
                         </button>
                       );
                     })}
                   </div>
                   <button onClick={() => { setPickerOpen(false); setPickerCod(''); }}
                     style={{
-                      width: '100%', height: 44, borderRadius: 13,
-                      fontSize: 14, fontWeight: 700,
-                      background: 'linear-gradient(175deg, #E53535 0%, #C12828 100%)',
+                      width: '100%', height: 40, borderRadius: 6,
+                      fontSize: 13, fontWeight: 600,
+                      background: '#1E40AF',
                       color: '#fff', border: 'none',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(193,40,40,0.35)',
                     }}>
                     Listo
                   </button>
