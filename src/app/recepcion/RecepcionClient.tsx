@@ -99,7 +99,8 @@ export function RecepcionClient() {
   // Recibir una vez + editar: lookup de recepción existente para esta tienda hoy.
   const [existente,   setExistente]   = useState<RecepcionExistente | null>(null);
   const [existLoading, setExistLoading] = useState(true);
-  const [editMode,    setEditMode]    = useState(false);
+  // Recepción de una sola vez: sin edición desde la tienda (editMode queda fijo en false).
+  const [editMode] = useState(false);
   const clientOpIdRef = useRef<string>(newOpId());
   const [receptor,   setReceptor]   = useState('');
   const [rut,        setRut]        = useState('');
@@ -352,20 +353,6 @@ export function RecepcionClient() {
     }
   };
 
-  // Entrar en modo edición: re-identificar persona (nombre+RUT en blanco), cantidades
-  // pre-cargadas para ajustar, acuse reseteado, y una NUEVA operación (clientOpId) idempotente.
-  const iniciarEdicion = () => {
-    if (!existente) return;
-    setEditMode(true);
-    setReceptor('');
-    setRut('');
-    setPalletsRec(String(existente.pallets_recibidos ?? ''));
-    setBultosRec(String(existente.bultos_recibidos ?? ''));
-    setRecibiConforme(null);
-    setObservaciones('');
-    clientOpIdRef.current = newOpId();
-  };
-
   // Header corporativo (navy) reutilizado en el paso OTP y en el formulario.
   const Header = (
     <div style={S.header}>
@@ -456,12 +443,8 @@ export function RecepcionClient() {
             </p>
             {nEd > 0 && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#92400E' }}>✎ Editado {nEd} {nEd === 1 ? 'vez' : 'veces'}.</p>}
           </div>
-          <button onClick={iniciarEdicion}
-            style={{ width: '100%', padding: '14px 0', background: '#1a2550', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>
-            ✎ Editar recepción
-          </button>
-          <p style={{ margin: '10px 0 0', fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 1.5 }}>
-            Al editar deberás <strong>ingresar tu nombre y RUT nuevamente</strong> y verificar el código de la tienda. Queda registrado quién hizo el cambio.
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 1.6 }}>
+            La recepción quedó registrada. Cada tienda valida <strong>una sola vez</strong>. Si hubo algún error, contacta a coordinación.
           </p>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
