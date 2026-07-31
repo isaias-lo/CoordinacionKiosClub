@@ -5,6 +5,7 @@ import { RotateCcw, Printer } from 'lucide-react';
 import type { PickerStatRow, StatsCache } from '../picking-types';
 import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
 import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
+import { escapeHtml } from '@/lib/escapeHtml';
 
 type SortKey = keyof PickerStatRow;
 
@@ -13,8 +14,12 @@ interface Props {
   canonicalNames: Record<string, string>;
 }
 
-// Columnas de la tabla — en orden exacto pedido por el negocio
+// Columnas de la tabla — en orden exacto pedido por el negocio.
+// 'id' es único por columna (a diferencia de 'key', que ambas "Prom / Op" y "T. Prom / Pedido"
+// comparten a propósito: son la misma métrica en distintas unidades, así que ordenan por el
+// mismo campo) — se usa solo para saber en QUÉ columna mostrar la flecha ▲/▼.
 const COLS: {
+  id:    string;
   key:   SortKey;
   label: string;
   hint:  string;
@@ -23,32 +28,32 @@ const COLS: {
   footer: (rows: PickerStatRow[]) => string | number;
 }[] = [
   {
-    key: 'ops', label: 'Ops', hint: 'Operaciones completadas', right: true,
+    id: 'ops', key: 'ops', label: 'Ops', hint: 'Operaciones completadas', right: true,
     render: r => r.ops,
     footer: rows => rows.reduce((s, r) => s + r.ops, 0),
   },
   {
-    key: 'avgMinutesPerOp', label: 'Prom / Op', hint: 'Tiempo promedio por operación completa', right: true,
+    id: 'promOp', key: 'avgMinutesPerOp', label: 'Prom / Op', hint: 'Tiempo promedio por operación completa', right: true,
     render: r => fmtDuration(r.avgMinutesPerOp),
     footer: rows => fmtDuration(Math.round(rows.reduce((s, r) => s + r.avgMinutesPerOp, 0) / (rows.length || 1))),
   },
   {
-    key: 'lineCount', label: 'Cant. SKU', hint: 'Líneas / SKUs escaneados en el período', right: true,
+    id: 'lineCount', key: 'lineCount', label: 'Cant. SKU', hint: 'Líneas / SKUs escaneados en el período', right: true,
     render: r => r.lineCount.toLocaleString('es-CL'),
     footer: rows => rows.reduce((s, r) => s + r.lineCount, 0).toLocaleString('es-CL'),
   },
   {
-    key: 'avgSecondsPerLine', label: 'T. Prom / SKU', hint: 'Tiempo promedio entre pistolazos (por SKU escaneado)', right: true,
+    id: 'avgSecondsPerLine', key: 'avgSecondsPerLine', label: 'T. Prom / SKU', hint: 'Tiempo promedio entre pistolazos (por SKU escaneado)', right: true,
     render: r => fmtSecs(r.avgSecondsPerLine),
     footer: rows => fmtSecs(Math.round(rows.reduce((s, r) => s + r.avgSecondsPerLine, 0) / (rows.length || 1))),
   },
   {
-    key: 'units', label: 'Unidades', hint: 'Unidades movidas (qty done)', right: true,
+    id: 'units', key: 'units', label: 'Unidades', hint: 'Unidades movidas (qty done)', right: true,
     render: r => r.units.toLocaleString('es-CL'),
     footer: rows => rows.reduce((s, r) => s + r.units, 0).toLocaleString('es-CL'),
   },
   {
-    key: 'avgMinutesPerOp', label: 'T. Prom / Pedido', hint: 'Tiempo promedio por pedido completo', right: true,
+    id: 'tPromPedido', key: 'avgMinutesPerOp', label: 'T. Prom / Pedido', hint: 'Tiempo promedio por pedido completo', right: true,
     render: r => fmtSecs(Math.round(r.avgMinutesPerOp * 60)),
     footer: rows => fmtSecs(Math.round(rows.reduce((s, r) => s + r.avgMinutesPerOp * 60, 0) / (rows.length || 1))),
   },
@@ -63,6 +68,7 @@ export function StatsTab({ hasOdoo, canonicalNames }: Props) {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortColId, setSortColId] = useState<string>('name');
   const [sortAsc, setSortAsc] = useState(true);
 
   const [dateFrom,     setDateFrom]     = useState(STATS_DATE_FROM);
@@ -119,9 +125,10 @@ export function StatsTab({ hasOdoo, canonicalNames }: Props) {
     });
   }, [cache, sortKey, sortAsc, knownPickers]);
 
-  const handleSort = (key: SortKey) => {
+  const handleSort = (key: SortKey, colId: string = key) => {
     if (sortKey === key) setSortAsc(v => !v);
     else { setSortKey(key); setSortAsc(key === 'name'); }
+    setSortColId(colId);
   };
 
   const cachedAt = cache?.cachedAt
@@ -136,7 +143,7 @@ export function StatsTab({ hasOdoo, canonicalNames }: Props) {
     const rows = sorted.map((r, i) => {
       const confName = canonicalNames[r.name] ?? '';
       return `<tr class="${i % 2 === 0 ? '' : 'alt'}">
-<td class="name">${r.name}${confName ? `<span class="conf"> · ${confName}</span>` : ''}</td>
+<td class="name">${escapeHtml(r.name)}${confName ? `<span class="conf"> · ${escapeHtml(confName)}</span>` : ''}</td>
 <td class="r">${r.ops}</td>
 <td class="r">${fmtDuration(r.avgMinutesPerOp)}</td>
 <td class="r">${r.lineCount.toLocaleString('es-CL')}</td>
@@ -284,17 +291,16 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                       className="px-4 py-3 font-semibold text-[12px] text-white cursor-pointer select-none whitespace-nowrap text-left">
                       <span className="inline-flex items-center gap-1">
                         Nombre
-                        {sortKey === 'name' && <span style={{ color: '#FCD34D' }}>{sortAsc ? '▲' : '▼'}</span>}
+                        {sortColId === 'name' && <span style={{ color: '#FCD34D' }}>{sortAsc ? '▲' : '▼'}</span>}
                       </span>
                     </th>
-                    {COLS.map((col, ci) => (
-                      <th key={`${col.key}-${ci}`} onClick={() => handleSort(col.key)} title={col.hint}
+                    {COLS.map(col => (
+                      <th key={col.id} onClick={() => handleSort(col.key, col.id)} title={col.hint}
                         className="px-4 py-3 font-semibold text-[12px] text-white cursor-pointer select-none whitespace-nowrap"
                         style={{ textAlign: 'right' }}>
                         <span className="inline-flex items-center gap-1 justify-end">
                           {col.label}
-                          {/* Solo mostrar indicador en la primera columna que usa esa key */}
-                          {sortKey === col.key && ci === COLS.findIndex(c => c.key === col.key) && (
+                          {sortColId === col.id && (
                             <span style={{ color: '#FCD34D' }}>{sortAsc ? '▲' : '▼'}</span>
                           )}
                         </span>
@@ -314,8 +320,8 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                             <div className="text-[11px] mt-0.5 font-medium" style={{ color: '#64748B' }}>{confName}</div>
                           )}
                         </td>
-                        {COLS.map((col, ci) => (
-                          <td key={`${col.key}-${ci}`} className="px-4 py-2.5 font-mono text-right text-[12px]"
+                        {COLS.map(col => (
+                          <td key={col.id} className="px-4 py-2.5 font-mono text-right text-[12px]"
                             style={{ color: '#475569' }}>
                             {col.render(row)}
                           </td>
@@ -329,8 +335,8 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                     <td className="px-4 py-3 font-semibold text-[12px]" style={{ color: '#475569' }}>
                       TOTAL / PROMEDIO · {sorted.length} pickers
                     </td>
-                    {COLS.map((col, ci) => (
-                      <td key={`${col.key}-${ci}`} className="px-4 py-3 font-bold font-mono text-right text-[13px]"
+                    {COLS.map(col => (
+                      <td key={col.id} className="px-4 py-3 font-bold font-mono text-right text-[13px]"
                         style={{ color: '#1E293B' }}>
                         {col.footer(sorted)}
                       </td>
