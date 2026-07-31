@@ -3,6 +3,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/registroFaltantes';
+import { clavesConPatente } from './asignacion';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -354,6 +355,17 @@ export async function POST(request: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error } = await sb.from(table).upsert(withFuente as any[], { onConflict: 'id' });
           if (error) console.error(`[sheets-write] Supabase upsert faltantes ${table}:`, error.message);
+        }
+
+        // Asignar patente = tienda lista para salir → avanzar seguimiento Registrado → Pendiente.
+        // Antes el mirror a Supabase escribía patente/estado pero NO tocaba `seguimiento`, así que
+        // una tienda asignada a un vehículo seguía en "Registrado" en el panel. Guard: solo toca
+        // 'Registrado' → nunca regresa Recibido/Diferencia/En camino/Entregado.
+        const asignadas = clavesConPatente(records);
+        for (const { fecha, cod } of asignadas) {
+          const { error } = await sb.from(table).update({ seguimiento: 'Pendiente' })
+            .eq('fecha', fecha).eq('cod', cod).eq('seguimiento', 'Registrado');
+          if (error) console.error(`[sheets-write] Supabase seguimiento ${table}:`, error.message);
         }
 
         return NextResponse.json({ ok: true, updated: updateData.length > 0 ? seenSheets.size : 0, appended });

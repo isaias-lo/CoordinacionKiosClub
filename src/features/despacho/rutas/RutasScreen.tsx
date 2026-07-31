@@ -382,7 +382,7 @@ export default function RutasScreen() {
           // (OFIKC, recados internos) fluye sin estar en el calendario. Se inyecta si: es un
           // código-excepción, se está viendo HOY (los rows son de hoy), tiene cantidades, y el
           // calendario YA cargó (calT no vacío) — para no saltarse el init del calendario.
-          if (!fluyeSinCalendario(c) || fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
+          if (!fluyeSinCalendario(c, tiendasRef.current[c]?.tipo) || fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
           const reg = tiendasRef.current[c]?.region;
           const g = row.fuente === 'regiones' ? 'fal' : (reg === 'VR' || reg === 'V') ? 'costa' : 'rm';
           return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: cc, ch: rowCh, g } };
@@ -731,7 +731,7 @@ export default function RutasScreen() {
       const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || chh > 0;
       if (newCalT[c]) {
         newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, ch: chh, on: hasCounts };
-      } else if (fluyeSinCalendario(c) && hasCounts) {
+      } else if (fluyeSinCalendario(c, tiendasRef.current[c]?.tipo) && hasCounts) {
         const reg = tiendasRef.current[c]?.region;
         const g = row.fuente === 'regiones' ? 'fal' : (reg === 'VR' || reg === 'V') ? 'costa' : 'rm';
         newCalT[c] = { on: true, p: row.pallets, b: row.bultos, c: cc, ch: chh, g };
