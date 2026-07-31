@@ -29,6 +29,7 @@ import {
   todayISO, getStoreName, isPickeableState, isFetchedToday,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
   computePalletNums, isSinAsignar, buildPickerKeyList,
+  parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
@@ -152,8 +153,7 @@ export function PickingScreen() {
     const fromSession = session.pickerDisplayNames;
     if (fromSession && Object.keys(fromSession).length > 0) return fromSession;
     if (typeof window === 'undefined') return {};
-    try { return JSON.parse(localStorage.getItem(SAVED_NAMES_KEY) ?? '{}') as Record<string, string>; }
-    catch { return {}; }
+    return parseSavedNames(localStorage.getItem(SAVED_NAMES_KEY));
   });
   const [palletSlots, setPalletSlots] = useState<PalletSlot[]>([]);
   const palletSlotsRef = useRef<PalletSlot[]>([]);
@@ -604,9 +604,11 @@ export function PickingScreen() {
     return match ? (canonicalNames[match] ?? '') : '';
   }, [canonicalNames]);
 
-  // Persistir nombres en localStorage (cross-session)
+  // Persistir nombres en localStorage (cross-session), delimitado por fecha — ver
+  // parseSavedNames/serializeSavedNames. Evita que nombres de ayer (misma state_key,
+  // ya que los responsables de Odoo son slots fijos que se repiten cada día) reaparezcan hoy.
   useEffect(() => {
-    localStorage.setItem(SAVED_NAMES_KEY, JSON.stringify(pickerDisplayNames));
+    localStorage.setItem(SAVED_NAMES_KEY, serializeSavedNames(pickerDisplayNames));
   }, [pickerDisplayNames]);
 
   // Persistir sesión en sessionStorage cuando cambia el estado relevante.
