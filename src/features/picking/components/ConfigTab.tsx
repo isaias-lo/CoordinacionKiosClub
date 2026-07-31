@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { RotateCcw, Plus, X } from 'lucide-react';
+import { RotateCcw, Plus, X, Check, AlertTriangle } from 'lucide-react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, BarcodeCard, PropRow } from '@/features/despacho/shared/BarcodeCard';
 import { buildPickerKeyList, isCustomPickerKey } from '../picking-utils';
+import { InlineConfirm } from './InlineConfirm';
 
 // ─── PickerNameRow ────────────────────────────────────────────────────────────
 
@@ -15,47 +16,66 @@ function PickerNameRow({ pickerKey, savedValue, onSave, onRemove }: {
 }) {
   const [draft,  setDraft]  = useState(savedValue);
   const [status, setStatus] = useState<'idle' | 'saved'>('idle');
+  const [pendingAction, setPendingAction] = useState<'save' | 'remove' | null>(null);
   const isDirty = draft !== savedValue;
 
   useEffect(() => { setDraft(savedValue); }, [savedValue]);
 
-  const save = () => {
-    if (!isDirty) return;
-    const oldLabel = savedValue || pickerKey;
-    const newLabel = draft.trim() || '(sin nombre)';
-    if (!window.confirm(`¿Cambiar nombre del picker?\n\n${pickerKey}\n"${oldLabel}"  →  "${newLabel}"\n\nEste cambio será visible para todos.`)) return;
+  const requestSave = () => { if (isDirty) setPendingAction('save'); };
+  const confirmSave = () => {
     onSave(pickerKey, draft);
     setStatus('saved');
+    setPendingAction(null);
     setTimeout(() => setStatus('idle'), 2000);
   };
 
+  const oldLabel = savedValue || pickerKey;
+  const newLabel = draft.trim() || '(sin nombre)';
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: '#F1F5F9' }}>
-      <span className="font-mono text-[12px] font-bold w-24 shrink-0 truncate" style={{ color: '#1E293B' }} title={pickerKey}>
-        {pickerKey}
-      </span>
-      <input
-        type="text" value={draft} placeholder="Nombre…"
-        onChange={e => setDraft(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
-        className="flex-1 min-w-0 border rounded px-2.5 py-1.5 text-[13px] bg-white outline-none transition-colors"
-        style={{ borderColor: isDirty ? '#D97706' : status === 'saved' ? '#16A34A' : '#E2E8F0', color: '#334155' }}
-      />
-      {isDirty ? (
-        <button onClick={save}
-          className="px-2.5 py-1 text-[12px] font-semibold rounded cursor-pointer shrink-0 border-none"
-          style={{ background: '#1E40AF', color: '#fff' }}>
-          Guardar
-        </button>
-      ) : status === 'saved' ? (
-        <span className="text-[12px] font-semibold shrink-0" style={{ color: '#16A34A' }}>✓</span>
-      ) : null}
-      {onRemove && !isDirty && (
-        <button onClick={() => onRemove(pickerKey)} title="Eliminar picker"
-          className="shrink-0 flex items-center justify-center w-6 h-6 rounded cursor-pointer border-none"
-          style={{ background: '#FEF2F2', color: '#DC2626' }}>
-          <X size={13} />
-        </button>
+    <div className="px-3 py-2 border-b" style={{ borderColor: '#F1F5F9' }}>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[12px] font-bold w-24 shrink-0 truncate" style={{ color: '#1E293B' }} title={pickerKey}>
+          {pickerKey}
+        </span>
+        <input
+          type="text" value={draft} placeholder="Nombre…"
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); requestSave(); } }}
+          className="flex-1 min-w-0 border rounded px-2.5 py-1.5 text-[13px] bg-white outline-none transition-colors"
+          style={{ borderColor: isDirty ? '#D97706' : status === 'saved' ? '#16A34A' : '#E2E8F0', color: '#334155' }}
+        />
+        {isDirty ? (
+          <button onClick={requestSave}
+            className="px-2.5 py-1 text-[12px] font-semibold rounded cursor-pointer shrink-0 border-none"
+            style={{ background: '#1E40AF', color: '#fff' }}>
+            Guardar
+          </button>
+        ) : status === 'saved' ? (
+          <span className="text-[12px] font-semibold shrink-0 flex items-center" style={{ color: '#16A34A' }} aria-live="polite">
+            <Check size={13} aria-label="Guardado" />
+          </span>
+        ) : null}
+        {onRemove && !isDirty && (
+          <button onClick={() => setPendingAction('remove')} aria-label={`Eliminar picker ${pickerKey}`}
+            className="shrink-0 flex items-center justify-center w-6 h-6 rounded cursor-pointer border-none"
+            style={{ background: '#FEF2F2', color: '#DC2626' }}>
+            <X size={13} />
+          </button>
+        )}
+      </div>
+      {pendingAction === 'save' && (
+        <InlineConfirm
+          message={`Cambiar nombre: "${oldLabel}" → "${newLabel}". Será visible para todos.`}
+          confirmLabel="Guardar" onCancel={() => setPendingAction(null)} onConfirm={confirmSave}
+        />
+      )}
+      {pendingAction === 'remove' && onRemove && (
+        <InlineConfirm
+          message={`¿Eliminar el picker/pistola "${pickerKey}"? Desaparecerá para todos.`}
+          confirmLabel="Eliminar" onCancel={() => setPendingAction(null)}
+          onConfirm={() => { onRemove(pickerKey); setPendingAction(null); }}
+        />
       )}
     </div>
   );
@@ -93,7 +113,7 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
           <div className="text-[13px] font-medium leading-tight" style={{ color: '#334155' }}>{label}</div>
           {desc && <div className="text-[11px] mt-0.5" style={{ color: '#94A3B8' }}>{desc}</div>}
         </div>
-        <button onClick={() => upd(field, !val)}
+        <button onClick={() => upd(field, !val)} role="switch" aria-checked={val} aria-label={label}
           className="relative flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0 border-none"
           style={{ width: 36, height: 20, background: val ? '#1E40AF' : '#CBD5E1' }}>
           <span className="absolute bg-white rounded-full transition-all duration-200"
@@ -113,6 +133,7 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
   }
 
   const [newPicker, setNewPicker] = useState('');
+  const [addPickerError, setAddPickerError] = useState<string | null>(null);
   const pickerKeys = buildPickerKeyList(canonicalNames);
 
   const handleNameSave = (key: string, val: string) => {
@@ -125,17 +146,18 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
     const key = newPicker.trim();
     if (!key) return;
     if (pickerKeys.some(k => k.toLowerCase() === key.toLowerCase())) {
-      window.alert(`Ya existe un picker o pistola con el nombre "${key}".`);
+      setAddPickerError(`Ya existe un picker o pistola con el nombre "${key}".`);
       return;
     }
     // Se crea con nombre inicial = la propia key (para que persista en Supabase y se vea);
     // luego se puede editar como cualquier otro. Se propaga a todos por realtime.
     onCanonicalNamesChange({ ...canonicalNames, [key]: key }, key, key, currentUserName);
     setNewPicker('');
+    setAddPickerError(null);
   };
 
+  // La confirmación ya ocurrió dentro de PickerNameRow (InlineConfirm) antes de llamar esto.
   const handleRemovePicker = (key: string) => {
-    if (!window.confirm(`¿Eliminar el picker/pistola "${key}"?\n\nDesaparecerá para todos.`)) return;
     const next = { ...canonicalNames };
     delete next[key];
     onCanonicalNamesChange(next, key, '', currentUserName); // display_name '' → borra la fila en Supabase
@@ -251,7 +273,7 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
               <input
                 type="text" value={newPicker}
                 placeholder="Nuevo picker o pistola (ej. Pickers 19, Mario Patiño)…"
-                onChange={e => setNewPicker(e.target.value)}
+                onChange={e => { setNewPicker(e.target.value); setAddPickerError(null); }}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddPicker(); } }}
                 className="flex-1 min-w-0 border rounded px-2.5 py-1.5 text-[13px] bg-white outline-none"
                 style={{ borderColor: '#E2E8F0', color: '#334155' }}
@@ -262,6 +284,13 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
                 <Plus size={13} /> Agregar
               </button>
             </div>
+            {addPickerError && (
+              <div role="alert" className="px-3 py-2 text-[12px] flex items-center gap-2 border-b"
+                style={{ background: '#FFF1F2', color: '#991B1B', borderColor: '#E2E8F0' }}>
+                <AlertTriangle size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
+                {addPickerError}
+              </div>
+            )}
             {/* Rejilla responsiva: se acomoda sola (3→2→1 columnas) según el ancho, nunca se corta. */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
               {pickerKeys.map(key => (

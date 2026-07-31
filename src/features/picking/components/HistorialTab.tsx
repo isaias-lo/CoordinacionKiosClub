@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { RotateCcw, Printer } from 'lucide-react';
+import { RotateCcw, Printer, Inbox } from 'lucide-react';
 import type { PickerGroup, PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { fmtHoraChile } from '@/lib/fechaChile';
@@ -204,7 +204,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         {records.length === 0 ? (
           <div className="text-center py-16">
-            <div className="text-[48px] mb-3 opacity-30">📭</div>
+            <Inbox size={40} className="mx-auto mb-3" style={{ color: '#64748B', opacity: 0.3 }} aria-hidden="true" />
             <div className="text-[15px] font-semibold" style={{ color: '#64748B' }}>Sin impresiones hoy</div>
             <div className="text-[13px] mt-1" style={{ color: '#94A3B8' }}>
               Los registros aparecerán aquí cuando se impriman etiquetas
@@ -241,17 +241,18 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
             {/* Tabla principal */}
             <div className="mt-4 rounded overflow-hidden" style={{ border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                <caption className="sr-only">Impresiones del día</caption>
                 <thead>
                   <tr style={{ background: '#1E293B', color: '#fff' }}>
-                    <th className="text-left px-4 py-3 font-semibold text-[12px]">Hora</th>
-                    <th className="text-left px-4 py-3 font-semibold text-[12px]">Picker</th>
-                    <th className="text-left px-4 py-3 font-semibold text-[12px]">Tienda</th>
-                    <th className="text-left px-4 py-3 font-semibold text-[12px]">Batch</th>
-                    <th className="text-left px-4 py-3 font-semibold text-[12px]">Contenido</th>
-                    <th className="text-right px-4 py-3 font-semibold text-[12px]">Pallets</th>
-                    <th className="text-right px-4 py-3 font-semibold text-[12px]">Bultos</th>
-                    <th className="text-center px-4 py-3 font-semibold text-[12px]">Impr.</th>
-                    <th className="text-center px-4 py-3 font-semibold text-[12px]">Tipo</th>
+                    <th scope="col" className="text-left px-4 py-3 font-semibold text-[12px]">Hora</th>
+                    <th scope="col" className="text-left px-4 py-3 font-semibold text-[12px]">Picker</th>
+                    <th scope="col" className="text-left px-4 py-3 font-semibold text-[12px]">Tienda</th>
+                    <th scope="col" className="text-left px-4 py-3 font-semibold text-[12px]">Batch</th>
+                    <th scope="col" className="text-left px-4 py-3 font-semibold text-[12px]">Contenido</th>
+                    <th scope="col" className="text-right px-4 py-3 font-semibold text-[12px]">Pallets</th>
+                    <th scope="col" className="text-right px-4 py-3 font-semibold text-[12px]">Bultos</th>
+                    <th scope="col" className="text-center px-4 py-3 font-semibold text-[12px]">Impr.</th>
+                    <th scope="col" className="text-center px-4 py-3 font-semibold text-[12px]">Tipo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -317,13 +318,14 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
             </div>
             <div className="rounded overflow-hidden" style={{ border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
               <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+                <caption className="sr-only">Cambios de nombre del día</caption>
                 <thead>
                   <tr style={{ background: '#1E293B', color: '#fff' }}>
-                    <th className="text-left px-4 py-2.5 font-semibold text-[11px]">Hora</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-[11px]">Picker</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-[11px]">Nombre anterior</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-[11px]">Nombre nuevo</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-[11px]">Modificado por</th>
+                    <th scope="col" className="text-left px-4 py-2.5 font-semibold text-[11px]">Hora</th>
+                    <th scope="col" className="text-left px-4 py-2.5 font-semibold text-[11px]">Picker</th>
+                    <th scope="col" className="text-left px-4 py-2.5 font-semibold text-[11px]">Nombre anterior</th>
+                    <th scope="col" className="text-left px-4 py-2.5 font-semibold text-[11px]">Nombre nuevo</th>
+                    <th scope="col" className="text-left px-4 py-2.5 font-semibold text-[11px]">Modificado por</th>
                   </tr>
                 </thead>
                 <tbody>

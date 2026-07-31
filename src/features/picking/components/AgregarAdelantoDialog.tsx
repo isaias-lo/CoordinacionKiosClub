@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Zap, Search, X } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { mergeTiendas, type DbTiendaRow } from '@/features/despacho/rutas/data/tiendasMerge';
 import { addTiendaAdelanto, zonaForStore, type ZonaAdelanto } from '@/features/despacho/shared/tiendasAdelanto';
@@ -33,6 +34,33 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
   const [fechaDesp, setFecha] = useState<string>(date);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
+
+  const panelRef       = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  // Foco atrapado dentro del diálogo + cierre con Escape + foco inicial en el buscador.
+  useEffect(() => {
+    previouslyFocused.current = document.activeElement as HTMLElement;
+    searchInputRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const focusables = panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last  = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused.current?.focus?.();
+    };
+  }, [onClose]);
 
   // Catálogo = estático + tiendas de la BD (Config), para que las nuevas sean buscables.
   const [dbRows, setDbRows] = useState<DbTiendaRow[]>([]);
@@ -83,14 +111,17 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
   return (
     <div className="fixed inset-0 z-[600] flex items-center justify-center p-4"
       style={{ background: 'rgba(15,23,42,0.55)' }} onClick={onClose}>
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white"
-        style={{ boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }} onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="adelanto-dialog-title"
+        className="w-full max-w-md overflow-hidden rounded-lg bg-white"
+        style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.10)' }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
-          <span className="font-bold text-[17px]" style={{ color: '#0F172A' }}>⚡ Agregar tienda (adelanto)</span>
+          <span id="adelanto-dialog-title" className="font-bold text-[17px] flex items-center gap-2" style={{ color: '#0F172A' }}>
+            <Zap size={16} aria-hidden="true" /> Agregar tienda (adelanto)
+          </span>
           <button onClick={onClose} aria-label="Cerrar"
-            className="text-[24px] leading-none cursor-pointer" style={{ color: '#94A3B8', background: 'none', border: 'none' }}>×</button>
+            className="flex items-center cursor-pointer" style={{ color: '#94A3B8', background: 'none', border: 'none' }}><X size={20} /></button>
         </div>
 
         <div className="p-4 flex flex-col gap-3">
@@ -100,9 +131,10 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
                 Busca la tienda que se adelanta o que saldrá fuera de su día de calendario.
               </p>
               <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ border: '1.5px solid #CBD5E1' }}>
-                <span style={{ color: '#94A3B8' }}>🔎</span>
+                <Search size={15} style={{ color: '#94A3B8' }} aria-hidden="true" />
+                <label htmlFor="adelanto-search" className="sr-only">Código o nombre de tienda</label>
                 <input
-                  autoFocus value={q} onChange={e => setQ(e.target.value)}
+                  id="adelanto-search" ref={searchInputRef} value={q} onChange={e => setQ(e.target.value)}
                   placeholder="Código o nombre (ej. 12LAS, Las Condes)"
                   className="flex-1 text-[15px] font-medium outline-none"
                   style={{ color: '#0F172A', border: 'none' }}
@@ -169,9 +201,9 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
                   Cancelar
                 </button>
                 <button onClick={() => void confirm()} disabled={saving}
-                  className="flex-1 rounded-xl py-2.5 font-bold text-[14px] cursor-pointer"
+                  className="flex-1 rounded-xl py-2.5 font-bold text-[14px] cursor-pointer flex items-center justify-center gap-1.5"
                   style={{ background: saving ? '#94A3B8' : '#16A34A', color: '#fff', border: 'none' }}>
-                  {saving ? 'Agregando…' : '⚡ Agregar adelanto'}
+                  {saving ? 'Agregando…' : <><Zap size={14} aria-hidden="true" /> Agregar adelanto</>}
                 </button>
               </div>
             </>

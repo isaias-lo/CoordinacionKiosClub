@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { RotateCcw, Printer } from 'lucide-react';
+import { RotateCcw, Printer, BarChart3 } from 'lucide-react';
 import type { PickerStatRow, StatsCache } from '../picking-types';
 import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
 import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
 import { escapeHtml } from '@/lib/escapeHtml';
+import { InlineConfirm } from './InlineConfirm';
 
 type SortKey = keyof PickerStatRow;
 
@@ -75,6 +76,7 @@ export function StatsTab({ hasOdoo, canonicalNames }: Props) {
   const [dateTo,       setDateTo]       = useState(STATS_DATE_TO);
   const [pendingFrom,  setPendingFrom]  = useState(STATS_DATE_FROM);
   const [pendingTo,    setPendingTo]    = useState(STATS_DATE_TO);
+  const [showDateConfirm, setShowDateConfirm] = useState(false);
   const datesChanged = pendingFrom !== dateFrom || pendingTo !== dateTo;
 
   const loadStats = useCallback(async (fromOverride?: string, toOverride?: string) => {
@@ -101,12 +103,13 @@ export function StatsTab({ hasOdoo, canonicalNames }: Props) {
     }
   }, [hasOdoo, dateFrom, dateTo]);
 
-  function applyDateChange() {
-    const fmt = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
-    if (!window.confirm(`¿Cambiar el período de estadísticas?\n\nNuevo rango: ${fmt(pendingFrom)} — ${fmt(pendingTo)}\n\nEsto borrará los datos en caché.`)) return;
+  const fmtDateLabel = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  function confirmDateChange() {
     setDateFrom(pendingFrom); setDateTo(pendingTo);
     setCache(null); localStorage.removeItem(STATS_CACHE_KEY);
     void loadStats(pendingFrom, pendingTo);
+    setShowDateConfirm(false);
   }
 
   // Pickers "conocidos" = built-in + custom agregados desde Config → así los pickers nuevos
@@ -219,13 +222,21 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                 className="border rounded px-2 py-1 text-[13px] outline-none cursor-pointer"
                 style={{ borderColor: '#E2E8F0', color: '#334155', background: '#fff' }} />
               {datesChanged && (
-                <button onClick={applyDateChange}
+                <button onClick={() => setShowDateConfirm(true)}
                   className="px-3 py-1 rounded text-[13px] font-medium cursor-pointer"
                   style={{ background: '#1E40AF', color: '#fff', border: 'none' }}>
                   Aplicar
                 </button>
               )}
             </div>
+            {showDateConfirm && (
+              <div className="mt-2 max-w-md">
+                <InlineConfirm
+                  message={`Cambiar el período a ${fmtDateLabel(pendingFrom)} — ${fmtDateLabel(pendingTo)}? Esto borrará los datos en caché.`}
+                  confirmLabel="Cambiar" onCancel={() => setShowDateConfirm(false)} onConfirm={confirmDateChange}
+                />
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {cachedAt && (
@@ -270,7 +281,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
         {/* Empty state */}
         {!cache && !loading && !error && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="text-[48px] mb-4 opacity-20">📊</div>
+            <BarChart3 size={40} className="mb-4" style={{ color: '#334155', opacity: 0.2 }} aria-hidden="true" />
             <div className="text-[15px] font-semibold mb-1" style={{ color: '#334155' }}>Sin datos cargados</div>
             <div className="text-[13px]" style={{ color: '#94A3B8' }}>
               Presiona <strong>Cargar datos</strong> para consultar las estadísticas del período.
@@ -287,23 +298,27 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr style={{ background: '#1E293B' }}>
                     {/* Nombre — sorteable */}
-                    <th onClick={() => handleSort('name')} title="Responsable Odoo + nombre configurado"
-                      className="px-4 py-3 font-semibold text-[12px] text-white cursor-pointer select-none whitespace-nowrap text-left">
-                      <span className="inline-flex items-center gap-1">
+                    <th scope="col" title="Responsable Odoo + nombre configurado"
+                      aria-sort={sortColId === 'name' ? (sortAsc ? 'ascending' : 'descending') : 'none'}
+                      className="p-0 font-semibold text-[12px] text-white whitespace-nowrap text-left">
+                      <button type="button" onClick={() => handleSort('name')}
+                        className="w-full px-4 py-3 flex items-center gap-1 cursor-pointer select-none border-none bg-transparent text-white font-semibold text-[12px]">
                         Nombre
-                        {sortColId === 'name' && <span style={{ color: '#FCD34D' }}>{sortAsc ? '▲' : '▼'}</span>}
-                      </span>
+                        {sortColId === 'name' && <span style={{ color: '#FCD34D' }} aria-hidden="true">{sortAsc ? '▲' : '▼'}</span>}
+                      </button>
                     </th>
                     {COLS.map(col => (
-                      <th key={col.id} onClick={() => handleSort(col.key, col.id)} title={col.hint}
-                        className="px-4 py-3 font-semibold text-[12px] text-white cursor-pointer select-none whitespace-nowrap"
+                      <th key={col.id} scope="col" title={col.hint}
+                        aria-sort={sortColId === col.id ? (sortAsc ? 'ascending' : 'descending') : 'none'}
+                        className="p-0 font-semibold text-[12px] text-white whitespace-nowrap"
                         style={{ textAlign: 'right' }}>
-                        <span className="inline-flex items-center gap-1 justify-end">
+                        <button type="button" onClick={() => handleSort(col.key, col.id)}
+                          className="w-full px-4 py-3 inline-flex items-center gap-1 justify-end cursor-pointer select-none border-none bg-transparent text-white font-semibold text-[12px]">
                           {col.label}
                           {sortColId === col.id && (
-                            <span style={{ color: '#FCD34D' }}>{sortAsc ? '▲' : '▼'}</span>
+                            <span style={{ color: '#FCD34D' }} aria-hidden="true">{sortAsc ? '▲' : '▼'}</span>
                           )}
-                        </span>
+                        </button>
                       </th>
                     ))}
                   </tr>

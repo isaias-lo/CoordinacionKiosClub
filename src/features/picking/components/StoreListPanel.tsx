@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Search, X, Zap, Trash2, Check } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
 import { getStoreGroup, GROUP_LABELS, isPickeableState } from '../picking-utils';
@@ -77,19 +77,23 @@ export const StoreListPanel = React.memo(function StoreListPanel({
           )}
         </div>
         <div className="flex items-center gap-2 bg-[var(--color-bg)] border border-border rounded-xl px-3 py-2">
-          <svg className="w-4 h-4 text-text-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-          </svg>
-          <input type="text" value={q} onChange={e => setQ(e.target.value)}
+          <Search size={16} className="text-text-3 shrink-0" aria-hidden="true" />
+          <label htmlFor="store-search" className="sr-only">Buscar tienda</label>
+          <input id="store-search" type="text" value={q} onChange={e => setQ(e.target.value)}
             placeholder="Buscar tienda…"
             className="flex-1 bg-transparent border-none outline-none text-[14px] font-barlow text-text min-w-0" />
-          {q && <button onClick={() => setQ('')} className="text-text-3 border-none bg-transparent cursor-pointer text-[14px] leading-none shrink-0">×</button>}
+          {q && (
+            <button type="button" onClick={() => setQ('')} aria-label="Limpiar búsqueda"
+              className="text-text-3 border-none bg-transparent cursor-pointer shrink-0 flex items-center">
+              <X size={14} />
+            </button>
+          )}
         </div>
         {onOpenAdelanto && (
           <button onClick={onOpenAdelanto}
             className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-bold cursor-pointer transition-colors"
             style={{ background: 'rgba(30,64,175,0.06)', color: '#1E40AF', border: '1.5px dashed rgba(30,64,175,0.35)' }}>
-            ⚡ Agregar tienda (adelanto)
+            <Zap size={13} aria-hidden="true" /> Agregar tienda (adelanto)
           </button>
         )}
         {isFallback && !storesLoading && (
@@ -124,60 +128,69 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 const pickerCount = isSelected && ops.length > 0 ? new Set(ops.map(o => o.responsible || 'Sin asignar')).size : 0;
                 const opCount     = ops.length;
+                // Texto para lectores de pantalla — el estado hoy se comunica solo con el
+                // borde de color izquierdo (y con el fondo cuando está seleccionada).
+                const statusText = storeStatus === 'complete' ? 'Todo realizado'
+                  : storeStatus === 'partial' ? `${doneOps} de ${totalOps} operaciones`
+                  : isSelected ? 'Seleccionada' : 'Sin operaciones';
                 return (
-                  <button key={store.cod} onClick={() => onToggleStore(store.cod)} disabled={isLoading}
-                    className="w-full flex items-center gap-2 px-4 py-3 border-b border-border cursor-pointer text-left transition-all disabled:cursor-wait"
+                  <div key={store.cod}
+                    className="w-full flex items-center border-b border-border transition-all"
                     style={{
                       background:  isSelected ? 'rgba(217,119,6,0.09)' : 'transparent',
                       borderLeft: `4px solid ${storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'transparent'}`,
                     }}>
-                    <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all"
-                      style={{ borderColor: storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'rgba(26,37,80,0.2)', background: isSelected ? (storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : '#D97706') : 'transparent' }}>
-                      {isSelected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                    </div>
-                    <span className="font-mono text-[13px] font-bold shrink-0 px-2 py-0.5 rounded-lg"
-                      style={{ background: isSelected ? 'rgba(217,119,6,0.15)' : 'rgba(26,37,80,0.07)', color: isSelected ? '#D97706' : '#374151' }}>
-                      {store.cod}
-                    </span>
-                    <span className="text-[14px] truncate flex-1" style={{ color: isSelected ? '#B45309' : '#374151', fontWeight: isSelected ? 600 : 400 }}>
-                      {store.name}
-                    </span>
-                    {isLoading && <span className="shrink-0"><Loader2 size={14} className="animate-spin text-text-3" /></span>}
-                    {hasError && !isLoading && <span className="shrink-0" title="Error al cargar — haz clic para reintentar"><AlertTriangle size={14} className="text-amber-600" /></span>}
-                    {storeStatus === 'complete' && (
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                        style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
-                        ✓ Listo
+                    <button onClick={() => onToggleStore(store.cod)} disabled={isLoading}
+                      aria-pressed={isSelected}
+                      className="flex-1 min-w-0 flex items-center gap-2 px-4 py-3 cursor-pointer text-left transition-all disabled:cursor-wait border-none bg-transparent">
+                      <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all"
+                        style={{ borderColor: storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'rgba(26,37,80,0.2)', background: isSelected ? (storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : '#D97706') : 'transparent' }}>
+                        {isSelected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </div>
+                      <span className="font-mono text-[13px] font-bold shrink-0 px-2 py-0.5 rounded-lg"
+                        style={{ background: isSelected ? 'rgba(217,119,6,0.15)' : 'rgba(26,37,80,0.07)', color: isSelected ? '#D97706' : '#374151' }}>
+                        {store.cod}
                       </span>
-                    )}
-                    {storeStatus === 'partial' && (
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                        style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', border: '1px solid rgba(245,158,11,0.3)' }}>
-                        {doneOps}/{totalOps}
+                      <span className="text-[14px] truncate flex-1" style={{ color: isSelected ? '#B45309' : '#374151', fontWeight: isSelected ? 600 : 400 }}>
+                        {store.name}
                       </span>
-                    )}
-                    {isSelected && !isLoading && storeStatus !== 'complete' && opCount > 0 && (
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                        style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
-                        {pickerCount}p · {opCount}op
-                      </span>
-                    )}
-                    {store.adelanto && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                        title={store.adelanto.fecha_despacho ? `Despacho: ${store.adelanto.fecha_despacho}` : 'Adelanto'}
-                        style={{ background: 'rgba(30,64,175,0.12)', color: '#1E40AF', border: '1px solid rgba(30,64,175,0.3)' }}>
-                        ⚡ Adelanto
-                      </span>
-                    )}
+                      <span className="sr-only">{statusText}</span>
+                      {isLoading && <span className="shrink-0"><Loader2 size={14} className="animate-spin text-text-3" /></span>}
+                      {hasError && !isLoading && <span className="shrink-0" title="Error al cargar — haz clic para reintentar"><AlertTriangle size={14} className="text-amber-600" /></span>}
+                      {storeStatus === 'complete' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 inline-flex items-center gap-1"
+                          style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
+                          <Check size={11} aria-hidden="true" /> Listo
+                        </span>
+                      )}
+                      {storeStatus === 'partial' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                          style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', border: '1px solid rgba(245,158,11,0.3)' }}>
+                          {doneOps}/{totalOps}
+                        </span>
+                      )}
+                      {isSelected && !isLoading && storeStatus !== 'complete' && opCount > 0 && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                          style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
+                          {pickerCount}p · {opCount}op
+                        </span>
+                      )}
+                      {store.adelanto && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 inline-flex items-center gap-1"
+                          title={store.adelanto.fecha_despacho ? `Despacho: ${store.adelanto.fecha_despacho}` : 'Adelanto'}
+                          style={{ background: 'rgba(30,64,175,0.12)', color: '#1E40AF', border: '1px solid rgba(30,64,175,0.3)' }}>
+                          <Zap size={9} aria-hidden="true" /> Adelanto
+                        </span>
+                      )}
+                    </button>
                     {store.adelanto && onDeleteAdelanto && (
-                      <span role="button" tabIndex={0} title="Eliminar adelanto"
-                        onClick={e => { e.stopPropagation(); onDeleteAdelanto(store.adelanto!.id); }}
-                        className="text-[13px] shrink-0 cursor-pointer px-0.5"
-                        style={{ color: '#DC2626' }}>
-                        🗑
-                      </span>
+                      <button type="button" onClick={() => onDeleteAdelanto(store.adelanto!.id)}
+                        aria-label={`Eliminar adelanto de ${store.cod}`} title="Eliminar adelanto"
+                        className="shrink-0 flex items-center justify-center px-2.5 py-3 cursor-pointer border-none bg-transparent">
+                        <Trash2 size={13} style={{ color: '#DC2626' }} />
+                      </button>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

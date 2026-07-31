@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
-import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, Plus, Minus, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
+import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, Plus, Minus, AlertTriangle, Calendar, Loader2, ChevronDown, Check, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
@@ -241,7 +241,7 @@ export function SupervisorActivityPanel({
   }
 
   return (
-    <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
+    <div className="px-4 pt-4 pb-8 flex flex-col gap-4" role="log" aria-live="polite" aria-relevant="additions" aria-label="Actividad de supervisores">
       {reincidentesVisibles.length > 0 && (
         <div className="rounded overflow-hidden"
           style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
@@ -321,7 +321,7 @@ export function SupervisorActivityPanel({
                     {ev.batch && (
                       <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded"
                         style={{ background: '#EDE9FE', color: '#6D28D9' }} title="Transferir Agrupación (Odoo)">
-                        🏷 {ev.batch}
+                        <Tag size={10} aria-hidden="true" /> {ev.batch}
                       </span>
                     )}
                     {ev.palletId != null && (
@@ -341,14 +341,14 @@ export function SupervisorActivityPanel({
                     {ev.batch && (
                       <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded"
                         style={{ background: '#EDE9FE', color: '#6D28D9' }} title="Transferir Agrupación (Odoo)">
-                        🏷 {ev.batch}
+                        <Tag size={10} aria-hidden="true" /> {ev.batch}
                       </span>
                     )}
                     {(ev.printCount ?? 0) > 1 && (
                       <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded"
                         style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
                         title="Veces que se imprimió esta etiqueta">
-                        ↻ ×{ev.printCount}
+                        <RotateCcw size={10} aria-hidden="true" /> ×{ev.printCount}
                       </span>
                     )}
                     {ev.pallets > 0 && (
@@ -659,16 +659,24 @@ function ResumenChip({ icon, label, value, color, active = false, highlight = fa
   return <button type="button" onClick={onClick} aria-pressed={active} className={cls} style={style}>{inner}</button>;
 }
 
-/** Hook: cierra el dropdown al hacer click fuera. */
+/** Hook: cierra el dropdown al hacer click fuera o al presionar Escape (devolviendo el foco al trigger). */
 function useClickOutside(open: boolean, onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    const onMouseDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); triggerRef.current?.focus(); }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [open, onClose]);
-  return ref;
+  return { ref, triggerRef };
 }
 
 /** Selector único con búsqueda (Tienda / Picker). null = todas. */
@@ -678,26 +686,28 @@ function SearchSelect({ value, onChange, options, allLabel, placeholder }: {
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const ref = useClickOutside(open, () => setOpen(false));
+  const { ref, triggerRef } = useClickOutside(open, () => setOpen(false));
   const filtered = q.trim() ? options.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : options;
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => { setOpen(o => !o); setQ(''); }}
+      <button ref={triggerRef} type="button" onClick={() => { setOpen(o => !o); setQ(''); }}
+        aria-haspopup="listbox" aria-expanded={open}
         className="text-[12px] px-2 py-1 rounded border bg-white inline-flex items-center gap-1"
         style={{ borderColor: '#CBD5E1', color: value ? '#1E293B' : '#64748B' }}>
         <span className="truncate" style={{ maxWidth: 140 }}>{value ?? allLabel}</span>
-        <span style={{ color: '#94A3B8' }}>▾</span>
+        <ChevronDown size={12} style={{ color: '#94A3B8' }} aria-hidden="true" />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-56 bg-white border rounded shadow-lg" style={{ borderColor: '#CBD5E1' }}>
+        <div role="listbox" aria-label={placeholder} className="absolute z-50 mt-1 w-56 bg-white border rounded shadow-lg" style={{ borderColor: '#CBD5E1' }}>
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder}
+            aria-label={placeholder}
             className="w-full px-2 py-1.5 text-[12px] border-b outline-none" style={{ borderColor: '#E2E8F0' }} />
           <div className="max-h-56 overflow-auto py-1">
-            <button type="button" onClick={() => { onChange(null); setOpen(false); }}
+            <button type="button" role="option" aria-selected={!value} onClick={() => { onChange(null); setOpen(false); }}
               className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50"
               style={{ color: !value ? '#1E40AF' : '#475569', fontWeight: !value ? 700 : 500 }}>{allLabel}</button>
             {filtered.map(o => (
-              <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
+              <button key={o} type="button" role="option" aria-selected={value === o} onClick={() => { onChange(o); setOpen(false); }}
                 className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50"
                 style={{ color: value === o ? '#1E40AF' : '#334155', fontWeight: value === o ? 700 : 500 }}>{o}</button>
             ))}
@@ -716,20 +726,22 @@ function MultiSelect({ values, onToggle, onClear, options, allLabel }: {
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const ref = useClickOutside(open, () => setOpen(false));
+  const { ref, triggerRef } = useClickOutside(open, () => setOpen(false));
   const filtered = q.trim() ? options.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : options;
   const label = values.size === 0 ? allLabel : values.size === 1 ? [...values][0] : `${values.size} cuentas`;
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => { setOpen(o => !o); setQ(''); }}
+      <button ref={triggerRef} type="button" onClick={() => { setOpen(o => !o); setQ(''); }}
+        aria-haspopup="listbox" aria-expanded={open}
         className="text-[12px] px-2 py-1 rounded border bg-white inline-flex items-center gap-1"
         style={{ borderColor: '#CBD5E1', color: values.size ? '#1E293B' : '#64748B' }}>
         <span className="truncate" style={{ maxWidth: 160 }}>{label}</span>
-        <span style={{ color: '#94A3B8' }}>▾</span>
+        <ChevronDown size={12} style={{ color: '#94A3B8' }} aria-hidden="true" />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-60 bg-white border rounded shadow-lg" style={{ borderColor: '#CBD5E1' }}>
+        <div role="listbox" aria-multiselectable="true" aria-label="Cuentas" className="absolute z-50 mt-1 w-60 bg-white border rounded shadow-lg" style={{ borderColor: '#CBD5E1' }}>
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar cuenta…"
+            aria-label="Buscar cuenta"
             className="w-full px-2 py-1.5 text-[12px] border-b outline-none" style={{ borderColor: '#E2E8F0' }} />
           <div className="max-h-56 overflow-auto py-1">
             {values.size > 0 && (
@@ -741,11 +753,11 @@ function MultiSelect({ values, onToggle, onClear, options, allLabel }: {
             {filtered.map(o => {
               const checked = values.has(o);
               return (
-                <button key={o} type="button" onClick={() => onToggle(o)}
+                <button key={o} type="button" role="option" aria-selected={checked} onClick={() => onToggle(o)}
                   className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-slate-50 flex items-center gap-2" style={{ color: '#334155' }}>
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded border text-[10px] flex-shrink-0"
                     style={{ borderColor: checked ? '#1E40AF' : '#CBD5E1', background: checked ? '#1E40AF' : '#fff', color: '#fff' }}>
-                    {checked ? '✓' : ''}
+                    {checked && <Check size={10} aria-hidden="true" />}
                   </span>
                   <span className="truncate">{o}</span>
                 </button>
