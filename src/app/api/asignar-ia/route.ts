@@ -16,6 +16,32 @@ export const maxDuration = 30;
 // hace fallar la llamada → el enrutador cae al optimizador GPS ("La IA no respondió").
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
+// Diagnóstico (sin logs de Vercel a mano): abre /api/asignar-ia en el navegador (con sesión) para
+// ver si la key está puesta y qué modelo usa. Con /api/asignar-ia?ping=1 hace una llamada mínima a
+// Anthropic y devuelve el error EXACTO si el modelo/crédito/red fallan — así se ve la causa real de
+// "La IA no respondió" sin exponer el secreto (nunca se devuelve la key, solo si está presente).
+export async function GET(request: NextRequest) {
+  if (!await verifyAuth(request)) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const base = { configurada: !!apiKey, model: MODEL, modelPorEnv: !!process.env.ANTHROPIC_MODEL };
+  const ping = request.nextUrl.searchParams.get('ping');
+  if (ping !== '1' || !apiKey) return NextResponse.json(base);
+  try {
+    const anthropic = new Anthropic({ apiKey });
+    const msg = await anthropic.messages.create({
+      model: MODEL, max_tokens: 8,
+      messages: [{ role: 'user', content: 'Responde solo con: OK' }],
+    });
+    const txt = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('').trim();
+    return NextResponse.json({ ...base, ping: 'ok', respuesta: txt });
+  } catch (err) {
+    const detalle = err instanceof Error ? err.message : 'Error desconocido';
+    return NextResponse.json({ ...base, ping: 'error', detalle });
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
