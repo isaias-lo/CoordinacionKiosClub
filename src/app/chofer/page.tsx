@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { guiaHref } from '@/lib/guiaUrl';
 
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -246,7 +247,7 @@ export default function ChoferPage() {
                         <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                           <span style={{ fontSize: 13, color: '#fff', fontFamily: 'monospace' }}>#{g.folio_dte}</span>
                           {g.drive_url && (
-                            <a href={g.drive_url} target="_blank" rel="noreferrer"
+                            <a href={guiaHref(g.drive_url)} target="_blank" rel="noreferrer"
                               style={{ padding: '4px 12px', background: '#2d3f8a', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
                               Descargar
                             </a>
