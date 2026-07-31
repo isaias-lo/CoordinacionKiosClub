@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams }           from 'next/navigation';
+import { guiaHref }            from '@/lib/guiaUrl';
 
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -254,7 +255,7 @@ export default function RutaPublicaPage() {
                 {g.store_cod && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{g.store_cod}</div>}
               </div>
               {g.drive_url && (
-                <a href={g.drive_url} target="_blank" rel="noreferrer"
+                <a href={guiaHref(g.drive_url)} target="_blank" rel="noreferrer"
                   style={{ padding: '5px 13px', background: '#1a2550', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
                   Descargar PDF
                 </a>

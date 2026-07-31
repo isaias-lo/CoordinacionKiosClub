@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
+import { guiaHref } from '../../lib/guiaUrl';
 import type { FotoRegistro, QRData, SelloEstado } from './RecepcionTiendaScreen';
 import { formatHora } from './RecepcionTiendaScreen';
 
@@ -498,7 +499,7 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
         </button>
 
         {driveFileId && (
-          <a href={`https://drive.google.com/file/d/${driveFileId}/view`} target="_blank" rel="noopener noreferrer"
+          <a href={guiaHref(driveFileId)} target="_blank" rel="noopener noreferrer"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px 0', background: 'rgba(27,42,107,0.08)', border: '1.5px solid rgba(27,42,107,0.2)', color: '#1B2A6B', borderRadius: 14, fontWeight: 700, fontSize: 15, textDecoration: 'none' }}>
             ↓ Ver guías de despacho
           </a>
