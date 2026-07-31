@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
+import { safeStorageKey } from '@/lib/storageKey';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
@@ -22,7 +23,9 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = supabaseServer();
-    const filename = `${Date.now()}_${file.name}`;
+    // safeStorageKey: el nombre trae el código de tienda, que puede tener Ñ/acentos (23PEÑ →
+    // "Invalid key" en Storage → la guía nunca subía y quedaba sin PDF descargable).
+    const filename = safeStorageKey(`${Date.now()}_${file.name}`);
     const buffer = Buffer.from(await file.arrayBuffer());
 
     const { error: uploadError } = await sb.storage
