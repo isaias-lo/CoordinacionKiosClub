@@ -135,8 +135,8 @@ export function PickingScreen() {
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
 
   const {
-    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId,
-    fetchBatchOps, fetchOpsForStore, refreshOp,
+    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
+    fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
   } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
   const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
@@ -1336,18 +1336,23 @@ export function PickingScreen() {
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
                 return (
-                  <div key={cod} className="mb-6">
-                    <div className="flex items-center gap-3 mb-3 print:mb-2 flex-wrap">
-                      <span className="font-mono text-[13px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{cod}</span>
-                      <span className="text-[16px] text-text-2 font-semibold">{nameFor(cod)}</span>
+                  <section key={cod} aria-label={`Tienda ${cod} — ${nameFor(cod)}`}
+                    className="mb-6 rounded-xl"
+                    style={{ border: '1px solid var(--color-border)', borderTop: '3px solid #1E40AF', background: '#F8FAFC' }}>
+                    {/* Header sticky: se fija arriba mientras se hace scroll dentro de esta tienda,
+                        y es empujado por el header sticky de la siguiente (patrón CSS puro). */}
+                    <div className="sticky top-0 z-20 flex items-center gap-3 px-3 py-2.5 print:static print:mb-2 flex-wrap"
+                      style={{ background: '#F8FAFC', borderBottom: '1px solid var(--color-border)', borderTopLeftRadius: 11, borderTopRightRadius: 11 }}>
+                      <span className="font-mono text-[13px] font-semibold px-2 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#475569' }}>{cod}</span>
+                      <span className="text-[18px] font-semibold" style={{ color: '#0F172A' }}>{nameFor(cod)}</span>
                       {storeStatus === 'complete' && (
-                        <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
+                        <span className="text-[13px] font-bold px-3 py-0.5 rounded"
                           style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
                           ✓ Todo realizado
                         </span>
                       )}
                       {storeStatus === 'partial' && (
-                        <span className="text-[13px] font-bold px-3 py-0.5 rounded-full"
+                        <span className="text-[13px] font-bold px-3 py-0.5 rounded"
                           style={{ background: 'rgba(234,179,8,0.12)', color: '#D97706', border: '1px solid rgba(234,179,8,0.3)' }}>
                           {doneOps}/{totalOps} ops
                         </span>
@@ -1356,20 +1361,32 @@ export function PickingScreen() {
                       {!isLoading && storeGroups.length === 0 && (
                         <span className="text-[14px] text-text-3 font-medium">Sin operaciones de Abastecimiento hoy</span>
                       )}
-                      {/* Per-store print button */}
-                      {(() => {
-                        const storeLabels = printableLabels.filter(l => l.storeCod === cod);
-                        if (!storeLabels.length) return null;
-                        return (
-                          <button onClick={() => printStoreLabels(cod)}
-                            className="ml-auto print:hidden text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-                            style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                            <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                      {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
+                      <div className="ml-auto flex items-center gap-2 print:hidden">
+                        {ops.length > 0 && (
+                          <button onClick={() => void refreshAllOps(ops, cod)}
+                            disabled={refreshingStoreCod === cod}
+                            className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
+                            <RefreshCw size={13} className={refreshingStoreCod === cod ? 'animate-spin' : ''} />
+                            Actualizar todo
                           </button>
-                        );
-                      })()}
+                        )}
+                        {(() => {
+                          const storeLabels = printableLabels.filter(l => l.storeCod === cod);
+                          if (!storeLabels.length) return null;
+                          return (
+                            <button onClick={() => printStoreLabels(cod)}
+                              className="text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
+                              style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
+                              <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
 
+                    <div className="px-3 pt-3 pb-4">
                     {/* Sin asignar warning */}
                     {(() => {
                       const sinAsignar = (allGroupedByStore[cod] ?? []).filter(g => g.key === 'Sin asignar');
@@ -1516,8 +1533,8 @@ export function PickingScreen() {
                                         {col.groups.map(g => renderCard(g, true))}
                                       </div>
                                     ) : (
-                                      <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
-                                        style={{ borderColor: meta.color + '28', background: meta.bg }}>
+                                      <div className="rounded-lg border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
+                                        style={{ borderColor: meta.color + '28', background: '#fff' }}>
                                         <div className="mb-1" style={{ opacity: 0.18 }}><Package size={28} /></div>
                                         <div className="text-[12px] font-semibold text-center" style={{ color: meta.color, opacity: 0.5 }}>
                                           Sin operaciones aún
@@ -1541,7 +1558,8 @@ export function PickingScreen() {
                           </div>
                         );
                       })()}
-                  </div>
+                    </div>
+                  </section>
                 );
               })}
             </div>

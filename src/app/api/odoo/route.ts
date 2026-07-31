@@ -33,11 +33,6 @@ type BatchPicking = {
   responsible: string; responsibleId: number | null; lineCount: number; batch: string;
 };
 
-// In-flight deduplication: si llegan dos requests idénticos en la misma instancia lambda
-// antes de que el primero complete, el segundo espera el resultado del primero
-// en vez de disparar otra query a Odoo.
-const _inflightBatch = new Map<string, Promise<Record<string, BatchPicking[]>>>();
-
 /** Formatea una Date como 'YYYY-MM-DD' usando la hora LOCAL (no UTC). */
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -90,21 +85,24 @@ async function odooRpc(baseUrl: string, params: OdooRpcParams): Promise<unknown>
   return data.result;
 }
 
-// ─── picking_batch_operations — lógica extraída a scope de módulo para unstable_cache ──
-// Acepta (cods, todayStr, includeDoneToday) como args serializables.
+// ─── Pickings de HOY — lógica cods-independiente extraída a scope de módulo para unstable_cache ──
+// Antes, picking_today_operations (1 tienda) y picking_batch_operations (N tiendas) hacían
+// cada una su propia consulta a Odoo con exactamente el mismo trabajo (mismo domain, mismo
+// rango de fecha) — solo difería el bucketing final por tienda. Esta función devuelve TODOS
+// los pickings del día, sin filtrar por tienda; el filtrado/bucketing se hace en JS después,
+// así que un fetch de 1 tienda y uno de 8 comparten la misma cache key y el mismo Odoo RPC.
 // Lee uid/url/db/apiKey del estado del módulo (constantes + caché de auth).
-async function _runBatchQuery(
-  cods: string[],
+async function _fetchDayPickings(
   todayStr: string,
   includeDoneToday: boolean,
-): Promise<Record<string, BatchPicking[]>> {
+): Promise<BatchPicking[]> {
   const url    = SRV_URL_PROCESSED;
   const db     = SRV_DB;
   const apiKey = SRV_API_KEY;
   const uid    = _cachedUid;
   if (!uid || !url || !db || !apiKey) throw new Error('Config Odoo no disponible para batch');
 
-  // Picking type cache por fecha (misma lógica que en picking_today_operations)
+  // Picking type cache por fecha
   if (_pickingTypeDateKey !== todayStr) {
     try {
       const ptRows = (await odooRpc(url, {
@@ -174,42 +172,66 @@ async function _runBatchQuery(
     }
   } catch { /* lineCount stays 0 — non-critical */ }
 
+  return allPickings.map((p): BatchPicking => ({
+    id:            p.id,
+    name:          p.name,
+    origin:        typeof p.origin === 'string' ? p.origin : '',
+    partner:       Array.isArray(p.partner_id) ? p.partner_id[1] : '',
+    fromLocation:  Array.isArray(p.location_id) ? p.location_id[1] : '',
+    toLocation:    Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
+    state:         p.state,
+    scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
+    dateDone:      typeof p.date_done === 'string' ? p.date_done : null,
+    pickingType:   Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
+    responsible:   Array.isArray(p.user_id) ? p.user_id[1] : '',
+    responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
+    lineCount:     linesByPicking[p.id] ?? 0,
+    batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
+  }));
+}
+
+/** ¿Un picking pertenece a una tienda? Coincide por origin (texto manual) o por ubicación destino. */
+function matchesStore(p: BatchPicking, cod: string): boolean {
+  return p.origin.toUpperCase().includes(cod) || p.toLocation.toUpperCase().includes(cod);
+}
+
+/** Bucketing por tienda — misma lógica que antes vivía al final de _runBatchQuery. */
+function groupByStore(pickings: BatchPicking[], cods: string[]): Record<string, BatchPicking[]> {
   const byStore: Record<string, BatchPicking[]> = {};
   for (const cod of cods) byStore[cod] = [];
-  for (const p of allPickings) {
-    const origin = typeof p.origin === 'string' ? p.origin.toUpperCase() : '';
-    const loc    = Array.isArray(p.location_dest_id) ? (p.location_dest_id[1] as string).toUpperCase() : '';
-    const mapped: BatchPicking = {
-      id:            p.id,
-      name:          p.name,
-      origin:        typeof p.origin === 'string' ? p.origin : '',
-      partner:       Array.isArray(p.partner_id) ? p.partner_id[1] : '',
-      fromLocation:  Array.isArray(p.location_id) ? p.location_id[1] : '',
-      toLocation:    Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
-      state:         p.state,
-      scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
-      dateDone:      typeof p.date_done === 'string' ? p.date_done : null,
-      pickingType:   Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
-      responsible:   Array.isArray(p.user_id) ? p.user_id[1] : '',
-      responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
-      lineCount:     linesByPicking[p.id] ?? 0,
-      batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
-    };
+  for (const p of pickings) {
     for (const cod of cods) {
-      if (origin.includes(cod) || loc.includes(cod)) { byStore[cod].push(mapped); break; }
+      if (matchesStore(p, cod)) { byStore[cod].push(p); break; }
     }
   }
   return byStore;
 }
 
-// Caché de 30 s en el Data Cache de Vercel — compartido entre todas las lambdas del
-// mismo deployment. Sólo el primer request en una ventana de 30 s llega a Odoo;
+// Caché de 30 s en el Data Cache de Vercel — compartida entre TODAS las lambdas Y TODOS los
+// callers (1 tienda o N tiendas). Sólo el primer request en una ventana de 30 s llega a Odoo;
 // el resto lee el resultado cacheado sin tocar el servidor Odoo.
-const cachedBatchQuery = unstable_cache(
-  _runBatchQuery,
-  ['odoo-picking-batch'],
+const cachedDayPickings = unstable_cache(
+  _fetchDayPickings,
+  ['odoo-picking-day'],
   { revalidate: 30 },
 );
+
+// In-flight dedup adicional: cubre la ventana antes de que unstable_cache registre el
+// resultado (si dos requests idénticos llegan casi al mismo tiempo en la misma instancia lambda).
+const _inflightDay = new Map<string, Promise<BatchPicking[]>>();
+
+async function getDayPickings(todayStr: string, includeDoneToday: boolean): Promise<BatchPicking[]> {
+  const key = `${todayStr}:${includeDoneToday}`;
+  const inflight = _inflightDay.get(key);
+  if (inflight) return inflight;
+  const promise = cachedDayPickings(todayStr, includeDoneToday);
+  _inflightDay.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    _inflightDay.delete(key);
+  }
+}
 
 export async function POST(req: NextRequest) {
   if (!checkRateLimit(`odoo:${getClientIp(req)}`, { max: 30, windowMs: 60_000 }))
@@ -439,124 +461,18 @@ export async function POST(req: NextRequest) {
     }
 
     /* ── picking_today_operations ── */
+    // Antes hacía su propia consulta a Odoo (sin caché ni dedup) casi idéntica a la de
+    // picking_batch_operations. Ahora ambas comparten getDayPickings (caché 30s + dedup),
+    // y esta acción solo filtra el resultado por tienda en JS. query === '' devuelve TODAS
+    // las tiendas — usado por /api/picking-store-progress para el semáforo completo.
     if (action === 'picking_today_operations') {
       const storeCod = (query || '').trim().toUpperCase();
+      const todayStr = localDateStr(new Date());
 
-      // Build today's date range using local date (not UTC) to avoid missing pickings
-      // after ~20:00 in negative-UTC timezones like Chile (UTC-3/-4)
-      const now = new Date();
-      const todayStr = localDateStr(now);
+      const dayPickings = await getDayPickings(todayStr, body.includeDoneToday ?? false);
+      const pickings = storeCod ? dayPickings.filter(p => matchesStore(p, storeCod)) : dayPickings;
 
-      // Find picking_type IDs for "Despacho Tiendas" — cached by date to avoid extra RPC.
-      const todayKey = localDateStr(new Date());
-      if (_pickingTypeDateKey !== todayKey) {
-        try {
-          const ptRows = (await odooRpc(url, {
-            service: 'object', method: 'execute_kw',
-            args: [db, uid, apiKey, 'stock.picking.type', 'search_read',
-              [[['name', 'ilike', 'Despacho Tiendas']]],
-              { fields: ['id'], limit: 10 },
-            ],
-          })) as Array<{ id: number }>;
-          _pickingTypeIds    = ptRows.map(r => r.id);
-          _pickingTypeDateKey = todayKey;
-        } catch { /* si falla, usa el caché anterior o vacío */ }
-      }
-      const pickingTypeIds = _pickingTypeIds;
-
-      const desde = todayStr + ' 00:00:00';
-      const hasta = todayStr + ' 23:59:59';
-      // Ventana de fecha. Por defecto: pickings PROGRAMADOS para hoy (scheduled_date).
-      // includeDoneToday: además, los TERMINADOS hoy (date_done) aunque su scheduled_date
-      // sea de otro día (pallets adelantados). Evita que una tienda ya pickeada hoy
-      // quede gris en el semáforo solo porque se programó para otro día.
-      const dateCond: unknown[] = body.includeDoneToday
-        ? ['|',
-            '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta],
-            '&', ['date_done', '>=', desde], ['date_done', '<=', hasta]]
-        : [['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta]];
-
-      const domain: unknown[] = [
-        ['state', 'not in', ['draft', 'cancel']],
-        ['origin', 'not ilike', 'AUDITORIA'],
-        ...dateCond,
-      ];
-      // Filter by picking type if found; fallback to origin containing "Abastecimiento"
-      if (pickingTypeIds.length > 0) {
-        domain.push(['picking_type_id', 'in', pickingTypeIds]);
-      } else {
-        domain.push(['origin', 'ilike', 'Abastecimiento']);
-      }
-      if (storeCod) {
-        // La tienda se reconoce por el origin (texto manual, puede tener typos) O por
-        // la ubicación destino (location_dest_id = columna "A", dato estructurado y fiable).
-        domain.push('|',
-          ['origin', 'ilike', storeCod],
-          ['location_dest_id.complete_name', 'ilike', storeCod]);
-      }
-
-      const pickings = (await odooRpc(url, {
-        service: 'object',
-        method: 'execute_kw',
-        args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
-          fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
-                   'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id'],
-          limit: 500,
-          order: 'scheduled_date asc',
-        }],
-      })) as Array<{
-        id: number; name: string; origin: string | false;
-        partner_id: [number, string] | false;
-        location_id: [number, string]; location_dest_id: [number, string];
-        state: string; scheduled_date: string | false; date_done: string | false;
-        picking_type_id: [number, string];
-        user_id: [number, string] | false;
-        batch_id: [number, string] | false;
-      }>;
-
-      // Batch-fetch stock.move records — only count moves with actual stock reserved.
-      // state 'confirmed' = demanded but nothing reserved (reserved = 0, not pickeable).
-      // state 'assigned' | 'partially_available' | 'done' = has reserved qty (pickeable).
-      // This query is best-effort: if it fails the pickings still load with lineCount = 0.
-      const pickingIds = pickings.map(p => p.id);
-      let linesByPicking: Record<number, number> = {};
-      try {
-        if (pickingIds.length) {
-          const moves = (await odooRpc(url, {
-            service: 'object',
-            method: 'execute_kw',
-            args: [db, uid, apiKey, 'stock.move', 'search_read',
-              [[['picking_id', 'in', pickingIds],
-                ['state', 'in', ['assigned', 'partially_available', 'done']]]],
-              { fields: ['picking_id'], limit: 5000 },
-            ],
-          })) as Array<{ picking_id: [number, string] | false }>;
-          for (const mv of moves) {
-            if (!Array.isArray(mv.picking_id)) continue;
-            const pid = mv.picking_id[0];
-            linesByPicking[pid] = (linesByPicking[pid] ?? 0) + 1;
-          }
-        }
-      } catch { /* lineCount stays 0 for all pickings — non-critical */ }
-
-      return NextResponse.json({
-        pickings: pickings.map(p => ({
-          id: p.id,
-          name: p.name,
-          origin: typeof p.origin === 'string' ? p.origin : '',
-          partner: Array.isArray(p.partner_id) ? p.partner_id[1] : '',
-          fromLocation: Array.isArray(p.location_id) ? p.location_id[1] : '',
-          toLocation: Array.isArray(p.location_dest_id) ? p.location_dest_id[1] : '',
-          state: p.state,
-          scheduledDate: typeof p.scheduled_date === 'string' ? p.scheduled_date : '',
-          dateDone: typeof p.date_done === 'string' ? p.date_done : null,
-          pickingType: Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : '',
-          responsible: Array.isArray(p.user_id) ? p.user_id[1] : '',
-          responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
-          lineCount: linesByPicking[p.id] ?? 0,
-          batch: Array.isArray(p.batch_id) ? p.batch_id[1] : '',
-        })),
-      });
+      return NextResponse.json({ pickings });
     }
 
     /* ── picking_batch_operations ── */
@@ -564,28 +480,14 @@ export async function POST(req: NextRequest) {
       const rawCods = ((body.cods as string[] | undefined) ?? []).map(c => c.toUpperCase()).filter(Boolean);
       if (!rawCods.length) return NextResponse.json({ byStore: {} });
 
-      const todayStr        = localDateStr(new Date());
+      const todayStr         = localDateStr(new Date());
       const includeDoneToday = body.includeDoneToday ?? false;
-      // Ordenar cods para que el mismo conjunto siempre genere la misma cache key
+      // Ordenar cods no cambia el resultado (ya no forma parte de la cache key), pero mantiene
+      // el orden determinista del objeto byStore devuelto.
       const sortedCods = [...rawCods].sort();
-      const batchKey   = `${sortedCods.join(',')}:${todayStr}:${includeDoneToday}`;
 
-      // 1. In-flight deduplication — si ya hay una query idéntica en curso en esta instancia,
-      //    espera su resultado en vez de hacer otra llamada a Odoo.
-      const inflight = _inflightBatch.get(batchKey);
-      if (inflight) {
-        return NextResponse.json({ byStore: await inflight });
-      }
-
-      // 2. cachedBatchQuery usa unstable_cache con 30 s de revalidation en el Data Cache de
-      //    Vercel (compartido entre todas las lambdas). Solo el primer request en 30 s va a Odoo.
-      const promise = cachedBatchQuery(sortedCods, todayStr, includeDoneToday);
-      _inflightBatch.set(batchKey, promise);
-      try {
-        return NextResponse.json({ byStore: await promise });
-      } finally {
-        _inflightBatch.delete(batchKey);
-      }
+      const dayPickings = await getDayPickings(todayStr, includeDoneToday);
+      return NextResponse.json({ byStore: groupByStore(dayPickings, sortedCods) });
     }
 
     /* ── picking_stats_range ── */
@@ -675,7 +577,27 @@ export async function POST(req: NextRequest) {
     }
 
     /* ── picking_check_state ── */
+    // Modo batch (pickings: string[] no vacío) — un solo RPC para refrescar N operaciones
+    // en vez de N llamadas individuales (usado por "Actualizar todo"). Modo single (query)
+    // se mantiene igual para el refresco individual de una sola operación.
     if (action === 'picking_check_state') {
+      if (pickings.length > 0) {
+        const names = pickings.map(s => s.trim()).filter(Boolean);
+        if (!names.length) return NextResponse.json({ states: {} });
+        const rows = (await odooRpc(url, {
+          service: 'object',
+          method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'search_read',
+            [[['name', 'in', names]]],
+            { fields: ['name', 'state', 'date_done'] },
+          ],
+        })) as Array<{ name: string; state: string; date_done: string | false }>;
+        const states: Record<string, { state: string; dateDone: string | null }> = {};
+        for (const r of rows) {
+          states[r.name] = { state: r.state, dateDone: typeof r.date_done === 'string' ? r.date_done : null };
+        }
+        return NextResponse.json({ states });
+      }
       if (!query) return NextResponse.json({ error: 'Referencia requerida' }, { status: 400 });
       const result = (await odooRpc(url, {
         service: 'object',

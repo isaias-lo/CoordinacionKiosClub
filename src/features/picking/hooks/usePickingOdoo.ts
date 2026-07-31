@@ -11,15 +11,17 @@ interface UsePickingOdooParams {
 }
 
 interface UsePickingOdooResult {
-  hasOdoo:       boolean;
-  opsMap:        Record<string, PickingOperation[]>;
-  loadingCods:   string[];
-  errorCods:     string[];
-  lastRefresh:   Date | null;
-  refreshingId:  number | null;
+  hasOdoo:            boolean;
+  opsMap:             Record<string, PickingOperation[]>;
+  loadingCods:        string[];
+  errorCods:          string[];
+  lastRefresh:        Date | null;
+  refreshingId:       number | null;
+  refreshingStoreCod: string | null;
   fetchBatchOps:    (cods: string[]) => Promise<void>;
   fetchOpsForStore: (cod: string)   => Promise<void>;
   refreshOp:        (op: PickingOperation, storeCod: string) => Promise<void>;
+  refreshAllOps:    (ops: PickingOperation[], storeCod: string) => Promise<void>;
 }
 
 export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingOdooParams): UsePickingOdooResult {
@@ -30,6 +32,7 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
   const [errorCods,    setErrorCods]    = useState<string[]>([]);
   const [lastRefresh,  setLastRefresh]  = useState<Date | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
+  const [refreshingStoreCod, setRefreshingStoreCod] = useState<string | null>(null);
 
   // ─── Batch fetch ─────────────────────────────────────────────────────────────
   // Un solo request para todas las tiendas, reemplaza N fetches paralelos.
@@ -132,6 +135,36 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
     setRefreshingId(null);
   }, [hasOdoo]);
 
+  // ─── Refresh de TODAS las operaciones de una tienda en un solo request ─────────
+  // Antes, refrescar N operaciones pendientes requería N llamadas individuales a
+  // picking_check_state. Ahora se envían todos los nombres juntos (acción batch del
+  // mismo endpoint) y se aplica el resultado con un solo setOpsMap.
+
+  const refreshAllOps = useCallback(async (ops: PickingOperation[], storeCod: string) => {
+    if (!hasOdoo || ops.length === 0) return;
+    setRefreshingStoreCod(storeCod);
+    try {
+      const res = await fetch('/api/odoo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'picking_check_state', pickings: ops.map(o => o.name) }),
+      });
+      const data = (await res.json()) as { states?: Record<string, { state: string; dateDone: string | null }> };
+      if (res.ok && data.states) {
+        const states = data.states;
+        setOpsMap(prev => ({
+          ...prev,
+          [storeCod]: (prev[storeCod] ?? []).map(o =>
+            states[o.name] ? { ...o, state: states[o.name].state, dateDone: states[o.name].dateDone ?? o.dateDone } : o
+          ),
+        }));
+      }
+    } catch (e) {
+      console.error('[picking:refreshAll]', e);
+    } finally {
+      setRefreshingStoreCod(null);
+    }
+  }, [hasOdoo]);
+
   // ─── Auto-refresh silencioso cada 3 minutos ───────────────────────────────────
 
   useEffect(() => {
@@ -159,5 +192,8 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
     return () => document.removeEventListener('visibilitychange', handleVisible);
   }, [selectedCods, fetchBatchOps]);
 
-  return { hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, fetchBatchOps, fetchOpsForStore, refreshOp };
+  return {
+    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
+    fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
+  };
 }
