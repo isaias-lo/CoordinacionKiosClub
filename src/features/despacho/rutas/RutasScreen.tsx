@@ -194,6 +194,11 @@ export default function RutasScreen() {
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
   const tiendasRef = useRef(tiendas);
   useEffect(() => { tiendasRef.current = tiendas; }, [tiendas]);
+  // Fase 2 (opt-in): agrupar el bucket "Centro" por corredor al rutear. Default APAGADO → ruteo
+  // idéntico al histórico. El usuario lo enciende para comparar.
+  const [agruparCorredor, setAgruparCorredor] = useState(false);
+  const agruparCorredorRef = useRef(agruparCorredor);
+  useEffect(() => { agruparCorredorRef.current = agruparCorredor; }, [agruparCorredor]);
   // Últimas filas de despacho_sesion (de otros equipos), por cod normalizado.
   // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
   // los counts llegan antes de que cargue el calendario). #4
@@ -1255,7 +1260,7 @@ export default function RutasScreen() {
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
     paradasAdicionales.filter(p => p.gps).forEach(p => ts.push({ c: p.id, p: p.p, b: p.b }));
 
-    const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas);
+    const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas, agruparCorredorRef.current);
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
 
@@ -1282,7 +1287,7 @@ export default function RutasScreen() {
     try {
       const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
       const items: StoreItem[] = stores.map(s => ({ c: s.cod, p: s.p, b: s.b }));
-      const gpsRutas = asignar(items, flota, extGps, cdRef.current, null, null, null, extTiendas);
+      const gpsRutas = asignar(items, flota, extGps, cdRef.current, null, null, null, extTiendas, agruparCorredorRef.current);
       const truckSet = new Set(trucks.map(t => t.patente));
       const ref: Record<string, string[]> = {};
       gpsRutas.forEach(r => { if (r.ts.length && truckSet.has(r.v.p)) ref[r.v.p] = r.ts.map(t => t.c); });
@@ -1321,7 +1326,7 @@ export default function RutasScreen() {
     // Columna alternativa: se muestra YA con el optimizador GPS (síncrono) y, en segundo plano, se
     // consulta la IA para reemplazarla. Si la IA falla o tarda, queda el GPS con aviso — el usuario
     // siempre sabe qué motor ve (etiqueta "Ruta IA" 🤖 vs "Ruta Óptima (GPS)" 🗺️ + aviso de caída).
-    const gpsRutas = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas);
+    const gpsRutas = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas, agruparCorredorRef.current);
     const token    = ++comparacionTokenRef.current;
     const payload  = construirPayloadIA();
     const usaIA    = payload.stores.length > 0 && payload.trucks.length > 0;
@@ -1870,6 +1875,8 @@ export default function RutasScreen() {
           onOpenParadas={handleOpenParadas}
           onModo={m => setModo(m)}
           onToggleGroup={handleToggleGroup}
+          agruparCorredor={agruparCorredor}
+          onToggleCorredor={() => setAgruparCorredor(v => !v)}
           onToggleChip={handleToggleChip}
           onUpdateChip={handleUpdateChip}
           flotaStatus={flotaStatus}

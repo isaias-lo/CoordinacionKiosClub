@@ -1,5 +1,6 @@
 import { dkm } from './helpers';
 import { PROVIDENCIA, REGION_V, CORREDOR_AUTOPISTA } from '../data/tiendas';
+import { corredorAuto } from './corredorAsignar';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 
@@ -43,6 +44,10 @@ export function asignar(
   regV?: Set<string> | null,
   autoSets?: Set<string> | null,
   tiendasData?: Record<string, TiendaInfo>,
+  // Fase 2 (OPT-IN, default false): agrupar el bucket "Centro" por corredor (auto por GPS) y
+  // rutear cada corredor junto. APAGADO = comportamiento idéntico al histórico (garantizado por
+  // el test de no-regresión). ENCENDIDO = tiendas de un mismo corredor tienden a ir juntas.
+  agruparPorCorredor: boolean = false,
 ): Ruta[] {
   const _prov  = prov  || PROVIDENCIA;
   const _regV  = regV  || REGION_V;
@@ -123,7 +128,29 @@ export function asignar(
     }
   }
 
-  tCentro.forEach(t => {
+  // Fase 2 (opt-in): antes de asignar Centro tienda-por-tienda, sub-agrupa por corredor (por GPS)
+  // y rutea cada corredor junto en un camión dedicado; lo que no quepa cae a la lógica per-store.
+  let centroPend: StoreItem[] = tCentro;
+  if (agruparPorCorredor && tCentro.length > 1) {
+    const porCorredor = new Map<string, StoreItem[]>();
+    for (const t of tCentro) {
+      const g = gps[t.c];
+      const cor = (g && g.length >= 2) ? (corredorAuto({ lat: g[0], lng: g[1] }) ?? '') : '';
+      const key = cor || '_sin';
+      const arr = porCorredor.get(key) ?? [];
+      arr.push(t);
+      porCorredor.set(key, arr);
+    }
+    const resto: StoreItem[] = [];
+    for (const [, grupo] of porCorredor) {
+      const r = asignarGrupo(grupo, usadas);
+      if (r) usadas.push(r);
+      else resto.push(...grupo);
+    }
+    centroPend = resto;
+  }
+
+  centroPend.forEach(t => {
     const cands = rutas.filter(r => !usadas.includes(r) && r.tp+t.p <= r.v.c)
                        .sort((a,b) => (b.tp/b.v.c)-(a.tp/a.v.c));
     if (cands.length) { cands[0].ts.push(t); cands[0].tp+=t.p; cands[0].tb+=t.b+(t.ch??0); }

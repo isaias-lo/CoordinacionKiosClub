@@ -33,6 +33,8 @@ interface Props {
   onOpenParadas: () => void;
   onModo: (m: string) => void;
   onToggleGroup: (gid: string) => void;
+  agruparCorredor?: boolean;
+  onToggleCorredor?: () => void;
   onToggleChip: (cod: string) => void;
   onUpdateChip: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
   onToggleFlota: (idx: number) => void;
@@ -160,7 +162,7 @@ export default function InputSection({
   flota, flotaStatus, modo, grps, calT, supervisor, fecha, manualText, errors,
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
-  onModo, onToggleGroup, onToggleChip, onUpdateChip,
+  onModo, onToggleGroup, agruparCorredor = false, onToggleCorredor, onToggleChip, onUpdateChip,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
@@ -501,6 +503,17 @@ export default function InputSection({
             <GroupPill id="costa" label="COSTA"    active={grps.has('costa')} selected={sidebarFilter === 'costa'} onClick={() => handleGroupPill('costa')} />
             <GroupPill id="fal"   label="REGIONES" active={grps.has('fal')}   selected={sidebarFilter === 'fal'}   onClick={() => handleGroupPill('fal')} />
           </div>
+          {/* Fase 2 (opt-in): agrupar el bucket "Centro" por corredor al calcular la ruta.
+              Apagado = ruteo idéntico al histórico. */}
+          {onToggleCorredor && (
+            <button type="button" onClick={onToggleCorredor} title="Agrupa las tiendas sin corredor curado por su corredor (GPS) al calcular la ruta óptima"
+              className="flex items-center gap-2 mt-2.5" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <span style={{ width: 34, height: 20, borderRadius: 99, background: agruparCorredor ? '#3D52CC' : '#CBD5E1', position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
+                <span style={{ position: 'absolute', top: 2, left: agruparCorredor ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
+              </span>
+              <span className="text-[11px] font-semibold" style={{ color: agruparCorredor ? '#1B2A6B' : '#64748B' }}>Agrupar por corredor</span>
+            </button>
+          )}
         </div>
 
         {/* Store list */}
