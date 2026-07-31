@@ -7,6 +7,7 @@ import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { fmtFechaHoraChile } from '@/lib/fechaChile';
 import { CombineAlertsPanel } from './CombineAlertsPanel';
 import { resumenDiferencia } from './recepcionDiff';
+import { contarTiendasPorEstado } from './estadoCounts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SubTab = 'rm' | 'regiones' | 'recepcion';
@@ -541,10 +542,8 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
     return matchDate && matchSearch;
   });
 
-  const counts = SUMMARY_KEYS.reduce<Record<string, number>>((acc, k) => {
-    acc[k] = filtered.filter(r => String(r.seguimiento ?? '') === k).length;
-    return acc;
-  }, {});
+  // Contar por TIENDA (cod distinto), no por línea de pallet/bulto (ver estadoCounts.ts).
+  const { counts, total: totalTiendas } = contarTiendasPorEstado(filtered, SUMMARY_KEYS);
 
   const totalColWidth = activeCols.reduce((s, c) => s + (colWidths[c.key] ?? c.defaultWidth), 0);
 
@@ -689,8 +688,8 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
           })}
           <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl border border-border bg-white ml-auto">
             <div>
-              <div className="text-[18px] font-extrabold text-navy leading-none">{filtered.length}</div>
-              <div className="text-[10px] font-semibold text-text-3 uppercase tracking-wider">Total</div>
+              <div className="text-[18px] font-extrabold text-navy leading-none">{totalTiendas}</div>
+              <div className="text-[10px] font-semibold text-text-3 uppercase tracking-wider">Tiendas · {filtered.length} líneas</div>
             </div>
           </div>
         </div>
