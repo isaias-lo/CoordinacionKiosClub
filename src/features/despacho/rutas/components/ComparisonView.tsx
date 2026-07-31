@@ -1,5 +1,6 @@
 'use client';
 import { dkm, formatCod } from '../utils/helpers';
+import { esErrorDeConfig } from '../ia/errorHint';
 import type { Ruta, StoreItem } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 
@@ -96,7 +97,12 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
         )}
         {iaError && !iaCargando && (
           <div className="mt-2 bg-amber-50 border border-amber-200 rounded-kios2 px-3 py-2 text-[12px] text-amber-700">
-            ⚠ La IA no respondió; la alternativa que ves es el <strong>optimizador GPS</strong>.
+            <div>
+              {esErrorDeConfig(iaError)
+                ? <>⚠ La IA no está <strong>configurada en el servidor</strong> (falta la API key); la alternativa que ves es el <strong>optimizador GPS</strong>.</>
+                : <>⚠ La IA no respondió; la alternativa que ves es el <strong>optimizador GPS</strong>.</>}
+            </div>
+            <div className="mt-1 text-[11px] text-amber-600 break-words">Detalle: {iaError}</div>
           </div>
         )}
       </div>
