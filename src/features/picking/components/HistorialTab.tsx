@@ -5,6 +5,7 @@ import { RotateCcw, Printer } from 'lucide-react';
 import type { PickerGroup, PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { fmtHoraChile } from '@/lib/fechaChile';
+import { escapeHtml } from '@/lib/escapeHtml';
 
 const CAT_COLOR: Record<string, { bg: string; color: string; border: string }> = {
   Comida: { bg: 'rgba(22,163,74,0.08)',  color: '#15803D', border: 'rgba(22,163,74,0.25)' },
@@ -96,19 +97,19 @@ export function HistorialTab({ allGroups, nameChanges, records, palletSlots, onR
     if (!win) return;
     const rows = records.map((r, i) => {
       const hora    = fmtHoraChile(r.printed_at);
-      const tienda  = r.state_key.split('__')[0];
+      const tienda  = escapeHtml(r.state_key.split('__')[0]);
       const u       = unitsByKey[r.state_key];
       const tipos   = u?.tipos ?? [r.tipo];
       const tipotxt = tipos.map(t => t === 'B' ? 'Bulto' : t === 'C' ? 'Contenedor' : t === 'CH' ? 'Chocolate' : 'Pallet').join(' + ');
-      const cats    = (catsByKey[r.state_key] ?? []).join(', ') || '—';
+      const cats    = escapeHtml((catsByKey[r.state_key] ?? []).join(', ') || '—');
       const reimpr = (r.print_count ?? 1) > 1 ? ` ×${r.print_count}` : '';
       return `<tr class="${i % 2 === 0 ? '' : 'alt'}">
-<td class="mono">${hora}</td><td>${r.picker_label}</td>
-<td class="mono">${tienda}</td><td class="mono">${(r.batch || '—') + reimpr}</td><td>${cats}</td>
-<td class="r">${u?.pallets ?? 0}</td><td class="r">${u?.bultos ?? 0}</td><td>${tipotxt}</td></tr>`;
+<td class="mono">${hora}</td><td>${escapeHtml(r.picker_label)}</td>
+<td class="mono">${tienda}</td><td class="mono">${escapeHtml((r.batch || '—') + reimpr)}</td><td>${cats}</td>
+<td class="r">${u?.pallets ?? 0}</td><td class="r">${u?.bultos ?? 0}</td><td>${escapeHtml(tipotxt)}</td></tr>`;
     }).join('');
     const storeRows = Object.entries(byStore).map(([cod, { pallets, bultos, cats }]) =>
-      `<tr><td class="mono cod">${cod}</td><td>${[...cats].join(', ') || '—'}</td><td class="r big">${pallets}</td><td class="r big">${bultos}</td></tr>`
+      `<tr><td class="mono cod">${escapeHtml(cod)}</td><td>${escapeHtml([...cats].join(', ') || '—')}</td><td class="r big">${pallets}</td><td class="r big">${bultos}</td></tr>`
     ).join('');
     win.document.write(`<!DOCTYPE html><html lang="es"><head>
 <meta charset="utf-8"><title>Historial del día — Picking</title>
