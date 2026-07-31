@@ -17,6 +17,29 @@ export function isFetchedToday(opsMapFetchedAt: string | undefined, now: Date = 
   return d.toDateString() === now.toDateString();
 }
 
+/**
+ * Parsea el blob guardado de nombres de picker (localStorage, SAVED_NAMES_KEY), delimitado
+ * por fecha igual que loadSession()/SESSION_KEY. Devuelve {} si: no hay dato, no parsea,
+ * es el formato viejo sin wrapper (Record<string,string> plano — exactamente los datos del
+ * bug de "nombres viejos"), o la fecha guardada no es la de hoy. Autolimpiante: no requiere
+ * migración, el próximo write sobreescribe con el formato nuevo.
+ */
+export function parseSavedNames(raw: string | null | undefined, today: string = todayISO()): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as { date?: unknown; names?: unknown };
+    if (typeof parsed?.date !== 'string' || parsed.date !== today) return {};
+    return (parsed.names && typeof parsed.names === 'object') ? parsed.names as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Serializa los nombres de picker con la fecha de hoy — ver parseSavedNames. */
+export function serializeSavedNames(names: Record<string, string>, today: string = todayISO()): string {
+  return JSON.stringify({ date: today, names });
+}
+
 export function stampFromISO(isoDate: string): string {
   const [yyyy, mm, dd] = isoDate.split('-');
   return `${dd}${mm}${yyyy}`;
