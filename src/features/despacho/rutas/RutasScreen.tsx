@@ -1201,12 +1201,9 @@ export default function RutasScreen() {
       tb: ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0),
     };
     cerrarCamionV1(patente, ruta);
-
-    // [Fase 3 PR3] Snapshot del pool: lo que quedó SIN asignar a ningún camión pasa a pendiente de
-    // 2ª vuelta. Así, cerrando por camión sin "Calcular", las tiendas sobrantes no se pierden.
-    // savePendientesV2 acumula/corrige (quita las ya asignadas, conserva pendientes previas del día).
-    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones);
-    void savePendientesV2(fecha, leftover, asignadas);
+    // NOTA: el "leftover → 2ª vuelta" NO se hace aquí (en cada cierre de camión) porque mandaba a
+    // 2ª vuelta todo lo que aún no se había asignado a los OTROS camiones, cortando el flujo. Se
+    // hace una sola vez al cerrar la jornada ("Listo por hoy", ver handleListoPorHoy).
   }
 
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
@@ -1226,6 +1223,11 @@ export default function RutasScreen() {
   }, [fecha]);
 
   function handleListoPorHoy() {
+    // Al cerrar la JORNADA (no en cada camión), lo que quedó SIN asignar a ningún camión pasa a
+    // pendiente de 2ª vuelta — así no se pierde, pero sin cortar el flujo de asignación mientras
+    // todavía estás cerrando camiones.
+    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones);
+    if (leftover.length) void savePendientesV2(fecha, leftover, asignadas);
     const payload = { closedAt: new Date().toISOString(), by: supervisor || '' };
     setCerrado(true);
     supabase
