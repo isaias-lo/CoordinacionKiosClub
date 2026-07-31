@@ -21,49 +21,70 @@ describe('ESTADO_TO_SEGUIMIENTO', () => {
   });
 });
 
-// Mock encadenable que registra la tabla y los filtros aplicados a cada .update().
-function mockSb() {
-  const calls: { tabla: string; filtros: Record<string, unknown>; set: unknown }[] = [];
+type Row = { cod: string; fecha: string; seguimiento: string; created_at: string };
+
+/**
+ * Mock del cliente Supabase: `select().in()` devuelve candidatos por tabla; `update().eq()…`
+ * registra la actualización (tabla + filtros + set).
+ */
+function mockSb(candidatos: { despacho_rm?: Row[]; despacho_regiones?: Row[] }) {
+  const updates: { tabla: string; filtros: Record<string, unknown>; set: unknown }[] = [];
   const sb = {
     from(tabla: string) {
       return {
+        select() {
+          return { in: (_col: string, _vals: unknown) => Promise.resolve({ data: candidatos[tabla as keyof typeof candidatos] ?? [] }) };
+        },
         update(set: unknown) {
           const rec = { tabla, filtros: {} as Record<string, unknown>, set };
-          calls.push(rec);
           const chain = {
-            in(col: string, vals: unknown) { rec.filtros[`in:${col}`] = vals; return chain; },
             eq(col: string, val: unknown) { rec.filtros[`eq:${col}`] = val; return chain; },
+            then(res: (v: { data: null }) => void) { updates.push(rec); res({ data: null }); },
           };
           return chain;
         },
       };
     },
   };
-  return { sb, calls };
+  return { sb, updates };
 }
 
 describe('syncSeguimientoDespacho', () => {
   it('no toca la BD si no hay cods', async () => {
-    const { sb, calls } = mockSb();
-    await syncSeguimientoDespacho(sb as never, '2026-07-30', [], 'Pendiente');
-    expect(calls).toHaveLength(0);
+    const { sb, updates } = mockSb({});
+    await syncSeguimientoDespacho(sb as never, [], 'Pendiente');
+    expect(updates).toHaveLength(0);
   });
 
-  it('actualiza despacho_rm y despacho_regiones con fecha DD/MM/YYYY y cods dedup', async () => {
-    const { sb, calls } = mockSb();
-    await syncSeguimientoDespacho(sb as never, '2026-07-30', ['02SCL', '02SCL', '07CCR'], 'Pendiente');
-    expect(calls.map(c => c.tabla).sort()).toEqual(['despacho_regiones', 'despacho_rm']);
-    for (const c of calls) {
-      expect(c.set).toEqual({ seguimiento: 'Pendiente' });
-      expect(c.filtros['eq:fecha']).toBe('30/07/2026');
-      expect(c.filtros['in:cod']).toEqual(['02SCL', '07CCR']); // dedup
-      expect(c.filtros['eq:seguimiento']).toBeUndefined();      // sin guard
-    }
+  it('resuelve la fecha del despacho ARMADO por tienda (no la del manifiesto) y avanza Registrado', async () => {
+    // 49PTA armado el 29/07 (aunque el manifiesto salga otro día) → debe actualizar 29/07, no otra.
+    const rm: Row[] = [
+      { cod: '49PTA', fecha: '28/07/2026', seguimiento: 'Registrado', created_at: '2026-07-28T10:00:00Z' },
+      { cod: '49PTA', fecha: '29/07/2026', seguimiento: 'Registrado', created_at: '2026-07-29T10:00:00Z' },
+    ];
+    const { sb, updates } = mockSb({ despacho_rm: rm, despacho_regiones: [] });
+    await syncSeguimientoDespacho(sb as never, ['49PTA'], 'Pendiente', true);
+    const rmUpd = updates.find(u => u.tabla === 'despacho_rm');
+    expect(rmUpd?.set).toEqual({ seguimiento: 'Pendiente' });
+    expect(rmUpd?.filtros['eq:cod']).toBe('49PTA');
+    expect(rmUpd?.filtros['eq:fecha']).toBe('29/07/2026');           // la más reciente activa
+    expect(rmUpd?.filtros['eq:seguimiento']).toBe('Registrado');     // guard soloDesdeRegistrado
+    // actualiza ambas tablas
+    expect(updates.map(u => u.tabla).sort()).toEqual(['despacho_regiones', 'despacho_rm']);
   });
 
-  it('con soloDesdeRegistrado agrega el guard eq(seguimiento, Registrado)', async () => {
-    const { sb, calls } = mockSb();
-    await syncSeguimientoDespacho(sb as never, '2026-07-30', ['02SCL'], 'Pendiente', true);
-    for (const c of calls) expect(c.filtros['eq:seguimiento']).toBe('Registrado');
+  it('sin soloDesdeRegistrado no agrega el guard (cambio de estado explícito)', async () => {
+    const rm: Row[] = [{ cod: 'OFIKC', fecha: '30/07/2026', seguimiento: 'Registrado', created_at: '2026-07-30T10:00:00Z' }];
+    const { sb, updates } = mockSb({ despacho_rm: rm });
+    await syncSeguimientoDespacho(sb as never, ['OFIKC'], 'En camino');
+    const rmUpd = updates.find(u => u.tabla === 'despacho_rm');
+    expect(rmUpd?.filtros['eq:fecha']).toBe('30/07/2026');
+    expect(rmUpd?.filtros['eq:seguimiento']).toBeUndefined();
+  });
+
+  it('si la tienda no tiene despacho, no actualiza', async () => {
+    const { sb, updates } = mockSb({ despacho_rm: [], despacho_regiones: [] });
+    await syncSeguimientoDespacho(sb as never, ['XXXXX'], 'Pendiente', true);
+    expect(updates).toHaveLength(0);
   });
 });

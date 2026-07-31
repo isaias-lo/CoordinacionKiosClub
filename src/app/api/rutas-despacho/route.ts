@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
     // Pendiente en despacho_rm/regiones. Antes el POST solo creaba la ruta 'pendiente' pero NO
     // tocaba despacho_rm, así que el panel Estado se quedaba en 'Registrado' hasta pulsar
     // "Actualizar estado" a mano. `soloDesdeRegistrado` evita regresar rutas ya despachadas.
-    await syncSeguimientoDespacho(supabaseServer(), body.fecha, body.tiendas.map(t => t.store_cod), 'Pendiente', true);
+    // La fecha se resuelve por tienda adentro (armado vs salida), no se pasa la del manifiesto.
+    await syncSeguimientoDespacho(supabaseServer(), body.tiendas.map(t => t.store_cod), 'Pendiente', true);
   }
 
   const guiasManuales = new Set<string>();
@@ -265,13 +266,12 @@ export async function PATCH(request: NextRequest) {
   //     Antes quedaba congelada en 'pendiente' porque nadie la actualizaba tras crear la ruta.
   await sb.from('ruta_tiendas').update({ estado_entrega: body.estado }).eq('ruta_id', body.id);
 
-  // 2. Sincronizar seguimiento en despacho_rm / despacho_regiones
+  // 2. Sincronizar seguimiento en despacho_rm / despacho_regiones (fecha resuelta por tienda).
   const seguimiento = ESTADO_TO_SEGUIMIENTO[body.estado];
   if (seguimiento) {
-    const { data: ruta } = await sb.from('rutas_despacho').select('fecha').eq('id', body.id).maybeSingle();
-    const { data: rt   } = await sb.from('ruta_tiendas').select('store_cod').eq('ruta_id', body.id);
+    const { data: rt } = await sb.from('ruta_tiendas').select('store_cod').eq('ruta_id', body.id);
     const cods = (rt ?? []).map((r: { store_cod: string }) => r.store_cod);
-    if (ruta?.fecha) await syncSeguimientoDespacho(sb, ruta.fecha, cods, seguimiento);
+    await syncSeguimientoDespacho(sb, cods, seguimiento);
   }
 
   return NextResponse.json({ ok: true });
