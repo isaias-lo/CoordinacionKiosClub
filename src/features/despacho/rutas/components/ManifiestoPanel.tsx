@@ -722,30 +722,46 @@ ${bodies}
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-2 px-5 pb-5">
-                  {!isSaved ? (
+                {!isSaved ? (
+                  <div className="flex gap-2 px-5 pb-5">
                     <button onClick={() => void guardar(idx)} disabled={isSaving}
                       className="flex-1 h-10 rounded-xl text-white text-[13px] font-bold transition-opacity disabled:opacity-50"
                       style={{ background: '#1a2550' }}>
                       {isSaving ? '⏳ Guardando…' : '💾 Guardar en Sistema'}
                     </button>
-                  ) : (
-                    <div className="flex-1 h-10 rounded-xl text-[13px] font-bold flex items-center justify-center"
+                    <button onClick={() => imprimir(idx)}
+                      className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
+                      style={{ background: '#f5f5f5', color: '#444', border: '1px solid #e0e0e0' }}>
+                      🖨️ Maestro
+                    </button>
+                    <button onClick={() => imprimirHojasTienda([idx])}
+                      className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
+                      style={{ background: '#EEF2FF', color: '#1B2A6B', border: '1px solid #C7D2FE' }}>
+                      🏪 Hojas x tienda
+                    </button>
+                  </div>
+                ) : (
+                  // Guardado: el estado ocupa su propia fila completa (antes iba en `flex-1` junto a los
+                  // dos botones y en tarjetas angostas el texto se partía en 2 líneas y se salía del h-10).
+                  <div className="flex flex-col gap-2 px-5 pb-5">
+                    <div className="h-10 w-full rounded-xl text-[13px] font-bold flex items-center justify-center gap-1.5 whitespace-nowrap"
                       style={{ background: '#EAF7EE', color: '#34C759', border: '1px solid #34C75940' }}>
                       ✓ Guardado en Sistema
                     </div>
-                  )}
-                  <button onClick={() => imprimir(idx)}
-                    className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
-                    style={{ background: '#f5f5f5', color: '#444', border: '1px solid #e0e0e0' }}>
-                    🖨️ Maestro
-                  </button>
-                  <button onClick={() => imprimirHojasTienda([idx])}
-                    className="h-10 px-4 rounded-xl text-[13px] font-bold transition-colors"
-                    style={{ background: '#EEF2FF', color: '#1B2A6B', border: '1px solid #C7D2FE' }}>
-                    🏪 Hojas x tienda
-                  </button>
-                </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => imprimir(idx)}
+                        className="flex-1 h-10 rounded-xl text-[13px] font-bold transition-colors"
+                        style={{ background: '#f5f5f5', color: '#444', border: '1px solid #e0e0e0' }}>
+                        🖨️ Maestro
+                      </button>
+                      <button onClick={() => imprimirHojasTienda([idx])}
+                        className="flex-1 h-10 rounded-xl text-[13px] font-bold transition-colors"
+                        style={{ background: '#EEF2FF', color: '#1B2A6B', border: '1px solid #C7D2FE' }}>
+                        🏪 Hojas x tienda
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
