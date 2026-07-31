@@ -134,8 +134,8 @@ export function PickingScreen() {
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
 
   const {
-    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId,
-    fetchBatchOps, fetchOpsForStore, refreshOp,
+    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
+    fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
   } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
   const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
@@ -1354,18 +1354,29 @@ export function PickingScreen() {
                       {!isLoading && storeGroups.length === 0 && (
                         <span className="text-[14px] text-text-3 font-medium">Sin operaciones de Abastecimiento hoy</span>
                       )}
-                      {/* Per-store print button */}
-                      {(() => {
-                        const storeLabels = printableLabels.filter(l => l.storeCod === cod);
-                        if (!storeLabels.length) return null;
-                        return (
-                          <button onClick={() => printStoreLabels(cod)}
-                            className="ml-auto print:hidden text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-                            style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                            <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                      {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
+                      <div className="ml-auto flex items-center gap-2 print:hidden">
+                        {ops.length > 0 && (
+                          <button onClick={() => void refreshAllOps(ops, cod)}
+                            disabled={refreshingStoreCod === cod}
+                            className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
+                            <RefreshCw size={13} className={refreshingStoreCod === cod ? 'animate-spin' : ''} />
+                            Actualizar todo
                           </button>
-                        );
-                      })()}
+                        )}
+                        {(() => {
+                          const storeLabels = printableLabels.filter(l => l.storeCod === cod);
+                          if (!storeLabels.length) return null;
+                          return (
+                            <button onClick={() => printStoreLabels(cod)}
+                              className="text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
+                              style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
+                              <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
 
                     {/* Sin asignar warning */}
