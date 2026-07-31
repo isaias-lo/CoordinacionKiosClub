@@ -75,14 +75,16 @@ interface Props {
 
 export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange, currentUserName }: Props) {
   const previewScale = 0.50;
-  const previewH     = Math.round(600 * previewScale);
+  // Altura base subida de 600→780: con la fila de Batch/Hora término y el código de tienda
+  // más grande, el contenido real de la etiqueta ya no cabía en 600px y se recortaba por abajo.
+  const previewH     = Math.round(780 * previewScale);
 
   const upd = (field: keyof LabelConfig, val: number | boolean) =>
     onLabelConfigChange({ ...labelConfig, [field]: val });
 
   function ToggleRow({ label, desc, field }: {
     label: string; desc?: string;
-    field: 'showResponsable' | 'showCategories' | 'showStoreName' | 'showDate';
+    field: 'showResponsable' | 'showCategories' | 'showStoreName' | 'showDate' | 'showBatch' | 'showFinishTime';
   }) {
     const val = labelConfig[field];
     return (
@@ -170,10 +172,12 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
               <PropRow label="Picker"         field="pickerFontSize"       min={20} max={50}  labelConfig={labelConfig} onUpdate={upd} />
               <PropRow label="N.º pallet"     field="palletNumSize"        min={50} max={120} labelConfig={labelConfig} onUpdate={upd} />
               <PropRow label="Código (#)"     field="slotIdFontSize"       min={10} max={28}  labelConfig={labelConfig} onUpdate={upd} />
-              <PropRow label="Cód. tienda"    field="storeFontSize"        min={80} max={200} labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Cód. tienda"    field="storeFontSize"        min={80} max={240} labelConfig={labelConfig} onUpdate={upd} />
               <PropRow label="Nombre tienda"  field="storeNameFontSize"    min={24} max={72}  labelConfig={labelConfig} onUpdate={upd} />
               <PropRow label="Categorías"     field="catFontSize"          min={12} max={30}  labelConfig={labelConfig} onUpdate={upd} />
-              <PropRow label="Fecha"          field="dateFontSize"         min={8}  max={20}  labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Fecha"          field="dateFontSize"         min={8}  max={48}  labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Batch"          field="batchFontSize"        min={14} max={60}  labelConfig={labelConfig} onUpdate={upd} />
+              <PropRow label="Hora término"   field="finishTimeFontSize"   min={12} max={48}  labelConfig={labelConfig} onUpdate={upd} />
             </div>
 
             {/* Vista previa */}
@@ -189,13 +193,17 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
                   </div>
                   <span className="text-[11px]" style={{ color: '#CBD5E1' }}>{Math.round(previewScale * 100)}%</span>
                 </div>
-                <div className="w-full overflow-hidden rounded" style={{ height: previewH, background: '#F8FAFC', position: 'relative' }}>
+                {/* overflow visible (no hidden): a alturas de contenido variables (sliders al
+                    máximo) es mejor que el preview crezca fuera del panel a que se recorte
+                    contenido real sin avisar. */}
+                <div className="w-full overflow-visible rounded" style={{ height: previewH, background: '#F8FAFC', position: 'relative' }}>
                   <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top center', width: 720, position: 'absolute', top: 0, left: '50%', marginLeft: -360, pointerEvents: 'none' }}>
                     <BarcodeCard
                       value="17MAI;JuanPerez;WH/PICK/1234;P1;Comida,Aseo"
                       palletNum={1} total={3} slotId={419}
                       storeCod="17MAI" pickerLabel="Juan Pérez" responsibleKey="Pickers 1"
                       allCategories={['Comida', 'Aseo']} totalPickers={4}
+                      batch="BATCH/39934" finishedAt="2026-07-29 17:32:00"
                       compact={false} labelConfig={labelConfig}
                     />
                   </div>
@@ -221,6 +229,8 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
               <ToggleRow label="Categorías"      desc="Comida · Aseo · Hogar" field="showCategories" />
               <ToggleRow label="Nombre tienda"   desc="Texto bajo el código"  field="showStoreName" />
               <ToggleRow label="Fecha impresión"                              field="showDate" />
+              <ToggleRow label="Batch"           desc="Transferir Agrupación de Odoo" field="showBatch" />
+              <ToggleRow label="Hora término"    desc="Solo si el picking ya terminó" field="showFinishTime" />
             </div>
           </div>
         </div>

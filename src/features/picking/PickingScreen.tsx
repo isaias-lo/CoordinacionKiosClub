@@ -957,6 +957,7 @@ export function PickingScreen() {
       storeCod: string; pickerLabel: string; responsibleKey: string;
       allCategories: string[]; totalPickers: number; stateKey: string; tipo: string; slotId: number;
       canonicalId: string; footerExtra?: string;
+      batch?: string; finishedAt?: string | null;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -990,6 +991,16 @@ export function PickingScreen() {
         const cats  = allCategories.join(',');
         // Prioridad: 1) nombre del supervisor en esta sesión, 2) canónico de Supabase, 3) label del slot (histórico), 4) clave Odoo
         const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || groupSlots[0]?.picker_label || group.key;
+        // Batch (Transferir Agrupación) del grupo — misma derivación que ya usa recordPrints.
+        const batch = group.operations.find(o => o.batch)?.batch ?? undefined;
+        // Hora de término: solo si TODAS las operaciones del grupo ya cerraron (state 'done') —
+        // si alguna sigue abierta, no se imprime un "término" prematuro/engañoso. Entre las
+        // operaciones cerradas, la más reciente (comparación lexicográfica válida en
+        // 'YYYY-MM-DD HH:MM:SS') marca cuándo terminó el grupo completo.
+        const allOpsDone = group.operations.length > 0 && group.operations.every(o => o.state === 'done');
+        const finishedAt = allOpsDone
+          ? group.operations.reduce<string | null>((max, o) => (o.dateDone && (!max || o.dateDone > max) ? o.dateDone : max), null)
+          : null;
         for (const slot of groupSlots) {
           const pNum  = palletNumsBySlotId[slot.id];
           if (pNum === undefined) continue; // slot sin numerar (bucket "Sin asignar") — no se imprime [P6]
@@ -1013,6 +1024,8 @@ export function PickingScreen() {
             slotId: slot.id,
             canonicalId: buildCanonicalId(tipo, pNum, group.storeCod, todayISO()),
             footerExtra: slot.refs || undefined,
+            batch,
+            finishedAt,
           });
         }
       }

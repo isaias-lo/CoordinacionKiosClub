@@ -29,6 +29,19 @@ function toDate(value: string | number | Date | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// Odoo devuelve datetimes NAIVE en UTC: "YYYY-MM-DD HH:MM:SS" (sin zona horaria). Si se le pasa
+// tal cual a `new Date(...)`, JS lo interpreta como hora LOCAL del navegador/servidor, y luego
+// fmtHoraChile (que fuerza timeZone America/Santiago) lo desplazaría una segunda vez, mostrando
+// la hora equivocada. Esta función marca la 'Z' para que la conversión a Chile ocurra una sola vez.
+const NAIVE_ODOO_DATETIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+/** Convierte un datetime naive de Odoo ("YYYY-MM-DD HH:MM:SS", UTC) a ISO con 'Z'. */
+export function odooDateToISO(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (NAIVE_ODOO_DATETIME_RE.test(value)) return value.replace(' ', 'T') + 'Z';
+  return value; // ya viene en otro formato (p. ej. ISO) — se pasa tal cual
+}
+
 /** Solo la hora (HH:MM, 24h) en zona de Chile. Ej: "14:21". `withSeconds` agrega :SS. */
 export function fmtHoraChile(value: string | number | Date | null | undefined, withSeconds = false): string {
   const d = toDate(value);
