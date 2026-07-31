@@ -7,7 +7,10 @@ import { IA_SYSTEM_PROMPT, buildAsignacionUserPrompt } from '@/features/despacho
 import { parseProposal } from '@/features/despacho/rutas/ia/parseProposal';
 import type { IAStore, IATruck } from '@/features/despacho/rutas/ia/types';
 
-export const maxDuration = 30;
+// 60s: la llamada real de ruteo (prompt grande + ejemplos de historial + hasta 2048 tokens de
+// salida) puede tardar bastante más que la mínima. Con 30s Vercel mataba la función a mitad y el
+// cliente recibía un 504 sin JSON → "La IA no respondió" sin causa visible. El ping mínimo sí cabía.
+export const maxDuration = 60;
 
 // Modelo configurable por env. Default: Sonnet — mejor razonamiento para balancear carga entre
 // camiones e inferir los patrones del coordinador (Haiku dejaba camiones grandes casi vacíos).
@@ -29,7 +32,7 @@ export async function GET(request: NextRequest) {
   const ping = request.nextUrl.searchParams.get('ping');
   if (ping !== '1' || !apiKey) return NextResponse.json(base);
   try {
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, timeout: 15_000, maxRetries: 0 });
     const msg = await anthropic.messages.create({
       model: MODEL, max_tokens: 8,
       messages: [{ role: 'user', content: 'Responde solo con: OK' }],
@@ -67,7 +70,10 @@ export async function POST(request: NextRequest) {
       { excludeFecha: body.fecha, limit: 15 },
     );
 
-    const anthropic = new Anthropic({ apiKey });
+    // timeout < maxDuration (60s) para fallar limpio DENTRO del presupuesto de la función y devolver
+    // un 502 con mensaje ("Request timed out") en vez del 504 mudo de Vercel. Sin reintentos: un
+    // reintento duplicaría la latencia y volvería a chocar contra el límite.
+    const anthropic = new Anthropic({ apiKey, timeout: 50_000, maxRetries: 0 });
     const msg = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 2048,
