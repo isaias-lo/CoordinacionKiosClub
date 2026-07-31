@@ -8,6 +8,7 @@ import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
 import { parseDataUrl, acuseLabel, RECEP_MAX_FOTOS } from '@/lib/recepcionMedia';
 import { buildSheetRow } from '@/lib/sheetRow';
+import { safeStorageKey } from '@/lib/storageKey';
 import { nuevoSeguimientoRecepcion, elegirFechaDespacho, hayDiferencia, type DespachoCandidato } from '@/lib/recepcionEstado';
 import { buildEdicionEntry, type EdicionEntry } from '@/lib/recepcionAudit';
 
@@ -235,7 +236,8 @@ export async function POST(request: NextRequest) {
       if (!foto) { fotosOmitidas++; continue; }
       try {
         const buf = Buffer.from(foto.base64, 'base64');
-        const fname = `recep_${body.cod}_${Date.now()}_${i + 1}.${foto.ext}`;
+        // safeStorageKey: el cod puede tener Ñ/acentos (23PEÑ) y Storage rechaza esas claves.
+        const fname = safeStorageKey(`recep_${body.cod}_${Date.now()}_${i + 1}.${foto.ext}`);
         const { error: fErr } = await sb.storage
           .from('recepcion-fotos')
           .upload(fname, buf, { contentType: foto.contentType, upsert: false });

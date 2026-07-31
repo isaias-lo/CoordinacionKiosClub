@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { guiaHref } from '../../lib/guiaUrl';
+import { safeStorageKey } from '../../lib/storageKey';
 import type { FotoRegistro, QRData, SelloEstado } from './RecepcionTiendaScreen';
 import { formatHora } from './RecepcionTiendaScreen';
 
@@ -170,7 +171,7 @@ export function RecepcionForm({ qrData, canonicalId, selloLlegada, selloEstado, 
     if (!selloSalida) { setError('Toma la foto del sello de salida primero'); return; }
     setError(''); setLoading(true);
     try {
-      const uid = `${cod}_${Date.now()}`;
+      const uid = safeStorageKey(`${cod}_${Date.now()}`);
 
       // Upload sello llegada
       const llegadaExt = selloLlegada.file.name.split('.').pop() ?? 'jpg';
