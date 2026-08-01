@@ -516,8 +516,8 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
         </div>
       )}
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto px-4 pb-4 pt-3">
+      {/* Table — estilo denso tipo planilla (12px, zebra, header sticky, grilla) unificado con /registros */}
+      <div className="flex-1 min-h-0 flex flex-col px-4 pb-4 pt-3">
         {loading && <div className="text-center text-text-3 py-16 text-sm">Cargando datos…</div>}
         {error && (
           <div className="mx-auto max-w-md mt-8 p-4 rounded-xl text-sm text-red-700 font-medium"
@@ -535,20 +535,20 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
         )}
 
         {!loading && filtered.length > 0 && (
-          <div className="rounded-2xl overflow-hidden border border-border bg-white">
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: totalColWidth }}>
+          <div className="rounded-2xl overflow-hidden border border-border bg-white flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-auto">
+              <table className="text-[12px]" style={{ tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0, width: totalColWidth }}>
                 <colgroup>
                   {activeCols.map(c => <col key={c.key} style={{ width: colWidths[c.key] ?? c.defaultWidth }} />)}
                 </colgroup>
                 <thead>
-                  <tr style={{ background: 'rgba(27,42,107,0.05)' }}>
+                  <tr>
                     {activeCols.map(col => (
                       <th key={col.key} style={{
-                        position: 'relative', padding: '10px 12px', textAlign: 'left',
+                        position: 'sticky', top: 0, zIndex: 2, padding: '8px 12px', textAlign: 'left',
                         fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                        letterSpacing: '0.05em', color: '#1B2A6B',
-                        borderBottom: '1px solid rgba(27,42,107,0.12)',
+                        letterSpacing: '0.05em', color: '#1B2A6B', background: '#F1F5F9',
+                        borderBottom: '2px solid rgba(27,42,107,0.18)', borderRight: '1px solid #E8ECF3',
                         userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden',
                       }}>
                         {col.label}
@@ -567,23 +567,26 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((row, i) => (
+                  {filtered.map((row, i) => {
+                    const zebra = i % 2 ? '#FAFBFC' : '#fff';
+                    return (
                     <tr key={String(row.id ?? i)}
                       onClick={isRecepcion ? () => setSelectedRow(row) : undefined}
-                      style={{ cursor: isRecepcion ? 'pointer' : 'default', borderBottom: '1px solid #F1F5F9' }}
-                      onMouseEnter={e  => { (e.currentTarget as HTMLElement).style.background = 'rgba(27,42,107,0.025)'; }}
-                      onMouseLeave={e  => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+                      style={{ cursor: isRecepcion ? 'pointer' : 'default', background: zebra }}
+                      onMouseEnter={e  => { (e.currentTarget as HTMLElement).style.background = '#EEF2FF'; }}
+                      onMouseLeave={e  => { (e.currentTarget as HTMLElement).style.background = zebra; }}>
                       {activeCols.map(col => (
-                        <td key={col.key} style={{ padding: '9px 12px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                        <td key={col.key} style={{ padding: '8px 12px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', borderBottom: '1px solid #F1F5F9', borderRight: '1px solid #F1F5F9' }}>
                           {renderCell(col, row)}
                         </td>
                       ))}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2 text-[11px] text-text-3 border-t border-border flex items-center gap-1.5">
+            <div className="px-4 py-2 text-[11px] text-text-3 border-t border-border flex items-center gap-1.5 flex-shrink-0">
               <span>{filtered.length} registros{date ? ` · ${displayDate}` : ''}</span>
               <span className="opacity-40">·</span>
               <span className="opacity-60">Arrastra el borde de columna para redimensionar · ☰ Columnas para mostrar/ocultar</span>
