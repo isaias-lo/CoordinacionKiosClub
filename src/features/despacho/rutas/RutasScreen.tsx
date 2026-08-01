@@ -16,6 +16,7 @@ import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
 import { fluyeSinCalendario } from './utils/codigosEspeciales';
+import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
@@ -170,6 +171,10 @@ export default function RutasScreen() {
   const [historialMsg,  setHistorialMsg]  = useState('');
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
+  // Manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device). Se usan
+  // para un banner "ya hay manifiestos guardados" y para reconstruir el tablero si hiciera falta
+  // (p. ej. al abrir desde otro dispositivo y ver el lienzo vacío). No pisa el flujo de armado.
+  const [manifiestosGuardados, setManifiestosGuardados] = useState<ManifiestoGuardado[]>([]);
   // Fase B: patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), keyed por fecha.
   // Cross-device vía shared_session_state fuente 'rutas_cerradas'. El registro global SALTA estas
   // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
@@ -584,6 +589,29 @@ export default function RutasScreen() {
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  // ── Manifiestos ya guardados para la fecha (persistente, cross-device) ──────
+  // Independiente del lienzo efímero: si abres el Enrutador desde otro equipo y el tablero se ve
+  // vacío pero el despacho ya está guardado, este fetch lo detecta (banner + "Cargar en tablero").
+  useEffect(() => {
+    let cancel = false;
+    fetch(`/api/rutas-despacho?fecha=${encodeURIComponent(fecha)}`)
+      .then(r => (r.ok ? r.json() : { data: [] }))
+      .then((j: { data?: ManifiestoGuardado[] }) => { if (!cancel) setManifiestosGuardados(Array.isArray(j.data) ? j.data : []); })
+      .catch(() => { if (!cancel) setManifiestosGuardados([]); });
+    return () => { cancel = true; };
+  }, [fecha]);
+
+  // Reconstruir el tablero desde los manifiestos guardados (opt-in, no pisa trabajo en curso):
+  // activa esas patentes y coloca sus tiendas. Fuente de verdad = rutas_despacho (igual en todo
+  // dispositivo). No re-guarda nada; solo llena el lienzo para que veas lo que ya quedó registrado.
+  function handleCargarManifiestosGuardados() {
+    const asig = reconstruirAsignaciones(manifiestosGuardados);
+    if (!Object.keys(asig).length) return;
+    const patentes = new Set(Object.keys(asig).map(p => normPatente(p)));
+    setFlota(prev => prev.map(v => (patentes.has(normPatente(v.p)) ? { ...v, on: true } : v)));
+    setManualAsignaciones(asig);
+  }
 
   // ── Debounced push manualAsignaciones → Supabase ─────────────────
   useEffect(() => {
@@ -1739,6 +1767,29 @@ export default function RutasScreen() {
           </button>
         </div>
       )}
+
+      {/* Banner: manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device).
+          Evita el susto de "0 asignadas" al abrir desde otro equipo con el lienzo vacío. */}
+      {manifiestosGuardados.length > 0 && (() => {
+        const asig = reconstruirAsignaciones(manifiestosGuardados);
+        const nCam = Object.keys(asig).length;
+        const nT   = new Set(Object.values(asig).flat().map(s => s.c)).size;
+        if (!nCam) return null;
+        return (
+          <div className="flex-shrink-0 px-4 py-1.5 bg-emerald-50 border-b border-emerald-200 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-emerald-700">
+              ✓ {nCam} manifiesto{nCam !== 1 ? 's' : ''} guardado{nCam !== 1 ? 's' : ''} para {fechaTxt(fecha)} · {nT} tienda{nT !== 1 ? 's' : ''}
+            </span>
+            <span className="text-[10px] text-emerald-600/70 font-semibold">despacho registrado</span>
+            <button
+              onClick={handleCargarManifiestosGuardados}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-emerald-500 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors active:scale-95 ml-auto"
+            >
+              Cargar en el tablero
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Pill de pendientes 2ª vuelta (misma fecha) */}
       {pendientesV2.length > 0 && (
