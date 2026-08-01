@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Truck, MapPin, Store, X, History, Filter, ChevronUp, ChevronDown } from 'lucide-react';
+import { Truck, MapPin, Store, History, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
-import { fmtHoraChile, fmtFechaHoraChile } from '@/lib/fechaChile';
+import { fmtFechaHoraChile } from '@/lib/fechaChile';
 import { HistContent } from '@/screens/HistScreen';
+import { RecepcionModal } from '@/features/despacho/estado/RecepcionModal';
 import type { LucideIcon } from 'lucide-react';
 
 type TabKey = 'rm' | 'regiones' | 'recepcion' | 'historial';
@@ -104,211 +105,6 @@ function compareCells(col: string, a: unknown, b: unknown): number {
 // ── Recepcion detail modal ────────────────────────────────────────────────────
 
 type RecepcionRow = Record<string, unknown>;
-
-function formatHora(iso: string): string {
-  if (!iso) return '—';
-  return fmtHoraChile(iso, true);
-}
-
-function PhotoThumb({ url, label, hora }: { url: string; label: string; hora?: string }) {
-  if (!url) return null;
-  return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
-      <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', position: 'relative', borderRadius: 10, overflow: 'hidden', textDecoration: 'none' }}>
-        <img src={url} alt={label} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-        {hora && (
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.6)', padding: '4px 6px', fontSize: 10, color: '#fff', fontWeight: 700 }}>
-            🕐 {formatHora(hora)}
-          </div>
-        )}
-        <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 6, padding: '2px 6px', fontSize: 10, color: '#fff' }}>↗</div>
-      </a>
-    </div>
-  );
-}
-
-function RecepcionDetailModal({ row, onClose }: { row: RecepcionRow; onClose: () => void }) {
-  const palletsSent = Number(row.pallets_sent ?? 0);
-  const bultosSent  = Number(row.bultos_sent  ?? 0);
-  const palletsRec  = Number(row.pallets_recibidos ?? 0);
-  const bultosRec   = Number(row.bultos_recibidos  ?? 0);
-  const match       = palletsRec === palletsSent && bultosRec === bultosSent;
-  const estadoFotos = (row.estado_fotos as string[]) ?? [];
-  const fechaHora   = row.created_at ? fmtFechaHoraChile(String(row.created_at)) : '—';
-
-  return (
-    <div
-      onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, overflowY: 'auto', padding: '20px 16px 40px' }}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 480, margin: '0 auto', background: '#fff', borderRadius: 24, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-
-        {/* Modal header */}
-        <div style={{ background: 'linear-gradient(135deg, #1B2A6B, #2D3F8C)', padding: '18px 20px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 4 }}>Detalle recepción</div>
-            <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, fontFamily: 'monospace', lineHeight: 1 }}>{String(row.cod ?? '')}</div>
-            <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: 600, marginTop: 4 }}>{String(row.tienda ?? '')}</div>
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 }}>{fechaHora} · fuente: {String(row.fuente ?? '—')}</div>
-          </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <X size={16} color="rgba(255,255,255,0.8)" />
-          </button>
-        </div>
-
-        <div style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-          {/* Cantidades */}
-          <div style={{ background: match ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)', borderRadius: 14, padding: '14px 16px', border: `1px solid ${match ? 'rgba(16,185,129,0.3)' : 'rgba(249,115,22,0.3)'}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: match ? '#10B981' : '#F97316', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-              {match ? '✅ Sin diferencia' : '⚠️ Diferencia detectada'}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0, textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}>ENVIADO</div>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}></div>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}>RECIBIDO</div>
-              {palletsSent > 0 && <>
-                <div style={{ fontSize: 20, fontWeight: 800, color: '#1B2A6B' }}>{palletsSent}</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF', alignSelf: 'center' }}>pallets</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: palletsRec === palletsSent ? '#10B981' : '#EF4444' }}>{palletsRec}</div>
-              </>}
-              {bultosSent > 0 && <>
-                <div style={{ fontSize: 20, fontWeight: 800, color: '#D97706' }}>{bultosSent}</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF', alignSelf: 'center' }}>bultos</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: bultosRec === bultosSent ? '#10B981' : '#EF4444' }}>{bultosRec}</div>
-              </>}
-            </div>
-          </div>
-
-          {/* Personal */}
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Personal</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {!!row.conductor && (
-                <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>CONDUCTOR</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{String(row.conductor)}</div>
-                </div>
-              )}
-              {!!(row.pionetas && String(row.pionetas).trim()) && (
-                <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>PIONETA(S)</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{String(row.pionetas)}</div>
-                </div>
-              )}
-              {!!row.receptor && (
-                <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>RECEPTOR</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{String(row.receptor)}</div>
-                  {!!row.rut && <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'monospace', marginTop: 2 }}>{String(row.rut)}</div>}
-                </div>
-              )}
-              {!!row.sello_estado && (
-                <div style={{ background: '#F8FAFF', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, marginBottom: 2 }}>ESTADO SELLO</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: row.sello_estado === 'intacto' ? '#10B981' : row.sello_estado === 'roto' ? '#EF4444' : '#F97316' }}>
-                    {String(row.sello_estado).charAt(0).toUpperCase() + String(row.sello_estado).slice(1)}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Trazabilidad sellos */}
-          {!!(row.sello_llegada_url || row.sello_salida_url || row.cd_salida_url) && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Trazabilidad de sellos</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                <PhotoThumb url={String(row.cd_salida_url      ?? '')} label="CD Salida"     hora={String(row.cd_salida_hora      ?? '')} />
-                <PhotoThumb url={String(row.sello_llegada_url  ?? '')} label="Sello llegada" hora={String(row.sello_llegada_hora  ?? '')} />
-                <PhotoThumb url={String(row.sello_salida_url   ?? '')} label="Sello salida"  hora={String(row.sello_salida_hora   ?? '')} />
-              </div>
-            </div>
-          )}
-
-          {/* Fotos estado */}
-          {estadoFotos.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                Fotos de estado ({estadoFotos.length})
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {estadoFotos.map((url, i) => (
-                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', position: 'relative', borderRadius: 10, overflow: 'hidden', textDecoration: 'none' }}>
-                    <img src={url} alt={`estado ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-                    <div style={{ position: 'absolute', top: 4, left: 6, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 5px', borderRadius: 5 }}>#{i + 1}</div>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Firma */}
-          {!!row.firma_url && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Firma del receptor</div>
-              <a href={String(row.firma_url)} target="_blank" rel="noopener noreferrer">
-                <img src={String(row.firma_url)} alt="firma" style={{ width: '100%', maxHeight: 120, objectFit: 'contain', background: '#F8FAFF', borderRadius: 10, border: '1px solid #E5E7EB', display: 'block' }} />
-              </a>
-            </div>
-          )}
-
-          {/* Acuse de recibo */}
-          {!!(row.acuse_recibo && String(row.acuse_recibo).trim()) && (() => {
-            const acuse = String(row.acuse_recibo);
-            const conforme = acuse.toLowerCase().includes('conforme') && !acuse.toLowerCase().includes('observ');
-            return (
-              <div style={{ background: conforme ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)', borderRadius: 12, padding: '10px 14px', border: `1px solid ${conforme ? 'rgba(16,185,129,0.3)' : 'rgba(249,115,22,0.3)'}` }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Acuse de recibo</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: conforme ? '#10B981' : '#F97316' }}>{conforme ? '✓ ' : '⚠ '}{acuse}</div>
-              </div>
-            );
-          })()}
-
-          {/* Fotos de recepción */}
-          {(() => {
-            const fotosRecep = (row.recepcion_fotos as string[]) ?? [];
-            if (!fotosRecep.length) return null;
-            return (
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                  Fotos de recepción ({fotosRecep.length})
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                  {fotosRecep.map((url, i) => (
-                    <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', position: 'relative', borderRadius: 10, overflow: 'hidden', textDecoration: 'none' }}>
-                      <img src={url} alt={`recepción ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-                      <div style={{ position: 'absolute', top: 4, left: 6, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 5px', borderRadius: 5 }}>#{i + 1}</div>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Observaciones */}
-          {!!(row.observaciones && String(row.observaciones).trim()) && (
-            <div style={{ background: '#FFFBEB', borderRadius: 12, padding: '12px 14px', border: '1px solid #FDE68A' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Observaciones</div>
-              <div style={{ fontSize: 13, color: '#78350F', lineHeight: 1.5 }}>{String(row.observaciones)}</div>
-            </div>
-          )}
-
-          {/* Código verificación */}
-          {!!row.codigo_verificacion && (
-            <div style={{ background: '#F0F4FF', borderRadius: 12, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#1B2A6B', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Código OTP verificado</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1B2A6B', fontFamily: 'monospace', letterSpacing: '0.3em' }}>{String(row.codigo_verificacion)}</div>
-            </div>
-          )}
-
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Columnas redimensionables (ancho por columna, estilo Sheets) ──────────────
 const COLW_KEY = 'registros_colwidths_v1';
@@ -714,7 +510,7 @@ export default function RegistrosPage() {
 
       {/* Detail modal */}
       {selectedRow && (
-        <RecepcionDetailModal row={selectedRow} onClose={() => setSelectedRow(null)} />
+        <RecepcionModal row={selectedRow} onClose={() => setSelectedRow(null)} />
       )}
     </div>
   );
