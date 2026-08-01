@@ -24,13 +24,34 @@ export type ModuleGroup = {
 
 export const MODULE_GROUPS: ModuleGroup[] = [
   {
+    id: 'abastecimiento', label: 'Abastecimiento', color: '#F59E0B',
+    routes: [
+      { path: '/picking', label: 'Picking' },
+    ],
+  },
+  {
+    id: 'auditoria', label: 'Auditoría', color: '#9333EA',
+    routes: [
+      { path: '/auditoria',       label: 'Auditoría'          },
+      { path: '/auditoria-admin', label: 'Revisión Auditoría' },
+    ],
+  },
+  {
     id: 'despacho', label: 'Despacho', color: '#2563EB',
     routes: [
-      { path: '/despacho',               label: 'Enrutador'              },
       // Bodega: una sola entrada en el sidebar. RM/Costa queda REGISTRADA (permisos intactos)
       // pero oculta del sidebar; se llega por el tab dentro del módulo BODEGA.
       { path: '/despacho/regiones',      label: 'Bodega'                 },
       { path: '/despacho/santiago',      label: 'RM / Costa', hidden: true },
+      { path: '/despacho',               label: 'Enrutador'              },
+    ],
+  },
+  {
+    id: 'seguimiento', label: 'Seguimiento', color: '#D97706',
+    routes: [
+      { path: '/despacho/estado',        label: 'Estado / Seguimiento'   },
+      { path: '/registros',              label: 'Historial / Registros'  },
+      { path: '/incidencias',            label: 'Incidencias'            },
     ],
   },
   {
@@ -45,14 +66,6 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     ],
   },
   {
-    id: 'seguimiento', label: 'Seguimiento', color: '#D97706',
-    routes: [
-      { path: '/despacho/estado',        label: 'Estado / Seguimiento'   },
-      { path: '/registros',              label: 'Historial / Registros'  },
-      { path: '/incidencias',            label: 'Incidencias'            },
-    ],
-  },
-  {
     id: 'control-interno', label: 'Control Interno', color: '#10B981',
     routes: [
       { path: '/control-interno/control-cruce',  label: 'Control Cruce'      },
@@ -63,19 +76,6 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     id: 'otros', label: 'Otros', color: '#6B7280',
     routes: [
       { path: '/validacion-tienda', label: 'Validación Tienda' },
-    ],
-  },
-  {
-    id: 'auditoria', label: 'Auditoría', color: '#9333EA',
-    routes: [
-      { path: '/auditoria',       label: 'Auditoría'          },
-      { path: '/auditoria-admin', label: 'Revisión Auditoría' },
-    ],
-  },
-  {
-    id: 'abastecimiento', label: 'Abastecimiento', color: '#F59E0B',
-    routes: [
-      { path: '/picking', label: 'Picking' },
     ],
   },
 ];
