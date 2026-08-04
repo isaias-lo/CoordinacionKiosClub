@@ -8,6 +8,7 @@ import { CombineAlertsPanel } from './CombineAlertsPanel';
 import { resumenDiferencia } from './recepcionDiff';
 import { contarTiendasPorEstado } from './estadoCounts';
 import { RecepcionModal } from './RecepcionModal';
+import { coincideFila } from './filtros';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SubTab = 'rm' | 'regiones' | 'recepcion';
@@ -248,6 +249,9 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
   const [error,          setError]          = useState('');
   const [date,           setDate]           = useState('');
   const [search,         setSearch]         = useState('');
+  // Filtro desde el semáforo: al clicar un chip (Pendiente/En camino/…) se filtra la tabla por ese
+  // estado; re-clic limpia. '' = todos. Solo aplica en RM/Regiones (el semáforo no sale en Recepción).
+  const [segFilter,      setSegFilter]      = useState('');
   const [selectedRow,    setSelectedRow]    = useState<Row | null>(null);
   const [colWidths,      setColWidths]      = useState<Record<string, number>>(initColWidths);
   const [menuOpen,       setMenuOpen]       = useState(false);
@@ -351,20 +355,14 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
 
   // ── Filtering ──────────────────────────────────────────────────────────────
   const displayDate = date ? isoToDisplay(date) : '';
-  const filtered = rows.filter(r => {
-    const matchDate = !date || (
-      isRecepcion
-        ? String(r.created_at ?? '').startsWith(date)
-        : String(r.fecha ?? '') === displayDate
-    );
-    const matchSearch = !search || cols.some(c =>
-      String(r[c.key] ?? '').toLowerCase().includes(search.toLowerCase())
-    );
-    return matchDate && matchSearch;
-  });
+  const searchKeys = cols.map(c => c.key);
+  // baseFiltered: fecha + búsqueda (SIN el filtro del semáforo) → alimenta los contadores, que
+  // siempre muestran el total por estado. filtered: base + segFilter → alimenta la tabla.
+  const baseFiltered = rows.filter(r => coincideFila(r, { date, isRecepcion, displayDate, search, searchKeys, segFilter: '' }));
+  const filtered = segFilter ? baseFiltered.filter(r => String(r.seguimiento ?? '') === segFilter) : baseFiltered;
 
   // Contar por TIENDA (cod distinto), no por línea de pallet/bulto (ver estadoCounts.ts).
-  const { counts, total: totalTiendas } = contarTiendasPorEstado(filtered, SUMMARY_KEYS);
+  const { counts, total: totalTiendas } = contarTiendasPorEstado(baseFiltered, SUMMARY_KEYS);
 
   const totalColWidth = activeCols.reduce((s, c) => s + (colWidths[c.key] ?? c.defaultWidth), 0);
 
@@ -424,7 +422,7 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
         {SUB_TABS.map(t => {
           const active = subTab === t.key;
           return (
-            <button key={t.key} onClick={() => { setSubTab(t.key); setSearch(''); setMenuOpen(false); }}
+            <button key={t.key} onClick={() => { setSubTab(t.key); setSearch(''); setSegFilter(''); setMenuOpen(false); }}
               className="px-4 py-2 rounded-xl text-[13px] font-bold cursor-pointer transition-all border"
               style={active
                 ? { background: t.activeBg, borderColor: t.color + '55', color: t.color }
@@ -496,15 +494,25 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
         <div className="flex-shrink-0 flex gap-2.5 px-4 py-2.5 overflow-x-auto border-b border-border">
           {SUMMARY_KEYS.map(k => {
             const s = SEG_STYLE[k]!;
+            const activo = segFilter === k;
             return (
-              <div key={k} className="flex-shrink-0 flex items-center gap-2.5 px-3.5 py-2 rounded-xl border"
-                style={{ background: s.bg, borderColor: s.color + '44', minWidth: 100 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1 }}>{counts[k] ?? 0}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: s.color + 'CC', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k}</div>
+              <button key={k} type="button"
+                onClick={() => setSegFilter(f => (f === k ? '' : k))}
+                aria-pressed={activo}
+                title={activo ? `Quitar filtro ${k}` : `Filtrar por ${k}`}
+                className="flex-shrink-0 flex items-center gap-2.5 px-3.5 py-2 rounded-xl border cursor-pointer transition-all active:scale-95"
+                style={{
+                  background: activo ? s.color : s.bg,
+                  borderColor: activo ? s.color : s.color + '44',
+                  minWidth: 100,
+                  boxShadow: activo ? `0 2px 10px ${s.color}55` : 'none',
+                }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: activo ? '#fff' : s.dot, flexShrink: 0 }} />
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: activo ? '#fff' : s.color, lineHeight: 1 }}>{counts[k] ?? 0}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: activo ? 'rgba(255,255,255,0.85)' : s.color + 'CC', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k}</div>
                 </div>
-              </div>
+              </button>
             );
           })}
           <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl border border-border bg-white ml-auto">
