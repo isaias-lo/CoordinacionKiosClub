@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { fmtFechaHoraChile } from '@/lib/fechaChile';
 import { CombineAlertsPanel } from './CombineAlertsPanel';
@@ -9,6 +9,7 @@ import { resumenDiferencia } from './recepcionDiff';
 import { contarTiendasPorEstado } from './estadoCounts';
 import { RecepcionModal } from './RecepcionModal';
 import { coincideFila } from './filtros';
+import { compareCells, ColumnFilterMenu } from './tablaHelpers';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SubTab = 'rm' | 'regiones' | 'recepcion';
@@ -252,6 +253,11 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
   // Filtro desde el semáforo: al clicar un chip (Pendiente/En camino/…) se filtra la tabla por ese
   // estado; re-clic limpia. '' = todos. Solo aplica en RM/Regiones (el semáforo no sale en Recepción).
   const [segFilter,      setSegFilter]      = useState('');
+  // Orden (columna + dirección) y filtros por columna estilo Excel/Sheets — unificado con /registros.
+  const [sortCol,        setSortCol]        = useState('');
+  const [sortDir,        setSortDir]        = useState<'asc' | 'desc'>('desc');
+  const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({});
+  const [openFilter,     setOpenFilter]     = useState<string | null>(null);
   const [selectedRow,    setSelectedRow]    = useState<Row | null>(null);
   const [colWidths,      setColWidths]      = useState<Record<string, number>>(initColWidths);
   const [menuOpen,       setMenuOpen]       = useState(false);
@@ -359,7 +365,32 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
   // baseFiltered: fecha + búsqueda (SIN el filtro del semáforo) → alimenta los contadores, que
   // siempre muestran el total por estado. filtered: base + segFilter → alimenta la tabla.
   const baseFiltered = rows.filter(r => coincideFila(r, { date, isRecepcion, displayDate, search, searchKeys, segFilter: '' }));
-  const filtered = segFilter ? baseFiltered.filter(r => String(r.seguimiento ?? '') === segFilter) : baseFiltered;
+  const segScoped = segFilter ? baseFiltered.filter(r => String(r.seguimiento ?? '') === segFilter) : baseFiltered;
+
+  // Filtros por columna (estilo Excel) + orden, encima de fecha+búsqueda+semáforo. Un filtro activo
+  // sigue aplicando aunque su columna se oculte (por eso se mira sobre las keys con filtro, no activeCols).
+  const activeFilterCols = Object.keys(colFilters).filter(k => (colFilters[k]?.length ?? 0) > 0);
+  const applyColFilters = (list: Row[], exceptCol?: string) =>
+    list.filter(r => activeFilterCols.every(k => k === exceptCol || colFilters[k].includes(String(r[k] ?? ''))));
+  const colFiltered = applyColFilters(segScoped);
+
+  // Orden: por defecto la fecha del despacho (o fecha/hora en recepción), como en /registros.
+  const defaultSortCol = isRecepcion ? 'created_at' : 'fecha';
+  const effSortCol = sortCol || defaultSortCol;
+  const filtered = [...colFiltered].sort((a, b) => {
+    const cmp = compareCells(effSortCol, a[effSortCol], b[effSortCol]);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  // Valores distintos para el desplegable de una columna (respeta los otros filtros activos).
+  const distinctFor = (col: string): string[] =>
+    Array.from(new Set(applyColFilters(segScoped, col).map(r => String(r[col] ?? ''))))
+      .sort((a, b) => compareCells(col, a, b));
+
+  const toggleSort = (col: string) => {
+    if (effSortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortCol(col); setSortDir('asc'); }
+  };
 
   // Contar por TIENDA (cod distinto), no por línea de pallet/bulto (ver estadoCounts.ts).
   const { counts, total: totalTiendas } = contarTiendasPorEstado(baseFiltered, SUMMARY_KEYS);
@@ -422,7 +453,7 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
         {SUB_TABS.map(t => {
           const active = subTab === t.key;
           return (
-            <button key={t.key} onClick={() => { setSubTab(t.key); setSearch(''); setSegFilter(''); setMenuOpen(false); }}
+            <button key={t.key} onClick={() => { setSubTab(t.key); setSearch(''); setSegFilter(''); setMenuOpen(false); setSortCol(''); setSortDir('desc'); setColFilters({}); setOpenFilter(null); }}
               className="px-4 py-2 rounded-xl text-[13px] font-bold cursor-pointer transition-all border"
               style={active
                 ? { background: t.activeBg, borderColor: t.color + '55', color: t.color }
@@ -551,15 +582,40 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
                 </colgroup>
                 <thead>
                   <tr>
-                    {activeCols.map(col => (
+                    {activeCols.map(col => {
+                      const hasFilter = (colFilters[col.key]?.length ?? 0) > 0;
+                      return (
                       <th key={col.key} style={{
-                        position: 'sticky', top: 0, zIndex: 2, padding: '8px 12px', textAlign: 'left',
-                        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                        position: 'sticky', top: 0, zIndex: openFilter === col.key ? 30 : 2, padding: 0,
+                        textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
                         letterSpacing: '0.05em', color: '#1B2A6B', background: '#F1F5F9',
                         borderBottom: '2px solid rgba(27,42,107,0.18)', borderRight: '1px solid #E8ECF3',
-                        userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden',
+                        userSelect: 'none', whiteSpace: 'nowrap',
                       }}>
-                        {col.label}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 14px 8px 12px', position: 'relative' }}>
+                          {/* Título = botón de orden */}
+                          <button onClick={() => toggleSort(col.key)} title="Ordenar por esta columna"
+                            style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#1B2A6B', font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', padding: 0, textAlign: 'left' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.label}</span>
+                            {effSortCol === col.key && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                          </button>
+                          {/* Botón de filtro */}
+                          <button onClick={() => setOpenFilter(openFilter === col.key ? null : col.key)} title="Filtrar"
+                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 5, cursor: 'pointer',
+                              background: hasFilter ? '#1B2A6B' : 'transparent', border: 'none', color: hasFilter ? '#fff' : '#94A3B8' }}>
+                            <Filter size={12} />
+                          </button>
+                          {openFilter === col.key && (
+                            <ColumnFilterMenu
+                              values={distinctFor(col.key)}
+                              selected={colFilters[col.key] ?? []}
+                              accent="#1B2A6B"
+                              onApply={vals => setColFilters(prev => { const n = { ...prev }; if (vals.length) n[col.key] = vals; else delete n[col.key]; return n; })}
+                              onClose={() => setOpenFilter(null)}
+                            />
+                          )}
+                        </div>
+                        {/* Manija para redimensionar (arrastrar) */}
                         <div
                           onMouseDown={e => {
                             e.preventDefault();
@@ -571,7 +627,7 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
                           <div style={{ width: 1, height: '55%', background: 'rgba(27,42,107,0.35)', borderRadius: 1 }} />
                         </div>
                       </th>
-                    ))}
+                    );})}
                   </tr>
                 </thead>
                 <tbody>
@@ -597,11 +653,16 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
             <div className="px-4 py-2 text-[11px] text-text-3 border-t border-border flex items-center gap-1.5 flex-shrink-0">
               <span>{filtered.length} registros{date ? ` · ${displayDate}` : ''}</span>
               <span className="opacity-40">·</span>
-              <span className="opacity-60">Arrastra el borde de columna para redimensionar · ☰ Columnas para mostrar/ocultar</span>
+              <span className="opacity-60">Clic en el título para ordenar · embudo para filtrar · arrastra el borde para redimensionar · ☰ Columnas</span>
             </div>
           </div>
         )}
       </div>
+
+      {/* Backdrop para cerrar el filtro de columna al hacer clic fuera */}
+      {openFilter && (
+        <div onClick={() => setOpenFilter(null)} style={{ position: 'fixed', inset: 0, zIndex: 25 }} />
+      )}
 
       {selectedRow && <RecepcionModal row={selectedRow} onClose={() => setSelectedRow(null)} />}
     </div>
