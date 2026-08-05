@@ -19,6 +19,7 @@ import { fluyeSinCalendario } from './utils/codigosEspeciales';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { ordenarCalT } from './utils/ordenarCalT';
+import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import type { IAStore, IATruck } from './ia/types';
@@ -1603,6 +1604,24 @@ export default function RutasScreen() {
   // ── Save history ──────────────────────────────────────────────────
   async function handleGuardarHistorial(): Promise<boolean> {
     if (!results) { setHistorialStatus('warn'); setHistorialMsg('⚠️ No hay rutas calculadas.'); return false; }
+
+    // Guard: tiendas armadas en Bodega (con carga) que NO quedaron en ninguna ruta se perderían del
+    // registro EN SILENCIO (fue lo que pasó con 02SCL/05LP/30PHU/56PZA el 04/08). Avisamos antes de
+    // guardar para que el usuario las asigne, o confirme registrar el resto de todos modos.
+    const sinRutear = tiendasArmadasSinRutear(calT, results.rutas);
+    if (sinRutear.length > 0 && typeof window !== 'undefined') {
+      const ok = window.confirm(
+        `⚠️ ${sinRutear.length} tienda(s) tienen carga en Bodega pero NO están en ninguna ruta, ` +
+        `así que NO se registrarán:\n\n${sinRutear.join(', ')}\n\n` +
+        `Asígnalas a un camión primero, o presiona Aceptar para registrar el resto de todos modos.`
+      );
+      if (!ok) {
+        setHistorialStatus('warn');
+        setHistorialMsg(`⚠️ Registro cancelado · ${sinRutear.length} tienda(s) sin asignar: ${sinRutear.join(', ')}`);
+        return false;
+      }
+    }
+
     setHistorialStatus('loading');
     setHistorialMsg('');
 
