@@ -1,5 +1,6 @@
 import { norm } from './helpers';
 import { dkm } from './helpers';
+import { stampFromFecha } from './helpers';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Ruta } from './routing';
@@ -316,11 +317,9 @@ export function buildDespachoRMRecords(params: {
 
   const fechaFmt = toDisplayFecha(fecha); // siempre DD/MM/YYYY
 
-  const now   = new Date();
-  const dd    = String(now.getDate()).padStart(2, '0');
-  const mm    = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy  = String(now.getFullYear());
-  const stamp = `${dd}${mm}${yyyy}`;
+  // Stamp del id derivado de la fecha de DESPACHO (no de `now`): registrar cruzando la medianoche o
+  // re-registrar otro día ya no parte la fecha ni colisiona ids — el mismo despacho da los mismos ids.
+  const stamp = stampFromFecha(fechaFmt);
 
   const records: RMRecord[] = [];
 

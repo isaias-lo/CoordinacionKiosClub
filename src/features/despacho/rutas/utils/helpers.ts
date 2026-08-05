@@ -91,6 +91,24 @@ export function todayStr(): string {
   return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
 }
 
+/**
+ * Convierte una fecha de despacho (DD/MM/YYYY o ISO YYYY-MM-DD) al stamp `DDMMYYYY` usado en los
+ * ids del registro (ej. `R1<cod>04082026P`).
+ *
+ * Antes el stamp se derivaba de `now` (fecha de CREACIÓN). Al registrar cruzando la medianoche
+ * (o al re-registrar otro día) el stamp cambiaba respecto a la fecha de DESPACHO → se partía la
+ * fecha (04/08 vs 05/08) y podían colisionar ids entre días. Derivarlo de la fecha de despacho lo
+ * hace determinista: el mismo despacho produce siempre los mismos ids (el sync deduplica). Puro.
+ */
+export function stampFromFecha(fecha: string): string {
+  const s = String(fecha ?? '').trim();
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmy) return `${dmy[1].padStart(2, '0')}${dmy[2].padStart(2, '0')}${dmy[3]}`;
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[3].padStart(2, '0')}${iso[2].padStart(2, '0')}${iso[1]}`;
+  return s.replace(/\D/g, '');
+}
+
 // [Fase 3] Pool de 2ª vuelta desde el tablero: tiendas ACTIVAS con carga (p/b/ch) que NO están
 // asignadas a ningún camión → quedan pendientes. `asignadas` = códigos ya puestos en algún camión
 // (aunque su camión no se haya cerrado), para acumular/corregir en savePendientesV2 sin pisar
