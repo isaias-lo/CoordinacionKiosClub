@@ -6,6 +6,7 @@ import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { fmtFechaHoraChile } from '@/lib/fechaChile';
 import { HistContent } from '@/screens/HistScreen';
 import { RecepcionModal } from '@/features/despacho/estado/RecepcionModal';
+import { shouldSyncTab } from '@/features/despacho/estado/autoSync';
 import type { LucideIcon } from 'lucide-react';
 
 type TabKey = 'rm' | 'regiones' | 'recepcion' | 'historial';
@@ -286,16 +287,26 @@ export default function RegistrosPage() {
     } finally { setSyncing(false); }
   }, [tabCfg.key, tabCfg.table, loadData]);
 
+  // Sync silencioso (no limpia la tabla → sin parpadeo): trae lo último del Sheet y refresca.
+  const silentSync = useCallback(async () => {
+    if (tabCfg.key === 'recepcion' || tabCfg.key === 'historial') return;
+    setSyncing(true);
+    try { await fetch('/api/sync-despacho', { method: 'POST' }); await silentRefresh(); }
+    finally { setSyncing(false); }
+  }, [tabCfg.key, silentRefresh]);
+
+  // Auto-sync al abrir cada pestaña de despacho (1 vez por sesión). Antes solo sincronizaba si la
+  // tabla estaba VACÍA → los despachos de días nuevos no aparecían si ya había data vieja. Ver autoSync.ts.
   const didAutoSync = useRef<Record<string, boolean>>({});
   useEffect(() => {
     if (tab === 'historial') return;
-    loadData(tabCfg.table).then(loaded => {
-      if (loaded.length === 0 && tabCfg.key !== 'recepcion' && !didAutoSync.current[tabCfg.key]) {
+    loadData(tabCfg.table).then(() => {
+      if (shouldSyncTab(tabCfg.key, didAutoSync.current[tabCfg.key])) {
         didAutoSync.current[tabCfg.key] = true;
-        syncFromSheets();
+        silentSync();
       }
     });
-  }, [tab, tabCfg.table, tabCfg.key, loadData, syncFromSheets]);
+  }, [tab, tabCfg.table, tabCfg.key, loadData, silentSync]);
 
   useRealtimeRefresh(tab === 'historial' ? '' : tabCfg.table, silentRefresh);
 
