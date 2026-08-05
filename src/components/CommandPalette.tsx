@@ -127,7 +127,8 @@ export function CommandPalette() {
 
   const allRoutes = [
     { path: '/', label: 'Inicio' },
-    ...MODULE_GROUPS.flatMap(g => g.routes),
+    // Excluir rutas ocultas (ej. /despacho/estado, que redirige a /registros) para no duplicar.
+    ...MODULE_GROUPS.flatMap(g => g.routes).filter(r => !r.hidden),
     ...(profile?.role === 'admin' ? [
       { path: '/admin/usuarios',   label: 'Usuarios' },
       { path: '/admin/calendario', label: 'Calendario' },

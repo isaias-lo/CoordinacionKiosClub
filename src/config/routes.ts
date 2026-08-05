@@ -49,8 +49,11 @@ export const MODULE_GROUPS: ModuleGroup[] = [
   {
     id: 'seguimiento', label: 'Seguimiento', color: '#D97706',
     routes: [
-      { path: '/despacho/estado',        label: 'Estado / Seguimiento'   },
-      { path: '/registros',              label: 'Historial / Registros'  },
+      // Panel unificado: /registros es la URL canónica (renderiza el panel Estado/Seguimiento +
+      // Historial). /despacho/estado sigue registrada (permisos/middleware) pero oculta del sidebar
+      // y redirige a /registros — así no aparece duplicada y no rompe enlaces antiguos.
+      { path: '/despacho/estado',        label: 'Estado / Seguimiento', hidden: true },
+      { path: '/registros',              label: 'Estado / Registros'    },
       { path: '/incidencias',            label: 'Incidencias'            },
     ],
   },
