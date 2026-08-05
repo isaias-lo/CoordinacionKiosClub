@@ -10,6 +10,7 @@ import { contarTiendasPorEstado } from './estadoCounts';
 import { RecepcionModal } from './RecepcionModal';
 import { coincideFila } from './filtros';
 import { compareCells, ColumnFilterMenu } from './tablaHelpers';
+import { shouldSyncTab } from './autoSync';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SubTab = 'rm' | 'regiones' | 'recepcion';
@@ -328,12 +329,22 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
     finally { setSyncing(false); }
   }, [load]);
 
+  // Sync silencioso (no limpia la tabla → sin parpadeo): trae lo último del Sheet y refresca.
+  const silentSync = useCallback(async () => {
+    setSyncing(true);
+    try { await fetch('/api/sync-despacho', { method: 'POST' }); await silentLoad(); }
+    finally { setSyncing(false); }
+  }, [silentLoad]);
+
+  // Auto-sync al abrir cada pestaña de despacho (1 vez por sesión). Antes solo sincronizaba si la
+  // tabla estaba VACÍA, por lo que los despachos de días nuevos no aparecían si ya había data
+  // vieja. Ahora siempre refleja lo último del Sheet sin depender del botón manual. Ver autoSync.ts.
   const didAutoSync = useRef<Record<string, boolean>>({});
   useEffect(() => {
-    load().then(loaded => {
-      if (loaded.length === 0 && subTab !== 'recepcion' && !didAutoSync.current[subTab]) {
+    load().then(() => {
+      if (shouldSyncTab(subTab, didAutoSync.current[subTab])) {
         didAutoSync.current[subTab] = true;
-        syncFromSheets();
+        silentSync();
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
