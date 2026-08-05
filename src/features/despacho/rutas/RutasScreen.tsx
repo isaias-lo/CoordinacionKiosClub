@@ -18,6 +18,7 @@ import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers
 import { fluyeSinCalendario } from './utils/codigosEspeciales';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
+import { ordenarCalT } from './utils/ordenarCalT';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import type { IAStore, IATruck } from './ia/types';
@@ -28,6 +29,9 @@ import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerr
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
+import { fetchCalendarioSupa, subscribeToCalendarioSupa } from '../../../lib/calendarioSync';
+import { writeCalendario } from '../utils/useCalendario';
+import { reaplicarCounts } from './utils/reaplicarCounts';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
@@ -241,6 +245,31 @@ export default function RutasScreen() {
     };
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
+  }, []);
+
+  // ── Calendario autoritativo desde la BD + Realtime cross-device ───
+  // Antes el Enrutador SOLO leía el cache localStorage (_calCentral) y, si faltaba o expiraba,
+  // caía al estático CAL_INICIAL. Cuando la BD tenía tiendas que el estático no (p. ej. 26ALC en
+  // martes o 57CAS en Regiones), esas tiendas: (a) no aparecían en un equipo, o (b) entraban por
+  // despacho_sesion pero como "extras" AL FINAL, rompiendo el orden Regiones→Costa→Santiago — y el
+  // resultado difería entre PC y Mac (cada uno con su cache). Ahora traemos la verdad de la BD al
+  // montar y escuchamos cambios cross-device; nunca degradamos a estático (si la BD no responde,
+  // fetch=null y se conserva el cal actual).
+  useEffect(() => {
+    let alive = true;
+    const aplicarCalBD = (dbCal: CalRecord) => {
+      if (!alive) return;
+      writeCalendario(dbCal);   // coherencia del cache in-memory + _calCentral (beneficia otras pestañas)
+      setCal(dbCal);
+      setCalT(prev => reaplicarCounts(
+        mergeCalT(dbCal, fechaRef.current, prev, grpsRef.current),
+        sesionRowsRef.current,
+        manuallyEditedRef.current,
+      ));
+    };
+    fetchCalendarioSupa().then(dbCal => { if (dbCal) aplicarCalBD(dbCal); }).catch(() => {});
+    const unsub = subscribeToCalendarioSupa(dbCal => aplicarCalBD(dbCal));
+    return () => { alive = false; unsub(); };
   }, []);
 
   // ── Pre-load from Santiago dispatch ──────────────────────────────
@@ -769,27 +798,19 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, cal]);
 
-  // ── Sorted calT — preserves CALENDARIO group order (rm → costa → fal) ──
+  // ── Sorted calT — orden del calendario: Regiones (fal) → Costa → Santiago (rm) ──
+  // Lógica pura extraída a utils/ordenarCalT (testeable). Oculta "fantasmas" (fuera de catálogo
+  // y sin cantidades, ej. "ALC" tecleado en vez de "26ALC"). El orden depende del calendario del
+  // día → por eso el Enrutador ahora trae el calendario autoritativo de la BD (efecto de arriba).
   const sortedCalT = useMemo(() => {
     const dia    = getDia(fecha);
-    const calDia = cal[dia] || cal.LU || {};
-    // Orden igual al Calendario de Despacho: Regiones → Costa → RM
-    const canonical: string[] = [
-      ...((calDia as Record<string, string[]>).fal   || []),
-      ...((calDia as Record<string, string[]>).costa || []),
-      ...((calDia as Record<string, string[]>).rm    || []),
-    ];
-    // Oculta "fantasmas": códigos fuera del catálogo Y sin cantidades (típico: un código
-    // tecleado por error que quedó en localStorage, ej. "ALC" en vez de "26ALC").
-    const visible = (c: string) => calT[c] && !esFantasmaCalT(calT[c], !!tiendas[c]);
-    const result: Record<string, CalData> = {};
-    canonical.forEach(c => { if (visible(c)) result[c] = calT[c]; });
-    const groupOrder: Record<string, number> = { fal: 0, costa: 1, rm: 2 };
-    const extras = Object.keys(calT)
-      .filter(c => !result[c] && visible(c))
-      .sort((a, b) => (groupOrder[calT[a].g || 'fal'] ?? 0) - (groupOrder[calT[b].g || 'fal'] ?? 0));
-    extras.forEach(c => { result[c] = calT[c]; });
-    return result;
+    const calDia = (cal[dia] || cal.LU || {}) as Record<string, string[]>;
+    return ordenarCalT<CalData>(
+      calT,
+      { rm: calDia.rm || [], costa: calDia.costa || [], fal: calDia.fal || [] },
+      (c) => !!tiendas[c],
+      esFantasmaCalT,
+    );
   }, [calT, cal, fecha, tiendas]);
 
   // ── Sync calT → manual text ───────────────────────────────────────
