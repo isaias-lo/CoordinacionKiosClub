@@ -1,7 +1,7 @@
-export const dynamic = 'force-dynamic';
+import { redirect } from 'next/navigation';
 
-import { EstadoScreen } from '../../../screens/EstadoScreen';
-
+// Panel unificado: /despacho/estado quedó fusionado en /registros (URL canónica). Se mantiene esta
+// ruta registrada (permisos/middleware) pero redirige para no romper enlaces/favoritos antiguos.
 export default function EstadoPage() {
-  return <EstadoScreen />;
+  redirect('/registros');
 }
