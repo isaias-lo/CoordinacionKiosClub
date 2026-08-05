@@ -6,6 +6,7 @@ import {
   Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
+import { parseCoord } from './coords';
 
 export interface Tienda {
   codigo: string; nombre: string; direccion: string; region: string;
@@ -118,6 +119,9 @@ export default function TiendasAdminContent({
   const [search,    setSearch]    = useState('');
   const [modal,     setModal]     = useState<'add' | 'edit' | null>(null);
   const [form,      setForm]      = useState<Tienda>(EMPTY);
+  // Inputs de coordenadas como texto (permiten teclear coma decimal); se parsean al guardar.
+  const [latStr,    setLatStr]    = useState('');
+  const [lonStr,    setLonStr]    = useState('');
   const [saving,    setSaving]    = useState(false);
   const [togglingCod, setTogglingCod] = useState<string | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
@@ -173,14 +177,16 @@ export default function TiendasAdminContent({
     finally { setExporting(false); }
   }
 
-  function openAdd()           { setForm(EMPTY);    setModal('add');  }
-  function openEdit(t: Tienda) { setForm({ ...t }); setModal('edit'); }
+  function openAdd()           { setForm(EMPTY);    setLatStr('');                              setLonStr('');                              setModal('add');  }
+  function openEdit(t: Tienda) { setForm({ ...t }); setLatStr(t.lat != null ? String(t.lat) : ''); setLonStr(t.lon != null ? String(t.lon) : ''); setModal('edit'); }
 
   async function handleSave() {
     if (!form.codigo || !form.nombre) return;
     setSaving(true);
     try {
-      const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      // Coordenadas: parsear los inputs de texto (aceptan coma o punto) → número o null.
+      const payload = { ...form, lat: parseCoord(latStr, 90), lon: parseCoord(lonStr, 180) };
+      const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json() as { tienda?: Tienda; sheetSynced?: boolean; error?: string };
       if (data.tienda) {
         const wasAdd = modal === 'add';
@@ -497,8 +503,8 @@ export default function TiendasAdminContent({
               <div><label style={lbl}>Frecuencia</label><input style={inp} value={form.frecuencia} onChange={f('frecuencia')} placeholder="Diario" /></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-              <div><label style={lbl}>Latitud</label><input style={inp} type="number" step="any" value={form.lat ?? ''} onChange={e => setForm(p => ({ ...p, lat: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="-33.391885" /></div>
-              <div><label style={lbl}>Longitud</label><input style={inp} type="number" step="any" value={form.lon ?? ''} onChange={e => setForm(p => ({ ...p, lon: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="-70.506455" /></div>
+              <div><label style={lbl}>Latitud</label><input style={inp} type="text" inputMode="decimal" value={latStr} onChange={e => setLatStr(e.target.value)} placeholder="-33.391885" /></div>
+              <div><label style={lbl}>Longitud</label><input style={inp} type="text" inputMode="decimal" value={lonStr} onChange={e => setLonStr(e.target.value)} placeholder="-70.506455" /></div>
             </div>
             <div style={{ marginTop: 12 }}><label style={lbl}>Correos (separados por coma)</label><input style={inp} value={form.correos} onChange={f('correos')} placeholder="encargado@tienda.cl" /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
