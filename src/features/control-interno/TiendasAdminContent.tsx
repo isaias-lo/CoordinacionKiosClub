@@ -511,9 +511,10 @@ export default function TiendasAdminContent({
               <div><label style={lbl}>Tel. Encargado</label><input style={inp} value={form.tel_encargado} onChange={f('tel_encargado')} placeholder="+56 9 1234 5678" /></div>
               <div><label style={lbl}>Supervisor</label><input style={inp} value={form.supervisor} onChange={f('supervisor')} placeholder="Nombre supervisor" /></div>
             </div>
+            {/* Transportista: se define en el Enrutador al asignar patente (viene de la FLOTA), no se
+                edita aquí. Se preserva el valor existente al guardar (no se borra la columna). */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Tel. Supervisor</label><input style={inp} value={form.tel_supervisor} onChange={f('tel_supervisor')} placeholder="+56 9 8765 4321" /></div>
-              <div><label style={lbl}>Transportista</label><input style={inp} value={form.transportista} onChange={f('transportista')} placeholder="Chilexpress" /></div>
             </div>
 
             {/* Active toggle */}
