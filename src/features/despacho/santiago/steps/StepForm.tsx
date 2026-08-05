@@ -21,6 +21,7 @@ import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { unionRefs } from '../../shared/unifyPallets';
+import { tipoBadge } from '../tipoTienda';
 import { logActividad } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
@@ -113,9 +114,11 @@ interface ResumenEditState {
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
+  tipoCat,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
+  tipoCat?: string;
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number; despachoCH?: number;
   hasGuide?: boolean; storeStatus?: 'none' | 'partial' | 'complete'; storeDoneOps?: number; storeTotalOps?: number;
@@ -161,6 +164,14 @@ function TiendaGridCard({
       <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
         {t.tienda}
       </div>
+      {(() => {
+        const tb = tipoBadge(tipoCat);
+        return tb ? (
+          <span style={{ marginTop: 2, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
+            {tb.label}
+          </span>
+        ) : null;
+      })()}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
         {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
@@ -348,6 +359,7 @@ export function StepForm() {
 
   /* Dynamic tiendas from Supabase (merged with static at runtime) */
   const [supabaseTiendasMap, setSupabaseTiendasMap] = useState<Record<string, TiendaSantiago>>({});
+  const [tipoCatByCod, setTipoCatByCod] = useState<Record<string, string>>({}); // tipo real del catálogo para el badge
 
   /* ── Sincronización de guías PDF con Supabase ── */
   useEffect(() => {
@@ -483,6 +495,9 @@ export function StepForm() {
       .then(({ tiendas: data }: { tiendas: Array<Record<string, unknown>> }) => {
         if (!Array.isArray(data)) return;
         const map: Record<string, TiendaSantiago> = {};
+        // Tipo REAL del catálogo (Mall/StripCenter/Tienda) para el badge de las cards. Se guarda
+        // aparte porque `TiendaSantiago.tipo` colapsa todo a MALL/STRIPCENTER (pierde TIENDA).
+        const tcat: Record<string, string> = {};
         for (const t of data) {
           const cod = String(t.codigo ?? '');
           if (!cod || t.activo === false) continue;
@@ -492,6 +507,7 @@ export function StepForm() {
           const raw      = String(t.frecuencia ?? '');
           const dias     = raw ? raw.split(/[,;\s]+/).map(d => d.trim().toUpperCase()).filter(Boolean) : [];
           const tipoVal  = String(t.tipo ?? '');
+          if (tipoVal) tcat[cod] = tipoVal;
           map[cod] = {
             cod,
             tienda:         String(t.nombre       ?? ''),
@@ -504,6 +520,7 @@ export function StepForm() {
           };
         }
         setSupabaseTiendasMap(map);
+        setTipoCatByCod(tcat);
       })
       .catch(() => {});
   }, []);
@@ -1511,7 +1528,7 @@ export function StepForm() {
               const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
               const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               return (
-                <TiendaGridCard key={t.cod} t={t}
+                <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
@@ -1548,7 +1565,7 @@ export function StepForm() {
               const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
               const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               return (
-                <TiendaGridCard key={t.cod} t={t}
+                <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
