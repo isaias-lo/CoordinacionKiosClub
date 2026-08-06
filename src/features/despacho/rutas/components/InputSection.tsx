@@ -36,7 +36,6 @@ interface Props {
   agruparCorredor?: boolean;
   onToggleCorredor?: () => void;
   onToggleChip: (cod: string) => void;
-  onUpdateChip: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
   onToggleFlota: (idx: number) => void;
   ordenActivacion?: Record<string, number>;  // [F2] orden de camiones por recencia de activación
   onToggleTlbd: (idx: number) => void;
@@ -61,12 +60,11 @@ interface Props {
 
 /* ── Sidebar store row ──────────────────────────────────────────── */
 function SidebarRow({
-  cod, data, onToggle, onUpdate,
+  cod, data, onToggle,
 }: {
   cod: string;
   data: CalData;
   onToggle: (cod: string) => void;
-  onUpdate: (cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) => void;
 }) {
   return (
     <div
@@ -91,19 +89,19 @@ function SidebarRow({
           {formatCod(cod)}
         </span>
       </button>
-      <div className="flex gap-[4px] flex-shrink-0" onClick={e => e.stopPropagation()}>
-        {(['p', 'b', 'c', 'ch'] as const).map(key => (
-          <div key={key} className="flex flex-col items-center w-[32px] rounded-[6px] bg-black/[0.04] border border-black/[0.07] pt-[2px] pb-[1px] px-[2px]">
-            <span className="text-[8px] font-bold text-kmuted/50 leading-none select-none uppercase">{key}</span>
-            <input
-              type="number" min="0" max={key === 'p' ? 20 : 99}
-              value={data[key] || ''}
-              placeholder="0"
-              onChange={e => onUpdate(cod, key, e.target.value)}
-              className="w-full bg-transparent text-[12px] font-bold text-center text-ktext focus:outline-none [-webkit-appearance:none] leading-none"
-            />
-          </div>
-        ))}
+      {/* Cantidades SOLO-LECTURA: se definen en Bodega (no se editan en el Enrutador). */}
+      <div className="flex gap-[4px] flex-shrink-0">
+        {(['p', 'b', 'c', 'ch'] as const).map(key => {
+          const val = data[key] || 0;
+          return (
+            <div key={key} className="flex flex-col items-center w-[32px] rounded-[6px] bg-black/[0.04] border border-black/[0.07] pt-[2px] pb-[1px] px-[2px]">
+              <span className="text-[8px] font-bold text-kmuted/50 leading-none select-none uppercase">{key}</span>
+              <span className={`w-full text-[12px] font-bold text-center leading-none select-none ${val ? 'text-ktext' : 'text-kmuted/40'}`}>
+                {val || 0}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -162,7 +160,7 @@ export default function InputSection({
   flota, flotaStatus, modo, grps, calT, supervisor, fecha, manualText, errors,
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
-  onModo, onToggleGroup, agruparCorredor = false, onToggleCorredor, onToggleChip, onUpdateChip,
+  onModo, onToggleGroup, agruparCorredor = false, onToggleCorredor, onToggleChip,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
@@ -326,7 +324,7 @@ export default function InputSection({
               {/* Store list */}
               <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-[5px]">
                 {Object.entries(filteredCalT).map(([cod, data]) => (
-                  <SidebarRow key={cod} cod={cod} data={data} onToggle={onToggleChip} onUpdate={onUpdateChip} />
+                  <SidebarRow key={cod} cod={cod} data={data} onToggle={onToggleChip} />
                 ))}
               </div>
             </div>
@@ -531,7 +529,6 @@ export default function InputSection({
                 cod={cod}
                 data={data}
                 onToggle={onToggleChip}
-                onUpdate={onUpdateChip}
               />
             ))
           )}

@@ -836,16 +836,8 @@ export default function RutasScreen() {
     setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], on: !prev[cod].on } }));
   }
 
-  function handleUpdateChip(cod: string, key: 'p' | 'b' | 'c' | 'ch', val: string) {
-    manuallyEditedRef.current.add(cod);
-    const v = parseInt(val) || 0;
-    setCalT(prev => ({
-      ...prev,
-      [cod]: key === 'b'
-        ? { ...prev[cod], b: v, ch: 0, on: v > 0 ? true : prev[cod].on }
-        : { ...prev[cod], [key]: v, on: v > 0 ? true : prev[cod].on },
-    }));
-  }
+  // Las cantidades del sidebar del Enrutador son SOLO-LECTURA (se definen en Bodega); ya no hay
+  // handler de edición (handleUpdateChip) ni marca manuallyEditedRef por edición manual de chips.
 
   // ── Fleet handlers ────────────────────────────────────────────────
   function handleToggleFlota(idx: number) {
@@ -1971,7 +1963,6 @@ export default function RutasScreen() {
           agruparCorredor={agruparCorredor}
           onToggleCorredor={() => setAgruparCorredor(v => !v)}
           onToggleChip={handleToggleChip}
-          onUpdateChip={handleUpdateChip}
           flotaStatus={flotaStatus}
           onToggleFlota={handleToggleFlota}
           ordenActivacion={flotaActivadaEn}
