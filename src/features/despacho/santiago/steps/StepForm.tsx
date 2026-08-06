@@ -917,7 +917,11 @@ export function StepForm() {
           }
           setFormRows(rows);
         } else {
-          setFormRows([]);
+          // Sin picking, sin items, sin preset: sembrar un P1 vacío para que se vea la CARD COMPACTA
+          // (renderMultiForm) desde el primer pallet, en vez del formulario grande. Es un row LOCAL
+          // (sin slot) → no crea nada en la BD; el slot/# se crea al Agregar (saveRow). Si el usuario
+          // sale sin llenarlo, se descarta (no deja slot huérfano ni conteo fantasma).
+          setFormRows([{ id: `seed-${currentTienda.cod}-${Date.now()}`, tipo: 'Pallet', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
         }
       } else {
         // Sin picking pero con items guardados → tarjetas guardadas (recuperan #id)
@@ -1151,7 +1155,7 @@ export function StepForm() {
       return updated;
     }));
 
-  const saveRow = (row: FormRow) => {
+  const saveRow = async (row: FormRow) => {
     if (!currentTienda || !regimen) return;
     const p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
     const isChoc     = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
@@ -1164,36 +1168,53 @@ export function StepForm() {
     if (!isCont && !isChocTipo && !a) { showToast('Ingresa el alto', '#D97706'); return; }
     if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
     const cod = currentTienda.cod;
+
+    // Si el row no tiene slot (p. ej. el P1 sembrado al abrir la tienda), crear uno de bodega para
+    // que el pallet SIEMPRE tenga # aun antes de que Picking reporte (igual que "+ Pallet"/saveItem).
+    let slotId = row.pickingSlotId;
+    let nuevoSlot: PickingSlot | undefined;
+    if (!slotId) {
+      const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
+      try {
+        const resSlot = await fetch('/api/picking-pallets/create-bodega', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: (row.contenido || 'hogar').toLowerCase() }),
+        });
+        nuevoSlot = (await resSlot.json() as { data?: PickingSlot }).data;
+        if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot!] })); }
+      } catch { /* sin slot: queda sin # (fallback), no bloquea el guardado */ }
+    }
+
     const existing = items[cod] || [];
     const pc  = existing.filter(i => i.tipo === 'Pallet').length + 1;
     const bc  = existing.filter(i => i.tipo === 'Bulto').length + 1;
     const cc  = existing.filter(i => i.tipo === 'Contenedor').length + 1;
     const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
-    const pickingSlot = row.pickingSlotId
-      ? (pickingSlotsFull[cod] ?? []).find(s => s.id === row.pickingSlotId)
-      : null;
+    const pickingSlot = nuevoSlot ?? (slotId
+      ? (pickingSlotsFull[cod] ?? []).find(s => s.id === slotId)
+      : undefined);
     const savedItem: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
       orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : row.tipo === 'Chocolate' ? `CH${chc}` : `${bc}B`,
       estado: ESTADO_DEFAULT,
-      pickingSlotId: row.pickingSlotId,
+      pickingSlotId: slotId,
       canonical_id: pickingSlot?.canonical_id ?? undefined,
     };
     dispatch({ type: 'ADD_ITEM', item: savedItem });
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId } : r));
     showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
       tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: p, alto: a,
-      contenido: savedItem.contenido, slotId: row.pickingSlotId });
+      contenido: savedItem.contenido, slotId });
 
     // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
-    if (row.pickingSlotId) {
+    if (slotId) {
       supabase.from('picking_pallets').update({
         peso_kg: p, alto: a, ancho: fA, largo: fL,
         peso_v: Math.round((a * fL * fA) / 6000 * 10) / 10 || null,
-      }).eq('id', row.pickingSlotId).then(({ error }) => {
+      }).eq('id', slotId).then(({ error }) => {
         if (error) console.error('[picking_pallets update]', error.message);
       });
     }
