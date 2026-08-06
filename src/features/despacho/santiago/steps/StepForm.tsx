@@ -1254,9 +1254,11 @@ export function StepForm() {
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull
-  const deletePickingSlot = (slotId?: number) => {
-    if (!slotId || !currentTienda) return;
-    const cod = currentTienda.cod;
+  const deletePickingSlot = (slotId?: number, codArg?: string) => {
+    // codArg permite borrar el slot desde contextos sin tienda seleccionada (p. ej. el panel
+    // Resumen, que lista items de varias tiendas y no fija `currentTienda`).
+    const cod = codArg ?? currentTienda?.cod;
+    if (!slotId || !cod) return;
     supabase.from('picking_pallets').delete().eq('id', slotId).then(({ error }) => {
       if (error) console.error('[picking_pallets delete]', error.message);
     });
@@ -1997,7 +1999,7 @@ export function StepForm() {
                               className="border border-border text-text-3 bg-bg-2 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] active:text-info flex-shrink-0">
                               ✎
                             </button>
-                            <button onClick={() => { dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); showToast(`${item.orden} eliminado`, '#D97706'); }}
+                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, cod); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); showToast(`${item.orden} eliminado`, '#D97706'); }}
                               className="border-none text-text-3 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] bg-bg-2 active:text-red flex-shrink-0">
                               ✕
                             </button>
