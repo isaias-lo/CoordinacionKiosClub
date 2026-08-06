@@ -43,6 +43,7 @@ const RM_COLS: ColDef[] = [
   { key: 'ruta',           label: 'Ruta',         defaultWidth: 55,  minWidth: 40  },
   { key: 'estado',         label: 'Estado',       defaultWidth: 155, minWidth: 90  },
   { key: 'seguimiento',    label: 'Seguimiento',  defaultWidth: 120, minWidth: 80  },
+  { key: 'manifiesto',     label: 'Manifiesto',   defaultWidth: 95,  minWidth: 80  },
   // ── Columnas adicionales ──────────────────────────────────────────────────
   { key: 'regimen',              label: 'Régimen',       defaultWidth: 85,  minWidth: 55  },
   { key: 'transporte',           label: 'Transporte',    defaultWidth: 100, minWidth: 70  },
@@ -88,7 +89,7 @@ const ALL_COLS = [...RM_COLS, ...REC_COLS];
 // ── Default visible sets ──────────────────────────────────────────────────────
 const DEFAULT_VISIBLE_DISP = new Set([
   'fecha', 'cod', 'tienda', 'tipo', 'n_pallet_bulto',
-  'peso_kg', 'conductor', 'ruta', 'estado', 'seguimiento',
+  'peso_kg', 'conductor', 'ruta', 'estado', 'seguimiento', 'manifiesto',
 ]);
 const DEFAULT_VISIBLE_REC = new Set([
   'created_at', 'cod', 'tienda',
@@ -151,6 +152,12 @@ function CargaBadge({ value }: { value: string }) {
 function isoToDisplay(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
+}
+
+/** DD/MM/YYYY → YYYY-MM-DD (para consultar rutas_despacho por fecha ISO). '' si no parsea. */
+function displayToIso(display: string): string {
+  const m = String(display ?? '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
 }
 
 function initColWidths(): Record<string, number> {
@@ -260,6 +267,7 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
   const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({});
   const [openFilter,     setOpenFilter]     = useState<string | null>(null);
   const [selectedRow,    setSelectedRow]    = useState<Row | null>(null);
+  const [manifiestoLoading, setManifiestoLoading] = useState<string | null>(null);
   const [colWidths,      setColWidths]      = useState<Record<string, number>>(initColWidths);
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [visibleColsDisp, setVisibleColsDisp] = useState<Set<string>>(() => loadVisibleCols(LS_DISP, DEFAULT_VISIBLE_DISP));
@@ -408,8 +416,35 @@ export function SeguimientoPanel({ canSync = true }: { canSync?: boolean }) {
 
   const totalColWidth = activeCols.reduce((s, c) => s + (colWidths[c.key] ?? c.defaultWidth), 0);
 
+  // Abre el manifiesto (QR) de la ruta a la que pertenece la tienda en esa fecha. Busca en
+  // rutas_despacho (por fecha) la ruta cuyo ruta_tiendas contiene el cod → /r/<token_qr>.
+  const openManifiesto = useCallback(async (row: Row) => {
+    const cod = String(row.cod ?? '').trim().toUpperCase();
+    const fechaIso = displayToIso(String(row.fecha ?? ''));
+    if (!cod || !fechaIso) { alert('Sin fecha/código para buscar el manifiesto'); return; }
+    setManifiestoLoading(String(row.id ?? cod));
+    try {
+      const res  = await fetch(`/api/rutas-despacho?fecha=${encodeURIComponent(fechaIso)}`);
+      const json = await res.json() as { data?: Array<{ token_qr?: string; ruta_tiendas?: { store_cod?: string }[] }> };
+      const ruta = (json.data ?? []).find(r => (r.ruta_tiendas ?? []).some(t => String(t.store_cod ?? '').trim().toUpperCase() === cod));
+      if (ruta?.token_qr) window.open(`/r/${ruta.token_qr}`, '_blank', 'noopener');
+      else alert(`Sin manifiesto registrado para ${cod} el ${row.fecha}`);
+    } catch { alert('No se pudo obtener el manifiesto'); }
+    finally { setManifiestoLoading(null); }
+  }, []);
+
   // ── Cell renderer ──────────────────────────────────────────────────────────
   function renderCell(col: ColDef, row: Row) {
+    if (col.key === 'manifiesto') {
+      const loading = manifiestoLoading === String(row.id ?? row.cod);
+      return (
+        <button onClick={e => { e.stopPropagation(); openManifiesto(row); }} disabled={loading}
+          title="Ver manifiesto de la ruta"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 7, cursor: loading ? 'default' : 'pointer', border: '1px solid rgba(27,42,107,0.30)', background: 'rgba(27,42,107,0.06)', color: '#1B2A6B', whiteSpace: 'nowrap' }}>
+          {loading ? '…' : '📄 Ver'}
+        </button>
+      );
+    }
     const val = row[col.key];
     if (col.key === 'seguimiento') return <Badge value={String(val ?? '')} />;
     if (col.key === 'tipo')        return <TipoBadge value={String(val ?? '')} />;
