@@ -38,6 +38,11 @@ const SORT_OPTS: { id: SortBy; label: string }[] = [
   { id: 'modificadas', label: 'Modificadas' },
 ];
 
+// Estilos de la vista Tabla (planilla densa, estilo unificado)
+const TABLA_COLS = ['Código', 'Nombre', 'Región', 'Comuna', 'Tipo', 'Ventana', 'Frecuencia', 'Coords', 'Estado'];
+const TH_CELL: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 1, textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#1B2A6B', background: '#F1F5F9', borderBottom: '2px solid rgba(27,42,107,0.18)', whiteSpace: 'nowrap' };
+const TD_CELL: React.CSSProperties = { padding: '7px 12px', borderBottom: '1px solid #F1F5F9', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 };
+
 function relativeTime(iso: string | undefined): string | null {
   if (!iso) return null;
   const diff  = Date.now() - new Date(iso).getTime();
@@ -133,6 +138,9 @@ export default function TiendasAdminContent({
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre' : 'nombre');
   const [sortDir, setSortDir] = useState<SortDir>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_dir') as SortDir) ?? 'asc' : 'asc');
+  const [viewMode, setViewMode] = useState<'cards' | 'tabla'>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('tiendas_view') as 'cards' | 'tabla') ?? 'cards' : 'cards');
+  useEffect(() => { localStorage.setItem('tiendas_view', viewMode); }, [viewMode]);
 
   // Frecuencia DERIVADA del Calendario Central (cod → "MA-JU-VI"), no del campo manual (que suele
   // quedar vacío). Se actualiza sola cuando cambia el calendario (cross-device).
@@ -414,6 +422,17 @@ export default function TiendasAdminContent({
                 <span style={{ marginLeft: 6, fontSize: 12, color: '#94A3B8' }}>
                   {filtered.length} tienda{filtered.length !== 1 ? 's' : ''}
                 </span>
+                {/* Toggle Cards / Tabla */}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, background: '#F1F5F9', borderRadius: 7, padding: 2 }}>
+                  {(['cards', 'tabla'] as const).map(m => (
+                    <button key={m} onClick={() => setViewMode(m)}
+                      style={{ height: 24, padding: '0 12px', borderRadius: 5, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                        background: viewMode === m ? '#fff' : 'transparent', color: viewMode === m ? '#1D4ED8' : '#64748B',
+                        boxShadow: viewMode === m ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
+                      {m === 'cards' ? 'Cards' : 'Tabla'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -423,6 +442,44 @@ export default function TiendasAdminContent({
             ) : filtered.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#94A3B8', paddingTop: 60, fontSize: 14 }}>
                 {tiendas.length === 0 ? 'No hay tiendas. Usa "Sheets → DB" para importar.' : 'Sin resultados para esta búsqueda.'}
+              </div>
+            ) : viewMode === 'tabla' ? (
+              <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #E2E8F0', background: '#fff' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+                    <thead>
+                      <tr>{TABLA_COLS.map(h => <th key={h} style={TH_CELL}>{h}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((t, i) => {
+                        const zebra = i % 2 ? '#FAFBFC' : '#fff';
+                        return (
+                          <tr key={t.codigo} onClick={() => openEdit(t)}
+                            style={{ cursor: 'pointer', background: zebra }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#EEF2FF')}
+                            onMouseLeave={e => (e.currentTarget.style.background = zebra)}>
+                            <td style={TD_CELL}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#1B2A6B' }}>{t.codigo}</span></td>
+                            <td style={TD_CELL}>{t.nombre}</td>
+                            <td style={TD_CELL}>{t.region || '—'}</td>
+                            <td style={TD_CELL}>{t.sector_comuna || '—'}</td>
+                            <td style={TD_CELL}>{t.tipo || '—'}</td>
+                            <td style={TD_CELL}>{t.ventana || '—'}</td>
+                            <td style={TD_CELL}>{freqByCod[t.codigo] || t.frecuencia || '—'}</td>
+                            <td style={TD_CELL}>{t.lat != null && t.lon != null ? '✓' : '—'}</td>
+                            <td style={TD_CELL}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: t.activo ? '#DCFCE7' : '#FEE2E2', color: t.activo ? '#16A34A' : '#DC2626' }}>
+                                {t.activo ? 'Activa' : 'Inactiva'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding: '8px 12px', fontSize: 11, color: '#94A3B8', borderTop: '1px solid #F1F5F9' }}>
+                  {filtered.length} tiendas · toca una fila para editar
+                </div>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
