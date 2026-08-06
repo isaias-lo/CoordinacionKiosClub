@@ -33,6 +33,35 @@ export function mergeItemsByTienda<T>(
   return out;
 }
 
+/**
+ * Igual que {@link mergeItemsByTienda} pero para un mapa de UN registro por clave
+ * (`Record<string, Entry>`, p. ej. las guías PDF: una guía por tienda), no una lista.
+ *
+ * Por cada clave: si la cambié desde el último sync ("dirty") gana la local (incluye borrado:
+ * dirty + local ausente ⇒ NO la re-agrego); si está limpia, manda la remota (ausencia remota =
+ * borrado intencional del otro dispositivo ⇒ no restaurar desde local). Es el MISMO criterio que
+ * usa el merge de `pdfData` en AppContext (Bodega Nacional) — así las guías quedan con la misma
+ * resiliencia cross-device que ya tenía Nacional.
+ */
+export function mergeEntriesByKey<T>(
+  remote: Record<string, T>,
+  local: Record<string, T>,
+  lastSynced: Record<string, T>,
+): Record<string, T> {
+  const out: Record<string, T> = {};
+  const allKeys = new Set([...Object.keys(remote), ...Object.keys(local), ...Object.keys(lastSynced)]);
+  for (const k of allKeys) {
+    const dirty = JSON.stringify(local[k]) !== JSON.stringify(lastSynced[k]);
+    if (dirty) {
+      if (local[k] !== undefined) out[k] = local[k]; // subida/cambio local aún sin empujar
+      // dirty + local ausente ⇒ lo borré localmente ⇒ no lo re-agrego
+    } else if (remote[k] !== undefined) {
+      out[k] = remote[k]; // limpio ⇒ manda el remoto (una edición/borrado más nuevo del otro equipo)
+    }
+  }
+  return out;
+}
+
 /** Extrae de forma segura el `items` del snapshot JSON guardado en `lastPushedRef`. */
 export function itemsFromSnapshot<T>(snapshotJson: string): Record<string, T[]> {
   try {
