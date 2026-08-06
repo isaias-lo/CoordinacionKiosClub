@@ -52,6 +52,7 @@ interface TiendaBody {
   supervisor?: string;
   tel_supervisor?: string;
   transportista?: string;
+  recepcion_pallet?: string;
   activo?: boolean;
 }
 
@@ -150,7 +151,7 @@ export async function GET(request: NextRequest) {
     const sb = supabaseServer();
     const { data, error } = await sb
       .from('tiendas')
-      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, activo, created_at, updated_at')
+      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, activo, created_at, updated_at')
       .order('codigo');
     if (error) throw error;
     return NextResponse.json({ tiendas: data });
@@ -190,6 +191,7 @@ export async function POST(request: NextRequest) {
         supervisor:     body.supervisor     ?? '',
         tel_supervisor: body.tel_supervisor ?? '',
         transportista:  body.transportista  ?? '',
+        recepcion_pallet: body.recepcion_pallet || null,
         activo:         body.activo         ?? true,
       }, { onConflict: 'codigo' })
       .select()

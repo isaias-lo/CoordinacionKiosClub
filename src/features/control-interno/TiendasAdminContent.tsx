@@ -15,7 +15,7 @@ export interface Tienda {
   sector_comuna: string; corredor: string; tipo: string; ventana: string;
   frecuencia: string; prom_por_dia: string; lat: number | null; lon: number | null;
   correos: string; tel_encargado: string; supervisor: string;
-  tel_supervisor: string; transportista: string; activo: boolean;
+  tel_supervisor: string; transportista: string; recepcion_pallet: string; activo: boolean;
   created_at?: string; updated_at?: string;
 }
 
@@ -23,7 +23,7 @@ const EMPTY: Tienda = {
   codigo: '', nombre: '', direccion: '', region: '', sector_comuna: '',
   corredor: '', tipo: '', ventana: '', frecuencia: '', prom_por_dia: '',
   lat: null, lon: null, correos: '', tel_encargado: '', supervisor: '',
-  tel_supervisor: '', transportista: '', activo: true,
+  tel_supervisor: '', transportista: '', recepcion_pallet: '', activo: true,
 };
 
 type SortBy  = 'nombre' | 'codigo' | 'region' | 'estado' | 'recientes' | 'modificadas';
@@ -504,6 +504,7 @@ export default function TiendasAdminContent({
                         {t.corredor  && <span style={{ fontSize: 11, color: '#475569', background: '#F1F5F9', borderRadius: 4, padding: '2px 7px' }}>{t.corredor}</span>}
                         {t.ventana   && <span style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>{t.ventana}</span>}
                         {freqByCod[t.codigo] && <span style={{ fontSize: 11, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>{freqByCod[t.codigo]}</span>}
+                        {t.recepcion_pallet && <span style={{ fontSize: 11, color: '#7C3AED', background: '#F3E8FF', borderRadius: 4, padding: '2px 7px', fontWeight: 600, textTransform: 'capitalize' }}>{t.recepcion_pallet}</span>}
                       </div>
 
                       {/* Details */}
@@ -568,7 +569,28 @@ export default function TiendasAdminContent({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Corredor</label><input style={inp} value={form.corredor} onChange={f('corredor')} placeholder="Corredor Oriente" /></div>
-              <div><label style={lbl}>Tipo</label><input style={inp} value={form.tipo} onChange={f('tipo')} placeholder="Premium" /></div>
+              <div>
+                <label style={lbl}>Tipo</label>
+                <select style={inp} value={form.tipo} onChange={f('tipo')}>
+                  <option value="">— Tipo —</option>
+                  <option value="MALL">Mall</option>
+                  <option value="STRIPCENTER">Strip Center</option>
+                  <option value="TIENDA">Tienda (calle)</option>
+                  <option value="oficina">Oficina</option>
+                  {form.tipo && !['MALL', 'STRIPCENTER', 'TIENDA', 'oficina'].includes(form.tipo) && <option value={form.tipo}>{form.tipo}</option>}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+              <div>
+                <label style={lbl}>Recepción del pallet</label>
+                <select style={inp} value={form.recepcion_pallet} onChange={f('recepcion_pallet')}>
+                  <option value="">— Sin definir —</option>
+                  <option value="consolidado">Consolidado (entra armado)</option>
+                  <option value="desconsolidado">Desconsolidado (se desarma)</option>
+                </select>
+              </div>
+              <div />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Ventana horaria</label><input style={inp} value={form.ventana} onChange={f('ventana')} placeholder="09:00-12:00" /></div>
