@@ -79,6 +79,7 @@ export const CreateTiendaSchema = z.object({
   supervisor:      z.string().max(100).optional(),
   tel_supervisor:  z.string().max(30).optional(),
   transportista:   z.string().max(100).optional(),
+  recepcion_pallet: z.string().max(30).optional(), // 'consolidado' | 'desconsolidado' | ''
   activo:          z.boolean().optional(),
 });
 
