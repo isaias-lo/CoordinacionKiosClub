@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
 import { parseCoord } from './coords';
+import { frecuenciasPorTienda } from './frecuencia';
+import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
 
 export interface Tienda {
   codigo: string; nombre: string; direccion: string; region: string;
@@ -132,6 +134,16 @@ export default function TiendasAdminContent({
   const [sortDir, setSortDir] = useState<SortDir>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_dir') as SortDir) ?? 'asc' : 'asc');
 
+  // Frecuencia DERIVADA del Calendario Central (cod → "MA-JU-VI"), no del campo manual (que suele
+  // quedar vacío). Se actualiza sola cuando cambia el calendario (cross-device).
+  const [freqByCod, setFreqByCod] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    fetchCalendarioCompleto().then(cal => { if (alive) setFreqByCod(frecuenciasPorTienda(cal)); }).catch(() => {});
+    const unsub = subscribeToCalendarChanges(cal => setFreqByCod(frecuenciasPorTienda(cal)));
+    return () => { alive = false; unsub(); };
+  }, []);
+
   useEffect(() => { localStorage.setItem('tiendas_sort_by',  sortBy);  }, [sortBy]);
   useEffect(() => { localStorage.setItem('tiendas_sort_dir', sortDir); }, [sortDir]);
 
@@ -185,7 +197,9 @@ export default function TiendasAdminContent({
     setSaving(true);
     try {
       // Coordenadas: parsear los inputs de texto (aceptan coma o punto) → número o null.
-      const payload = { ...form, lat: parseCoord(latStr, 90), lon: parseCoord(lonStr, 180) };
+      // Sincroniza la frecuencia derivada del calendario a la columna almacenada (si la tienda está
+      // en el calendario) para que otros consumidores (Bodega) usen el mismo dato.
+      const payload = { ...form, lat: parseCoord(latStr, 90), lon: parseCoord(lonStr, 180), frecuencia: freqByCod[form.codigo] || form.frecuencia };
       const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json() as { tienda?: Tienda; sheetSynced?: boolean; error?: string };
       if (data.tienda) {
@@ -432,6 +446,7 @@ export default function TiendasAdminContent({
                         {t.region    && <span style={{ fontSize: 11, color: '#475569', background: '#F1F5F9', borderRadius: 4, padding: '2px 7px' }}>{t.region}</span>}
                         {t.corredor  && <span style={{ fontSize: 11, color: '#475569', background: '#F1F5F9', borderRadius: 4, padding: '2px 7px' }}>{t.corredor}</span>}
                         {t.ventana   && <span style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>{t.ventana}</span>}
+                        {freqByCod[t.codigo] && <span style={{ fontSize: 11, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>{freqByCod[t.codigo]}</span>}
                       </div>
 
                       {/* Details */}
@@ -500,7 +515,12 @@ export default function TiendasAdminContent({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Ventana horaria</label><input style={inp} value={form.ventana} onChange={f('ventana')} placeholder="09:00-12:00" /></div>
-              <div><label style={lbl}>Frecuencia</label><input style={inp} value={form.frecuencia} onChange={f('frecuencia')} placeholder="Diario" /></div>
+              <div>
+                <label style={lbl}>Frecuencia <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· del Calendario Central</span></label>
+                <input style={{ ...inp, background: '#F8FAFC', color: '#475569', cursor: 'default' }} readOnly
+                  value={freqByCod[form.codigo] || form.frecuencia || ''}
+                  placeholder="— (la tienda no está en el calendario)" />
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Latitud</label><input style={inp} type="text" inputMode="decimal" value={latStr} onChange={e => setLatStr(e.target.value)} placeholder="-33.391885" /></div>
