@@ -1003,7 +1003,7 @@ export function StepForm() {
   }, [contenido]);
 
   /* ── Add / edit item ── */
-  const saveItem = () => {
+  const saveItem = async () => {
     if (!currentTienda || !canAdd || !regimen) return;
     const cod = currentTienda.cod;
     const existing = items[cod] || [];
@@ -1028,6 +1028,20 @@ export function StepForm() {
     const cc  = existing.filter(i => i.tipo === 'Contenedor').length;
     const chc = existing.filter(i => i.tipo === 'Chocolate').length;
     const orden = tipo === 'Pallet' ? `P${pc + 1}` : tipo === 'Contenedor' ? `C${cc + 1}` : tipo === 'Chocolate' ? `CH${chc + 1}` : `${bc + 1}B`;
+
+    // Crear el slot de bodega (id + canonical) para que el pallet SIEMPRE tenga código, aun antes de
+    // que Picking reporte. Antes saveItem NO creaba slot → el pallet quedaba sin # (aun tras Agregar).
+    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
+    let slot: PickingSlot | undefined;
+    try {
+      const res = await fetch('/api/picking-pallets/create-bodega', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: TIPO_CODE[tipo], contenido: (contenido || 'hogar').toLowerCase() }),
+      });
+      slot = (await res.json() as { data?: PickingSlot }).data;
+    } catch { /* sin slot: el pallet queda sin # (fallback), no bloquea el guardado */ }
+    if (slot) setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
+
     dispatch({
       type: 'ADD_ITEM',
       item: {
@@ -1036,8 +1050,14 @@ export function StepForm() {
         pesoVolumetrico: Math.round(pesoV * 100) / 100, regimen,
         orden,
         estado: ESTADO_DEFAULT,
+        pickingSlotId: slot?.id,
       },
     });
+    if (slot?.id) {
+      supabase.from('picking_pallets').update({
+        peso_kg: parseFloat(peso), alto: pA, ancho: pW, largo: pL,
+      }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
+    }
     setPeso(''); setAlto(''); setLargo(''); setAncho('');
     showToast(`✓ ${orden} agregado`, '#16A34A');
   };
