@@ -9,6 +9,7 @@ import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
+import { tipoBadge } from '../../santiago/tipoTienda';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { StoreProgressBar } from '../../shared/StoreProgressBar';
 import { SectionCount } from '../../shared/SectionCount';
@@ -107,6 +108,11 @@ interface FormRow {
 }
 
 /* ── Compact 3-column grid card ── */
+// Flag de rollback (paridad con RM/Costa): `false` = vista compacta siempre (estado vacío = botones
+// +Pallet/+Bulto/…, al elegir el tipo aparece la card-formulario con su #). `true` = formulario
+// grande como estado vacío. Se mantiene mientras se verifica el flujo nuevo en vivo.
+const USAR_FORM_GRANDE: boolean = false;
+
 interface GridCardProps {
   name: string;
   isActive: boolean;
@@ -124,10 +130,11 @@ interface GridCardProps {
   storeStatus?: 'none' | 'partial' | 'complete';
   storeDoneOps?: number;
   storeTotalOps?: number;
+  tipoCat?: string;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -156,6 +163,14 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
         {t.name}
       </div>
+      {(() => {
+        const tb = tipoBadge(tipoCat);
+        return tb ? (
+          <span style={{ marginTop: 2, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
+            {tb.label}
+          </span>
+        ) : null;
+      })()}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
         {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
@@ -231,9 +246,27 @@ export function TiendasPage() {
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
   const [formRows,              setFormRows]              = useState<FormRow[]>([]);
+  const [tipoCatByCod,          setTipoCatByCod]          = useState<Record<string, string>>({}); // tipo del catálogo para el badge
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showCalManual,     setShowCalManual]      = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
+
+  // Tipo de tienda (Mall/StripCenter/Tienda) del catálogo Supabase para el badge de las cards
+  // (paridad con RM/Costa). El catálogo estático de Regiones no trae el tipo, así que se consulta.
+  useEffect(() => {
+    fetch('/api/tiendas')
+      .then(r => r.json())
+      .then(({ tiendas: data }: { tiendas?: Array<Record<string, unknown>> }) => {
+        if (!Array.isArray(data)) return;
+        const tcat: Record<string, string> = {};
+        for (const t of data) {
+          const cod = String(t.codigo ?? ''); const tipoVal = String(t.tipo ?? '');
+          if (cod && tipoVal) tcat[cod] = tipoVal;
+        }
+        setTipoCatByCod(tcat);
+      })
+      .catch(() => {});
+  }, []);
 
   /* Calendar from Calendario Central (Sheets + localStorage cross-tab sync) */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
@@ -1266,8 +1299,8 @@ export function TiendasPage() {
       </div>
     );
 
-    /* ── Multi-form (preset) mode ── */
-    if (formRows.length > 0) {
+    /* ── Multi-form (compacta) — siempre, salvo rollback. Estado vacío = botones +Pallet/… ── */
+    if (formRows.length > 0 || !USAR_FORM_GRANDE) {
       const pdfStrip = (
         <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".pdf" className="hidden"
@@ -1990,7 +2023,7 @@ export function TiendasPage() {
                   const pkSlots   = pickingSlots[t.name] ?? [];
                   const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                   return (
-                    <TiendaGridCard key={t.name} name={t.name}
+                    <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                       isActive={selectedTienda === t.name} isToday
                       itemCount={cardItems.length}
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
@@ -2041,7 +2074,7 @@ export function TiendasPage() {
                     const pkSlots   = pickingSlots[t.name] ?? [];
                     const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                     return (
-                      <TiendaGridCard key={t.name} name={t.name}
+                      <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                         isActive={selectedTienda === t.name} isToday={false}
                         itemCount={cardItems.length}
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
