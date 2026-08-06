@@ -29,6 +29,7 @@ import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDia
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
+import { mergeEntriesByKey } from '../context/mergeItems';
 import { processPdf } from '../../regiones/utils/pdfUtils';
 import { isRegionesCod } from '../../regiones/data/tiendas';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -351,6 +352,12 @@ export function StepForm() {
   const [guideUploading, setGuideUploading] = useState(false);
   const [guideDragOver,  setGuideDragOver]  = useState(false);
   const guideFileRef = useRef<HTMLInputElement>(null);
+  // Sync de guías cross-device (merge por-tienda tipo AppContext): `guidesRef` = copia siempre-actual
+  // para el merge; `lastSyncedGuidesRef` = línea base (lo último empujado/adoptado) para saber qué
+  // guías cambié yo localmente y no dejar que un eco viejo pise un reemplazo/borrado ajeno.
+  const guidesRef           = useRef<Record<string, GuideEntry>>(guides);
+  const lastSyncedGuidesRef = useRef<Record<string, GuideEntry>>({});
+  useEffect(() => { guidesRef.current = guides; }, [guides]);
 
   /* ── Resizable panels (left + right, center takes flex-1) ── */
   const { width: leftWidth, isDesktop, handleMouseDown: handleLeftMouseDown, handleTouchStart: handleLeftTouchStart } =
@@ -369,15 +376,21 @@ export function StepForm() {
   /* ── Sincronización de guías PDF con Supabase ── */
   useEffect(() => {
     function applyRemoteGuides(remote: unknown) {
-      try {
-        const rg = remote as Record<string, GuideEntry>;
-        if (!rg || typeof rg !== 'object' || Array.isArray(rg)) return;
-        setGuides(prev => {
-          const merged = { ...rg, ...prev };
-          saveGuides(merged);
-          return merged;
-        });
-      } catch {}
+      if (!remote || typeof remote !== 'object' || Array.isArray(remote)) return;
+      const rg = remote as Record<string, GuideEntry>;
+      const prev = guidesRef.current;
+      // Merge por-tienda: sólo conservo MI guía de las tiendas que cambié desde el último sync; las
+      // que no toqué adoptan la remota (así un reemplazo/borrado ajeno se propaga y no lo pisa mi
+      // copia vieja). Antes era `{ ...remote, ...local }` → local ganaba siempre y el reemplazo no llegaba.
+      const merged = mergeEntriesByKey(rg, prev, lastSyncedGuidesRef.current);
+      // Sin ediciones locales pendientes ⇒ el remoto es autoritativo: avanzo la línea base para no
+      // quedar "pegado" en una guía vieja e ignorar futuros cambios remotos.
+      if (JSON.stringify(prev) === JSON.stringify(lastSyncedGuidesRef.current)) {
+        lastSyncedGuidesRef.current = merged;
+      }
+      guidesRef.current = merged;
+      saveGuides(merged);
+      setGuides(merged);
     }
     fetchSessionState('guides').then(remote => {
       const localGuides = loadGuides();
@@ -385,9 +398,14 @@ export function StepForm() {
         remote && typeof remote === 'object' && !Array.isArray(remote)
           ? (remote as Record<string, GuideEntry>)
           : {};
-      const merged = { ...remoteGuides, ...localGuides };
+      // Línea base vacía al inicio ⇒ mis guías locales son "dirty" (se conservan) y las remotas
+      // rellenan el resto — mismo efecto que el `{ ...remote, ...local }` de antes, pero fija la base.
+      const merged = mergeEntriesByKey(remoteGuides, localGuides, {});
+      lastSyncedGuidesRef.current = merged;
+      guidesRef.current = merged;
+      saveGuides(merged);
+      setGuides(merged);
       if (Object.keys(localGuides).length > 0) pushSessionState('guides', merged).catch(() => {});
-      applyRemoteGuides(merged);
     }).catch(() => {});
     // [P9] Catch-up de guías: re-consulta al reconectar Realtime y al volver a la pestaña/app.
     const refetchGuides = () => { void fetchSessionState('guides').then(applyRemoteGuides).catch(() => {}); };
@@ -453,6 +471,8 @@ export function StepForm() {
     if (assigned > 0) {
       setGuides(newGuides);
       saveGuides(newGuides);
+      guidesRef.current = newGuides;
+      lastSyncedGuidesRef.current = newGuides; // acabo de empujar ⇒ nueva línea base sincronizada
       pushSessionState('guides', newGuides).catch(() => {});
       showToast(
         `✓ ${assigned} guía${assigned !== 1 ? 's' : ''} asignada${assigned !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} omitida${skipped !== 1 ? 's' : ''}` : ''}`,

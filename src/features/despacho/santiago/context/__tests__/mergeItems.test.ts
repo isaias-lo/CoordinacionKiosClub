@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeItemsByTienda, itemsFromSnapshot } from '../mergeItems';
+import { mergeItemsByTienda, mergeEntriesByKey, itemsFromSnapshot } from '../mergeItems';
 
 // Item mínimo (solo un id sirve para distinguir versiones).
 type Item = { id: string };
@@ -61,6 +61,50 @@ describe('mergeItemsByTienda', () => {
     const local      = { A: [P('a1')] };
     const remote     = { A: [P('zzz')] };
     expect(mergeItemsByTienda(remote, local, lastSynced)).toEqual({ A: [P('a1')] });
+  });
+});
+
+describe('mergeEntriesByKey (guías PDF: 1 registro por tienda)', () => {
+  type Guide = { file: string };
+  const G = (file: string): Guide => ({ file });
+
+  it('propaga un REEMPLAZO remoto de una guía que no cambié localmente (bug real de guías)', () => {
+    // El otro dispositivo re-subió la guía de X (corregida). Yo no la toqué ⇒ debo adoptar la nueva.
+    const lastSynced = { X: G('guia-v1.pdf') };
+    const local      = { X: G('guia-v1.pdf') };  // no la cambié
+    const remote     = { X: G('guia-v2.pdf') };  // el otro la reemplazó
+    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ X: G('guia-v2.pdf') });
+  });
+
+  it('conserva mi subida/reemplazo local aún sin empujar', () => {
+    const lastSynced = { X: G('guia-v1.pdf') };
+    const local      = { X: G('guia-mia.pdf') }; // la reemplacé local, todavía sin empujar
+    const remote     = { X: G('guia-v1.pdf') };
+    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ X: G('guia-mia.pdf') });
+  });
+
+  it('propaga el BORRADO remoto de una guía limpia (no la restaura desde local)', () => {
+    const lastSynced = { X: G('g.pdf'), Y: G('h.pdf') };
+    const local      = { X: G('g.pdf'), Y: G('h.pdf') }; // no toqué Y
+    const remote     = { X: G('g.pdf') };                // el otro borró Y
+    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ X: G('g.pdf') });
+  });
+
+  it('honra mi borrado local (no lo re-agrega el eco remoto)', () => {
+    const lastSynced = { X: G('g.pdf') };
+    const local      = {};                 // borré X local (dirty)
+    const remote     = { X: G('g.pdf') };  // el remoto todavía la tiene
+    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({});
+  });
+
+  it('incorpora una guía nueva que solo está en el remoto', () => {
+    expect(mergeEntriesByKey({ Z: G('z.pdf') }, {}, {})).toEqual({ Z: G('z.pdf') });
+  });
+
+  it('preserva subidas locales al inicio (línea base vacía) y suma las remotas', () => {
+    // Init: baseline vacío ⇒ mis guías locales son "dirty" (ganan) y las remotas rellenan el resto.
+    const merged = mergeEntriesByKey({ A: G('a.pdf') }, { B: G('b-local.pdf') }, {});
+    expect(merged).toEqual({ A: G('a.pdf'), B: G('b-local.pdf') });
   });
 });
 
