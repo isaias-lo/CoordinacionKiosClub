@@ -7,6 +7,7 @@ import type {
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
+import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -188,7 +189,12 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       const isDirty = localStr !== lastPushedRef.current;
 
       if (isDirty && remote.items) {
-        const merged = { ...remote.items, ...stateRef.current.items };
+        // Merge por-tienda respetando quién cambió qué: sólo conservo MI copia de las tiendas que
+        // realmente edité desde el último sync; las que no toqué adopto la versión remota (que puede
+        // ser una edición más nueva del otro dispositivo). Antes era `{ ...remote, ...local }` y la
+        // copia local pisaba TODA tienda → "revertía" al unir CH/bultos desde el móvil. Ver mergeItems.ts.
+        const lastSyncedItems = itemsFromSnapshot<SantiagoItem>(lastPushedRef.current);
+        const merged = mergeItemsByTienda(remote.items, stateRef.current.items, lastSyncedItems);
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
       } else {
         lastPushedRef.current = remoteStr;
