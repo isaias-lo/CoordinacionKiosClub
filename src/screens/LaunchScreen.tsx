@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 import { KpiCard } from '../components/KpiCard';
 import { EmptyState } from '../components/ui/empty-state';
 import { StatusBadge } from '../components/ui/status-badge';
-import { useHistorial, useHistorialStats, HistorialEntry } from '../hooks/queries/useHistorial';
+import { useHistorialStats } from '../hooks/queries/useHistorial';
 import { useTodayPickingPallets } from '../hooks/queries/usePickingPallets';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -43,6 +43,7 @@ function greeting(): string {
 
 /* ── Dispatch chart types ────────────────────────────────────────── */
 interface ChartData { day: string; fullDate: string; pallets: number; bultos: number; contenedores: number; chocolates: number }
+interface ResumenDiaGrafico { fecha: string; fechaISO: string; pallets: number; bultos: number; contenedores: number; chocolates: number }
 
 /* ── Main Dashboard ──────────────────────────────────────────────── */
 export function LaunchScreen() {
@@ -85,23 +86,36 @@ export function LaunchScreen() {
     return () => clearInterval(t);
   }, [loadPending]);
 
-  /* Chart data — últimos 7 días CON despacho (no días de calendario vacíos),
-     así el gráfico siempre muestra actividad real aunque los despachos sean esporádicos. */
-  const { data: historialRaw = [] } = useHistorial(90);
+  /* Chart data — últimos 7 días CON despacho, contados desde el REGISTRO REAL (despacho_rm +
+     regiones) vía /api/despacho-resumen. Antes usaba los totales de historial_despacho, que
+     subcuentan (solo lo ruteado al guardar) y se fragmentan → el gráfico marcaba menos de lo real
+     (p. ej. 68 en vez de 88). */
+  const [resumenDias, setResumenDias] = useState<ResumenDiaGrafico[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const res = await fetch('/api/despacho-resumen?dias=7', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const json = await res.json() as { dias?: ResumenDiaGrafico[] };
+        if (Array.isArray(json.dias)) setResumenDias(json.dias);
+      } catch { /* silencioso: el gráfico queda vacío si falla */ }
+    })();
+  }, []);
 
-  const chartData: ChartData[] = (historialRaw as HistorialEntry[])
-    .filter(r => ((r.total_pallets ?? 0) + (r.total_bultos ?? 0) + (r.total_contenedores ?? 0) + (r.total_chocolates ?? 0)) > 0)
-    .slice(0, 7)   // historialRaw viene ordenado por fecha desc (más reciente primero)
-    .reverse()     // cronológico para el gráfico
+  const chartData: ChartData[] = [...resumenDias]
+    .reverse()     // el endpoint viene desc (reciente primero) → cronológico para el gráfico
     .map(r => {
-      const d = parseISO(r.date);
+      const d = parseISO(r.fechaISO);
       return {
         day:          format(d, 'd MMM', { locale: es }).replace('.', ''),
         fullDate:     format(d, "EEEE d 'de' MMMM", { locale: es }),
-        pallets:      r.total_pallets      ?? 0,
-        bultos:       r.total_bultos       ?? 0,
-        contenedores: r.total_contenedores ?? 0,
-        chocolates:   r.total_chocolates   ?? 0,
+        pallets:      r.pallets,
+        bultos:       r.bultos,
+        contenedores: r.contenedores,
+        chocolates:   r.chocolates,
       };
     });
 
