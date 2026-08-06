@@ -22,6 +22,18 @@ export async function GET(
     return NextResponse.json({ error: 'El enlace ha expirado' }, { status: 410 });
   }
 
+  // Enriquecer cada tienda del manifiesto con su modo de recepción del pallet (consolidado/
+  // desconsolidado), que vive en el catálogo `tiendas`. Así el dato "viaja" al manifiesto.
+  const tiendasRuta = (ruta.ruta_tiendas ?? []) as { store_cod?: string; recepcion_pallet?: string | null }[];
+  const cods = [...new Set(tiendasRuta.map(t => String(t.store_cod ?? '').trim().toUpperCase()).filter(Boolean))];
+  if (cods.length) {
+    const { data: cat } = await supabaseServer().from('tiendas').select('codigo, recepcion_pallet').in('codigo', cods);
+    const recepByCod = Object.fromEntries((cat ?? []).map(c => [String(c.codigo).trim().toUpperCase(), c.recepcion_pallet as string | null]));
+    for (const t of tiendasRuta) {
+      t.recepcion_pallet = recepByCod[String(t.store_cod ?? '').trim().toUpperCase()] ?? null;
+    }
+  }
+
   // Registrar evento de escaneo QR
   await supabaseServer()
     .from('ruta_eventos')

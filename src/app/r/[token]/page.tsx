@@ -6,6 +6,7 @@ import { guiaHref }            from '@/lib/guiaUrl';
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaRuta {
   id: number; store_cod: string; nombre?: string; ventana?: string; orden: number;
+  recepcion_pallet?: string | null;
   pallets: number; bultos: number; contenedores: number;
   estado_entrega: string;
 }
@@ -228,6 +229,13 @@ export default function RutaPublicaPage() {
                 <div style={S.storeName}>
                   <div style={S.storeN}>{t.nombre ?? t.store_cod}</div>
                   {t.ventana && <div style={S.storeSub}>{t.ventana}</div>}
+                  {t.recepcion_pallet && (
+                    <span style={{ display: 'inline-block', marginTop: 3, fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', padding: '1px 6px', borderRadius: 20,
+                      background: t.recepcion_pallet === 'desconsolidado' ? '#FEF3C7' : '#EDE9FE',
+                      color: t.recepcion_pallet === 'desconsolidado' ? '#B45309' : '#6D28D9' }}>
+                      Pallet {t.recepcion_pallet}
+                    </span>
+                  )}
                 </div>
                 <span style={{ ...S.qty, width: 26, textAlign: 'right' }}>{t.pallets || '—'}</span>
                 <span style={{ ...S.qty, width: 26, textAlign: 'right' }}>{t.bultos || '—'}</span>
