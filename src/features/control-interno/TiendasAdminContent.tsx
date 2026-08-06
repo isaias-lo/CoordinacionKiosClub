@@ -26,7 +26,8 @@ const EMPTY: Tienda = {
   tel_supervisor: '', transportista: '', recepcion_pallet: '', activo: true,
 };
 
-type SortBy  = 'nombre' | 'codigo' | 'region' | 'estado' | 'recientes' | 'modificadas';
+type SortBy  = 'nombre' | 'codigo' | 'region' | 'estado' | 'recientes' | 'modificadas'
+             | 'comuna' | 'tipo' | 'ventana' | 'frecuencia' | 'coords';
 type SortDir = 'asc' | 'desc';
 
 const SORT_OPTS: { id: SortBy; label: string }[] = [
@@ -39,7 +40,11 @@ const SORT_OPTS: { id: SortBy; label: string }[] = [
 ];
 
 // Estilos de la vista Tabla (planilla densa, estilo unificado)
-const TABLA_COLS = ['Código', 'Nombre', 'Región', 'Comuna', 'Tipo', 'Ventana', 'Frecuencia', 'Coords', 'Estado'];
+const TABLA_COLS: { label: string; sort: SortBy }[] = [
+  { label: 'Código', sort: 'codigo' }, { label: 'Nombre', sort: 'nombre' }, { label: 'Región', sort: 'region' },
+  { label: 'Comuna', sort: 'comuna' }, { label: 'Tipo', sort: 'tipo' }, { label: 'Ventana', sort: 'ventana' },
+  { label: 'Frecuencia', sort: 'frecuencia' }, { label: 'Coords', sort: 'coords' }, { label: 'Estado', sort: 'estado' },
+];
 const TH_CELL: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 1, textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#1B2A6B', background: '#F1F5F9', borderBottom: '2px solid rgba(27,42,107,0.18)', whiteSpace: 'nowrap' };
 const TD_CELL: React.CSSProperties = { padding: '7px 12px', borderBottom: '1px solid #F1F5F9', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 };
 
@@ -57,13 +62,18 @@ function relativeTime(iso: string | undefined): string | null {
   return new Date(iso).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: days > 365 ? '2-digit' : undefined });
 }
 
-function sortTiendas(list: Tienda[], by: SortBy, dir: SortDir): Tienda[] {
+function sortTiendas(list: Tienda[], by: SortBy, dir: SortDir, freqByCod: Record<string, string> = {}): Tienda[] {
   return [...list].sort((a, b) => {
     let cmp = 0;
     switch (by) {
       case 'nombre':      cmp = a.nombre.localeCompare(b.nombre, 'es'); break;
       case 'codigo':      cmp = a.codigo.localeCompare(b.codigo, 'es'); break;
       case 'region':      cmp = a.region.localeCompare(b.region, 'es'); break;
+      case 'comuna':      cmp = (a.sector_comuna || '').localeCompare(b.sector_comuna || '', 'es'); break;
+      case 'tipo':        cmp = (a.tipo || '').localeCompare(b.tipo || '', 'es'); break;
+      case 'ventana':     cmp = (a.ventana || '').localeCompare(b.ventana || '', 'es'); break;
+      case 'frecuencia':  cmp = (freqByCod[a.codigo] || '').localeCompare(freqByCod[b.codigo] || '', 'es'); break;
+      case 'coords':      cmp = (a.lat != null && a.lon != null ? 0 : 1) - (b.lat != null && b.lon != null ? 0 : 1); break;
       case 'estado':      cmp = (a.activo === b.activo) ? 0 : a.activo ? -1 : 1; break;
       case 'recientes':
         cmp = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
@@ -260,7 +270,7 @@ export default function TiendasAdminContent({
   const baseFiltered = activeFilter === 'activas'   ? searchFiltered.filter(t =>  t.activo)
                      : activeFilter === 'inactivas' ? searchFiltered.filter(t => !t.activo)
                      : searchFiltered;
-  const filtered = sortTiendas(baseFiltered, sortBy, sortDir);
+  const filtered = sortTiendas(baseFiltered, sortBy, sortDir, freqByCod);
   const hasTimestamps = filtered.some(t => t.created_at || t.updated_at);
 
   // ── Input/label helpers ───────────────────────────────────────────────────
@@ -391,10 +401,11 @@ export default function TiendasAdminContent({
                   style={{ ...inp, paddingLeft: 30 }} />
               </div>
 
-              {/* Sort pills */}
+              {/* Sort pills. En vista Tabla se ordena clicando el título de la columna, así que
+                  ahí solo quedan los ordenamientos SIN columna (Recientes / Modificadas). */}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.07em', marginRight: 2 }}>ORDENAR</span>
-                {SORT_OPTS.map(({ id, label }) => {
+                {SORT_OPTS.filter(o => viewMode !== 'tabla' || o.id === 'recientes' || o.id === 'modificadas').map(({ id, label }) => {
                   const active = sortBy === id;
                   const isTimeBased = id === 'recientes' || id === 'modificadas';
                   const unavail = isTimeBased && !hasTimestamps;
@@ -448,7 +459,18 @@ export default function TiendasAdminContent({
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
                     <thead>
-                      <tr>{TABLA_COLS.map(h => <th key={h} style={TH_CELL}>{h}</th>)}</tr>
+                      <tr>{TABLA_COLS.map(c => {
+                        const active = sortBy === c.sort;
+                        return (
+                          <th key={c.label} onClick={() => handleSortClick(c.sort)} title={`Ordenar por ${c.label}`}
+                            style={{ ...TH_CELL, cursor: 'pointer' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              {c.label}
+                              {active && (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
+                            </span>
+                          </th>
+                        );
+                      })}</tr>
                     </thead>
                     <tbody>
                       {filtered.map((t, i) => {
