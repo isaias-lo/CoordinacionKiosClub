@@ -62,6 +62,11 @@ function saveConsumedSlotsS(v: ConsumedSlotsS) { try { localStorage.setItem(CONS
 const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
 const CONTENIDO_BULTO:      ContenidoSantiago[] = ['Hogar', 'Chocolate'];
 const CONTENIDO_CONTENEDOR: ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
+
+// Flag de rollback: `false` = vista compacta siempre (estado vacío = botones +Pallet/+Bulto/…,
+// al elegir el tipo aparece la card-formulario con su #). `true` = volver al formulario grande
+// (renderSingleForm) como estado vacío. Se mantiene mientras se verifica el flujo nuevo en vivo.
+const USAR_FORM_GRANDE: boolean = false;
 const ESTADO_DEFAULT: EstadoItem = 'Listo para despachar';
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar', 'Despachado', 'Carga recibida', 'Carga No recibida por tienda',
@@ -917,11 +922,10 @@ export function StepForm() {
           }
           setFormRows(rows);
         } else {
-          // Sin picking, sin items, sin preset: sembrar un P1 vacío para que se vea la CARD COMPACTA
-          // (renderMultiForm) desde el primer pallet, en vez del formulario grande. Es un row LOCAL
-          // (sin slot) → no crea nada en la BD; el slot/# se crea al Agregar (saveRow). Si el usuario
-          // sale sin llenarlo, se descarta (no deja slot huérfano ni conteo fantasma).
-          setFormRows([{ id: `seed-${currentTienda.cod}-${Date.now()}`, tipo: 'Pallet', contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
+          // Sin picking, sin items, sin preset: sin filas. La vista compacta (renderMultiForm)
+          // mostrará solo los botones + Pallet / + Bulto / + Cont. / + Choc.; al elegir el tipo se
+          // agrega la card-formulario (addFormRow crea el slot → # al Agregar).
+          setFormRows([]);
         }
       } else {
         // Sin picking pero con items guardados → tarjetas guardadas (recuperan #id)
@@ -2366,7 +2370,11 @@ export function StepForm() {
   };
 
   /* ════════════════════════════════════
-     RIGHT PANEL — SINGLE ITEM FORM
+     RIGHT PANEL — SINGLE ITEM FORM (formulario grande, LEGACY)
+     Ya NO se usa como estado vacío: ahora la vista compacta (renderMultiForm) se usa siempre y su
+     estado vacío son los botones +Pallet/+Bulto/+Cont/+Choc (al elegir el tipo aparece la
+     card-formulario con su #). Se conserva referenciado tras el flag USAR_FORM_GRANDE por si hay
+     que revertir rápido; se eliminará en un follow-up cuando el flujo nuevo esté verificado en vivo.
   ════════════════════════════════════ */
   const renderSingleForm = (isMobile = false) => {
     if (!currentTienda) return null;
@@ -2709,9 +2717,7 @@ export function StepForm() {
               <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
             </div>
           )
-          : formRows.length > 0
-            ? renderMultiForm(false)
-            : renderSingleForm(false)
+          : (USAR_FORM_GRANDE && formRows.length === 0 ? renderSingleForm(false) : renderMultiForm(false))
         }
       </div>
 
@@ -2770,9 +2776,7 @@ export function StepForm() {
       >
         {/* Form content */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {currentTienda && (
-            formRows.length > 0 ? renderMultiForm(true) : renderSingleForm(true)
-          )}
+          {currentTienda && (USAR_FORM_GRANDE && formRows.length === 0 ? renderSingleForm(true) : renderMultiForm(true))}
         </div>
       </div>
 
