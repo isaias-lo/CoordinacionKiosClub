@@ -16,7 +16,7 @@ import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
-import { fluyeSinCalendario } from './utils/codigosEspeciales';
+import { grupoArmada } from './utils/flujoArmada';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { ordenarCalT } from './utils/ordenarCalT';
@@ -271,6 +271,7 @@ export default function RutasScreen() {
         mergeCalT(dbCal, fechaRef.current, prev, grpsRef.current),
         sesionRowsRef.current,
         manuallyEditedRef.current,
+        (cod) => tiendasRef.current[cod]?.region,
       ));
     };
     fetchCalendarioSupa().then(dbCal => { if (dbCal) aplicarCalBD(dbCal); }).catch(() => {});
@@ -418,13 +419,12 @@ export default function RutasScreen() {
         const cc = row.contenedores ?? 0;
         const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || rowCh > 0;
         if (!prev[c]) {
-          // El calendario manda para las tiendas normales. EXCEPCIÓN: solo la Oficina Kios Club
-          // (OFIKC, recados internos) fluye sin estar en el calendario. Se inyecta si: es un
-          // código-excepción, se está viendo HOY (los rows son de hoy), tiene cantidades, y el
-          // calendario YA cargó (calT no vacío) — para no saltarse el init del calendario.
-          if (!fluyeSinCalendario(c, tiendasRef.current[c]?.tipo) || fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
-          const reg = tiendasRef.current[c]?.region;
-          const g = row.fuente === 'regiones' ? 'fal' : (reg === 'VR' || reg === 'V') ? 'costa' : 'rm';
+          // Cualquier tienda ARMADA hoy en Bodega con carga fluye al Enrutador aunque no esté en el
+          // calendario del día (p. ej. 55ITA agregada desde Picking), colocada en su GRUPO. Guard:
+          // solo HOY, con cantidades, y con el calendario ya cargado (calT no vacío) para no
+          // saltarse el init. El orden lo resuelve `ordenarCalT` (extras van en su grupo).
+          if (fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
+          const g = grupoArmada(row.fuente, tiendasRef.current[c]?.region);
           return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: cc, ch: rowCh, g } };
         }
         if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === cc && (prev[c].ch ?? 0) === rowCh) return prev;
@@ -801,9 +801,9 @@ export default function RutasScreen() {
       const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || chh > 0;
       if (newCalT[c]) {
         newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, ch: chh, on: hasCounts };
-      } else if (fluyeSinCalendario(c, tiendasRef.current[c]?.tipo) && hasCounts) {
-        const reg = tiendasRef.current[c]?.region;
-        const g = row.fuente === 'regiones' ? 'fal' : (reg === 'VR' || reg === 'V') ? 'costa' : 'rm';
+      } else if (hasCounts) {
+        // Armada hoy fuera del calendario → inyectar en su grupo (ver applyRow / reaplicarCounts).
+        const g = grupoArmada(row.fuente, tiendasRef.current[c]?.region);
         newCalT[c] = { on: true, p: row.pallets, b: row.bultos, c: cc, ch: chh, g };
       }
     });

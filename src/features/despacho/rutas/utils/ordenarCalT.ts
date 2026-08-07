@@ -21,16 +21,21 @@ export function ordenarCalT<T extends { p?: number; b?: number; ch?: number; g?:
   enCatalogo: (cod: string) => boolean,
   esFantasma: (data: T, enCat: boolean) => boolean,
 ): Record<string, T> {
-  const canonical: string[] = [...(calDia.fal || []), ...(calDia.costa || []), ...(calDia.rm || [])];
   const visible = (c: string) => !!calT[c] && !esFantasma(calT[c], enCatalogo(c));
-
   const result: Record<string, T> = {};
-  canonical.forEach(c => { if (visible(c)) result[c] = calT[c]; });
+  const add = (c: string) => { if (!result[c] && visible(c)) result[c] = calT[c]; };
 
-  const extras = Object.keys(calT)
-    .filter(c => !result[c] && visible(c))
-    .sort((a, b) => (GROUP_ORDER[calT[a].g || 'fal'] ?? 0) - (GROUP_ORDER[calT[b].g || 'fal'] ?? 0));
-  extras.forEach(c => { result[c] = calT[c]; });
+  // Por cada grupo (Regiones → Costa → Santiago): primero las del calendario del día (en su
+  // orden), y LUEGO las "extras" de ESE grupo (presentes en calT pero fuera del calendario:
+  // armadas hoy o con un calendario desactualizado). Así una tienda de Regiones (fal) nunca cae
+  // DESPUÉS de las de Santiago (rm) por ser "extra" (bug 57CAS/26ALC al final del pool).
+  const grupos: [keyof OrdenCalDia, string][] = [['fal', 'fal'], ['costa', 'costa'], ['rm', 'rm']];
+  for (const [key, g] of grupos) {
+    (calDia[key] || []).forEach(add);                                                    // calendario del grupo
+    Object.keys(calT).filter(c => !result[c] && visible(c) && (calT[c].g || 'fal') === g).forEach(add); // extras del grupo
+  }
+  // Extras con grupo desconocido (p. ej. 'manual') → al final.
+  Object.keys(calT).forEach(add);
 
   return result;
 }

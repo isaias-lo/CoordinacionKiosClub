@@ -25,13 +25,20 @@ describe('ordenarCalT', () => {
       .toEqual(['57CAS', '26ALC', '06MQH']);
   });
 
-  it('tiendas que NO están en el calendario del día caen al final (extras), ordenadas por grupo', () => {
-    // Bug histórico: cal SIN 26ALC/57CAS ⇒ entran por sesión pero quedan como extras al final.
+  it('extras (no en el calendario del día) se INTERCALAN en su grupo, no al final', () => {
+    // Bug real: calendario viejo SIN 57CAS(fal)/26ALC(rm) ⇒ entran por sesión (armadas). Deben
+    // salir en su grupo: 57CAS(fal) PRIMERO (Regiones), 18FLO(rm calendario), 26ALC(rm extra).
     const calT = { '18FLO': d({ g: 'rm' }), '26ALC': d({ g: 'rm', p: 2 }), '57CAS': d({ g: 'fal', p: 6 }) };
     const calDia = { fal: [], costa: [], rm: ['18FLO'] };  // calendario viejo sin las dos
-    // 18FLO (en calendario) primero; luego extras ordenados por grupo: 57CAS(fal) antes de 26ALC(rm)
     expect(Object.keys(ordenarCalT(calT, calDia, enCatalogoAll, esFantasma)))
-      .toEqual(['18FLO', '57CAS', '26ALC']);
+      .toEqual(['57CAS', '18FLO', '26ALC']);
+  });
+
+  it('una tienda armada fuera del calendario (55ITA, rm) aparece en el bloque rm', () => {
+    const calT = { '57CAS': d({ g: 'fal', p: 2 }), '01TPS': d({ g: 'rm' }), '55ITA': d({ g: 'rm', p: 1, ch: 4 }) };
+    const calDia = { fal: ['57CAS'], costa: [], rm: ['01TPS'] };  // 55ITA NO está el viernes
+    expect(Object.keys(ordenarCalT(calT, calDia, enCatalogoAll, esFantasma)))
+      .toEqual(['57CAS', '01TPS', '55ITA']);
   });
 
   it('oculta fantasmas: fuera de catálogo y sin cantidades', () => {

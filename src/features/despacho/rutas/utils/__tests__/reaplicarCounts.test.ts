@@ -16,12 +16,19 @@ describe('reaplicarCounts', () => {
     expect(out['26ALC']).toMatchObject({ p: 2, ch: 6, on: true });
   });
 
-  it('ignora tiendas que no están en calT (no las crea)', () => {
+  it('NO crea tiendas fuera de calT si no tienen carga', () => {
     const calT = { '26ALC': cal() };
-    const rows = new Map<string, SesionRow>([['99XXX', row({ tienda_cod: '99XXX', pallets: 5 })]]);
+    const rows = new Map<string, SesionRow>([['99XXX', row({ tienda_cod: '99XXX' })]]); // sin carga
     const out = reaplicarCounts(calT, rows, new Set());
     expect(out['99XXX']).toBeUndefined();
     expect(Object.keys(out)).toEqual(['26ALC']);
+  });
+
+  it('INYECTA tiendas armadas hoy con carga ausentes del calendario (55ITA), en su grupo', () => {
+    const calT = { '26ALC': cal({ g: 'rm' }) };
+    const rows = new Map<string, SesionRow>([['55ITA', row({ tienda_cod: '55ITA', pallets: 1, chocolates: 4 })]]);
+    const out = reaplicarCounts(calT, rows, new Set(), (c) => (c === '55ITA' ? 'RM' : undefined));
+    expect(out['55ITA']).toMatchObject({ p: 1, ch: 4, on: true, g: 'rm' });
   });
 
   it('respeta ediciones manuales (no pisa lo tecleado a mano)', () => {
