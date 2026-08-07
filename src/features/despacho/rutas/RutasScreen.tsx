@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../components/AuthProvider';
 import Header         from './components/Header';
 import InputSection   from './components/InputSection';
+import PlanificadorTab from './components/PlanificadorTab';
 import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
@@ -2087,6 +2088,7 @@ export default function RutasScreen() {
               )}
             </div>
           }
+          planificadorContent={<PlanificadorTab gps={gps} tiendas={tiendas} />}
         />
       </main>
 
