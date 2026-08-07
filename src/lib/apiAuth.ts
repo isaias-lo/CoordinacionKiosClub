@@ -91,6 +91,20 @@ export async function verifyAnyUser(request: NextRequest): Promise<{ id: string;
 }
 
 /**
+ * Devuelve el contacto del usuario autenticado (id + email + nombre display), o null.
+ * El email sale de la sesión/JWT en el server — nunca del body — para no permitir enviar
+ * correos a direcciones arbitrarias (p. ej. la notificación de cambio de contraseña).
+ */
+export async function verifyUserContact(request: NextRequest): Promise<{ id: string; email: string; name: string } | null> {
+  const payload = await resolvePayload(request);
+  if (!payload?.sub || !payload.email) return null;
+  const name = payload.user_metadata?.full_name?.trim()
+    || payload.user_metadata?.name?.trim()
+    || payload.email.trim();
+  return { id: payload.sub, email: payload.email, name };
+}
+
+/**
  * Devuelve el actor autenticado (id + nombre display) para atribuir acciones.
  * El nombre sale del JWT (user_metadata.full_name/name) con fallback a email/id.
  * Fuente de verdad de la atribución en server — no depende de lo que mande el cliente.

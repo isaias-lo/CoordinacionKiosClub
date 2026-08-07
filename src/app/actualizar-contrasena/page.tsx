@@ -51,6 +51,9 @@ function ActualizarContrasenaContent() {
       return;
     }
 
+    // Aviso de seguridad por correo (fire-and-forget; auth por la sesión de recuperación).
+    fetch('/api/auth/password-changed-email', { method: 'POST' }).catch(() => {});
+
     setDone(true);
     setLoading(false);
   }
