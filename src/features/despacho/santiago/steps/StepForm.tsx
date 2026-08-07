@@ -62,12 +62,7 @@ function saveConsumedSlotsS(v: ConsumedSlotsS) { try { localStorage.setItem(CONS
 /* ── Constants ── */
 const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
 const CONTENIDO_BULTO:      ContenidoSantiago[] = ['Hogar', 'Chocolate'];
-const CONTENIDO_CONTENEDOR: ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
 
-// Flag de rollback: `false` = vista compacta siempre (estado vacío = botones +Pallet/+Bulto/…,
-// al elegir el tipo aparece la card-formulario con su #). `true` = volver al formulario grande
-// (renderSingleForm) como estado vacío. Se mantiene mientras se verifica el flujo nuevo en vivo.
-const USAR_FORM_GRANDE: boolean = false;
 const ESTADO_DEFAULT: EstadoItem = 'Listo para despachar';
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar', 'Despachado', 'Carga recibida', 'Carga No recibida por tienda',
@@ -302,23 +297,11 @@ export function StepForm() {
   /* Search */
   const [search, setSearch] = useState('');
 
-  /* Single-item form */
-  const [tipo,      setTipo]      = useState<TipoCargamento>('Pallet');
-  const [contenido, setContenido] = useState<ContenidoSantiago>('Hogar');
-  const [peso,      setPeso]      = useState('');
-  const [alto,      setAlto]      = useState('');
-  const [largo,     setLargo]     = useState('');
-  const [ancho,     setAncho]     = useState('');
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
 
   /* Combine items (drag-to-merge) — form view */
-  const [dragIdx,         setDragIdx]         = useState<number | null>(null);
-  const [dropIdx,         setDropIdx]         = useState<number | null>(null);
   const [showCalManual,   setShowCalManual]   = useState(false);
   const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string } | null>(null);
   const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
-  const itemDragRefs  = useRef<(HTMLDivElement | null)[]>([]);
-  const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Combine items — resumen view */
   const [rDragIdx, setRDragIdx] = useState<number | null>(null);
@@ -645,7 +628,6 @@ export function StepForm() {
     return () => { unsub(); if (timer) clearTimeout(timer); };
   }, []);
 
-  const prevContenidoRef     = useRef<ContenidoSantiago>('Hogar');
   const formScrollRef        = useRef<HTMLDivElement>(null);
   const formScrollDesktopRef = useRef<HTMLDivElement>(null);
   const pickingSlotsRef      = useRef(pickingSlots);
@@ -714,18 +696,6 @@ export function StepForm() {
     ch: it.filter(i => i.tipo === 'Chocolate').length,
   }));
 
-  const isChocolateBulto  = tipo === 'Bulto' && contenido === 'Chocolate';
-  const isChocolateTipo   = tipo === 'Chocolate';
-  const isContenedor      = tipo === 'Contenedor';
-  const finalLargo = tipo === 'Pallet' ? 120 : isContenedor ? CONTENEDOR_LARGO : isChocolateTipo ? CHOCOLATE_DIMS.largo : isChocolateBulto ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(largo) || 0);
-  const finalAncho = tipo === 'Pallet' ? 100 : isContenedor ? CONTENEDOR_ANCHO : isChocolateTipo ? CHOCOLATE_DIMS.ancho : isChocolateBulto ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(ancho) || 0);
-  const finalAlto  = isContenedor ? CONTENEDOR_ALTO : isChocolateTipo ? CHOCOLATE_DIMS.alto : isChocolateBulto ? CHOCOLATE_BULTO_DIMS.alto : (parseFloat(alto) || 0);
-  const pesoV      = (finalAlto * finalLargo * finalAncho) / 6000;
-  const canAdd     = !!peso && parseFloat(peso) > 0 &&
-    (isChocolateBulto || isChocolateTipo || isContenedor || (
-      !!alto && parseFloat(alto) > 0 &&
-      (tipo === 'Pallet' || (!!largo && parseFloat(largo) > 0 && !!ancho && parseFloat(ancho) > 0))
-    ));
 
   const enrutar = () => {
     const rutasInput = activeTiendas.map(([cod, it]) => ({
@@ -799,10 +769,6 @@ export function StepForm() {
      useLayoutEffect (no useEffect) → corre antes del paint: nunca se pinta un frame con el
      form de la tienda anterior bajo el header de la nueva. */
   useLayoutEffect(() => {
-    setTipo('Pallet'); setContenido('Hogar');
-    setPeso(''); setAlto(''); setLargo(''); setAncho('');
-    setEditingIdx(null);
-    prevContenidoRef.current = 'Hogar';
     if (currentTienda) {
       setTimeout(() => {
         formScrollRef.current?.scrollTo({ top: 0 });
@@ -1034,88 +1000,9 @@ export function StepForm() {
      badge del tile muestre de menos. Se resetea al montar. */
   useEffect(() => { setConsumedSlotsSant({}); saveConsumedSlotsS({}); }, []);
 
-  useEffect(() => { setContenido('Hogar'); prevContenidoRef.current = 'Hogar'; }, [tipo]);
 
-  useEffect(() => {
-    const prev = prevContenidoRef.current;
-    prevContenidoRef.current = contenido;
-    if (contenido === 'Chocolate') {
-      setPeso(String(CHOCOLATE_BULTO_DIMS.peso)); setAlto(String(CHOCOLATE_BULTO_DIMS.alto));
-      setAncho(String(CHOCOLATE_BULTO_DIMS.ancho)); setLargo(String(CHOCOLATE_BULTO_DIMS.largo));
-    } else if (prev === 'Chocolate') {
-      setPeso(''); setAlto(''); setAncho(''); setLargo('');
-    }
-  }, [contenido]);
 
-  /* ── Add / edit item ── */
-  const saveItem = async () => {
-    if (!currentTienda || !canAdd || !regimen) return;
-    const cod = currentTienda.cod;
-    const existing = items[cod] || [];
-    const pA = finalAlto;
-    const pL = finalLargo;
-    const pW = finalAncho;
-    if (editingIdx !== null) {
-      dispatch({
-        type: 'EDIT_ITEM', tiendaCod: cod, idx: editingIdx,
-        item: {
-          ...existing[editingIdx], tipo, contenido,
-          estado: ESTADO_DEFAULT,
-          peso: parseFloat(peso), alto: pA, largo: pL, ancho: pW,
-          pesoVolumetrico: Math.round(pesoV * 100) / 100,
-        },
-      });
-      setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho('');
-      showToast('✓ Item actualizado', '#16A34A'); return;
-    }
-    const pc  = existing.filter(i => i.tipo === 'Pallet').length;
-    const bc  = existing.filter(i => i.tipo === 'Bulto').length;
-    const cc  = existing.filter(i => i.tipo === 'Contenedor').length;
-    const chc = existing.filter(i => i.tipo === 'Chocolate').length;
-    const orden = tipo === 'Pallet' ? `P${pc + 1}` : tipo === 'Contenedor' ? `C${cc + 1}` : tipo === 'Chocolate' ? `CH${chc + 1}` : `${bc + 1}B`;
 
-    // Crear el slot de bodega (id + canonical) para que el pallet SIEMPRE tenga código, aun antes de
-    // que Picking reporte. Antes saveItem NO creaba slot → el pallet quedaba sin # (aun tras Agregar).
-    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
-    let slot: PickingSlot | undefined;
-    try {
-      const res = await fetch('/api/picking-pallets/create-bodega', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: TIPO_CODE[tipo], contenido: (contenido || 'hogar').toLowerCase() }),
-      });
-      slot = (await res.json() as { data?: PickingSlot }).data;
-    } catch { /* sin slot: el pallet queda sin # (fallback), no bloquea el guardado */ }
-    if (slot) setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
-
-    dispatch({
-      type: 'ADD_ITEM',
-      item: {
-        id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo, contenido,
-        peso: parseFloat(peso), alto: pA, largo: pL, ancho: pW,
-        pesoVolumetrico: Math.round(pesoV * 100) / 100, regimen,
-        orden,
-        estado: ESTADO_DEFAULT,
-        pickingSlotId: slot?.id,
-      },
-    });
-    if (slot?.id) {
-      supabase.from('picking_pallets').update({
-        peso_kg: parseFloat(peso), alto: pA, ancho: pW, largo: pL,
-      }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
-    }
-    setPeso(''); setAlto(''); setLargo(''); setAncho('');
-    showToast(`✓ ${orden} agregado`, '#16A34A');
-  };
-
-  const startEdit = (idx: number) => {
-    const item = tiendaItems[idx];
-    setEditingIdx(idx); setTipo(item.tipo); setContenido(item.contenido);
-    setPeso(String(item.peso)); setAlto(String(item.alto));
-    if (item.tipo === 'Bulto') { setLargo(String(item.largo)); setAncho(String(item.ancho)); }
-    formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-    formScrollDesktopRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-  const cancelEdit = () => { setEditingIdx(null); setPeso(''); setAlto(''); setLargo(''); setAncho(''); };
 
   /* ── Combine items handler ── */
   const handleSantiagoCombineConfirm = (peso: number, alto: number, cod?: string) => {
@@ -2392,237 +2279,6 @@ export function StepForm() {
   };
 
   /* ════════════════════════════════════
-     RIGHT PANEL — SINGLE ITEM FORM (formulario grande, LEGACY)
-     Ya NO se usa como estado vacío: ahora la vista compacta (renderMultiForm) se usa siempre y su
-     estado vacío son los botones +Pallet/+Bulto/+Cont/+Choc (al elegir el tipo aparece la
-     card-formulario con su #). Se conserva referenciado tras el flag USAR_FORM_GRANDE por si hay
-     que revertir rápido; se eliminará en un follow-up cuando el flujo nuevo esté verificado en vivo.
-  ════════════════════════════════════ */
-  const renderSingleForm = (isMobile = false) => {
-    if (!currentTienda) return null;
-    const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
-    return (
-      <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
-
-        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
-          {editingIdx !== null && (
-            <div className="bg-[rgba(37,99,235,0.07)] border border-[rgba(37,99,235,0.25)] rounded-xl px-3 py-2.5 flex items-center justify-between">
-              <span className="text-[14px] font-semibold text-info">Editando item #{editingIdx + 1}</span>
-              <button onClick={cancelEdit} className="text-[13px] text-text-3 cursor-pointer border-none bg-none active:text-red">✕ Cancelar</button>
-            </div>
-          )}
-
-          {/* Tipo */}
-          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-1 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Tipo</div>
-          <div className="flex gap-2 flex-wrap">
-            {(['Pallet', 'Bulto', 'Contenedor', 'Chocolate'] as TipoCargamento[]).map(t => (
-              <button key={t} onClick={() => setTipo(t)}
-                className={`flex-1 py-3 lg:py-2.5 rounded-btn font-barlow-condensed text-[17px] lg:text-[15px] font-bold cursor-pointer border-2 transition-all ${
-                  tipo === t
-                    ? t === 'Pallet'     ? 'bg-[rgba(37,99,235,0.10)] border-info text-info'
-                    : t === 'Contenedor' ? 'bg-[rgba(107,33,168,0.10)] border-[#6B21A8] text-[#6B21A8]'
-                    : t === 'Chocolate'  ? 'bg-[rgba(146,64,14,0.10)] border-[#92400E] text-[#92400E]'
-                    :                     'bg-[rgba(217,119,6,0.10)] border-warn text-warn'
-                    : 'bg-white border-border text-text-2'
-                }`}>
-                {t === 'Contenedor' ? 'Cont.' : t === 'Chocolate' ? 'Choc. CH' : t}
-              </button>
-            ))}
-          </div>
-          {tipo === 'Contenedor' && (
-            <div className="text-[11px] text-[#6B21A8] font-semibold px-1">
-              Dims. fijas: {CONTENEDOR_LARGO}×{CONTENEDOR_ANCHO}×{CONTENEDOR_ALTO} cm (largo×ancho×alto)
-            </div>
-          )}
-
-          {/* Contenido */}
-          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-2 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Contenido</div>
-          <div className="flex gap-2">
-            {(tipo === 'Pallet' ? CONTENIDO_PALLET : tipo === 'Contenedor' ? CONTENIDO_CONTENEDOR : CONTENIDO_BULTO).map(c => (
-              <button key={c} onClick={() => setContenido(c)}
-                className={`flex-1 py-2.5 lg:py-2 rounded-btn font-barlow text-[14px] lg:text-[13px] font-semibold cursor-pointer border-2 transition-all ${
-                  contenido === c ? 'bg-[rgba(37,99,235,0.12)] border-info text-info' : 'bg-white border-border text-text-2'
-                }`}>
-                {c}
-              </button>
-            ))}
-          </div>
-
-          {/* Peso y dimensiones */}
-          <div className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 mt-2 mb-1 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">Peso y dimensiones</div>
-          <div>
-            <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">Peso (kg)</label>
-            <input type="number" inputMode="decimal" value={peso} onChange={e => setPeso(e.target.value)} placeholder="0"
-              className="w-full bg-white border-2 border-border rounded-btn px-3 py-3 lg:py-2.5 text-text font-barlow text-[17px] lg:text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-          </div>
-
-          {/* Dimensiones */}
-          {isChocolateBulto || isChocolateTipo ? (
-            <div className="bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded-btn px-3 py-2.5 text-[13px]" style={{ color: '#92400E' }}>
-              Dimensiones fijas: {CHOCOLATE_DIMS.largo} × {CHOCOLATE_DIMS.ancho} × {CHOCOLATE_DIMS.alto} cm (largo×ancho×alto) · máx {CHOCOLATE_DIMS.pesoMax} kg
-            </div>
-          ) : tipo === 'Pallet' ? (
-            <>
-              <div>
-                <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">Alto (cm)</label>
-                <input type="number" inputMode="decimal" value={alto} onChange={e => setAlto(e.target.value)} placeholder="0" max={MAX_ALTO_CM}
-                  className="w-full bg-white border-2 border-border rounded-btn px-3 py-3 lg:py-2.5 text-text font-barlow text-[17px] lg:text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                {excedeAltoMax(parseFloat(alto) || 0) && (
-                  <div className="text-[12px] text-warn mt-1">⚠ Supera el máximo de bodega ({MAX_ALTO_CM} cm)</div>
-                )}
-              </div>
-              <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded-btn px-3 py-2.5 text-[13px] text-info">
-                Dimensiones fijas: 120 × 100 cm
-              </div>
-            </>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {[{ l: 'Alto (cm)', v: alto, s: setAlto }, { l: 'Largo (cm)', v: largo, s: setLargo }, { l: 'Ancho (cm)', v: ancho, s: setAncho }].map(({ l, v, s }) => (
-                <div key={l} className={l === 'Alto (cm)' ? 'col-span-2' : ''}>
-                  <label className="text-[12px] text-text-3 font-semibold uppercase tracking-wide block mb-1.5">{l}</label>
-                  <input type="number" inputMode="decimal" value={v} onChange={e => s(e.target.value)} placeholder="0"
-                    max={l === 'Alto (cm)' ? MAX_ALTO_CM : undefined}
-                    className="w-full bg-white border-2 border-border rounded-btn px-3 py-3 lg:py-2.5 text-text font-barlow text-[17px] lg:text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                  {l === 'Alto (cm)' && excedeAltoMax(parseFloat(v) || 0) && (
-                    <div className="text-[12px] text-warn mt-1">⚠ Supera el máximo de bodega ({MAX_ALTO_CM} cm)</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {pesoV > 0 && (
-            <div className="text-[13px] text-text-3 bg-bg-2 border border-border rounded-btn px-3 py-2">
-              Peso volumétrico: <span className="font-bold text-navy">{pesoV.toFixed(2)} kg</span>
-            </div>
-          )}
-
-          <div className="sticky bottom-0 z-10 pb-4 pt-2"
-            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
-            <button onClick={saveItem} disabled={!canAdd}
-              className="w-full py-4 lg:py-3 bg-red text-white border-none rounded-card font-barlow-condensed text-[21px] lg:text-[18px] font-bold cursor-pointer disabled:opacity-30 active:bg-red-dark"
-              style={{ boxShadow: canAdd ? '0 4px 14px rgba(211,47,47,0.28)' : 'none' }}>
-              {editingIdx !== null ? '✓ Guardar cambios' : '+ Agregar'}
-            </button>
-          </div>
-
-          {/* Items list */}
-          {tiendaItems.length > 0 && (
-            <div className="border-t border-border pt-3 mt-1">
-              <div className="flex items-center justify-between mb-3">
-                <div className="font-barlow-condensed text-[12px] uppercase tracking-widest text-text-3">Items ({tiendaItems.length})</div>
-                {tiendaItems.length >= 2 && (
-                  <div className="flex items-center gap-1 text-[10px] text-text-3 opacity-60">
-                    <GripVertical size={10} />
-                    <span>Arrastra sobre otro del mismo tipo para combinar</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                {tiendaItems.map((item, idx) => {
-                  const isEditing = editingIdx === idx;
-                  const isDropTarget = dropIdx === idx && dragIdx !== null && tiendaItems[dragIdx]?.tipo === item.tipo;
-                  const isDragging   = dragIdx === idx;
-                  return (
-                    <div
-                      key={item.id}
-                      data-item-idx={idx}
-                      ref={el => { itemDragRefs.current[idx] = el; }}
-                      draggable
-                      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(idx); }}
-                      onDragOver={(e) => {
-                        if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo) {
-                          e.preventDefault(); setDropIdx(idx);
-                        }
-                      }}
-                      onDragLeave={() => setDropIdx(prev => prev === idx ? null : prev)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (dragIdx !== null && dragIdx !== idx && tiendaItems[dragIdx]?.tipo === item.tipo)
-                          setCombineModal({ srcIdx: dragIdx, tgtIdx: idx });
-                        setDragIdx(null); setDropIdx(null);
-                      }}
-                      onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                      onTouchStart={(e) => {
-                        const t = e.touches[0];
-                        (e.currentTarget as HTMLElement).dataset.touchStartX = String(t.clientX);
-                        (e.currentTarget as HTMLElement).dataset.touchStartY = String(t.clientY);
-                        longPressRef.current = setTimeout(() => {
-                          setDragIdx(idx);
-                          navigator.vibrate?.(25);
-                        }, 220);
-                      }}
-                      onTouchMove={(e) => {
-                        const t = e.touches[0];
-                        const el = e.currentTarget as HTMLElement;
-                        const dx = Math.abs(t.clientX - parseFloat(el.dataset.touchStartX ?? '0'));
-                        const dy = Math.abs(t.clientY - parseFloat(el.dataset.touchStartY ?? '0'));
-                        if (longPressRef.current && (dx > 8 || dy > 8)) {
-                          clearTimeout(longPressRef.current);
-                          longPressRef.current = null;
-                        }
-                        if (dragIdx === null) return;
-                        e.preventDefault();
-                        const under = document.elementFromPoint(t.clientX, t.clientY);
-                        const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
-                        const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
-                        setDropIdx(tgt !== -1 && tgt !== dragIdx ? tgt : null);
-                      }}
-                      onTouchEnd={(e) => {
-                        if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
-                        if (dragIdx === null) return;
-                        e.preventDefault();
-                        const t = e.changedTouches[0];
-                        const under = document.elementFromPoint(t.clientX, t.clientY);
-                        const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
-                        const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
-                        if (tgt !== -1 && tgt !== dragIdx && tiendaItems[dragIdx]?.tipo === tiendaItems[tgt]?.tipo)
-                          setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt });
-                        setDragIdx(null); setDropIdx(null);
-                      }}
-                      className={[
-                        'bg-white border-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-all select-none',
-                        isDragging   ? 'opacity-40 scale-[0.97]' : '',
-                        isDropTarget ? 'border-emerald-500 bg-emerald-50 scale-[1.02]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border',
-                        dragIdx !== null ? 'cursor-grabbing' : 'cursor-grab',
-                      ].join(' ')}
-                    >
-                      <GripVertical size={14} color="#CBD5E1" className="flex-shrink-0" />
-                      <div className="font-mono text-[11px] text-text-3 w-5 text-center flex-shrink-0">{idx + 1}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                          <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full font-barlow-condensed ${item.tipo === 'Pallet' ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-warn bg-[rgba(217,119,6,0.10)]'}`}>{item.orden}</span>
-                          <span className="text-[13px] font-semibold text-text-2">{item.contenido}</span>
-                          <span className="text-[13px] font-bold text-navy">{item.peso}kg</span>
-                        </div>
-                        <div className="text-[11px] text-text-3 truncate">{item.alto}cm</div>
-                      </div>
-                      <button onClick={() => startEdit(idx)}
-                        className={`border-none text-[15px] cursor-pointer px-2 py-1.5 rounded-lg flex-shrink-0 transition-all ${isEditing ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-text-3 bg-bg-2'}`}>✎</button>
-                      <button onClick={() => { if (isEditing) cancelEdit(); dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda!.cod, idx }); }}
-                        className="border-none text-text-3 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] flex-shrink-0 bg-bg-2 active:text-red">✕</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {activeTiendasCount > 0 && (
-            <button onClick={goToResumen}
-              className="w-full py-3.5 bg-navy text-white border-none rounded-card font-barlow-condensed text-[17px] font-bold cursor-pointer active:bg-navy-dark mt-1 lg:hidden"
-              style={{ boxShadow: '0 4px 14px rgba(26,37,80,0.22)' }}>
-              Ver resumen ({activeTiendasCount} tiendas) →
-            </button>
-          )}
-          <div className="h-4" />
-        </div>
-      </>
-    );
-  };
-
-  /* ════════════════════════════════════
      ROOT RENDER
   ════════════════════════════════════ */
   // Fecha de armado/despacho (se muestra dentro de la columna izquierda, como Regiones)
@@ -2739,7 +2395,7 @@ export function StepForm() {
               <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
             </div>
           )
-          : (USAR_FORM_GRANDE && formRows.length === 0 ? renderSingleForm(false) : renderMultiForm(false))
+          : renderMultiForm(false)
         }
       </div>
 
@@ -2798,7 +2454,7 @@ export function StepForm() {
       >
         {/* Form content */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {currentTienda && (USAR_FORM_GRANDE && formRows.length === 0 ? renderSingleForm(true) : renderMultiForm(true))}
+          {currentTienda && renderMultiForm(true)}
         </div>
       </div>
 
@@ -2830,7 +2486,6 @@ export function StepForm() {
             onConfirm={(peso, alto) => handleSantiagoCombineConfirm(peso, alto, activeCod)}
             onCancel={() => {
               setCombineModal(null);
-              setDragIdx(null); setDropIdx(null);
               setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
             }}
           />
