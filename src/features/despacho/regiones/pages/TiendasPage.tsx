@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, GripVertical, ChevronLeft, ClipboardList } from 'lucide-react';
+import { Navigation, ChevronLeft, ClipboardList } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
@@ -62,31 +62,7 @@ const TIPO_CLS: Record<TipoContenido, string> = {
   'comida-hogar':'bg-[rgba(8,145,178,0.08)] border-mixto text-mixto',
   chocolate:     'bg-[rgba(120,53,15,0.08)] border-[#92400E] text-[#92400E]',
 };
-const TAG_CLS: Record<string, string> = {
-  comida:        'bg-[rgba(217,119,6,0.10)] text-warn',
-  hogar:         'bg-[rgba(124,58,237,0.10)] text-hogar',
-  'comida-hogar':'bg-[rgba(8,145,178,0.10)] text-mixto',
-  chocolate:     'bg-[rgba(120,53,15,0.10)] text-[#92400E]',
-  pallet:        'bg-[rgba(37,99,235,0.10)] text-info',
-  box:           'bg-[rgba(217,119,6,0.10)] text-warn',
-};
-const inputCls = "bg-white border-[1.5px] border-border rounded-btn px-2.5 py-2.5 text-text font-barlow text-[16px] outline-none transition-all focus:border-red focus:shadow-[0_0_0_3px_rgba(211,47,47,0.10)] [-webkit-appearance:none] w-full";
 
-function SLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="font-barlow-condensed text-[13px] font-bold uppercase tracking-[0.12em] text-text-3 mb-1.5 mt-3 flex items-center gap-2 after:content-[''] after:flex-1 after:h-px after:bg-border">
-      {children}
-    </div>
-  );
-}
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">{label}</label>
-      {children}
-    </div>
-  );
-}
 
 /* ── FormRow for multi-form (preset) mode ── */
 interface FormRow {
@@ -111,7 +87,6 @@ interface FormRow {
 // Flag de rollback (paridad con RM/Costa): `false` = vista compacta siempre (estado vacío = botones
 // +Pallet/+Bulto/…, al elegir el tipo aparece la card-formulario con su #). `true` = formulario
 // grande como estado vacío. Se mantiene mientras se verifica el flujo nuevo en vivo.
-const USAR_FORM_GRANDE: boolean = false;
 
 interface GridCardProps {
   name: string;
@@ -294,15 +269,8 @@ export function TiendasPage() {
   }, []);
 
 
-  const [peso,  setPeso]  = useState('');
-  const [alto,  setAlto]  = useState('');
-  const [ancho, setAncho] = useState('100');
-  const [largo, setLargo] = useState('120');
-  const [guia,  setGuia]  = useState('');
-  const [valor, setValor] = useState('');
   const [pdfLoading,      setPdfLoading]      = useState(false);
   const [multiPdfLoading, setMultiPdfLoading] = useState(false);
-  const [editingIdx,      setEditingIdx]      = useState<number | null>(null);
 
   const fileRef         = useRef<HTMLInputElement>(null);
   const multiFileRef    = useRef<HTMLInputElement>(null);
@@ -313,16 +281,12 @@ export function TiendasPage() {
   const pickingSlotsFullRef  = useRef(pickingSlotsFull);
 
   /* Combine items (drag-to-merge) */
-  const [dragIdx,      setDragIdx]      = useState<number | null>(null);
-  const [dropIdx,      setDropIdx]      = useState<number | null>(null);
   const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
   const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
-  const itemDragRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetRef     = useRef<HTMLDivElement>(null);
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
-  const { dispatch: dispatchData, selectedTienda, currentTipo, currentPkg, fechaDespacho: _fechaDespacho, registrado } = state;
+  const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -488,15 +452,7 @@ export function TiendasPage() {
   const pdfInfo = selectedTienda ? state.pdfData[selectedTienda] : undefined;
   const hasPdf  = !!pdfInfo;
 
-  const nextGuiaAuto = pdfInfo ? (pdfInfo.guias[items.length]?.num || '') : '';
-  const valorAuto    = pdfInfo ? Math.round(pdfInfo.totalSum / (items.length + 1)) : 0;
 
-  const resetForm = (pkg: TipoPaquete = currentPkg) => {
-    setPeso(''); setAlto('');
-    setAncho(pkg === 'pallet' ? '100' : '');
-    setLargo(pkg === 'pallet' ? '120' : '');
-    setGuia(''); setValor('');
-  };
 
   const PICKING_PKG: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
   const mapearContenido = (raw: string): TipoContenido => {
@@ -516,8 +472,6 @@ export function TiendasPage() {
      useLayoutEffect → corre antes del paint: nunca se pinta el form de la
      tienda anterior bajo el header de la nueva. */
   useLayoutEffect(() => {
-    resetForm();
-    setEditingIdx(null);
     if (selectedTienda) {
       setTimeout(() => {
         formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -677,11 +631,6 @@ export function TiendasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTienda]);
 
-  useEffect(() => {
-    if (editingIdx !== null) return;
-    if (currentPkg === 'pallet') { setAncho('100'); setLargo('120'); }
-    else                         { setAncho('');    setLargo('');    }
-  }, [currentPkg, editingIdx]);
 
   const all = Object.values(TIENDAS);
   const filtered = all.filter(t => {
@@ -738,11 +687,6 @@ export function TiendasPage() {
     } else {
       sheetRef.current.style.transform = 'translateY(0)';
     }
-  };
-  const setTipo = (t: TipoContenido) => { if (currentPkg === 'box') return; dispatch({ type: 'SET_TIPO', payload: t }); };
-  const setPkg  = (p: TipoPaquete) => {
-    dispatch({ type: 'SET_PKG', payload: p });
-    if (p === 'box' || p === 'chocolate') dispatch({ type: 'SET_TIPO', payload: 'hogar' });
   };
 
   /* Calendar add/remove */
@@ -1188,14 +1132,6 @@ export function TiendasPage() {
     });
   };
 
-  /* Single-item form helpers */
-  const startEdit = (idx: number) => {
-    const item = items[idx]; setEditingIdx(idx);
-    dispatch({ type: 'SET_PKG', payload: item.pkg }); dispatch({ type: 'SET_TIPO', payload: item.tipo });
-    setPeso(String(item.peso)); setAlto(String(item.alto)); setAncho(String(item.ancho)); setLargo(String(item.largo));
-    if (!hasPdf) { setGuia(item.guia); setValor(String(item.valor)); }
-  };
-  const cancelEdit = () => { setEditingIdx(null); resetForm(); };
   const renumberItems = (list: DispatchItem[]) => {
     let pc = 1, bc = 1, cc = 1, chc = 1;
     return list.map(it => {
@@ -1204,47 +1140,6 @@ export function TiendasPage() {
       if (it.pkg === 'chocolate')  return { ...it, orden: `chocolate${chc++}` };
       return { ...it, orden: `bulto${bc++}` };
     });
-  };
-  const saveItem = () => {
-    if (!selectedTienda) return;
-    const p = parseFloat(peso);
-    if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-    const isCont  = currentPkg === 'contenedor';
-    const isChoc  = currentPkg === 'chocolate';
-    const a  = isCont ? 150 : isChoc ? 42  : (parseFloat(alto)  || 0);
-    const aw = isCont ? 80  : isChoc ? 56  : (parseFloat(ancho) || 0);
-    const l  = isCont ? 110 : isChoc ? 80  : (parseFloat(largo) || 0);
-    const errores = (isCont || isChoc) ? [] : validarDimensiones(currentPkg, p, a, aw, l);
-    if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
-    if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
-    // guia y valor son opcionales — se asignan retroactivamente al cargar el PDF
-    if (editingIdx !== null) {
-      const updated = items.map((it, i) => i !== editingIdx ? it : { ...it, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: hasPdf ? it.guia : guia.trim(), valor: hasPdf ? it.valor : (parseFloat(valor) || 0) });
-      dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(updated) });
-      setEditingIdx(null); resetForm(); showToast('✓ Item actualizado', '#16A34A'); return;
-    }
-    let pc = 1, bc = 1, cc = 1, chc = 1;
-    items.forEach(i => { if (i.pkg === 'pallet') pc++; else if (i.pkg === 'contenedor') cc++; else if (i.pkg === 'chocolate') chc++; else bc++; });
-    const orden = currentPkg === 'pallet' ? `pallet${pc}` : currentPkg === 'contenedor' ? `contenedor${cc}` : currentPkg === 'chocolate' ? `chocolate${chc}` : `bulto${bc}`;
-    const itemGuia  = hasPdf ? nextGuiaAuto : guia.trim();
-    const itemValor = hasPdf ? 0 : (parseFloat(valor) || 0);
-    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor } });
-    if (hasPdf) {
-      const newItems = [...items, { orden, tipo: currentTipo, pkg: currentPkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: 0 }];
-      const perItem = Math.round(pdfInfo!.totalSum / newItems.length);
-      dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo!.guias[i]?.num || '', valor: perItem })) });
-    } else { setGuia(''); setValor(''); }
-    setPeso(''); setAlto(''); setAncho(''); setLargo('');
-    showToast(`✓ ${orden} agregado`, '#16A34A');
-  };
-  const copyLast = () => {
-    if (!items.length) return;
-    const last = items[items.length - 1];
-    setPkg(last.pkg);
-    if (last.pkg !== 'box') setTipo(last.tipo);
-    setPeso(String(last.peso)); setAlto(String(last.alto));
-    if (last.pkg === 'pallet') { setAncho(String(last.ancho)); setLargo(String(last.largo)); }
-    showToast('Dimensiones copiadas', '#7C3AED');
   };
 
   /* ── Combine items handler ── */
@@ -1299,304 +1194,109 @@ export function TiendasPage() {
       </div>
     );
 
-    /* ── Multi-form (compacta) — siempre, salvo rollback. Estado vacío = botones +Pallet/… ── */
-    if (formRows.length > 0 || !USAR_FORM_GRANDE) {
-      const pdfStrip = (
-        <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".pdf" className="hidden"
-            onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
-          {hasPdf ? (
-            <>
-              <div className="flex-1 min-w-0">
-                <span className="text-[11px] text-success font-semibold truncate block">
-                  ✓ {pdfInfo!.guias.length} guía{pdfInfo!.guias.length > 1 ? 's' : ''} · ${pdfInfo!.totalSum.toLocaleString('es-CL')}
-                </span>
-                <span className="text-[10px] text-text-3 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
-              </div>
-              <button onClick={clearPdf} className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 flex-shrink-0 text-[13px]">✕</button>
-            </>
-          ) : (
-            <>
-              <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Guía PDF</span>
-              {pdfLoading
-                ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
-                : <button onClick={() => fileRef.current?.click()}
-                    className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-red hover:border-red cursor-pointer transition-all">
-                    Subir PDF
-                  </button>
-              }
-            </>
-          )}
-        </div>
-      );
+    /* ── Multi-form (compacta): estado vacío = botones +Pallet/+Bulto/+Cont/+Choc ── */
+    const pdfStrip = (
+      <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
+        <input ref={fileRef} type="file" accept=".pdf" className="hidden"
+          onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
+        {hasPdf ? (
+          <>
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] text-success font-semibold truncate block">
+                ✓ {pdfInfo!.guias.length} guía{pdfInfo!.guias.length > 1 ? 's' : ''} · ${pdfInfo!.totalSum.toLocaleString('es-CL')}
+              </span>
+              <span className="text-[10px] text-text-3 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
+            </div>
+            <button onClick={clearPdf} className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 flex-shrink-0 text-[13px]">✕</button>
+          </>
+        ) : (
+          <>
+            <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Guía PDF</span>
+            {pdfLoading
+              ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
+              : <button onClick={() => fileRef.current?.click()}
+                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-red hover:border-red cursor-pointer transition-all">
+                  Subir PDF
+                </button>
+            }
+          </>
+        )}
+      </div>
+    );
 
-      return (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {header}
-          {pdfStrip}
-          <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-            {(() => {
-              const cns  = selectedTienda ? (consumedPickingSlots[selectedTienda] || { p: 0, b: 0, c: 0, ch: 0 }) : { p: 0, b: 0, c: 0, ch: 0 };
-              const pkS  = selectedTienda ? (pickingSlots[selectedTienda] ?? []) : [];
-              const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
-              const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
-              const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
-              const gCH  = Math.max(0, pkS.filter(s => s.tipo === 'CH').length - items.filter(i => i.pkg === 'chocolate').length   - cns.ch);
-              // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
-              const unsavedPallet = formRows.filter(r => !r.saved && r.pkg === 'pallet').length;
-              const unsavedBox    = formRows.filter(r => !r.saved && r.pkg === 'box').length;
-              const unsavedCont   = formRows.filter(r => !r.saved && r.pkg === 'contenedor').length;
-              const unsavedChoc   = formRows.filter(r => !r.saved && r.pkg === 'chocolate').length;
-              type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
-              const ghostCards: GC[] = [
-                ...Array.from({ length: Math.max(0, gP  - unsavedPallet) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
-                ...Array.from({ length: Math.max(0, gB  - unsavedBox)    }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
-                ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
-                ...Array.from({ length: Math.max(0, gCH - unsavedChoc)   }, (_, i) => ({ type: 'ch' as const, border: 'rgba(120,53,15,0.35)',  text: '#92400E', bg: 'rgba(120,53,15,0.03)',   label: 'Choc.',   key: `gCH${i}` })),
-              ];
-              // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
-              // VISTA; el estado formRows queda igual y los handlers operan por row.id.
-              const orderedRows = ordenarCardsPorTipo(formRows, r => r.pkg);
-              return (
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  {orderedRows.map((row, rowIdx) => {
-                /* Locked / saved card */
-                const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
-                const pkgIdx   = orderedRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
-                const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
-                if (row.saved && row.savedItem) {
-                  return (
-                    <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-barlow-condensed text-[16px] font-extrabold" style={{ color: rowColor.text }}>
-                          {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
-                        </span>
-                        <div className="flex gap-0.5">
-                          <button onClick={() => editSavedRow(row.id)} title="Editar"
-                            className="text-[11px] text-text-3 hover:text-info cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✎</button>
-                          <button onClick={() => deleteSavedRow(row.id)} title="Eliminar"
-                            className="text-[11px] text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✕</button>
-                        </div>
-                      </div>
-                      <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
-                        <div className="font-semibold">{row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}</div>
-                        {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
-                        {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
-                        {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
-                        {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
-                        <span className="text-[10px] text-success font-bold">Agregado</span>
-                      </div>
-                      {/* P1: Sumar a Pallet directo en la card guardada (box/chocolate) sin abrir ✎ */}
-                      {(row.pkg === 'box' || row.pkg === 'chocolate') && (() => {
-                        const palletTargets = formRows.filter(r => r.id !== row.id && r.pkg === 'pallet');
-                        if (palletTargets.length === 0) return null;
-                        const getRowLabel = (r: typeof row) => {
-                          const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
-                          return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
-                        };
-                        const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                        return (
-                          <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: 'rgba(37,99,235,0.30)' }}>
-                            {isExpanded ? (
-                              <div className="flex flex-col gap-1">
-                                <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Sumar a Pallet…</div>
-                                <div className="flex flex-wrap gap-1">
-                                  {palletTargets.map(pl => (
-                                    <button key={`sum-${pl.id}`}
-                                      onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
-                                      className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                      style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                                      → {getRowLabel(pl)}
-                                    </button>
-                                  ))}
-                                  <button onClick={() => setFormMergeState(null)}
-                                    className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                    style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                                className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                                style={{ border: '1.5px dashed rgba(37,99,235,0.30)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                                SUMAR A PALLET
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {/* P3 #1: Unificar directo en la card guardada (pallet/contenedor) sin abrir ✎ */}
-                      {(row.pkg === 'pallet' || row.pkg === 'contenedor') && (() => {
-                        const combineTargets = formRows.filter(r => r.id !== row.id && r.pkg === row.pkg);
-                        if (combineTargets.length === 0) return null;
-                        const getRowLabel = (r: typeof row) => {
-                          const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
-                          return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
-                        };
-                        const col = row.pkg === 'contenedor'
-                          ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
-                          : { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)', solid: 'rgba(37,99,235,0.45)' };
-                        const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                        return (
-                          <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: col.border }}>
-                            {isExpanded ? (
-                              <div className="flex flex-col gap-1">
-                                <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Unificar con…</div>
-                                <div className="flex flex-wrap gap-1">
-                                  {combineTargets.map(other => (
-                                    <button key={`uni-${other.id}`}
-                                      onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
-                                      className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                      style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
-                                      {getRowLabel(other)}
-                                    </button>
-                                  ))}
-                                  <button onClick={() => setFormMergeState(null)}
-                                    className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                    style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                                className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                                style={{ border: `1.5px dashed ${col.border}`, color: col.color, background: col.bg }}>
-                                UNIFICAR
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  );
-                }
-                /* Active / unsaved card */
-                const isChocRow = row.pkg === 'chocolate';
-                const isContRow = row.pkg === 'contenedor';
-                const canSave = parseFloat(row.peso) > 0 && (isChocRow || isContRow || (parseFloat(row.alto) > 0 &&
-                  (row.pkg === 'pallet' || (parseFloat(row.ancho) > 0 && parseFloat(row.largo) > 0))));
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {header}
+        {pdfStrip}
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {(() => {
+            const cns  = selectedTienda ? (consumedPickingSlots[selectedTienda] || { p: 0, b: 0, c: 0, ch: 0 }) : { p: 0, b: 0, c: 0, ch: 0 };
+            const pkS  = selectedTienda ? (pickingSlots[selectedTienda] ?? []) : [];
+            const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
+            const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
+            const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
+            const gCH  = Math.max(0, pkS.filter(s => s.tipo === 'CH').length - items.filter(i => i.pkg === 'chocolate').length   - cns.ch);
+            // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
+            const unsavedPallet = formRows.filter(r => !r.saved && r.pkg === 'pallet').length;
+            const unsavedBox    = formRows.filter(r => !r.saved && r.pkg === 'box').length;
+            const unsavedCont   = formRows.filter(r => !r.saved && r.pkg === 'contenedor').length;
+            const unsavedChoc   = formRows.filter(r => !r.saved && r.pkg === 'chocolate').length;
+            type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
+            const ghostCards: GC[] = [
+              ...Array.from({ length: Math.max(0, gP  - unsavedPallet) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
+              ...Array.from({ length: Math.max(0, gB  - unsavedBox)    }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
+              ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
+              ...Array.from({ length: Math.max(0, gCH - unsavedChoc)   }, (_, i) => ({ type: 'ch' as const, border: 'rgba(120,53,15,0.35)',  text: '#92400E', bg: 'rgba(120,53,15,0.03)',   label: 'Choc.',   key: `gCH${i}` })),
+            ];
+            // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
+            // VISTA; el estado formRows queda igual y los handlers operan por row.id.
+            const orderedRows = ordenarCardsPorTipo(formRows, r => r.pkg);
+            return (
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {orderedRows.map((row, rowIdx) => {
+              /* Locked / saved card */
+              const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
+              const pkgIdx   = orderedRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
+              const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
+              if (row.saved && row.savedItem) {
                 return (
-                  <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                  <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
+                      <span className="font-barlow-condensed text-[16px] font-extrabold" style={{ color: rowColor.text }}>
                         {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
                       </span>
-                      <button onClick={() => removeUnsavedRow(row.id)}
-                        className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
+                      <div className="flex gap-0.5">
+                        <button onClick={() => editSavedRow(row.id)} title="Editar"
+                          className="text-[11px] text-text-3 hover:text-info cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✎</button>
+                        <button onClick={() => deleteSavedRow(row.id)} title="Eliminar"
+                          className="text-[11px] text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✕</button>
+                      </div>
                     </div>
-                    {row.mergeReopened && (
-                      <div className="mb-1.5 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
-                        style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                        ⬦ Unificado · peso ya sumado — ingresa la altura y Agregar
-                      </div>
-                    )}
-                    {row.pkg === 'pallet' && (
-                      <div className="flex gap-0.5 mb-1.5">
-                        {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
-                          <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
-                            className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
-                            {t === 'comida' ? 'Com' : t === 'hogar' ? 'Hog' : 'Mix'}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-1 mb-1.5">
-                      <div>
-                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
-                        <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                      </div>
-                      {!isChocRow && !isContRow && (
-                        <div>
-                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
-                          <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
-                            max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                          {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
-                            <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
-                          )}
-                        </div>
-                      )}
+                    <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
+                      <div className="font-semibold">{row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}</div>
+                      {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
+                      {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
+                      {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
+                      {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
                     </div>
-                    {row.pkg === 'box' ? (
-                      <div className="grid grid-cols-2 gap-1 mb-1.5">
-                        <div>
-                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
-                          <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)} placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                        </div>
-                        <div>
-                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
-                          <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                        </div>
-                      </div>
-                    ) : isContRow ? (
-                      <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>
-                        80 × 110 cm · alto 150 cm — fijo
-                      </div>
-                    ) : isChocRow ? (
-                      <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#92400E', background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.15)' }}>
-                        56 × 80 cm · alto 42 cm — fijo
-                      </div>
-                    ) : (
-                      <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">
-                        120 × 100 cm fijos
-                      </div>
-                    )}
-                    {!hasPdf && (
-                      <div className="grid grid-cols-2 gap-1 mb-1.5">
-                        <div>
-                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Guía</label>
-                          <input type="text" value={row.guia} onChange={e => updateRow(row.id, 'guia', e.target.value)}
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red" />
-                        </div>
-                        <div>
-                          <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">$ Total</label>
-                          <input type="number" value={row.valor} onChange={e => updateRow(row.id, 'valor', e.target.value)}
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
-                        </div>
-                      </div>
-                    )}
-                    {hasPdf && (
-                      <div className="mb-1.5 text-[10px] text-success bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.25)] rounded px-1.5 py-1">
-                        PDF · ${Math.round((pdfInfo?.totalSum || 0) / (items.length + 1)).toLocaleString('es-CL')}
-                      </div>
-                    )}
-                    <button onClick={() => saveRow(row)} disabled={!canSave}
-                      className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 transition-all"
-                      style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
-                      {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
-                    </button>
-                    {!row.mergeReopened && (() => {
-                      const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
-                      const combineTargets = (row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')
-                        ? formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg)
-                        : [];
-                      const palletTargets = esBultoOChoc
-                        ? formRows.filter(r => r.id !== row.id && r.pkg === 'pallet')
-                        : [];
-                      if (combineTargets.length === 0 && palletTargets.length === 0) return null;
-                      const gcStyle = row.pkg === 'pallet'
-                        ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
-                        : row.pkg === 'contenedor'
-                        ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
-                        : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
-                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
+                      <span className="text-[10px] text-success font-bold">Agregado</span>
+                    </div>
+                    {/* P1: Sumar a Pallet directo en la card guardada (box/chocolate) sin abrir ✎ */}
+                    {(row.pkg === 'box' || row.pkg === 'chocolate') && (() => {
+                      const palletTargets = formRows.filter(r => r.id !== row.id && r.pkg === 'pallet');
+                      if (palletTargets.length === 0) return null;
                       const getRowLabel = (r: typeof row) => {
                         const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
                         return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
                       };
+                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
                       return (
-                        <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
+                        <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: 'rgba(37,99,235,0.30)' }}>
                           {isExpanded ? (
                             <div className="flex flex-col gap-1">
-                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">
-                                {palletTargets.length > 0 ? 'Sumar a Pallet / combinar…' : '¿Combinar con…?'}
-                              </div>
+                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Sumar a Pallet…</div>
                               <div className="flex flex-wrap gap-1">
                                 {palletTargets.map(pl => (
                                   <button key={`sum-${pl.id}`}
@@ -1606,11 +1306,45 @@ export function TiendasPage() {
                                     → {getRowLabel(pl)}
                                   </button>
                                 ))}
+                                <button onClick={() => setFormMergeState(null)}
+                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
+                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
+                              style={{ border: '1.5px dashed rgba(37,99,235,0.30)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                              SUMAR A PALLET
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* P3 #1: Unificar directo en la card guardada (pallet/contenedor) sin abrir ✎ */}
+                    {(row.pkg === 'pallet' || row.pkg === 'contenedor') && (() => {
+                      const combineTargets = formRows.filter(r => r.id !== row.id && r.pkg === row.pkg);
+                      if (combineTargets.length === 0) return null;
+                      const getRowLabel = (r: typeof row) => {
+                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+                        return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                      };
+                      const col = row.pkg === 'contenedor'
+                        ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
+                        : { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)', solid: 'rgba(37,99,235,0.45)' };
+                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                      return (
+                        <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: col.border }}>
+                          {isExpanded ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Unificar con…</div>
+                              <div className="flex flex-wrap gap-1">
                                 {combineTargets.map(other => (
-                                  <button key={other.id}
+                                  <button key={`uni-${other.id}`}
                                     onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                    style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
+                                    style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
                                     {getRowLabel(other)}
                                   </button>
                                 ))}
@@ -1623,8 +1357,8 @@ export function TiendasPage() {
                             <button
                               onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
                               className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                              style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
-                              {palletTargets.length > 0 ? 'SUMAR / UNIFICAR' : 'UNIFICAR'}
+                              style={{ border: `1.5px dashed ${col.border}`, color: col.color, background: col.bg }}>
+                              UNIFICAR
                             </button>
                           )}
                         </div>
@@ -1632,295 +1366,244 @@ export function TiendasPage() {
                     })()}
                   </div>
                 );
-                  })}
-                  {ghostCards.map(gc => {
-                    const pkgMap: Record<string, string> = { p: 'pallet', b: 'box', c: 'contenedor', ch: 'chocolate' };
-                    const prefixMap: Record<string, string> = { p: 'P', b: 'B', c: 'C', ch: 'CH' };
-                    const regCount = items.filter(i => i.pkg === pkgMap[gc.type]).length;
-                    const prefix = prefixMap[gc.type];
-                    const opts = Array.from({ length: regCount }, (_, i) => `${prefix}${i + 1}`);
+              }
+              /* Active / unsaved card */
+              const isChocRow = row.pkg === 'chocolate';
+              const isContRow = row.pkg === 'contenedor';
+              const canSave = parseFloat(row.peso) > 0 && (isChocRow || isContRow || (parseFloat(row.alto) > 0 &&
+                (row.pkg === 'pallet' || (parseFloat(row.ancho) > 0 && parseFloat(row.largo) > 0))));
+              return (
+                <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
+                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
+                    </span>
+                    <button onClick={() => removeUnsavedRow(row.id)}
+                      className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
+                  </div>
+                  {row.mergeReopened && (
+                    <div className="mb-1.5 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
+                      style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                      ⬦ Unificado · peso ya sumado — ingresa la altura y Agregar
+                    </div>
+                  )}
+                  {row.pkg === 'pallet' && (
+                    <div className="flex gap-0.5 mb-1.5">
+                      {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
+                        <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
+                          className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
+                          {t === 'comida' ? 'Com' : t === 'hogar' ? 'Hog' : 'Mix'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-1 mb-1.5">
+                    <div>
+                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
+                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
+                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                    </div>
+                    {!isChocRow && !isContRow && (
+                      <div>
+                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
+                        <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
+                          max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
+                          <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {row.pkg === 'box' ? (
+                    <div className="grid grid-cols-2 gap-1 mb-1.5">
+                      <div>
+                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
+                        <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)} placeholder="cm" inputMode="decimal"
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
+                        <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                      </div>
+                    </div>
+                  ) : isContRow ? (
+                    <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>
+                      80 × 110 cm · alto 150 cm — fijo
+                    </div>
+                  ) : isChocRow ? (
+                    <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#92400E', background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.15)' }}>
+                      56 × 80 cm · alto 42 cm — fijo
+                    </div>
+                  ) : (
+                    <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">
+                      120 × 100 cm fijos
+                    </div>
+                  )}
+                  {!hasPdf && (
+                    <div className="grid grid-cols-2 gap-1 mb-1.5">
+                      <div>
+                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Guía</label>
+                        <input type="text" value={row.guia} onChange={e => updateRow(row.id, 'guia', e.target.value)}
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">$ Total</label>
+                        <input type="number" value={row.valor} onChange={e => updateRow(row.id, 'valor', e.target.value)}
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                      </div>
+                    </div>
+                  )}
+                  {hasPdf && (
+                    <div className="mb-1.5 text-[10px] text-success bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.25)] rounded px-1.5 py-1">
+                      PDF · ${Math.round((pdfInfo?.totalSum || 0) / (items.length + 1)).toLocaleString('es-CL')}
+                    </div>
+                  )}
+                  <button onClick={() => saveRow(row)} disabled={!canSave}
+                    className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 transition-all"
+                    style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
+                    {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
+                  </button>
+                  {!row.mergeReopened && (() => {
+                    const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
+                    const combineTargets = (row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')
+                      ? formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg)
+                      : [];
+                    const palletTargets = esBultoOChoc
+                      ? formRows.filter(r => r.id !== row.id && r.pkg === 'pallet')
+                      : [];
+                    if (combineTargets.length === 0 && palletTargets.length === 0) return null;
+                    const gcStyle = row.pkg === 'pallet'
+                      ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
+                      : row.pkg === 'contenedor'
+                      ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
+                      : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
+                    const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
+                    const getRowLabel = (r: typeof row) => {
+                      const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+                      return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                    };
                     return (
-                      <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col gap-1.5" style={{ borderColor: gc.border, background: gc.bg }}>
-                        <div className="flex items-center justify-between">
-                          <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
-                          <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
-                        </div>
-                        <div className="text-[10px] text-text-3 leading-snug">¿Con cuál fue unificado?</div>
-                        {opts.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {opts.map(opt => (
-                              <button
-                                key={opt}
-                                onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
-                                className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97] border-2"
-                                style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
-                                ✓ {opt}
-                              </button>
-                            ))}
+                      <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
+                        {isExpanded ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">
+                              {palletTargets.length > 0 ? 'Sumar a Pallet / combinar…' : '¿Combinar con…?'}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {palletTargets.map(pl => (
+                                <button key={`sum-${pl.id}`}
+                                  onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
+                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                  style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
+                                  → {getRowLabel(pl)}
+                                </button>
+                              ))}
+                              {combineTargets.map(other => (
+                                <button key={other.id}
+                                  onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
+                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
+                                  style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
+                                  {getRowLabel(other)}
+                                </button>
+                              ))}
+                              <button onClick={() => setFormMergeState(null)}
+                                className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
+                                style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
+                            </div>
                           </div>
                         ) : (
                           <button
-                            onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
-                            className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
-                            style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
-                            ✓ Confirmar
+                            onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                            className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
+                            style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
+                            {palletTargets.length > 0 ? 'SUMAR / UNIFICAR' : 'UNIFICAR'}
                           </button>
                         )}
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
               );
-            })()}
-            <div className="grid grid-cols-4 gap-1.5 pb-1">
-              <button onClick={() => setDialogPkg('pallet')}
-                className="py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
-                + Pallet
-              </button>
-              <button onClick={() => setDialogPkg('box')}
-                className="py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
-                + Bulto
-              </button>
-              <button onClick={() => setDialogPkg('contenedor')}
-                className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
-                style={{ borderColor: 'rgba(107,33,168,0.4)', color: '#6B21A8', background: 'transparent' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(107,33,168,0.05)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                + Cont.
-              </button>
-              <button onClick={() => setDialogPkg('chocolate')}
-                className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
-                style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                + Choc. CH
-              </button>
-            </div>
-            {dialogPkg && selectedTienda && (
-              <AgregarPalletDialog
-                tipoLabel={PKG_LABEL[dialogPkg]}
-                storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
-                date={new Date().toISOString().slice(0, 10)}
-                onClose={() => setDialogPkg(null)}
-                onNuevo={() => { const p = dialogPkg; setDialogPkg(null); void addFormRow(p); }}
-                onExistente={(slot) => {
-                  setDialogPkg(null);
-                  const p = SLOT_TIPO_TO_PKG[slot.tipo] ?? 'box';
-                  void addFormRow(p, slot);
-                  showToast(`✓ Pallet #${slot.id} agregado`, '#16A34A');
-                }}
-              />
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* ── Normal single-item form ── */
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {header}
-        {/* PDF compact strip — outside scroll */}
-        <div className="flex-shrink-0 px-2.5 py-1.5 border-b border-border hidden lg:flex items-center gap-2 bg-bg"
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type === 'application/pdf') handlePdfFile(f); }}>
-          <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
-          {pdfLoading
-            ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
-            : hasPdf
-              ? <>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-success font-semibold truncate block">✓ {pdfInfo!.guias.length} guías · ${pdfInfo!.totalSum.toLocaleString('es-CL')} · {items.length + 1} items: ${Math.round(pdfInfo!.totalSum / (items.length + 1)).toLocaleString('es-CL')} c/u</span>
-                    <span className="text-[10px] text-success/60 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
-                  </div>
-                  <button onClick={clearPdf} className="text-[11px] text-text-3 hover:text-red cursor-pointer border border-border rounded px-1.5 py-0.5 flex-shrink-0 bg-white">✕ Quitar</button>
-                </>
-              : <button onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-red hover:border-red cursor-pointer transition-all">
-                  Subir PDF guías
-                </button>
-          }
-        </div>
-        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2.5 pb-4">
-          {editingIdx !== null && (
-            <div className="mt-2 bg-[rgba(37,99,235,0.07)] border border-[rgba(37,99,235,0.25)] rounded-card px-2.5 py-2 flex items-center justify-between">
-              <span className="text-[13px] font-semibold text-info">Editando #{editingIdx + 1}</span>
-              <button onClick={cancelEdit} className="text-[12px] text-text-3 cursor-pointer border-none bg-none hover:text-red">✕ Cancelar</button>
-            </div>
-          )}
-          <SLabel>Tipo</SLabel>
-          <div className="flex gap-1.5 flex-wrap">
-            {(['pallet', 'box', 'contenedor', 'chocolate'] as TipoPaquete[]).map(p => (
-              <button key={p} onClick={() => setPkg(p)}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[13px] font-medium cursor-pointer transition-all min-w-[60px] ${
-                  currentPkg === p
-                    ? p === 'pallet'     ? 'bg-[rgba(37,99,235,0.08)] border-info text-info'
-                    : p === 'contenedor' ? 'bg-[rgba(107,33,168,0.08)] border-[#6B21A8] text-[#6B21A8]'
-                    : p === 'chocolate'  ? 'bg-[rgba(120,53,15,0.08)] border-[#92400E] text-[#92400E]'
-                    : 'bg-[rgba(217,119,6,0.08)] border-warn text-warn'
-                    : 'border-border bg-white text-text-2'
-                }`}>
-                {p === 'pallet' ? 'Pallet' : p === 'contenedor' ? 'Contened.' : p === 'chocolate' ? 'Choc. CH' : 'Bulto'}
-              </button>
-            ))}
-          </div>
-          <SLabel>Contenido</SLabel>
-          <div className="flex gap-1.5">
-            {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
-              <button key={t} onClick={() => setTipo(t)} disabled={currentPkg === 'box' && t !== 'hogar'}
-                className={`flex-1 py-2.5 rounded-btn border-[1.5px] font-barlow text-[14px] font-medium cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed ${currentTipo === t ? TIPO_CLS[t] : 'border-border bg-white text-text-2'}`}>
-                {t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto'}
-              </button>
-            ))}
-          </div>
-          {(currentPkg === 'box' || currentPkg === 'chocolate') && <div className="mt-1 bg-[rgba(124,58,237,0.08)] border border-[rgba(124,58,237,0.25)] rounded-btn px-2.5 py-1 text-[12px] text-hogar">{currentPkg === 'chocolate' ? 'Chocolate siempre es Hogar' : 'Bulto siempre es Hogar'}</div>}
-          <SLabel>Peso y dimensiones</SLabel>
-          <div className="grid grid-cols-2 gap-1.5">
-            <Field label="Peso kg"><input type="number" value={peso} onChange={e => setPeso(e.target.value)} placeholder={currentPkg === 'chocolate' ? 'máx 25' : '500'} inputMode="decimal" className={inputCls} /></Field>
-            {currentPkg !== 'contenedor' && currentPkg !== 'chocolate' && (
-              <Field label="Alto cm">
-                <input type="number" value={alto} onChange={e => setAlto(e.target.value)} placeholder="160" inputMode="decimal"
-                  max={currentPkg === 'pallet' ? MAX_ALTO_CM : undefined} className={inputCls} />
-                {currentPkg === 'pallet' && excedeAltoMax(parseFloat(alto) || 0) && (
-                  <div className="text-[10px] text-warn">⚠ máx {MAX_ALTO_CM} cm</div>
-                )}
-              </Field>
-            )}
-            {currentPkg === 'pallet' ? (
-              <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Ancho × Largo</label>
-                <div className="bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-info text-center">
-                  100 × 120 cm — fijo
-                </div>
-              </div>
-            ) : currentPkg === 'contenedor' ? (
-              <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
-                <div className="bg-[rgba(107,33,168,0.06)] border border-[rgba(107,33,168,0.20)] rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-[#6B21A8] text-center">
-                  80 × 110 cm · alto 150 cm — fijo
-                </div>
-              </div>
-            ) : currentPkg === 'chocolate' ? (
-              <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[12px] text-text-3 font-semibold tracking-wide uppercase">Dimensiones</label>
-                <div className="rounded-btn px-2.5 py-2.5 text-[14px] font-mono text-center"
-                  style={{ background: 'rgba(120,53,15,0.06)', border: '1px solid rgba(120,53,15,0.20)', color: '#92400E' }}>
-                  56 × 80 cm · alto 42 cm — fijo · máx 25 kg
-                </div>
-              </div>
-            ) : (
-              <>
-                <Field label="Ancho cm"><input type="number" value={ancho} onChange={e => setAncho(e.target.value)} placeholder="" inputMode="decimal" className={inputCls} /></Field>
-                <Field label="Largo cm"><input type="number" value={largo} onChange={e => setLargo(e.target.value)} placeholder="" inputMode="decimal" className={inputCls} /></Field>
-              </>
-            )}
-          </div>
-          <div className="sticky bottom-0 z-10 mt-3 pb-4 pt-2"
-            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 28%)' }}>
-            <button onClick={saveItem}
-              className="w-full py-4 bg-red text-white border-none rounded-card font-barlow-condensed text-[20px] font-bold tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all active:bg-red-dark active:scale-[0.99]"
-              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.28)' }}>
-              {editingIdx !== null ? 'Guardar' : '+ Agregar'}
-            </button>
-            {items.length > 0 && editingIdx === null && (
-              <button onClick={copyLast} className="w-full py-2.5 mt-1.5 bg-white text-text-2 border border-dashed border-border-2 rounded-btn text-[13px] cursor-pointer font-barlow hover:border-text-3">
-                ↻ Copiar último
-              </button>
-            )}
-          </div>
-          {!hasPdf ? (
-            <><SLabel>Guía y valor <span className="text-[10px] font-normal normal-case tracking-normal text-text-3/70 ml-1">(opcional)</span></SLabel>
-              <div className="grid grid-cols-2 gap-1.5 mb-3">
-                <Field label="N° Guía"><input type="text" value={guia} onChange={e => setGuia(e.target.value)} placeholder="Manual" inputMode="numeric" className={inputCls} /></Field>
-                <Field label="Total $"><input type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="0" inputMode="decimal" className={inputCls} /></Field>
-              </div>
-            </>
-          ) : (
-            <div className="grid grid-cols-2 gap-1.5 mb-3">
-              <Field label="N° Guía">
-                <input type="text" value={editingIdx !== null ? (items[editingIdx]?.guia || '—') : (nextGuiaAuto || '—')} readOnly className="bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.35)] rounded-btn px-2.5 py-2.5 text-success font-barlow text-[16px] outline-none w-full" />
-                <div className="text-[11px] text-success mt-0.5">{editingIdx !== null ? 'Del PDF' : (nextGuiaAuto ? `${items.length + 1}/${pdfInfo!.guias.length}` : 'Sin guía')}</div>
-              </Field>
-              <Field label="Valor $">
-                <input type="number" value={editingIdx !== null ? (items[editingIdx]?.valor || 0) : valorAuto} readOnly className="bg-[rgba(22,163,74,0.06)] border border-[rgba(22,163,74,0.35)] rounded-btn px-2.5 py-2.5 text-success font-barlow text-[16px] outline-none w-full" />
-                <div className="text-[11px] text-success mt-0.5">Total ÷ items</div>
-              </Field>
-            </div>
-          )}
-          {items.length > 0 && (
-            <div className="mt-3">
-              <SLabel>Items ({items.length})</SLabel>
-              {items.map((item, i) => {
-                const dims = [item.alto, item.ancho, item.largo].filter(Boolean);
-                const isEditing = editingIdx === i;
-                return (
-                  <div
-                    key={i}
-                    data-item-idx={i}
-                    ref={el => { itemDragRefs.current[i] = el; }}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
-                    onDragOver={(e) => { if (dragIdx !== null && dragIdx !== i && items[dragIdx]?.pkg === item.pkg) { e.preventDefault(); setDropIdx(i); } }}
-                    onDragLeave={() => setDropIdx(prev => prev === i ? null : prev)}
-                    onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== i && items[dragIdx]?.pkg === item.pkg) setCombineModal({ srcIdx: dragIdx, tgtIdx: i }); setDragIdx(null); setDropIdx(null); }}
-                    onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                    onTouchStart={(e) => {
-                      const t = e.touches[0];
-                      (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
-                      (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
-                      longPressRef.current = setTimeout(() => { setDragIdx(i); navigator.vibrate?.(25); }, 220);
-                    }}
-                    onTouchMove={(e) => {
-                      const t = e.touches[0];
-                      const el = e.currentTarget as HTMLElement;
-                      if (longPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
-                        { clearTimeout(longPressRef.current); longPressRef.current = null; }
-                      if (dragIdx === null) return;
-                      e.preventDefault();
-                      const under = document.elementFromPoint(t.clientX, t.clientY);
-                      const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
-                      const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
-                      setDropIdx(tgt !== -1 && tgt !== dragIdx ? tgt : null);
-                    }}
-                    onTouchEnd={(e) => {
-                      if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
-                      if (dragIdx === null) return;
-                      e.preventDefault();
-                      const t = e.changedTouches[0];
-                      const under = document.elementFromPoint(t.clientX, t.clientY);
-                      const itemEl = under?.closest('[data-item-idx]') as HTMLElement | null;
-                      const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
-                      if (tgt !== -1 && tgt !== dragIdx && items[dragIdx]?.pkg === items[tgt]?.pkg)
-                        setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt });
-                      setDragIdx(null); setDropIdx(null);
-                    }}
-                    className={[
-                      'bg-white border rounded-card px-2.5 py-2 mb-1.5 flex items-center gap-2 shadow-card transition-all select-none',
-                      dropIdx === i ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' : isEditing ? 'border-info bg-[rgba(37,99,235,0.04)]' : 'border-border',
-                      dragIdx === i ? 'opacity-40' : '',
-                      dragIdx !== null ? 'cursor-grabbing' : 'cursor-grab',
-                    ].join(' ')}
-                  >
-                    <GripVertical size={13} color="#CBD5E1" className="flex-shrink-0" />
-                    <div className="font-mono text-[11px] text-text-3 w-4 text-center flex-shrink-0">{i + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.pkg]}`}>{item.orden}</span>
-                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed uppercase ${TAG_CLS[item.tipo]}`}>{item.tipo === 'comida' ? 'Comida' : item.tipo === 'hogar' ? 'Hogar' : item.tipo === 'chocolate' ? 'CH' : 'Mixto'}</span>
-                        <span className="text-[13px] font-semibold text-text-2">{item.peso}kg</span>
+                })}
+                {ghostCards.map(gc => {
+                  const pkgMap: Record<string, string> = { p: 'pallet', b: 'box', c: 'contenedor', ch: 'chocolate' };
+                  const prefixMap: Record<string, string> = { p: 'P', b: 'B', c: 'C', ch: 'CH' };
+                  const regCount = items.filter(i => i.pkg === pkgMap[gc.type]).length;
+                  const prefix = prefixMap[gc.type];
+                  const opts = Array.from({ length: regCount }, (_, i) => `${prefix}${i + 1}`);
+                  return (
+                    <div key={gc.key} className="rounded-lg border-2 border-dashed p-2 flex flex-col gap-1.5" style={{ borderColor: gc.border, background: gc.bg }}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-barlow-condensed text-[13px] font-extrabold" style={{ color: gc.text }}>{gc.label}</span>
+                        <span className="text-[9px] text-text-3 font-bold uppercase tracking-widest">picking</span>
                       </div>
-                      <div className="font-mono text-[11px] text-text-3 mt-0.5 truncate">
-                        {dims.length ? dims.join('×') + 'cm' : ''}
-                        {item.guia ? (dims.length ? ' · ' : '') + '#' + item.guia : ''}
-                        {item.valor ? ' · $' + item.valor.toLocaleString('es-CL') : ''}
-                      </div>
+                      <div className="text-[10px] text-text-3 leading-snug">¿Con cuál fue unificado?</div>
+                      {opts.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {opts.map(opt => (
+                            <button
+                              key={opt}
+                              onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
+                              className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97] border-2"
+                              style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                              ✓ {opt}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => selectedTienda && absorbPickingSlot(selectedTienda, gc.type)}
+                          className="w-full py-1.5 rounded border-2 border-dashed font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all active:scale-[0.97]"
+                          style={{ borderColor: gc.border, color: gc.text, background: 'white' }}>
+                          ✓ Confirmar
+                        </button>
+                      )}
                     </div>
-                    <button onClick={() => startEdit(i)} className={`border-none text-[13px] cursor-pointer px-1.5 py-1 rounded transition-all flex-shrink-0 ${isEditing ? 'bg-[rgba(37,99,235,0.12)] text-info' : 'bg-none text-text-3 hover:text-info'}`}>✎</button>
-                    <button onClick={() => { if (isEditing) cancelEdit(); dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda!, idx: i }); }} className="bg-none border-none text-text-3 cursor-pointer px-1.5 py-1 rounded text-sm hover:text-red flex-shrink-0">✕</button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+          <div className="grid grid-cols-4 gap-1.5 pb-1">
+            <button onClick={() => setDialogPkg('pallet')}
+              className="py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
+              + Pallet
+            </button>
+            <button onClick={() => setDialogPkg('box')}
+              className="py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
+              + Bulto
+            </button>
+            <button onClick={() => setDialogPkg('contenedor')}
+              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
+              style={{ borderColor: 'rgba(107,33,168,0.4)', color: '#6B21A8', background: 'transparent' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(107,33,168,0.05)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              + Cont.
+            </button>
+            <button onClick={() => setDialogPkg('chocolate')}
+              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
+              style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              + Choc. CH
+            </button>
+          </div>
+          {dialogPkg && selectedTienda && (
+            <AgregarPalletDialog
+              tipoLabel={PKG_LABEL[dialogPkg]}
+              storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
+              date={new Date().toISOString().slice(0, 10)}
+              onClose={() => setDialogPkg(null)}
+              onNuevo={() => { const p = dialogPkg; setDialogPkg(null); void addFormRow(p); }}
+              onExistente={(slot) => {
+                setDialogPkg(null);
+                const p = SLOT_TIPO_TO_PKG[slot.tipo] ?? 'box';
+                void addFormRow(p, slot);
+                showToast(`✓ Pallet #${slot.id} agregado`, '#16A34A');
+              }}
+            />
           )}
         </div>
       </div>
@@ -2290,7 +1973,7 @@ export function TiendasPage() {
             mergedGuia={mergedGuia || undefined}
             mergedValor={mergedValor || undefined}
             onConfirm={handleCombineConfirm}
-            onCancel={() => { setCombineModal(null); setDragIdx(null); setDropIdx(null); }}
+            onCancel={() => { setCombineModal(null); }}
           />
         );
       })()}
