@@ -177,6 +177,10 @@ export default function PerfilPage() {
     if (authErr) { setPassError('Contraseña actual incorrecta'); setPassLoading(false); return; }
     const { error } = await supabase.auth.updateUser({ password: newPass });
     if (error) { setPassError(error.message); setPassLoading(false); return; }
+    // Aviso de seguridad por correo (fire-and-forget; no bloquea el éxito). El endpoint usa la
+    // cookie de sesión y envía SOLO al email del usuario autenticado. Antes de signOut(others),
+    // que conserva la sesión actual, para que la cookie siga válida.
+    fetch('/api/auth/password-changed-email', { method: 'POST' }).catch(() => {});
     await supabase.auth.signOut({ scope: 'others' });
     setPassSaved(true); setCurrPass(''); setNewPass(''); setConfPass('');
     setTimeout(() => setPassSaved(false), 2500);
@@ -461,7 +465,7 @@ export default function PerfilPage() {
           />
         </FieldCard>
         {passError && <p className="text-[11px] text-red mb-2">{passError}</p>}
-        {passSaved && <p className="text-[11px] text-success mb-2">✓ Contraseña actualizada — otras sesiones cerradas</p>}
+        {passSaved && <p className="text-[11px] text-success mb-2">✓ Contraseña actualizada — te enviamos un correo de confirmación y cerramos las otras sesiones</p>}
         <ActionButton
           onClick={handleChangePassword}
           disabled={passLoading || !currPass || !newPass || !confPass}
