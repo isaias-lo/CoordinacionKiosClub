@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Map as MapIcon } from 'lucide-react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Map as MapIcon, Send } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
 import FlotaGrid      from './FlotaGrid';
+import FlotaInternaPanel from './FlotaInternaPanel';
 import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import { getDia, formatCod, todayStr } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
@@ -176,7 +177,7 @@ export default function InputSection({
   const hoy = todayStr();
   const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const [sidebarFilter, setSidebarFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
-  const [flotaSubTab, setFlotaSubTab]     = useState<'personal' | 'gestionar' | 'vehiculos'>('gestionar');
+  const [flotaSubTab, setFlotaSubTab]     = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
 
   /* ── Resizable sidebar ── */
   const [leftWidth, setLeftWidth] = useState<number>(() => {
@@ -376,9 +377,16 @@ export default function InputSection({
                         ${flotaSubTab === 'gestionar' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
                       <ClipboardList size={13} strokeWidth={2} /><span>Gestionar</span>
                     </button>
+                    <button onClick={() => setFlotaSubTab('salidas')}
+                      className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
+                        ${flotaSubTab === 'salidas' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+                      <Send size={13} strokeWidth={2} /><span>Salidas</span>
+                    </button>
                   </div>
                   <div className="flex-1 overflow-y-auto">
-                    {flotaSubTab === 'personal' ? (
+                    {flotaSubTab === 'salidas' ? (
+                      <FlotaInternaPanel tiendas={tiendas} />
+                    ) : flotaSubTab === 'personal' ? (
                       <PersonalCatalogPanel />
                     ) : flotaSubTab === 'gestionar' ? (
                       <ControlFlotaPanel />
@@ -648,9 +656,16 @@ export default function InputSection({
                   ${flotaSubTab === 'gestionar' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
                 <ClipboardList size={13} strokeWidth={2} /><span>Gestionar</span>
               </button>
+              <button onClick={() => setFlotaSubTab('salidas')}
+                className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
+                  ${flotaSubTab === 'salidas' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+                <Send size={13} strokeWidth={2} /><span>Salidas</span>
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {flotaSubTab === 'personal' ? (
+              {flotaSubTab === 'salidas' ? (
+                <FlotaInternaPanel tiendas={tiendas} />
+              ) : flotaSubTab === 'personal' ? (
                 <PersonalCatalogPanel />
               ) : flotaSubTab === 'gestionar' ? (
                 <ControlFlotaPanel />
