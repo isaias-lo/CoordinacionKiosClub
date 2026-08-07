@@ -25,7 +25,8 @@ import type { Ruta, StoreItem } from './utils/routing';
 import type { IAStore, IATruck } from './ia/types';
 import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
-import { splitRoutingPorTabla, buildControlRows, agruparPorFechaOrigen, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
+import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
+import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha } from './utils/segundaVueltaFechas';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
@@ -186,7 +187,10 @@ export default function RutasScreen() {
   const [cerradasV1, setCerradasV1] = useState<Set<string>>(new Set());
   // ── Tab "2ª VUELTA": pendientes de días anteriores, board y manifiesto AISLADOS del día actual ──
   const [pendientesV2Origen, setPendientesV2Origen] = useState<PendienteV2[]>([]);
-  const [asignacionesV2, setAsignacionesV2]         = useState<Record<string, StoreItem[]>>({});
+  // Tablero V2 por FECHA de origen: fecha → (patente → tiendas). Antes era plano (patente → tiendas)
+  // y sumaba todas las fechas por código; ahora cada fecha se asigna y cierra por separado.
+  const [asignacionesV2, setAsignacionesV2]         = useState<Record<string, Record<string, StoreItem[]>>>({});
+  const [v2Fecha, setV2Fecha]                       = useState<string>(''); // sub-pestaña de fecha activa
   const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
   // Fase B: manifiesto de un solo camión cerrado en 1ª vuelta (cierre por vehículo).
   const [manifiestoV1, setManifiestoV1]             = useState<Ruta[] | null>(null);
@@ -667,8 +671,14 @@ export default function RutasScreen() {
     const hoy = todayStr();
     isV2InitRef.current = false;
 
+    // Migración: la forma vieja del board V2 era plana (patente → tiendas, valores = array).
+    // Ahora es por fecha (fecha → patente → tiendas). Si llega la vieja se descarta (es efímero;
+    // el backlog real vive en pendientesV2Origen, solo se resetea la asignación en curso).
+    const esFormaVieja = (raw: Record<string, unknown>) => Object.values(raw).some(v => Array.isArray(v));
+
     fetchSessionState('rutas_v2', hoy).then(remote => {
-      const remoteObj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
+      const raw = (remote && typeof remote === 'object') ? remote as Record<string, unknown> : {};
+      const remoteObj = esFormaVieja(raw) ? {} : raw as Record<string, Record<string, StoreItem[]>>;
       setAsignacionesV2(remoteObj);
       lastPushedV2Ref.current = JSON.stringify(remoteObj);
       isV2InitRef.current = true;
@@ -676,10 +686,11 @@ export default function RutasScreen() {
 
     const unsub = subscribeToSessionState('rutas_v2', userId ?? '', (state) => {
       if (!state || typeof state !== 'object') return;
+      if (esFormaVieja(state as Record<string, unknown>)) return; // forma vieja → ignorar
       const remoteJson = JSON.stringify(state);
       if (remoteJson === lastPushedV2Ref.current) return;
       lastPushedV2Ref.current = remoteJson;
-      setAsignacionesV2(state as Record<string, StoreItem[]>);
+      setAsignacionesV2(state as Record<string, Record<string, StoreItem[]>>);
     }, undefined, hoy);
 
     return unsub;
@@ -1042,41 +1053,40 @@ export default function RutasScreen() {
     fetchPendientesV2Pasadas().then(setPendientesV2Origen).catch(() => {});
   }, []);
 
-  // Pool del tab V2: derivado de las pendientes de días anteriores (con grupo desde el calendario).
+  // Tab V2 POR FECHA: fechas del backlog + pool de la sub-pestaña activa (sin sumar entre fechas).
+  const fechasV2 = useMemo(() => fechasBacklogV2(pendientesV2Origen), [pendientesV2Origen]);
+  const conteoV2 = useMemo(() => conteoPorFecha(pendientesV2Origen), [pendientesV2Origen]);
   const calTV2 = useMemo<Record<string, CalData>>(() => {
     const dia = getDia(todayStr());
     const calDia = (cal[dia] || cal.LU || {}) as Record<string, string[]>;
     const grpOf = (cod: string): string => {
-      for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === cod)) return g;
+      for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === norm(cod))) return g;
       return 'rm';
     };
-    const out: Record<string, CalData> = {};
-    for (const s of pendientesV2Origen) {
-      const cod = norm(s.c);
-      if (!out[cod]) out[cod] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grpOf(cod) };
-      out[cod].p += s.p; out[cod].b += s.b; out[cod].ch += s.ch;
-    }
-    return out;
-  }, [pendientesV2Origen, cal]);
+    return poolV2ParaFecha(pendientesV2Origen, v2Fecha, norm, grpOf);
+  }, [pendientesV2Origen, v2Fecha, cal]);
+  // Mantener la sub-pestaña activa válida (default: la fecha más antigua del backlog).
+  useEffect(() => {
+    if (fechasV2.length === 0) { if (v2Fecha) setV2Fecha(''); return; }
+    if (!fechasV2.includes(v2Fecha)) setV2Fecha(fechasV2[0]);
+  }, [fechasV2, v2Fecha]);
 
-  // Cerrar un camión de 2ª vuelta: registra SOLO ese camión (vuelta 2 → patente en columna
-  // "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes de su fecha ORIGEN.
-  // Clave: cada tienda se registra bajo su FECHA DE ORIGEN (el día que quedó pendiente), no "hoy",
-  // para que rellene la "Patente 2. Vuelta" de la fila existente (upsert por fecha::cod) en vez de
-  // crear una fila nueva bajo hoy (bug de duplicado). Una tienda puede venir de varios días.
-  function cerrarCamionV2(patente: string) {
-    const stores = asignacionesV2[patente] || [];
+  // Cerrar un camión de 2ª vuelta de UNA fecha de origen: registra SOLO ese camión (vuelta 2 →
+  // patente en columna "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes
+  // de ESA fecha. Se registra bajo la FECHA DE ORIGEN (no "hoy") para rellenar la "Patente 2. Vuelta"
+  // de la fila existente (upsert por fecha::cod) en vez de crear una fila nueva bajo hoy.
+  function cerrarCamionV2(fecha: string, patente: string) {
+    const stores = asignacionesV2[fecha]?.[patente] || [];
     if (!stores.length) return;
     const vehicle = flota.find(v => v.p === patente);
     if (!vehicle) return;
-    const hoy = todayStr();
     const conductor = vehicle.ch || '';
     const grupoPorCod = (cod: string): Grupo | undefined =>
       (calTV2[norm(cod)]?.g ?? calT[norm(cod)]?.g) as Grupo | undefined;
     const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-    // Agrupar las tiendas del camión por su fecha de ORIGEN (fallback a hoy si no se conoce).
-    const porFecha = agruparPorFechaOrigen(stores, pendientesV2Origen, hoy, norm);
+    // Todas las tiendas del camión son de ESTA fecha de origen (sub-pestaña activa).
+    const porFecha = new Map<string, StoreItem[]>([[fecha, stores]]);
     const manifiestoRutas: Ruta[] = [];
 
     for (const [fechaReg, grupoStores] of porFecha) {
@@ -1122,20 +1132,23 @@ export default function RutasScreen() {
         body: JSON.stringify({ sheet: 'HISTORIAL', rows: [histRow] }) }).catch(e => console.error('[v2 historial]', e));
     }
 
-    // 5) Quitar las despachadas de las pendientes de su fecha ORIGEN (acumulativo: quita las asignadas)
+    // 5) Quitar las despachadas SOLO de las pendientes de ESTA fecha (otras fechas de la misma
+    //    tienda se conservan). Los códigos van tal cual están guardados, para casar en savePendientesV2.
     const despachados = new Set(stores.map(t => norm(t.c)));
-    const porOrigen = new Map<string, Set<string>>();
-    for (const p of pendientesV2Origen) {
-      if (despachados.has(norm(p.c))) {
-        if (!porOrigen.has(p.fechaOrigen)) porOrigen.set(p.fechaOrigen, new Set());
-        porOrigen.get(p.fechaOrigen)!.add(p.c); // código tal cual está guardado, para casar en savePendientesV2
-      }
-    }
-    porOrigen.forEach((cods, fechaOrigen) => { void savePendientesV2(fechaOrigen, [], cods); });
+    const codsFecha = new Set(
+      pendientesV2Origen.filter(p => p.fechaOrigen === fecha && despachados.has(norm(p.c))).map(p => p.c),
+    );
+    if (codsFecha.size) void savePendientesV2(fecha, [], codsFecha);
 
-    // 6) Limpiar estado local + abrir manifiesto de ese camión
-    setAsignacionesV2(prev => { const n = { ...prev }; delete n[patente]; return n; });
-    setPendientesV2Origen(prev => prev.filter(p => !despachados.has(norm(p.c))));
+    // 6) Limpiar estado local (solo el camión de esta fecha) + abrir manifiesto
+    setAsignacionesV2(prev => {
+      const n = { ...prev };
+      const f = { ...(n[fecha] || {}) };
+      delete f[patente];
+      n[fecha] = f;
+      return n;
+    });
+    setPendientesV2Origen(prev => prev.filter(p => !(p.fechaOrigen === fecha && despachados.has(norm(p.c)))));
     setManifiestoV2(manifiestoRutas);
   }
 
@@ -2036,9 +2049,26 @@ export default function RutasScreen() {
                 </div>
               ) : (
                 <>
+                  {/* Sub-pestañas por FECHA DE ORIGEN: cada día se ve, asigna y cierra por separado
+                      (antes se sumaban todas las fechas por código y se perdía el detalle). */}
+                  <div className="flex gap-2 mb-3 flex-wrap">
+                    {fechasV2.map(f => {
+                      const active = f === v2Fecha;
+                      return (
+                        <button key={f} onClick={() => setV2Fecha(f)}
+                          className={`px-3 py-1.5 rounded-kios2 text-[12px] font-semibold border transition-colors flex items-center gap-1.5 ${
+                            active ? 'bg-knavy text-white border-knavy' : 'bg-kbg text-ktext border-black/[0.12] hover:border-knavy/40'}`}>
+                          {fechaTxt(f)}
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${active ? 'bg-white/25 text-white' : 'bg-black/[0.06] text-kmuted'}`}>
+                            {conteoV2[f] ?? 0}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="mb-3 text-[12px] text-kmuted">
-                    <span className="font-semibold text-ktext">{pendientesV2Origen.length}</span> tiendas de días
-                    anteriores sin despachar. Asigná un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto.
+                    Pendientes del <span className="font-semibold text-ktext">{v2Fecha ? fechaTxt(v2Fecha) : '—'}</span>: asigná
+                    un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto, bajo esa fecha de origen.
                   </div>
                   <ManualDispatch
                     calT={calTV2}
@@ -2046,10 +2076,10 @@ export default function RutasScreen() {
                     gps={gps}
                     tiendas={tiendas}
                     cd={cdRef.current}
-                    asignaciones={asignacionesV2}
-                    onAsignaciones={setAsignacionesV2}
+                    asignaciones={asignacionesV2[v2Fecha] || {}}
+                    onAsignaciones={a => setAsignacionesV2(prev => ({ ...prev, [v2Fecha]: a }))}
                     onCalcular={() => {}}
-                    onCerrarCamion={cerrarCamionV2}
+                    onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
                     onToggleFlota={handleToggleFlota}
                     hideCalcular={true}
                   />
