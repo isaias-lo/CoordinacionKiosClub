@@ -34,6 +34,9 @@ interface Props {
   /** [Fase 3] Oculta el botón batch "Calcular" (para el tab 2ª VUELTA, que solo cierra por camión).
    *  En DESPACHO se deja visible aunque haya cierre por camión, para que Calcular sea opcional. */
   hideCalcular?: boolean;
+  /** [Reestructura] Filtro de grupo desde la barra izquierda: filtra qué tiendas se ven en el pool
+   *  "Sin asignar" (RM/Costa/Regiones). No cambia las asignaciones ni los conteos totales. */
+  grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -60,6 +63,7 @@ export default function ManualDispatch({
   onToggleFlota,
   ordenActivacion,
   hideCalcular,
+  grupoFiltro = 'all',
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -92,6 +96,8 @@ export default function ManualDispatch({
   const asignadasSet = new Set(Object.values(asignaciones).flat().map(s => s.c));
   const pool         = tiendasActivas.filter(t => !asignadasSet.has(t.c));
   const paradasPool  = paradasConGps.filter(p => !asignadasSet.has(p.id));
+  // Filtro de grupo (barra izquierda): solo afecta QUÉ se muestra en el pool, no los conteos.
+  const poolMostrado = grupoFiltro === 'all' ? pool : pool.filter(t => calT[t.c]?.g === grupoFiltro);
 
   const extGps: Record<string, number[]> = { ...gps };
   paradasConGps.forEach(p => { extGps[p.id] = p.gps; });
@@ -426,7 +432,7 @@ export default function ManualDispatch({
               </div>
             ) : (
               <>
-                {pool.map(t => (
+                {poolMostrado.map(t => (
                   <StoreTagComp
                     key={t.c} store={t} tiendas={tiendas}
                     isDragging={dragging?.c === t.c}
@@ -438,6 +444,11 @@ export default function ManualDispatch({
                     onRemove={null}
                   />
                 ))}
+                {poolMostrado.length === 0 && grupoFiltro !== 'all' && pool.length > 0 && (
+                  <div className="self-center text-[12px] text-kmuted font-medium">
+                    Sin tiendas de este grupo por asignar · {pool.length} en otros grupos
+                  </div>
+                )}
                 {paradasPool.map(p => (
                   <ParadaTagComp
                     key={p.id} parada={p}

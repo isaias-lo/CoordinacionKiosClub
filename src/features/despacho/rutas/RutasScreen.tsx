@@ -1,20 +1,17 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../components/AuthProvider';
-import Header         from './components/Header';
 import InputSection   from './components/InputSection';
 import PlanificadorTab from './components/PlanificadorTab';
 import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
-import ConfigPanel    from './components/ConfigPanel';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
 
 import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
-import { CAL_INICIAL, DNOM, DCOL } from './data/calendar';
+import { CAL_INICIAL, DNOM } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
 import { grupoArmada } from './utils/flujoArmada';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
@@ -109,8 +106,7 @@ interface ComparisonData {
 type PendientesGuardados = { savedAt: string; stores: { c: string; p: number; b: number; ch: number }[] };
 
 export default function RutasScreen() {
-  const router = useRouter();
-  const { signOut, user } = useAuth();
+  const { user } = useAuth();
   const userId = user?.id;
   useDayRollover();  // recarga al cruzar medianoche → evita arrastrar tiendas/cantidades de ayer
 
@@ -200,7 +196,6 @@ export default function RutasScreen() {
   const [paradasAdicionales, setParadasAdicionales] = useState<Parada[]>([]);
   const paradaCounter = useRef(0);
   const [paradasOpen, setParadasOpen] = useState(false);
-  const [configOpen,  setConfigOpen]  = useState(false);
 
   const grpsRef = useRef(grps);
   useEffect(() => { grpsRef.current = grps; }, [grps]);
@@ -209,11 +204,22 @@ export default function RutasScreen() {
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
   const tiendasRef = useRef(tiendas);
   useEffect(() => { tiendasRef.current = tiendas; }, [tiendas]);
-  // Fase 2 (opt-in): agrupar el bucket "Centro" por corredor al rutear. Default APAGADO → ruteo
-  // idéntico al histórico. El usuario lo enciende para comparar.
-  const [agruparCorredor, setAgruparCorredor] = useState(false);
-  const agruparCorredorRef = useRef(agruparCorredor);
-  useEffect(() => { agruparCorredorRef.current = agruparCorredor; }, [agruparCorredor]);
+
+  // "Actualizar datos" ahora vive en la barra superior (app/despacho/page.tsx), no en un menú.
+  // Se comunica por eventos: escuchamos `enrutador-refresh` (clic) → recargamos; y publicamos
+  // `enrutador-status` para que el botón refleje loading/success/error + total de tiendas.
+  const actualizarRef = useRef<() => void>(() => {});
+  actualizarRef.current = () => { void handleActualizarDatos(); };
+  useEffect(() => {
+    const h = () => actualizarRef.current();
+    window.addEventListener('enrutador-refresh', h);
+    return () => window.removeEventListener('enrutador-refresh', h);
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('enrutador-status', {
+      detail: { status: updateStatus, total: Object.keys(tiendas).length },
+    }));
+  }, [updateStatus, tiendas]);
   // Últimas filas de despacho_sesion (de otros equipos), por cod normalizado.
   // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
   // los counts llegan antes de que cargue el calendario). #4
@@ -844,9 +850,6 @@ export default function RutasScreen() {
     });
   }
 
-  function handleToggleChip(cod: string) {
-    setCalT(prev => ({ ...prev, [cod]: { ...prev[cod], on: !prev[cod].on } }));
-  }
 
   // Las cantidades del sidebar del Enrutador son SOLO-LECTURA (se definen en Bodega); ya no hay
   // handler de edición (handleUpdateChip) ni marca manuallyEditedRef por edición manual de chips.
@@ -1318,7 +1321,7 @@ export default function RutasScreen() {
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
     paradasAdicionales.filter(p => p.gps).forEach(p => ts.push({ c: p.id, p: p.p, b: p.b }));
 
-    const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas, agruparCorredorRef.current);
+    const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
 
@@ -1345,7 +1348,7 @@ export default function RutasScreen() {
     try {
       const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
       const items: StoreItem[] = stores.map(s => ({ c: s.cod, p: s.p, b: s.b }));
-      const gpsRutas = asignar(items, flota, extGps, cdRef.current, null, null, null, extTiendas, agruparCorredorRef.current);
+      const gpsRutas = asignar(items, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
       const truckSet = new Set(trucks.map(t => t.patente));
       const ref: Record<string, string[]> = {};
       gpsRutas.forEach(r => { if (r.ts.length && truckSet.has(r.v.p)) ref[r.v.p] = r.ts.map(t => t.c); });
@@ -1384,7 +1387,7 @@ export default function RutasScreen() {
     // Columna alternativa: se muestra YA con el optimizador GPS (síncrono) y, en segundo plano, se
     // consulta la IA para reemplazarla. Si la IA falla o tarda, queda el GPS con aviso — el usuario
     // siempre sabe qué motor ve (etiqueta "Ruta IA" 🤖 vs "Ruta Óptima (GPS)" 🗺️ + aviso de caída).
-    const gpsRutas = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas, agruparCorredorRef.current);
+    const gpsRutas = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
     const token    = ++comparacionTokenRef.current;
     const payload  = construirPayloadIA();
     const usaIA    = payload.stores.length > 0 && payload.trucks.length > 0;
@@ -1777,31 +1780,8 @@ export default function RutasScreen() {
   }
 
 
-  // ── Config ────────────────────────────────────────────────────────
-  function handleOpenConfig()  { setConfigOpen(true);  document.body.style.overflow = 'hidden'; }
-  function handleCloseConfig() { setConfigOpen(false); document.body.style.overflow = ''; }
-  function handleSaveConfig(newCal: CalRecord) {
-    setCal(newCal);
-    setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
-    setConfigOpen(false);
-    document.body.style.overflow = '';
-  }
-
   return (
     <div className="despacho-inner h-full flex flex-col overflow-hidden bg-kbg font-sans text-ktext">
-      <Header
-        updateStatus={updateStatus}
-        tiendas={tiendas}
-        onUpdate={handleActualizarDatos}
-        onOpenConfig={handleOpenConfig}
-        onBack={() => {
-          const from = sessionStorage.getItem('despacho_from');
-          sessionStorage.removeItem('despacho_from');
-          router.push(from || '/despacho/santiago');
-        }}
-        onSignOut={async () => { await signOut(); router.push('/login'); }}
-      />
-
       {/* Pill de pendientes del día anterior */}
       {pendientes && pendientes.stores.length > 0 && (
         <div className="flex-shrink-0 px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/20 flex">
@@ -1974,9 +1954,6 @@ export default function RutasScreen() {
           onOpenParadas={handleOpenParadas}
           onModo={m => setModo(m)}
           onToggleGroup={handleToggleGroup}
-          agruparCorredor={agruparCorredor}
-          onToggleCorredor={() => setAgruparCorredor(v => !v)}
-          onToggleChip={handleToggleChip}
           flotaStatus={flotaStatus}
           onToggleFlota={handleToggleFlota}
           ordenActivacion={flotaActivadaEn}
@@ -2121,18 +2098,6 @@ export default function RutasScreen() {
         onEliminar={handleEliminarParada}
         onClose={handleCloseParadas}
       />
-
-      {configOpen && (
-        <ConfigPanel
-          isOpen={configOpen}
-          cal={cal}
-          tiendas={tiendas}
-          dnom={DNOM}
-          dcol={DCOL}
-          onClose={handleCloseConfig}
-          onSave={handleSaveConfig}
-        />
-      )}
     </div>
   );
 }
