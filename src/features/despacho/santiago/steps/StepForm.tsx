@@ -28,6 +28,7 @@ import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconci
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
+import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -1205,6 +1206,37 @@ export function StepForm() {
     showToast(`↩ ${item.orden} restaurado`, '#16A34A');
   };
 
+  // [Revertir unificación] Deshace una unión P3→P1: re-crea el slot del source (se borró en la
+  // unión), restaura el peso del slot target, restaura los items previos (el source apunta al slot
+  // nuevo) y REABRE la tienda para que la reconstrucción rearme las cards deterministamente.
+  interface UnionSnap { cod: string; itemsAntes: SantiagoItem[]; sourceItem: SantiagoItem; oldSrcSlot?: number; tgtSlot?: number; tgtPeso: number; }
+  const revertirUnificacion = async (snap: UnionSnap) => {
+    const { cod, itemsAntes, sourceItem, oldSrcSlot, tgtSlot, tgtPeso } = snap;
+    let newSrcSlotId: number | undefined;
+    let nuevoSlot: PickingSlot | undefined;
+    try {
+      const res = await fetch('/api/picking-pallets/create-bodega', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: tipoCodeSantiago(sourceItem.tipo), contenido: (sourceItem.contenido || 'hogar').toLowerCase() }),
+      });
+      nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
+      if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
+    } catch { /* sin slot: el source queda sin # */ }
+    // Restaurar peso del slot target (se le sumó el del source) + dims del source re-creado.
+    if (tgtSlot) supabase.from('picking_pallets').update({ peso_kg: tgtPeso }).eq('id', tgtSlot).then(({ error }) => { if (error) console.error('[revert union tgt]', error.message); });
+    if (newSrcSlotId) supabase.from('picking_pallets').update({ peso_kg: sourceItem.peso, alto: sourceItem.alto, ancho: sourceItem.ancho, largo: sourceItem.largo }).eq('id', newSrcSlotId).then(({ error }) => { if (error) console.error('[revert union src]', error.message); });
+    setPickingSlotsFull(prev => {
+      const arr = [...(prev[cod] ?? [])].map(s => (s.id === tgtSlot ? { ...s, peso_kg: tgtPeso } : s));
+      if (nuevoSlot) arr.push(nuevoSlot);
+      return { ...prev, [cod]: arr };
+    });
+    dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: remapPickingSlot(itemsAntes, oldSrcSlot, newSrcSlotId) });
+    // Reabrir la tienda → la reconstrucción (useLayoutEffect [cod]) rearma las cards desde items+slots.
+    const t = currentTienda;
+    if (t) { dispatch({ type: 'CLEAR_TIENDA' }); setTimeout(() => dispatch({ type: 'SELECT_TIENDA', payload: t }), 40); }
+    showToast('↩ Unificación revertida', '#16A34A');
+  };
+
   // [Unificar inline] La unificación P3→P1 se hace ahora inline y automática (iniciarUnionInline
   // suma+borra el source en el acto y reabre el target para la altura), conservando el código de
   // P1. Ya no se usa el modal ni /api/picking-pallets/combine para este flujo.
@@ -1287,6 +1319,10 @@ export function StepForm() {
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
     const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
     const srcCode   = sourceRow.tipo === 'Contenedor' ? 'C' : sourceRow.tipo === 'Chocolate' ? 'CH' : sourceRow.tipo === 'Bulto' ? 'B' : 'P';
+    // [Revertir unificación] Snapshot ANTES de mutar (solo si ambos son items guardados).
+    const itemsAntesUnion = [...(items[cod] || [])];
+    const sourceItemUnion = sourceRow.savedItem;
+    const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
     // 1) Items: quitar el item del source y el del target (el target se re-agrega al "Agregar").
     const cur = items[cod] || [];
@@ -1339,6 +1375,11 @@ export function StepForm() {
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
     logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: currentTienda.tienda,
       sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso, slotId: tgtSlot });
+    if (puedeRevertirUnion && sourceItemUnion) {
+      armarUndo(`Unificado ${srcLabel ?? ''} → ${tgtLabel ?? ''}`.replace(/\s+→\s*$/, ''), () => revertirUnificacion({
+        cod, itemsAntes: itemsAntesUnion, sourceItem: sourceItemUnion, oldSrcSlot: srcSlot, tgtSlot, tgtPeso,
+      }));
+    }
   };
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
