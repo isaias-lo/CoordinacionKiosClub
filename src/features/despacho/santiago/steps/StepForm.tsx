@@ -25,6 +25,9 @@ import { tipoBadge } from '../tipoTienda';
 import { logActividad } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
+import { useUndoDelete } from '../../shared/useUndoDelete';
+import { UndoBar } from '../../shared/UndoBar';
+import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -278,6 +281,7 @@ export function StepForm() {
   const router = useRouter();
   const { state, dispatch, flushPending } = useSantiago();
   const { showToast } = useApp();
+  const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
@@ -1159,14 +1163,16 @@ export function StepForm() {
   const deleteSavedRow = (rowId: string) => {
     if (!currentTienda) return;
     const row = formRows.find(r => r.id === rowId);
-    if (row?.savedItem) {
-      const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
+    const borrado = row?.savedItem;
+    if (borrado) {
+      const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === borrado.id);
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
       logActividad({ accion: 'eliminar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
-        tiendaNombre: currentTienda.tienda, label: row.savedItem.orden, slotId: row.savedItem.pickingSlotId });
+        tiendaNombre: currentTienda.tienda, label: borrado.orden, slotId: borrado.pickingSlotId });
     }
-    deletePickingSlot(row?.pickingSlotId ?? row?.savedItem?.pickingSlotId);
+    deletePickingSlot(row?.pickingSlotId ?? borrado?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
+    if (borrado) armarUndo(`${borrado.orden} eliminado`, () => reAgregarItem(borrado));
   };
 
   // Quitar un form row sin guardar (✕) — también borra su slot.
@@ -1174,6 +1180,29 @@ export function StepForm() {
     const row = formRows.find(r => r.id === rowId);
     deletePickingSlot(row?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
+  };
+
+  // [Revertir borrado] Re-crea el slot (create-bodega, nuevo #) y re-agrega el item borrado.
+  // El borrado elimina item + slot (ver #290/[[bodega-borrar-slot-picking]]), así que revertir
+  // recrea el slot para que el pallet vuelva con su código y a picking_pallets/Seguimiento.
+  const reAgregarItem = async (item: SantiagoItem) => {
+    const cod = item.tiendaCod;
+    let slotId: number | undefined;
+    let nuevoSlot: PickingSlot | undefined;
+    try {
+      const res = await fetch('/api/picking-pallets/create-bodega', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: tipoCodeSantiago(item.tipo), contenido: (item.contenido || 'hogar').toLowerCase() }),
+      });
+      nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
+      if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot!] })); }
+    } catch { /* sin slot: se re-agrega igual (sin #) */ }
+    dispatch({ type: 'ADD_ITEM', item: { ...item, id: `${cod}-${Date.now()}`, pickingSlotId: slotId } });
+    if (slotId) {
+      supabase.from('picking_pallets').update({ peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo })
+        .eq('id', slotId).then(({ error }) => { if (error) console.error('[reAgregar picking update]', error.message); });
+    }
+    showToast(`↩ ${item.orden} restaurado`, '#16A34A');
   };
 
   // [Unificar inline] La unificación P3→P1 se hace ahora inline y automática (iniciarUnionInline
@@ -1886,7 +1915,7 @@ export function StepForm() {
                               className="border border-border text-text-3 bg-bg-2 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] active:text-info flex-shrink-0">
                               ✎
                             </button>
-                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, cod); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); showToast(`${item.orden} eliminado`, '#D97706'); }}
+                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, cod); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item)); }}
                               className="border-none text-text-3 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] bg-bg-2 active:text-red flex-shrink-0">
                               ✕
                             </button>
@@ -2501,6 +2530,8 @@ export function StepForm() {
         title="METROPOLITANA / COSTA"
         lines={calManualLines}
       />
+
+      <UndoBar pending={undoPending} onRevert={revertirUndo} onClose={descartarUndo} />
     </div>
   );
 }
