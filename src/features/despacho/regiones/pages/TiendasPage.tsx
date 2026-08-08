@@ -21,6 +21,9 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { unionRefs } from '../../shared/unifyPallets';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
+import { useUndoDelete } from '../../shared/useUndoDelete';
+import { UndoBar } from '../../shared/UndoBar';
+import { pkgCodeNacional } from '../../shared/tipoCode';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { supabase } from '../../../../lib/supabase';
@@ -205,6 +208,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 /* ── Main page ── */
 export function TiendasPage() {
   const { state, dispatch, showToast } = useApp();
+  const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
@@ -963,23 +967,46 @@ export function TiendasPage() {
 
   const deleteSavedRow = (rowId: string) => {
     if (!selectedTienda) return;
+    const tienda = selectedTienda;
     const row = formRows.find(r => r.id === rowId);
-    if (row?.savedItem) {
-      const currentItems = dispatchData[selectedTienda] || [];
+    const borrado = row?.savedItem;
+    if (borrado) {
+      const currentItems = dispatchData[tienda] || [];
       // Match por clave ESTABLE (pickingSlotId), no por pkg+orden (frágil: borraba el ítem equivocado).
-      const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
-      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
-      logActividad({ accion: 'eliminar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
-        tiendaNombre: selectedTienda, label: ordenToLabel(row.savedItem.orden), slotId: row.savedItem.pickingSlotId });
+      const idx = currentItems.findIndex(i => sameStableItem(i, borrado));
+      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda, idx });
+      logActividad({ accion: 'eliminar_item', fuente: 'nacional', tiendaCod: TIENDAS[tienda]?.cod,
+        tiendaNombre: tienda, label: ordenToLabel(borrado.orden), slotId: borrado.pickingSlotId });
     }
-    deletePickingSlot(row?.pickingSlotId ?? row?.savedItem?.pickingSlotId);
+    deletePickingSlot(row?.pickingSlotId ?? borrado?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
+    if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda));
   };
 
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
     deletePickingSlot(row?.pickingSlotId);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
+  };
+
+  // [Revertir borrado] Re-crea el slot (create-bodega) y re-agrega el item borrado con su carga.
+  const reAgregarItem = async (item: DispatchItem, tienda: string) => {
+    const cod = TIENDAS[tienda]?.cod ?? '';
+    let slotId: number | undefined;
+    try {
+      const res = await fetch('/api/picking-pallets/create-bodega', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: pkgCodeNacional(item.pkg), contenido: 'hogar' }),
+      });
+      const slot = (await res.json() as { data?: PickingSlot }).data;
+      if (slot) { slotId = slot.id; setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] })); }
+    } catch { /* sin slot: se re-agrega igual (sin #) */ }
+    dispatch({ type: 'ADD_ITEM', tienda, item: { ...item, pickingSlotId: slotId } });
+    if (slotId) {
+      supabase.from('picking_pallets').update({ peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo })
+        .eq('id', slotId).then(({ error }) => { if (error) console.error('[reAgregar picking update]', error.message); });
+    }
+    showToast(`↩ ${ordenToLabel(item.orden)} restaurado`, '#16A34A');
   };
 
   // [Unificar inline] La unificación P3→P1 se hace ahora inline y automática (iniciarUnionInline
@@ -1988,6 +2015,7 @@ export function TiendasPage() {
         lines={calManualLines}
       />
 
+      <UndoBar pending={undoPending} onRevert={revertirUndo} onClose={descartarUndo} />
     </div>
   );
 }
