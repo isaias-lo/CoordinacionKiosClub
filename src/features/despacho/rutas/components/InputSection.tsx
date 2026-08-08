@@ -1,13 +1,14 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Map as MapIcon, Send } from 'lucide-react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Map as MapIcon, Send, CalendarDays } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
 import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
-import { getDia, formatCod, todayStr } from '../utils/helpers';
+import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
+import { getDia, todayStr } from '../utils/helpers';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -34,9 +35,6 @@ interface Props {
   onOpenParadas: () => void;
   onModo: (m: string) => void;
   onToggleGroup: (gid: string) => void;
-  agruparCorredor?: boolean;
-  onToggleCorredor?: () => void;
-  onToggleChip: (cod: string) => void;
   onToggleFlota: (idx: number) => void;
   ordenActivacion?: Record<string, number>;  // [F2] orden de camiones por recencia de activación
   onToggleTlbd: (idx: number) => void;
@@ -61,54 +59,6 @@ interface Props {
 }
 
 /* ── Sidebar store row ──────────────────────────────────────────── */
-function SidebarRow({
-  cod, data, onToggle,
-}: {
-  cod: string;
-  data: CalData;
-  onToggle: (cod: string) => void;
-}) {
-  return (
-    <div
-      style={{
-        boxShadow: data.on
-          ? '0 1px 4px rgba(212,43,43,0.10), 0 1px 2px rgba(0,0,0,0.04)'
-          : '0 1px 2px rgba(0,0,0,0.04)',
-      }}
-      className={`flex items-center gap-2 rounded-[12px] px-2.5 py-[7px] border transition-all
-        ${data.on
-          ? 'border-kred/[0.28] bg-kred/[0.04]'
-          : 'border-black/[0.07] bg-white opacity-50 hover:opacity-70'}`}
-    >
-      <button
-        onClick={() => onToggle(cod)}
-        className="flex items-center gap-2 flex-1 min-w-0 text-left"
-      >
-        <span
-          className={`w-[8px] h-[8px] rounded-full flex-shrink-0 transition-colors ${data.on ? 'bg-kred' : 'bg-black/20'}`}
-        />
-        <span className={`font-mono text-[13px] font-bold truncate transition-colors ${data.on ? 'text-kred' : 'text-kmuted'}`}>
-          {formatCod(cod)}
-        </span>
-      </button>
-      {/* Cantidades SOLO-LECTURA: se definen en Bodega (no se editan en el Enrutador). */}
-      <div className="flex gap-[4px] flex-shrink-0">
-        {(['p', 'b', 'c', 'ch'] as const).map(key => {
-          const val = data[key] || 0;
-          return (
-            <div key={key} className="flex flex-col items-center w-[32px] rounded-[6px] bg-black/[0.04] border border-black/[0.07] pt-[2px] pb-[1px] px-[2px]">
-              <span className="text-[8px] font-bold text-kmuted/50 leading-none select-none uppercase">{key}</span>
-              <span className={`w-full text-[12px] font-bold text-center leading-none select-none ${val ? 'text-ktext' : 'text-kmuted/40'}`}>
-                {val || 0}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
 function TabIcon({ Icon, from, to, shadow }: { Icon: LIcon; from: string; to: string; shadow: string }) {
   return (
@@ -133,6 +83,7 @@ const MODES: { id: string; Icon: LIcon; label: string; from: string; to: string;
   { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA', from: '#6B21A8', to: '#4C1D95', shadow: 'rgba(76,29,149,0.30)' },
   { id: 'flota', Icon: Truck,      label: 'FLOTA',    from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
   { id: 'plan',  Icon: MapIcon,    label: 'MAPA',     from: '#0E7C6B', to: '#0B5F52', shadow: 'rgba(11,95,82,0.30)' },
+  { id: 'cal',   Icon: CalendarDays, label: 'CALENDARIO', from: '#E0A200', to: '#B4690E', shadow: 'rgba(180,105,14,0.30)' },
 ];
 
 /* ── Unified group filter pill ───────────────────────────────────── */
@@ -163,7 +114,7 @@ export default function InputSection({
   flota, flotaStatus, modo, grps, calT, supervisor, fecha, manualText, errors,
   dnom, tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, onOpenParadas,
-  onModo, onToggleGroup, agruparCorredor = false, onToggleCorredor, onToggleChip,
+  onModo, onToggleGroup,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onSupervisor, onFecha, onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
@@ -234,10 +185,6 @@ export default function InputSection({
       document.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
-
-  const filteredCalT = sidebarFilter === 'all'
-    ? calT
-    : Object.fromEntries(Object.entries(calT).filter(([, d]) => d.g === sidebarFilter));
 
   const activeCount = Object.values(calT).filter(d => d.on && (d.p > 0 || d.b > 0)).length;
 
@@ -318,18 +265,18 @@ export default function InputSection({
                 <input type="date" value={fecha} onChange={e => onFecha(e.target.value)}
                   className="w-full h-[36px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-kred focus:outline-none" />
               </div>
-              {/* Unified group filter */}
+              {/* Filtro de grupos — filtra el pool "Sin asignar" del panel de rutas */}
               <div className="px-3 pt-2 pb-1 flex gap-1.5">
                 <GroupPill id="all"   label="Todas"    active={grps.size > 0}     selected={sidebarFilter === 'all'}   onClick={() => handleGroupPill('all')} />
                 <GroupPill id="rm"    label="RM"       active={grps.has('rm')}    selected={sidebarFilter === 'rm'}    onClick={() => handleGroupPill('rm')} />
                 <GroupPill id="costa" label="COSTA"    active={grps.has('costa')} selected={sidebarFilter === 'costa'} onClick={() => handleGroupPill('costa')} />
                 <GroupPill id="fal"   label="REGIONES" active={grps.has('fal')}   selected={sidebarFilter === 'fal'}   onClick={() => handleGroupPill('fal')} />
               </div>
-              {/* Store list */}
-              <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-[5px]">
-                {Object.entries(filteredCalT).map(([cod, data]) => (
-                  <SidebarRow key={cod} cod={cod} data={data} onToggle={onToggleChip} />
-                ))}
+              <div className="flex-1 flex items-center justify-center px-6 text-center">
+                <p className="text-[12px] text-kmuted/70 leading-relaxed">
+                  Las tiendas fluyen automáticamente desde <span className="font-semibold text-kmuted">Bodega</span>.<br />
+                  Toca <span className="font-semibold text-kmuted">Rutas →</span> para asignarlas a los camiones.
+                </p>
               </div>
             </div>
           </>
@@ -406,6 +353,8 @@ export default function InputSection({
                 <div className="h-full overflow-hidden">{segundaVueltaContent}</div>
               ) : modo === 'plan' ? (
                 <div className="h-full overflow-hidden">{planificadorContent}</div>
+              ) : modo === 'cal' ? (
+                <div className="h-full overflow-y-auto p-3"><CalendarioColumnas readOnly forceGeneral /></div>
               ) : rightPanelContent ? (
                 <div className="h-full overflow-hidden">{rightPanelContent}</div>
               ) : (
@@ -414,7 +363,7 @@ export default function InputSection({
                     <div className="p-3">
                       <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                         paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
-                        onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
+                        onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} grupoFiltro={sidebarFilter}
                         onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
                     </div>
                   )}
@@ -436,8 +385,9 @@ export default function InputSection({
     <div className="flex h-full overflow-hidden">
 
       {/* ═══════════════════════════════════════════════
-          LEFT SIDEBAR — Store configuration
+          LEFT SIDEBAR — oculta en modo Calendario (vista full-width)
       ═══════════════════════════════════════════════ */}
+      {modo !== 'cal' && (
       <div
         className={`${sidebarClass} flex-shrink-0 border-r border-black/[0.09] flex flex-col bg-white overflow-hidden`}
         style={sidebarStyle}
@@ -507,44 +457,21 @@ export default function InputSection({
 
         {/* Unified group filter */}
         <div className="px-3 pt-3 pb-2">
-          <div className="text-[10px] font-semibold text-kmuted/70 uppercase tracking-wider mb-2">Grupos activos</div>
+          <div className="text-[10px] font-semibold text-kmuted/70 uppercase tracking-wider mb-2">Filtrar por grupo</div>
           <div className="flex gap-1.5">
             <GroupPill id="all"   label="Todas"    active={grps.size > 0}     selected={sidebarFilter === 'all'}   onClick={() => handleGroupPill('all')} />
             <GroupPill id="rm"    label="RM"       active={grps.has('rm')}    selected={sidebarFilter === 'rm'}    onClick={() => handleGroupPill('rm')} />
             <GroupPill id="costa" label="COSTA"    active={grps.has('costa')} selected={sidebarFilter === 'costa'} onClick={() => handleGroupPill('costa')} />
             <GroupPill id="fal"   label="REGIONES" active={grps.has('fal')}   selected={sidebarFilter === 'fal'}   onClick={() => handleGroupPill('fal')} />
           </div>
-          {/* Fase 2 (opt-in): agrupar el bucket "Centro" por corredor al calcular la ruta.
-              Apagado = ruteo idéntico al histórico. */}
-          {onToggleCorredor && (
-            <button type="button" onClick={onToggleCorredor} title="Agrupa las tiendas sin corredor curado por su corredor (GPS) al calcular la ruta óptima"
-              className="flex items-center gap-2 mt-2.5" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <span style={{ width: 34, height: 20, borderRadius: 99, background: agruparCorredor ? '#3D52CC' : '#CBD5E1', position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
-                <span style={{ position: 'absolute', top: 2, left: agruparCorredor ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
-              </span>
-              <span className="text-[11px] font-semibold" style={{ color: agruparCorredor ? '#1B2A6B' : '#64748B' }}>Agrupar por corredor</span>
-            </button>
-          )}
         </div>
 
-        {/* Store list */}
-        <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-[5px]">
-          {Object.keys(filteredCalT).length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="text-[28px] mb-2">🏪</div>
-              <div className="text-[13px] font-semibold text-kmuted">Sin tiendas</div>
-              <div className="text-[11px] text-kmuted/60 mt-1">Activa grupos arriba</div>
-            </div>
-          ) : (
-            Object.entries(filteredCalT).map(([cod, data]) => (
-              <SidebarRow
-                key={cod}
-                cod={cod}
-                data={data}
-                onToggle={onToggleChip}
-              />
-            ))
-          )}
+        {/* Las tiendas fluyen automáticamente desde Bodega; se asignan en el panel de la derecha */}
+        <div className="flex-1 overflow-y-auto px-4 flex items-center justify-center text-center">
+          <p className="text-[12px] text-kmuted/70 leading-relaxed">
+            Las tiendas fluyen automáticamente desde <span className="font-semibold text-kmuted">Bodega</span> según el calendario.<br />
+            El filtro de arriba filtra el pool <span className="font-semibold text-kmuted">“Sin asignar”</span> del panel de la derecha.
+          </p>
         </div>
 
         {/* Errors */}
@@ -559,11 +486,12 @@ export default function InputSection({
           </div>
         )}
       </div>
+      )}
 
       {/* ═══════════════════════════════════════════════
-          RESIZE DIVIDER — desktop only
+          RESIZE DIVIDER — desktop only (oculto en Calendario)
       ═══════════════════════════════════════════════ */}
-      {isDesktop && (
+      {isDesktop && modo !== 'cal' && (
         <div
           className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
           style={{ width: 6, background: 'rgba(0,0,0,0.05)' }}
@@ -602,10 +530,10 @@ export default function InputSection({
               {MODES.map(({ id, Icon, label, from, to, shadow }) => (
                 <button
                   key={id}
-                  onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'plan') onModo(id); }}
+                  onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'plan' || id === 'cal') onModo(id); }}
                   style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
                   className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
-                    ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'plan' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
+                    ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'plan' && id !== 'cal' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
                 >
                   <TabIcon Icon={Icon} from={from} to={to} shadow={shadow} />
                   <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
@@ -616,7 +544,7 @@ export default function InputSection({
               ))}
             </div>
             <div className="flex-1" />
-            {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'plan' && (
+            {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'plan' && modo !== 'cal' && (
               <button
                 onClick={onCalcular}
                 style={{ boxShadow: '0 3px 12px rgba(212,43,43,0.28)' }}
@@ -625,7 +553,7 @@ export default function InputSection({
                 <Truck size={15} strokeWidth={2} /><span>Calcular Rutas</span>
               </button>
             )}
-            {modo !== 'flota' && modo !== 'plan' && (
+            {modo !== 'flota' && modo !== 'plan' && modo !== 'cal' && (
               <button
                 onClick={onLimpiar}
                 className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
@@ -689,6 +617,10 @@ export default function InputSection({
           <div className="flex-1 overflow-hidden">
             {planificadorContent}
           </div>
+        ) : modo === 'cal' ? (
+          <div className="flex-1 overflow-y-auto p-4">
+            <CalendarioColumnas readOnly forceGeneral />
+          </div>
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">
             {rightPanelContent}
@@ -710,6 +642,7 @@ export default function InputSection({
                     onAsignaciones={onAsignaciones}
                     onCalcular={onCalcularManual}
                     onEliminarParada={onEliminarParada}
+                    grupoFiltro={sidebarFilter}
                     onAsignarIA={onAsignarIA}
                     iaLoading={iaLoading}
                     onToggleFlota={onToggleFlota}
