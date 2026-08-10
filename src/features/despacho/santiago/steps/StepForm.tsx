@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
@@ -593,7 +593,7 @@ export function StepForm() {
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active')
+        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
@@ -615,6 +615,7 @@ export function StepForm() {
           largo:        row.largo as number | null,
           ancho:        row.ancho as number | null,
           peso_v:       row.peso_v as number | null,
+          picker_label: row.picker_label as string | null,
         });
       }
       setPickingSlots(slots);
@@ -2039,6 +2040,15 @@ export function StepForm() {
                     <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
                       <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
                       <div className="text-text-3">{row.savedItem.contenido === 'Chocolate' ? 'CH' : row.savedItem.contenido}</div>
+                      {(() => {
+                        const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                        if (!slot?.picker_label) return null;
+                        return (
+                          <div className="text-text-3 truncate flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
+                            <User size={10} className="shrink-0" aria-hidden="true" /> {slot.picker_label}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-success" />
@@ -2142,6 +2152,15 @@ export function StepForm() {
                     </span>
                     <button onClick={() => removeUnsavedRow(row.id)} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
                   </div>
+                  {(() => {
+                    const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                    if (!slot?.picker_label) return null;
+                    return (
+                      <div className="text-[11px] text-text-3 mb-2 flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
+                        <User size={10} className="shrink-0" aria-hidden="true" /> {slot.picker_label}
+                      </div>
+                    );
+                  })()}
                   {row.mergeReopened && (
                     <div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
                       style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>

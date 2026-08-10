@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, ChevronLeft, ClipboardList } from 'lucide-react';
+import { Navigation, ChevronLeft, ClipboardList, User } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
@@ -408,7 +408,7 @@ export function TiendasPage() {
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,is_active')
+        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
@@ -427,6 +427,7 @@ export function TiendasPage() {
           peso_kg: row.peso_kg as number | null, alto: row.alto as number | null,
           largo: row.largo as number | null, ancho: row.ancho as number | null,
           peso_v: row.peso_v as number | null,
+          picker_label: row.picker_label as string | null,
         });
       }
       setPickingSlots(slots);
@@ -1345,6 +1346,15 @@ export function TiendasPage() {
                       {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
                       {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
                       {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
+                      {(() => {
+                        const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                        if (!slot?.picker_label) return null;
+                        return (
+                          <div className="text-text-3 truncate flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
+                            <User size={10} className="shrink-0" aria-hidden="true" /> {slot.picker_label}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
@@ -1448,6 +1458,15 @@ export function TiendasPage() {
                     <button onClick={() => removeUnsavedRow(row.id)}
                       className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
                   </div>
+                  {(() => {
+                    const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                    if (!slot?.picker_label) return null;
+                    return (
+                      <div className="text-[11px] text-text-3 mb-1.5 flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
+                        <User size={10} className="shrink-0" aria-hidden="true" /> {slot.picker_label}
+                      </div>
+                    );
+                  })()}
                   {row.mergeReopened && (
                     <div className="mb-1.5 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
                       style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>

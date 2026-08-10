@@ -15,6 +15,7 @@ export interface PickingSlot {
   largo:        number | null;
   ancho:        number | null;
   peso_v:       number | null;
+  picker_label: string | null; // quién armó este pallet/bulto en Picking
 }
 
 export interface CombineResult {
