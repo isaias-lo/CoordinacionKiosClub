@@ -102,26 +102,26 @@ export function ActividadScreen() {
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white border-b border-bg-2 flex-shrink-0">
         <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-red" />
+          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-[#1E40AF]" />
         <select value={fuente} onChange={e => setFuente(e.target.value as '' | FuenteActividad)}
-          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-red">
+          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-[#1E40AF]">
           <option value="">Todas las fuentes</option>
           <option value="nacional">Nacional</option>
           <option value="rmcosta">RM / Costa</option>
         </select>
         <select value={usuario} onChange={e => setUsuario(e.target.value)}
-          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-red">
+          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-[#1E40AF]">
           <option value="">Todos los usuarios</option>
           {usuarios.map(u => <option key={u} value={u}>{u}</option>)}
         </select>
         <select value={tienda} onChange={e => setTienda(e.target.value)}
-          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-red">
+          className="bg-white border border-border rounded px-2 py-1.5 text-[13px] text-text outline-none focus:border-[#1E40AF]">
           <option value="">Todas las tiendas</option>
           {tiendas.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         {(usuario || tienda || fuente) && (
           <button onClick={() => { setUsuario(''); setTienda(''); setFuente(''); }}
-            className="text-[12px] text-text-3 hover:text-red cursor-pointer border-none bg-transparent underline">
+            className="text-[12px] text-text-3 hover:text-[#1E40AF] cursor-pointer border-none bg-transparent underline">
             limpiar
           </button>
         )}
@@ -161,7 +161,7 @@ export function ActividadScreen() {
                     <td className="px-3 py-2 font-mono text-text-3 tabular-nums whitespace-nowrap">{hora(r.created_at)}</td>
                     <td className="px-3 py-2 font-bold text-navy whitespace-nowrap">{r.actor_name ?? 'Usuario'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full leading-none ${meta.cls}`}>{meta.verb}</span>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded leading-none ${meta.cls}`}>{meta.verb}</span>
                     </td>
                     <td className="px-3 py-2 font-semibold text-text whitespace-nowrap">{item}</td>
                     <td className="px-3 py-2 font-mono text-navy whitespace-nowrap">{d.slotId ? `#${d.slotId}` : '—'}</td>
@@ -170,7 +170,7 @@ export function ActividadScreen() {
                       {r.tienda_cod ?? '—'}{r.tienda_nombre ? <span className="text-text-3"> · {r.tienda_nombre}</span> : null}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded leading-none ${
                         r.fuente === 'nacional' ? 'text-[#6B21A8] bg-[rgba(107,33,168,0.10)]' : 'text-info bg-[rgba(37,99,235,0.10)]'}`}>
                         {FUENTE_LABEL[r.fuente] ?? r.fuente}
                       </span>
