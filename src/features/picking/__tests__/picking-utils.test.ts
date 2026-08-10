@@ -281,6 +281,10 @@ describe('isAbastecimientoOp', () => {
     expect(isAbastecimientoOp('Abastecimiento Chocolates LAS')).toBe(true);
   });
 
+  it('returns true for Abastecimiento Chocolate (singular)', () => {
+    expect(isAbastecimientoOp('Abastecimiento Chocolate LAS')).toBe(true);
+  });
+
   it('returns false for unrelated origins', () => {
     expect(isAbastecimientoOp('Recepcion tienda LAS')).toBe(false);
   });
@@ -292,6 +296,11 @@ describe('parseOrigin', () => {
   it('extracts categories from Abastecimiento keywords', () => {
     const { categories } = parseOrigin('Abastecimiento Comida 29CFL Fecha(12/06/2025)');
     expect(categories).toContain('Comida');
+  });
+
+  it('extracts Chocolates category from singular origin text (Abastecimiento Chocolate)', () => {
+    const { categories } = parseOrigin('Abastecimiento Chocolate 35BN2 Fecha(12/06/2025)');
+    expect(categories).toContain('Chocolates');
   });
 
   it('extracts multiple categories', () => {

@@ -145,11 +145,15 @@ export function getStoreGroup(store: TodayStore): StoreGroupKey {
 }
 
 // ─── Odoo origin parsing ──────────────────────────────────────────────────────
+// El keyword de Chocolate va en singular a propósito: como el match es por substring
+// (origin.includes(kw)), "Abastecimiento Chocolate" matchea tanto el origen singular
+// ("...Chocolate (35BN2)...") como el plural ("...Chocolates (35BN2)...", que contiene
+// "Chocolate" como prefijo) — antes solo el plural quedaba registrado como Abastecimiento.
 const ABAST_KEYWORDS = [
   { kw: 'Abastecimiento Comida',    cat: 'Comida' },
   { kw: 'Abastecimiento Aseo',      cat: 'Aseo' },
   { kw: 'Abastecimiento Hogar',     cat: 'Hogar' },
-  { kw: 'Abastecimiento Chocolates', cat: 'Chocolates' },
+  { kw: 'Abastecimiento Chocolate', cat: 'Chocolates' },
 ] as const;
 
 export { ABAST_KEYWORDS };
