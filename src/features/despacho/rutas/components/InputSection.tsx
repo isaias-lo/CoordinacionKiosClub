@@ -60,13 +60,10 @@ interface Props {
 
 /* ── Sidebar store row ──────────────────────────────────────────── */
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
-function TabIcon({ Icon, from, to, shadow }: { Icon: LIcon; from: string; to: string; shadow: string }) {
+function TabIcon({ Icon, color }: { Icon: LIcon; color: string }) {
   return (
     <span
-      style={{
-        background: `linear-gradient(145deg, ${from}, ${to})`,
-        boxShadow: `0 2px 6px ${shadow}, inset 0 1px 0 rgba(255,255,255,0.12)`,
-      }}
+      style={{ background: color }}
       className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center flex-shrink-0 select-none"
     >
       <Icon size={13} color="rgba(255,255,255,0.95)" strokeWidth={2.2} />
@@ -77,31 +74,25 @@ function TabIcon({ Icon, from, to, shadow }: { Icon: LIcon; from: string; to: st
 // Íconos en tono navy (como el header), sobrios. Se distinguen por forma de ícono +
 // estado activo, no por color. El tab CALCULAR fue eliminado (el botón "Calcular y comparar"
 // del modo DESPACHO ya cubre ese flujo con ComparisonView).
-const MODES: { id: string; Icon: LIcon; label: string; from: string; to: string; shadow: string }[] = [
-  { id: 'drag',  Icon: Target,     label: 'DESPACHO', from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
-  { id: 'man',   Icon: PenLine,    label: 'MANUAL',   from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
-  { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA', from: '#6B21A8', to: '#4C1D95', shadow: 'rgba(76,29,149,0.30)' },
-  { id: 'flota', Icon: Truck,      label: 'FLOTA',    from: '#3D52CC', to: '#1B2A6B', shadow: 'rgba(27,42,107,0.30)' },
-  { id: 'plan',  Icon: MapIcon,    label: 'MAPA',     from: '#0E7C6B', to: '#0B5F52', shadow: 'rgba(11,95,82,0.30)' },
-  { id: 'cal',   Icon: CalendarDays, label: 'CALENDARIO', from: '#E0A200', to: '#B4690E', shadow: 'rgba(180,105,14,0.30)' },
+const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
+  { id: 'drag',  Icon: Target,     label: 'DESPACHO',    color: '#1B2A6B' },
+  { id: 'man',   Icon: PenLine,    label: 'MANUAL',      color: '#1B2A6B' },
+  { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA',   color: '#6B21A8' },
+  { id: 'flota', Icon: Truck,      label: 'FLOTA',       color: '#1B2A6B' },
+  { id: 'plan',  Icon: MapIcon,    label: 'MAPA',        color: '#0B5F52' },
+  { id: 'cal',   Icon: CalendarDays, label: 'CALENDARIO', color: '#B4690E' },
 ];
 
 /* ── Unified group filter pill ───────────────────────────────────── */
-function GroupPill({ id, label, active, selected, onClick }: { id: string; label: string; active: boolean; selected: boolean; onClick: () => void }) {
-  const isAll = id === 'all';
+function GroupPill({ label, active, selected, onClick }: { id: string; label: string; active: boolean; selected: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      style={selected ? { boxShadow: isAll ? '0 2px 8px rgba(27,42,107,0.22)' : '0 2px 8px rgba(212,43,43,0.20)' } : undefined}
       className={`flex-1 h-[28px] rounded-[8px] text-[11px] font-bold transition-all border
         ${selected
-          ? isAll
-            ? 'bg-knavy text-white border-knavy'
-            : 'bg-kred text-white border-kred'
+          ? 'bg-knavy text-white border-knavy'
           : active
-            ? isAll
-              ? 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'
-              : 'bg-white border-kred/30 text-kred/70 hover:border-kred hover:text-kred'
+            ? 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'
             : 'bg-white border-black/[0.10] text-kmuted/50 hover:border-black/[0.20] hover:text-kmuted'}`}
     >
       {label}
@@ -226,7 +217,7 @@ export default function InputSection({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={onOpenParadas}
-                    style={{ boxShadow: '0 1px 4px rgba(27,42,107,0.18)' }}
+                    style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.10)' }}
                     className="flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-knavy text-white text-[12px] font-bold"
                   >
                     <span className="text-[16px] leading-none">+</span>
@@ -248,7 +239,7 @@ export default function InputSection({
               {/* Supervisor + Date */}
               <div className="px-4 pt-3 pb-2 border-b border-black/[0.08] space-y-2">
                 <input type="text" value={supervisor} onChange={e => onSupervisor(e.target.value)} placeholder="Supervisor"
-                  className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none" />
+                  className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-knavy focus:outline-none" />
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wide text-kmuted">Fecha de salida</span>
                   <div className="flex gap-1">
@@ -257,13 +248,13 @@ export default function InputSection({
                       Hoy
                     </button>
                     <button type="button" onClick={() => onFecha(manana)}
-                      className={`text-[11px] font-bold px-2 py-0.5 rounded-[7px] transition-colors ${fecha === manana ? 'bg-kred text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-[7px] transition-colors ${fecha === manana ? 'bg-knavy text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
                       Mañana
                     </button>
                   </div>
                 </div>
                 <input type="date" value={fecha} onChange={e => onFecha(e.target.value)}
-                  className="w-full h-[36px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-kred focus:outline-none" />
+                  className="w-full h-[36px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-knavy focus:outline-none" />
               </div>
               {/* Filtro de grupos — filtra el pool "Sin asignar" del panel de rutas */}
               <div className="px-3 pt-2 pb-1 flex gap-1.5">
@@ -404,7 +395,7 @@ export default function InputSection({
               value={supervisor}
               onChange={e => onSupervisor(e.target.value)}
               placeholder="Tu nombre"
-              className="w-full h-[42px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none transition-colors placeholder:text-kmuted/50"
+              className="w-full h-[42px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[14px] font-semibold text-ktext focus:border-knavy focus:outline-none transition-colors placeholder:text-kmuted/50"
             />
           </div>
           <div>
@@ -416,7 +407,7 @@ export default function InputSection({
                   Hoy
                 </button>
                 <button type="button" onClick={() => onFecha(manana)}
-                  className={`text-[11px] font-bold px-2.5 py-1 rounded-[7px] transition-colors ${fecha === manana ? 'bg-kred text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-[7px] transition-colors ${fecha === manana ? 'bg-knavy text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
                   Mañana
                 </button>
               </div>
@@ -425,7 +416,7 @@ export default function InputSection({
               type="date"
               value={fecha}
               onChange={e => onFecha(e.target.value)}
-              className="w-full h-[40px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[14px] font-semibold text-ktext focus:border-kred focus:outline-none transition-colors"
+              className="w-full h-[40px] px-3 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[14px] font-semibold text-ktext focus:border-knavy focus:outline-none transition-colors"
             />
           </div>
         </div>
@@ -442,7 +433,7 @@ export default function InputSection({
           </div>
           <button
             onClick={onOpenParadas}
-            style={{ boxShadow: '0 1px 4px rgba(27,42,107,0.18)' }}
+            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.10)' }}
             className="flex-shrink-0 flex items-center gap-1.5 h-[32px] px-3 rounded-[10px] bg-knavy text-white text-[12px] font-bold hover:bg-knavy/90 active:scale-95 transition-all"
           >
             <span className="text-[16px] leading-none">+</span>
@@ -478,7 +469,7 @@ export default function InputSection({
         {errors.length > 0 && (
           <div className="px-3 pb-3 flex-shrink-0">
             <div
-              style={{ boxShadow: '0 1px 4px rgba(245,158,11,0.15)' }}
+              style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
               className="bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-2.5 text-[12px] text-amber-700 leading-relaxed"
             >
               ⚠️ {errors.join(' · ')}
@@ -509,10 +500,10 @@ export default function InputSection({
             dragStartWidthRef.current = leftWidth;
           }}
         >
-          <div className="absolute inset-0 group-hover:bg-kred/[0.18] transition-colors duration-150" />
+          <div className="absolute inset-0 group-hover:bg-knavy/[0.18] transition-colors duration-150" />
           <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
             {[0, 1, 2].map(i => (
-              <div key={i} className="w-[5px] h-[5px] rounded-full bg-kred/70" />
+              <div key={i} className="w-[5px] h-[5px] rounded-full bg-knavy/70" />
             ))}
           </div>
         </div>
@@ -527,7 +518,7 @@ export default function InputSection({
         <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
           <div className="flex items-center gap-2 px-4 py-2.5">
             <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1">
-              {MODES.map(({ id, Icon, label, from, to, shadow }) => (
+              {MODES.map(({ id, Icon, label, color }) => (
                 <button
                   key={id}
                   onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'plan' || id === 'cal') onModo(id); }}
@@ -535,7 +526,7 @@ export default function InputSection({
                   className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
                     ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'plan' && id !== 'cal' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
                 >
-                  <TabIcon Icon={Icon} from={from} to={to} shadow={shadow} />
+                  <TabIcon Icon={Icon} color={color} />
                   <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
                     ${modo === id ? 'text-ktext' : 'text-kmuted'}`}>
                     {label}
@@ -547,8 +538,7 @@ export default function InputSection({
             {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'plan' && modo !== 'cal' && (
               <button
                 onClick={onCalcular}
-                style={{ boxShadow: '0 3px 12px rgba(212,43,43,0.28)' }}
-                className="h-[40px] px-6 rounded-[12px] bg-kred text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-kred/90 flex items-center gap-2"
+                className="h-[40px] px-6 rounded-[12px] bg-knavy text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-knavy/90 flex items-center gap-2"
               >
                 <Truck size={15} strokeWidth={2} /><span>Calcular Rutas</span>
               </button>
