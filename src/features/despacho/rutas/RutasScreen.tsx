@@ -1615,20 +1615,32 @@ export default function RutasScreen() {
     if (!results) { setHistorialStatus('warn'); setHistorialMsg('⚠️ No hay rutas calculadas.'); return false; }
 
     // Guard: tiendas armadas en Bodega (con carga) que NO quedaron en ninguna ruta se perderían del
-    // registro EN SILENCIO (fue lo que pasó con 02SCL/05LP/30PHU/56PZA el 04/08). Avisamos antes de
+    // registro EN SILENCIO (fue lo que pasó con 02SCL/05LP/30PHU/56PZA el 04/08 y de nuevo el 10/08
+    // con PHU/NUC/LP). Pasa cuando se arma una tienda en Bodega DESPUÉS del último "Calcular": queda
+    // en calT (en vivo) pero no en results.ts (foto congelada al calcular). Avisamos antes de
     // guardar para que el usuario las asigne, o confirme registrar el resto de todos modos.
     const sinRutear = tiendasArmadasSinRutear(calT, results.rutas);
     if (sinRutear.length > 0 && typeof window !== 'undefined') {
       const ok = window.confirm(
         `⚠️ ${sinRutear.length} tienda(s) tienen carga en Bodega pero NO están en ninguna ruta, ` +
         `así que NO se registrarán:\n\n${sinRutear.join(', ')}\n\n` +
-        `Asígnalas a un camión primero, o presiona Aceptar para registrar el resto de todos modos.`
+        `Quedarán guardadas como pendientes de 2ª vuelta. Asígnalas a un camión primero, ` +
+        `o presiona Aceptar para registrar el resto y dejarlas pendientes.`
       );
       if (!ok) {
         setHistorialStatus('warn');
         setHistorialMsg(`⚠️ Registro cancelado · ${sinRutear.length} tienda(s) sin asignar: ${sinRutear.join(', ')}`);
         return false;
       }
+      // [Fix fuga de datos] Antes, si se confirmaba igual, estas tiendas no se guardaban (correcto,
+      // no rutearon) pero TAMPOCO entraban a pendientes 2ª vuelta —desaparecían sin dejar rastro—
+      // porque ese cálculo (más abajo) usa results.ts, la misma foto congelada que este guard ya
+      // detectó como desactualizada. Las mandamos a pendientes aquí, con los datos en vivo de calT.
+      const asignadasActuales = new Set(results.rutas.flatMap(r => r.ts.map(t => t.c)));
+      const sinRutearStores = sinRutear.map(c => ({
+        c, p: calT[c]?.p ?? 0, b: calT[c]?.b ?? 0, ch: calT[c]?.ch ?? 0,
+      }));
+      void savePendientesV2(fecha, sinRutearStores, asignadasActuales);
     }
 
     setHistorialStatus('loading');
