@@ -129,14 +129,14 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       onClick={onSelect}
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
+          ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
           : hasPdf
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
           : isToday
-          ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] hover:bg-[rgba(211,47,47,0.09)]'
+          ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] hover:bg-[rgba(30,64,175,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-red' : hasPdf ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
       <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
@@ -152,15 +152,15 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       })()}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
-        {remB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
-        {remC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
-        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{remCH}CH</span>}
+        {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-info/25">{remP}P</span>}
+        {remB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-warn/25">{remB}B</span>}
+        {remC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
+        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
-        {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
-        {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
-        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
-        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>}
+        {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded leading-none">{palletCount}P</span>}
+        {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded leading-none">{boxCount}B</span>}
+        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded leading-none">{contenedorCount}C</span>}
+        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>}
         {/* Preset fallback (solo cuando no hay picking ni items) */}
         {!hasGhost && preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
           <span className="text-[11px] text-text-3/50 leading-none">
@@ -181,8 +181,8 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
   const isAdd = mode === 'add';
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-navy/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-xs overflow-hidden shadow-2xl">
-        <div className={`px-5 py-4 border-b text-center ${isAdd ? 'bg-[rgba(211,47,47,0.07)] border-[rgba(211,47,47,0.12)]' : 'bg-[rgba(217,119,6,0.07)] border-[rgba(217,119,6,0.12)]'}`}>
+      <div className="bg-white rounded-lg w-full max-w-xs overflow-hidden" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.10)' }}>
+        <div className={`px-5 py-4 border-b text-center ${isAdd ? 'bg-[rgba(30,64,175,0.06)] border-[rgba(30,64,175,0.12)]' : 'bg-[rgba(217,119,6,0.07)] border-[rgba(217,119,6,0.12)]'}`}>
           <h3 className="font-barlow-condensed text-[21px] font-bold text-navy">Modificar calendario</h3>
         </div>
         <div className="px-5 py-4 text-center">
@@ -195,8 +195,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
         </div>
         <div className="flex border-t border-border">
           <button onClick={onCancel} className="flex-1 py-3.5 font-barlow-condensed text-[17px] font-bold text-text-2 bg-bg-2 hover:bg-bg-3 transition-all cursor-pointer border-r border-border">Cancelar</button>
-          <button onClick={onConfirm} className={`flex-1 py-3.5 font-barlow-condensed text-[17px] font-bold text-white transition-all cursor-pointer ${isAdd ? 'bg-red' : 'bg-[#D97706]'}`}
-            style={{ boxShadow: isAdd ? '0 4px 14px rgba(211,47,47,0.30)' : '0 4px 14px rgba(217,119,6,0.30)' }}>
+          <button onClick={onConfirm} className={`flex-1 py-3.5 font-barlow-condensed text-[17px] font-bold text-white transition-all cursor-pointer ${isAdd ? 'bg-[#1E40AF]' : 'bg-[#D97706]'}`}>
             {isAdd ? 'Confirmar' : 'Retirar'}
           </button>
         </div>
@@ -1283,7 +1282,7 @@ export function TiendasPage() {
             {pdfLoading
               ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
               : <button onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-red hover:border-red cursor-pointer transition-all">
+                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-[#1E40AF] hover:border-[#1E40AF] cursor-pointer transition-all">
                   Subir PDF
                 </button>
             }
@@ -1487,14 +1486,14 @@ export function TiendasPage() {
                     <div>
                       <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
-                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && (
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
                           max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
                           <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
@@ -1506,12 +1505,12 @@ export function TiendasPage() {
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
                         <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)} placeholder="cm" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
                         <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                     </div>
                   ) : isContRow ? (
@@ -1532,12 +1531,12 @@ export function TiendasPage() {
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Guía</label>
                         <input type="text" value={row.guia} onChange={e => updateRow(row.id, 'guia', e.target.value)}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF]" />
                       </div>
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">$ Total</label>
                         <input type="number" value={row.valor} onChange={e => updateRow(row.id, 'valor', e.target.value)}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                     </div>
                   )}
@@ -1747,7 +1746,7 @@ export function TiendasPage() {
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar…"
-            className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-red placeholder:text-text-3" />
+            className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
         </div>
 
         {/* Toolbar: Multi-PDF — desktop only */}
@@ -1759,9 +1758,9 @@ export function TiendasPage() {
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setMultiDragOver(true); } }}
             onDragLeave={e => { e.stopPropagation(); setMultiDragOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setMultiDragOver(false); if (!multiPdfLoading && e.dataTransfer.files.length) handleMultiplePdfs(e.dataTransfer.files); }}
-            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${multiDragOver ? 'border-red bg-[rgba(211,47,47,0.18)] text-red scale-[1.02]' : 'border-red bg-[rgba(211,47,47,0.06)] text-red active:bg-[rgba(211,47,47,0.12)]'}`}>
+            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${multiDragOver ? 'border-[#1E40AF] bg-[rgba(30,64,175,0.18)] text-[#1E40AF] scale-[1.02]' : 'border-[#1E40AF] bg-[rgba(30,64,175,0.06)] text-[#1E40AF] active:bg-[rgba(30,64,175,0.12)]'}`}>
             {multiPdfLoading
-              ? <><div className="w-3 h-3 border-2 border-red/30 border-t-red rounded-full animate-spin" />PROCESANDO…</>
+              ? <><div className="w-3 h-3 border-2 border-[#1E40AF]/30 border-t-[#1E40AF] rounded-full animate-spin" />PROCESANDO…</>
               : multiDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
           </button>
         </div>
@@ -1775,12 +1774,12 @@ export function TiendasPage() {
               onDragOver={handleAddDragOver}
               onDragLeave={handleAddDragLeave}
               onDrop={handleAddDrop}
-              className={`transition-colors ${addDropActive ? 'bg-[rgba(211,47,47,0.07)]' : ''}`}>
-              <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all flex items-center gap-2 ${addDropActive ? 'bg-[rgba(211,47,47,0.18)] border-red/60' : 'bg-[rgba(211,47,47,0.10)] border-[rgba(211,47,47,0.20)]'}`}>
-                <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">
+              className={`transition-colors ${addDropActive ? 'bg-[rgba(30,64,175,0.07)]' : ''}`}>
+              <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all flex items-center gap-2 ${addDropActive ? 'bg-[rgba(30,64,175,0.18)] border-[#1E40AF]/60' : 'bg-[rgba(30,64,175,0.10)] border-[rgba(30,64,175,0.20)]'}`}>
+                <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-[#1E40AF]">
                   {addDropActive ? '↓ Suelta aquí' : 'HOY'}
                 </span>
-                {!addDropActive && <span className="font-barlow-condensed text-[11px] text-red/50 uppercase tracking-wide">arrastra aquí</span>}
+                {!addDropActive && <span className="font-barlow-condensed text-[11px] text-[#1E40AF]/50 uppercase tracking-wide">arrastra aquí</span>}
                 {!addDropActive && <span className="ml-auto flex items-center gap-1.5">
                   <span className="font-barlow-condensed text-[10px] font-bold uppercase tracking-wider text-text-3">Nacional</span>
                   <SectionCount done={nacProg.done} total={nacProg.total} />
@@ -1874,7 +1873,7 @@ export function TiendasPage() {
         </div>
 
         {/* Stats bar + actions */}
-        <div className="flex-shrink-0 bg-navy border-t-4 border-red">
+        <div className="flex-shrink-0 bg-navy border-t-4 border-[#1E40AF]">
           {/* Conteo: en desktop vive en la columna derecha (resumen); aquí solo mobile. */}
           <div className="flex lg:hidden">
             {(() => {
@@ -1895,20 +1894,19 @@ export function TiendasPage() {
           <div className="px-3 pb-3 pt-1 flex gap-2">
             <button
               onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
-              className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
-              style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+              className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
               RESUMEN ({activeTiendasCount})
             </button>
             <button
               onClick={() => setShowCalManual(true)}
-              className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
+              className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Manual para copiar / Calendario general">
               <ClipboardList size={16} />
               <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Manual / Cal</span>
             </button>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
-              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
+              className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Ir al Enrutador">
               <Navigation size={16} />
               <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Enrutador</span>
@@ -1971,7 +1969,7 @@ export function TiendasPage() {
           maxHeight: '92vh',
           transform: selectedTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
-          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+          boxShadow: '0 -8px 24px rgba(0,0,0,0.15)',
         }}
       >
         {/* Form content (reuses renderForm logic) */}
@@ -2017,25 +2015,24 @@ export function TiendasPage() {
       {showMobileResumen && (
         <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
           <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
-               style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
+               style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
             <button
               onClick={() => setShowMobileResumen(false)}
               className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95"
               style={{
                 width: 36, height: 36,
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
+                background: 'rgba(255,255,255,0.10)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.20)',
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
             <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1">Resumen</span>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
-              className="flex items-center gap-2 py-2 px-3 rounded-full cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(211,47,47,0.18)', border: '1px solid rgba(211,47,47,0.50)' }}>
-              <Navigation size={13} color="#EF4444" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#EF4444' }}>Enrutador</span>
+              className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
+              style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
+              <Navigation size={13} color="#93C5FD" strokeWidth={2} />
+              <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#93C5FD' }}>Enrutador</span>
             </button>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">
