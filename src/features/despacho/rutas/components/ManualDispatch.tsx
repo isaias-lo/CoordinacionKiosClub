@@ -37,6 +37,9 @@ interface Props {
   /** [Reestructura] Filtro de grupo desde la barra izquierda: filtra qué tiendas se ven en el pool
    *  "Sin asignar" (RM/Costa/Regiones). No cambia las asignaciones ni los conteos totales. */
   grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
+  /** Camión elegido para previsualizar su ruta en el mapa (antes de "Calcular"). */
+  camionSeleccionado?: string | null;
+  onSelectTruck?: (patente: string | null) => void;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -64,6 +67,8 @@ export default function ManualDispatch({
   ordenActivacion,
   hideCalcular,
   grupoFiltro = 'all',
+  camionSeleccionado = null,
+  onSelectTruck,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -74,8 +79,12 @@ export default function ManualDispatch({
   const scrollerRef  = useRef<HTMLElement | null>(null);
   const ejecutarDropRef = useRef<((target: string, item: DraggingState) => void) | null>(null);
 
-  // Find nearest scrollable ancestor (may not be window when inside fixed layouts)
+  // Find nearest scrollable ancestor (may not be window when inside fixed layouts).
+  // Deps: [dragging] en vez de [] — al montar (sobre todo en mobile) el tablero puede
+  // estar vacío/sin altura de scroll todavía, dejando scrollerRef en null para siempre.
+  // Reintentar cuando arranca un drag asegura que el tablero ya tiene contenido real.
   useEffect(() => {
+    if (!dragging) return;
     let el = containerRef.current?.parentElement ?? null;
     while (el) {
       const { overflowY } = window.getComputedStyle(el);
@@ -85,7 +94,7 @@ export default function ManualDispatch({
       }
       el = el.parentElement;
     }
-  }, []);
+  }, [dragging]);
 
   const tiendasActivas = Object.keys(calT)
     .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
@@ -477,6 +486,7 @@ export default function ManualDispatch({
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
           const isOver  = dragOver === v.p;
+          const isPreview = camionSeleccionado === v.p;
           const pctColor = m.overCap ? 'bg-red-400' : m.pct > 0.85 ? 'bg-amber-400' : 'bg-green-500';
 
           return (
@@ -486,17 +496,20 @@ export default function ManualDispatch({
               style={{
                 boxShadow: isOver
                   ? '0 0 0 2px rgba(27,42,107,0.25), 0 4px 20px rgba(27,42,107,0.12)'
-                  : m.overCap
-                    ? '0 2px 10px rgba(245,158,11,0.18)'
-                    : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
+                  : isPreview
+                    ? '0 0 0 2px rgba(27,42,107,0.35)'
+                    : m.overCap
+                      ? '0 2px 10px rgba(245,158,11,0.18)'
+                      : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
               }}
-              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
+              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver || isPreview ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
               onClick={() => {
                 if (hasSelection) moveSelectedTo(v.p);
                 else if (isSelected && dragging) ejecutarDrop(v.p, dragging);
+                else onSelectTruck?.(camionSeleccionado === v.p ? null : v.p);
               }}
             >
               {/* ── Cabecera: patente + badges (el conductor se asigna en FLOTA → Gestionar) ── */}
@@ -504,6 +517,7 @@ export default function ManualDispatch({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono font-bold text-[17px] text-ktext leading-none tracking-tight">{v.p}</span>
                   <div className="flex gap-1 flex-wrap justify-end">
+                    {isPreview   && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
                     {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
                     {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded font-semibold">❄ Frío</span>}
@@ -561,6 +575,7 @@ export default function ManualDispatch({
                         onDragEnd={handleDragEnd}
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
                         onRemove={() => removeStore(v.p, t.c)}
+                        requireConfirm
                       />
                     ) : (
                       <StoreTagComp
@@ -572,6 +587,7 @@ export default function ManualDispatch({
                         onDragEnd={handleDragEnd}
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
                         onRemove={() => removeStore(v.p, t.c)}
+                        requireConfirm
                       />
                     );
                   })
@@ -656,16 +672,38 @@ export default function ManualDispatch({
   );
 }
 
-function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove }: {
+function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove, requireConfirm }: {
   parada: Parada; isDragging: boolean;
   selected?: boolean; onToggleSelect?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
   onTouchStart: (e: React.TouchEvent) => void;
   onRemove: (() => void) | null;
+  /** Pide "¿Quitar? Sí/No" antes de ejecutar onRemove — para paradas ya asignadas a un camión. */
+  requireConfirm?: boolean;
 }) {
   const isEntrega = parada.tipo === 'entrega';
   const short = parada.direccion.split(',')[0].substring(0, 20);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const t = setTimeout(() => setConfirmOpen(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmOpen]);
+
+  if (confirmOpen) {
+    return (
+      <div className="flex items-center gap-1 rounded-[6px] px-2 py-[5px] border border-kred/40 bg-kred/[0.06] min-h-[36px]">
+        <span className="text-[11px] font-bold text-kred">¿Quitar?</span>
+        <button onClick={e => { e.stopPropagation(); setConfirmOpen(false); onRemove?.(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          className="text-[10px] font-bold text-white bg-kred rounded px-1.5 py-0.5">Sí</button>
+        <button onClick={e => { e.stopPropagation(); setConfirmOpen(false); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          className="text-[10px] font-bold text-kmuted border border-black/[0.15] rounded px-1.5 py-0.5">No</button>
+      </div>
+    );
+  }
+
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
@@ -693,22 +731,46 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
         <span className="text-[10px] opacity-60">{parada.p > 0 ? `${parada.p}p` : ''}{parada.b > 0 ? `${parada.b}b` : ''}</span>
       )}
       {onRemove && (
-        <button onClick={e => { e.stopPropagation(); onRemove(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+        <button
+          onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
+          onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
           className="text-[11px] opacity-40 hover:opacity-80 font-bold leading-none ml-0.5 w-[14px] h-[14px] flex items-center justify-center">×</button>
       )}
     </div>
   );
 }
 
-function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove }: {
+function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove, requireConfirm }: {
   store: StoreTag; tiendas: Record<string, TiendaInfo>; isDragging: boolean;
   selected?: boolean; onToggleSelect?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
   onTouchStart: (e: React.TouchEvent) => void;
   onRemove: (() => void) | null;
+  /** Pide "¿Quitar? Sí/No" antes de ejecutar onRemove — para tiendas ya asignadas a un camión. */
+  requireConfirm?: boolean;
 }) {
   const info = tiendas[store.c];
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const t = setTimeout(() => setConfirmOpen(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmOpen]);
+
+  if (confirmOpen) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] border border-kred/40 bg-kred/[0.06] min-h-[38px]">
+        <span className="text-[12px] font-bold text-kred">¿Quitar {formatCod(store.c)}?</span>
+        <button onClick={e => { e.stopPropagation(); setConfirmOpen(false); onRemove?.(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          className="text-[11px] font-bold text-white bg-kred rounded px-2 py-0.5">Sí</button>
+        <button onClick={e => { e.stopPropagation(); setConfirmOpen(false); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          className="text-[11px] font-bold text-kmuted border border-black/[0.15] rounded px-2 py-0.5">No</button>
+      </div>
+    );
+  }
+
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
@@ -736,7 +798,9 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
         <span className="text-[11px] text-knavy/50 font-semibold">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
       )}
       {onRemove && (
-        <button onClick={e => { e.stopPropagation(); onRemove(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+        <button
+          onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
+          onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
           className="text-[13px] text-knavy/40 hover:text-knavy font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center">×</button>
       )}
     </div>
