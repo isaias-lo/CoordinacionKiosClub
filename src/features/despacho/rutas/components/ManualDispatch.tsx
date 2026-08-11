@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
+import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -481,8 +482,17 @@ export default function ManualDispatch({
           No hay vehículos activos.
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {flotaDisp.map((v) => {
+        <div className="space-y-4">
+        {agruparCamionesPorEmpresa(flotaDisp, v => v.empresa).map(g => (
+          <div key={g.empresa}>
+            {/* Encabezado de sección por empresa (color de marca / determinista / gris "Sin empresa") */}
+            <div className="flex items-center gap-2 mb-2 px-0.5">
+              <span className="w-[10px] h-[10px] rounded-full flex-shrink-0" style={{ background: g.color }} aria-hidden="true" />
+              <span className="text-[12px] font-extrabold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
+              <span className="text-[11px] text-kmuted font-semibold">· {g.items.length}</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {g.items.map((v) => {
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
           const isOver  = dragOver === v.p;
@@ -501,6 +511,8 @@ export default function ManualDispatch({
                     : m.overCap
                       ? '0 2px 10px rgba(245,158,11,0.18)'
                       : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
+                borderLeftWidth: '4px',
+                borderLeftColor: g.color,
               }}
               className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver || isPreview ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
@@ -608,7 +620,10 @@ export default function ManualDispatch({
               )}
             </div>
           );
-        })}
+            })}
+            </div>
+          </div>
+        ))}
         </div>
       )}
 
