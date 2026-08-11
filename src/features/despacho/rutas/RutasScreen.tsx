@@ -176,6 +176,9 @@ export default function RutasScreen() {
   // Camión elegido en el tablero DESPACHO (click en la tarjeta) para previsualizar su ruta
   // en el mapa ANTES de calcular — se limpia al cambiar de tab o al limpiar el tablero.
   const [camionSeleccionado, setCamionSeleccionado] = useState<string | null>(null);
+  // Km real (Google Directions) de esa preview — se muestra en la tarjeta del camión
+  // elegido. null mientras el mapa todavía no resuelve la ruta (o no hay camión elegido).
+  const [previewKm, setPreviewKm] = useState<number | null>(null);
   // Km real + detalle por tramo del mapa persistente (MapSection) — antes vivía dentro de
   // ResultsSection (que montaba su propio MapSection); ahora el mapa es un panel fijo fuera
   // de ResultsSection, así que el resultado se sube acá y baja a ResultsSection por props.
@@ -210,6 +213,9 @@ export default function RutasScreen() {
   const [paradasAdicionales, setParadasAdicionales] = useState<Parada[]>([]);
   const paradaCounter = useRef(0);
   const [paradasOpen, setParadasOpen] = useState(false);
+  // Contenedor con scroll real del board de 2ª vuelta — mismo motivo que en InputSection:
+  // auto-scroll al arrastrar cerca del borde más confiable que buscarlo por DOM-walk.
+  const v2ScrollRef = useRef<HTMLDivElement>(null);
 
   const grpsRef = useRef(grps);
   useEffect(() => { grpsRef.current = grps; }, [grps]);
@@ -238,9 +244,6 @@ export default function RutasScreen() {
   // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
   // los counts llegan antes de que cargue el calendario). #4
   const sesionRowsRef = useRef<Map<string, SesionRow>>(new Map());
-
-  // Chips where the user has manually typed a P/B value — excluded from live sync
-  const manuallyEditedRef = useRef<Set<string>>(new Set());
 
   const sessionRestoredRef = useRef(false);
   const restoringRef       = useRef(false);
@@ -290,7 +293,7 @@ export default function RutasScreen() {
       setCalT(prev => reaplicarCounts(
         mergeCalT(dbCal, fechaRef.current, prev, grpsRef.current),
         sesionRowsRef.current,
-        manuallyEditedRef.current,
+        new Set(),
         (cod) => tiendasRef.current[cod]?.region,
       ));
     };
@@ -367,8 +370,7 @@ export default function RutasScreen() {
                 const c = norm(cod);
                 const newC  = data.c  ?? 0;
                 const newCh = data.ch ?? 0;
-                // Skip chips the user has manually edited in this session
-                if (merged[c] && !manuallyEditedRef.current.has(c)) {
+                if (merged[c]) {
                   if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC || merged[c].ch !== newCh) {
                     merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, ch: newCh, on: data.p > 0 || data.b > 0 || newC > 0 || newCh > 0 };
                     changed = true;
@@ -397,7 +399,6 @@ export default function RutasScreen() {
                 const c = norm(cod);
                 const newC  = data.c  ?? 0;
                 const newCh = data.ch ?? 0;
-                if (manuallyEditedRef.current.has(c)) return;
                 if (merged[c]) {
                   if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC || merged[c].ch !== newCh) {
                     merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, ch: newCh, on: data.p > 0 || data.b > 0 || newC > 0 || newCh > 0 };
@@ -434,7 +435,6 @@ export default function RutasScreen() {
       const c = norm(row.tienda_cod);
       sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
-        if (manuallyEditedRef.current.has(c)) return prev;
         const rowCh = row.chocolates ?? 0;
         const cc = row.contenedores ?? 0;
         const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || rowCh > 0;
@@ -815,7 +815,6 @@ export default function RutasScreen() {
     // antes que el calendario". A las tiendas del calendario les actualiza los counts; a OFIKC
     // (excepción, fuera del calendario) la inyecta si fue armada hoy con cantidades.
     sesionRowsRef.current.forEach((row, c) => {
-      if (manuallyEditedRef.current.has(c)) return;
       const cc = row.contenedores ?? 0;
       const chh = row.chocolates ?? 0;
       const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || chh > 0;
@@ -865,8 +864,7 @@ export default function RutasScreen() {
   }
 
 
-  // Las cantidades del sidebar del Enrutador son SOLO-LECTURA (se definen en Bodega); ya no hay
-  // handler de edición (handleUpdateChip) ni marca manuallyEditedRef por edición manual de chips.
+  // Los conteos del Enrutador son SOLO-LECTURA (se definen en Bodega) — no hay edición manual.
 
   // ── Fleet handlers ────────────────────────────────────────────────
   function handleToggleFlota(idx: number) {
@@ -1535,7 +1533,6 @@ export default function RutasScreen() {
 
   // ── Clean ─────────────────────────────────────────────────────────
   function handleLimpiar() {
-    manuallyEditedRef.current.clear();
     setResults(null); setErrors([]); setManualText(''); setManualAsignaciones({});
     setComparisonData(null); setParadasAdicionales([]); kmTotalRealRef.current = null;
     setKmPorRuta({}); setLegDataPorRuta({});
@@ -1572,12 +1569,20 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camionSeleccionado, manualAsignaciones, flota, gps, tiendas]);
 
+  // Al elegir otro camión (o deseleccionar), el km real anterior queda obsoleto hasta
+  // que el mapa resuelva la nueva ruta.
+  useEffect(() => { setPreviewKm(null); }, [camionSeleccionado]);
+
   // ── Mapa persistente: km real + detalle por tramo (movido desde ResultsSection,
   //    que antes montaba su propio MapSection — ver DespachoHeader/MapSection en el render) ──
   function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
-    // Ignora el km de una preview de camión seleccionado — no debe tocar el estado de
-    // resultados ya calculados (kmPorRuta/legDataPorRuta se leen por índice en ResultsSection).
-    if (!results) return;
+    if (!results) {
+      // Preview de camión seleccionado (sin "Calcular" todavía): no toca kmPorRuta/
+      // legDataPorRuta (esos se leen por índice en ResultsSection, son de resultados ya
+      // calculados) — solo guarda el km real de esa única ruta para mostrarlo en su tarjeta.
+      setPreviewKm(camionSeleccionado && previewRutas.length ? (kmMap[0] ?? null) : null);
+      return;
+    }
     setKmPorRuta(kmMap);
     setLegDataPorRuta(legMap || {});
     const total = Object.values(kmMap).reduce((s, v) => s + v, 0);
@@ -2034,6 +2039,7 @@ export default function RutasScreen() {
             paradasAdicionales={paradasAdicionales}
             grupoFiltro={grupoFiltro}
             camionSeleccionado={camionSeleccionado}
+            camionSeleccionadoKm={previewKm}
             onSelectTruck={setCamionSeleccionado}
             onModo={m => { setModo(m); if (m !== 'drag') setCamionSeleccionado(null); }}
             flotaStatus={flotaStatus}
@@ -2100,7 +2106,7 @@ export default function RutasScreen() {
               ) : undefined
             }
             segundaVueltaContent={
-              <div className="h-full overflow-y-auto p-4">
+              <div ref={v2ScrollRef} className="h-full overflow-y-auto p-4">
                 {pendientesV2Origen.length === 0 ? (
                   <div className="bg-kbg border border-black/[0.09] rounded-kios2 px-3 py-4 text-[13px] text-kmuted text-center">
                     No hay pendientes de 2ª vuelta de días anteriores.
@@ -2140,6 +2146,7 @@ export default function RutasScreen() {
                       onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
                       onToggleFlota={handleToggleFlota}
                       hideCalcular={true}
+                      scrollContainerRef={v2ScrollRef}
                     />
                   </>
                 )}

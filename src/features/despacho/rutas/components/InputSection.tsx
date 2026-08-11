@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
@@ -33,6 +33,7 @@ interface Props {
   grupoFiltro: 'all' | 'rm' | 'costa' | 'fal';
   // Camión elegido en el tablero DESPACHO para previsualizar su ruta en el mapa.
   camionSeleccionado: string | null;
+  camionSeleccionadoKm?: number | null;
   onSelectTruck: (patente: string | null) => void;
   onModo: (m: string) => void;
   onToggleFlota: (idx: number) => void;
@@ -83,7 +84,7 @@ export default function InputSection({
   flota, flotaStatus, modo, calT, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, grupoFiltro,
-  camionSeleccionado, onSelectTruck,
+  camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
@@ -93,6 +94,9 @@ export default function InputSection({
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
   const isMobile = useIsMobile();
+  // Contenedor real con scroll del tablero DESPACHO — se lo pasamos a ManualDispatch para
+  // el auto-scroll al arrastrar cerca del borde (más confiable que buscarlo por DOM-walk).
+  const dragScrollRef = useRef<HTMLDivElement>(null);
 
   const errorsBanner = errors.length > 0 && (
     <div
@@ -178,13 +182,14 @@ export default function InputSection({
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">{rightPanelContent}</div>
         ) : (
-          <div className="flex-1 overflow-y-auto bg-kbg">
+          <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
                 <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} grupoFiltro={grupoFiltro}
-                  camionSeleccionado={camionSeleccionado} onSelectTruck={onSelectTruck}
+                  camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
+                  scrollContainerRef={dragScrollRef}
                   onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
               </div>
             )}
@@ -260,7 +265,7 @@ export default function InputSection({
           {rightPanelContent}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
 
           {/* DESPACHO MODE */}
           {modo === 'drag' && (
@@ -278,7 +283,9 @@ export default function InputSection({
                 onEliminarParada={onEliminarParada}
                 grupoFiltro={grupoFiltro}
                 camionSeleccionado={camionSeleccionado}
+                camionSeleccionadoKm={camionSeleccionadoKm}
                 onSelectTruck={onSelectTruck}
+                scrollContainerRef={dragScrollRef}
                 onAsignarIA={onAsignarIA}
                 iaLoading={iaLoading}
                 onToggleFlota={onToggleFlota}

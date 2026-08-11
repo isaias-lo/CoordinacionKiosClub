@@ -40,7 +40,14 @@ interface Props {
   grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
   /** Camión elegido para previsualizar su ruta en el mapa (antes de "Calcular"). */
   camionSeleccionado?: string | null;
+  /** Km real (Google Directions) de esa preview, cuando el mapa ya la resolvió. */
+  camionSeleccionadoKm?: number | null;
   onSelectTruck?: (patente: string | null) => void;
+  /** Ref explícito al contenedor con scroll real (lo crea y lo attachea el padre —
+   *  InputSection o RutasScreen — al div `overflow-y-auto` que envuelve este tablero).
+   *  Reemplaza la búsqueda del ancestro scrolleable por DOM-walking, que podía fallar si
+   *  el tablero estaba vacío al montar. Sin este prop cae al DOM-walk como fallback. */
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -69,7 +76,9 @@ export default function ManualDispatch({
   hideCalcular,
   grupoFiltro = 'all',
   camionSeleccionado = null,
+  camionSeleccionadoKm = null,
   onSelectTruck,
+  scrollContainerRef,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -80,11 +89,13 @@ export default function ManualDispatch({
   const scrollerRef  = useRef<HTMLElement | null>(null);
   const ejecutarDropRef = useRef<((target: string, item: DraggingState) => void) | null>(null);
 
-  // Find nearest scrollable ancestor (may not be window when inside fixed layouts).
-  // Deps: [dragging] en vez de [] — al montar (sobre todo en mobile) el tablero puede
-  // estar vacío/sin altura de scroll todavía, dejando scrollerRef en null para siempre.
-  // Reintentar cuando arranca un drag asegura que el tablero ya tiene contenido real.
+  // Contenedor con scroll real para el auto-scroll al arrastrar cerca del borde. Prioridad:
+  // el ref explícito del padre (siempre correcto, no depende de que el tablero ya tenga
+  // contenido). Fallback: DOM-walk buscando el ancestro con overflow-y scrolleable — menos
+  // confiable (podía fallar si el tablero estaba vacío al montar), se mantiene por si algún
+  // consumidor de ManualDispatch todavía no pasa scrollContainerRef.
   useEffect(() => {
+    if (scrollContainerRef?.current) { scrollerRef.current = scrollContainerRef.current; return; }
     if (!dragging) return;
     let el = containerRef.current?.parentElement ?? null;
     while (el) {
@@ -95,7 +106,7 @@ export default function ManualDispatch({
       }
       el = el.parentElement;
     }
-  }, [dragging]);
+  }, [dragging, scrollContainerRef]);
 
   const tiendasActivas = Object.keys(calT)
     .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
@@ -556,12 +567,17 @@ export default function ManualDispatch({
                     <div className={`h-full rounded-full transition-all duration-300 ${pctColor}`} style={{ width: `${Math.min(m.pct * 100, 100)}%` }} />
                   </div>
                 </div>
-                {/* KM estimado */}
-                <div className="flex items-center gap-2">
+                {/* KM estimado (línea recta) + km real de Google si este camión está en preview */}
+                <div className="flex items-center gap-2 flex-wrap">
                   {m.kmEst > 0 ? (
                     <span className="text-[11px] text-kmuted"><span className="font-bold text-ktext">~{m.kmEst} km</span> · {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
                   ) : (
                     <span className="text-[10px] text-kmuted/40 italic">Sin tiendas aún</span>
+                  )}
+                  {isPreview && (
+                    <span className="text-[10px] font-bold text-knavy">
+                      {camionSeleccionadoKm != null ? `· ${camionSeleccionadoKm} km reales` : '· calculando km real…'}
+                    </span>
                   )}
                 </div>
               </div>

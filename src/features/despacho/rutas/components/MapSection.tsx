@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { dibMapa, cargarGMaps } from '../utils/maps';
 import { COLS } from '../data/tiendas';
 import type { Ruta } from '../utils/routing';
@@ -20,8 +20,19 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
   const overlaysRef   = useRef<unknown[]>([]);
   const cdGeocodedRef = useRef<{lat: number; lng: number} | null>(null);
   const cdRef         = useRef(cd);
+  // Filtro de tab: 'all' o el índice de una ruta puntual. Antes se manejaba pisando
+  // classList a mano (document.querySelectorAll('.mtab2')) — funcionaba, pero dejaba el
+  // botón "Todas las rutas" con estado visual desincronizado si `rutas` cambiaba sin que
+  // el usuario volviera a tocar un tab (React nunca vuelve a aplicar un className que no
+  // cambió en el JSX, así que una mutación de classList hecha por fuera de React persiste
+  // "mintiéndole" al render siguiente).
+  const [activeFilter, setActiveFilter] = useState<number | 'all'>('all');
 
   useEffect(() => { cdRef.current = cd; }, [cd]);
+
+  // Un filtro de una ruta puntual que ya no existe (recalculó, cambió el camión
+  // previsualizado) no tiene sentido — vuelve a "Todas las rutas".
+  useEffect(() => { setActiveFilter('all'); }, [rutas]);
 
   function dibujar(rutasFiltradas: Ruta[]) {
     if (!elRef.current) return;
@@ -43,16 +54,15 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
 
   useEffect(() => {
     cargarGMaps();
-    const timer = setTimeout(() => dibujar(rutas), 200);
+    const filtradas = activeFilter === 'all' ? rutas : rutas.filter((_, i) => i === activeFilter);
+    // 400ms (antes 200ms) — cada dibujo llama a Google Directions (facturable). Da más
+    // margen a elegir varios camiones seguido en el tablero DESPACHO sin disparar una
+    // llamada por cada click intermedio (el timeout se cancela si `rutas` vuelve a
+    // cambiar antes de cumplirse).
+    const timer = setTimeout(() => dibujar(filtradas), 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rutas]);
-
-  function handleTab(rutasFiltradas: Ruta[], btn: HTMLButtonElement) {
-    document.querySelectorAll('.mtab2').forEach(t => t.classList.remove('on','bg-knavy','text-white'));
-    btn.classList.add('on','bg-knavy','text-white');
-    dibujar(rutasFiltradas);
-  }
+  }, [rutas, activeFilter]);
 
   return (
     <div className="h-full flex flex-col bg-white no-print overflow-hidden">
@@ -61,21 +71,23 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
         <div className="text-[11px] font-bold text-ktext uppercase tracking-wide mb-2">Mapa de rutas</div>
         <div className="flex gap-1.5 flex-wrap">
           <button
-            onClick={e => handleTab(rutas, e.currentTarget)}
-            className="mtab2 on h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] border-knavy bg-knavy text-white transition-all"
+            onClick={() => setActiveFilter('all')}
+            className={`h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] transition-all ${
+              activeFilter === 'all' ? 'border-knavy bg-knavy text-white' : 'border-black/[0.12] bg-kbg text-kmuted'}`}
           >
             Todas las rutas
           </button>
           {rutas.map((r, i) => {
             const col = COLS[i % COLS.length];
+            const active = activeFilter === i;
             return (
               <button
                 key={r.v.p}
-                onClick={e => handleTab([r], e.currentTarget)}
-                className="mtab2 h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] bg-kbg text-kmuted transition-all"
-                style={{ borderColor: col }}
+                onClick={() => setActiveFilter(i)}
+                className="h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] transition-all"
+                style={active ? { borderColor: col, background: col, color: '#fff' } : { borderColor: col, background: '#F8FAFC', color: col }}
               >
-                <span style={{ color: col }}>{r.v.p}</span>
+                {r.v.p}
               </button>
             );
           })}
