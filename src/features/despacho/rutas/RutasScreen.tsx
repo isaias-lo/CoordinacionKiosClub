@@ -1787,7 +1787,7 @@ export default function RutasScreen() {
         <div className="flex-shrink-0 px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/20 flex">
           <button
             onClick={() => setShowPendientesModal(true)}
-            className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
+            className="flex items-center gap-2 px-3 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-700 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
           >
             📦 Tiendas pendientes de ayer ({pendientes.stores.length})
           </button>
@@ -2037,7 +2037,7 @@ export default function RutasScreen() {
                           className={`px-3 py-1.5 rounded-kios2 text-[12px] font-semibold border transition-colors flex items-center gap-1.5 ${
                             active ? 'bg-knavy text-white border-knavy' : 'bg-kbg text-ktext border-black/[0.12] hover:border-knavy/40'}`}>
                           {fechaTxt(f)}
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${active ? 'bg-white/25 text-white' : 'bg-black/[0.06] text-kmuted'}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${active ? 'bg-white/25 text-white' : 'bg-black/[0.06] text-kmuted'}`}>
                             {conteoV2[f] ?? 0}
                           </span>
                         </button>
