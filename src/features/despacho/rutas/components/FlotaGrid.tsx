@@ -31,7 +31,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-kred bg-white";
+const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-knavy bg-white";
 
 export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
@@ -109,7 +109,7 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
           )}
           <button
             onClick={() => { setShowAgregar(!showAgregar); setError(''); }}
-            className={`h-[36px] px-4 rounded-[9px] text-[13px] font-bold transition-all border-2 ${showAgregar ? 'bg-kbg border-black/[0.12] text-kmuted' : 'bg-kred border-kred text-white'}`}
+            className={`h-[36px] px-4 rounded-[9px] text-[13px] font-bold transition-all border-2 ${showAgregar ? 'bg-kbg border-black/[0.12] text-kmuted' : 'bg-knavy border-knavy text-white'}`}
           >
             {showAgregar ? '✕ Cancelar' : '＋ Nuevo vehículo'}
           </button>
@@ -118,8 +118,8 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
 
       {/* ── Formulario nuevo vehículo ── */}
       {showAgregar && (
-        <div className="bg-[#FFF8F8] border-2 border-kred/[0.25] rounded-[14px] p-4 mb-5">
-          <div className="text-[16px] font-bold text-kred mb-4">Nuevo vehículo</div>
+        <div className="bg-bg border-2 border-knavy/[0.15] rounded-[14px] p-4 mb-5">
+          <div className="text-[16px] font-bold text-knavy mb-4">Nuevo vehículo</div>
           {error && (
             <div className="text-[13px] text-kred mb-3 bg-kred/[0.08] px-3 py-2 rounded-[8px] font-semibold">{error}</div>
           )}
@@ -192,7 +192,7 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
           </div>
 
           <button onClick={handleAgregarVehiculo}
-            className="w-full h-[44px] rounded-[10px] bg-kred text-white text-[15px] font-bold">
+            className="w-full h-[44px] rounded-[10px] bg-knavy text-white text-[15px] font-bold">
             Agregar vehículo
           </button>
         </div>
@@ -209,7 +209,7 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
         <input
           type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar patente…"
-          className="flex-1 h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[13px] font-semibold text-ktext uppercase placeholder:normal-case placeholder:text-kmuted focus:border-kred focus:outline-none"
+          className="flex-1 h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-[10px] text-[13px] font-semibold text-ktext uppercase placeholder:normal-case placeholder:text-kmuted focus:border-knavy focus:outline-none"
         />
         {search && (
           <button type="button" onClick={() => setSearch('')}
@@ -281,13 +281,13 @@ function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar 
 
   return (
     <div className={`rounded-[14px] border-2 bg-white transition-all overflow-hidden
-      ${v.on ? 'border-kred shadow-[0_2px_12px_rgba(212,43,43,0.12)]' : 'border-black/[0.10] shadow-sm'}
+      ${v.on ? 'border-knavy shadow-[0_2px_12px_rgba(27,42,107,0.12)]' : 'border-black/[0.10] shadow-sm'}
       ${v.tlbd ? 'border-dashed' : ''}`}>
 
       {/* ── Top: patente + toggle ── */}
       <div
         onClick={() => onToggle(idx)}
-        className={`px-4 pt-4 pb-3 cursor-pointer select-none ${v.on ? 'bg-kred/[0.03]' : ''}`}
+        className={`px-4 pt-4 pb-3 cursor-pointer select-none ${v.on ? 'bg-knavy/[0.03]' : ''}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -296,7 +296,7 @@ function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar 
                 2ª VUELTA
               </div>
             )}
-            <div className={`font-mono text-[20px] font-extrabold tracking-wider leading-none mb-1 ${v.on ? 'text-kred' : 'text-ktext'}`}>
+            <div className={`font-mono text-[20px] font-extrabold tracking-wider leading-none mb-1 ${v.on ? 'text-knavy' : 'text-ktext'}`}>
               {v.p}
               {v.tel && (
                 <button
@@ -316,7 +316,7 @@ function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar 
 
           {/* Toggle activo */}
           <div className={`w-[28px] h-[28px] rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all
-            ${v.on ? 'bg-kred border-kred text-white' : 'border-black/[0.15] bg-white'}`}>
+            ${v.on ? 'bg-knavy border-knavy text-white' : 'border-black/[0.15] bg-white'}`}>
             {v.on ? <Check size={16} strokeWidth={3} aria-hidden="true" /> : null}
           </div>
         </div>

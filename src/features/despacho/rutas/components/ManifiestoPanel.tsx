@@ -552,8 +552,7 @@ ${bodies}
     <div className="fixed inset-0 z-[300] flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0"
-        style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.4)' }}>
+      <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0">
         <div>
           <div className="font-barlow-condensed text-[20px] font-bold tracking-widest uppercase">
             Manifiestos de Ruta
@@ -571,7 +570,7 @@ ${bodies}
 
       {/* Toast */}
       {toast && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-60 px-5 py-2.5 rounded-full text-[13px] font-semibold text-white shadow-lg"
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-60 px-5 py-2.5 rounded text-[13px] font-semibold text-white shadow-lg"
           style={{ background: toast.ok ? '#34C759' : '#FF3B30' }}>
           {toast.msg}
         </div>
@@ -645,7 +644,7 @@ ${bodies}
                       </div>
                     </div>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-[11px] font-bold text-white mt-0.5 flex-shrink-0"
+                  <span className="px-3 py-1 rounded text-[11px] font-bold text-white mt-0.5 flex-shrink-0"
                     style={{ background: estadoCol }}>
                     {ESTADO_LABEL[m.estado] ?? m.estado}
                   </span>
@@ -655,7 +654,7 @@ ${bodies}
                 <div className="grid grid-cols-3 divide-x" style={{ background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
                   {([[ m.tiendas.length, 'Tiendas' ], [ m.total_pallets, 'Pallets' ], [ m.total_bultos, 'Bultos' ]] as [number, string][]).map(([n, l]) => (
                     <div key={l} className="py-3 text-center">
-                      <div className="text-[26px] font-extrabold leading-none" style={{ color: '#C62828' }}>{n}</div>
+                      <div className="text-[26px] font-extrabold leading-none" style={{ color: '#1B2A6B' }}>{n}</div>
                       <div className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">{l}</div>
                     </div>
                   ))}
@@ -714,7 +713,7 @@ ${bodies}
                       {Object.entries(ESTADO_LABEL).map(([key, label]) => (
                         <button key={key}
                           onClick={() => void actualizarEstado(idx, key)}
-                          className="px-3 py-1 rounded-full text-[10px] font-bold border transition-all"
+                          className="px-3 py-1 rounded text-[10px] font-bold border transition-all"
                           style={m.estado === key
                             ? { background: ESTADO_COLOR[key], color: '#fff', borderColor: ESTADO_COLOR[key] }
                             : { background: '#fff', color: '#666', borderColor: '#e0e0e0' }}>
