@@ -292,7 +292,7 @@ function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar 
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             {v.tlbd && (
-              <div className="inline-flex items-center text-[11px] font-bold text-knavy bg-knavy/[0.10] border border-knavy/[0.20] rounded-[5px] px-2 py-0.5 mb-2 tracking-wide">
+              <div className="inline-flex items-center text-[11px] font-bold px-2 py-0.5 mb-2 tracking-wide rounded-[5px] border" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.10)', borderColor: 'rgba(107,33,168,0.20)' }}>
                 2ª VUELTA
               </div>
             )}
@@ -378,7 +378,8 @@ function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar 
           <button
             onClick={() => onToggleTlbd(idx)}
             className={`flex-1 h-[32px] rounded-[7px] text-[12px] font-bold border-2 transition-all flex items-center justify-center gap-1
-              ${v.tlbd ? 'bg-knavy text-white border-knavy' : 'bg-transparent text-kmuted border-black/[0.10] hover:border-knavy/[0.4] hover:text-knavy'}`}
+              ${v.tlbd ? 'text-white' : 'bg-transparent text-kmuted border-black/[0.10] hover:border-[#6B21A8]/40 hover:text-[#6B21A8]'}`}
+            style={v.tlbd ? { background: '#6B21A8', borderColor: '#6B21A8' } : undefined}
           >
             {v.tlbd ? <><Check size={14} aria-hidden="true" /> 2ª Vuelta</> : '2ª Vuelta'}
           </button>
