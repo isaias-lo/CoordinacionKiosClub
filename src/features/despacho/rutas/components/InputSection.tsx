@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
@@ -8,6 +8,7 @@ import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
 import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
+import { useIsMobile } from '../utils/useIsMobile';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -30,6 +31,9 @@ interface Props {
   // Filtro de grupo (RM/COSTA/REGIONES), controlado desde DespachoHeader (barra global) —
   // solo afecta qué se muestra en el pool "Sin asignar" del board DESPACHO.
   grupoFiltro: 'all' | 'rm' | 'costa' | 'fal';
+  // Camión elegido en el tablero DESPACHO para previsualizar su ruta en el mapa.
+  camionSeleccionado: string | null;
+  onSelectTruck: (patente: string | null) => void;
   onModo: (m: string) => void;
   onToggleFlota: (idx: number) => void;
   ordenActivacion?: Record<string, number>;  // [F2] orden de camiones por recencia de activación
@@ -79,6 +83,7 @@ export default function InputSection({
   flota, flotaStatus, modo, calT, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, grupoFiltro,
+  camionSeleccionado, onSelectTruck,
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
@@ -87,14 +92,7 @@ export default function InputSection({
   segundaVueltaContent,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
+  const isMobile = useIsMobile();
 
   const errorsBanner = errors.length > 0 && (
     <div
@@ -162,42 +160,41 @@ export default function InputSection({
             </button>
             <div className="flex bg-kbg rounded-[10px] p-[3px] gap-1 w-full">
               {MODES.map(({ id, Icon, label }) => (
-                <button key={id} onClick={() => onModo(id)}
-                  className={`flex-1 h-[36px] rounded-[8px] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all
+                <button key={id} onClick={() => onModo(id)} aria-label={label} title={label}
+                  className={`flex-1 h-[36px] rounded-[8px] flex items-center justify-center transition-all
                     ${modo === id ? 'bg-white shadow-sm text-ktext' : 'text-kmuted'}`}>
-                  <Icon size={13} strokeWidth={2} /><span>{label}</span>
+                  <Icon size={16} strokeWidth={2} aria-hidden="true" />
                 </button>
               ))}
             </div>
           </div>
         </div>
         {errorsBanner}
-        <div className="flex-1 overflow-hidden bg-kbg">
-          {modo === 'flota' ? flotaTabContent
-          : modo === 'v2' ? (
-            <div className="h-full overflow-hidden">{segundaVueltaContent}</div>
-          ) : modo === 'cal' ? (
-            <div className="h-full overflow-y-auto p-3"><CalendarioColumnas readOnly forceGeneral /></div>
-          ) : rightPanelContent ? (
-            <div className="h-full overflow-hidden">{rightPanelContent}</div>
-          ) : (
-            <div className="h-full overflow-y-auto">
-              {modo === 'drag' && (
-                <div className="p-3">
-                  <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
-                    paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
-                    onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} grupoFiltro={grupoFiltro}
-                    onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
-                </div>
-              )}
-              {modo === 'man' && (
-                <div className="p-4">
-                  <ManualMode value={manualText} onChange={onManual} calT={calT} modo={modo} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {modo === 'flota' ? flotaTabContent
+        : modo === 'v2' ? (
+          <div className="flex-1 overflow-hidden">{segundaVueltaContent}</div>
+        ) : modo === 'cal' ? (
+          <div className="flex-1 overflow-y-auto p-3 bg-kbg"><CalendarioColumnas readOnly forceGeneral /></div>
+        ) : rightPanelContent ? (
+          <div className="flex-1 overflow-hidden">{rightPanelContent}</div>
+        ) : (
+          <div className="flex-1 overflow-y-auto bg-kbg">
+            {modo === 'drag' && (
+              <div className="p-3">
+                <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                  paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
+                  onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} grupoFiltro={grupoFiltro}
+                  camionSeleccionado={camionSeleccionado} onSelectTruck={onSelectTruck}
+                  onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
+              </div>
+            )}
+            {modo === 'man' && (
+              <div className="p-4">
+                <ManualMode value={manualText} onChange={onManual} calT={calT} modo={modo} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -280,6 +277,8 @@ export default function InputSection({
                 onCalcular={onCalcularManual}
                 onEliminarParada={onEliminarParada}
                 grupoFiltro={grupoFiltro}
+                camionSeleccionado={camionSeleccionado}
+                onSelectTruck={onSelectTruck}
                 onAsignarIA={onAsignarIA}
                 iaLoading={iaLoading}
                 onToggleFlota={onToggleFlota}

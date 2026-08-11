@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import InputSection   from './components/InputSection';
 import DespachoHeader from './components/DespachoHeader';
+import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
@@ -172,6 +173,9 @@ export default function RutasScreen() {
   // InputSection (sidebarFilter); ahora la barra global lo controla y el board DESPACHO
   // (ManualDispatch, vía InputSection) solo lo consume para filtrar el pool "Sin asignar".
   const [grupoFiltro, setGrupoFiltro]   = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
+  // Camión elegido en el tablero DESPACHO (click en la tarjeta) para previsualizar su ruta
+  // en el mapa ANTES de calcular — se limpia al cambiar de tab o al limpiar el tablero.
+  const [camionSeleccionado, setCamionSeleccionado] = useState<string | null>(null);
   // Km real + detalle por tramo del mapa persistente (MapSection) — antes vivía dentro de
   // ResultsSection (que montaba su propio MapSection); ahora el mapa es un panel fijo fuera
   // de ResultsSection, así que el resultado se sube acá y baja a ResultsSection por props.
@@ -1535,6 +1539,7 @@ export default function RutasScreen() {
     setResults(null); setErrors([]); setManualText(''); setManualAsignaciones({});
     setComparisonData(null); setParadasAdicionales([]); kmTotalRealRef.current = null;
     setKmPorRuta({}); setLegDataPorRuta({});
+    setCamionSeleccionado(null);
     setHistorialMsg(''); setHistorialStatus('idle');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -1549,14 +1554,35 @@ export default function RutasScreen() {
   // ── PDF ───────────────────────────────────────────────────────────
   function handleGenerarPDF() { setTimeout(() => window.print(), 100); }
 
+  // ── Preview de ruta al elegir un camión en el tablero DESPACHO (antes de "Calcular") ──
+  // Mismo patrón que cerrarCamionV1Board: arma UN Ruta con nn() a partir de lo ya asignado.
+  const previewRutas = useMemo<Ruta[]>(() => {
+    if (!camionSeleccionado) return [];
+    const vehicle = flota.find(v => v.p === camionSeleccionado);
+    const stores  = manualAsignaciones[camionSeleccionado] || [];
+    if (!vehicle || !stores.length) return [];
+    const { extGps } = buildExtendidos(gps, tiendas);
+    const ordered = stores.length > 1 ? nn(stores, extGps, cdRef.current) : stores;
+    return [{
+      v: vehicle,
+      ts: ordered,
+      tp: ordered.reduce((s, t) => s + t.p, 0),
+      tb: ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0),
+    }];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camionSeleccionado, manualAsignaciones, flota, gps, tiendas]);
+
   // ── Mapa persistente: km real + detalle por tramo (movido desde ResultsSection,
   //    que antes montaba su propio MapSection — ver DespachoHeader/MapSection en el render) ──
   function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
+    // Ignora el km de una preview de camión seleccionado — no debe tocar el estado de
+    // resultados ya calculados (kmPorRuta/legDataPorRuta se leen por índice en ResultsSection).
+    if (!results) return;
     setKmPorRuta(kmMap);
     setLegDataPorRuta(legMap || {});
     const total = Object.values(kmMap).reduce((s, v) => s + v, 0);
     kmTotalRealRef.current = Math.round(total * 10) / 10;
-    if (results) results.rutas.forEach((r, ri) => { if (kmMap[ri] !== undefined) r._kmReal = kmMap[ri]; });
+    results.rutas.forEach((r, ri) => { if (kmMap[ri] !== undefined) r._kmReal = kmMap[ri]; });
   }
 
   // ── Update from Sheets (Authenticated) ───────────────────────────
@@ -1814,6 +1840,17 @@ export default function RutasScreen() {
     return true; // guardado primario OK → habilita encadenar con manifiestos
   }
 
+  const isMobile = useIsMobile();
+  const mapPanel = (
+    <MapSection
+      rutas={results?.rutas ?? previewRutas}
+      gps={results?.extGps || gps}
+      cd={cdRef.current}
+      tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo>}
+      onKmReady={handleKmReady}
+      onCdUpdate={coords => { cdRef.current = coords; }}
+    />
+  );
 
   return (
     <div className="despacho-inner h-full flex flex-col overflow-hidden bg-kbg font-sans text-ktext">
@@ -1983,6 +2020,7 @@ export default function RutasScreen() {
         dnom={DNOM} calT={sortedCalT}
         grps={grps} onToggleGroup={handleToggleGroup}
         grupoFiltro={grupoFiltro} onGrupoFiltro={setGrupoFiltro}
+        mapContent={isMobile ? mapPanel : undefined}
       />
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -1995,7 +2033,9 @@ export default function RutasScreen() {
             manualAsignaciones={manualAsignaciones}
             paradasAdicionales={paradasAdicionales}
             grupoFiltro={grupoFiltro}
-            onModo={m => setModo(m)}
+            camionSeleccionado={camionSeleccionado}
+            onSelectTruck={setCamionSeleccionado}
+            onModo={m => { setModo(m); if (m !== 'drag') setCamionSeleccionado(null); }}
             flotaStatus={flotaStatus}
             onToggleFlota={handleToggleFlota}
             ordenActivacion={flotaActivadaEn}
@@ -2108,18 +2148,15 @@ export default function RutasScreen() {
           />
         </div>
 
-        {/* Mapa de rutas — panel fijo, siempre visible (antes solo aparecía tras calcular,
-            dentro de ResultsSection). Antes de calcular muestra el mapa vacío con el CD. */}
-        <div className="h-[320px] md:h-auto flex-shrink-0 md:flex-1 md:min-w-0 border-t md:border-t-0 md:border-l border-black/[0.09] overflow-hidden">
-          <MapSection
-            rutas={results?.rutas ?? []}
-            gps={results?.extGps || gps}
-            cd={cdRef.current}
-            tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo>}
-            onKmReady={handleKmReady}
-            onCdUpdate={coords => { cdRef.current = coords; }}
-          />
-        </div>
+        {/* Mapa de rutas — panel fijo en desktop (junto al tablero); en mobile se monta
+            adentro del drawer de DespachoHeader (mapContent), nunca las dos instancias a
+            la vez. Antes de calcular muestra la preview del camión seleccionado, o el mapa
+            vacío con el CD si no hay nada elegido todavía. */}
+        {!isMobile && (
+          <div className="h-[320px] md:h-auto flex-shrink-0 md:flex-1 md:min-w-0 border-t md:border-t-0 md:border-l border-black/[0.09] overflow-hidden">
+            {mapPanel}
+          </div>
+        )}
       </main>
 
       {manifiestoV2 && (

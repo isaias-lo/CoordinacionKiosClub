@@ -2,39 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
 import { SantiagoProvider } from '../../features/despacho/santiago/context/SantiagoContext';
 import { useAuth } from '@/components/AuthProvider';
-
-/** Barra superior: botón de "Actualizar datos" (antes vivía en el menú hamburguesa).
- *  Se comunica con RutasScreen (lazy) por eventos: dispara `enrutador-refresh` y
- *  escucha `enrutador-status` para reflejar loading/success/error + total de tiendas. */
-function RefreshButton() {
-  const [status, setStatus] = useState<{ status: string; total: number }>({ status: 'idle', total: 0 });
-  useEffect(() => {
-    const h = (e: Event) => setStatus((e as CustomEvent).detail);
-    window.addEventListener('enrutador-status', h);
-    return () => window.removeEventListener('enrutador-status', h);
-  }, []);
-  const label = status.status === 'loading' ? 'Actualizando…'
-    : status.status === 'error'   ? 'Error — reintentar'
-    : status.status === 'success' ? `${status.total} tiendas · OK`
-    : status.total > 0            ? `${status.total} tiendas`
-    : 'Actualizar';
-  return (
-    <button
-      onClick={() => window.dispatchEvent(new CustomEvent('enrutador-refresh'))}
-      disabled={status.status === 'loading'}
-      className="flex items-center gap-2 h-[34px] px-3 rounded-[9px] flex-shrink-0 transition-all active:scale-95 disabled:opacity-60"
-      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)' }}
-      aria-label="Actualizar datos"
-      title="Vuelve a descargar Tiendas, Flota y Calendario desde Google Sheets"
-    >
-      <RefreshCw size={14} className={status.status === 'loading' ? 'animate-spin' : ''} style={{ color: 'rgba(255,255,255,0.9)' }} aria-hidden="true" />
-      <span className="text-[11px] font-bold text-white/85">{label}</span>
-    </button>
-  );
-}
 
 function RutasScreenWrapper({ onBack }: { onBack: () => void }) {
   const [RutasScreen, setRutasScreen] = useState<React.ComponentType<{ onBack?: () => void }> | null>(null);
@@ -142,31 +111,14 @@ function DespachoContent() {
 
   if (!mounted) {
     return (
-      <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-        <div className="bg-navy px-4 py-3 flex items-center gap-2 flex-shrink-0">
-          <div className="flex-1 text-center">
-            <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
-            <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-text-3">Cargando...</div>
-        </div>
+      <div className="fixed inset-0 flex items-center justify-center bg-bg overflow-hidden">
+        <div className="text-text-3">Cargando...</div>
       </div>
     );
   }
 
   return (
     <div className="despacho-root fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <div
-        className="no-print mobile-menu-safe flex items-center px-4 py-3 bg-navy gap-2 flex-shrink-0"
-        style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.25)' }}>
-        <div className="flex-1 text-center">
-          <div className="font-barlow-condensed text-[10px] font-bold tracking-[0.2em] uppercase text-white/35">Sistema de Rutas</div>
-          <div className="font-barlow-condensed text-xl font-bold text-white tracking-widest uppercase leading-none">Enrutador</div>
-        </div>
-        <RefreshButton />
-      </div>
       <div className="despacho-content flex-1 overflow-hidden">
         <RutasScreenWrapper onBack={handleBack} />
       </div>
