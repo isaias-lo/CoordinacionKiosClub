@@ -48,7 +48,9 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
     return;
   }
   if (!el) return;
-  el.style.height = '420px';
+  // El alto lo controla el contenedor (panel fijo de MapSection, flex-1) — antes se
+  // forzaba a 420px, lo que pisaba cualquier CSS pensado para llenar el panel.
+  el.style.height = '100%';
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const G = gm() as any;

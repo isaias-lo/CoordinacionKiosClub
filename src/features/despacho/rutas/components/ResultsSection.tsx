@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { FileText, Loader2, BarChart3, ClipboardList, Check, Flag, AlertTriangle } from 'lucide-react';
 import RouteCard          from './RouteCard';
-import MapSection         from './MapSection';
 import ManifiestoPanel    from './ManifiestoPanel';
 import CierreJornadaPanel from './CierreJornadaPanel';
 import { fechaTxt, fechaLargaTxt } from '../utils/helpers';
@@ -24,8 +23,10 @@ interface Props {
   onGuardarHistorial: () => Promise<boolean>;
   historialStatus: string;
   historialMsg: string;
-  onKmTotalReal: (km: number) => void;
-  onCdUpdate: (coords: number[]) => void;
+  // El mapa (MapSection) ahora es un panel fijo fuera de este componente — el km real
+  // y el detalle por tramo llegan calculados desde ahí (RutasScreen), no se calculan acá.
+  kmPorRuta: Record<number, number>;
+  legDataPorRuta: Record<number, {dist: string; dur: string}[]>;
   pendientesV2: { c: string; p: number; b: number; ch: number }[];
   onCargarPendientes: () => void;
   onListoPorHoy: () => void;
@@ -39,7 +40,7 @@ export default function ResultsSection({
   results, supervisor, fecha, tiendas, gps, cd,
   onLimpiar, onVolver, onGenerarPDF, onGuardarHistorial,
   historialStatus, historialMsg,
-  onKmTotalReal, onCdUpdate,
+  kmPorRuta, legDataPorRuta,
   pendientesV2, onCargarPendientes, onListoPorHoy, cerrado,
   cerradasV1,
 }: Props) {
@@ -47,8 +48,6 @@ export default function ResultsSection({
   const tp = ts.reduce((s, t) => s + t.p, 0);
   const tb = ts.reduce((s, t) => s + t.b, 0);
 
-  const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
-  const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
   const [manifiestoOpen, setManifiestoOpen] = useState(false);
   const [cierreOpen,     setCierreOpen]     = useState(false);
 
@@ -57,14 +56,6 @@ export default function ResultsSection({
   async function handleRegistrarYManifiesto() {
     const ok = await onGuardarHistorial();
     if (ok) setManifiestoOpen(true);
-  }
-
-  function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
-    setKmPorRuta(kmMap);
-    setLegDataPorRuta(legMap || {});
-    const total = Object.values(kmMap).reduce((s, v) => s + v, 0);
-    onKmTotalReal(Math.round(total * 10) / 10);
-    rutas.forEach((r, ri) => { if (kmMap[ri] !== undefined) r._kmReal = kmMap[ri]; });
   }
 
   const histBg    = historialStatus === 'success' ? '#EAF7EE' : '#FFF3E0';
@@ -123,17 +114,6 @@ export default function ResultsSection({
           cerrada={cerradasV1.has((r.v.p ?? '').trim().toUpperCase())}
         />
       ))}
-
-      <div className="no-print">
-        <MapSection
-          rutas={rutas}
-          gps={gps}
-          cd={cd}
-          tiendas={tiendas}
-          onKmReady={handleKmReady}
-          onCdUpdate={onCdUpdate}
-        />
-      </div>
 
       <div className="flex gap-[9px] mt-4 no-print">
         <button onClick={onVolver} className="h-[42px] px-4 rounded-kios2 bg-kbg text-kmuted text-[13px] font-semibold border-[1.5px] border-black/[0.09] whitespace-nowrap flex items-center gap-1.5">

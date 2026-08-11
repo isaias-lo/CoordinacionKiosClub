@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import InputSection   from './components/InputSection';
-import PlanificadorTab from './components/PlanificadorTab';
+import DespachoHeader from './components/DespachoHeader';
+import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
@@ -167,6 +168,15 @@ export default function RutasScreen() {
 
   const [results, setResults]           = useState<Results | null>(null);
   const kmTotalRealRef                  = useRef<number | null>(null);
+  // Filtro de grupo (RM/COSTA/REGIONES) de DespachoHeader — antes vivía dentro de
+  // InputSection (sidebarFilter); ahora la barra global lo controla y el board DESPACHO
+  // (ManualDispatch, vía InputSection) solo lo consume para filtrar el pool "Sin asignar".
+  const [grupoFiltro, setGrupoFiltro]   = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
+  // Km real + detalle por tramo del mapa persistente (MapSection) — antes vivía dentro de
+  // ResultsSection (que montaba su propio MapSection); ahora el mapa es un panel fijo fuera
+  // de ResultsSection, así que el resultado se sube acá y baja a ResultsSection por props.
+  const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
+  const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
   const comparacionTokenRef             = useRef(0); // evita que una respuesta IA vieja pise una comparación nueva
   const [updateStatus,  setUpdateStatus]  = useState('idle');
   const [historialStatus, setHistorialStatus] = useState('idle');
@@ -1324,6 +1334,7 @@ export default function RutasScreen() {
     const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
+    setKmPorRuta({}); setLegDataPorRuta({});
 
     // Guardar tiendas sin asignar para segunda vuelta (cross-device via Supabase, keyed by fecha dispatch)
     const asignadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
@@ -1514,6 +1525,7 @@ export default function RutasScreen() {
     });
     setComparisonData(null);
     kmTotalRealRef.current = null;
+    setKmPorRuta({}); setLegDataPorRuta({});
   }
   function handleVolverEditar() { setComparisonData(null); }
 
@@ -1522,6 +1534,7 @@ export default function RutasScreen() {
     manuallyEditedRef.current.clear();
     setResults(null); setErrors([]); setManualText(''); setManualAsignaciones({});
     setComparisonData(null); setParadasAdicionales([]); kmTotalRealRef.current = null;
+    setKmPorRuta({}); setLegDataPorRuta({});
     setHistorialMsg(''); setHistorialStatus('idle');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -1535,6 +1548,16 @@ export default function RutasScreen() {
 
   // ── PDF ───────────────────────────────────────────────────────────
   function handleGenerarPDF() { setTimeout(() => window.print(), 100); }
+
+  // ── Mapa persistente: km real + detalle por tramo (movido desde ResultsSection,
+  //    que antes montaba su propio MapSection — ver DespachoHeader/MapSection en el render) ──
+  function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
+    setKmPorRuta(kmMap);
+    setLegDataPorRuta(legMap || {});
+    const total = Object.values(kmMap).reduce((s, v) => s + v, 0);
+    kmTotalRealRef.current = Math.round(total * 10) / 10;
+    if (results) results.rutas.forEach((r, ri) => { if (kmMap[ri] !== undefined) r._kmReal = kmMap[ri]; });
+  }
 
   // ── Update from Sheets (Authenticated) ───────────────────────────
   async function handleActualizarDatos() {
@@ -1953,132 +1976,150 @@ export default function RutasScreen() {
         </div>
       )}
 
-      <main className="flex-1 overflow-hidden">
-        <InputSection
-          flota={flota}
-          modo={modo} grps={grps} calT={sortedCalT}
-          supervisor={supervisor} fecha={fecha}
-          manualText={manualText} errors={errors}
-          dnom={DNOM}
-          tiendas={tiendas} gps={gps} cd={cdRef.current}
-          manualAsignaciones={manualAsignaciones}
-          paradasAdicionales={paradasAdicionales}
-          onOpenParadas={handleOpenParadas}
-          onModo={m => setModo(m)}
-          onToggleGroup={handleToggleGroup}
-          flotaStatus={flotaStatus}
-          onToggleFlota={handleToggleFlota}
-          ordenActivacion={flotaActivadaEn}
-          onToggleTlbd={handleToggleTlbd}
-          onAgregarVehiculo={handleAgregarVehiculo}
-          onEliminarVehiculo={handleEliminarVehiculo}
-          onActualizarVehiculo={handleActualizarVehiculo}
-          onGuardarFlota={handleGuardarFlota}
-          onSupervisor={setSupervisor}
-          onFecha={setFecha}
-          onManual={setManualText}
-          onAsignaciones={setManualAsignaciones}
-          onCalcular={handleCalcular}
-          onCalcularManual={handleCalcularManual}
-          onAsignarIA={handleAsignarIA}
-          iaLoading={iaLoading}
-          onCerrarCamion={cerrarCamionV1Board}
-          onLimpiar={handleLimpiar}
-          onEliminarParada={handleEliminarParada}
-          rightPanelContent={
-            results ? (
-              <div className="h-full overflow-y-auto">
-                <div className="px-3.5 py-5">
-                  <ResultsSection
-                    results={results}
-                    supervisor={supervisor}
-                    fecha={fecha}
-                    tiendas={(results.extTiendas || tiendas) as Parameters<typeof ResultsSection>[0]['tiendas']}
-                    gps={results.extGps || gps}
-                    cd={cdRef.current}
-                    flota={flota}
-                    onLimpiar={handleLimpiar}
-                    onVolver={handleVolverAEdicion}
-                    onGenerarPDF={handleGenerarPDF}
-                    onGuardarHistorial={handleGuardarHistorial}
-                    historialStatus={historialStatus}
-                    historialMsg={historialMsg}
-                    onKmTotalReal={km => { kmTotalRealRef.current = km; }}
-                    onCdUpdate={coords => { cdRef.current = coords; }}
-                    pendientesV2={pendientesV2}
-                    onCargarPendientes={handleCargarPendientes}
-                    onListoPorHoy={handleListoPorHoy}
-                    cerrado={cerrado}
-                    cerradasV1={cerradasV1}
-                  />
-                </div>
-                <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
-                  KiosClub · Sistema de Enrutamiento v4.3 · {Object.keys(tiendas).length} tiendas
-                </footer>
-              </div>
-            ) : comparisonData ? (
-              <div className="h-full overflow-y-auto">
-                <div className="px-3.5 py-5">
-                  <ComparisonView
-                    data={comparisonData}
-                    gps={comparisonData.extGps || gps}
-                    cd={cdRef.current}
-                    tiendas={(comparisonData.extTiendas || tiendas) as Record<string, TiendaInfo>}
-                    onUsar={handleUsarRuta}
-                    onVolver={handleVolverEditar}
-                  />
-                </div>
-              </div>
-            ) : undefined
-          }
-          segundaVueltaContent={
-            <div className="h-full overflow-y-auto p-4">
-              {pendientesV2Origen.length === 0 ? (
-                <div className="bg-kbg border border-black/[0.09] rounded-kios2 px-3 py-4 text-[13px] text-kmuted text-center">
-                  No hay pendientes de 2ª vuelta de días anteriores.
-                </div>
-              ) : (
-                <>
-                  {/* Sub-pestañas por FECHA DE ORIGEN: cada día se ve, asigna y cierra por separado
-                      (antes se sumaban todas las fechas por código y se perdía el detalle). */}
-                  <div className="flex gap-2 mb-3 flex-wrap">
-                    {fechasV2.map(f => {
-                      const active = f === v2Fecha;
-                      return (
-                        <button key={f} onClick={() => setV2Fecha(f)}
-                          className={`px-3 py-1.5 rounded-kios2 text-[12px] font-semibold border transition-colors flex items-center gap-1.5 ${
-                            active ? 'bg-knavy text-white border-knavy' : 'bg-kbg text-ktext border-black/[0.12] hover:border-knavy/40'}`}>
-                          {fechaTxt(f)}
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${active ? 'bg-white/25 text-white' : 'bg-black/[0.06] text-kmuted'}`}>
-                            {conteoV2[f] ?? 0}
-                          </span>
-                        </button>
-                      );
-                    })}
+      <DespachoHeader
+        supervisor={supervisor} onSupervisor={setSupervisor}
+        fecha={fecha} onFecha={setFecha}
+        onOpenParadas={handleOpenParadas} paradasCount={paradasAdicionales.length}
+        dnom={DNOM} calT={sortedCalT}
+        grps={grps} onToggleGroup={handleToggleGroup}
+        grupoFiltro={grupoFiltro} onGrupoFiltro={setGrupoFiltro}
+      />
+
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div className="flex-1 md:flex-[2] min-w-0 overflow-hidden">
+          <InputSection
+            flota={flota}
+            modo={modo} calT={sortedCalT}
+            manualText={manualText} errors={errors}
+            tiendas={tiendas} gps={gps} cd={cdRef.current}
+            manualAsignaciones={manualAsignaciones}
+            paradasAdicionales={paradasAdicionales}
+            grupoFiltro={grupoFiltro}
+            onModo={m => setModo(m)}
+            flotaStatus={flotaStatus}
+            onToggleFlota={handleToggleFlota}
+            ordenActivacion={flotaActivadaEn}
+            onToggleTlbd={handleToggleTlbd}
+            onAgregarVehiculo={handleAgregarVehiculo}
+            onEliminarVehiculo={handleEliminarVehiculo}
+            onActualizarVehiculo={handleActualizarVehiculo}
+            onGuardarFlota={handleGuardarFlota}
+            onManual={setManualText}
+            onAsignaciones={setManualAsignaciones}
+            onCalcular={handleCalcular}
+            onCalcularManual={handleCalcularManual}
+            onAsignarIA={handleAsignarIA}
+            iaLoading={iaLoading}
+            onCerrarCamion={cerrarCamionV1Board}
+            onLimpiar={handleLimpiar}
+            onEliminarParada={handleEliminarParada}
+            rightPanelContent={
+              results ? (
+                <div className="h-full overflow-y-auto">
+                  <div className="px-3.5 py-5">
+                    <ResultsSection
+                      results={results}
+                      supervisor={supervisor}
+                      fecha={fecha}
+                      tiendas={(results.extTiendas || tiendas) as Parameters<typeof ResultsSection>[0]['tiendas']}
+                      gps={results.extGps || gps}
+                      cd={cdRef.current}
+                      flota={flota}
+                      onLimpiar={handleLimpiar}
+                      onVolver={handleVolverAEdicion}
+                      onGenerarPDF={handleGenerarPDF}
+                      onGuardarHistorial={handleGuardarHistorial}
+                      historialStatus={historialStatus}
+                      historialMsg={historialMsg}
+                      kmPorRuta={kmPorRuta}
+                      legDataPorRuta={legDataPorRuta}
+                      pendientesV2={pendientesV2}
+                      onCargarPendientes={handleCargarPendientes}
+                      onListoPorHoy={handleListoPorHoy}
+                      cerrado={cerrado}
+                      cerradasV1={cerradasV1}
+                    />
                   </div>
-                  <div className="mb-3 text-[12px] text-kmuted">
-                    Pendientes del <span className="font-semibold text-ktext">{v2Fecha ? fechaTxt(v2Fecha) : '—'}</span>: asigná
-                    un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto, bajo esa fecha de origen.
+                  <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
+                    KiosClub · Sistema de Enrutamiento v4.3 · {Object.keys(tiendas).length} tiendas
+                  </footer>
+                </div>
+              ) : comparisonData ? (
+                <div className="h-full overflow-y-auto">
+                  <div className="px-3.5 py-5">
+                    <ComparisonView
+                      data={comparisonData}
+                      gps={comparisonData.extGps || gps}
+                      cd={cdRef.current}
+                      tiendas={(comparisonData.extTiendas || tiendas) as Record<string, TiendaInfo>}
+                      onUsar={handleUsarRuta}
+                      onVolver={handleVolverEditar}
+                    />
                   </div>
-                  <ManualDispatch
-                    calT={calTV2}
-                    flota={flota}
-                    gps={gps}
-                    tiendas={tiendas}
-                    cd={cdRef.current}
-                    asignaciones={asignacionesV2[v2Fecha] || {}}
-                    onAsignaciones={a => setAsignacionesV2(prev => ({ ...prev, [v2Fecha]: a }))}
-                    onCalcular={() => {}}
-                    onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
-                    onToggleFlota={handleToggleFlota}
-                    hideCalcular={true}
-                  />
-                </>
-              )}
-            </div>
-          }
-          planificadorContent={<PlanificadorTab gps={gps} tiendas={tiendas} />}
-        />
+                </div>
+              ) : undefined
+            }
+            segundaVueltaContent={
+              <div className="h-full overflow-y-auto p-4">
+                {pendientesV2Origen.length === 0 ? (
+                  <div className="bg-kbg border border-black/[0.09] rounded-kios2 px-3 py-4 text-[13px] text-kmuted text-center">
+                    No hay pendientes de 2ª vuelta de días anteriores.
+                  </div>
+                ) : (
+                  <>
+                    {/* Sub-pestañas por FECHA DE ORIGEN: cada día se ve, asigna y cierra por separado
+                        (antes se sumaban todas las fechas por código y se perdía el detalle). */}
+                    <div className="flex gap-2 mb-3 flex-wrap">
+                      {fechasV2.map(f => {
+                        const active = f === v2Fecha;
+                        return (
+                          <button key={f} onClick={() => setV2Fecha(f)}
+                            className={`px-3 py-1.5 rounded-kios2 text-[12px] font-semibold border transition-colors flex items-center gap-1.5 ${
+                              active ? 'bg-knavy text-white border-knavy' : 'bg-kbg text-ktext border-black/[0.12] hover:border-knavy/40'}`}>
+                            {fechaTxt(f)}
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${active ? 'bg-white/25 text-white' : 'bg-black/[0.06] text-kmuted'}`}>
+                              {conteoV2[f] ?? 0}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mb-3 text-[12px] text-kmuted">
+                      Pendientes del <span className="font-semibold text-ktext">{v2Fecha ? fechaTxt(v2Fecha) : '—'}</span>: asigná
+                      un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto, bajo esa fecha de origen.
+                    </div>
+                    <ManualDispatch
+                      calT={calTV2}
+                      flota={flota}
+                      gps={gps}
+                      tiendas={tiendas}
+                      cd={cdRef.current}
+                      asignaciones={asignacionesV2[v2Fecha] || {}}
+                      onAsignaciones={a => setAsignacionesV2(prev => ({ ...prev, [v2Fecha]: a }))}
+                      onCalcular={() => {}}
+                      onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
+                      onToggleFlota={handleToggleFlota}
+                      hideCalcular={true}
+                    />
+                  </>
+                )}
+              </div>
+            }
+          />
+        </div>
+
+        {/* Mapa de rutas — panel fijo, siempre visible (antes solo aparecía tras calcular,
+            dentro de ResultsSection). Antes de calcular muestra el mapa vacío con el CD. */}
+        <div className="h-[320px] md:h-auto flex-shrink-0 md:flex-1 md:min-w-0 border-t md:border-t-0 md:border-l border-black/[0.09] overflow-hidden">
+          <MapSection
+            rutas={results?.rutas ?? []}
+            gps={results?.extGps || gps}
+            cd={cdRef.current}
+            tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo>}
+            onKmReady={handleKmReady}
+            onCdUpdate={coords => { cdRef.current = coords; }}
+          />
+        </div>
       </main>
 
       {manifiestoV2 && (
