@@ -136,7 +136,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
-              className="w-full h-[44px] rounded-kios2 border-[1.5px] border-dashed border-kred/40 text-kred text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-kred/[0.04] transition-all mb-4"
+              className="w-full h-[44px] rounded-kios2 border-[1.5px] border-dashed border-knavy/40 text-knavy text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-knavy/[0.04] transition-all mb-4"
             >
               <span className="text-[20px] font-bold leading-none">+</span>
               Nueva parada
@@ -158,10 +158,10 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                       key={val}
                       onClick={() => setForm(f => ({ ...f, tipo: val }))}
                       className={`flex-1 py-2.5 rounded-[8px] text-[12px] font-semibold border-[1.5px] transition-all
-                        ${form.tipo === val ? 'bg-kred/[0.07] border-kred text-kred' : 'bg-kbg border-black/[0.12] text-kmuted'}`}
+                        ${form.tipo === val ? 'bg-knavy/[0.07] border-knavy text-knavy' : 'bg-kbg border-black/[0.12] text-kmuted'}`}
                     >
                       <div className="flex items-center justify-center gap-1">{val === 'entrega' ? <Package size={14} aria-hidden="true" /> : <Inbox size={14} aria-hidden="true" />} {lb}</div>
-                      <div className={`text-[10px] font-normal mt-px ${form.tipo === val ? 'text-kred/70' : 'text-kmuted/60'}`}>{hint}</div>
+                      <div className={`text-[10px] font-normal mt-px ${form.tipo === val ? 'text-knavy/70' : 'text-kmuted/60'}`}>{hint}</div>
                     </button>
                   ))}
                 </div>
@@ -175,7 +175,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                     onChange={e => { setForm(f => ({ ...f, direccion: e.target.value })); setGeo(g => ({ ...g, gps: null, formatted: null, error: null })); }}
                     onKeyDown={e => e.key === 'Enter' && handleBuscar()}
                     placeholder="Av. Ejemplo 1234, Santiago"
-                    className="flex-1 h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 text-[13px] text-ktext focus:border-kred focus:outline-none"
+                    className="flex-1 h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 text-[13px] text-ktext focus:border-knavy focus:outline-none"
                   />
                   <button
                     onClick={handleBuscar}
@@ -197,7 +197,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                   type="text" value={form.descripcion}
                   onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
                   placeholder={form.tipo === 'entrega' ? 'Ej: Pallets vacíos...' : 'Ej: Devolución de mercadería...'}
-                  className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 text-[13px] text-ktext focus:border-kred focus:outline-none"
+                  className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 text-[13px] text-ktext focus:border-knavy focus:outline-none"
                 />
               </div>
 
@@ -208,7 +208,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                     <input
                       type="number" min="0" max={max} value={form[key]} placeholder="0"
                       onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                      className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 text-[13px] text-ktext focus:border-kred focus:outline-none"
+                      className="w-full h-[38px] px-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 text-[13px] text-ktext focus:border-knavy focus:outline-none"
                     />
                   </div>
                 ))}
@@ -218,7 +218,7 @@ export default function ParadasAdicionales({ isOpen, paradas, onAgregar, onElimi
                 onClick={handleAgregar}
                 disabled={!geo.gps}
                 className={`w-full h-[42px] rounded-kios2 text-[13px] font-bold transition-all
-                  ${geo.gps ? 'bg-kred text-white shadow-[0_3px_10px_rgba(212,43,43,0.25)] active:scale-[0.98]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                  ${geo.gps ? 'bg-knavy text-white active:scale-[0.98]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
               >
                 {geo.gps ? <span className="inline-flex items-center gap-1.5"><Check size={15} aria-hidden="true" /> Agregar a la ruta</span> : 'Primero busca la dirección'}
               </button>

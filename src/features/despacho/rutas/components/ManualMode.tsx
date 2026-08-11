@@ -120,11 +120,11 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
             <button
               key={id}
               onClick={() => toggleGroup(id)}
-              style={active ? { boxShadow: '0 2px 8px rgba(212,43,43,0.20)' } : undefined}
+              style={active ? { boxShadow: '0 2px 8px rgba(27,42,107,0.20)' } : undefined}
               className={`flex-1 h-[34px] rounded-[10px] text-[12px] font-extrabold tracking-wide transition-all border
                 ${active
-                  ? 'bg-kred text-white border-kred'
-                  : 'bg-white border-black/[0.10] text-kmuted hover:border-kred/[0.3] hover:text-kred'}`}
+                  ? 'bg-knavy text-white border-knavy'
+                  : 'bg-white border-black/[0.10] text-kmuted hover:border-knavy/[0.3] hover:text-knavy'}`}
             >
               {label}
             </button>
@@ -138,7 +138,7 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
         onChange={e => onChange(e.target.value)}
         placeholder={"LP: 3P - 2B\nMQH: 1P - 2B\nTRE: 5P"}
         rows={Math.max(6, (value.match(/\n/g) || []).length + 2)}
-        className="w-full min-h-[160px] px-3 py-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 resize-none overflow-hidden text-[14px] font-mono text-ktext leading-[1.8] transition-colors focus:border-kred focus:outline-none"
+        className="w-full min-h-[160px] px-3 py-3 bg-kbg border-[1.5px] border-black/[0.09] rounded-kios2 resize-none overflow-hidden text-[14px] font-mono text-ktext leading-[1.8] transition-colors focus:border-knavy focus:outline-none"
       />
 
       {/* ── Botón copiar (para WhatsApp / Email) ── */}
@@ -160,7 +160,7 @@ export default function ManualMode({ value, onChange, calT, modo }: Props) {
       </div>
 
       <div className="text-[11px] text-kmuted mt-2 leading-relaxed space-y-0.5">
-        <div>Una tienda por línea: <code className="font-mono bg-kbg px-1 py-px rounded text-kred">CÓDIGO  2P - 1B - 2CH</code></div>
+        <div>Una tienda por línea: <code className="font-mono bg-kbg px-1 py-px rounded text-knavy">CÓDIGO  2P - 1B - 2CH</code></div>
         <div className="text-kmuted/70">
           Acepta: <code className="font-mono">LP 3P 2B</code> · <code className="font-mono">LP: 3P - 2B - 1CH</code>
         </div>

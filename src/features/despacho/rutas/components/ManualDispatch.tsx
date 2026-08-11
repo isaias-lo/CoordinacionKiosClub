@@ -355,8 +355,8 @@ export default function ManualDispatch({
                 key={v.p} type="button"
                 onClick={() => onToggleFlota(i)}
                 title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
-                className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded-full text-[12px] font-bold font-mono border transition-all active:scale-95
-                  ${v.on ? 'bg-kred text-white border-kred' : 'bg-white text-kmuted border-black/[0.15] hover:border-kred/40'}
+                className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
+                  ${v.on ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
                   ${v.tlbd ? 'border-dashed' : ''}`}
               >
                 {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
@@ -385,10 +385,10 @@ export default function ManualDispatch({
           data-dropzone="pool"
           style={{
             boxShadow: dragOver === 'pool'
-              ? '0 0 0 2px rgba(212,43,43,0.25), 0 2px 12px rgba(212,43,43,0.10)'
+              ? '0 0 0 2px rgba(27,42,107,0.25), 0 2px 12px rgba(27,42,107,0.10)'
               : '0 1px 3px rgba(0,0,0,0.06)',
           }}
-          className={`rounded-[14px] border-[1.5px] transition-all mb-4 ${dragOver === 'pool' ? 'border-kred bg-kred/[0.03]' : 'border-black/[0.09] bg-white'}`}
+          className={`rounded-[14px] border-[1.5px] transition-all mb-4 ${dragOver === 'pool' ? 'border-knavy bg-knavy/[0.03]' : 'border-black/[0.09] bg-white'}`}
           onDragOver={e => { e.preventDefault(); setDragOver('pool'); }}
           onDrop={e => { e.preventDefault(); if (dragging) ejecutarDrop('pool', dragging); }}
           onDragLeave={handleDragLeave}
@@ -397,15 +397,15 @@ export default function ManualDispatch({
           <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
             <div className="flex-1 min-w-[120px]">
               <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
-              {dragging && <span className="ml-2 text-[12px] text-kred font-semibold animate-pulse">← Suelta aquí</span>}
+              {dragging && <span className="ml-2 text-[12px] text-knavy font-semibold animate-pulse">← Suelta aquí</span>}
             </div>
             {onAsignarIA && pool.length > 0 && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignarIA(); }}
                 disabled={iaLoading}
-                className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full text-[12px] font-bold text-white transition-all disabled:opacity-90 active:scale-[0.97] ${iaLoading ? 'ai-glow' : ''}`}
-                style={{ background: 'linear-gradient(135deg, #6D5AE6 0%, #8B5CF6 100%)', boxShadow: iaLoading ? 'none' : '0 2px 10px rgba(109,90,230,0.35)' }}
+                className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded text-[12px] font-bold text-white transition-all disabled:opacity-90 active:scale-[0.97] ${iaLoading ? 'ai-glow' : ''}`}
+                style={{ background: '#8B5CF6' }}
                 title="Propone la asignación aprendiendo del historial"
               >
                 {iaLoading
@@ -418,8 +418,8 @@ export default function ManualDispatch({
             </span>
           </div>
           {hasSelection && (
-            <div className="px-4 py-2 bg-kred/[0.05] border-b border-kred/15 flex items-center gap-2 text-[12px]">
-              <span className="font-bold text-kred">{selected.size} seleccionada{selected.size > 1 ? 's' : ''}</span>
+            <div className="px-4 py-2 bg-knavy/[0.05] border-b border-knavy/15 flex items-center gap-2 text-[12px]">
+              <span className="font-bold text-knavy">{selected.size} seleccionada{selected.size > 1 ? 's' : ''}</span>
               <span className="text-kmuted">— toca una patente para mover todas a la vez</span>
               <button onClick={e => { e.stopPropagation(); clearSel(); }} className="ml-auto text-kmuted underline font-semibold">Limpiar</button>
             </div>
@@ -477,7 +477,7 @@ export default function ManualDispatch({
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
           const isOver  = dragOver === v.p;
-          const pctColor = m.overCap ? 'bg-red-400' : m.pct > 0.85 ? 'bg-amber-400' : 'bg-kred';
+          const pctColor = m.overCap ? 'bg-red-400' : m.pct > 0.85 ? 'bg-amber-400' : 'bg-green-500';
 
           return (
             <div
@@ -485,12 +485,12 @@ export default function ManualDispatch({
               data-dropzone={v.p}
               style={{
                 boxShadow: isOver
-                  ? '0 0 0 2px rgba(212,43,43,0.25), 0 4px 20px rgba(212,43,43,0.12)'
+                  ? '0 0 0 2px rgba(27,42,107,0.25), 0 4px 20px rgba(27,42,107,0.12)'
                   : m.overCap
                     ? '0 2px 10px rgba(245,158,11,0.18)'
                     : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
               }}
-              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver ? 'border-kred' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
+              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
@@ -504,9 +504,9 @@ export default function ManualDispatch({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono font-bold text-[17px] text-ktext leading-none tracking-tight">{v.p}</span>
                   <div className="flex gap-1 flex-wrap justify-end">
-                    {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded-full font-bold">2ª v.</span>}
-                    {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded-full font-semibold">Portón</span>}
-                    {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded-full font-semibold">❄ Frío</span>}
+                    {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
+                    {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
+                    {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded font-semibold">❄ Frío</span>}
                   </div>
                 </div>
                 {v.t && <div className="text-[10px] text-kmuted/60 mt-0.5 truncate">{v.t}</div>}
@@ -543,8 +543,8 @@ export default function ManualDispatch({
               {/* ── Tiendas asignadas ── */}
               <div className="px-2.5 pb-2 pt-1.5 flex flex-wrap gap-[5px] min-h-[42px] flex-1">
                 {stores.length === 0 ? (
-                  <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-kred/50 bg-kred/[0.04]' : 'border-black/[0.12]'}`}>
-                    <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-kred' : 'text-kmuted/50'}`}>
+                  <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-knavy/50 bg-knavy/[0.04]' : 'border-black/[0.12]'}`}>
+                    <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-knavy' : 'text-kmuted/50'}`}>
                       {isOver || isSelected ? '↓ Suelta aquí' : hasSelection ? '↓ Toca para mover selección' : 'Arrastra tiendas aquí'}
                     </span>
                   </div>
@@ -598,7 +598,7 @@ export default function ManualDispatch({
 
       {issues.length > 0 && (
         <div
-          style={{ boxShadow: '0 1px 4px rgba(245,158,11,0.15)' }}
+          style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
           className="bg-amber-50 border border-amber-200 rounded-[12px] px-4 py-3 text-[13px] text-amber-800 leading-relaxed"
         >
           ⚠️ {issues.join(' · ')}
@@ -633,18 +633,13 @@ export default function ManualDispatch({
               onCalcular();
             }}
             disabled={issues.some(i => i.includes('excede'))}
-            style={!onCerrarCamion && !issues.some(i => i.includes('excede')) ? {
-              boxShadow: pendientesTotal > 0
-                ? '0 4px 16px rgba(245,158,11,0.35)'
-                : '0 4px 16px rgba(212,43,43,0.32)',
-            } : undefined}
             className={`w-full font-bold transition-all flex items-center justify-center gap-2
               ${onCerrarCamion ? 'h-[44px] text-[14px] rounded-[12px]' : 'h-[56px] text-[16px] rounded-[14px] mt-1'}
               ${issues.some(i => i.includes('excede'))
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
                 : pendientesTotal > 0
                   ? (onCerrarCamion ? 'bg-amber-50 text-amber-700 border-[1.5px] border-amber-300 active:scale-[0.98]' : 'bg-amber-500 text-white active:scale-[0.98]')
-                  : (onCerrarCamion ? 'bg-white text-kred border-[1.5px] border-kred/40 active:scale-[0.98]' : 'bg-kred text-white active:scale-[0.98]')}`}
+                  : (onCerrarCamion ? 'bg-white text-knavy border-[1.5px] border-knavy/40 active:scale-[0.98]' : 'bg-knavy text-white active:scale-[0.98]')}`}
           >
             {pendientesTotal > 0
               ? `⚠️ Calcular ruta parcial (${pendientesTotal} sin asignar)`
@@ -677,7 +672,7 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
       className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] touch-manipulation ${isDragging
         ? 'opacity-30 scale-95'
         : selected
-          ? `ring-2 ring-kred/40 ${isEntrega ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-orange-100 border-orange-400 text-orange-800'}`
+          ? `ring-2 ring-knavy/40 ${isEntrega ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-orange-100 border-orange-400 text-orange-800'}`
           : isEntrega
             ? 'bg-blue-50 border-blue-200 text-blue-700 active:bg-blue-100'
             : 'bg-orange-50 border-orange-200 text-orange-700 active:bg-orange-100'}`}
@@ -689,7 +684,7 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
           onTouchStart={e => e.stopPropagation()}
           draggable={false}
           title="Seleccionar para mover en grupo"
-          className={`w-[16px] h-[16px] rounded-full border flex items-center justify-center text-[9px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-kred border-kred text-white' : 'bg-white border-black/25 text-transparent'}`}
+          className={`w-[16px] h-[16px] rounded-full border flex items-center justify-center text-[9px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-black/25 text-transparent'}`}
         >✓</button>
       )}
       <span className="text-[11px] font-bold">{isEntrega ? '↓' : '↑'}</span>
@@ -717,12 +712,12 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
-      style={!isDragging ? { boxShadow: '0 1px 3px rgba(212,43,43,0.15)' } : undefined}
+      style={!isDragging ? { boxShadow: '0 1px 3px rgba(27,42,107,0.15)' } : undefined}
       className={`flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] cursor-grab select-none transition-all border min-h-[38px] touch-manipulation ${isDragging
-        ? 'opacity-30 scale-95 bg-kred/[0.05] border-kred/20'
+        ? 'opacity-30 scale-95 bg-knavy/[0.05] border-knavy/20'
         : selected
-          ? 'bg-kred/[0.15] border-kred text-kred ring-2 ring-kred/40'
-          : 'bg-kred/[0.07] border-kred/[0.25] text-kred active:bg-kred/[0.15]'}`}
+          ? 'bg-knavy/[0.15] border-knavy text-knavy ring-2 ring-knavy/40'
+          : 'bg-knavy/[0.07] border-knavy/[0.25] text-knavy active:bg-knavy/[0.15]'}`}
       title={info ? `${info.n} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b` : `${store.c} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b`}
     >
       {onToggleSelect && (
@@ -732,17 +727,17 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           onTouchStart={e => e.stopPropagation()}
           draggable={false}
           title="Seleccionar para mover en grupo"
-          className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-kred border-kred text-white' : 'bg-white border-kred/40 text-transparent'}`}
+          className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
         >✓</button>
       )}
       <span className="font-mono font-bold text-[13px]">{formatCod(store.c)}</span>
-      <span className="text-[11px] text-kred/60 font-semibold">{store.p}p</span>
+      <span className="text-[11px] text-knavy/60 font-semibold">{store.p}p</span>
       {(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 && (
-        <span className="text-[11px] text-kred/50 font-semibold">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
+        <span className="text-[11px] text-knavy/50 font-semibold">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
       )}
       {onRemove && (
         <button onClick={e => { e.stopPropagation(); onRemove(); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          className="text-[13px] text-kred/40 hover:text-kred font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center">×</button>
+          className="text-[13px] text-knavy/40 hover:text-knavy font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center">×</button>
       )}
     </div>
   );

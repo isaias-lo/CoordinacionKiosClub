@@ -160,8 +160,8 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
           onClick={() => onUsar(manual, ts, 'mia')}
           className={`h-[52px] rounded-kios2 text-[14px] font-bold transition-all active:scale-[0.98] flex flex-col items-center justify-center gap-0.5
             ${manualEsMejor
-              ? 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)]'
-              : 'bg-white border-[2px] border-kred text-kred'}`}
+              ? 'bg-knavy text-white'
+              : 'bg-white border-[2px] border-knavy text-knavy'}`}
         >
           <span>✋ Usar Mi Ruta</span>
           <span className="text-[10px] opacity-70 font-normal">{resManual.totalKm} km est. · {manual.length} vehículo{manual.length !== 1 ? 's' : ''}</span>
@@ -170,8 +170,8 @@ export default function ComparisonView({ data, gps, cd, tiendas, onUsar, onVolve
           onClick={() => onUsar(optima, ts, fuenteAlt)}
           className={`h-[52px] rounded-kios2 text-[14px] font-bold transition-all active:scale-[0.98] flex flex-col items-center justify-center gap-0.5
             ${!manualEsMejor
-              ? 'bg-kred text-white shadow-[0_4px_14px_rgba(212,43,43,0.3)]'
-              : 'bg-white border-[2px] border-kred text-kred'}`}
+              ? 'bg-knavy text-white'
+              : 'bg-white border-[2px] border-knavy text-knavy'}`}
         >
           <span>{altIcon} Usar {altEsIA ? 'Ruta IA' : 'Ruta Óptima'}</span>
           <span className="text-[10px] opacity-70 font-normal">{resOptima.totalKm} km est. · {optima.length} vehículo{optima.length !== 1 ? 's' : ''}</span>
@@ -186,7 +186,7 @@ function SummaryCard({ title, icon, rutas, totalKm, avgPct, issues, highlighted,
   issues: string[]; highlighted: boolean; badge: string | null;
   badgeColor: 'green' | 'amber' | 'gray';
 }) {
-  const borderClass = highlighted ? 'border-kred' : 'border-black/[0.09]';
+  const borderClass = highlighted ? 'border-knavy' : 'border-black/[0.09]';
   const badgeClasses = {
     green: 'bg-green-50 text-green-700 border-green-200',
     amber: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -195,7 +195,7 @@ function SummaryCard({ title, icon, rutas, totalKm, avgPct, issues, highlighted,
 
   return (
     <div className={`bg-white rounded-kios border-[1.5px] ${borderClass} overflow-hidden`}>
-      <div className={`px-3 py-2 border-b ${highlighted ? 'border-kred/20 bg-kred/[0.03]' : 'border-black/[0.06]'}`}>
+      <div className={`px-3 py-2 border-b ${highlighted ? 'border-knavy/20 bg-knavy/[0.03]' : 'border-black/[0.06]'}`}>
         <div className="text-[12px] font-bold text-ktext">{icon} {title}</div>
       </div>
       <div className="px-3 py-2.5 space-y-1.5">
@@ -206,7 +206,7 @@ function SummaryCard({ title, icon, rutas, totalKm, avgPct, issues, highlighted,
           <div className="text-[10px] text-red-600 font-semibold">⚠ {issues[0]}</div>
         )}
         {badge && (
-          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit ${badgeClasses[badgeColor]}`}>
+          <div className={`text-[10px] font-bold px-2 py-0.5 rounded border w-fit ${badgeClasses[badgeColor]}`}>
             {badge}
           </div>
         )}
@@ -265,7 +265,7 @@ function RouteDetail({ rutas, tiendas, title }: { rutas: RutaConKm[]; tiendas: R
                   }
                   return (
                     <div key={t.c} className="bg-kbg border border-black/[0.08] rounded-[4px] px-2 py-1 max-w-[160px]">
-                      <div className="font-mono font-bold text-[10px] text-kred">{j + 1}. {formatCod(t.c)}</div>
+                      <div className="font-mono font-bold text-[10px] text-knavy">{j + 1}. {formatCod(t.c)}</div>
                       {inf?.n && <div className="text-[9px] text-ktext font-medium truncate">{inf.n}</div>}
                       {inf?.d && <div className="text-[9px] text-kmuted truncate">{inf.d}</div>}
                     </div>

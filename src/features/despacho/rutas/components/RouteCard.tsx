@@ -21,9 +21,9 @@ export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cer
   const r    = ruta;
   const pct  = Math.min((r.tp / r.v.c) * 100, 120);
   const over = pct > 100;
-  const cls  = pct > 100 ? 'bg-gradient-to-r from-[#FF3B30] to-[#FF6B6B]'
-             : pct > 80  ? 'bg-gradient-to-r from-[#FF9500] to-[#FFCC00]'
-             :              'bg-gradient-to-r from-[#34C759] to-[#30D158]';
+  const cls  = pct > 100 ? 'bg-[#FF3B30]'
+             : pct > 80  ? 'bg-[#FF9500]'
+             :              'bg-[#34C759]';
   const vuelta = r.v.tlbd ? '2' : '1';
   const km     = kmReal !== undefined ? kmReal : (() => {
     let k = 0, prev = cd;
@@ -35,7 +35,7 @@ export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cer
     <div className="rc bg-white rounded-kios shadow-kios overflow-hidden mb-[11px]">
       <div className="px-4 py-3 border-b border-black/[0.09] flex items-center gap-2 flex-wrap">
         <span className="font-mono text-[15px] font-bold text-ktext">{r.v.p}</span>
-        <span className={`vbdg h-[23px] px-[9px] rounded-[6px] font-mono text-[10px] font-bold flex items-center ${vuelta==='1'?'v1 bg-knavy/[0.1] text-knavy border border-knavy/[0.18]':'v2 bg-kred/[0.09] text-kred border border-kred/[0.18]'}`}>
+        <span className={`vbdg h-[23px] px-[9px] rounded-[6px] font-mono text-[10px] font-bold flex items-center ${vuelta==='1'?'v1 bg-knavy/[0.1] text-knavy border border-knavy/[0.18]':'v2 bg-[#6B21A8]/[0.09] text-[#6B21A8] border border-[#6B21A8]/[0.18]'}`}>
           {vuelta}a VUELTA
         </span>
         {r.v.porton === true  && <span className="text-[9px] font-semibold text-[#34C759] bg-[#EAF7EE] border border-[#34C759] rounded px-1.5 py-px">Portón</span>}
@@ -49,7 +49,7 @@ export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cer
       </div>
 
       <div className="px-4 py-[11px] border-b border-black/[0.09] flex gap-3.5 items-center">
-        <div><div className="text-[17px] font-extrabold text-kred">{r.tp}</div><div className="text-[11px] text-kmuted">pallets</div></div>
+        <div><div className="text-[17px] font-extrabold text-knavy">{r.tp}</div><div className="text-[11px] text-kmuted">pallets</div></div>
         <div className="text-black/[0.09] text-[16px]">·</div>
         <div><div className="text-[17px] font-extrabold text-korange">{r.tb}</div><div className="text-[11px] text-kmuted">bultos</div></div>
         <div className="text-black/[0.09] text-[16px]">·</div>
@@ -126,11 +126,11 @@ export default function RouteCard({ ruta, tiendas, gps, cd, kmReal, legData, cer
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-[7px] flex-wrap">
-                <span className="scod font-mono text-[14px] font-extrabold text-kred">{formatCod(t.c)}</span>
+                <span className="scod font-mono text-[14px] font-extrabold text-knavy">{formatCod(t.c)}</span>
                 <span className="szon text-[10px] font-semibold text-knavy bg-knavy/[0.08] border border-knavy/[0.12] rounded px-1.5 py-px">
                   {inf ? inf.z : ''}
                 </span>
-                <div className="ml-auto font-mono text-[11px] font-bold text-kred">
+                <div className="ml-auto font-mono text-[11px] font-bold text-knavy">
                   {t.p}P{t.b ? <span className="text-korange"> +{t.b}B</span> : null}
                 </div>
               </div>

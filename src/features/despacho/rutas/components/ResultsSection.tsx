@@ -73,7 +73,7 @@ export default function ResultsSection({
   return (
     <div id="res" className="mt-[22px]">
 
-      <div id="pdfHeader" className="print-flex hidden items-center justify-between pb-3.5 mb-4 border-b-[3px] border-kred">
+      <div id="pdfHeader" className="print-flex hidden items-center justify-between pb-3.5 mb-4 border-b-[3px] border-knavy">
         {/* Logo oficial (fondo claro en impresión). Fallback al wordmark si la imagen no carga. */}
         <img
           src="/logo-kiosclub.webp"
@@ -104,7 +104,7 @@ export default function ResultsSection({
           [rutas.length, 'Rutas'],
         ] as [number, string][]).map(([n, l]) => (
           <div key={l} className="sc bg-white rounded-kios shadow-kios px-4 py-3.5">
-            <div className="sn text-[30px] font-extrabold text-kred leading-none tracking-tight">{n}</div>
+            <div className="sn text-[30px] font-extrabold text-knavy leading-none tracking-tight">{n}</div>
             <div className="text-[11px] font-semibold text-kmuted uppercase tracking-[0.8px] mt-0.5">{l}</div>
           </div>
         ))}
@@ -142,7 +142,7 @@ export default function ResultsSection({
         <button onClick={onLimpiar} className="flex-1 h-[42px] rounded-kios2 bg-kbg text-kmuted text-[14px] font-semibold border-[1.5px] border-black/[0.09]">
           Nueva consulta
         </button>
-        <button onClick={onGenerarPDF} className="btn-pdf flex-1 h-[50px] px-6 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(27,42,107,0.3)]">
+        <button onClick={onGenerarPDF} className="btn-pdf flex-1 h-[50px] px-6 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2">
           <FileText size={16} aria-hidden="true" /> Exportar PDF
         </button>
       </div>
@@ -171,8 +171,7 @@ export default function ResultsSection({
       <div className="mt-[9px] no-print">
         <button
           onClick={() => setManifiestoOpen(true)}
-          className="w-full h-[46px] rounded-kios2 text-white text-[14px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
-          style={{ background: 'linear-gradient(135deg, #1a2550 0%, #2d3f8a 100%)', boxShadow: '0 4px 14px rgba(26,37,80,0.3)' }}
+          className="w-full h-[46px] rounded-kios2 bg-knavy text-white text-[14px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <ClipboardList size={16} aria-hidden="true" /> Generar Manifiestos de Ruta
         </button>

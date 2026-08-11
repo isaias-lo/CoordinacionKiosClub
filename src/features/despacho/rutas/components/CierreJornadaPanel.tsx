@@ -33,7 +33,7 @@ function resumenVuelta(rutas: Ruta[], esV2: boolean): Resumen {
 function Stat({ n, label }: { n: number; label: string }) {
   return (
     <div className="bg-white rounded-kios shadow-kios px-3 py-3 text-center">
-      <div className="text-[26px] font-extrabold text-kred leading-none tracking-tight">{n}</div>
+      <div className="text-[26px] font-extrabold text-knavy leading-none tracking-tight">{n}</div>
       <div className="text-[10px] font-semibold text-kmuted uppercase tracking-[0.6px] mt-0.5">{label}</div>
     </div>
   );
@@ -71,8 +71,7 @@ export default function CierreJornadaPanel({
   return (
     <div className="fixed inset-0 z-[300] flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0"
-        style={{ boxShadow: '0 2px 12px rgba(26,37,80,0.4)' }}>
+      <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0">
         <div>
           <div className="font-barlow-condensed text-[20px] font-bold tracking-widest uppercase">Cierre de jornada</div>
           <div className="text-white/50 text-[11px] mt-0.5">
@@ -92,7 +91,7 @@ export default function CierreJornadaPanel({
 
           <div className="text-[11px] font-semibold text-kmuted uppercase tracking-[1px] mb-2">Resumen despachado</div>
           <BloqueVuelta titulo="1ª Vuelta" r={v1} accent="#1B2A6B" />
-          <BloqueVuelta titulo="2ª Vuelta" r={v2} accent="#FF3B30" />
+          <BloqueVuelta titulo="2ª Vuelta" r={v2} accent="#6B21A8" />
           {v1.rutas === 0 && v2.rutas === 0 && (
             <div className="text-[13px] text-kmuted bg-white rounded-kios shadow-kios px-4 py-5 text-center mb-3">
               Aún no hay rutas registradas para hoy.
@@ -144,7 +143,7 @@ export default function CierreJornadaPanel({
           {/* Listo por hoy */}
           <button
             onClick={() => { onListoPorHoy(); onClose(); }}
-            className="w-full h-[50px] mt-2 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(27,42,107,0.3)] active:scale-[0.99] transition-transform"
+            className="w-full h-[50px] mt-2 rounded-kios2 bg-knavy text-white text-[15px] font-bold flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
           >
             <Check size={16} aria-hidden="true" /> Listo por hoy
           </button>
