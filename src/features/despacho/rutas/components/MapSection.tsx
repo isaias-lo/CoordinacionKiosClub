@@ -55,11 +55,11 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
   }
 
   return (
-    <div className="mt-3.5 no-print">
-      <div className="text-[11px] font-semibold text-kmuted uppercase tracking-[1px] mb-1">03 — Mapa de rutas</div>
-      <div className="bg-white rounded-kios shadow-kios overflow-hidden">
+    <div className="h-full flex flex-col bg-white no-print overflow-hidden">
 
-        <div className="px-3 py-2.5 border-b border-black/[0.09] flex gap-1.5 flex-wrap">
+      <div className="px-3 py-2.5 border-b border-black/[0.09] flex-shrink-0">
+        <div className="text-[11px] font-bold text-ktext uppercase tracking-wide mb-2">Mapa de rutas</div>
+        <div className="flex gap-1.5 flex-wrap">
           <button
             onClick={e => handleTab(rutas, e.currentTarget)}
             className="mtab2 on h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] border-knavy bg-knavy text-white transition-all"
@@ -80,8 +80,10 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
             );
           })}
         </div>
+      </div>
 
-        <div className="px-3.5 py-2 border-b border-black/[0.09] flex flex-wrap gap-[9px]">
+      {rutas.length > 0 && (
+        <div className="px-3.5 py-2 border-b border-black/[0.09] flex flex-wrap gap-[9px] flex-shrink-0">
           {rutas.map((r, i) => {
             const col = COLS[i % COLS.length];
             return (
@@ -93,9 +95,9 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
             );
           })}
         </div>
+      )}
 
-        <div ref={elRef} className="w-full h-[260px] sm:h-[380px]" style={{ background: '#e8eaed' }} />
-      </div>
+      <div ref={elRef} className="w-full flex-1 min-h-0" style={{ background: '#e8eaed' }} />
     </div>
   );
 }
