@@ -146,11 +146,11 @@ function TiendaGridCard({
       onClick={onSelect}
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
-          ? 'bg-[rgba(211,47,47,0.12)] border-2 border-red shadow-sm'
+          ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
           : hasGuide
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success active:bg-[rgba(22,163,74,0.12)]'
           : isToday
-          ? 'bg-[rgba(211,47,47,0.04)] border border-[rgba(211,47,47,0.20)] active:bg-[rgba(211,47,47,0.09)]'
+          ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] active:bg-[rgba(30,64,175,0.09)]'
           : 'bg-white border border-border active:bg-bg'
         }`}>
       {isToday && onRemoveFromToday && (
@@ -163,7 +163,7 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-red' : hasGuide ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : hasGuide ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
       <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
@@ -179,15 +179,15 @@ function TiendaGridCard({
       })()}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-info/25">{remP}P</span>}
-        {remB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-warn/25">{remB}B</span>}
-        {remC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded-full leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
-        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.45)', background: 'rgba(146,64,14,0.05)', borderColor: 'rgba(146,64,14,0.25)' }}>{remCH}CH</span>}
+        {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-info/25">{remP}P</span>}
+        {remB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-warn/25">{remB}B</span>}
+        {remC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
+        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.45)', background: 'rgba(146,64,14,0.05)', borderColor: 'rgba(146,64,14,0.25)' }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
-        {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded-full leading-none">{palletCount}P</span>}
-        {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded-full leading-none">{boxCount}B</span>}
-        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded-full leading-none">{contenedorCount}C</span>}
-        {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
+        {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded leading-none">{palletCount}P</span>}
+        {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded leading-none">{boxCount}B</span>}
+        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded leading-none">{contenedorCount}C</span>}
+        {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
       </div>
       <StoreProgressBar total={storeTotalOps} done={storeDoneOps} variant="grid" showCount />
     </div>
@@ -204,8 +204,8 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
   const isAdd = mode === 'add';
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-navy/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-xs overflow-hidden shadow-2xl">
-        <div className={`px-5 py-4 border-b text-center ${isAdd ? 'bg-[rgba(211,47,47,0.07)] border-[rgba(211,47,47,0.12)]' : 'bg-[rgba(217,119,6,0.07)] border-[rgba(217,119,6,0.12)]'}`}>
+      <div className="bg-white rounded-lg w-full max-w-xs overflow-hidden" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.10)' }}>
+        <div className={`px-5 py-4 border-b text-center ${isAdd ? 'bg-[rgba(30,64,175,0.06)] border-[rgba(30,64,175,0.12)]' : 'bg-[rgba(217,119,6,0.07)] border-[rgba(217,119,6,0.12)]'}`}>
           <h3 className="font-barlow-condensed text-[21px] font-bold text-navy">Modificar calendario</h3>
         </div>
         <div className="px-5 py-4 text-center">
@@ -222,7 +222,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
             Cancelar
           </button>
           <button onClick={onConfirm}
-            className={`flex-1 py-3.5 font-barlow-condensed text-[17px] font-bold text-white cursor-pointer ${isAdd ? 'bg-red' : 'bg-[#D97706]'}`}>
+            className={`flex-1 py-3.5 font-barlow-condensed text-[17px] font-bold text-white cursor-pointer ${isAdd ? 'bg-[#1E40AF]' : 'bg-[#D97706]'}`}>
             {isAdd ? 'Confirmar' : 'Retirar'}
           </button>
         </div>
@@ -1527,9 +1527,9 @@ export function StepForm() {
     <div className="flex-1 overflow-y-auto">
       {todayList.length > 0 && (
         <div>
-          <div className="px-3 py-2 bg-[rgba(211,47,47,0.10)] border-b border-[rgba(211,47,47,0.20)] sticky top-0 z-10 flex items-center gap-2">
-            <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-red">HOY</span>
-            <span className="font-barlow-condensed text-[10px] text-red/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
+          <div className="px-3 py-2 bg-[rgba(30,64,175,0.10)] border-b border-[rgba(30,64,175,0.20)] sticky top-0 z-10 flex items-center gap-2">
+            <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-[#1E40AF]">HOY</span>
+            <span className="font-barlow-condensed text-[10px] text-[#1E40AF]/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
             <span className="ml-auto flex items-center gap-2.5">
               {rmProg.total > 0 && (
                 <span className="flex items-center gap-1.5">
@@ -1616,7 +1616,7 @@ export function StepForm() {
   );
 
   const renderStatsBar = () => (
-    <div className="flex-shrink-0 bg-navy border-t-4 border-red">
+    <div className="flex-shrink-0 bg-navy border-t-4 border-[#1E40AF]">
       {/* Conteo: en desktop el conteo vive en la columna derecha (resumen), así que
           aquí solo se muestra en mobile para no restar espacio a la lista de tiendas. */}
       <div className="flex lg:hidden">
@@ -1637,18 +1637,17 @@ export function StepForm() {
       </div>
       <div className="px-3 pb-3 pt-1 flex gap-2">
         <button onClick={goToResumen}
-          className="flex-1 py-2.5 bg-red text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-red-dark lg:hidden"
-          style={{ boxShadow: '0 4px 14px rgba(211,47,47,0.30)' }}>
+          className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
           RESUMEN ({activeTiendasCount})
         </button>
         <button onClick={() => setShowCalManual(true)}
-          className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
+          className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
           title="Manual para copiar / Calendario del día">
           <ClipboardList size={16} />
           <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Manual / Cal</span>
         </button>
         <button onClick={enrutar}
-          className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-full cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
+          className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
           title="Ir al Enrutador">
           <Navigation size={16} />
           <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Enrutador</span>
@@ -1676,7 +1675,7 @@ export function StepForm() {
             <span className="font-barlow-condensed text-[11px] uppercase tracking-widest text-white/40">Resumen en tiempo real</span>
             <div className="flex items-center gap-2">
               {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
-                <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded-full">✓ Hoy completo</span>
+                <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded">✓ Hoy completo</span>
               )}
             </div>
           </div>
@@ -1755,9 +1754,9 @@ export function StepForm() {
                       <div className="text-[11px] text-text-3 truncate">{t?.comuna} · {t?.ventanaHoraria}</div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {pallets     > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-2 py-0.5 rounded-full">{pallets}P</span>}
-                      {bultos      > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-2 py-0.5 rounded-full">{bultos}B</span>}
-                      {contenedores > 0 && <span className="font-barlow-condensed text-[13px] font-bold px-2 py-0.5 rounded-full border" style={{ color:'#6B21A8', background:'rgba(107,33,168,0.10)', borderColor:'rgba(107,33,168,0.20)' }}>{contenedores}C</span>}
+                      {pallets     > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-2 py-0.5 rounded">{pallets}P</span>}
+                      {bultos      > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-2 py-0.5 rounded">{bultos}B</span>}
+                      {contenedores > 0 && <span className="font-barlow-condensed text-[13px] font-bold px-2 py-0.5 rounded border" style={{ color:'#6B21A8', background:'rgba(107,33,168,0.10)', borderColor:'rgba(107,33,168,0.20)' }}>{contenedores}C</span>}
                       <span className="text-text-3 text-[12px] ml-0.5">{isOpen ? '▲' : '▼'}</span>
                     </div>
                   </div>
@@ -1786,7 +1785,7 @@ export function StepForm() {
                                     {(['Pallet', 'Bulto', 'Contenedor'] as TipoCargamento[]).map(tp => (
                                       <button key={tp}
                                         onClick={() => setResumenEditing(prev => prev ? { ...prev, tipo: tp, contenido: tp === 'Pallet' ? 'Comida' : tp === 'Contenedor' ? 'Hogar' : 'Hogar' } : prev)}
-                                        className={`flex-1 font-barlow-condensed text-[14px] font-bold py-2 rounded-full border transition-all ${
+                                        className={`flex-1 font-barlow-condensed text-[14px] font-bold py-2 rounded border transition-all ${
                                           re.tipo === tp
                                             ? tp === 'Pallet'     ? 'bg-info text-white border-info'
                                             : tp === 'Contenedor' ? 'bg-[#6B21A8] text-white border-[#6B21A8]'
@@ -1803,7 +1802,7 @@ export function StepForm() {
                                     {(re.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
                                       <button key={c}
                                         onClick={() => setResumenEditing(prev => prev ? { ...prev, contenido: c } : prev)}
-                                        className={`font-barlow-condensed text-[13px] font-bold py-2 rounded-full border transition-all ${
+                                        className={`font-barlow-condensed text-[13px] font-bold py-2 rounded border transition-all ${
                                           re.contenido === c ? 'bg-navy text-white border-navy' : 'bg-white text-text-2 border-border'
                                         }`}>{c}</button>
                                     ))}
@@ -1939,7 +1938,7 @@ export function StepForm() {
                             <span className={`font-barlow-condensed text-[13px] font-bold min-w-[32px] ${item.tipo === 'Pallet' ? 'text-info' : 'text-warn'}`}>{item.orden}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full font-barlow-condensed ${item.tipo === 'Pallet' ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-warn bg-[rgba(217,119,6,0.10)]'}`}>
+                                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-barlow-condensed ${item.tipo === 'Pallet' ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-warn bg-[rgba(217,119,6,0.10)]'}`}>
                                   {item.tipo}
                                 </span>
                                 <span className="text-[12px] font-semibold text-text-2">{item.contenido === 'Chocolate' ? 'CH' : item.contenido}</span>
@@ -1974,7 +1973,7 @@ export function StepForm() {
 
         {/* Bottom action bar */}
         <div className="flex-shrink-0 bg-white border-t border-border px-3 py-2.5 flex gap-2"
-             style={{ boxShadow: '0 -4px 16px rgba(26,37,80,0.10)' }}>
+             style={{ boxShadow: '0 -4px 16px rgba(0,0,0,0.08)' }}>
           <button
             onClick={() => setView('list')}
             className="lg:hidden w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
@@ -2182,14 +2181,14 @@ export function StepForm() {
                       <label className="text-[11px] text-text-3 uppercase block mb-0.5">peso</label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
                         placeholder="kg" inputMode="decimal"
-                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
+                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && !isChocTipo && (
                       <div>
                         <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
                           placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {excedeAltoMax(parseFloat(row.alto) || 0) && (
                           <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
@@ -2203,7 +2202,7 @@ export function StepForm() {
                           <label className="text-[11px] text-text-3 uppercase block mb-0.5">{f}</label>
                           <input type="number" value={row[f]} onChange={e => updateRow(row.id, f, e.target.value)}
                             placeholder="cm" inputMode="decimal"
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-red [-webkit-appearance:none]" />
+                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         </div>
                       ))}
                     </div>
@@ -2357,7 +2356,7 @@ export function StepForm() {
           {activeTiendasCount > 0 && (
             <button onClick={goToResumen}
               className="w-full py-3.5 bg-navy text-white border-none rounded-card font-barlow-condensed text-[16px] font-bold cursor-pointer active:bg-navy-dark mb-4 lg:hidden"
-              style={{ boxShadow: '0 4px 14px rgba(26,37,80,0.22)' }}>
+              style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.10)' }}>
               Ver resumen ({activeTiendasCount}) →
             </button>
           )}
@@ -2415,10 +2414,10 @@ export function StepForm() {
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar tienda…"
-            className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-red placeholder:text-text-3 transition-all" />
+            className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] placeholder:text-text-3 transition-all" />
           <div className="flex gap-2 mt-2">
             {([
-              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-red border-red' },
+              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-[#1E40AF] border-[#1E40AF]' },
               { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
             ]).map(({ id, label, active_bg }) => {
               const active = selectedGrps.has(id);
@@ -2430,7 +2429,7 @@ export function StepForm() {
                     else next.add(id);
                     return next;
                   })}
-                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded-full border-2 tracking-widest uppercase transition-all cursor-pointer select-none
+                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded border-2 tracking-widest uppercase transition-all cursor-pointer select-none
                     ${active ? `${active_bg} text-white shadow-md` : 'bg-white text-text-3 border-border'}`}>
                   {label}
                 </button>
@@ -2450,9 +2449,9 @@ export function StepForm() {
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setGuideDragOver(true); } }}
             onDragLeave={e => { e.stopPropagation(); setGuideDragOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setGuideDragOver(false); if (!guideUploading && e.dataTransfer.files.length) handleGuideFiles(e.dataTransfer.files); }}
-            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${guideDragOver ? 'border-red bg-[rgba(211,47,47,0.18)] text-red scale-[1.02]' : 'border-red bg-[rgba(211,47,47,0.06)] text-red active:bg-[rgba(211,47,47,0.12)]'}`}>
+            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${guideDragOver ? 'border-[#1E40AF] bg-[rgba(30,64,175,0.18)] text-[#1E40AF] scale-[1.02]' : 'border-[#1E40AF] bg-[rgba(30,64,175,0.06)] text-[#1E40AF] active:bg-[rgba(30,64,175,0.12)]'}`}>
             {guideUploading
-              ? <><div className="w-3 h-3 border-2 border-red/30 border-t-red rounded-full animate-spin" />PROCESANDO…</>
+              ? <><div className="w-3 h-3 border-2 border-[#1E40AF]/30 border-t-[#1E40AF] rounded-full animate-spin" />PROCESANDO…</>
               : guideDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
           </button>
         </div>
@@ -2538,7 +2537,7 @@ export function StepForm() {
           maxHeight: '92vh',
           transform: currentTienda ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.38s cubic-bezier(0.32,0.72,0,1)',
-          boxShadow: '0 -12px 48px rgba(0,0,0,0.22)',
+          boxShadow: '0 -8px 24px rgba(0,0,0,0.15)',
         }}
       >
         {/* Form content */}
