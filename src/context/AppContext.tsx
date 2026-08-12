@@ -5,6 +5,7 @@ import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
+import { mergeEntriesByKey } from '@/features/despacho/santiago/context/mergeItems';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -249,26 +250,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mergedDispatch[tienda] = dirty ? (localItems ?? []) : (remItems ?? []);
       }
 
-      // ── pdfData merge ───────────────────────────────────────────────
-      // Same dirty/clean logic: lets remote PDFs (uploaded by other users) propagate in,
-      // while protecting local uploads/clears from being overwritten.
+      // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
+      // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto
+      // NO trae una clave limpia que yo sí tengo, la CONSERVO. Antes esto la borraba ("cleared
+      // remotely"), pero un remoto stale/parcial —p. ej. el catch-up que re-consulta justo tras subir
+      // un PDF— hacía DESAPARECER el PDF recién subido (el bug reportado: aparece el card verde y a
+      // los segundos se va). El reset diario NO depende de esto (usa claves localStorage por día +
+      // sessionDate), así que conservar es seguro.
       const remotePdf = remote.pdfData ?? {};
       const localPdf  = stateRef.current.pdfData;
-      const allPdfKeys = new Set([...Object.keys(remotePdf), ...Object.keys(localPdf), ...Object.keys(lastPdfData)]);
-      const mergedPdf: Record<string, PdfData> = {};
-      for (const tienda of allPdfKeys) {
-        const localEntry  = localPdf[tienda];
-        const remoteEntry = remotePdf[tienda];
-        const lastEntry   = lastPdfData[tienda];
-        const dirty       = JSON.stringify(localEntry) !== JSON.stringify(lastEntry);
-        if (dirty) {
-          if (localEntry !== undefined) mergedPdf[tienda] = localEntry; // local upload or clear
-        } else {
-          // When not dirty, remote is authoritative: if remoteEntry is absent it was cleared remotely.
-          if (remoteEntry !== undefined) mergedPdf[tienda] = remoteEntry;
-          // else: not in remote → treat as cleared, do not restore from local
-        }
-      }
+      const mergedPdf: Record<string, PdfData> = mergeEntriesByKey(remotePdf, localPdf, lastPdfData);
 
       const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: localPdf });
       if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;

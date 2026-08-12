@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Check } from 'lucide-react';
 import { SantiagoProvider, useSantiago, SANTIAGO_TERMINADO_KEY } from '../features/despacho/santiago/context/SantiagoContext';
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { SantiagoFinishModal } from '../features/despacho/santiago/components/SantiagoFinishModal';
@@ -39,41 +38,20 @@ function SantiagoContent() {
     dispatch({ type: 'SET_REGISTRADO', payload: false });
   };
 
-  const right = registered ? (
-    <button
-      onClick={handleReopen}
-      title={`Terminado${terminatedAt ? ` a las ${terminatedAt}` : ''} · Toca para reabrir`}
-      className="flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-      style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.50)' }}>
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-           style={{ background: 'linear-gradient(145deg, #22C55E, #15803D)', boxShadow: '0 3px 8px rgba(34,197,94,0.45), inset 0 1px 0 rgba(255,255,255,0.25)' }}>
-        <Check size={14} color="#fff" strokeWidth={2.5} />
-      </div>
-      <div className="flex flex-col leading-none">
-        <span className="font-barlow-condensed text-[12px] font-bold tracking-widest uppercase text-[#86EFAC]">COMPLETADO</span>
-        {terminatedAt && <span className="text-[9px] text-white/40 mt-0.5">{terminatedAt}</span>}
-      </div>
-    </button>
-  ) : (
-    <button
-      onClick={() => setModalOpen(true)}
-      className="flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full cursor-pointer transition-all active:scale-95 flex-shrink-0"
-      style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)' }}>
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-           style={{ background: 'linear-gradient(145deg, #EF4444, #B91C1C)', boxShadow: '0 3px 8px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.25)' }}>
-        <Check size={14} color="#fff" strokeWidth={2} />
-      </div>
-      <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase text-white">REGISTRAR</span>
-    </button>
-  );
-
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <BodegaHeader right={right} />
+      {/* El banner navy "BODEGA" se eliminó (más espacio hacia arriba); el REGISTRAR se movió
+          al pie de la columna derecha de StepForm (igual que Nacional). */}
+      <BodegaHeader />
 
       <PendingDraftBanner fuente="santiago" />
 
-      <SantiagoPage />
+      <SantiagoPage
+        onRegistrar={() => setModalOpen(true)}
+        registered={registered}
+        onReopen={handleReopen}
+        terminatedAt={terminatedAt}
+      />
 
       <SantiagoFinishModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>

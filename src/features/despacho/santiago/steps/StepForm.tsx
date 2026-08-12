@@ -278,7 +278,18 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
 /* ════════════════════════════════════════
    MAIN COMPONENT
 ════════════════════════════════════════ */
-export function StepForm() {
+/**
+ * Props del REGISTRAR (movido del header al pie de la columna derecha, como en Nacional).
+ * SantiagoScreen sigue dueño del modal/flag "terminado"; aquí solo se pinta el botón.
+ */
+type StepFormProps = {
+  onRegistrar?: () => void;
+  registered?: boolean;
+  onReopen?: () => void;
+  terminatedAt?: string;
+};
+
+export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: StepFormProps = {}) {
   const router = useRouter();
   const { state, dispatch, flushPending } = useSantiago();
   const { showToast } = useApp();
@@ -1971,13 +1982,30 @@ export function StepForm() {
           )}
         </div>
 
-        {/* Bottom action bar — solo móvil (Volver). El 🗑 "Nuevo despacho" se quitó. */}
-        <div className="lg:hidden flex-shrink-0 bg-white border-t border-border px-3 py-2.5 flex gap-2"
+        {/* Bottom action bar — Volver (solo móvil) + REGISTRAR al pie derecho (movido desde el
+            header, igual que Nacional). El 🗑 "Nuevo despacho" se quitó. */}
+        <div className="flex-shrink-0 bg-white border-t border-border px-3 py-2.5 flex gap-2 items-center"
              style={{ boxShadow: '0 -4px 16px rgba(0,0,0,0.08)' }}>
           <button
             onClick={() => setView('list')}
-            className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
+            className="lg:hidden w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
             title="Volver">←</button>
+          {registered ? (
+            <button
+              onClick={() => onReopen?.()}
+              title={`Registrado${terminatedAt ? ` a las ${terminatedAt}` : ''} · toca para reabrir`}
+              className="ml-auto py-2.5 px-5 bg-[#16A34A] text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              style={{ boxShadow: '0 4px 16px rgba(22,163,74,0.30)' }}>
+              ✓ Completado
+            </button>
+          ) : (
+            <button
+              onClick={() => onRegistrar?.()}
+              className="ml-auto py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
+              Registrar
+            </button>
+          )}
         </div>
       </div>
     );
