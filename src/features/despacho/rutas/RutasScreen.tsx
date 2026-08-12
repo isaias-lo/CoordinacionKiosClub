@@ -2228,6 +2228,7 @@ export default function RutasScreen() {
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
           onClose={() => setManifiestoV2(null)}
+          offsetSeq={manifiestosGuardados.length}
         />
       )}
 
@@ -2239,6 +2240,9 @@ export default function RutasScreen() {
           tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
           onClose={() => setManifiestoV1(null)}
+          // Consecutivo global: cada camión cerrado uno a uno toma el siguiente número
+          // (antes todos salían -01 porque cada cierre era un lote nuevo con índice 0).
+          offsetSeq={Math.max(0, cerradasV1.size - manifiestoV1.length)}
         />
       )}
 
