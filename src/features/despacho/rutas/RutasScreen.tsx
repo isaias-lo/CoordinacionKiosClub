@@ -179,6 +179,42 @@ export default function RutasScreen() {
   // Km real (Google Directions) de esa preview — se muestra en la tarjeta del camión
   // elegido. null mientras el mapa todavía no resuelve la ruta (o no hay camión elegido).
   const [previewKm, setPreviewKm] = useState<number | null>(null);
+  // [Planificador] Ruta ordenada + partida del tab PLAN, para dibujarla en el MapSection fijo.
+  const [planRutas, setPlanRutas] = useState<Ruta[]>([]);
+  const [planCd,    setPlanCd]    = useState<number[] | null>(null);
+  // Divisor arrastrable board ↔ mapa (desktop): % de ancho del mapa.
+  const [mapPct, setMapPct] = useState<number>(() => {
+    if (typeof window === 'undefined') return 34;
+    const s = Number(localStorage.getItem('enrutador_map_pct'));
+    return s >= 20 && s <= 65 ? s : 34;
+  });
+  const mainRef = useRef<HTMLElement>(null);
+  const mapResizingRef = useRef(false);
+  useEffect(() => {
+    const move = (clientX: number) => {
+      if (!mapResizingRef.current || !mainRef.current) return;
+      const r = mainRef.current.getBoundingClientRect();
+      setMapPct(Math.min(65, Math.max(20, ((r.right - clientX) / r.width) * 100)));
+    };
+    const onMouse = (e: MouseEvent) => move(e.clientX);
+    const onTouch = (e: TouchEvent) => { if (e.touches[0]) move(e.touches[0].clientX); };
+    const stop = () => {
+      if (!mapResizingRef.current) return;
+      mapResizingRef.current = false;
+      document.body.style.cursor = ''; document.body.style.userSelect = '';
+      setMapPct(p => { try { localStorage.setItem('enrutador_map_pct', String(Math.round(p))); } catch {} return p; });
+    };
+    document.addEventListener('mousemove', onMouse);
+    document.addEventListener('mouseup', stop);
+    document.addEventListener('touchmove', onTouch, { passive: true });
+    document.addEventListener('touchend', stop);
+    return () => {
+      document.removeEventListener('mousemove', onMouse);
+      document.removeEventListener('mouseup', stop);
+      document.removeEventListener('touchmove', onTouch);
+      document.removeEventListener('touchend', stop);
+    };
+  }, []);
   // Km real + detalle por tramo del mapa persistente (MapSection) — antes vivía dentro de
   // ResultsSection (que montaba su propio MapSection); ahora el mapa es un panel fijo fuera
   // de ResultsSection, así que el resultado se sube acá y baja a ResultsSection por props.
@@ -1848,12 +1884,12 @@ export default function RutasScreen() {
   const isMobile = useIsMobile();
   const mapPanel = (
     <MapSection
-      rutas={results?.rutas ?? previewRutas}
+      rutas={modo === 'plan' ? planRutas : (results?.rutas ?? previewRutas)}
       gps={results?.extGps || gps}
-      cd={cdRef.current}
+      cd={modo === 'plan' && planCd ? planCd : cdRef.current}
       tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo>}
       onKmReady={handleKmReady}
-      onCdUpdate={coords => { cdRef.current = coords; }}
+      onCdUpdate={coords => { if (modo !== 'plan') cdRef.current = coords; }}
     />
   );
 
@@ -2028,8 +2064,9 @@ export default function RutasScreen() {
         mapContent={isMobile ? mapPanel : undefined}
       />
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="flex-1 md:flex-[2] min-w-0 overflow-hidden">
+      <main ref={mainRef} className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div className="flex-1 md:flex-[2] min-w-0 overflow-hidden"
+          style={!isMobile ? { flex: `1 1 ${100 - mapPct}%`, minWidth: 0 } : undefined}>
           <InputSection
             flota={flota}
             modo={modo} calT={sortedCalT}
@@ -2059,6 +2096,7 @@ export default function RutasScreen() {
             onCerrarCamion={cerrarCamionV1Board}
             onLimpiar={handleLimpiar}
             onEliminarParada={handleEliminarParada}
+            onPlanRutas={(rutas, cdArr) => { setPlanRutas(rutas); setPlanCd(cdArr); }}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">
@@ -2159,8 +2197,24 @@ export default function RutasScreen() {
             adentro del drawer de DespachoHeader (mapContent), nunca las dos instancias a
             la vez. Antes de calcular muestra la preview del camión seleccionado, o el mapa
             vacío con el CD si no hay nada elegido todavía. */}
+        {/* Divisor arrastrable board ↔ mapa (desktop) */}
         {!isMobile && (
-          <div className="h-[320px] md:h-auto flex-shrink-0 md:flex-1 md:min-w-0 border-t md:border-t-0 md:border-l border-black/[0.09] overflow-hidden">
+          <div
+            onMouseDown={() => { mapResizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
+            onTouchStart={() => { mapResizingRef.current = true; }}
+            title="Arrastra para ampliar o achicar el mapa"
+            className="group hidden md:flex flex-shrink-0 cursor-col-resize items-center justify-center relative select-none z-10"
+            style={{ width: 6, background: 'rgba(0,0,0,0.05)' }}
+          >
+            <div className="absolute inset-0 group-hover:bg-knavy/20 transition-colors duration-150" />
+            <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+              {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
+            </div>
+          </div>
+        )}
+        {!isMobile && (
+          <div className="h-[320px] md:h-auto flex-shrink-0 md:flex-1 md:min-w-0 border-t md:border-t-0 md:border-l border-black/[0.09] overflow-hidden"
+            style={!isMobile ? { flex: `0 0 ${mapPct}%`, minWidth: 0 } : undefined}>
             {mapPanel}
           </div>
         )}
