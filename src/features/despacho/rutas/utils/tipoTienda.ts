@@ -40,3 +40,12 @@ export function tipoTienda(raw?: string | null, direccion?: string | null, zona?
   // Tipo con texto desconocido: mostrarlo tal cual.
   return { key: 'otro', label: t, color: TIPOS.otro.color };
 }
+
+/** Grupo de la tienda para el filtro del Planificador: Costa / Nacional(fal/regiones) / RM.
+ *  Deriva de la zona (`z`), misma lógica que el calendario (Costa→costa, Región→fal, resto→rm). */
+export function grupoTienda(z?: string | null): 'rm' | 'costa' | 'fal' {
+  const zz = (z ?? '').trim().toLowerCase();
+  if (zz.includes('costa')) return 'costa';
+  if (zz.includes('regi')) return 'fal';
+  return 'rm';
+}
