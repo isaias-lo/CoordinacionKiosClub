@@ -83,11 +83,21 @@ describe('mergeEntriesByKey (guías PDF: 1 registro por tienda)', () => {
     expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ X: G('guia-mia.pdf') });
   });
 
-  it('propaga el BORRADO remoto de una guía limpia (no la restaura desde local)', () => {
+  it('NO borra una guía limpia que el remoto no trae (evita que un remoto stale la haga desaparecer)', () => {
+    // Antes esto propagaba el "borrado remoto" y hacía DESAPARECER guías recién subidas cuando
+    // el catch-up re-consultaba un remoto stale/parcial. Ahora se conserva la local.
     const lastSynced = { X: G('g.pdf'), Y: G('h.pdf') };
     const local      = { X: G('g.pdf'), Y: G('h.pdf') }; // no toqué Y
-    const remote     = { X: G('g.pdf') };                // el otro borró Y
-    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ X: G('g.pdf') });
+    const remote     = { X: G('g.pdf') };                // el remoto no trae Y (stale o borrada en otro equipo)
+    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ X: G('g.pdf'), Y: G('h.pdf') });
+  });
+
+  it('una guía recién subida NO desaparece si llega un remoto stale sin ella (bug reportado)', () => {
+    // Subí Z (ya empujada ⇒ local == lastSynced, "limpia"). Llega un remoto que aún no la tiene.
+    const lastSynced = { Z: G('z.pdf') };
+    const local      = { Z: G('z.pdf') };
+    const remote     = {};                 // remoto stale, todavía sin Z
+    expect(mergeEntriesByKey(remote, local, lastSynced)).toEqual({ Z: G('z.pdf') });
   });
 
   it('honra mi borrado local (no lo re-agrega el eco remoto)', () => {

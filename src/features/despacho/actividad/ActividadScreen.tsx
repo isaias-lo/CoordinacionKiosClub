@@ -93,11 +93,8 @@ export function ActividadScreen() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
-      <BodegaHeader right={
-        <div className="font-barlow-condensed text-[12px] text-white/60 tracking-wide leading-none flex-shrink-0 tabular-nums text-right">
-          {visibles.length} reg.
-        </div>
-      } />
+      {/* El banner navy "BODEGA" se eliminó (más espacio); el contador "N reg." pasó a la fila de filtros. */}
+      <BodegaHeader />
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white border-b border-bg-2 flex-shrink-0">
@@ -125,6 +122,9 @@ export function ActividadScreen() {
             limpiar
           </button>
         )}
+        <div className="ml-auto font-barlow-condensed text-[12px] text-text-3 tracking-wide leading-none flex-shrink-0 tabular-nums">
+          {visibles.length} reg.
+        </div>
       </div>
 
       {/* Feed en columnas */}

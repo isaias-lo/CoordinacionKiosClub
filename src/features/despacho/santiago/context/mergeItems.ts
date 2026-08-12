@@ -56,7 +56,14 @@ export function mergeEntriesByKey<T>(
       if (local[k] !== undefined) out[k] = local[k]; // subida/cambio local aún sin empujar
       // dirty + local ausente ⇒ lo borré localmente ⇒ no lo re-agrego
     } else if (remote[k] !== undefined) {
-      out[k] = remote[k]; // limpio ⇒ manda el remoto (una edición/borrado más nuevo del otro equipo)
+      out[k] = remote[k]; // limpio ⇒ manda el remoto (una edición más nueva del otro equipo)
+    } else if (local[k] !== undefined) {
+      // limpio + el remoto NO trae la clave PERO yo sí la tengo → la CONSERVO. Antes se borraba
+      // (se asumía "borrado remoto"), pero un remoto stale/parcial —p. ej. el catch-up que
+      // re-consulta justo tras subir un PDF— hacía DESAPARECER la guía recién subida. El reset
+      // diario NO depende de esto (las guías usan clave localStorage por día), así que conservar
+      // es seguro. Trade-off: un borrado hecho en OTRO equipo no se propaga solo (raro).
+      out[k] = local[k];
     }
   }
   return out;
