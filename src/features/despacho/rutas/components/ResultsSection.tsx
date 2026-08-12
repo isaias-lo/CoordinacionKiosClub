@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { FileText, Loader2, BarChart3, ClipboardList, Check, Flag, AlertTriangle } from 'lucide-react';
 import RouteCard          from './RouteCard';
 import ManifiestoPanel    from './ManifiestoPanel';
-import CierreJornadaPanel from './CierreJornadaPanel';
 import { fechaTxt, fechaLargaTxt } from '../utils/helpers';
 import type { Ruta, StoreItem } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -28,12 +27,14 @@ interface Props {
   kmPorRuta: Record<number, number>;
   legDataPorRuta: Record<number, {dist: string; dur: string}[]>;
   pendientesV2: { c: string; p: number; b: number; ch: number }[];
-  onCargarPendientes: () => void;
-  onListoPorHoy: () => void;
   cerrado: boolean;
   // Fase B: patentes ya cerradas (badge "Cerrado" informativo). El cierre por camión se hace
   // en el board DESPACHO (ManualDispatch), no aquí en el post-ruta.
   cerradasV1: Set<string>;
+  // El panel de Cierre de Jornada (CierreJornadaPanel) ahora vive en RutasScreen — también
+  // se puede abrir desde el tablero DESPACHO ("Terminar día"), sin pasar por "Calcular"
+  // primero. Este botón solo dispara la apertura del panel compartido.
+  onAbrirCierre: () => void;
 }
 
 export default function ResultsSection({
@@ -41,15 +42,14 @@ export default function ResultsSection({
   onLimpiar, onVolver, onGenerarPDF, onGuardarHistorial,
   historialStatus, historialMsg,
   kmPorRuta, legDataPorRuta,
-  pendientesV2, onCargarPendientes, onListoPorHoy, cerrado,
-  cerradasV1,
+  pendientesV2, cerrado,
+  cerradasV1, onAbrirCierre,
 }: Props) {
   const { ts, rutas } = results;
   const tp = ts.reduce((s, t) => s + t.p, 0);
   const tb = ts.reduce((s, t) => s + t.b, 0);
 
   const [manifiestoOpen, setManifiestoOpen] = useState(false);
-  const [cierreOpen,     setCierreOpen]     = useState(false);
 
   // Registrar despacho y, si el guardado primario fue exitoso, encadenar
   // automáticamente con la generación de manifiestos (panel reutilizable y cerrable).
@@ -163,7 +163,7 @@ export default function ResultsSection({
       {/* Cierre de jornada */}
       <div className="mt-[9px] no-print">
         <button
-          onClick={() => setCierreOpen(true)}
+          onClick={onAbrirCierre}
           className="w-full h-[46px] rounded-kios2 bg-white text-knavy text-[14px] font-bold border-2 border-knavy/30 flex items-center justify-center gap-2 transition-all cursor-pointer hover:border-knavy"
         >
           {cerrado
@@ -184,17 +184,6 @@ export default function ResultsSection({
         tiendas={tiendas}
         isOpen={manifiestoOpen}
         onClose={() => setManifiestoOpen(false)}
-      />
-
-      <CierreJornadaPanel
-        isOpen={cierreOpen}
-        onClose={() => setCierreOpen(false)}
-        rutas={rutas}
-        fecha={fecha}
-        supervisor={supervisor}
-        pendientesV2={pendientesV2}
-        onCargarPendientes={onCargarPendientes}
-        onListoPorHoy={onListoPorHoy}
       />
     </div>
   );
