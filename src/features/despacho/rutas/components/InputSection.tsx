@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Flag } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -33,6 +33,7 @@ interface Props {
   grupoFiltro: 'all' | 'rm' | 'costa' | 'fal';
   // Camión elegido en el tablero DESPACHO para previsualizar su ruta en el mapa.
   camionSeleccionado: string | null;
+  camionSeleccionadoKm?: number | null;
   onSelectTruck: (patente: string | null) => void;
   onModo: (m: string) => void;
   onToggleFlota: (idx: number) => void;
@@ -51,6 +52,10 @@ interface Props {
   onCerrarCamion?: (patente: string) => void;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
+  // Abre el Cierre de Jornada directamente desde el tablero DESPACHO, sin pasar por
+  // "Calcular" — es el único lugar que manda lo que quedó sin asignar a pendientes 2ª
+  // vuelta ("Listo por hoy"), y antes solo se podía llegar ahí después de calcular.
+  onTerminarDia?: () => void;
   rightPanelContent?: React.ReactNode;
   segundaVueltaContent?: React.ReactNode;
 }
@@ -83,16 +88,20 @@ export default function InputSection({
   flota, flotaStatus, modo, calT, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, grupoFiltro,
-  camionSeleccionado, onSelectTruck,
+  camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
+  onTerminarDia,
   rightPanelContent,
   segundaVueltaContent,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
   const isMobile = useIsMobile();
+  // Contenedor real con scroll del tablero DESPACHO — se lo pasamos a ManualDispatch para
+  // el auto-scroll al arrastrar cerca del borde (más confiable que buscarlo por DOM-walk).
+  const dragScrollRef = useRef<HTMLDivElement>(null);
 
   const errorsBanner = errors.length > 0 && (
     <div
@@ -155,7 +164,12 @@ export default function InputSection({
       <div className="flex flex-col h-full overflow-hidden">
         <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
           <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
-            <button onClick={onLimpiar} className="h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ml-auto">
+            {modo === 'drag' && !rightPanelContent && onTerminarDia && (
+              <button onClick={onTerminarDia} className="h-[36px] px-3 rounded-[10px] bg-white border-2 border-knavy/30 text-knavy text-[12px] font-bold flex-shrink-0 flex items-center gap-1 ml-auto">
+                <Flag size={13} strokeWidth={2} aria-hidden="true" /><span>Terminar día</span>
+              </button>
+            )}
+            <button onClick={onLimpiar} className={`h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ${modo === 'drag' && !rightPanelContent && onTerminarDia ? '' : 'ml-auto'}`}>
               Limpiar
             </button>
             <div className="flex bg-kbg rounded-[10px] p-[3px] gap-1 w-full">
@@ -178,13 +192,14 @@ export default function InputSection({
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">{rightPanelContent}</div>
         ) : (
-          <div className="flex-1 overflow-y-auto bg-kbg">
+          <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
                 <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} grupoFiltro={grupoFiltro}
-                  camionSeleccionado={camionSeleccionado} onSelectTruck={onSelectTruck}
+                  camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
+                  scrollContainerRef={dragScrollRef}
                   onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
               </div>
             )}
@@ -224,6 +239,14 @@ export default function InputSection({
             ))}
           </div>
           <div className="flex-1" />
+          {!rightPanelContent && modo === 'drag' && onTerminarDia && (
+            <button
+              onClick={onTerminarDia}
+              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-knavy/30 text-knavy text-[13px] font-bold hover:border-knavy transition-all flex items-center gap-2"
+            >
+              <Flag size={15} strokeWidth={2} /><span>Terminar día</span>
+            </button>
+          )}
           {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'cal' && (
             <button
               onClick={onCalcular}
@@ -260,7 +283,7 @@ export default function InputSection({
           {rightPanelContent}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
 
           {/* DESPACHO MODE */}
           {modo === 'drag' && (
@@ -278,7 +301,9 @@ export default function InputSection({
                 onEliminarParada={onEliminarParada}
                 grupoFiltro={grupoFiltro}
                 camionSeleccionado={camionSeleccionado}
+                camionSeleccionadoKm={camionSeleccionadoKm}
                 onSelectTruck={onSelectTruck}
+                scrollContainerRef={dragScrollRef}
                 onAsignarIA={onAsignarIA}
                 iaLoading={iaLoading}
                 onToggleFlota={onToggleFlota}
