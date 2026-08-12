@@ -2,15 +2,10 @@
 import { useState } from 'react';
 import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
-import { pushSessionState } from '@/lib/userSessionState';
-import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
-
-const todayKey = new Date().toISOString().split('T')[0];
-const SANTIAGO_STATE_KEY = `santiagoState_${todayKey}`;
 
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar',
@@ -24,7 +19,6 @@ const LABEL_SM = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
 
 export function StepResumen() {
   const { state, dispatch } = useSantiago();
-  const { user } = useAuth();
   const { showToast } = useApp();
   const { items, regimen } = state;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -70,17 +64,6 @@ export function StepResumen() {
     showToast(`✓ Registrado · ${buildSummaryString()}`, '#16A34A');
   };
 
-  const doReset = async () => {
-    dispatch({ type: 'RESET' });
-    // Push empty state immediately — don't rely on debounce (cancelled on navigation)
-    const emptyPayload = { step: 'form' as const, regimen: 'Seco' as const, items: {} };
-    try {
-      await pushSessionState('santiago', emptyPayload, user?.id ?? undefined);
-      localStorage.setItem(SANTIAGO_STATE_KEY, JSON.stringify(emptyPayload));
-    } catch {}
-    localStorage.setItem(SANTIAGO_TERMINADO_KEY,
-      new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
-  };
 
   const startEdit = (cod: string, idx: number) => {
     const item = (items[cod] || [])[idx];
@@ -348,31 +331,15 @@ export function StepResumen() {
         </div>
       )}
 
-      {/* Bottom actions bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-3 py-2.5 z-[150] flex gap-2"
+      {/* Bottom actions bar — Registrar alineado a la derecha (el 🗑 "Nuevo despacho" se quitó). */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-3 py-2.5 z-[150] flex gap-2 justify-end"
            style={{ boxShadow: '0 -4px 16px rgba(26,37,80,0.10)' }}>
-        <button
-          onClick={doReset}
-          className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
-          title="Nuevo despacho">
-          🗑
-        </button>
         <button
           onClick={registrar}
           disabled={activeTiendas.length === 0}
-          className="flex-1 py-3.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[18px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:bg-red-dark"
+          className="py-3.5 px-6 bg-red text-white border-none rounded-card font-barlow-condensed text-[18px] font-bold tracking-wide cursor-pointer disabled:opacity-30 transition-all active:bg-red-dark"
           style={{ boxShadow: activeTiendas.length > 0 ? '0 4px 16px rgba(211,47,47,0.30)' : 'none' }}>
           ↑ Registrar despacho
-        </button>
-        <button
-          onClick={() => {
-            if (confirm('¿Iniciar nuevo despacho? Los datos actuales se perderán.')) {
-              doReset();
-            }
-          }}
-          className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
-          title="Nuevo despacho">
-          🗑
         </button>
       </div>
     </div>

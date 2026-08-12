@@ -1971,17 +1971,13 @@ export function StepForm() {
           )}
         </div>
 
-        {/* Bottom action bar */}
-        <div className="flex-shrink-0 bg-white border-t border-border px-3 py-2.5 flex gap-2"
+        {/* Bottom action bar — solo móvil (Volver). El 🗑 "Nuevo despacho" se quitó. */}
+        <div className="lg:hidden flex-shrink-0 bg-white border-t border-border px-3 py-2.5 flex gap-2"
              style={{ boxShadow: '0 -4px 16px rgba(0,0,0,0.08)' }}>
           <button
             onClick={() => setView('list')}
-            className="lg:hidden w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
-            title="Volver">←</button>
-          <button
-            onClick={() => { if (confirm('¿Iniciar nuevo despacho? Los datos actuales se perderán.')) dispatch({ type: 'RESET' }); }}
             className="w-12 flex items-center justify-center py-3.5 bg-bg-2 text-text-2 border border-border rounded-card text-[18px] cursor-pointer active:bg-bg-3"
-            title="Nuevo despacho">🗑</button>
+            title="Volver">←</button>
         </div>
       </div>
     );

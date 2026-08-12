@@ -7,6 +7,7 @@ import { buildRows, exportToTemplate } from '../utils/exportUtils';
 import { TIENDAS, getTodayTiendas } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
+import { REGIONES_TERMINADO_KEY } from '@/components/modals/FinishModal';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 
@@ -37,9 +38,11 @@ const LABEL_SM = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
 
 interface ResumenPageProps {
   panel?: boolean;
+  /** Abre el FinishModal de registro (el botón "Registrar" vive ahora en esta barra, no en el header). */
+  onRegistrar?: () => void;
 }
 
-export function ResumenPage({ panel = false }: ResumenPageProps) {
+export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
   const { state, dispatch, showToast } = useApp();
   const { dispatch: dispatchData, selection } = state;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -217,27 +220,38 @@ export function ResumenPage({ panel = false }: ResumenPageProps) {
     </div>
   );
 
-  /* ── Bottom action bar ── */
+  /* Reabrir el despacho ya registrado (mismo comportamiento que tenía el botón del header). */
+  const handleReopen = () => {
+    if (!confirm('¿Reabrir el despacho del día?')) return;
+    try { localStorage.removeItem(REGIONES_TERMINADO_KEY); } catch {}
+    dispatch({ type: 'SET_REGISTRADO', payload: false });
+    showToast('Despacho reabierto', '#8896A8');
+  };
+
+  /* ── Bottom action bar ── EXPORTAR + Registrar (el 🗑 y el Registrar del header se movieron aquí). */
   const actionBar = (
-    <div className={`bg-white border-t border-border px-3 py-2.5 flex gap-2 flex-shrink-0 ${
+    <div className={`bg-white border-t border-border px-3 py-2.5 flex gap-2 flex-shrink-0 justify-end ${
       panel ? '' : 'fixed bottom-0 left-0 right-0 z-[150]'
     }`}
       style={{ boxShadow: '0 -4px 16px rgba(26,37,80,0.10)' }}>
-      <button
-        onClick={() => {
-          if (confirm(`¿Borrar todos los ${stats.pallets + stats.bultos} items del día?`)) {
-            dispatch({ type: 'CLEAR_ALL' });
-            showToast('Todo limpiado', '#8896A8');
-          }
-        }}
-        className="w-10 flex items-center justify-center py-2.5 bg-bg-2 text-text-2 border border-border rounded-card text-sm cursor-pointer active:bg-bg-3">
-        🗑
-      </button>
       <button onClick={exportAll}
-        className="flex-1 py-2.5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:bg-red-dark"
-        style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
-        ↓ Exportar todo
+        className="py-2.5 px-4 bg-bg-2 text-text-2 border border-border rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5">
+        ↓ Exportar
       </button>
+      {state.registrado ? (
+        <button onClick={handleReopen}
+          title="Registrado · toca para reabrir"
+          className="py-2.5 px-5 bg-[#16A34A] text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+          style={{ boxShadow: '0 4px 16px rgba(22,163,74,0.30)' }}>
+          ✓ Completado
+        </button>
+      ) : (
+        <button onClick={() => onRegistrar?.()}
+          className="py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+          style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
+          Registrar
+        </button>
+      )}
     </div>
   );
 
