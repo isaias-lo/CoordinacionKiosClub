@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { tipoTienda } from '../tipoTienda';
+import { tipoTienda, grupoTienda } from '../tipoTienda';
+
+describe('grupoTienda', () => {
+  it('Costa / Región / RM según la zona', () => {
+    expect(grupoTienda('Costa Valparaíso')).toBe('costa');
+    expect(grupoTienda('Región')).toBe('fal');
+    expect(grupoTienda('Providencia')).toBe('rm');
+    expect(grupoTienda('')).toBe('rm');
+    expect(grupoTienda(null)).toBe('rm');
+  });
+});
 
 describe('tipoTienda', () => {
   it('reconoce Mall / Strip / Street desde el tipo de la BD', () => {

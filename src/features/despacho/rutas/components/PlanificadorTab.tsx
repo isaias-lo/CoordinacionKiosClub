@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock } from 'lucide-react';
 import { CD_INICIAL, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
@@ -8,7 +8,7 @@ import { nn, type Ruta } from '../utils/routing';
 import { dkm } from '../utils/helpers';
 import { cargarGMaps } from '../utils/maps';
 import { buscarTiendas, virtualStops, googleMapsDeepLink } from '../utils/planificador';
-import { tipoTienda } from '../utils/tipoTienda';
+import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 
 // Vehículo "virtual" — el planificador es solo visual (una ruta, sin carga ni patente real).
 const PLAN_VEHICLE: Vehiculo = { p: 'PLAN', c: 0, b: 0, t: 'Planificador', tlbd: false, on: true, porton: null, refrigerado: false, empresa: '' };
@@ -52,6 +52,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   const [selected,    setSelected]    = useState<string[]>([]);
   const [orderMode,   setOrderMode]   = useState<'cercania' | 'manual'>('cercania');
   const [search,      setSearch]      = useState('');
+  const [regionFilter, setRegionFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
+  const [tipoFilter,   setTipoFilter]   = useState<'all' | TipoTiendaKey>('all');
   const [dragIdx,     setDragIdx]     = useState<number | null>(null);
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
@@ -79,14 +81,30 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     return Math.round(k);
   }, [orderedCods, gps, startCoord]);
 
-  // Levantar la ruta ordenada al padre (RutasScreen → MapSection fijo).
+  // Levantar la ruta ordenada al padre (RutasScreen → MapSection). El callback llega inline
+  // (uno nuevo en cada render de RutasScreen); si estuviera en las deps, el efecto se dispararía
+  // en CADA render → planRutas cambiaría siempre → el mapa (debounce 400ms) nunca terminaría de
+  // dibujar. Por eso usamos un ref y lo dejamos FUERA de las deps: el efecto corre solo cuando
+  // cambian las paradas o el punto de partida.
+  const onPlanRutasRef = useRef(onPlanRutas);
+  onPlanRutasRef.current = onPlanRutas;
   useEffect(() => {
     const ruta: Ruta = { v: PLAN_VEHICLE, ts: virtualStops(orderedCods), tp: 0, tb: 0 };
-    onPlanRutas?.(orderedCods.length ? [ruta] : [], [startCoord.lat, startCoord.lng]);
-  }, [orderedCods, startCoord, onPlanRutas]);
+    onPlanRutasRef.current?.(orderedCods.length ? [ruta] : [], [startCoord.lat, startCoord.lng]);
+  }, [orderedCods, startCoord]);
 
   const resultados = useMemo(() => buscarTiendas(tiendas, gps, search), [tiendas, gps, search]);
+  // Filtros del buscador: por región (RM/Costa/Nacional) y por tipo (Mall/Strip/Street/…).
+  const resultadosFiltrados = useMemo(() => resultados.filter(t => {
+    const inf = tiendas[t.cod];
+    if (regionFilter !== 'all' && grupoTienda(inf?.z) !== regionFilter) return false;
+    if (tipoFilter !== 'all' && tipoTienda(inf?.tipo, inf?.d, inf?.z).key !== tipoFilter) return false;
+    return true;
+  }), [resultados, tiendas, regionFilter, tipoFilter]);
   const startTiendaOpts = useMemo(() => buscarTiendas(tiendas, gps, ''), [tiendas, gps]);
+  const fseg = 'px-2.5 py-1 rounded-[7px] text-[11px] font-bold cursor-pointer transition-colors border';
+  const fon  = 'bg-knavy text-white border-knavy';
+  const foff = 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40';
 
   function toggle(cod: string) {
     setSelected(prev => prev.includes(cod) ? prev.filter(c => c !== cod) : [...prev, cod]);
@@ -170,8 +188,22 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por código, nombre o comuna…"
             className="flex-1 text-[13px] outline-none bg-transparent text-ktext" />
         </div>
+        {/* Filtro por región */}
+        <div className="flex flex-wrap gap-1.5">
+          <button className={`${fseg} ${regionFilter === 'all' ? fon : foff}`} onClick={() => setRegionFilter('all')}>Todas</button>
+          <button className={`${fseg} ${regionFilter === 'rm' ? fon : foff}`} onClick={() => setRegionFilter('rm')}>RM</button>
+          <button className={`${fseg} ${regionFilter === 'costa' ? fon : foff}`} onClick={() => setRegionFilter('costa')}>Costa</button>
+          <button className={`${fseg} ${regionFilter === 'fal' ? fon : foff}`} onClick={() => setRegionFilter('fal')}>Nacional</button>
+        </div>
+        {/* Filtro por tipo de tienda */}
+        <div className="flex flex-wrap gap-1.5">
+          <button className={`${fseg} ${tipoFilter === 'all' ? fon : foff}`} onClick={() => setTipoFilter('all')}>Todos</button>
+          <button className={`${fseg} ${tipoFilter === 'mall' ? fon : foff}`} onClick={() => setTipoFilter('mall')}>Mall</button>
+          <button className={`${fseg} ${tipoFilter === 'strip' ? fon : foff}`} onClick={() => setTipoFilter('strip')}>Strip</button>
+          <button className={`${fseg} ${tipoFilter === 'street' ? fon : foff}`} onClick={() => setTipoFilter('street')}>Street</button>
+        </div>
         <div className="max-h-[240px] overflow-y-auto flex flex-col gap-0.5">
-          {resultados.map(t => {
+          {resultadosFiltrados.map(t => {
             const on = selected.includes(t.cod);
             return (
               <button key={t.cod} onClick={() => toggle(t.cod)}
@@ -189,7 +221,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
               </button>
             );
           })}
-          {resultados.length === 0 && <div className="text-[12px] text-kmuted text-center py-3">Sin resultados.</div>}
+          {resultadosFiltrados.length === 0 && <div className="text-[12px] text-kmuted text-center py-3">Sin resultados.</div>}
         </div>
       </div>
 
