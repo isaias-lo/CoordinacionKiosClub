@@ -67,15 +67,15 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
   return (
     <div className="h-full flex flex-col bg-white no-print overflow-hidden">
 
-      <div className="px-3 py-2.5 border-b border-black/[0.09] flex-shrink-0">
-        <div className="text-[11px] font-bold text-ktext uppercase tracking-wide mb-2">Mapa de rutas</div>
-        <div className="flex gap-1.5 flex-wrap">
+      {/* Filtro de rutas — solo cuando hay más de una (con 0/1 no hay nada que filtrar). */}
+      {rutas.length > 1 && (
+        <div className="px-3 py-2 border-b border-black/[0.09] flex-shrink-0 flex gap-1.5 flex-wrap">
           <button
             onClick={() => setActiveFilter('all')}
             className={`h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] transition-all ${
               activeFilter === 'all' ? 'border-knavy bg-knavy text-white' : 'border-black/[0.12] bg-kbg text-kmuted'}`}
           >
-            Todas las rutas
+            Todas
           </button>
           {rutas.map((r, i) => {
             const col = COLS[i % COLS.length];
@@ -92,7 +92,7 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
             );
           })}
         </div>
-      </div>
+      )}
 
       {rutas.length > 0 && (
         <div className="px-3.5 py-2 border-b border-black/[0.09] flex flex-wrap gap-[9px] flex-shrink-0">
