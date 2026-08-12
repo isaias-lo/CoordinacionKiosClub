@@ -1,15 +1,17 @@
 'use client';
 import { useState, useRef } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays } from 'lucide-react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
+import PlanificadorTab from './PlanificadorTab';
 import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import type { Vehiculo } from '../data/flota';
+import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
 
@@ -54,6 +56,8 @@ interface Props {
   onEliminarParada?: (id: string) => void;
   rightPanelContent?: React.ReactNode;
   segundaVueltaContent?: React.ReactNode;
+  // [Planificador] Reporta la ruta ordenada + partida para dibujarla en el MapSection fijo.
+  onPlanRutas?: (rutas: Ruta[], cd: number[]) => void;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -76,6 +80,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
   { id: 'man',   Icon: PenLine,    label: 'MANUAL',      color: '#1B2A6B' },
   { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA',   color: '#6B21A8' },
   { id: 'flota', Icon: Truck,      label: 'FLOTA',       color: '#1B2A6B' },
+  { id: 'plan',  Icon: MapIcon,    label: 'PLAN',        color: '#0E7C6B' },
   { id: 'cal',   Icon: CalendarDays, label: 'CALENDARIO', color: '#B4690E' },
 ];
 
@@ -91,6 +96,7 @@ export default function InputSection({
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
   rightPanelContent,
   segundaVueltaContent,
+  onPlanRutas,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
   const isMobile = useIsMobile();
@@ -179,6 +185,8 @@ export default function InputSection({
           <div className="flex-1 overflow-hidden">{segundaVueltaContent}</div>
         ) : modo === 'cal' ? (
           <div className="flex-1 overflow-y-auto p-3 bg-kbg"><CalendarioColumnas readOnly forceGeneral /></div>
+        ) : modo === 'plan' ? (
+          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} /></div>
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">{rightPanelContent}</div>
         ) : (
@@ -215,10 +223,10 @@ export default function InputSection({
             {MODES.map(({ id, Icon, label, color }) => (
               <button
                 key={id}
-                onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'cal') onModo(id); }}
+                onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'cal' || id === 'plan') onModo(id); }}
                 style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
                 className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
-                  ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'cal' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
+                  ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'cal' && id !== 'plan' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
               >
                 <TabIcon Icon={Icon} color={color} />
                 <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
@@ -229,7 +237,7 @@ export default function InputSection({
             ))}
           </div>
           <div className="flex-1" />
-          {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'cal' && (
+          {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
             <button
               onClick={onCalcular}
               className="h-[40px] px-6 rounded-[12px] bg-knavy text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-knavy/90 flex items-center gap-2"
@@ -237,7 +245,7 @@ export default function InputSection({
               <Truck size={15} strokeWidth={2} /><span>Calcular Rutas</span>
             </button>
           )}
-          {modo !== 'flota' && modo !== 'cal' && (
+          {modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
             <button
               onClick={onLimpiar}
               className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
@@ -259,6 +267,10 @@ export default function InputSection({
       ) : modo === 'cal' ? (
         <div className="flex-1 overflow-y-auto p-4">
           <CalendarioColumnas readOnly forceGeneral />
+        </div>
+      ) : modo === 'plan' ? (
+        <div className="flex-1 overflow-hidden bg-white">
+          <PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} />
         </div>
       ) : rightPanelContent ? (
         <div className="flex-1 overflow-hidden">
