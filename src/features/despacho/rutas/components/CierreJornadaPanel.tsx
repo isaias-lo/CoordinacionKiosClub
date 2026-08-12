@@ -1,10 +1,11 @@
 'use client';
 import { useEffect } from 'react';
-import { Check, AlertTriangle } from 'lucide-react';
+import { Check, AlertTriangle, History } from 'lucide-react';
 import type { Ruta } from '../utils/routing';
 import { fechaTxt } from '../utils/helpers';
 
 interface PendienteV2 { c: string; p: number; b: number; ch: number }
+interface PendienteV2Backlog extends PendienteV2 { fechaOrigen: string }
 
 interface Props {
   isOpen: boolean;
@@ -13,6 +14,10 @@ interface Props {
   fecha: string;
   supervisor: string;
   pendientesV2: PendienteV2[];
+  // Backlog de DÍAS ANTERIORES (fuente independiente de pendientesV2, que solo mira la
+  // fecha exacta de hoy) — sin esto el panel decía "Sin pendientes" aunque hubiera tiendas
+  // de ayer sin resolver, porque nunca miraba más atrás que el día actual.
+  pendientesBacklog: PendienteV2Backlog[];
   onCargarPendientes: () => void;
   onListoPorHoy: () => void;
 }
@@ -55,7 +60,7 @@ function BloqueVuelta({ titulo, r, accent }: { titulo: string; r: Resumen; accen
 }
 
 export default function CierreJornadaPanel({
-  isOpen, onClose, rutas, fecha, supervisor, pendientesV2, onCargarPendientes, onListoPorHoy,
+  isOpen, onClose, rutas, fecha, supervisor, pendientesV2, pendientesBacklog, onCargarPendientes, onListoPorHoy,
 }: Props) {
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -67,6 +72,7 @@ export default function CierreJornadaPanel({
   const v1 = resumenVuelta(rutas, false);
   const v2 = resumenVuelta(rutas, true);
   const hayPendientes = pendientesV2.length > 0;
+  const hayBacklog    = pendientesBacklog.length > 0;
 
   return (
     <div className="fixed inset-0 z-[300] flex flex-col" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
@@ -124,8 +130,29 @@ export default function CierreJornadaPanel({
             </div>
           ) : (
             <div className="bg-white rounded-kios shadow-kios px-4 py-4 text-center mb-3 border border-[#34C759]/30">
-              <div className="text-[13px] font-bold text-[#34C759] inline-flex items-center gap-1"><Check size={15} aria-hidden="true" /> Sin pendientes</div>
+              <div className="text-[13px] font-bold text-[#34C759] inline-flex items-center gap-1"><Check size={15} aria-hidden="true" /> Sin pendientes de hoy</div>
               <div className="text-[12px] text-kmuted mt-0.5">Todas las tiendas quedaron asignadas a una ruta.</div>
+            </div>
+          )}
+
+          {/* Backlog de días anteriores — independiente de "hoy": una tienda que quedó sin
+              asignar ayer (o antes) no desaparece por cerrar el día de hoy sin resolverla. */}
+          {hayBacklog && (
+            <div className="bg-white rounded-kios shadow-kios border-2 border-amber-400/40 px-4 py-3.5 mb-3">
+              <div className="text-[13px] font-bold text-amber-700 mb-1 inline-flex items-center gap-1.5">
+                <History size={15} aria-hidden="true" />
+                {pendientesBacklog.length} tienda{pendientesBacklog.length !== 1 ? 's' : ''} sin resolver de días anteriores
+              </div>
+              <div className="text-[12px] text-kmuted leading-relaxed mb-2.5">
+                No son de hoy — cerrar el día no las descarta. Ábrelas desde la pestaña <strong className="text-ktext">2ª VUELTA</strong> para asignarlas o registrarlas.
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {pendientesBacklog.map(s => (
+                  <span key={`${s.fechaOrigen}-${s.c}`} className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-[6px] bg-amber-50 text-amber-700 border border-amber-300">
+                    {s.c} · {fechaTxt(s.fechaOrigen)}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
