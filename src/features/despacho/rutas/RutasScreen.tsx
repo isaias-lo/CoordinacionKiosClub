@@ -182,27 +182,27 @@ export default function RutasScreen() {
   // [Planificador] Ruta ordenada + partida del tab PLAN, para dibujarla en el MapSection fijo.
   const [planRutas, setPlanRutas] = useState<Ruta[]>([]);
   const [planCd,    setPlanCd]    = useState<number[] | null>(null);
-  // Divisor arrastrable board ↔ mapa (desktop): % de ancho del mapa.
+  // Divisor arrastrable board ↕ mapa (desktop): % de ALTO del mapa (el mapa vive ABAJO, a lo ancho).
   const [mapPct, setMapPct] = useState<number>(() => {
-    if (typeof window === 'undefined') return 34;
-    const s = Number(localStorage.getItem('enrutador_map_pct'));
-    return s >= 20 && s <= 65 ? s : 34;
+    if (typeof window === 'undefined') return 40;
+    const s = Number(localStorage.getItem('enrutador_map_h_pct'));
+    return s >= 20 && s <= 70 ? s : 40;
   });
   const mainRef = useRef<HTMLElement>(null);
   const mapResizingRef = useRef(false);
   useEffect(() => {
-    const move = (clientX: number) => {
+    const move = (clientY: number) => {
       if (!mapResizingRef.current || !mainRef.current) return;
       const r = mainRef.current.getBoundingClientRect();
-      setMapPct(Math.min(65, Math.max(20, ((r.right - clientX) / r.width) * 100)));
+      setMapPct(Math.min(70, Math.max(20, ((r.bottom - clientY) / r.height) * 100)));
     };
-    const onMouse = (e: MouseEvent) => move(e.clientX);
-    const onTouch = (e: TouchEvent) => { if (e.touches[0]) move(e.touches[0].clientX); };
+    const onMouse = (e: MouseEvent) => move(e.clientY);
+    const onTouch = (e: TouchEvent) => { if (e.touches[0]) move(e.touches[0].clientY); };
     const stop = () => {
       if (!mapResizingRef.current) return;
       mapResizingRef.current = false;
       document.body.style.cursor = ''; document.body.style.userSelect = '';
-      setMapPct(p => { try { localStorage.setItem('enrutador_map_pct', String(Math.round(p))); } catch {} return p; });
+      setMapPct(p => { try { localStorage.setItem('enrutador_map_h_pct', String(Math.round(p))); } catch {} return p; });
     };
     document.addEventListener('mousemove', onMouse);
     document.addEventListener('mouseup', stop);
@@ -2064,9 +2064,10 @@ export default function RutasScreen() {
         mapContent={isMobile ? mapPanel : undefined}
       />
 
-      <main ref={mainRef} className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="flex-1 md:flex-[2] min-w-0 overflow-hidden"
-          style={!isMobile ? { flex: `1 1 ${100 - mapPct}%`, minWidth: 0 } : undefined}>
+      <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden">
+        {/* Tablero (con sus tabs a ancho completo) ARRIBA; el mapa va abajo a lo ancho. */}
+        <div className="flex-1 min-w-0 overflow-hidden"
+          style={!isMobile ? { flex: `1 1 ${100 - mapPct}%`, minHeight: 0 } : undefined}>
           <InputSection
             flota={flota}
             modo={modo} calT={sortedCalT}
@@ -2197,24 +2198,24 @@ export default function RutasScreen() {
             adentro del drawer de DespachoHeader (mapContent), nunca las dos instancias a
             la vez. Antes de calcular muestra la preview del camión seleccionado, o el mapa
             vacío con el CD si no hay nada elegido todavía. */}
-        {/* Divisor arrastrable board ↔ mapa (desktop) */}
+        {/* Divisor arrastrable board ↕ mapa (desktop) — horizontal, el mapa está abajo */}
         {!isMobile && (
           <div
-            onMouseDown={() => { mapResizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
+            onMouseDown={() => { mapResizingRef.current = true; document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none'; }}
             onTouchStart={() => { mapResizingRef.current = true; }}
             title="Arrastra para ampliar o achicar el mapa"
-            className="group hidden md:flex flex-shrink-0 cursor-col-resize items-center justify-center relative select-none z-10"
-            style={{ width: 6, background: 'rgba(0,0,0,0.05)' }}
+            className="group hidden md:flex flex-shrink-0 cursor-row-resize items-center justify-center relative select-none z-10 w-full"
+            style={{ height: 6, background: 'rgba(0,0,0,0.05)' }}
           >
             <div className="absolute inset-0 group-hover:bg-knavy/20 transition-colors duration-150" />
-            <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
             </div>
           </div>
         )}
         {!isMobile && (
-          <div className="h-[320px] md:h-auto flex-shrink-0 md:flex-1 md:min-w-0 border-t md:border-t-0 md:border-l border-black/[0.09] overflow-hidden"
-            style={!isMobile ? { flex: `0 0 ${mapPct}%`, minWidth: 0 } : undefined}>
+          <div className="flex-shrink-0 w-full overflow-hidden border-t border-black/[0.09]"
+            style={{ flex: `0 0 ${mapPct}%`, minHeight: 0 }}>
             {mapPanel}
           </div>
         )}
