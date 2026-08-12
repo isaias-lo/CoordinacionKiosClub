@@ -43,14 +43,27 @@ function MetaTienda({ tienda }: { tienda?: TiendaInfo }) {
   );
 }
 
+// Persistencia del plan (tiendas + orden + partida) para que NO se pierda al cambiar de tab
+// (el componente se desmonta) ni al recargar. La ruta del mapa se reconstruye desde esto.
+const PLAN_STATE_KEY = 'enrutador_plan_state';
+interface PlanPersist {
+  startMode: StartMode; startTienda: string;
+  customCoord: { lat: number; lng: number } | null; customAddr: string;
+  selected: string[]; orderMode: 'cercania' | 'manual';
+}
+function loadPlan(): Partial<PlanPersist> {
+  if (typeof window === 'undefined') return {};
+  try { return JSON.parse(localStorage.getItem(PLAN_STATE_KEY) || '{}') as Partial<PlanPersist>; } catch { return {}; }
+}
+
 export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
-  const [startMode,   setStartMode]   = useState<StartMode>('cd');
-  const [startTienda, setStartTienda] = useState('');
-  const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(null);
-  const [customAddr,  setCustomAddr]  = useState('');
+  const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode ?? 'cd');
+  const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda ?? '');
+  const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord ?? null);
+  const [customAddr,  setCustomAddr]  = useState(() => loadPlan().customAddr ?? '');
   const [geoStatus,   setGeoStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
-  const [selected,    setSelected]    = useState<string[]>([]);
-  const [orderMode,   setOrderMode]   = useState<'cercania' | 'manual'>('cercania');
+  const [selected,    setSelected]    = useState<string[]>(() => loadPlan().selected ?? []);
+  const [orderMode,   setOrderMode]   = useState<'cercania' | 'manual'>(() => loadPlan().orderMode ?? 'cercania');
   const [search,      setSearch]      = useState('');
   const [regionFilter, setRegionFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
   const [tipoFilter,   setTipoFilter]   = useState<'all' | TipoTiendaKey>('all');
@@ -58,6 +71,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
+
+  // Persistir el plan → se conserva al cambiar de tab (desmontaje) y al recargar.
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, selected, orderMode }));
+    } catch {}
+  }, [startMode, startTienda, customCoord, customAddr, selected, orderMode]);
 
   // Punto de partida resuelto (coord).
   const startCoord = useMemo<{ lat: number; lng: number }>(() => {
@@ -142,11 +162,15 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   const seg = 'flex-1 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors';
 
   return (
-    <div className="h-full overflow-y-auto p-4 flex flex-col gap-4 max-w-[640px] mx-auto w-full">
+    <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">
       <div>
         <div className="flex items-center gap-2 text-ktext font-bold text-[15px]"><MapPin size={16} className="text-knavy" /> Planificador de rutas</div>
-        <div className="text-[12px] text-kmuted mt-0.5">Elegí punto de partida y tiendas; la ruta se ordena por cercanía y se dibuja en el mapa de la derecha.</div>
+        <div className="text-[12px] text-kmuted mt-0.5">Elegí punto de partida y tiendas; la ruta se ordena por cercanía y se dibuja en el mapa.</div>
       </div>
+
+      {/* 2 columnas en desktop: (izq) partida + agregar tiendas · (der) paradas/ruta */}
+      <div className="grid gap-4 items-start lg:grid-cols-2">
+        <div className="flex flex-col gap-4 min-w-0">
 
       {/* Punto de partida */}
       <div className="flex flex-col gap-2">
@@ -225,6 +249,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
         </div>
       </div>
 
+        </div>{/* ── fin columna izquierda ── */}
+        <div className="flex flex-col gap-4 min-w-0">
+
       {/* Paradas seleccionadas */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -265,6 +292,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
           </a>
         )}
       </div>
+        </div>{/* ── fin columna derecha ── */}
+      </div>{/* ── fin grid 2 columnas ── */}
     </div>
   );
 }
