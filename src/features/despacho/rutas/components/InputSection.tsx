@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
@@ -58,6 +58,8 @@ interface Props {
   segundaVueltaContent?: React.ReactNode;
   // [Planificador] Reporta la ruta ordenada + partida para dibujarla en el MapSection fijo.
   onPlanRutas?: (rutas: Ruta[], cd: number[]) => void;
+  // [Layout] Mapa fijo a la DERECHA del contenido (desktop). En móvil va en el drawer del header.
+  mapPanel?: React.ReactNode;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -97,9 +99,58 @@ export default function InputSection({
   rightPanelContent,
   segundaVueltaContent,
   onPlanRutas,
+  mapPanel,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
   const isMobile = useIsMobile();
+
+  // Divisor arrastrable contenido ↔ mapa (desktop): % de ANCHO del mapa (a la derecha).
+  const [mapPct, setMapPct] = useState<number>(() => {
+    if (typeof window === 'undefined') return 37;
+    const s = Number(localStorage.getItem('enrutador_map_w_pct'));
+    return s >= 20 && s <= 60 ? s : 37;
+  });
+  const contentRowRef = useRef<HTMLDivElement>(null);
+  const mapResizingRef = useRef(false);
+  useEffect(() => {
+    const move = (clientX: number) => {
+      if (!mapResizingRef.current || !contentRowRef.current) return;
+      const r = contentRowRef.current.getBoundingClientRect();
+      setMapPct(Math.min(60, Math.max(20, ((r.right - clientX) / r.width) * 100)));
+    };
+    const onMouse = (e: MouseEvent) => move(e.clientX);
+    const onTouch = (e: TouchEvent) => { if (e.touches[0]) move(e.touches[0].clientX); };
+    const stop = () => {
+      if (!mapResizingRef.current) return;
+      mapResizingRef.current = false;
+      document.body.style.cursor = ''; document.body.style.userSelect = '';
+      setMapPct(p => { try { localStorage.setItem('enrutador_map_w_pct', String(Math.round(p))); } catch {} return p; });
+    };
+    document.addEventListener('mousemove', onMouse);
+    document.addEventListener('mouseup', stop);
+    document.addEventListener('touchmove', onTouch, { passive: true });
+    document.addEventListener('touchend', stop);
+    return () => {
+      document.removeEventListener('mousemove', onMouse);
+      document.removeEventListener('mouseup', stop);
+      document.removeEventListener('touchmove', onTouch);
+      document.removeEventListener('touchend', stop);
+    };
+  }, []);
+  const mapDivider = mapPanel ? (
+    <div
+      onMouseDown={() => { mapResizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
+      onTouchStart={() => { mapResizingRef.current = true; }}
+      title="Arrastra para ampliar o achicar el mapa"
+      className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
+      style={{ width: 6, background: 'rgba(0,0,0,0.05)' }}
+    >
+      <div className="absolute inset-0 group-hover:bg-knavy/20 transition-colors duration-150" />
+      <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+        {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
+      </div>
+    </div>
+  ) : null;
   // Contenedor real con scroll del tablero DESPACHO — se lo pasamos a ManualDispatch para
   // el auto-scroll al arrastrar cerca del borde (más confiable que buscarlo por DOM-walk).
   const dragScrollRef = useRef<HTMLDivElement>(null);
@@ -258,7 +309,9 @@ export default function InputSection({
 
       {errorsBanner}
 
-      {/* Content area */}
+      {/* Content area — contenido (izquierda) + mapa fijo (derecha, desktop) */}
+      <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex flex-col overflow-hidden min-w-0" style={mapPanel ? { flex: `1 1 ${100 - mapPct}%` } : { flex: '1 1 100%' }}>
       {modo === 'flota' ? flotaTabContent
       : modo === 'v2' ? (
         <div className="flex-1 overflow-hidden">
@@ -316,6 +369,14 @@ export default function InputSection({
           )}
         </div>
       )}
+        </div>
+        {mapDivider}
+        {mapPanel && (
+          <div className="flex-shrink-0 overflow-hidden border-l border-black/[0.09]" style={{ flex: `0 0 ${mapPct}%`, minWidth: 0 }}>
+            {mapPanel}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
