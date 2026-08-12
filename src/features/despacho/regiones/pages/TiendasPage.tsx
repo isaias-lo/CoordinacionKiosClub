@@ -206,7 +206,7 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 
 
 /* ── Main page ── */
-export function TiendasPage() {
+export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
   const { state, dispatch, showToast } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
@@ -2008,7 +2008,7 @@ export function TiendasPage() {
       {/* RIGHT PANEL — resumen (right column on desktop only) */}
       <div className="hidden lg:flex lg:flex-col overflow-hidden flex-shrink-0"
            style={isDesktop ? { width: rightWidth } : undefined}>
-        <ResumenPage panel />
+        <ResumenPage panel onRegistrar={onRegistrar} />
       </div>
 
       {/* Mobile Resumen Overlay */}
@@ -2036,7 +2036,7 @@ export function TiendasPage() {
             </button>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">
-            <ResumenPage panel />
+            <ResumenPage panel onRegistrar={onRegistrar} />
           </div>
         </div>
       )}
