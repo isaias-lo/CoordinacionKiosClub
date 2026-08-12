@@ -660,7 +660,7 @@ export function PickingScreen() {
     ]);
   }, [nameFor]);
 
-  // ── Tiendas de adelanto (extra del día, fuera del calendario central) ──────
+  // ── Tiendas de adelanto (extra del día, fuera del calendario de abastecimiento) ──────
   const loadAdelantos = useCallback(async () => {
     setAdelantos(await getTiendasAdelantoHoy());
   }, []);

@@ -36,7 +36,7 @@ interface AppRole {
 interface SectionPerm { id: string; label: string; desc: string; group: string; }
 const SECTION_PERMISSIONS: SectionPerm[] = [
   { id: 'config-tiendas/tiendas',    label: 'Gestionar Tiendas',  desc: 'Agregar, editar y desactivar tiendas',       group: 'Config. Tiendas' },
-  { id: 'config-tiendas/calendario', label: 'Calendario Central', desc: 'Modificar el orden del calendario de rutas', group: 'Config. Tiendas' },
+  { id: 'config-tiendas/calendario', label: 'Calendario de Abastecimiento', desc: 'Modificar el orden del calendario de rutas', group: 'Config. Tiendas' },
   { id: 'estado/seguimiento',        label: 'Sync desde Sheets',  desc: 'Importar registros desde Google Sheets',     group: 'Estado'          },
 ];
 

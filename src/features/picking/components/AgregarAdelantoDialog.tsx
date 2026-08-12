@@ -25,7 +25,7 @@ const ZONA_LABEL: Record<ZonaAdelanto, string> = {
 /**
  * Diálogo para agregar una tienda de "adelanto" al flujo del día desde Picking:
  * buscar la tienda, confirmar la zona (Bodega destino) y la fecha de despacho.
- * No toca el calendario central — solo agrega un extra para hoy.
+ * No toca el calendario de abastecimiento — solo agrega un extra para hoy.
  */
 export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Props) {
   const [q, setQ]             = useState('');

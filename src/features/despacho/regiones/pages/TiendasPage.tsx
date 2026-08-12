@@ -247,9 +247,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .catch(() => {});
   }, []);
 
-  /* Calendar from Calendario Central (Sheets + localStorage cross-tab sync) */
+  /* Calendar from the Calendario de Abastecimiento (Sheets + localStorage cross-tab sync) */
   const [sheetsTodayCods, setSheetsTodayCods] = useState<string[]>([]);
-  // Tiendas de adelanto de hoy con destino Regiones (zona 'fal'), sin tocar el calendario central.
+  // Tiendas de adelanto de hoy con destino Regiones (zona 'fal'), sin tocar el calendario de abastecimiento.
   const [adelantoCods, setAdelantoCods] = useState<string[]>([]);
   useEffect(() => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
@@ -265,7 +265,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .then(list => setAdelantoCods(list.filter(a => a.zona === 'fal').map(a => a.store_cod)))
       .catch(() => {});
 
-    // Real-time sync when CalendarioCentral saves from another tab
+    // Real-time sync when the Calendario de Abastecimiento saves from another tab
     return subscribeToCalendarChanges(cal => {
       const cods = cal[todayCode]?.fal || [];
       if (cods.length > 0) setSheetsTodayCods(cods);

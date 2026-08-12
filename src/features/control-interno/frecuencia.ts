@@ -1,6 +1,6 @@
-// Deriva la FRECUENCIA de una tienda (días en que se despacha) desde el Calendario Central, en vez
-// de un campo manual (que suele quedar vacío/desactualizado). Ej: si ALC está en MA, JU y VI del
-// calendario → "MA-JU-VI". Puro y testeable.
+// Deriva la FRECUENCIA de una tienda (días en que se despacha) desde un calendario (Abastecimiento
+// o Congelados — la función es genérica), en vez de un campo manual (que suele quedar vacío/
+// desactualizado). Ej: si ALC está en MA, JU y VI del calendario → "MA-JU-VI". Puro y testeable.
 
 export interface CalDiaGrupos { rm?: string[]; costa?: string[]; fal?: string[] }
 

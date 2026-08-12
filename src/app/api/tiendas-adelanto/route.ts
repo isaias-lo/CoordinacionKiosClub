@@ -9,7 +9,7 @@ const ZONAS = new Set(['rm', 'costa', 'fal']);
 
 /**
  * /api/tiendas-adelanto — tiendas extra ("adelanto") que Coordinación agrega al
- * flujo de un día sin tocar el calendario central. Las consumen Picking y las
+ * flujo de un día sin tocar el calendario de abastecimiento. Las consumen Picking y las
  * Bodegas (Santiago/Regiones) fusionándolas con el calendario.
  *
  * GET    ?fecha=YYYY-MM-DD            → lista las tiendas de adelanto de esa fecha

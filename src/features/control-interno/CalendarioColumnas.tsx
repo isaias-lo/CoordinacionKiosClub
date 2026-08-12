@@ -9,6 +9,9 @@ import {
   computeDiff, crearNotificacion, fetchCalendarioDespacho,
   marcarNotificacionResuelta, type CalRecord as CalRecordType,
 } from '@/lib/calendarioArmadoSync';
+import {
+  fetchCalendarioCongelados, saveCalendarioCongelados, subscribeToCalendarioCongelados,
+} from '@/lib/calendarioCongeladosSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 import {
@@ -59,7 +62,7 @@ export default function CalendarioColumnas({
   forceGeneral = false,   // muestra solo la vista General y oculta el selector de grupos
 }: {
   readOnly?: boolean;
-  source?:   'despacho' | 'armado';
+  source?:   'despacho' | 'armado' | 'congelados';
   forceGeneral?: boolean;
 }) {
   const [cal, setCal]               = useState<CalRecord | null>(null);
@@ -148,6 +151,8 @@ export default function CalendarioColumnas({
   useEffect(() => {
     const loader = source === 'armado'
       ? fetchCalendarioArmado().then(c => c ?? fetchCalendarioCompleto())
+      : source === 'congelados'
+      ? fetchCalendarioCongelados()
       : fetchCalendarioCompleto();
     loader
       .then(c => { setCal(c); setLocal(JSON.parse(JSON.stringify(c))); setLoading(false); })
@@ -155,6 +160,10 @@ export default function CalendarioColumnas({
 
     if (source === 'armado') {
       const unsub = subscribeToCalendarioArmado(c => setCal(c));
+      return unsub;
+    }
+    if (source === 'congelados') {
+      const unsub = subscribeToCalendarioCongelados(c => setCal(c));
       return unsub;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -306,6 +315,8 @@ export default function CalendarioColumnas({
           const cambios = computeDiff(calDespacho, local);
           await crearNotificacion(cambios, local);
         }
+      } else if (source === 'congelados') {
+        await saveCalendarioCongelados(local);
       } else {
         await saveCalendario(local);
         writeCalendario(local);
