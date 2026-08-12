@@ -8,6 +8,7 @@ import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
+import CierreJornadaPanel from './components/CierreJornadaPanel';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
 
@@ -213,6 +214,9 @@ export default function RutasScreen() {
   const [paradasAdicionales, setParadasAdicionales] = useState<Parada[]>([]);
   const paradaCounter = useRef(0);
   const [paradasOpen, setParadasOpen] = useState(false);
+  // Panel de Cierre de Jornada — compartido entre ResultsSection (post-Calcular) y el
+  // botón "Terminar día" del tablero DESPACHO (ver CierreJornadaPanel más abajo).
+  const [cierreOpen, setCierreOpen] = useState(false);
   // Contenedor con scroll real del board de 2ª vuelta — mismo motivo que en InputSection:
   // auto-scroll al arrastrar cerca del borde más confiable que buscarlo por DOM-walk.
   const v2ScrollRef = useRef<HTMLDivElement>(null);
@@ -2059,6 +2063,7 @@ export default function RutasScreen() {
             onCerrarCamion={cerrarCamionV1Board}
             onLimpiar={handleLimpiar}
             onEliminarParada={handleEliminarParada}
+            onTerminarDia={() => setCierreOpen(true)}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">
@@ -2080,10 +2085,9 @@ export default function RutasScreen() {
                       kmPorRuta={kmPorRuta}
                       legDataPorRuta={legDataPorRuta}
                       pendientesV2={pendientesV2}
-                      onCargarPendientes={handleCargarPendientes}
-                      onListoPorHoy={handleListoPorHoy}
                       cerrado={cerrado}
                       cerradasV1={cerradasV1}
+                      onAbrirCierre={() => setCierreOpen(true)}
                     />
                   </div>
                   <footer className="no-print border-t border-black/[0.09] py-[14px] text-center text-[11px] text-kmuted font-mono">
@@ -2187,6 +2191,23 @@ export default function RutasScreen() {
           onClose={() => setManifiestoV1(null)}
         />
       )}
+
+      {/* Cierre de jornada — alcanzable desde ResultsSection (post-Calcular) Y desde el
+          tablero DESPACHO ("Terminar día", sin haber calculado). Antes solo vivía dentro de
+          ResultsSection: si el supervisor cerraba camiones uno por uno con "Cerrar camión"
+          y nunca calculaba, "Listo por hoy" —el único lugar que manda el pool sin asignar a
+          pendientes 2ª vuelta— quedaba inalcanzable y esas tiendas no se guardaban en ningún
+          lado. Sin resultados calculados, el resumen usa lo armado en vivo en el tablero. */}
+      <CierreJornadaPanel
+        isOpen={cierreOpen}
+        onClose={() => setCierreOpen(false)}
+        rutas={results?.rutas ?? rutasDesdeAsignaciones(manualAsignaciones, flota, gps, cdRef.current, tiendas)}
+        fecha={fecha}
+        supervisor={supervisor}
+        pendientesV2={pendientesV2}
+        onCargarPendientes={handleCargarPendientes}
+        onListoPorHoy={handleListoPorHoy}
+      />
 
       <ParadasAdicionales
         isOpen={paradasOpen}

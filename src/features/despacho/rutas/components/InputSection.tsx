@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays } from 'lucide-react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Flag } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -52,6 +52,10 @@ interface Props {
   onCerrarCamion?: (patente: string) => void;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
+  // Abre el Cierre de Jornada directamente desde el tablero DESPACHO, sin pasar por
+  // "Calcular" — es el único lugar que manda lo que quedó sin asignar a pendientes 2ª
+  // vuelta ("Listo por hoy"), y antes solo se podía llegar ahí después de calcular.
+  onTerminarDia?: () => void;
   rightPanelContent?: React.ReactNode;
   segundaVueltaContent?: React.ReactNode;
 }
@@ -89,6 +93,7 @@ export default function InputSection({
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
+  onTerminarDia,
   rightPanelContent,
   segundaVueltaContent,
 }: Props) {
@@ -159,7 +164,12 @@ export default function InputSection({
       <div className="flex flex-col h-full overflow-hidden">
         <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
           <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
-            <button onClick={onLimpiar} className="h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ml-auto">
+            {modo === 'drag' && !rightPanelContent && onTerminarDia && (
+              <button onClick={onTerminarDia} className="h-[36px] px-3 rounded-[10px] bg-white border-2 border-knavy/30 text-knavy text-[12px] font-bold flex-shrink-0 flex items-center gap-1 ml-auto">
+                <Flag size={13} strokeWidth={2} aria-hidden="true" /><span>Terminar día</span>
+              </button>
+            )}
+            <button onClick={onLimpiar} className={`h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ${modo === 'drag' && !rightPanelContent && onTerminarDia ? '' : 'ml-auto'}`}>
               Limpiar
             </button>
             <div className="flex bg-kbg rounded-[10px] p-[3px] gap-1 w-full">
@@ -229,6 +239,14 @@ export default function InputSection({
             ))}
           </div>
           <div className="flex-1" />
+          {!rightPanelContent && modo === 'drag' && onTerminarDia && (
+            <button
+              onClick={onTerminarDia}
+              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-knavy/30 text-knavy text-[13px] font-bold hover:border-knavy transition-all flex items-center gap-2"
+            >
+              <Flag size={15} strokeWidth={2} /><span>Terminar día</span>
+            </button>
+          )}
           {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'cal' && (
             <button
               onClick={onCalcular}
