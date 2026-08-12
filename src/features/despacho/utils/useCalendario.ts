@@ -59,7 +59,7 @@ export function writeCalendario(cal: CalendarioCompleto): void {
 }
 
 /**
- * Subscribe to cross-tab calendar updates from CalendarioCentral.
+ * Subscribe to cross-tab calendar updates from the Calendario de Abastecimiento.
  * Returns an unsubscribe function for use in useEffect cleanup.
  */
 export function subscribeToCalendarChanges(cb: (cal: CalendarioCompleto) => void): () => void {

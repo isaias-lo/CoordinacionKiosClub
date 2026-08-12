@@ -294,7 +294,7 @@ export function StepForm() {
   const [extraCods,    setExtraCods]    = useState<string[]>(loadExtra);
   const [removedCods,  setRemovedCods]  = useState<string[]>(loadRemoved);
   // Tiendas de adelanto de hoy con destino Santiago/Costa (zona rm | costa).
-  // Entran al flujo de la bodega sin tocar el calendario central.
+  // Entran al flujo de la bodega sin tocar el calendario de abastecimiento.
   const [adelantoCods, setAdelantoCods] = useState<string[]>([]);
   const [confirmAdd,   setConfirmAdd]   = useState<string | null>(null);
   const [confirmRemove,setConfirmRemove]= useState<string | null>(null);
@@ -487,7 +487,7 @@ export function StepForm() {
       .then(list => setAdelantoCods(list.filter(a => a.zona === 'rm' || a.zona === 'costa').map(a => a.store_cod)))
       .catch(() => {});
 
-    // Real-time sync when CalendarioCentral saves from another tab
+    // Real-time sync when the Calendario de Abastecimiento saves from another tab
     return subscribeToCalendarChanges(cal => {
       const day = cal[todayCode];
       if (!day) return;

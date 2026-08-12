@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Store, CalendarDays, Plus, RefreshCw, Upload,
+  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload,
   Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
 import { parseCoord } from './coords';
 import { frecuenciasPorTienda } from './frecuencia';
 import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
+import { fetchCalendarioCongelados, subscribeToCalendarioCongelados } from '@/lib/calendarioCongeladosSync';
 
 export interface Tienda {
   codigo: string; nombre: string; direccion: string; region: string;
@@ -142,7 +143,7 @@ export default function TiendasAdminContent({
   const [saving,    setSaving]    = useState(false);
   const [togglingCod, setTogglingCod] = useState<string | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
-  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario'>('tiendas');
+  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
   const [sortBy,  setSortBy]  = useState<SortBy>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre' : 'nombre');
@@ -152,13 +153,22 @@ export default function TiendasAdminContent({
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_view') as 'cards' | 'tabla') ?? 'cards' : 'cards');
   useEffect(() => { localStorage.setItem('tiendas_view', viewMode); }, [viewMode]);
 
-  // Frecuencia DERIVADA del Calendario Central (cod → "MA-JU-VI"), no del campo manual (que suele
+  // Frecuencia DERIVADA del Calendario de Abastecimiento (cod → "MA-JU-VI"), no del campo manual (que suele
   // quedar vacío). Se actualiza sola cuando cambia el calendario (cross-device).
   const [freqByCod, setFreqByCod] = useState<Record<string, string>>({});
   useEffect(() => {
     let alive = true;
     fetchCalendarioCompleto().then(cal => { if (alive) setFreqByCod(frecuenciasPorTienda(cal)); }).catch(() => {});
     const unsub = subscribeToCalendarChanges(cal => setFreqByCod(frecuenciasPorTienda(cal)));
+    return () => { alive = false; unsub(); };
+  }, []);
+
+  // Frecuencia derivada del Calendario de Congelados, mismo patrón que freqByCod.
+  const [freqCongByCod, setFreqCongByCod] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    fetchCalendarioCongelados().then(cal => { if (alive) setFreqCongByCod(frecuenciasPorTienda(cal)); }).catch(() => {});
+    const unsub = subscribeToCalendarioCongelados(cal => setFreqCongByCod(frecuenciasPorTienda(cal)));
     return () => { alive = false; unsub(); };
   }, []);
 
@@ -295,7 +305,7 @@ export default function TiendasAdminContent({
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>Config. Tiendas</div>
-          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 1 }}>Gestión de tiendas y calendario central</div>
+          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 1 }}>Gestión de tiendas y calendario de abastecimiento</div>
         </div>
 
         {/* Stats */}
@@ -342,7 +352,11 @@ export default function TiendasAdminContent({
       <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', display: 'flex', gap: 0, paddingLeft: 24, flexShrink: 0 }}>
         {([
           { id: 'tiendas'    as const, label: 'Tiendas',    Icon: Store        },
-          { id: 'calendario' as const, label: source === 'armado' ? 'Calendario Armado' : 'Calendario Central', Icon: CalendarDays },
+          { id: 'calendario' as const, label: source === 'armado' ? 'Calendario Armado' : 'Calendario de Abastecimiento', Icon: CalendarDays },
+          // El calendario de Congelados es propio del flujo de despacho (no aplica a "armado").
+          ...(source === 'despacho'
+            ? [{ id: 'congelados' as const, label: 'Calendario de Congelados', Icon: Snowflake }]
+            : []),
         ]).map(({ id, label, Icon }) => {
           const active = activeTab === id;
           return (
@@ -365,6 +379,9 @@ export default function TiendasAdminContent({
 
         {/* Calendario tab */}
         {activeTab === 'calendario' && <CalendarioColumnas readOnly={!canEditCalendario} source={source} />}
+
+        {/* Calendario de Congelados tab */}
+        {activeTab === 'congelados' && <CalendarioColumnas readOnly={!canEditCalendario} source="congelados" />}
 
         {/* Tiendas tab */}
         {activeTab === 'tiendas' && (
@@ -617,11 +634,20 @@ export default function TiendasAdminContent({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Ventana horaria</label><input style={inp} value={form.ventana} onChange={f('ventana')} placeholder="09:00-12:00" /></div>
               <div>
-                <label style={lbl}>Frecuencia <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· del Calendario Central</span></label>
+                <label style={lbl}>Frecuencia <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· del Calendario de Abastecimiento</span></label>
                 <input style={{ ...inp, background: '#F8FAFC', color: '#475569', cursor: 'default' }} readOnly
                   value={freqByCod[form.codigo] || form.frecuencia || ''}
                   placeholder="— (la tienda no está en el calendario)" />
               </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+              <div>
+                <label style={lbl}>Frecuencia <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· del Calendario de Congelados</span></label>
+                <input style={{ ...inp, background: '#F8FAFC', color: '#475569', cursor: 'default' }} readOnly
+                  value={freqCongByCod[form.codigo] || ''}
+                  placeholder="— (la tienda no está en el calendario)" />
+              </div>
+              <div />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Latitud</label><input style={inp} type="text" inputMode="decimal" value={latStr} onChange={e => setLatStr(e.target.value)} placeholder="-33.391885" /></div>

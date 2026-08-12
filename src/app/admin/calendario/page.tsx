@@ -15,7 +15,7 @@ export default function CalendarioAdminPage() {
         <div className="text-center px-6">
           <div className="text-[32px] mb-3">🔒</div>
           <div className="text-[16px] font-bold text-ktext mb-1">Acceso restringido</div>
-          <div className="text-[13px] text-kmuted">Solo administradores pueden acceder al Calendario Central</div>
+          <div className="text-[13px] text-kmuted">Solo administradores pueden acceder al Calendario de Abastecimiento</div>
           <button onClick={() => router.back()} className="mt-4 h-[40px] px-6 rounded-[10px] bg-kred text-white text-[14px] font-bold">Volver</button>
         </div>
       </div>
@@ -35,7 +35,7 @@ export default function CalendarioAdminPage() {
             </button>
             <div>
               <div className="text-[11px] font-semibold text-white/60 uppercase tracking-[1.2px] mb-0.5">Control Interno</div>
-              <div className="text-[22px] font-extrabold text-white leading-tight">Calendario Central</div>
+              <div className="text-[22px] font-extrabold text-white leading-tight">Calendario de Abastecimiento</div>
               <div className="text-[13px] text-white/70 mt-0.5">
                 Arrastra tiendas entre días · ✕ para quitar · cambios afectan a todos los módulos
               </div>
@@ -47,7 +47,7 @@ export default function CalendarioAdminPage() {
         </div>
       </div>
 
-      {/* ── Body: CalendarioColumnas con source='despacho' → afecta a calendario_central ── */}
+      {/* ── Body: CalendarioColumnas con source='despacho' → afecta al calendario de abastecimiento ── */}
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '12px 12px 24px' }}>
         <CalendarioColumnas source="despacho" />
       </div>

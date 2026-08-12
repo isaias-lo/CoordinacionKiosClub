@@ -144,7 +144,7 @@ export default function RutasScreen() {
     try { localStorage.setItem('flotaOrdenActivacion', JSON.stringify(flotaActivadaEn)); } catch {}
   }, [flotaActivadaEn]);
   const [cal,     setCal]     = useState<CalRecord>(() => {
-    // Fast-path: use localStorage cache written by CalendarioCentral (if fresh)
+    // Fast-path: use localStorage cache written by the Calendario de Abastecimiento (if fresh)
     try {
       if (typeof window !== 'undefined') {
         const raw = localStorage.getItem('_calCentral');
@@ -270,7 +270,7 @@ export default function RutasScreen() {
   const lastPushedCerradasRef = useRef<string>('');
   const isCerradasInitRef      = useRef(false);
 
-  // ── Sync cal from CalendarioCentral (cross-tab) ───────────────────
+  // ── Sync cal from the Calendario de Abastecimiento (cross-tab) ────
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key !== '_calCentral' || !e.newValue) return;
@@ -1621,7 +1621,7 @@ export default function RutasScreen() {
       if (t3?.values) {
         const sheetsCal = parseCalendarioAuth(t3.values);
         if (sheetsCal) {
-          // Re-order Sheets data to match CalendarioCentral order from localStorage
+          // Re-order Sheets data to match the Calendario de Abastecimiento order from localStorage
           let newCal = sheetsCal;
           try {
             if (typeof window !== 'undefined') {
@@ -1633,11 +1633,11 @@ export default function RutasScreen() {
                   ordered[dia] = { rm: [], costa: [], fal: [] };
                   (['rm','costa','fal'] as const).forEach(grp => {
                     const sheetsSet = new Set(sheetsCal[dia]?.[grp] || []);
-                    // First: stores in CalendarioCentral order (if also in Sheets)
+                    // First: stores in Calendario de Abastecimiento order (if also in Sheets)
                     (lsCal[dia]?.[grp] || []).forEach(c => {
                       if (sheetsSet.has(c)) { ordered[dia][grp].push(c); sheetsSet.delete(c); }
                     });
-                    // Then: any remaining in Sheets not yet in CalendarioCentral
+                    // Then: any remaining in Sheets not yet in the Calendario de Abastecimiento
                     sheetsSet.forEach(c => ordered[dia][grp].push(c));
                   });
                 });

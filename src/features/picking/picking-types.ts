@@ -18,7 +18,7 @@ export interface PickerGroup {
 export interface TodayStore {
   cod: string; name: string; sources: ('rm' | 'regiones')[];
   // Presente solo si la tienda fue agregada como "adelanto" (extra del día,
-  // fuera del calendario central). Permite marcarla y eliminarla en la UI.
+  // fuera del calendario de abastecimiento). Permite marcarla y eliminarla en la UI.
   adelanto?: { id: number; zona: 'rm' | 'costa' | 'fal'; fecha_despacho: string | null };
 }
 export type StoreGroupKey = 'region' | 'costa' | 'santiago';
