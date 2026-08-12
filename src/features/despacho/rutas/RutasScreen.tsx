@@ -2071,6 +2071,7 @@ export default function RutasScreen() {
             onEliminarParada={handleEliminarParada}
             onPlanRutas={(rutas, cdArr) => { setPlanRutas(rutas); setPlanCd(cdArr); }}
             onTerminarDia={() => setCierreOpen(true)}
+            pendientesBacklogCount={pendientesV2Origen.length}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">
@@ -2206,6 +2207,7 @@ export default function RutasScreen() {
         fecha={fecha}
         supervisor={supervisor}
         pendientesV2={pendientesV2}
+        pendientesBacklog={pendientesV2Origen}
         onCargarPendientes={handleCargarPendientes}
         onListoPorHoy={handleListoPorHoy}
       />

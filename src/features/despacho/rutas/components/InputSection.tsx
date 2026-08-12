@@ -58,6 +58,9 @@ interface Props {
   // "Calcular" — es el único lugar que manda lo que quedó sin asignar a pendientes 2ª
   // vuelta ("Listo por hoy"), y antes solo se podía llegar ahí después de calcular.
   onTerminarDia?: () => void;
+  // Backlog de tiendas pendientes de 2ª vuelta de DÍAS ANTERIORES (no las de hoy) — badge
+  // en el tab "2ª VUELTA" para que no pase desapercibido (antes no había ninguna señal ahí).
+  pendientesBacklogCount?: number;
   rightPanelContent?: React.ReactNode;
   segundaVueltaContent?: React.ReactNode;
   // [Planificador] Reporta la ruta ordenada + partida para dibujarla en el MapSection fijo.
@@ -101,6 +104,7 @@ export default function InputSection({
   onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
   onTerminarDia,
+  pendientesBacklogCount = 0,
   rightPanelContent,
   segundaVueltaContent,
   onPlanRutas,
@@ -231,10 +235,17 @@ export default function InputSection({
             </button>
             <div className="flex bg-kbg rounded-[10px] p-[3px] gap-1 w-full">
               {MODES.map(({ id, Icon, label }) => (
-                <button key={id} onClick={() => onModo(id)} aria-label={label} title={label}
-                  className={`flex-1 h-[36px] rounded-[8px] flex items-center justify-center transition-all
+                <button key={id} onClick={() => onModo(id)}
+                  aria-label={id === 'v2' && pendientesBacklogCount > 0 ? `${label} — ${pendientesBacklogCount} pendiente${pendientesBacklogCount !== 1 ? 's' : ''} de días anteriores` : label}
+                  title={label}
+                  className={`relative flex-1 h-[36px] rounded-[8px] flex items-center justify-center transition-all
                     ${modo === id ? 'bg-white shadow-sm text-ktext' : 'text-kmuted'}`}>
                   <Icon size={16} strokeWidth={2} aria-hidden="true" />
+                  {id === 'v2' && pendientesBacklogCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-[3px] rounded-full bg-kred text-white text-[9px] font-bold flex items-center justify-center leading-none" aria-hidden="true">
+                      {pendientesBacklogCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -286,7 +297,7 @@ export default function InputSection({
                 key={id}
                 onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'cal' || id === 'plan') onModo(id); }}
                 style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
-                className={`h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
+                className={`relative h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
                   ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'cal' && id !== 'plan' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
               >
                 <TabIcon Icon={Icon} color={color} />
@@ -294,6 +305,11 @@ export default function InputSection({
                   ${modo === id ? 'text-ktext' : 'text-kmuted'}`}>
                   {label}
                 </span>
+                {id === 'v2' && pendientesBacklogCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-[4px] rounded-full bg-kred text-white text-[10px] font-bold flex items-center justify-center leading-none" aria-hidden="true">
+                    {pendientesBacklogCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
