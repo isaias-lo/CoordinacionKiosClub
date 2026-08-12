@@ -7,6 +7,7 @@ import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
 import { supabase } from '@/lib/supabase';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
+import { codigoRuta } from '../utils/codigoRuta';
 import {
   buildManifiestoTiendaHTML,
   guiasDeItems,
@@ -39,6 +40,9 @@ interface Props {
   tiendas: Record<string, TiendaInfo & { _parada?: boolean }>;
   isOpen: boolean;
   onClose: () => void;
+  /** Offset del consecutivo RUTA (para que al cerrar camiones uno a uno NO se repita -01).
+   *  El código de cada ruta = RUTA-DDMMYY-(offsetSeq + posición + 1). Default 0 (impresión batch). */
+  offsetSeq?: number;
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -56,19 +60,14 @@ const ESTADO_COLOR: Record<string, string> = {
   recibido:  '#8E8E93',
 };
 
-function codigoRuta(fecha: string, i: number): string {
-  const [y, m, d] = fecha.split('-');
-  return `RUTA-${d}${m}${y.slice(2)}-${String(i + 1).padStart(2, '0')}`;
-}
-
 function infoTienda(cod: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>) {
   return tiendas[cod] ?? tiendas[cod.toUpperCase()] ?? tiendas[cod.toLowerCase()] ?? { n: cod, v: '—', z: '—' };
 }
 
-function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>): ManifiestoData {
+function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>, seq: number = idx): ManifiestoData {
   return {
     idx,
-    codigo_ruta:   codigoRuta(fecha, idx),
+    codigo_ruta:   codigoRuta(fecha, seq),
     fecha,
     chofer:        ruta._choferAsignado || ruta.v.ch || 'Sin asignar',
     patente:       ruta.v.p,
@@ -322,7 +321,7 @@ ${body}
 }
 
 /* ── Component ──────────────────────────────────────────── */
-export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose }: Props) {
+export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose, offsetSeq = 0 }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
@@ -343,12 +342,12 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
 
   // Rebuild whenever rutas changes (e.g. chofer re-assigned)
   useEffect(() => {
-    setManifiestos(rutas.map((r, i) => fromRuta(r, i, fecha, tiendas)));
+    setManifiestos(rutas.map((r, i) => fromRuta(r, i, fecha, tiendas, i + offsetSeq)));
     setSaved({});
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
-  }, [rutas, fecha, tiendas]);
+  }, [rutas, fecha, tiendas, offsetSeq]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
   // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).
