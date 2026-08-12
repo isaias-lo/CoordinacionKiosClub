@@ -52,14 +52,18 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
     });
   }
 
+  // Firma de lo ÚLTIMO dibujado — evita re-llamar a Directions (facturable) si la ruta a dibujar
+  // es IDÉNTICA (mismas paradas + CD + filtro). Clave con la persistencia del plan: volver al tab
+  // PLAN con la misma ruta ya NO gasta otra llamada a Google.
+  const lastDrawnRef = useRef<string>('');
   useEffect(() => {
     cargarGMaps();
     const filtradas = activeFilter === 'all' ? rutas : rutas.filter((_, i) => i === activeFilter);
-    // 400ms (antes 200ms) — cada dibujo llama a Google Directions (facturable). Da más
-    // margen a elegir varios camiones seguido en el tablero DESPACHO sin disparar una
-    // llamada por cada click intermedio (el timeout se cancela si `rutas` vuelve a
-    // cambiar antes de cumplirse).
-    const timer = setTimeout(() => dibujar(filtradas), 400);
+    const sig = JSON.stringify({ r: filtradas.map(rt => [rt.v.p, rt.ts.map(t => t.c)]), cd: cdRef.current });
+    if (sig === lastDrawnRef.current) return; // idéntico a lo ya dibujado → no re-llamar a Directions
+    // 400ms — cada dibujo llama a Google Directions (facturable). Debounce para no disparar una
+    // llamada por cada click intermedio (el timeout se cancela si `rutas` vuelve a cambiar antes).
+    const timer = setTimeout(() => { lastDrawnRef.current = sig; dibujar(filtradas); }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rutas, activeFilter]);
