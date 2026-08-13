@@ -35,9 +35,14 @@ interface Props {
   /** [Fase 3] Oculta el botón batch "Calcular" (para el tab 2ª VUELTA, que solo cierra por camión).
    *  En DESPACHO se deja visible aunque haya cierre por camión, para que Calcular sea opcional. */
   hideCalcular?: boolean;
-  /** [Reestructura] Filtro de grupo desde la barra izquierda: filtra qué tiendas se ven en el pool
-   *  "Sin asignar" (RM/Costa/Regiones). No cambia las asignaciones ni los conteos totales. */
+  /** [Reestructura] Filtro de grupo: filtra qué tiendas se ven en el pool "Sin asignar"
+   *  (RM/Costa/Regiones). No cambia las asignaciones ni los conteos totales. Sus pills se
+   *  muestran en el header del pool (se movieron aquí desde el DespachoHeader). */
   grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
+  /** Grupos activos del calendario (para el estado visual de las pills). */
+  grps?: Set<string>;
+  /** Click en una pill de grupo (Todas/RM/COSTA/REGIONES) — togglea y filtra. */
+  onGroupPill?: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
   /** Camión elegido para previsualizar su ruta en el mapa (antes de "Calcular"). */
   camionSeleccionado?: string | null;
   /** Km real (Google Directions) de esa preview, cuando el mapa ya la resolvió. */
@@ -62,6 +67,25 @@ function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number
 
 interface DraggingState extends StoreTag { from: string; }
 
+/* ── Pill de filtro de grupo del pool "Sin asignar" (Todas/RM/COSTA/REGIONES) — se movió aquí
+   desde el DespachoHeader (barra global, al lado de Supervisor). ── */
+function GroupPill({ label, active, selected, onClick }: { label: string; active: boolean; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); onClick(); }}
+      className={`h-[28px] px-2.5 rounded-[8px] text-[11px] font-bold transition-all border
+        ${selected
+          ? 'bg-knavy text-white border-knavy'
+          : active
+            ? 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'
+            : 'bg-white border-black/[0.10] text-kmuted/50 hover:border-black/[0.20] hover:text-kmuted'}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function ManualDispatch({
   calT, flota, gps, tiendas, cd,
   paradas = [],
@@ -75,6 +99,8 @@ export default function ManualDispatch({
   ordenActivacion,
   hideCalcular,
   grupoFiltro = 'all',
+  grps,
+  onGroupPill,
   camionSeleccionado = null,
   camionSeleccionadoKm = null,
   onSelectTruck,
@@ -416,10 +442,20 @@ export default function ManualDispatch({
           onClick={() => { if (dragging) ejecutarDrop('pool', dragging); }}
         >
           <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
-            <div className="flex-1 min-w-[120px]">
+            <div className="min-w-[110px]">
               <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
               {dragging && <span className="ml-2 text-[12px] text-knavy font-semibold animate-pulse">← Suelta aquí</span>}
             </div>
+            {/* Filtro de grupo (movido del DespachoHeader): entre el título y "Asignar". */}
+            {onGroupPill && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <GroupPill label="Todas"    active={(grps?.size ?? 0) > 0}  selected={grupoFiltro === 'all'}   onClick={() => onGroupPill('all')} />
+                <GroupPill label="RM"       active={!!grps?.has('rm')}      selected={grupoFiltro === 'rm'}    onClick={() => onGroupPill('rm')} />
+                <GroupPill label="COSTA"    active={!!grps?.has('costa')}   selected={grupoFiltro === 'costa'} onClick={() => onGroupPill('costa')} />
+                <GroupPill label="REGIONES" active={!!grps?.has('fal')}     selected={grupoFiltro === 'fal'}   onClick={() => onGroupPill('fal')} />
+              </div>
+            )}
+            <div className="flex-1 min-w-[8px]" />
             {onAsignarIA && pool.length > 0 && (
               <button
                 type="button"

@@ -874,6 +874,16 @@ export default function RutasScreen() {
     });
   }
 
+  // Pill de filtro de grupo (Todas/RM/COSTA/REGIONES) — se movió del DespachoHeader (arriba, al
+  // lado de Supervisor) a la fila "Sin asignar" de ManualDispatch. Misma lógica que tenía el
+  // header: activa/filtra el grupo y togglea su visibilidad.
+  function handleGroupPill(id: 'all' | 'rm' | 'costa' | 'fal') {
+    if (id === 'all') { setGrupoFiltro('all'); return; }
+    if (!grps.has(id)) { handleToggleGroup(id); setGrupoFiltro(id); }
+    else if (grupoFiltro === id) { handleToggleGroup(id); setGrupoFiltro('all'); }
+    else { setGrupoFiltro(id); }
+  }
+
 
   // Los conteos del Enrutador son SOLO-LECTURA (se definen en Bodega) — no hay edición manual.
 
@@ -2036,8 +2046,6 @@ export default function RutasScreen() {
         fecha={fecha} onFecha={setFecha}
         onOpenParadas={handleOpenParadas} paradasCount={paradasAdicionales.length}
         dnom={DNOM} calT={sortedCalT}
-        grps={grps} onToggleGroup={handleToggleGroup}
-        grupoFiltro={grupoFiltro} onGrupoFiltro={setGrupoFiltro}
         mapContent={isMobile ? mapPanel : undefined}
       />
 
@@ -2051,7 +2059,7 @@ export default function RutasScreen() {
             tiendas={tiendas} gps={gps} cd={cdRef.current}
             manualAsignaciones={manualAsignaciones}
             paradasAdicionales={paradasAdicionales}
-            grupoFiltro={grupoFiltro}
+            grupoFiltro={grupoFiltro} grps={grps} onGroupPill={handleGroupPill}
             camionSeleccionado={camionSeleccionado}
             camionSeleccionadoKm={previewKm}
             onSelectTruck={setCamionSeleccionado}
