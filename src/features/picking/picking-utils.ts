@@ -83,6 +83,8 @@ export function buildCanonicalId(tipo: string, seq: number, cod: string, isoDate
   if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
   if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
   if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
+  if (tipo === 'CC') return `CC${seq}${cod}${stamp}CC`;
+  if (tipo === 'CN') return `CN${seq}${cod}${stamp}CN`;
   return `${seq}${cod}${stamp}`;
 }
 
@@ -97,6 +99,8 @@ export function categoriesToContenido(cats: string[]): string {
   const hasHogar     = low.some(c => c.includes('hogar') || c.includes('home') || c.includes('bazar'));
   const hasAseo      = low.some(c => c.includes('aseo')  || c.includes('limpieza') || c.includes('clean'));
   const hasChocolates = low.some(c => c.includes('chocolate'));
+  const hasCongelados = low.some(c => c.includes('congelado'));
+  if (hasCongelados) return 'congelados';
   if (hasChocolates) return 'chocolate';
   if (hasComida && hasHogar && hasAseo) return 'completo';
   if (hasComida && hasAseo)  return 'comida-aseo';
@@ -150,10 +154,11 @@ export function getStoreGroup(store: TodayStore): StoreGroupKey {
 // ("...Chocolate (35BN2)...") como el plural ("...Chocolates (35BN2)...", que contiene
 // "Chocolate" como prefijo) — antes solo el plural quedaba registrado como Abastecimiento.
 const ABAST_KEYWORDS = [
-  { kw: 'Abastecimiento Comida',    cat: 'Comida' },
-  { kw: 'Abastecimiento Aseo',      cat: 'Aseo' },
-  { kw: 'Abastecimiento Hogar',     cat: 'Hogar' },
-  { kw: 'Abastecimiento Chocolate', cat: 'Chocolates' },
+  { kw: 'Abastecimiento Comida',     cat: 'Comida' },
+  { kw: 'Abastecimiento Aseo',       cat: 'Aseo' },
+  { kw: 'Abastecimiento Hogar',      cat: 'Hogar' },
+  { kw: 'Abastecimiento Chocolate',  cat: 'Chocolates' },
+  { kw: 'Abastecimiento Congelados', cat: 'Congelados' },
 ] as const;
 
 export { ABAST_KEYWORDS };
@@ -383,7 +388,7 @@ export const STATE_INFO: Record<string, { label: string; color: string; bg: stri
 
 export const GROUP_LABELS: Record<StoreGroupKey, string> = { region: 'Regiones', costa: 'Costa', santiago: 'Santiago' };
 
-export const TIPO_LABEL: Record<string, string> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolates' };
+export const TIPO_LABEL: Record<string, string> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolates', CC: 'Caja Cartón', CN: 'Caja Negra' };
 
 export const STAT_COLS: { key: keyof PickerStatRow; label: string; hint: string; right?: boolean }[] = [
   { key: 'name',              label: 'Nombre',            hint: 'Responsable (Odoo) + nombre configurado' },

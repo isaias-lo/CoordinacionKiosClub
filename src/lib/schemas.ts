@@ -167,7 +167,7 @@ export const CreatePickingPalletSchema = z.object({
   store_cod:    StoreCodeSchema,
   state_key:    z.string().min(1).max(50),
   picker_label: z.string().min(1).max(100),
-  tipo:         z.enum(['P', 'B', 'C', 'CH', 'otro']),
+  tipo:         z.enum(['P', 'B', 'C', 'CH', 'CC', 'CN', 'otro']),
   contenido:    z.string().max(50).optional(),
   refs:         z.string().max(500).optional(),
   actor_name:   z.string().max(100).optional(),

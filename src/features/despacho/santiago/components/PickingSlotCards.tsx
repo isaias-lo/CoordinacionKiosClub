@@ -33,10 +33,12 @@ interface Props {
 }
 
 const TIPO_LABEL: Record<string, { label: string; color: string; bg: string }> = {
-  P:  { label: 'Pallet',     color: '#2563EB', bg: 'rgba(37,99,235,0.10)' },
-  B:  { label: 'Bulto',      color: '#D97706', bg: 'rgba(217,119,6,0.10)' },
-  C:  { label: 'Contenedor', color: '#6B21A8', bg: 'rgba(107,33,168,0.10)' },
-  CH: { label: 'Chocolate',  color: '#92400E', bg: 'rgba(146,64,14,0.10)' },
+  P:  { label: 'Pallet',       color: '#2563EB', bg: 'rgba(37,99,235,0.10)' },
+  B:  { label: 'Bulto',        color: '#D97706', bg: 'rgba(217,119,6,0.10)' },
+  C:  { label: 'Contenedor',   color: '#6B21A8', bg: 'rgba(107,33,168,0.10)' },
+  CH: { label: 'Chocolate',    color: '#92400E', bg: 'rgba(146,64,14,0.10)' },
+  CC: { label: 'Caja Cartón',  color: '#0891B2', bg: 'rgba(8,145,178,0.10)' },
+  CN: { label: 'Caja Negra',   color: '#1F2937', bg: 'rgba(31,41,55,0.10)' },
 };
 
 function SlotCard({
@@ -57,7 +59,7 @@ function SlotCard({
   );
 
   const ti = TIPO_LABEL[slot.tipo] ?? TIPO_LABEL.P;
-  const needsLargoAncho = slot.tipo === 'B';
+  const needsLargoAncho = slot.tipo === 'B' || slot.tipo === 'CC' || slot.tipo === 'CN';
   const isDirty = peso !== String(slot.peso_kg ?? '') || alto !== String(slot.alto ?? '');
 
   const handleSave = async () => {

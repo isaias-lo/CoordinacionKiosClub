@@ -32,10 +32,10 @@ export interface ItemDetalle {
   refs: string;      // guías/DTE separadas por +
 }
 
-const TIPO_LABEL: Record<string, string> = { P: 'Pallet', B: 'Bulto', C: 'Contenedor', CH: 'Chocolate' };
+const TIPO_LABEL: Record<string, string> = { P: 'Pallet', B: 'Bulto', C: 'Contenedor', CH: 'Chocolate', CC: 'Caja Cartón', CN: 'Caja Negra' };
 const CONTENIDO_LABEL: Record<string, string> = {
   hogar: 'Hogar', comida: 'Comida', 'comida-hogar': 'Mixto', 'comida-aseo': 'Comida/Aseo',
-  aseo: 'Aseo', chocolate: 'Chocolate', mixto: 'Mixto',
+  aseo: 'Aseo', chocolate: 'Chocolate', mixto: 'Mixto', congelados: 'Congelados',
 };
 
 export function guiasDeItems(items: ItemDetalle[]): string[] {
@@ -73,11 +73,15 @@ export function buildManifiestoTiendaHTML(
   const nB  = items.filter(i => i.tipo === 'B').length;
   const nCH = items.filter(i => i.tipo === 'CH').length;
   const nC  = items.filter(i => i.tipo === 'C').length;
+  const nCC = items.filter(i => i.tipo === 'CC').length;
+  const nCN = items.filter(i => i.tipo === 'CN').length;
   const pesoTotal = Math.round(items.reduce((s, i) => s + (Number(i.peso_kg) || 0), 0) * 10) / 10;
   const guias = guiasDeItems(items);
   // `drv` = link a las Guías DTE (PDF en Drive) de esta tienda → RecepcionClient muestra el botón
   // "Descargar Guías PDF" al terminar la recepción. Sin drv, no aparece el botón.
-  const qrUrl = buildRecepcionQrUrl({ origin: meta.origin, store_cod: t.store_cod, nP, nBch: nB + nCH, guias, driveUrl: meta.driveUrl });
+  // nBch agrupa "ítems no-pallet" para el conteo del QR — Bulto/Chocolate ya se agrupaban así;
+  // Caja Cartón/Caja Negra son el mismo tipo de ítem (caja, no pallet) y se suman igual.
+  const qrUrl = buildRecepcionQrUrl({ origin: meta.origin, store_cod: t.store_cod, nP, nBch: nB + nCH + nCC + nCN, guias, driveUrl: meta.driveUrl });
 
   const filas = items.length ? items.map(it => {
     const dims = it.tipo === 'P' ? '120×100' : (it.alto && it.largo && it.ancho) ? `${it.alto}×${it.largo}×${it.ancho}` : '—';
@@ -131,11 +135,13 @@ export function buildManifiestoTiendaHTML(
   <tbody>${filas}</tbody>
 </table>
 
-<div class="totals" style="grid-template-columns:repeat(5,1fr)">
+<div class="totals" style="grid-template-columns:repeat(7,1fr)">
   <div class="tc"><div class="n">${nP}</div><div class="l">Pallets</div></div>
   <div class="tc"><div class="n">${nB}</div><div class="l">Bultos</div></div>
   <div class="tc"><div class="n">${nCH}</div><div class="l">Choc.</div></div>
   <div class="tc"><div class="n">${nC}</div><div class="l">Cont.</div></div>
+  <div class="tc"><div class="n">${nCC}</div><div class="l">C. Cartón</div></div>
+  <div class="tc"><div class="n">${nCN}</div><div class="l">C. Negra</div></div>
   <div class="tc"><div class="n">${pesoTotal}</div><div class="l">Kg total</div></div>
 </div>
 

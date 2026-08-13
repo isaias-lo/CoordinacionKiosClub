@@ -10,11 +10,12 @@ const URBAN_COMMUNES = new Set([
 ]);
 
 const CARGA_LABEL: Record<string, string> = {
-  comida:    'Comida',
-  hogar:     'Hogar',
-  mixto:     'Mixto',
-  chocolate: 'Chocolate',
-  aseo:      'Aseo',
+  comida:     'Comida',
+  hogar:      'Hogar',
+  mixto:      'Mixto',
+  chocolate:  'Chocolate',
+  aseo:       'Aseo',
+  congelados: 'Congelados',
 };
 
 function stampFromISO(isoDate: string): string {
@@ -32,6 +33,8 @@ function canonicalId(tipo: string, seq: number, cod: string, stamp: string): str
   if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
   if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
   if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
+  if (tipo === 'CC') return `CC${seq}${cod}${stamp}CC`;
+  if (tipo === 'CN') return `CN${seq}${cod}${stamp}CN`;
   return `${seq}${cod}${stamp}`;
 }
 
@@ -40,6 +43,8 @@ function tipoLabel(tipo: string): string {
   if (tipo === 'B')  return 'Bulto';
   if (tipo === 'CH') return 'Bulto CH';
   if (tipo === 'C')  return 'Contenedor';
+  if (tipo === 'CC') return 'Caja Cartón';
+  if (tipo === 'CN') return 'Caja Negra';
   return tipo;
 }
 
