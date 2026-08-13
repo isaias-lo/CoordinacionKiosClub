@@ -91,6 +91,16 @@ export function googleMapsDeepLink(
   return base + origin + dest + wp;
 }
 
+/** Formatea una duración en segundos a texto corto: "8 min" / "1 h 12 min". 0/undefined → ''. */
+export function formatDuracion(segundos?: number): string {
+  if (!segundos || segundos <= 0) return '';
+  const min = Math.round(segundos / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
 /* ── Compartir ruta (texto) ────────────────────────────────────────────────────
    Texto legible de una ruta para compartir (WhatsApp / portapapeles): una línea por
    parada con "N. COD: dirección / tipo / horario" + el link del mapa. Puro y testeable. */

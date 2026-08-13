@@ -67,6 +67,9 @@ interface Props {
   segundaVueltaContent?: React.ReactNode;
   // [Planificador] Reporta la ruta ordenada + partida para dibujarla en el MapSection fijo.
   onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
+  // Km real + tiempo por tramo (Google) de la ruta del Planificador, calculados por el mapa.
+  planLegs?: { dist: string; dur: string; durSec?: number }[];
+  planKm?: number | null;
   // [Layout] Mapa fijo a la DERECHA del contenido (desktop). En móvil va en el drawer del header.
   mapPanel?: React.ReactNode;
 }
@@ -109,7 +112,7 @@ export default function InputSection({
   pendientesBacklogCount = 0,
   rightPanelContent,
   segundaVueltaContent,
-  onPlanRutas,
+  onPlanRutas, planLegs, planKm,
   mapPanel,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
@@ -260,7 +263,7 @@ export default function InputSection({
         ) : modo === 'cal' ? (
           <div className="flex-1 overflow-y-auto p-3 bg-kbg"><CalendarioColumnas readOnly forceGeneral /></div>
         ) : modo === 'plan' ? (
-          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} /></div>
+          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legData={planLegs} realKm={planKm} /></div>
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">{rightPanelContent}</div>
         ) : (
@@ -360,7 +363,7 @@ export default function InputSection({
         </div>
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
-          <PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} />
+          <PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legData={planLegs} realKm={planKm} />
         </div>
       ) : rightPanelContent ? (
         <div className="flex-1 overflow-hidden">

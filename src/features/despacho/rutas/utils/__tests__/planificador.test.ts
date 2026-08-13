@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta,
+  construirTextoRuta, formatDuracion,
   type ParadaDireccion, type LineaParada,
 } from '../planificador';
 
@@ -149,5 +149,22 @@ describe('construirTextoRuta', () => {
 
   it('sin paradas → solo el título', () => {
     expect(construirTextoRuta({ titulo: 'Ruta 2', lineas: [] })).toBe('Ruta 2 — 0 paradas');
+  });
+});
+
+describe('formatDuracion', () => {
+  it('minutos bajo una hora', () => {
+    expect(formatDuracion(480)).toBe('8 min');   // 8 min
+    expect(formatDuracion(90)).toBe('2 min');    // redondea 1.5 → 2
+    expect(formatDuracion(3540)).toBe('59 min');
+  });
+  it('una hora o más → "H h M min"', () => {
+    expect(formatDuracion(3600)).toBe('1 h');
+    expect(formatDuracion(4320)).toBe('1 h 12 min');
+    expect(formatDuracion(9000)).toBe('2 h 30 min');
+  });
+  it('0 o undefined → vacío', () => {
+    expect(formatDuracion(0)).toBe('');
+    expect(formatDuracion(undefined)).toBe('');
   });
 });

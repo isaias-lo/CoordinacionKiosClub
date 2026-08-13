@@ -185,13 +185,17 @@ export default function RutasScreen() {
   const [planCd,    setPlanCd]    = useState<number[] | null>(null);
   // Paradas por DIRECCIÓN del planificador (coords + nombre) que el mapa no conoce por catálogo.
   const [planExt,   setPlanExt]   = useState<{ gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }>({ gps: {}, tiendas: {} });
+  // Km real + tiempo por tramo (Google Directions) de la ruta del Planificador, para mostrarlos
+  // en su panel. El mapa los calcula al dibujar y los sube por onKmReady (índice 0 = ruta del plan).
+  const [planLegs,  setPlanLegs]  = useState<{ dist: string; dur: string; durSec?: number }[]>([]);
+  const [planKm,    setPlanKm]    = useState<number | null>(null);
   // (El divisor board ↔ mapa vive ahora en InputSection: el mapa es la columna derecha del
   //  contenido, con los tabs a ancho completo arriba.)
   // Km real + detalle por tramo del mapa persistente (MapSection) — antes vivía dentro de
   // ResultsSection (que montaba su propio MapSection); ahora el mapa es un panel fijo fuera
   // de ResultsSection, así que el resultado se sube acá y baja a ResultsSection por props.
   const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
-  const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string}[]>>({});
+  const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string; durSec?: number}[]>>({});
   const comparacionTokenRef             = useRef(0); // evita que una respuesta IA vieja pise una comparación nueva
   const [updateStatus,  setUpdateStatus]  = useState('idle');
   const [historialStatus, setHistorialStatus] = useState('idle');
@@ -1596,7 +1600,13 @@ export default function RutasScreen() {
 
   // ── Mapa persistente: km real + detalle por tramo (movido desde ResultsSection,
   //    que antes montaba su propio MapSection — ver DespachoHeader/MapSection en el render) ──
-  function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) {
+  function handleKmReady(kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string; durSec?: number}[]>) {
+    if (modo === 'plan') {
+      // Modo Planificador: no hay `results`; guardar el km real + tramos de la única ruta del plan.
+      setPlanLegs(legMap?.[0] ?? []);
+      setPlanKm(kmMap?.[0] ?? null);
+      return;
+    }
     if (!results) {
       // Preview de camión seleccionado (sin "Calcular" todavía): no toca kmPorRuta/
       // legDataPorRuta (esos se leen por índice en ResultsSection, son de resultados ya
@@ -2082,6 +2092,7 @@ export default function RutasScreen() {
             onLimpiar={handleLimpiar}
             onEliminarParada={handleEliminarParada}
             onPlanRutas={(rutas, cdArr, ext) => { setPlanRutas(rutas); setPlanCd(cdArr); setPlanExt(ext ?? { gps: {}, tiendas: {} }); }}
+            planLegs={planLegs} planKm={planKm}
             onTerminarDia={() => setCierreOpen(true)}
             pendientesBacklogCount={pendientesV2Origen.length}
             rightPanelContent={

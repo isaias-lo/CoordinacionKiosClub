@@ -10,7 +10,7 @@ import { cargarGMaps } from '../utils/maps';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta,
+  construirTextoRuta, formatDuracion,
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
@@ -25,6 +25,10 @@ interface Props {
    *  rutas = [] y cd = CD por defecto cuando no hay paradas. `ext` lleva las paradas por
    *  DIRECCIÓN (coords + nombre) que el mapa no conoce (no están en el catálogo). */
   onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
+  /** Tiempo/dist por tramo (Google Directions) que el mapa devolvió para ESTA ruta: `legData[i]`
+   *  = tramo que llega a la parada `i` (desde la anterior). Y el km real total. */
+  legData?: { dist: string; dur: string; durSec?: number }[];
+  realKm?: number | null;
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
@@ -63,7 +67,7 @@ function loadPlan(): Partial<PlanPersist> {
   try { return JSON.parse(localStorage.getItem(PLAN_STATE_KEY) || '{}') as Partial<PlanPersist>; } catch { return {}; }
 }
 
-export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
+export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, realKm }: Props) {
   const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode ?? 'cd');
   const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda ?? '');
   const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord ?? null);
@@ -117,6 +121,14 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     for (const c of orderedCods) { const g = gpsAll[c]; if (g) { k += dkm(prev, g); prev = g; } }
     return Math.round(k);
   }, [orderedCods, gpsAll, startCoord]);
+
+  // Tiempos reales por tramo (Google, vía el mapa). `legData[i]` = tramo que LLEGA a la parada i
+  // (desde la anterior). Solo se usan si coinciden con las paradas actuales (si no, el mapa aún
+  // está recalculando la ruta → se ocultan para no mostrar tiempos de una ruta vieja).
+  const legsOk    = !!legData && legData.length === orderedCods.length && orderedCods.length > 0;
+  const totalMin  = legsOk ? formatDuracion(legData!.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
+  // km real de Google cuando ya llegó y corresponde a la ruta actual; si no, el ~ (haversine).
+  const kmLabel = legsOk && realKm != null && realKm > 0 ? `${realKm} km` : `~${kmAprox} km`;
 
   // Levantar la ruta ordenada al padre (RutasScreen → MapSection). El callback llega inline
   // (uno nuevo en cada render de RutasScreen); si estuviera en las deps, el efecto se dispararía
@@ -345,7 +357,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
       {/* Paradas seleccionadas */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Paradas ({selected.length}){selected.length > 0 ? ` · ~${kmAprox} km` : ''}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Paradas ({selected.length}){selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}</div>
           {selected.length > 0 && (
             <button onClick={limpiar} className="text-[11px] text-[#D42B2B] font-semibold cursor-pointer flex items-center gap-1"><Trash2 size={11} /> Limpiar</button>
           )}
@@ -384,6 +396,12 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
                   </>
                 )}
               </span>
+              {legsOk && legData![i]?.dur && (
+                <span title="Tiempo de manejo desde la parada anterior (Google)"
+                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-kmuted flex-shrink-0 whitespace-nowrap">
+                  <Clock size={10} aria-hidden="true" /> {legData![i].dur}
+                </span>
+              )}
               <button onClick={() => quitar(cod)} className="text-kmuted hover:text-[#D42B2B] cursor-pointer flex-shrink-0"><X size={14} /></button>
             </div>
             );
