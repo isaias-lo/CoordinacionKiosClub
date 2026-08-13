@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta, formatDuracion,
+  construirTextoRuta, formatDuracion, kmRutaAprox,
   type ParadaDireccion, type LineaParada,
 } from '../planificador';
 
@@ -149,6 +149,22 @@ describe('construirTextoRuta', () => {
 
   it('sin paradas → solo el título', () => {
     expect(construirTextoRuta({ titulo: 'Ruta 2', lineas: [] })).toBe('Ruta 2 — 0 paradas');
+  });
+});
+
+describe('kmRutaAprox', () => {
+  const g: Record<string, number[]> = { A: [-33.40, -70.60], B: [-33.45, -70.66], C: [-33.36, -70.73] };
+  const start: [number, number] = [-33.41, -70.63];
+  it('suma los tramos (start→A→B→C) en km, redondeado', () => {
+    const km = kmRutaAprox(['A', 'B', 'C'], g, start);
+    expect(km).toBeGreaterThan(0);
+    expect(Number.isInteger(km)).toBe(true);
+  });
+  it('sin paradas → 0', () => {
+    expect(kmRutaAprox([], g, start)).toBe(0);
+  });
+  it('ignora cods sin coordenadas', () => {
+    expect(kmRutaAprox(['A', 'ZZZ', 'B'], g, start)).toBe(kmRutaAprox(['A', 'B'], g, start));
   });
 });
 

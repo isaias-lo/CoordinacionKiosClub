@@ -2,6 +2,8 @@
    Helpers PUROS del planificador visual: búsqueda de tiendas, "paradas virtuales"
    para reusar dibMapa/nn, y deep-link a Google Maps para el conductor. Sin DOM ni red. */
 
+import { dkm } from './helpers';
+
 export interface TiendaOpcion { cod: string; nombre: string; comuna: string }
 
 /* ── Paradas por DIRECCIÓN (no-tienda) ─────────────────────────────────────────
@@ -89,6 +91,14 @@ export function googleMapsDeepLink(
   const mids = stops.slice(0, -1);
   const wp = mids.length ? `&waypoints=${encodeURIComponent(mids.map(coord).join('|'))}` : '';
   return base + origin + dest + wp;
+}
+
+/** km aproximado (haversine) desde `start` recorriendo `ordered` en orden. Ignora cods sin coords. */
+export function kmRutaAprox(ordered: string[], gps: Record<string, number[]>, start: [number, number]): number {
+  let k = 0;
+  let prev: number[] = start;
+  for (const c of ordered) { const g = gps[c]; if (g) { k += dkm(prev, g); prev = g; } }
+  return Math.round(k);
 }
 
 /** Formatea una duración en segundos a texto corto: "8 min" / "1 h 12 min". 0/undefined → ''. */

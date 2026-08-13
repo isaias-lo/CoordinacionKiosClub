@@ -1,37 +1,48 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check } from 'lucide-react';
-import { CD_INICIAL, type TiendaInfo } from '../data/tiendas';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus } from 'lucide-react';
+import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
-import { dkm } from '../utils/helpers';
-import { cargarGMaps } from '../utils/maps';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta, formatDuracion,
+  construirTextoRuta, formatDuracion, kmRutaAprox,
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
+import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 
-// Vehículo "virtual" — el planificador es solo visual (una ruta, sin carga ni patente real).
+// Vehículo "virtual" — el planificador es solo visual (rutas sin carga ni patente real).
 const PLAN_VEHICLE: Vehiculo = { p: 'PLAN', c: 0, b: 0, t: 'Planificador', tlbd: false, on: true, porton: null, refrigerado: false, empresa: '' };
+
+// Color de cada ruta = su índice en el array (misma paleta que el mapa: dibMapa usa COLS[ri]).
+const colorRuta = (index: number) => COLS[index % COLS.length];
 
 interface Props {
   gps: Record<string, number[]>;
   tiendas: Record<string, TiendaInfo>;
-  /** Reporta la ruta ordenada + el punto de partida, para dibujarla en el MapSection fijo.
-   *  rutas = [] y cd = CD por defecto cuando no hay paradas. `ext` lleva las paradas por
-   *  DIRECCIÓN (coords + nombre) que el mapa no conoce (no están en el catálogo). */
+  /** Reporta TODAS las rutas (visibles con paradas; ocultas vacías, para conservar el color por
+   *  índice) + el punto de partida compartido, para dibujarlas en el MapSection fijo. `ext` lleva
+   *  las paradas por DIRECCIÓN (coords + nombre) de todas las rutas visibles. */
   onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
-  /** Tiempo/dist por tramo (Google Directions) que el mapa devolvió para ESTA ruta: `legData[i]`
-   *  = tramo que llega a la parada `i` (desde la anterior). Y el km real total. */
-  legData?: { dist: string; dur: string; durSec?: number }[];
-  realKm?: number | null;
+  /** Tiempo/dist por tramo (Google) por índice de ruta: `legDataByRoute[i][j]` = tramo j de la ruta i. */
+  legDataByRoute?: Record<number, { dist: string; dur: string; durSec?: number }[]>;
+  /** Km real (Google) por índice de ruta. */
+  kmByRoute?: Record<number, number>;
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
+
+/** Una ruta del planificador (paradas + orden + direcciones). El punto de partida es compartido. */
+interface PlanRoute {
+  id: string;
+  nombre: string;
+  selected: string[];
+  orderMode: 'cercania' | 'manual';
+  customStops: ParadaDireccion[];
+}
 
 /** Badge de tipo (Mall/Strip/Street/…) + ventana horaria de una tienda. */
 function MetaTienda({ tienda }: { tienda?: TiendaInfo }) {
@@ -53,36 +64,59 @@ function MetaTienda({ tienda }: { tienda?: TiendaInfo }) {
   );
 }
 
-// Persistencia del plan (tiendas + orden + partida) para que NO se pierda al cambiar de tab
-// (el componente se desmonta) ni al recargar. La ruta del mapa se reconstruye desde esto.
+// Persistencia del plan (rutas + orden + partida) para que NO se pierda al cambiar de tab
+// (el componente se desmonta) ni al recargar. Las rutas del mapa se reconstruyen desde esto.
 const PLAN_STATE_KEY = 'enrutador_plan_state';
 interface PlanPersist {
   startMode: StartMode; startTienda: string;
   customCoord: { lat: number; lng: number } | null; customAddr: string;
-  selected: string[]; orderMode: 'cercania' | 'manual';
-  customStops: ParadaDireccion[];
+  routes: PlanRoute[]; visibleIds: string[]; editId: string;
+  // Formato viejo (una sola ruta) — se migra a `routes` al cargar.
+  selected?: string[]; orderMode?: 'cercania' | 'manual'; customStops?: ParadaDireccion[];
 }
-function loadPlan(): Partial<PlanPersist> {
-  if (typeof window === 'undefined') return {};
-  try { return JSON.parse(localStorage.getItem(PLAN_STATE_KEY) || '{}') as Partial<PlanPersist>; } catch { return {}; }
+function loadPlan(): PlanPersist {
+  const def: PlanPersist = {
+    startMode: 'cd', startTienda: '', customCoord: null, customAddr: '',
+    routes: [{ id: 'r1', nombre: 'Ruta 1', selected: [], orderMode: 'cercania', customStops: [] }],
+    visibleIds: ['r1'], editId: 'r1',
+  };
+  if (typeof window === 'undefined') return def;
+  let raw: Partial<PlanPersist> = {};
+  try { raw = JSON.parse(localStorage.getItem(PLAN_STATE_KEY) || '{}') as Partial<PlanPersist>; } catch { /* noop */ }
+  // Rutas: usar `routes`; si no hay, migrar el formato viejo (una sola ruta) o arrancar en blanco.
+  let routes = Array.isArray(raw.routes) && raw.routes.length ? raw.routes : null;
+  if (!routes) {
+    routes = [{ id: 'r1', nombre: 'Ruta 1', selected: raw.selected ?? [], orderMode: raw.orderMode ?? 'cercania', customStops: raw.customStops ?? [] }];
+  }
+  const ids = new Set(routes.map(r => r.id));
+  let visibleIds = (Array.isArray(raw.visibleIds) ? raw.visibleIds.filter(id => ids.has(id)) : []);
+  if (!visibleIds.length) visibleIds = [routes[0].id];
+  const editId = raw.editId && ids.has(raw.editId) ? raw.editId : visibleIds[0];
+  return {
+    startMode: raw.startMode ?? 'cd', startTienda: raw.startTienda ?? '',
+    customCoord: raw.customCoord ?? null, customAddr: raw.customAddr ?? '',
+    routes, visibleIds, editId,
+  };
 }
 
-export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, realKm }: Props) {
-  const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode ?? 'cd');
-  const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda ?? '');
-  const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord ?? null);
-  const [customAddr,  setCustomAddr]  = useState(() => loadPlan().customAddr ?? '');
+export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute }: Props) {
+  // Punto de partida — COMPARTIDO por todas las rutas (el mapa dibuja todas desde un mismo origen).
+  const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode);
+  const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda);
+  const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord);
+  const [customAddr,  setCustomAddr]  = useState(() => loadPlan().customAddr);
   const [geoStatus,   setGeoStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
-  // Paradas por dirección (no-tienda) agregadas al plan.
-  const [customStops, setCustomStops] = useState<ParadaDireccion[]>(() => loadPlan().customStops ?? []);
+  // Rutas + cuáles se ven en el mapa (multi-select) + cuál se edita.
+  const [routes,      setRoutes]      = useState<PlanRoute[]>(() => loadPlan().routes);
+  const [visibleIds,  setVisibleIds]  = useState<string[]>(() => loadPlan().visibleIds);
+  const [editId,      setEditId]      = useState<string>(() => loadPlan().editId);
   const [paradaAddr,  setParadaAddr]  = useState('');
   const [paradaGeo,   setParadaGeo]   = useState<'idle' | 'loading' | 'error'>('idle');
-  const [selected,    setSelected]    = useState<string[]>(() => loadPlan().selected ?? []);
-  const [orderMode,   setOrderMode]   = useState<'cercania' | 'manual'>(() => loadPlan().orderMode ?? 'cercania');
   const [search,      setSearch]      = useState('');
   const [regionFilter, setRegionFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
   const [tipoFilter,   setTipoFilter]   = useState<'all' | TipoTiendaKey>('all');
   const [dragIdx,     setDragIdx]     = useState<number | null>(null);
+  const [shared,      setShared]      = useState<'idle' | 'ok'>('idle');
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -90,65 +124,81 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
   // Persistir el plan → se conserva al cambiar de tab (desmontaje) y al recargar.
   useEffect(() => {
     try {
-      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, selected, orderMode, customStops }));
-    } catch {}
-  }, [startMode, startTienda, customCoord, customAddr, selected, orderMode, customStops]);
+      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, routes, visibleIds, editId }));
+    } catch { /* noop */ }
+  }, [startMode, startTienda, customCoord, customAddr, routes, visibleIds, editId]);
 
-  // Coords + nombres de las paradas por dirección, e index por id.
-  const paradasPatch = useMemo(() => paradasDireccionPatch(customStops), [customStops]);
-  const customById   = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
-  // gps del catálogo + las paradas por dirección → todo el ruteo/mapa resuelve por aquí.
-  const gpsAll = useMemo(() => ({ ...gps, ...paradasPatch.gps }), [gps, paradasPatch]);
+  // ── Ruta activa (la que se edita) + setters ligados a ella ────────────────────
+  const activeIdx   = Math.max(0, routes.findIndex(r => r.id === editId));
+  const activeRoute = routes[activeIdx] ?? routes[0];
+  const activeColor = colorRuta(activeIdx);
+  const selected  = activeRoute.selected;
+  const orderMode = activeRoute.orderMode;
+  const customStops = activeRoute.customStops;
 
-  // Punto de partida resuelto (coord).
+  function patchActive(patch: (r: PlanRoute) => PlanRoute) {
+    setRoutes(rs => rs.map(r => (r.id === activeRoute.id ? patch(r) : r)));
+  }
+  const setSelected  = (u: string[] | ((prev: string[]) => string[])) =>
+    patchActive(r => ({ ...r, selected: typeof u === 'function' ? u(r.selected) : u }));
+  const setOrderMode = (v: 'cercania' | 'manual') => patchActive(r => ({ ...r, orderMode: v }));
+  const setCustomStops = (u: ParadaDireccion[] | ((prev: ParadaDireccion[]) => ParadaDireccion[])) =>
+    patchActive(r => ({ ...r, customStops: typeof u === 'function' ? u(r.customStops) : u }));
+
+  // Punto de partida resuelto (coord) — compartido.
   const startCoord = useMemo<{ lat: number; lng: number }>(() => {
     if (startMode === 'tienda' && startTienda && gps[startTienda]) return { lat: gps[startTienda][0], lng: gps[startTienda][1] };
     if (startMode === 'custom' && customCoord) return customCoord;
     return { lat: CD_INICIAL[0], lng: CD_INICIAL[1] };
   }, [startMode, startTienda, customCoord, gps]);
 
-  // Orden de las paradas: por cercanía (nn desde la partida) o manual (orden de `selected`).
-  const orderedCods = useMemo<string[]>(() => {
-    if (orderMode === 'cercania') {
-      return nn(virtualStops(selected), gpsAll, [startCoord.lat, startCoord.lng]).map(s => s.c);
-    }
-    return selected;
-  }, [orderMode, selected, gpsAll, startCoord]);
+  // Cómputo por ruta: paradas geocodificadas (patch) + orden (cercanía/manual) desde la partida.
+  const routesComputed = useMemo(() => routes.map((r) => {
+    const patch = paradasDireccionPatch(r.customStops);
+    const gpsR  = { ...gps, ...patch.gps };
+    const ordered = r.orderMode === 'cercania'
+      ? nn(virtualStops(r.selected), gpsR, [startCoord.lat, startCoord.lng]).map(s => s.c)
+      : r.selected;
+    return { id: r.id, ordered, patch, gpsR };
+  }), [routes, gps, startCoord]);
 
-  // km aproximado (haversine) desde la partida por las paradas en orden.
-  const kmAprox = useMemo<number>(() => {
-    let k = 0, prev: number[] = [startCoord.lat, startCoord.lng];
-    for (const c of orderedCods) { const g = gpsAll[c]; if (g) { k += dkm(prev, g); prev = g; } }
-    return Math.round(k);
-  }, [orderedCods, gpsAll, startCoord]);
+  const activeComputed = routesComputed[activeIdx] ?? routesComputed[0];
+  const orderedCods = activeComputed.ordered;
+  const gpsAll      = activeComputed.gpsR;                 // catálogo + direcciones de la ruta activa
+  const customById  = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
+  const kmAprox     = useMemo(() => kmRutaAprox(orderedCods, gpsAll, [startCoord.lat, startCoord.lng]), [orderedCods, gpsAll, startCoord]);
 
-  // Tiempos reales por tramo (Google, vía el mapa). `legData[i]` = tramo que LLEGA a la parada i
-  // (desde la anterior). Solo se usan si coinciden con las paradas actuales (si no, el mapa aún
-  // está recalculando la ruta → se ocultan para no mostrar tiempos de una ruta vieja).
+  // Tiempos reales por tramo (Google) de la ruta ACTIVA. `legData[i]` = tramo que llega a la parada
+  // i. Solo se usan si coinciden con las paradas actuales (si no, el mapa está recalculando).
+  const legData   = legDataByRoute?.[activeIdx];
+  const realKm    = kmByRoute?.[activeIdx] ?? null;
   const legsOk    = !!legData && legData.length === orderedCods.length && orderedCods.length > 0;
   const totalMin  = legsOk ? formatDuracion(legData!.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
-  // km real de Google cuando ya llegó y corresponde a la ruta actual; si no, el ~ (haversine).
-  const kmLabel = legsOk && realKm != null && realKm > 0 ? `${realKm} km` : `~${kmAprox} km`;
+  const kmLabel   = legsOk && realKm != null && realKm > 0 ? `${realKm} km` : `~${kmAprox} km`;
 
-  // Levantar la ruta ordenada al padre (RutasScreen → MapSection). El callback llega inline
-  // (uno nuevo en cada render de RutasScreen); si estuviera en las deps, el efecto se dispararía
-  // en CADA render → planRutas cambiaría siempre → el mapa (debounce 400ms) nunca terminaría de
-  // dibujar. Por eso usamos un ref y lo dejamos FUERA de las deps: el efecto corre solo cuando
-  // cambian las paradas o el punto de partida.
+  // Levantar TODAS las rutas al padre (RutasScreen → MapSection). Ref fuera de deps para no
+  // reventar el debounce del mapa (el callback llega inline en cada render de RutasScreen).
   const onPlanRutasRef = useRef(onPlanRutas);
   onPlanRutasRef.current = onPlanRutas;
   useEffect(() => {
-    const ruta: Ruta = { v: PLAN_VEHICLE, ts: virtualStops(orderedCods), tp: 0, tb: 0 };
-    // `ext` = coords + nombres de las paradas por dirección (el mapa no las conoce por catálogo).
-    onPlanRutasRef.current?.(
-      orderedCods.length ? [ruta] : [],
-      [startCoord.lat, startCoord.lng],
-      { gps: paradasPatch.gps, tiendas: paradasPatch.tiendas as unknown as Record<string, TiendaInfo> },
-    );
-  }, [orderedCods, startCoord, paradasPatch]);
+    // Ocultas → ts vacío (no dibujan) pero conservan su índice ⇒ el color por ruta no cambia.
+    const rutas: Ruta[] = routesComputed.map(rc => ({
+      v: PLAN_VEHICLE,
+      ts: visibleIds.includes(rc.id) ? virtualStops(rc.ordered) : [],
+      tp: 0, tb: 0,
+    }));
+    const extGps: Record<string, number[]> = {};
+    const extTiendas: Record<string, TiendaInfo> = {};
+    routesComputed.forEach(rc => {
+      if (!visibleIds.includes(rc.id)) return;
+      Object.assign(extGps, rc.patch.gps);
+      Object.assign(extTiendas, rc.patch.tiendas as unknown as Record<string, TiendaInfo>);
+    });
+    const anyStops = rutas.some(rt => rt.ts.length > 0);
+    onPlanRutasRef.current?.(anyStops ? rutas : [], [startCoord.lat, startCoord.lng], { gps: extGps, tiendas: extTiendas });
+  }, [routesComputed, visibleIds, startCoord]);
 
   const resultados = useMemo(() => buscarTiendas(tiendas, gps, search), [tiendas, gps, search]);
-  // Filtros del buscador: por región (RM/Costa/Nacional) y por tipo (Mall/Strip/Street/…).
   const resultadosFiltrados = useMemo(() => resultados.filter(t => {
     const inf = tiendas[t.cod];
     if (regionFilter !== 'all' && grupoTienda(inf?.z, inf?.region) !== regionFilter) return false;
@@ -169,6 +219,36 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
   }
   function limpiar() { setSelected([]); setCustomStops([]); }
 
+  // ── Rutas: crear / eliminar / mostrar-ocultar / editar ────────────────────────
+  function nuevaRuta() {
+    const id = `r${Date.now()}`;
+    setRoutes(rs => [...rs, { id, nombre: `Ruta ${rs.length + 1}`, selected: [], orderMode: 'cercania', customStops: [] }]);
+    setVisibleIds(prev => [...prev, id]);
+    setEditId(id);
+  }
+  function eliminarRuta(id: string) {
+    if (routes.length <= 1) return;
+    const restantes = routes.filter(r => r.id !== id);
+    setRoutes(restantes);
+    setVisibleIds(prev => {
+      const n = prev.filter(x => x !== id);
+      return n.length ? n : [restantes[0].id];
+    });
+    if (editId === id) setEditId(restantes[0].id);
+  }
+  function toggleVerRuta(id: string) {
+    const vis = visibleIds.includes(id);
+    if (vis) {
+      if (visibleIds.length === 1) { setEditId(id); return; } // no se puede ocultar la última
+      const n = visibleIds.filter(x => x !== id);
+      setVisibleIds(n);
+      if (editId === id) setEditId(n[0]);
+    } else {
+      setVisibleIds([...visibleIds, id]);
+      setEditId(id); // al mostrar una ruta, pasa a ser la que se edita
+    }
+  }
+
   function geocodeAddr() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const G = (window as any).google?.maps;
@@ -181,7 +261,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
     });
   }
 
-  // Geocodifica una dirección y la agrega como PARADA (id DIR-<n>), auto-seleccionada.
+  // Geocodifica una dirección y la agrega como PARADA (id DIR-<n>) de la ruta ACTIVA, auto-seleccionada.
   function agregarParadaDireccion() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const G = (window as any).google?.maps;
@@ -193,7 +273,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const r0 = res[0] as any;
         const loc = r0.geometry.location;
-        const id = nuevoParadaDireccionId([...Object.keys(gpsAll), ...customStops.map(p => p.id)]);
+        // ids únicos entre TODAS las rutas (van a un gps compartido en el mapa).
+        const usados = [...Object.keys(gps), ...routes.flatMap(r => r.customStops.map(p => p.id))];
+        const id = nuevoParadaDireccionId(usados);
         const label = (r0.formatted_address as string) || paradaAddr.trim();
         setCustomStops(prev => [...prev, { id, label, gps: [loc.lat(), loc.lng()] }]);
         setSelected(prev => [...prev, id]);
@@ -202,7 +284,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
     });
   }
 
-  // Reordenar manual (drag): opera sobre el orden mostrado (orderedCods) y fija modo manual.
+  // Reordenar manual (drag) de la ruta activa: opera sobre el orden mostrado y fija modo manual.
   function reordenar(from: number, to: number) {
     if (from === to) return;
     const base = [...orderedCods];
@@ -211,26 +293,33 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
     setSelected(base); setOrderMode('manual');
   }
 
-  // Compartir la ruta: lista numerada (COD: dirección / tipo / horario) + link del mapa.
-  // Usa el menú de compartir del sistema (navigator.share) y si no existe, copia al portapapeles.
-  const [shared, setShared] = useState<'idle' | 'ok'>('idle');
+  // Compartir: una lista por cada ruta VISIBLE (COD: dirección / tipo / horario) + su link de mapa.
   async function compartir() {
-    const lineas: LineaParada[] = orderedCods.map(cod => {
-      if (esParadaDireccion(cod)) return { cod, esDireccion: true, nombre: customById[cod]?.label };
-      const inf = tiendas[cod];
-      return {
-        cod, esDireccion: false, nombre: inf?.n, direccion: inf?.d,
-        tipo: inf ? tipoTienda(inf.tipo, inf.d, inf.z).label : undefined, horario: inf?.v,
-      };
-    });
-    const texto = construirTextoRuta({
-      titulo: 'Ruta', lineas, km: kmAprox,
-      mapaUrl: googleMapsDeepLink(startCoord, orderedCods, gpsAll),
-    });
+    const bloques = routesComputed
+      .map((rc, i) => ({ rc, r: routes[i] }))
+      .filter(({ r }) => visibleIds.includes(r.id) && r.selected.length > 0)
+      .map(({ rc, r }) => {
+        const cById = Object.fromEntries(r.customStops.map(p => [p.id, p]));
+        const lineas: LineaParada[] = rc.ordered.map(cod => {
+          if (esParadaDireccion(cod)) return { cod, esDireccion: true, nombre: cById[cod]?.label };
+          const inf = tiendas[cod];
+          return {
+            cod, esDireccion: false, nombre: inf?.n, direccion: inf?.d,
+            tipo: inf ? tipoTienda(inf.tipo, inf.d, inf.z).label : undefined, horario: inf?.v,
+          };
+        });
+        return construirTextoRuta({
+          titulo: r.nombre, lineas,
+          km: kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng]),
+          mapaUrl: googleMapsDeepLink(startCoord, rc.ordered, rc.gpsR),
+        });
+      });
+    if (!bloques.length) return;
+    const texto = bloques.join('\n\n———\n\n');
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nav = navigator as any;
-      if (typeof nav.share === 'function') { await nav.share({ title: 'Ruta', text: texto }); return; }
+      if (typeof nav.share === 'function') { await nav.share({ title: 'Rutas', text: texto }); return; }
       await navigator.clipboard.writeText(texto);
       setShared('ok'); setTimeout(() => setShared('idle'), 2000);
     } catch { /* el usuario canceló el share nativo, o el portapapeles falló → sin acción */ }
@@ -239,25 +328,72 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
   const nombre = (cod: string) => customById[cod]?.label ?? tiendas[cod]?.n ?? cod;
   const comuna = (cod: string) => (esParadaDireccion(cod) ? '' : tiendas[cod]?.z ?? '');
   const startLabel = startMode === 'cd' ? 'CD KiosClub'
-    : startMode === 'tienda' ? (startTienda ? `${startTienda} · ${nombre(startTienda)}` : 'Elegir tienda…')
+    : startMode === 'tienda' ? (startTienda ? `${startTienda} · ${tiendas[startTienda]?.n ?? startTienda}` : 'Elegir tienda…')
     : (customCoord ? (customAddr || 'Punto personalizado') : 'Ingresar dirección…');
 
   const seg = 'flex-1 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors';
+  const visibles = routes.filter(r => visibleIds.includes(r.id));
 
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">
       <div>
         <div className="flex items-center gap-2 text-ktext font-bold text-[15px]"><MapPin size={16} className="text-knavy" /> Planificador de rutas</div>
-        <div className="text-[12px] text-kmuted mt-0.5">Elegí punto de partida y tiendas; la ruta se ordena por cercanía y se dibuja en el mapa.</div>
+        <div className="text-[12px] text-kmuted mt-0.5">Armá una o varias rutas (cada una con su color) y compará en el mapa; se ordenan por cercanía.</div>
+      </div>
+
+      {/* Rutas — chips multi-seleccionables (las activas se dibujan en el mapa y se comparten) */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Rutas <span className="normal-case font-semibold text-kmuted/70">· tocá para ver/comparar</span></div>
+        <div className="flex flex-wrap gap-2 items-center">
+          {routes.map((r, i) => {
+            const color = colorRuta(i);
+            const vis   = visibleIds.includes(r.id);
+            const isEdit = r.id === editId;
+            return (
+              <div key={r.id}
+                className={`flex items-center gap-1.5 rounded-[9px] border pl-2 pr-1.5 py-1 transition-colors ${
+                  isEdit ? 'border-knavy bg-knavy/[0.06]' : vis ? 'border-black/[0.14] bg-white' : 'border-black/[0.10] bg-white'}`}>
+                <button onClick={() => toggleVerRuta(r.id)} className="flex items-center gap-1.5 cursor-pointer"
+                  title={vis ? 'Se ve en el mapa · tocá para ocultar' : 'Oculta · tocá para ver'}>
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ background: vis ? color : 'transparent', border: `2px solid ${color}` }} />
+                  <span className={`text-[12px] font-bold ${vis ? 'text-ktext' : 'text-kmuted/50'}`}>{r.nombre}</span>
+                </button>
+                {isEdit && <span className="text-[8px] font-extrabold uppercase tracking-wide text-knavy bg-knavy/10 rounded px-1 py-px">editando</span>}
+                {routes.length > 1 && (
+                  <button onClick={() => eliminarRuta(r.id)} title="Eliminar ruta"
+                    className="text-kmuted/40 hover:text-[#D42B2B] cursor-pointer flex-shrink-0"><X size={13} /></button>
+                )}
+              </div>
+            );
+          })}
+          <button onClick={nuevaRuta}
+            className="flex items-center gap-1 rounded-[9px] border-[1.5px] border-dashed border-knavy/50 text-knavy px-2.5 py-1 text-[12px] font-bold cursor-pointer hover:bg-knavy/[0.04]">
+            <Plus size={13} /> Nueva ruta
+          </button>
+        </div>
+        {/* Con ≥2 rutas visibles, elegir cuál se EDITA (sin ocultarla). */}
+        {visibles.length > 1 && (
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+            <span className="text-kmuted font-semibold">Editando:</span>
+            {visibles.map(r => (
+              <button key={r.id} onClick={() => setEditId(r.id)}
+                className={`px-2 py-0.5 rounded-[7px] font-bold cursor-pointer transition-colors ${
+                  r.id === editId ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:text-ktext'}`}>
+                {r.nombre}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 2 columnas en desktop: (izq) partida + agregar tiendas · (der) paradas/ruta */}
       <div className="grid gap-4 items-start lg:grid-cols-2">
         <div className="flex flex-col gap-4 min-w-0">
 
-      {/* Punto de partida */}
+      {/* Punto de partida (compartido por todas las rutas) */}
       <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de partida</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de partida <span className="normal-case font-semibold text-kmuted/70">· común a todas</span></div>
         <div className="flex gap-1 bg-kbg rounded-[10px] p-1">
           <button onClick={() => setStartMode('cd')}     className={`${seg} ${startMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
           <button onClick={() => setStartMode('tienda')} className={`${seg} ${startMode === 'tienda' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Tienda</button>
@@ -289,7 +425,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
 
       {/* Buscar tiendas + agregar dirección (misma fila, arriba de los filtros) */}
       <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar tiendas o dirección</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar a <span style={{ color: activeColor }}>{activeRoute.nombre}</span></div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
           {/* Buscar tienda del catálogo — más angosto (~⅓) */}
           <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white flex-1 sm:flex-[1] min-w-0">
@@ -299,7 +435,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
           </div>
           {/* Separador */}
           <div className="hidden sm:block w-px self-stretch bg-black/10" aria-hidden="true" />
-          {/* Agregar una dirección libre como parada (se suma a la ruta y al mapa) — más ancho (~⅔) */}
+          {/* Agregar una dirección libre como parada (se suma a la ruta activa y al mapa) — más ancho (~⅔) */}
           <div className="flex items-center gap-1.5 flex-1 sm:flex-[2] min-w-0">
             <input value={paradaAddr} onChange={e => { setParadaAddr(e.target.value); setParadaGeo('idle'); }}
               onKeyDown={e => { if (e.key === 'Enter') agregarParadaDireccion(); }}
@@ -354,10 +490,12 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
         </div>{/* ── fin columna izquierda ── */}
         <div className="flex flex-col gap-4 min-w-0">
 
-      {/* Paradas seleccionadas */}
+      {/* Paradas de la ruta activa */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Paradas ({selected.length}){selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">
+            <span style={{ color: activeColor }}>{activeRoute.nombre}</span> · {selected.length} parada{selected.length === 1 ? '' : 's'}{selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}
+          </div>
           {selected.length > 0 && (
             <button onClick={limpiar} className="text-[11px] text-[#D42B2B] font-semibold cursor-pointer flex items-center gap-1"><Trash2 size={11} /> Limpiar</button>
           )}
@@ -378,7 +516,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
               onDrop={() => { if (dragIdx !== null) reordenar(dragIdx, i); setDragIdx(null); }}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] bg-white border border-black/[0.09]">
               <GripVertical size={13} className="text-black/20 cursor-grab flex-shrink-0" />
-              <span className="w-5 h-5 rounded-full bg-knavy text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+              <span className="w-5 h-5 rounded-full text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style={{ background: activeColor }}>{i + 1}</span>
               <span className="flex-1 min-w-0">
                 {esDir ? (
                   <>
@@ -415,9 +553,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, re
               <Navigation size={14} /> Abrir en Google Maps
             </a>
             <button onClick={compartir}
-              title="Comparte la lista de paradas + el link del mapa"
+              title="Comparte la lista de paradas + el link del mapa de las rutas visibles"
               className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer transition-colors">
-              {shared === 'ok' ? <><Check size={14} /> Copiado</> : <><Share2 size={14} /> Compartir</>}
+              {shared === 'ok' ? <><Check size={14} /> Copiado</> : <><Share2 size={14} /> Compartir{visibles.length > 1 ? ` (${visibles.length})` : ''}</>}
             </button>
           </div>
         )}
