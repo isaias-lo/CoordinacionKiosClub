@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check } from 'lucide-react';
 import { CD_INICIAL, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -10,7 +10,8 @@ import { cargarGMaps } from '../utils/maps';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  type ParadaDireccion,
+  construirTextoRuta, formatDuracion,
+  type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 
@@ -24,6 +25,10 @@ interface Props {
    *  rutas = [] y cd = CD por defecto cuando no hay paradas. `ext` lleva las paradas por
    *  DIRECCIÓN (coords + nombre) que el mapa no conoce (no están en el catálogo). */
   onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
+  /** Tiempo/dist por tramo (Google Directions) que el mapa devolvió para ESTA ruta: `legData[i]`
+   *  = tramo que llega a la parada `i` (desde la anterior). Y el km real total. */
+  legData?: { dist: string; dur: string; durSec?: number }[];
+  realKm?: number | null;
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
@@ -62,7 +67,7 @@ function loadPlan(): Partial<PlanPersist> {
   try { return JSON.parse(localStorage.getItem(PLAN_STATE_KEY) || '{}') as Partial<PlanPersist>; } catch { return {}; }
 }
 
-export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
+export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legData, realKm }: Props) {
   const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode ?? 'cd');
   const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda ?? '');
   const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord ?? null);
@@ -116,6 +121,14 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     for (const c of orderedCods) { const g = gpsAll[c]; if (g) { k += dkm(prev, g); prev = g; } }
     return Math.round(k);
   }, [orderedCods, gpsAll, startCoord]);
+
+  // Tiempos reales por tramo (Google, vía el mapa). `legData[i]` = tramo que LLEGA a la parada i
+  // (desde la anterior). Solo se usan si coinciden con las paradas actuales (si no, el mapa aún
+  // está recalculando la ruta → se ocultan para no mostrar tiempos de una ruta vieja).
+  const legsOk    = !!legData && legData.length === orderedCods.length && orderedCods.length > 0;
+  const totalMin  = legsOk ? formatDuracion(legData!.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
+  // km real de Google cuando ya llegó y corresponde a la ruta actual; si no, el ~ (haversine).
+  const kmLabel = legsOk && realKm != null && realKm > 0 ? `${realKm} km` : `~${kmAprox} km`;
 
   // Levantar la ruta ordenada al padre (RutasScreen → MapSection). El callback llega inline
   // (uno nuevo en cada render de RutasScreen); si estuviera en las deps, el efecto se dispararía
@@ -196,6 +209,31 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     const [m] = base.splice(from, 1);
     base.splice(to, 0, m);
     setSelected(base); setOrderMode('manual');
+  }
+
+  // Compartir la ruta: lista numerada (COD: dirección / tipo / horario) + link del mapa.
+  // Usa el menú de compartir del sistema (navigator.share) y si no existe, copia al portapapeles.
+  const [shared, setShared] = useState<'idle' | 'ok'>('idle');
+  async function compartir() {
+    const lineas: LineaParada[] = orderedCods.map(cod => {
+      if (esParadaDireccion(cod)) return { cod, esDireccion: true, nombre: customById[cod]?.label };
+      const inf = tiendas[cod];
+      return {
+        cod, esDireccion: false, nombre: inf?.n, direccion: inf?.d,
+        tipo: inf ? tipoTienda(inf.tipo, inf.d, inf.z).label : undefined, horario: inf?.v,
+      };
+    });
+    const texto = construirTextoRuta({
+      titulo: 'Ruta', lineas, km: kmAprox,
+      mapaUrl: googleMapsDeepLink(startCoord, orderedCods, gpsAll),
+    });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nav = navigator as any;
+      if (typeof nav.share === 'function') { await nav.share({ title: 'Ruta', text: texto }); return; }
+      await navigator.clipboard.writeText(texto);
+      setShared('ok'); setTimeout(() => setShared('idle'), 2000);
+    } catch { /* el usuario canceló el share nativo, o el portapapeles falló → sin acción */ }
   }
 
   const nombre = (cod: string) => customById[cod]?.label ?? tiendas[cod]?.n ?? cod;
@@ -319,7 +357,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
       {/* Paradas seleccionadas */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Paradas ({selected.length}){selected.length > 0 ? ` · ~${kmAprox} km` : ''}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Paradas ({selected.length}){selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}</div>
           {selected.length > 0 && (
             <button onClick={limpiar} className="text-[11px] text-[#D42B2B] font-semibold cursor-pointer flex items-center gap-1"><Trash2 size={11} /> Limpiar</button>
           )}
@@ -358,6 +396,12 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
                   </>
                 )}
               </span>
+              {legsOk && legData![i]?.dur && (
+                <span title="Tiempo de manejo desde la parada anterior (Google)"
+                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-kmuted flex-shrink-0 whitespace-nowrap">
+                  <Clock size={10} aria-hidden="true" /> {legData![i].dur}
+                </span>
+              )}
               <button onClick={() => quitar(cod)} className="text-kmuted hover:text-[#D42B2B] cursor-pointer flex-shrink-0"><X size={14} /></button>
             </div>
             );
@@ -365,10 +409,17 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
           {selected.length === 0 && <div className="text-[12px] text-kmuted text-center py-3 border border-dashed border-black/10 rounded-[8px]">Agregá tiendas o direcciones para armar la ruta.</div>}
         </div>
         {selected.length > 0 && (
-          <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll)} target="_blank" rel="noopener noreferrer"
-            className="mt-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-[13px] font-bold cursor-pointer no-underline">
-            <Navigation size={14} /> Abrir en Google Maps
-          </a>
+          <div className="mt-1 flex gap-2">
+            <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll)} target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-[13px] font-bold cursor-pointer no-underline">
+              <Navigation size={14} /> Abrir en Google Maps
+            </a>
+            <button onClick={compartir}
+              title="Comparte la lista de paradas + el link del mapa"
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer transition-colors">
+              {shared === 'ok' ? <><Check size={14} /> Copiado</> : <><Share2 size={14} /> Compartir</>}
+            </button>
+          </div>
         )}
       </div>
         </div>{/* ── fin columna derecha ── */}

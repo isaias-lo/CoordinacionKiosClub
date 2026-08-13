@@ -90,3 +90,50 @@ export function googleMapsDeepLink(
   const wp = mids.length ? `&waypoints=${encodeURIComponent(mids.map(coord).join('|'))}` : '';
   return base + origin + dest + wp;
 }
+
+/** Formatea una duración en segundos a texto corto: "8 min" / "1 h 12 min". 0/undefined → ''. */
+export function formatDuracion(segundos?: number): string {
+  if (!segundos || segundos <= 0) return '';
+  const min = Math.round(segundos / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+/* ── Compartir ruta (texto) ────────────────────────────────────────────────────
+   Texto legible de una ruta para compartir (WhatsApp / portapapeles): una línea por
+   parada con "N. COD: dirección / tipo / horario" + el link del mapa. Puro y testeable. */
+
+export interface LineaParada {
+  cod: string;
+  esDireccion: boolean;
+  nombre?: string;     // nombre de la tienda o, para direcciones, la dirección escrita
+  direccion?: string;  // dirección de la tienda (campo `d`)
+  tipo?: string;       // etiqueta de tipo (Mall / Strip Center / …)
+  horario?: string;    // ventana horaria (campo `v`)
+}
+
+/**
+ * Arma el texto para compartir una ruta. Cada parada:
+ *  - tienda   → `N. COD: dirección / tipo / horario` (omite los campos vacíos)
+ *  - dirección→ `N. Dirección: <lo que se escribió>`
+ * Cierra con `Mapa: <url>` si se pasa. Sin paradas ⇒ solo el título.
+ */
+export function construirTextoRuta(opts: {
+  titulo: string;
+  lineas: LineaParada[];
+  km?: number;
+  mapaUrl?: string;
+}): string {
+  const { titulo, lineas, km, mapaUrl } = opts;
+  const cab = `${titulo} — ${lineas.length} parada${lineas.length === 1 ? '' : 's'}${km && km > 0 ? ` · ~${km} km` : ''}`;
+  const cuerpo = lineas.map((l, i) => {
+    if (l.esDireccion) return `${i + 1}. Dirección: ${(l.nombre ?? l.cod).trim()}`;
+    const detalle = [l.direccion, l.tipo, l.horario].map(s => (s ?? '').trim()).filter(Boolean).join(' / ');
+    return `${i + 1}. ${l.cod}${detalle ? `: ${detalle}` : (l.nombre ? `: ${l.nombre}` : '')}`;
+  });
+  const partes = [cab, ...(cuerpo.length ? ['', ...cuerpo] : [])];
+  if (mapaUrl) partes.push('', `Mapa: ${mapaUrl}`);
+  return partes.join('\n');
+}

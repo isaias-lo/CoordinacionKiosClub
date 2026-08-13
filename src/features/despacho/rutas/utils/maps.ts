@@ -35,7 +35,7 @@ interface DibMapaParams {
   mapRef: React.MutableRefObject<unknown>;
   overlaysRef: React.MutableRefObject<unknown[]>;
   cdGeocodedRef: React.MutableRefObject<{lat: number; lng: number} | null>;
-  onKmReady?: (kmPorRuta: Record<number, number>, legData: Record<number, {dist: string; dur: string}[]>) => void;
+  onKmReady?: (kmPorRuta: Record<number, number>, legData: Record<number, {dist: string; dur: string; durSec?: number}[]>) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,7 +124,7 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
   const rutasConGPS = rutas.filter(r => r.ts.some(t => gps[t.c]));
   let total = rutasConGPS.length, done = 0;
   const kmPorRuta: Record<number, number> = {};
-  const legDataPorRuta: Record<number, {dist: string; dur: string}[]> = {};
+  const legDataPorRuta: Record<number, {dist: string; dur: string; durSec?: number}[]> = {};
 
   function actualizarSpinner() {
     if (!sp) return;
@@ -207,7 +207,7 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
         const legs = result.routes[0].legs;
         let kmTotal = 0; legs.forEach((l: {distance:{value:number}}) => { kmTotal += l.distance.value; });
         kmPorRuta[ri] = Math.round(kmTotal / 100) / 10;
-        legDataPorRuta[ri] = legs.map((l: {distance:{text:string};duration:{text:string}}) => ({ dist: l.distance.text, dur: l.duration.text }));
+        legDataPorRuta[ri] = legs.map((l: {distance:{text:string};duration:{text:string;value:number}}) => ({ dist: l.distance.text, dur: l.duration.text, durSec: l.duration.value }));
         legs.forEach((l: {steps:{start_location:unknown}[];end_location:unknown}) => { l.steps.forEach(s => bounds.extend(s.start_location)); bounds.extend(l.end_location); });
         dibujarMarcadores(r, ri, col, tGPS, legs, true);
         done++; actualizarSpinner(); if (done >= total) terminar();

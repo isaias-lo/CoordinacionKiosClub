@@ -10,7 +10,7 @@ interface Props {
   gps: Record<string, number[]>;
   cd: number[];
   tiendas: Record<string, TiendaInfo>;
-  onKmReady: (kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string}[]>) => void;
+  onKmReady: (kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string; durSec?: number}[]>) => void;
   onCdUpdate: (coords: number[]) => void;
 }
 
