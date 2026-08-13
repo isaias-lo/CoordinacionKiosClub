@@ -15,30 +15,9 @@ interface Props {
   paradasCount: number;
   dnom: Record<string, string>;
   calT: Record<string, CalData>;
-  grps: Set<string>;
-  onToggleGroup: (gid: string) => void;
-  grupoFiltro: 'all' | 'rm' | 'costa' | 'fal';
-  onGrupoFiltro: (f: 'all' | 'rm' | 'costa' | 'fal') => void;
   /** Mapa persistente — en desktop RutasScreen lo monta aparte, en mobile se monta acá
    *  adentro del drawer (nunca las dos instancias a la vez). */
   mapContent?: React.ReactNode;
-}
-
-/* ── Unified group filter pill — filtra el pool "Sin asignar" del board DESPACHO ── */
-function GroupPill({ label, active, selected, onClick }: { label: string; active: boolean; selected: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`h-[30px] px-3 rounded-[8px] text-[11px] font-bold transition-all border
-        ${selected
-          ? 'bg-knavy text-white border-knavy'
-          : active
-            ? 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'
-            : 'bg-white border-black/[0.10] text-kmuted/50 hover:border-black/[0.20] hover:text-kmuted'}`}
-    >
-      {label}
-    </button>
-  );
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -70,14 +49,14 @@ function RefreshButton({ compact }: { compact?: boolean }) {
   );
 }
 
-/* ── Contenido compartido desktop/drawer: supervisor, fecha, filtro de grupo ── */
+/* ── Contenido compartido desktop/drawer: supervisor, fecha (el filtro de grupo se movió a la
+     fila "Sin asignar" del board, en ManualDispatch) ── */
 function HeaderFields({
-  supervisor, onSupervisor, fecha, onFecha, hoy, manana, grps, grupoFiltro, onGroupPill, stacked,
+  supervisor, onSupervisor, fecha, onFecha, hoy, manana, stacked,
 }: {
   supervisor: string; onSupervisor: (s: string) => void;
   fecha: string; onFecha: (f: string) => void;
   hoy: string; manana: string;
-  grps: Set<string>; grupoFiltro: 'all' | 'rm' | 'costa' | 'fal'; onGroupPill: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
   stacked?: boolean;
 }) {
   return (
@@ -112,16 +91,6 @@ function HeaderFields({
           />
         </div>
       </div>
-
-      <div className={stacked ? 'w-full' : ''}>
-        {stacked && <div className="text-[10px] font-bold uppercase tracking-wide text-kmuted mb-1">Filtrar por grupo</div>}
-        <div className="flex items-center gap-1.5">
-          <GroupPill label="Todas"    active={grps.size > 0}     selected={grupoFiltro === 'all'}   onClick={() => onGroupPill('all')} />
-          <GroupPill label="RM"       active={grps.has('rm')}    selected={grupoFiltro === 'rm'}    onClick={() => onGroupPill('rm')} />
-          <GroupPill label="COSTA"    active={grps.has('costa')} selected={grupoFiltro === 'costa'} onClick={() => onGroupPill('costa')} />
-          <GroupPill label="REGIONES" active={grps.has('fal')}   selected={grupoFiltro === 'fal'}   onClick={() => onGroupPill('fal')} />
-        </div>
-      </div>
     </>
   );
 }
@@ -132,7 +101,7 @@ function HeaderFields({
      (incluido el mapa, ver `mapContent`). ── */
 export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
-  dnom, calT, grps, onToggleGroup, grupoFiltro, onGrupoFiltro, mapContent,
+  dnom, calT, mapContent,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -141,19 +110,6 @@ export default function DespachoHeader({
   const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-
-  function handleGroupPill(id: 'all' | 'rm' | 'costa' | 'fal') {
-    if (id === 'all') { onGrupoFiltro('all'); return; }
-    if (!grps.has(id)) {
-      onToggleGroup(id);
-      onGrupoFiltro(id);
-    } else if (grupoFiltro === id) {
-      onToggleGroup(id);
-      onGrupoFiltro('all');
-    } else {
-      onGrupoFiltro(id);
-    }
-  }
 
   if (isMobile) {
     return (
@@ -191,7 +147,6 @@ export default function DespachoHeader({
                 <HeaderFields
                   supervisor={supervisor} onSupervisor={onSupervisor}
                   fecha={fecha} onFecha={onFecha} hoy={hoy} manana={manana}
-                  grps={grps} grupoFiltro={grupoFiltro} onGroupPill={handleGroupPill}
                   stacked
                 />
                 <button
@@ -227,7 +182,6 @@ export default function DespachoHeader({
         <HeaderFields
           supervisor={supervisor} onSupervisor={onSupervisor}
           fecha={fecha} onFecha={onFecha} hoy={hoy} manana={manana}
-          grps={grps} grupoFiltro={grupoFiltro} onGroupPill={handleGroupPill}
         />
 
         {/* Resumen del día */}

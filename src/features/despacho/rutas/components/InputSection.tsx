@@ -30,9 +30,11 @@ interface Props {
   cd: number[];
   manualAsignaciones: Record<string, StoreAssign[]>;
   paradasAdicionales: Parada[];
-  // Filtro de grupo (RM/COSTA/REGIONES), controlado desde DespachoHeader (barra global) —
-  // solo afecta qué se muestra en el pool "Sin asignar" del board DESPACHO.
+  // Filtro de grupo (RM/COSTA/REGIONES) — sus pills viven en la fila "Sin asignar" del board
+  // (ManualDispatch). `grps` = grupos activos del calendario; `onGroupPill` togglea/filtra.
   grupoFiltro: 'all' | 'rm' | 'costa' | 'fal';
+  grps: Set<string>;
+  onGroupPill: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
   // Camión elegido en el tablero DESPACHO para previsualizar su ruta en el mapa.
   camionSeleccionado: string | null;
   camionSeleccionadoKm?: number | null;
@@ -97,7 +99,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 export default function InputSection({
   flota, flotaStatus, modo, calT, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
-  paradasAdicionales, grupoFiltro,
+  paradasAdicionales, grupoFiltro, grps, onGroupPill,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
@@ -267,7 +269,8 @@ export default function InputSection({
               <div className="p-3">
                 <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
-                  onCalcular={onCalcularManual} onEliminarParada={onEliminarParada} grupoFiltro={grupoFiltro}
+                  onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
+                  grupoFiltro={grupoFiltro} grps={grps} onGroupPill={onGroupPill}
                   camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                   scrollContainerRef={dragScrollRef}
                   onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
@@ -381,6 +384,8 @@ export default function InputSection({
                 onCalcular={onCalcularManual}
                 onEliminarParada={onEliminarParada}
                 grupoFiltro={grupoFiltro}
+                grps={grps}
+                onGroupPill={onGroupPill}
                 camionSeleccionado={camionSeleccionado}
                 camionSeleccionadoKm={camionSeleccionadoKm}
                 onSelectTruck={onSelectTruck}
