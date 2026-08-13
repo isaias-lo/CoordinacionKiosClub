@@ -42,9 +42,19 @@ export function tipoTienda(raw?: string | null, direccion?: string | null, zona?
 }
 
 /** Grupo de la tienda para el filtro del Planificador: Costa / Nacional(fal/regiones) / RM.
- *  Deriva de la zona (`z`), misma lógica que el calendario (Costa→costa, Región→fal, resto→rm). */
-export function grupoTienda(z?: string | null): 'rm' | 'costa' | 'fal' {
+ *  Fuente canónica = el campo `region` del catálogo (RM, Valparaíso, Antofagasta, Biobío, …):
+ *  Valparaíso ⇒ Costa; RM/Metropolitana ⇒ RM; cualquier OTRA región ⇒ Nacional. Sin `region`,
+ *  cae a una heurística por zona (`z`). Antes solo miraba `z`, y como las tiendas Nacional tienen
+ *  `z`="Corredor …"/comuna (sin "regi"), caían mal en RM → al filtrar RM aparecían las Nacional. */
+export function grupoTienda(z?: string | null, region?: string | null): 'rm' | 'costa' | 'fal' {
   const zz = (z ?? '').trim().toLowerCase();
+  const rr = (region ?? '').trim().toLowerCase();
+  if (rr) {
+    if (rr === 'v' || rr === 'vr' || rr.includes('valpara')) return 'costa'; // Valparaíso = Costa
+    if (rr === 'rm' || rr === 'm' || rr.includes('metropol')) return 'rm';
+    return 'fal'; // cualquier otra región (Antofagasta, Biobío, Los Lagos, …) = Nacional
+  }
+  // Sin `region`: heurística por zona (compat. con el comportamiento anterior).
   if (zz.includes('costa')) return 'costa';
   if (zz.includes('regi')) return 'fal';
   return 'rm';

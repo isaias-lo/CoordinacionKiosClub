@@ -138,7 +138,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   // Filtros del buscador: por región (RM/Costa/Nacional) y por tipo (Mall/Strip/Street/…).
   const resultadosFiltrados = useMemo(() => resultados.filter(t => {
     const inf = tiendas[t.cod];
-    if (regionFilter !== 'all' && grupoTienda(inf?.z) !== regionFilter) return false;
+    if (regionFilter !== 'all' && grupoTienda(inf?.z, inf?.region) !== regionFilter) return false;
     if (tipoFilter !== 'all' && tipoTienda(inf?.tipo, inf?.d, inf?.z).key !== tipoFilter) return false;
     return true;
   }), [resultados, tiendas, regionFilter, tipoFilter]);
@@ -249,14 +249,33 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
         </div>
       </div>
 
-      {/* Buscar tiendas */}
+      {/* Buscar tiendas + agregar dirección (misma fila, arriba de los filtros) */}
       <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar tiendas</div>
-        <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white">
-          <Search size={14} className="text-kmuted flex-shrink-0" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por código, nombre o comuna…"
-            className="flex-1 text-[13px] outline-none bg-transparent text-ktext" />
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar tiendas o dirección</div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
+          {/* Buscar tienda del catálogo */}
+          <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white flex-1 min-w-0">
+            <Search size={14} className="text-kmuted flex-shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda…"
+              className="flex-1 text-[13px] outline-none bg-transparent text-ktext min-w-0" />
+          </div>
+          {/* Separador */}
+          <div className="hidden sm:block w-px self-stretch bg-black/10" aria-hidden="true" />
+          {/* Agregar una dirección libre como parada (se suma a la ruta y al mapa) */}
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <input value={paradaAddr} onChange={e => { setParadaAddr(e.target.value); setParadaGeo('idle'); }}
+              onKeyDown={e => { if (e.key === 'Enter') agregarParadaDireccion(); }}
+              placeholder="Agregar dirección…"
+              className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none min-w-0" />
+            <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
+              className="px-2.5 py-2 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1 flex-shrink-0 whitespace-nowrap">
+              <MapPin size={13} /> Agregar
+            </button>
+          </div>
         </div>
+        {paradaGeo !== 'idle' && (
+          <div className="text-[11px] text-kmuted">{paradaGeo === 'loading' ? 'Buscando dirección…' : '⚠ No se encontró la dirección'}</div>
+        )}
         {/* Filtro por región */}
         <div className="flex flex-wrap gap-1.5">
           <button className={`${fseg} ${regionFilter === 'all' ? fon : foff}`} onClick={() => setRegionFilter('all')}>Todas</button>
@@ -291,24 +310,6 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
             );
           })}
           {resultadosFiltrados.length === 0 && <div className="text-[12px] text-kmuted text-center py-3">Sin resultados.</div>}
-        </div>
-      </div>
-
-      {/* Agregar dirección (parada fuera del catálogo de tiendas) */}
-      <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar dirección</div>
-        <div className="flex gap-1.5">
-          <input value={paradaAddr} onChange={e => { setParadaAddr(e.target.value); setParadaGeo('idle'); }}
-            onKeyDown={e => { if (e.key === 'Enter') agregarParadaDireccion(); }}
-            placeholder="Dirección (ej: Av. Vitacura 2909, Las Condes)"
-            className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
-          <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
-            className="px-3 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1">
-            <MapPin size={13} /> Agregar
-          </button>
-        </div>
-        <div className="text-[11px] text-kmuted">
-          {paradaGeo === 'loading' ? 'Buscando…' : paradaGeo === 'error' ? '⚠ No se encontró la dirección' : 'Se agrega como parada y se ordena junto a las tiendas.'}
         </div>
       </div>
 

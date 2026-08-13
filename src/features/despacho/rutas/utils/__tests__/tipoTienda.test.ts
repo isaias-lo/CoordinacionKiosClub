@@ -2,12 +2,29 @@ import { describe, it, expect } from 'vitest';
 import { tipoTienda, grupoTienda } from '../tipoTienda';
 
 describe('grupoTienda', () => {
-  it('Costa / Región / RM según la zona', () => {
+  it('Costa / Región / RM según la zona (sin campo region)', () => {
     expect(grupoTienda('Costa Valparaíso')).toBe('costa');
     expect(grupoTienda('Región')).toBe('fal');
     expect(grupoTienda('Providencia')).toBe('rm');
     expect(grupoTienda('')).toBe('rm');
     expect(grupoTienda(null)).toBe('rm');
+  });
+  it('usa el campo `region` como fuente canónica cuando existe', () => {
+    // Nacional: la zona NO dice "region" (es un corredor/comuna), pero region sí distingue.
+    expect(grupoTienda('Corredor Norte', 'Antofagasta')).toBe('fal');
+    expect(grupoTienda('Concepción', 'Biobío')).toBe('fal');
+    expect(grupoTienda('Puerto Montt', 'Los Lagos')).toBe('fal');
+    // Costa = Valparaíso (nombre o código).
+    expect(grupoTienda('Viña', 'Valparaíso')).toBe('costa');
+    expect(grupoTienda('X', 'V')).toBe('costa');
+    expect(grupoTienda('X', 'VR')).toBe('costa');
+    // RM.
+    expect(grupoTienda('Corredor Oriente', 'RM')).toBe('rm');
+    expect(grupoTienda('X', 'Metropolitana')).toBe('rm');
+  });
+  it('el `region` manda por sobre la heurística de zona', () => {
+    // zona "Corredor Norte" sola daría 'rm', pero la region Nacional corrige a 'fal'.
+    expect(grupoTienda('Corredor Norte', 'Coquimbo')).toBe('fal');
   });
 });
 
