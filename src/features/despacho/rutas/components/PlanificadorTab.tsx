@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check } from 'lucide-react';
 import { CD_INICIAL, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -10,7 +10,8 @@ import { cargarGMaps } from '../utils/maps';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  type ParadaDireccion,
+  construirTextoRuta,
+  type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 
@@ -198,6 +199,31 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     setSelected(base); setOrderMode('manual');
   }
 
+  // Compartir la ruta: lista numerada (COD: dirección / tipo / horario) + link del mapa.
+  // Usa el menú de compartir del sistema (navigator.share) y si no existe, copia al portapapeles.
+  const [shared, setShared] = useState<'idle' | 'ok'>('idle');
+  async function compartir() {
+    const lineas: LineaParada[] = orderedCods.map(cod => {
+      if (esParadaDireccion(cod)) return { cod, esDireccion: true, nombre: customById[cod]?.label };
+      const inf = tiendas[cod];
+      return {
+        cod, esDireccion: false, nombre: inf?.n, direccion: inf?.d,
+        tipo: inf ? tipoTienda(inf.tipo, inf.d, inf.z).label : undefined, horario: inf?.v,
+      };
+    });
+    const texto = construirTextoRuta({
+      titulo: 'Ruta', lineas, km: kmAprox,
+      mapaUrl: googleMapsDeepLink(startCoord, orderedCods, gpsAll),
+    });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nav = navigator as any;
+      if (typeof nav.share === 'function') { await nav.share({ title: 'Ruta', text: texto }); return; }
+      await navigator.clipboard.writeText(texto);
+      setShared('ok'); setTimeout(() => setShared('idle'), 2000);
+    } catch { /* el usuario canceló el share nativo, o el portapapeles falló → sin acción */ }
+  }
+
   const nombre = (cod: string) => customById[cod]?.label ?? tiendas[cod]?.n ?? cod;
   const comuna = (cod: string) => (esParadaDireccion(cod) ? '' : tiendas[cod]?.z ?? '');
   const startLabel = startMode === 'cd' ? 'CD KiosClub'
@@ -365,10 +391,17 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
           {selected.length === 0 && <div className="text-[12px] text-kmuted text-center py-3 border border-dashed border-black/10 rounded-[8px]">Agregá tiendas o direcciones para armar la ruta.</div>}
         </div>
         {selected.length > 0 && (
-          <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll)} target="_blank" rel="noopener noreferrer"
-            className="mt-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-[13px] font-bold cursor-pointer no-underline">
-            <Navigation size={14} /> Abrir en Google Maps
-          </a>
+          <div className="mt-1 flex gap-2">
+            <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll)} target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-[13px] font-bold cursor-pointer no-underline">
+              <Navigation size={14} /> Abrir en Google Maps
+            </a>
+            <button onClick={compartir}
+              title="Comparte la lista de paradas + el link del mapa"
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer transition-colors">
+              {shared === 'ok' ? <><Check size={14} /> Copiado</> : <><Share2 size={14} /> Compartir</>}
+            </button>
+          </div>
         )}
       </div>
         </div>{/* ── fin columna derecha ── */}
