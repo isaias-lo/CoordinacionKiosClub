@@ -253,23 +253,23 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
       <div className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar tiendas o dirección</div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
-          {/* Buscar tienda del catálogo */}
-          <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white flex-1 min-w-0">
+          {/* Buscar tienda del catálogo — más angosto (~⅓) */}
+          <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white flex-1 sm:flex-[1] min-w-0">
             <Search size={14} className="text-kmuted flex-shrink-0" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda…"
               className="flex-1 text-[13px] outline-none bg-transparent text-ktext min-w-0" />
           </div>
           {/* Separador */}
           <div className="hidden sm:block w-px self-stretch bg-black/10" aria-hidden="true" />
-          {/* Agregar una dirección libre como parada (se suma a la ruta y al mapa) */}
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {/* Agregar una dirección libre como parada (se suma a la ruta y al mapa) — más ancho (~⅔) */}
+          <div className="flex items-center gap-1.5 flex-1 sm:flex-[2] min-w-0">
             <input value={paradaAddr} onChange={e => { setParadaAddr(e.target.value); setParadaGeo('idle'); }}
               onKeyDown={e => { if (e.key === 'Enter') agregarParadaDireccion(); }}
-              placeholder="Agregar dirección…"
+              placeholder="Agregar dirección (ej: Av. Vitacura 2909, Las Condes)"
               className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none min-w-0" />
             <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
-              className="px-2.5 py-2 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1 flex-shrink-0 whitespace-nowrap">
-              <MapPin size={13} /> Agregar
+              className="px-2.5 py-1.5 rounded-[8px] bg-knavy text-white text-[11px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1 flex-shrink-0 whitespace-nowrap">
+              <MapPin size={12} /> Agregar
             </button>
           </div>
         </div>
