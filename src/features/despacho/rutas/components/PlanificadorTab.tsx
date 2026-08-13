@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -116,7 +117,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [regionFilter, setRegionFilter] = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
   const [tipoFilter,   setTipoFilter]   = useState<'all' | TipoTiendaKey>('all');
   const [dragIdx,     setDragIdx]     = useState<number | null>(null);
-  const [shared,      setShared]      = useState<'idle' | 'ok'>('idle');
+  // Compartir: se arma el texto y se abre un panel (shareText != '') para copiar/mandar por WhatsApp.
+  const [shareText,   setShareText]   = useState('');
+  const [copied,      setCopied]      = useState(false);
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -293,8 +296,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     setSelected(base); setOrderMode('manual');
   }
 
-  // Compartir: una lista por cada ruta VISIBLE (COD: dirección / tipo / horario) + su link de mapa.
-  async function compartir() {
+  // Compartir: arma una lista por cada ruta VISIBLE (COD: dirección / tipo / horario) + su link de
+  // mapa, y abre un panel para copiar/mandar (no depende del menú del sistema, que no está en compu).
+  function compartir() {
     const bloques = routesComputed
       .map((rc, i) => ({ rc, r: routes[i] }))
       .filter(({ r }) => visibleIds.includes(r.id) && r.selected.length > 0)
@@ -315,15 +319,21 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         });
       });
     if (!bloques.length) return;
-    const texto = bloques.join('\n\n———\n\n');
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nav = navigator as any;
-      if (typeof nav.share === 'function') { await nav.share({ title: 'Rutas', text: texto }); return; }
-      await navigator.clipboard.writeText(texto);
-      setShared('ok'); setTimeout(() => setShared('idle'), 2000);
-    } catch { /* el usuario canceló el share nativo, o el portapapeles falló → sin acción */ }
+    setCopied(false);
+    setShareText(bloques.join('\n\n———\n\n'));
   }
+
+  async function copiarTexto() {
+    try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { /* algunos navegadores requieren HTTPS/permiso → el texto igual se puede seleccionar y copiar a mano */ }
+  }
+  function compartirNativo() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nav = navigator as any;
+    if (typeof nav.share === 'function') nav.share({ title: 'Rutas', text: shareText }).catch(() => {});
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const puedeCompartirNativo = typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function';
 
   const nombre = (cod: string) => customById[cod]?.label ?? tiendas[cod]?.n ?? cod;
   const comuna = (cod: string) => (esParadaDireccion(cod) ? '' : tiendas[cod]?.z ?? '');
@@ -553,15 +563,53 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               <Navigation size={14} /> Abrir en Google Maps
             </a>
             <button onClick={compartir}
-              title="Comparte la lista de paradas + el link del mapa de las rutas visibles"
+              title="Muestra la lista de paradas + el link del mapa para copiar o mandar por WhatsApp"
               className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer transition-colors">
-              {shared === 'ok' ? <><Check size={14} /> Copiado</> : <><Share2 size={14} /> Compartir{visibles.length > 1 ? ` (${visibles.length})` : ''}</>}
+              <Share2 size={14} /> Compartir{visibles.length > 1 ? ` (${visibles.length})` : ''}
             </button>
           </div>
         )}
       </div>
         </div>{/* ── fin columna derecha ── */}
       </div>{/* ── fin grid 2 columnas ── */}
+
+      {/* Panel de Compartir — muestra el texto listo para copiar / mandar por WhatsApp */}
+      {shareText && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={() => setShareText('')} />
+          <div className="relative w-full max-w-[460px] max-h-[86vh] flex flex-col bg-white rounded-[16px] overflow-hidden shadow-[0_12px_48px_rgba(0,0,0,0.28)]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.08] flex-shrink-0">
+              <div className="flex items-center gap-2 font-bold text-ktext text-[15px]">
+                <Share2 size={16} className="text-knavy" /> Compartir {visibles.length > 1 ? `${visibles.length} rutas` : 'ruta'}
+              </div>
+              <button onClick={() => setShareText('')} aria-label="Cerrar"
+                className="w-8 h-8 rounded-full bg-kbg flex items-center justify-center text-kmuted hover:text-ktext cursor-pointer"><X size={16} /></button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <textarea readOnly value={shareText} onFocus={e => e.currentTarget.select()}
+                className="w-full h-[240px] resize-none border border-black/[0.12] rounded-[10px] p-3 text-[12px] font-mono leading-relaxed text-ktext bg-kbg outline-none focus:border-knavy" />
+              <div className="text-[11px] text-kmuted mt-1.5">Tocá el texto para seleccionarlo, o usá los botones de abajo.</div>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t border-black/[0.08] flex-shrink-0">
+              <button onClick={copiarTexto}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-knavy text-white text-[13px] font-bold cursor-pointer">
+                {copied ? <><Check size={15} /> Copiado</> : <><Copy size={15} /> Copiar</>}
+              </button>
+              <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-[#25D366] text-white text-[13px] font-bold cursor-pointer no-underline">
+                WhatsApp
+              </a>
+              {puedeCompartirNativo && (
+                <button onClick={compartirNativo} title="Menú de compartir del sistema"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer">
+                  <Share2 size={15} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
