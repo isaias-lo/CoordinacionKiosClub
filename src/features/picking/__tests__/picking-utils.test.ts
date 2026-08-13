@@ -72,6 +72,14 @@ describe('buildCanonicalId', () => {
   it('uses fallback for unknown tipo', () => {
     expect(buildCanonicalId('otro', 1, 'TST', date)).toBe('1TST12062025');
   });
+
+  it('builds Caja Cartón id: CC{seq}{cod}{stamp}CC', () => {
+    expect(buildCanonicalId('CC', 4, 'LAS', date)).toBe('CC4LAS12062025CC');
+  });
+
+  it('builds Caja Negra id: CN{seq}{cod}{stamp}CN', () => {
+    expect(buildCanonicalId('CN', 6, 'VIT', date)).toBe('CN6VIT12062025CN');
+  });
 });
 
 // ─── sanitizeForBarcode ───────────────────────────────────────────────────────
@@ -131,6 +139,11 @@ describe('categoriesToContenido', () => {
 
   it('returns "hogar" for empty array', () => {
     expect(categoriesToContenido([])).toBe('hogar');
+  });
+
+  it('returns "congelados" when Congelados present (priority over chocolate)', () => {
+    expect(categoriesToContenido(['Congelados'])).toBe('congelados');
+    expect(categoriesToContenido(['Congelados', 'Chocolates'])).toBe('congelados');
   });
 });
 
@@ -288,6 +301,10 @@ describe('isAbastecimientoOp', () => {
   it('returns false for unrelated origins', () => {
     expect(isAbastecimientoOp('Recepcion tienda LAS')).toBe(false);
   });
+
+  it('returns true for Abastecimiento Congelados', () => {
+    expect(isAbastecimientoOp('Abastecimiento Congelados 29CFL Fecha(12/06/2025)')).toBe(true);
+  });
 });
 
 // ─── parseOrigin ─────────────────────────────────────────────────────────────
@@ -330,6 +347,13 @@ describe('parseOrigin', () => {
     const { categories } = parseOrigin('Transferencia (Frutas, Verduras)');
     expect(categories).toContain('Frutas');
     expect(categories).toContain('Verduras');
+  });
+
+  it('extracts Congelados category, store code and date', () => {
+    const { categories, storeCode, originDate } = parseOrigin('Abastecimiento Congelados 29CFL Fecha(12/06/2025)');
+    expect(categories).toContain('Congelados');
+    expect(storeCode).toBe('29CFL');
+    expect(originDate).toBe('12/06/2025');
   });
 });
 

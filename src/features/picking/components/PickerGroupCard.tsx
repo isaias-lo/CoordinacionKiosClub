@@ -40,6 +40,10 @@ interface Props {
   lastPrint?: PrintRecord;   // último registro de impresión para mostrar advertencia de reimpresión
   myName?: string;           // nombre del supervisor actual para detectar impresiones propias vs ajenas
   sectionFilter?: SectionFilter;
+  // Card de Congelados: el stepper muestra SOLO Caja Cartón/Caja Negra (nunca P/C/B/CH),
+  // se determina por las categorías del grupo, no por `sectionFilter` (que en la vista
+  // "Todas" es 'all' para todas las cards sin importar la columna).
+  isCongelados?: boolean;
   adelanto?: { fecha_despacho: string | null }; // si la tienda es un adelanto
   otroDia?: boolean; // fecha del "Documento origen" en Odoo distinta a hoy — solo advertencia
 }
@@ -48,7 +52,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange,
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
-  lastPrint, myName, sectionFilter, adelanto, otroDia,
+  lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
 }: Props) {
   const allDone       = group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
@@ -186,8 +190,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 { tipo: 'C'  as PickerType, label: 'Contenedores'  },
                 { tipo: 'B'  as PickerType, label: 'Bultos'        },
                 { tipo: 'CH' as PickerType, label: 'Chocolates'    },
+                { tipo: 'CC' as PickerType, label: 'Caja Cartón'   },
+                { tipo: 'CN' as PickerType, label: 'Caja Negra'    },
               ])
               .filter(({ tipo }) => {
+                const esCaja = tipo === 'CC' || tipo === 'CN';
+                // Congelados: SOLO Caja Cartón/Caja Negra. Ninguna otra card muestra estas dos.
+                if (isCongelados) return esCaja;
+                if (esCaja) return false;
                 // Sección Chocolates: solo Pallets y Chocolates (no Bultos ni Contenedores).
                 if (sectionFilter === 'chocolates') return tipo === 'P' || tipo === 'CH';
                 if (sectionFilter === 'aseo-comida' || sectionFilter === 'hogar') return tipo !== 'CH';

@@ -787,6 +787,7 @@ export function PickingScreen() {
       const cats = new Set(g.operations.flatMap(o => o.categories));
       if (sectionFilter === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
       if (sectionFilter === 'chocolates')  return cats.has('Chocolates');
+      if (sectionFilter === 'congelados')  return cats.has('Congelados');
       return cats.has('Hogar');
     });
   }, [allGroups, sectionFilter]);
@@ -1076,32 +1077,30 @@ export function PickingScreen() {
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
 
       {/* ── Header ── */}
-      <div className="mobile-menu-safe flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden"
-        style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="mobile-menu-safe flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden bg-white"
+        style={{ borderBottom: '1px solid var(--color-border)' }}>
         {/* Solo navegación interna en mobile (planilla → lista de tiendas). El "Inicio"
             se quitó: el sidebar ya provee la navegación a casa. */}
         {panelView === 'planilla' && (
-          <button className="lg:hidden border-none cursor-pointer text-white/60 hover:text-white text-[13px] font-medium px-2.5 py-1.5 rounded"
-            style={{ background: 'rgba(255,255,255,0.07)' }}
+          <button className="lg:hidden border cursor-pointer text-slate-500 hover:text-slate-800 text-[13px] font-medium px-2.5 py-1.5 rounded"
+            style={{ background: '#F1F5F9', borderColor: 'var(--color-border)' }}
             onClick={() => setPanelView('stores')}>
             ← Tiendas
           </button>
         )}
 
         <div className="flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight tracking-wide">
-            Abastecimiento
-            {selectedCods.length > 0 && (
-              <span className="ml-2 text-[13px] font-normal text-white/40 tracking-normal">{selectedCods.join(' · ')}</span>
-            )}
-          </div>
-          {!selectedCods.length && (
-            <div className="text-[11px] text-white/35 truncate">{profile?.full_name ?? ''} · {todayLabel}</div>
+          {selectedCods.length > 0 ? (
+            <div className="text-[13px] font-semibold text-slate-700 truncate">{selectedCods.join(' · ')}</div>
+          ) : (
+            <div className="text-[13px] font-semibold text-slate-700 truncate">
+              {profile?.full_name ?? ''} <span className="font-normal text-slate-400">· {todayLabel}</span>
+            </div>
           )}
         </div>
 
         {selectedCods.length > 0 && lastRefresh && (
-          <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/30 shrink-0">
+          <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
             <RefreshCw size={11} />
             {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
           </div>
@@ -1285,6 +1284,7 @@ export function PickingScreen() {
                       { key: 'aseo-comida', label: 'Aseo y Comida' },
                       { key: 'hogar',       label: 'Hogar' },
                       { key: 'chocolates',  label: 'Chocolates' },
+                      { key: 'congelados',  label: 'Congelados' },
                     ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
@@ -1426,6 +1426,10 @@ export function PickingScreen() {
 
                         const renderCard = (group: PickerGroup, stickerBelow = false) => {
                           const nums = assignedNumsByStateKey[group.stateKey] ?? [];
+                          // Congelados se determina por las categorías del propio grupo (no por el
+                          // filtro de página): en la vista "Todas" cada card debe mostrar SOLO Caja
+                          // Cartón/Caja Negra si es de Congelados, sin importar en qué columna cae.
+                          const isCongelados = group.operations.some(o => o.categories.includes('Congelados'));
                           return (
                             <PickerGroupCard
                               key={group.stateKey}
@@ -1433,6 +1437,7 @@ export function PickingScreen() {
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
                               sectionFilter={sectionFilter}
+                              isCongelados={isCongelados}
                               adelanto={adelantoByCod[group.storeCod]}
                               otroDia={otroDiaGroupKeys.has(group.stateKey)}
                               onNameChange={name => {
@@ -1448,7 +1453,9 @@ export function PickingScreen() {
                                 // [Req 1] En la sección Chocolates el pallet ES de chocolate → forzar el
                                 // contenido (aunque las categorías del grupo digan otra cosa). El tipo (P)
                                 // no cambia; solo el contenido, que en la card de bodega se ve como "CH".
-                                const contenido = sectionFilter === 'chocolates' ? 'chocolate' : categoriesToContenido(groupCats);
+                                const contenido = sectionFilter === 'chocolates' ? 'chocolate'
+                                  : sectionFilter === 'congelados' || isCongelados ? 'congelados'
+                                  : categoriesToContenido(groupCats);
                                 const groupRefs = group.operations.map(o => o.name).join('+');
                                 if (delta > 0) {
                                   for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs);
@@ -1477,11 +1484,12 @@ export function PickingScreen() {
                           return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
                         }
 
-                        // "Todas": grid de 3 columnas fijas, siempre visibles
+                        // "Todas": grid de 4 columnas fijas, siempre visibles
                         const SECTION_META = {
                           'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
                           hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
                           chocolates:    { label: 'Chocolates',    color: '#92400E', bg: 'rgba(146,64,14,0.06)', border: 'rgba(146,64,14,0.22)' },
+                          congelados:    { label: 'Congelados',    color: '#0891B2', bg: 'rgba(8,145,178,0.06)', border: 'rgba(8,145,178,0.22)' },
                           mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
                         } as const;
 
@@ -1490,8 +1498,10 @@ export function PickingScreen() {
                           const hasHogar      = cats.has('Hogar');
                           const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
                           const hasChoco      = cats.has('Chocolates');
+                          const hasCongelados = cats.has('Congelados');
                           if (hasHogar && hasAseoComida) return 'mixto';
                           if (hasChoco) return 'chocolates';
+                          if (hasCongelados) return 'congelados';
                           if (hasAseoComida) return 'aseo-comida';
                           return 'hogar';
                         };
@@ -1502,6 +1512,7 @@ export function PickingScreen() {
                         const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
                         const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
                         const chocoGroups      = storeGroups.filter(g => getSection(g) === 'chocolates');
+                        const congeladosGroups = storeGroups.filter(g => getSection(g) === 'congelados');
                         const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
                         const mixtoTotal       = countSlots(mixtoGroups);
 
@@ -1529,12 +1540,13 @@ export function PickingScreen() {
                           { key: 'aseo-comida', groups: aseoComidaGroups },
                           { key: 'hogar',       groups: hogarGroups },
                           { key: 'chocolates',  groups: chocoGroups },
+                          { key: 'congelados',  groups: congeladosGroups },
                         ];
 
                         return (
                           <div className="space-y-4">
-                            {/* Grid de 3 columnas fijas — todas siempre visibles */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+                            {/* Grid de 4 columnas fijas — todas siempre visibles */}
+                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
