@@ -7,7 +7,11 @@ import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
 import { dkm } from '../utils/helpers';
 import { cargarGMaps } from '../utils/maps';
-import { buscarTiendas, virtualStops, googleMapsDeepLink } from '../utils/planificador';
+import {
+  buscarTiendas, virtualStops, googleMapsDeepLink,
+  esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
+  type ParadaDireccion,
+} from '../utils/planificador';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 
 // Vehículo "virtual" — el planificador es solo visual (una ruta, sin carga ni patente real).
@@ -17,8 +21,9 @@ interface Props {
   gps: Record<string, number[]>;
   tiendas: Record<string, TiendaInfo>;
   /** Reporta la ruta ordenada + el punto de partida, para dibujarla en el MapSection fijo.
-   *  rutas = [] y cd = CD por defecto cuando no hay paradas. */
-  onPlanRutas?: (rutas: Ruta[], cd: number[]) => void;
+   *  rutas = [] y cd = CD por defecto cuando no hay paradas. `ext` lleva las paradas por
+   *  DIRECCIÓN (coords + nombre) que el mapa no conoce (no están en el catálogo). */
+  onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
@@ -50,6 +55,7 @@ interface PlanPersist {
   startMode: StartMode; startTienda: string;
   customCoord: { lat: number; lng: number } | null; customAddr: string;
   selected: string[]; orderMode: 'cercania' | 'manual';
+  customStops: ParadaDireccion[];
 }
 function loadPlan(): Partial<PlanPersist> {
   if (typeof window === 'undefined') return {};
@@ -62,6 +68,10 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord ?? null);
   const [customAddr,  setCustomAddr]  = useState(() => loadPlan().customAddr ?? '');
   const [geoStatus,   setGeoStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
+  // Paradas por dirección (no-tienda) agregadas al plan.
+  const [customStops, setCustomStops] = useState<ParadaDireccion[]>(() => loadPlan().customStops ?? []);
+  const [paradaAddr,  setParadaAddr]  = useState('');
+  const [paradaGeo,   setParadaGeo]   = useState<'idle' | 'loading' | 'error'>('idle');
   const [selected,    setSelected]    = useState<string[]>(() => loadPlan().selected ?? []);
   const [orderMode,   setOrderMode]   = useState<'cercania' | 'manual'>(() => loadPlan().orderMode ?? 'cercania');
   const [search,      setSearch]      = useState('');
@@ -75,9 +85,15 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   // Persistir el plan → se conserva al cambiar de tab (desmontaje) y al recargar.
   useEffect(() => {
     try {
-      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, selected, orderMode }));
+      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, selected, orderMode, customStops }));
     } catch {}
-  }, [startMode, startTienda, customCoord, customAddr, selected, orderMode]);
+  }, [startMode, startTienda, customCoord, customAddr, selected, orderMode, customStops]);
+
+  // Coords + nombres de las paradas por dirección, e index por id.
+  const paradasPatch = useMemo(() => paradasDireccionPatch(customStops), [customStops]);
+  const customById   = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
+  // gps del catálogo + las paradas por dirección → todo el ruteo/mapa resuelve por aquí.
+  const gpsAll = useMemo(() => ({ ...gps, ...paradasPatch.gps }), [gps, paradasPatch]);
 
   // Punto de partida resuelto (coord).
   const startCoord = useMemo<{ lat: number; lng: number }>(() => {
@@ -89,17 +105,17 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   // Orden de las paradas: por cercanía (nn desde la partida) o manual (orden de `selected`).
   const orderedCods = useMemo<string[]>(() => {
     if (orderMode === 'cercania') {
-      return nn(virtualStops(selected), gps, [startCoord.lat, startCoord.lng]).map(s => s.c);
+      return nn(virtualStops(selected), gpsAll, [startCoord.lat, startCoord.lng]).map(s => s.c);
     }
     return selected;
-  }, [orderMode, selected, gps, startCoord]);
+  }, [orderMode, selected, gpsAll, startCoord]);
 
   // km aproximado (haversine) desde la partida por las paradas en orden.
   const kmAprox = useMemo<number>(() => {
     let k = 0, prev: number[] = [startCoord.lat, startCoord.lng];
-    for (const c of orderedCods) { const g = gps[c]; if (g) { k += dkm(prev, g); prev = g; } }
+    for (const c of orderedCods) { const g = gpsAll[c]; if (g) { k += dkm(prev, g); prev = g; } }
     return Math.round(k);
-  }, [orderedCods, gps, startCoord]);
+  }, [orderedCods, gpsAll, startCoord]);
 
   // Levantar la ruta ordenada al padre (RutasScreen → MapSection). El callback llega inline
   // (uno nuevo en cada render de RutasScreen); si estuviera en las deps, el efecto se dispararía
@@ -110,8 +126,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   onPlanRutasRef.current = onPlanRutas;
   useEffect(() => {
     const ruta: Ruta = { v: PLAN_VEHICLE, ts: virtualStops(orderedCods), tp: 0, tb: 0 };
-    onPlanRutasRef.current?.(orderedCods.length ? [ruta] : [], [startCoord.lat, startCoord.lng]);
-  }, [orderedCods, startCoord]);
+    // `ext` = coords + nombres de las paradas por dirección (el mapa no las conoce por catálogo).
+    onPlanRutasRef.current?.(
+      orderedCods.length ? [ruta] : [],
+      [startCoord.lat, startCoord.lng],
+      { gps: paradasPatch.gps, tiendas: paradasPatch.tiendas as unknown as Record<string, TiendaInfo> },
+    );
+  }, [orderedCods, startCoord, paradasPatch]);
 
   const resultados = useMemo(() => buscarTiendas(tiendas, gps, search), [tiendas, gps, search]);
   // Filtros del buscador: por región (RM/Costa/Nacional) y por tipo (Mall/Strip/Street/…).
@@ -129,8 +150,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
   function toggle(cod: string) {
     setSelected(prev => prev.includes(cod) ? prev.filter(c => c !== cod) : [...prev, cod]);
   }
-  function quitar(cod: string) { setSelected(prev => prev.filter(c => c !== cod)); }
-  function limpiar() { setSelected([]); }
+  function quitar(cod: string) {
+    setSelected(prev => prev.filter(c => c !== cod));
+    if (esParadaDireccion(cod)) setCustomStops(prev => prev.filter(p => p.id !== cod));
+  }
+  function limpiar() { setSelected([]); setCustomStops([]); }
 
   function geocodeAddr() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,6 +168,27 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     });
   }
 
+  // Geocodifica una dirección y la agrega como PARADA (id DIR-<n>), auto-seleccionada.
+  function agregarParadaDireccion() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const G = (window as any).google?.maps;
+    if (!G || !paradaAddr.trim()) { setParadaGeo('error'); return; }
+    setParadaGeo('loading');
+    new G.Geocoder().geocode({ address: paradaAddr, region: 'cl' }, (res: unknown[], status: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (status === 'OK' && res[0]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r0 = res[0] as any;
+        const loc = r0.geometry.location;
+        const id = nuevoParadaDireccionId([...Object.keys(gpsAll), ...customStops.map(p => p.id)]);
+        const label = (r0.formatted_address as string) || paradaAddr.trim();
+        setCustomStops(prev => [...prev, { id, label, gps: [loc.lat(), loc.lng()] }]);
+        setSelected(prev => [...prev, id]);
+        setParadaAddr(''); setParadaGeo('idle');
+      } else setParadaGeo('error');
+    });
+  }
+
   // Reordenar manual (drag): opera sobre el orden mostrado (orderedCods) y fija modo manual.
   function reordenar(from: number, to: number) {
     if (from === to) return;
@@ -153,8 +198,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
     setSelected(base); setOrderMode('manual');
   }
 
-  const nombre = (cod: string) => tiendas[cod]?.n ?? cod;
-  const comuna = (cod: string) => tiendas[cod]?.z ?? '';
+  const nombre = (cod: string) => customById[cod]?.label ?? tiendas[cod]?.n ?? cod;
+  const comuna = (cod: string) => (esParadaDireccion(cod) ? '' : tiendas[cod]?.z ?? '');
   const startLabel = startMode === 'cd' ? 'CD KiosClub'
     : startMode === 'tienda' ? (startTienda ? `${startTienda} · ${nombre(startTienda)}` : 'Elegir tienda…')
     : (customCoord ? (customAddr || 'Punto personalizado') : 'Ingresar dirección…');
@@ -249,6 +294,24 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
         </div>
       </div>
 
+      {/* Agregar dirección (parada fuera del catálogo de tiendas) */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar dirección</div>
+        <div className="flex gap-1.5">
+          <input value={paradaAddr} onChange={e => { setParadaAddr(e.target.value); setParadaGeo('idle'); }}
+            onKeyDown={e => { if (e.key === 'Enter') agregarParadaDireccion(); }}
+            placeholder="Dirección (ej: Av. Vitacura 2909, Las Condes)"
+            className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
+          <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
+            className="px-3 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1">
+            <MapPin size={13} /> Agregar
+          </button>
+        </div>
+        <div className="text-[11px] text-kmuted">
+          {paradaGeo === 'loading' ? 'Buscando…' : paradaGeo === 'error' ? '⚠ No se encontró la dirección' : 'Se agrega como parada y se ordena junto a las tiendas.'}
+        </div>
+      </div>
+
         </div>{/* ── fin columna izquierda ── */}
         <div className="flex flex-col gap-4 min-w-0">
 
@@ -267,7 +330,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
           </div>
         )}
         <div className="flex flex-col gap-1">
-          {orderedCods.map((cod, i) => (
+          {orderedCods.map((cod, i) => {
+            const esDir = esParadaDireccion(cod);
+            return (
             <div key={cod} draggable
               onDragStart={() => setDragIdx(i)}
               onDragOver={e => e.preventDefault()}
@@ -276,17 +341,30 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas }: Props) {
               <GripVertical size={13} className="text-black/20 cursor-grab flex-shrink-0" />
               <span className="w-5 h-5 rounded-full bg-knavy text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
               <span className="flex-1 min-w-0">
-                <span className="text-[13px] font-semibold text-ktext">{cod}</span>
-                <span className="text-[11px] text-kmuted"> · {nombre(cod)}{comuna(cod) ? ` · ${comuna(cod)}` : ''}</span>
-                <MetaTienda tienda={tiendas[cod]} />
+                {esDir ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-px rounded"
+                      style={{ color: '#D42B2B', background: '#D42B2B1A', border: '1px solid #D42B2B40' }}>
+                      <MapPin size={10} /> Dirección
+                    </span>
+                    <span className="block text-[12px] text-ktext truncate mt-0.5">{nombre(cod)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[13px] font-semibold text-ktext">{cod}</span>
+                    <span className="text-[11px] text-kmuted"> · {nombre(cod)}{comuna(cod) ? ` · ${comuna(cod)}` : ''}</span>
+                    <MetaTienda tienda={tiendas[cod]} />
+                  </>
+                )}
               </span>
               <button onClick={() => quitar(cod)} className="text-kmuted hover:text-[#D42B2B] cursor-pointer flex-shrink-0"><X size={14} /></button>
             </div>
-          ))}
-          {selected.length === 0 && <div className="text-[12px] text-kmuted text-center py-3 border border-dashed border-black/10 rounded-[8px]">Agregá tiendas para armar la ruta.</div>}
+            );
+          })}
+          {selected.length === 0 && <div className="text-[12px] text-kmuted text-center py-3 border border-dashed border-black/10 rounded-[8px]">Agregá tiendas o direcciones para armar la ruta.</div>}
         </div>
         {selected.length > 0 && (
-          <a href={googleMapsDeepLink(startCoord, orderedCods, gps)} target="_blank" rel="noopener noreferrer"
+          <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll)} target="_blank" rel="noopener noreferrer"
             className="mt-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-[13px] font-bold cursor-pointer no-underline">
             <Navigation size={14} /> Abrir en Google Maps
           </a>

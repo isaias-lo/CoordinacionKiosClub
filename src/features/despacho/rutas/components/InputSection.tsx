@@ -64,7 +64,7 @@ interface Props {
   rightPanelContent?: React.ReactNode;
   segundaVueltaContent?: React.ReactNode;
   // [Planificador] Reporta la ruta ordenada + partida para dibujarla en el MapSection fijo.
-  onPlanRutas?: (rutas: Ruta[], cd: number[]) => void;
+  onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
   // [Layout] Mapa fijo a la DERECHA del contenido (desktop). En móvil va en el drawer del header.
   mapPanel?: React.ReactNode;
 }

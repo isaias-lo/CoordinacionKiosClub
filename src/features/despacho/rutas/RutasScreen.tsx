@@ -183,6 +183,8 @@ export default function RutasScreen() {
   // [Planificador] Ruta ordenada + partida del tab PLAN, para dibujarla en el MapSection fijo.
   const [planRutas, setPlanRutas] = useState<Ruta[]>([]);
   const [planCd,    setPlanCd]    = useState<number[] | null>(null);
+  // Paradas por DIRECCIÓN del planificador (coords + nombre) que el mapa no conoce por catálogo.
+  const [planExt,   setPlanExt]   = useState<{ gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }>({ gps: {}, tiendas: {} });
   // (El divisor board ↔ mapa vive ahora en InputSection: el mapa es la columna derecha del
   //  contenido, con los tabs a ancho completo arriba.)
   // Km real + detalle por tramo del mapa persistente (MapSection) — antes vivía dentro de
@@ -1858,9 +1860,11 @@ export default function RutasScreen() {
   const mapPanel = (
     <MapSection
       rutas={modo === 'plan' ? planRutas : (results?.rutas ?? previewRutas)}
-      gps={results?.extGps || gps}
+      // En modo plan sumamos las paradas por dirección (coords + nombre) al catálogo base;
+      // fuera de plan mandan los extendidos de results (paradas del flujo manual).
+      gps={modo === 'plan' ? { ...gps, ...planExt.gps } : (results?.extGps || gps)}
       cd={modo === 'plan' && planCd ? planCd : cdRef.current}
-      tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo>}
+      tiendas={(modo === 'plan' ? { ...tiendas, ...planExt.tiendas } : (results?.extTiendas || tiendas)) as Record<string, TiendaInfo>}
       onKmReady={handleKmReady}
       onCdUpdate={coords => { if (modo !== 'plan') cdRef.current = coords; }}
     />
@@ -2069,7 +2073,7 @@ export default function RutasScreen() {
             onCerrarCamion={cerrarCamionV1Board}
             onLimpiar={handleLimpiar}
             onEliminarParada={handleEliminarParada}
-            onPlanRutas={(rutas, cdArr) => { setPlanRutas(rutas); setPlanCd(cdArr); }}
+            onPlanRutas={(rutas, cdArr, ext) => { setPlanRutas(rutas); setPlanCd(cdArr); setPlanExt(ext ?? { gps: {}, tiendas: {} }); }}
             onTerminarDia={() => setCierreOpen(true)}
             pendientesBacklogCount={pendientesV2Origen.length}
             rightPanelContent={

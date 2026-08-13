@@ -4,6 +4,45 @@
 
 export interface TiendaOpcion { cod: string; nombre: string; comuna: string }
 
+/* ── Paradas por DIRECCIÓN (no-tienda) ─────────────────────────────────────────
+   Direcciones libres agregadas como paradas del plan. Se modelan como stops con id
+   propio (prefijo DIR-) + coords geocodificadas; el ruteo/mapa ya resuelve por gps[cod],
+   así que basta inyectar sus coords en `gps` y su nombre en `tiendas`. */
+
+export interface ParadaDireccion { id: string; label: string; gps: number[] }
+
+const DIR_PREFIX = 'DIR-';
+
+/** ¿El código corresponde a una parada por dirección (no una tienda del catálogo)? */
+export function esParadaDireccion(cod: string): boolean {
+  return cod.startsWith(DIR_PREFIX);
+}
+
+/** Genera un id único `DIR-<n>` para una parada por dirección, evitando choques con los ya usados. */
+export function nuevoParadaDireccionId(existentes: Iterable<string>): string {
+  const set = new Set(existentes);
+  let i = 1;
+  while (set.has(`${DIR_PREFIX}${i}`)) i++;
+  return `${DIR_PREFIX}${i}`;
+}
+
+/**
+ * Patches para inyectar las paradas por dirección al ruteo/mapa: `gps` (coords por id) y
+ * `tiendas` (nombre = la dirección, marcadas con `_parada` para el info-window). Puro.
+ */
+export function paradasDireccionPatch(paradas: ParadaDireccion[]): {
+  gps: Record<string, number[]>;
+  tiendas: Record<string, { n: string; z: string; v: string; _parada: boolean }>;
+} {
+  const gps: Record<string, number[]> = {};
+  const tiendas: Record<string, { n: string; z: string; v: string; _parada: boolean }> = {};
+  for (const p of paradas) {
+    gps[p.id] = p.gps;
+    tiendas[p.id] = { n: p.label, z: 'Dirección', v: '', _parada: true };
+  }
+  return { gps, tiendas };
+}
+
 /**
  * Tiendas candidatas para el buscador: SOLO las que tienen coordenadas (`gps`), filtradas por
  * código / nombre / comuna. Orden por código; `limite` acota la lista.
