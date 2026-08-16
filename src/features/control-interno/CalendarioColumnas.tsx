@@ -317,6 +317,11 @@ export default function CalendarioColumnas({
         }
       } else if (source === 'congelados') {
         await saveCalendarioCongelados(local);
+        fetch('/api/calendario-congelados-write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ calendario: local }),
+        }).catch(e => console.error('[CalendarioColumnas:sheets-congelados]', e));
       } else {
         await saveCalendario(local);
         writeCalendario(local);
