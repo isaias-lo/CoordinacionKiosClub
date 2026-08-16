@@ -46,7 +46,7 @@ type StoreType = 'mall' | 'street' | 'costa' | 'region';
 // Chip plano compartido (fondo/texto neutros) + acento de color solo en el borde izquierdo —
 // reemplaza los chips pastel con sombra de color por el sistema de diseño enterprise.
 const TYPE_STYLE: Record<StoreType, { accent: string; label: string }> = {
-  mall:   { accent: '#1E40AF', label: 'MALL' },
+  mall:   { accent: '#D42B2B', label: 'MALL' },  // rojo del logo K (kred)
   street: { accent: '#475569', label: 'STREET CENTER' },
   costa:  { accent: '#2563EB', label: 'COSTA' },
   region: { accent: '#D97706', label: 'REGIÓN' },
@@ -699,7 +699,7 @@ export default function CalendarioColumnas({
         type GZone = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
         const GZONE: Record<GZone, { accent: string; label: string }> = {
           rm:    { accent: '#475569', label: 'RM'             },
-          mall:  { accent: '#1E40AF', label: 'Mall RM'        },
+          mall:  { accent: '#D42B2B', label: 'Mall RM'        },  // rojo del logo K (kred)
           costa: { accent: '#2563EB', label: 'Costa'          },
           norte: { accent: '#D97706', label: 'Regiones Norte' },
           sur:   { accent: '#16A34A', label: 'Regiones Sur'   },
