@@ -193,6 +193,11 @@ export function isAbastecimientoOp(origin: string): boolean {
   return ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw));
 }
 
+/** True si un picking es de Abastecimiento Congelados. */
+export function esOpCongelados(origin: string): boolean {
+  return origin.includes('Abastecimiento Congelados');
+}
+
 /**
  * Estados de picking Odoo que cuentan para el semáforo de la tienda ("pickeables" =
  * con stock reservado / accionables por el picker):
@@ -234,6 +239,41 @@ export function resolveStoreCode(p: { toLocation?: string; origin?: string; part
       || parseOrigin(p.origin ?? '').storeCode
       || extractStoreCode(p.partner ?? '');
   return canonicalStoreCode(raw);
+}
+
+/**
+ * Calcula el progreso {total, done} por tienda a partir de los pickings de Odoo del día,
+ * separando además el subconteo de Abastecimiento Congelados (congTotal/congDone) —
+ * ver esOpCongelados. Extraído de fetchOdooProgress (picking-store-progress/route.ts) para
+ * poder testearlo puro, sin red. Mismos filtros exactos: solo ops de Abastecimiento
+ * (isAbastecimientoOp), excluye AUDITORIA, resuelve tienda con resolveStoreCode, y solo
+ * cuenta estados pickeables (isPickeableState).
+ */
+export function computeOdooProgress(
+  pickings: Array<{ origin: string; state: string; toLocation?: string; partner?: string }>,
+): Record<string, { total: number; done: number; congTotal: number; congDone: number }> {
+  const acc: Record<string, { total: number; done: number; congTotal: number; congDone: number }> = {};
+  for (const p of pickings) {
+    const origin = p.origin ?? '';
+    // Mismo filtro que usa Picking al cargar ops por tienda
+    if (!isAbastecimientoOp(origin) || origin.toUpperCase().startsWith('AUDITORIA')) continue;
+    // Identifica la tienda por destino (columna "A") con respaldo al origin/partner,
+    // para ser robusto a typos manuales en el Documento Origen.
+    const storeCode = resolveStoreCode(p);
+    if (!storeCode) continue;
+    // Solo pickings pickeables (con stock reservado): un 'confirmed'/'waiting' sin stock
+    // (p.ej. un duplicado/backorder) NO debe inflar el total ni dejar la tienda en ámbar.
+    if (!isPickeableState(p.state)) continue;
+    if (!acc[storeCode]) acc[storeCode] = { total: 0, done: 0, congTotal: 0, congDone: 0 };
+    const isDone = p.state === 'done';
+    acc[storeCode].total += 1;
+    if (isDone) acc[storeCode].done += 1;
+    if (esOpCongelados(origin)) {
+      acc[storeCode].congTotal += 1;
+      if (isDone) acc[storeCode].congDone += 1;
+    }
+  }
+  return acc;
 }
 
 // ─── Stats formatting ─────────────────────────────────────────────────────────

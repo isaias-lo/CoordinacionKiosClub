@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { isAbastecimientoOp, resolveStoreCode, isPickeableState } from '@/features/picking/picking-utils';
+import { computeOdooProgress } from '@/features/picking/picking-utils';
 import { computeStoreStatus } from '@/features/despacho/shared/storeStatus';
 
 function todayISO(): string {
@@ -15,10 +15,11 @@ const TTL_MS   = 60_000;               // refresco batch automático: como máxi
 
 /**
  * Llama UNA vez a Odoo (vía el proxy server-side `/api/odoo`, que usa las
- * credenciales de entorno) y calcula el progreso {total, done} por tienda.
+ * credenciales de entorno) y calcula el progreso {total, done, congTotal, congDone} por
+ * tienda (congTotal/congDone = subconteo de Abastecimiento Congelados, ver computeOdooProgress).
  * Devuelve null si Odoo falla → el caller usa la caché previa (best-effort).
  */
-async function fetchOdooProgress(request: NextRequest): Promise<Record<string, { total: number; done: number }> | null> {
+async function fetchOdooProgress(request: NextRequest): Promise<Record<string, { total: number; done: number; congTotal: number; congDone: number }> | null> {
   try {
     const res = await fetch(new URL('/api/odoo', request.url), {
       method: 'POST',
@@ -35,23 +36,7 @@ async function fetchOdooProgress(request: NextRequest): Promise<Record<string, {
     };
     if (data.error || !data.pickings) return null;
 
-    const acc: Record<string, { total: number; done: number }> = {};
-    for (const p of data.pickings) {
-      const origin = p.origin ?? '';
-      // Mismo filtro que usa Picking al cargar ops por tienda
-      if (!isAbastecimientoOp(origin) || origin.toUpperCase().startsWith('AUDITORIA')) continue;
-      // Identifica la tienda por destino (columna "A") con respaldo al origin/partner,
-      // para ser robusto a typos manuales en el Documento Origen.
-      const storeCode = resolveStoreCode(p);
-      if (!storeCode) continue;
-      // Solo pickings pickeables (con stock reservado): un 'confirmed'/'waiting' sin stock
-      // (p.ej. un duplicado/backorder) NO debe inflar el total ni dejar la tienda en ámbar.
-      if (!isPickeableState(p.state)) continue;
-      if (!acc[storeCode]) acc[storeCode] = { total: 0, done: 0 };
-      acc[storeCode].total += 1;
-      if (p.state === 'done') acc[storeCode].done += 1;
-    }
-    return acc;
+    return computeOdooProgress(data.pickings);
   } catch {
     return null;
   }
@@ -96,7 +81,7 @@ export async function GET(request: NextRequest) {
           state_key:    cod,
           date,
           tipo:         TIPO,
-          picker_label: JSON.stringify({ total: v.total, done: v.done }),
+          picker_label: JSON.stringify({ total: v.total, done: v.done, congTotal: v.congTotal, congDone: v.congDone }),
           updated_at:   new Date().toISOString(),
         }));
         if (upRows.length) {
@@ -110,13 +95,22 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const result: Record<string, { total: number; done: number; status: string }> = {};
+  const result: Record<string, { total: number; done: number; congTotal: number; congDone: number; status: string }> = {};
   for (const row of rows) {
     if (row.state_key.startsWith('__')) continue;   // saltar filas de control (META)
     try {
-      const parsed = JSON.parse(row.picker_label) as { total: number; done: number };
+      const parsed = JSON.parse(row.picker_label) as { total: number; done: number; congTotal?: number; congDone?: number };
+      // status se calcula sobre el total completo (seco + congelados) — NO cambia el semáforo actual.
       const status = computeStoreStatus(parsed.total, parsed.done);
-      result[row.state_key] = { ...parsed, status };
+      // congTotal/congDone son opcionales: filas cacheadas viejas (previas a este cambio)
+      // solo tienen {total,done} → defaultear a 0 para no romper el parseo.
+      result[row.state_key] = {
+        total:     parsed.total,
+        done:      parsed.done,
+        congTotal: parsed.congTotal ?? 0,
+        congDone:  parsed.congDone ?? 0,
+        status,
+      };
     } catch { /* skip malformed */ }
   }
   return NextResponse.json({ stores: result });

@@ -3,7 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 
-export type StoreProgress = { total: number; done: number; status: 'none' | 'partial' | 'complete' };
+export type StoreProgress = {
+  total: number;
+  done: number;
+  congTotal: number;
+  congDone: number;
+  status: 'none' | 'partial' | 'complete';
+};
 
 function todayISO(): string {
   const d = new Date();
@@ -24,10 +30,11 @@ export function useOdooProgress(): Map<string, StoreProgress> {
     try {
       const res = await fetch(`/api/picking-store-progress?date=${todayISO()}`);
       if (!res.ok) return;
-      const json = await res.json() as { stores: Record<string, StoreProgress> };
+      const json = await res.json() as { stores: Record<string, Partial<StoreProgress> & Pick<StoreProgress, 'total' | 'done' | 'status'>> };
       const next = new Map<string, StoreProgress>();
       for (const [cod, info] of Object.entries(json.stores)) {
-        next.set(cod, info);
+        // congTotal/congDone: defaultear a 0 por si una respuesta vieja no los trae.
+        next.set(cod, { ...info, congTotal: info.congTotal ?? 0, congDone: info.congDone ?? 0 });
       }
       setMap(next);
     } catch { /* silent */ }
