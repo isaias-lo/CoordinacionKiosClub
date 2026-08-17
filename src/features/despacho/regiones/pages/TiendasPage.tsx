@@ -35,6 +35,7 @@ import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDia
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { esCongeladoContenido } from '../../shared/congeladosBodega';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -355,7 +356,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const cur = dispatchData[name] || [];
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH');
+      // CH lo maneja el rebuild (auto-agregado); congelados (CC/CN) quedan fuera: SECO no
+      // debe generar card fantasma para ellos.
+      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH' && !esCongeladoContenido(s.contenido));
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const pkg = PKG_MAP[s.tipo] ?? 'pallet';
@@ -499,10 +502,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       }
 
       const fullSlotsR = pickingSlotsFullRef.current[selectedTienda] ?? [];
-      const baseSlotsR = fullSlotsR.length > 0 ? fullSlotsR : slots.map(s => ({
+      const baseSlotsRRaw = fullSlotsR.length > 0 ? fullSlotsR : slots.map(s => ({
         id: 0, tipo: s.tipo, contenido: s.contenido, seq: null, canonical_id: null,
         peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null,
       }));
+      // SECO excluye congelados: los slots CC/CN (contenido='congelados') no generan
+      // card fantasma en el formulario seco — son del módulo CONGELADOS.
+      const baseSlotsR = baseSlotsRRaw.filter(s => !esCongeladoContenido(s.contenido));
 
       if (hasPickingData) {
         // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
@@ -1790,6 +1796,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   const cardItems = dispatchData[t.name] || [];
                   const pkSlots   = pickingSlots[t.name] ?? [];
                   const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
+                  // SECO excluye congelados: "N movimientos" de la card = total/done de Odoo
+                  // menos el subconteo de Abastecimiento Congelados (que vive en su propio módulo).
+                  const prog = odooProgress.get(TIENDAS[t.name]?.cod ?? '');
+                  const storeTotalOpsSeco = Math.max(0, (prog?.total ?? 0) - (prog?.congTotal ?? 0));
+                  const storeDoneOpsSeco  = Math.max(0, (prog?.done ?? 0) - (prog?.congDone ?? 0));
                   return (
                     <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                       isActive={selectedTienda === t.name} isToday
@@ -1803,9 +1814,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       pickingCH={Math.max(0, pkSlots.filter(s => s.tipo === 'CH').length - consumed.ch)}
                       preset={presets[t.name]}
                       hasPdf={!!state.pdfData[t.name]}
-                      storeStatus={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.status ?? 'none'}
-                      storeDoneOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.done ?? 0}
-                      storeTotalOps={odooProgress.get(TIENDAS[t.name]?.cod ?? '')?.total ?? 0}
+                      storeStatus={prog?.status ?? 'none'}
+                      storeDoneOps={storeDoneOpsSeco}
+                      storeTotalOps={storeTotalOpsSeco}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)} />
                   );
