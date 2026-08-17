@@ -39,6 +39,7 @@ import { isRegionesCod } from '../../regiones/data/tiendas';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { esCongeladoContenido } from '../../shared/congeladosBodega';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -807,10 +808,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       };
 
       const fullSlots = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
-      const baseSlots = fullSlots.length > 0
+      const baseSlotsRaw = fullSlots.length > 0
         ? fullSlots
         : slots.map(s => ({ id: 0, tipo: s.tipo, contenido: s.contenido,
             seq: null, canonical_id: null, peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null }));
+      // SECO excluye congelados: los slots CC/CN (contenido='congelados') no generan
+      // card fantasma en el formulario seco — son del módulo CONGELADOS.
+      const baseSlots = baseSlotsRaw.filter(s => !esCongeladoContenido(s.contenido));
       const hasPicking = baseSlots.length > 0;
 
       if (hasPicking) {
@@ -989,7 +993,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
       // CH lo maneja el rebuild (auto-agregado); aquí sólo P/B/C que llegaron tarde.
-      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH');
+      // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
+      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH' && !esCongeladoContenido(s.contenido));
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const saved = cur.find(it => it.pickingSlotId === s.id);
@@ -1563,6 +1568,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const pkSlots = pickingSlots[t.cod] ?? [];
               const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
               const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
+              // SECO excluye congelados: "N movimientos" de la card = total/done de Odoo
+              // menos el subconteo de Abastecimiento Congelados (que vive en su propio módulo).
+              const prog = odooProgress.get(t.cod);
+              const storeTotalOpsSeco = Math.max(0, (prog?.total ?? 0) - (prog?.congTotal ?? 0));
+              const storeDoneOpsSeco  = Math.max(0, (prog?.done ?? 0) - (prog?.congDone ?? 0));
               return (
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday
@@ -1571,7 +1581,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
-                  hasGuide={!!guides[guideKey(t.cod)]} storeStatus={odooProgress.get(t.cod)?.status ?? 'none'} storeDoneOps={odooProgress.get(t.cod)?.done ?? 0} storeTotalOps={odooProgress.get(t.cod)?.total ?? 0}
+                  hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
