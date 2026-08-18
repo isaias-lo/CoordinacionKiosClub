@@ -1247,10 +1247,12 @@ export function PickingScreen() {
             />
           )}
 
-          {/* ── Tab content: Calendario (general, solo lectura) ── */}
+          {/* ── Tab content: Calendario (general, solo lectura) ──
+             Sigue la sección activa: en Congelados muestra el Calendario de Congelados;
+             en el resto (Seco/Aseo-Comida/Hogar/Chocolates/Todas), el Central. */}
           {rightTab === 'calendario' && (
             <div className="flex-1 overflow-y-auto min-h-0 p-3">
-              <CalendarioColumnas readOnly forceGeneral />
+              <CalendarioColumnas readOnly forceGeneral source={sectionFilter === 'congelados' ? 'congelados' : 'despacho'} />
             </div>
           )}
 
