@@ -43,6 +43,8 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       // pero oculta del sidebar; se llega por el tab dentro del módulo BODEGA.
       { path: '/despacho/regiones',      label: 'Bodega'                 },
       { path: '/despacho/santiago',      label: 'RM / Costa', hidden: true },
+      { path: '/despacho/congelados',           label: 'Congelados'                       },
+      { path: '/despacho/congelados/santiago',  label: 'RM / Costa (Cong.)', hidden: true },
       { path: '/despacho',               label: 'Enrutador'              },
     ],
   },
@@ -147,6 +149,7 @@ const DESPACHO_FULL = [
   '/despacho/config-tiendas', '/panel-choferes', '/conductor-hub',
   '/panel-operaciones', '/registros', '/tiendas', '/control-interno',
   '/validacion-tienda', '/incidencias', '/perfil',
+  '/despacho/congelados', '/despacho/congelados/santiago',
 ];
 
 export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
@@ -156,7 +159,7 @@ export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
   'supervisor':          DESPACHO_FULL,
   'supervisor-picking':  ['/picking', '/perfil'],
   'admin':               ['*'],
-  'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/perfil'],
+  'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/despacho/congelados', '/despacho/congelados/santiago', '/perfil'],
   'coordinador-flota':   ['/despacho', '/despacho/control-flota', '/despacho/config-tiendas', '/panel-choferes', '/perfil'],
   'conductor':           ['/conductor-hub', '/tiendas', '/perfil'],
 };

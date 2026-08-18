@@ -9,7 +9,7 @@ import {
   Map, MapPin, Activity, Navigation as NavIcon,
   Warehouse, Monitor, Store, FileText, AlertTriangle,
   CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun,
+  LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun, Snowflake,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
@@ -22,6 +22,7 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/despacho':                Map,
   '/despacho/regiones':       Warehouse,
   '/despacho/santiago':       MapPin,
+  '/despacho/congelados':     Snowflake,
   '/despacho/control-flota':  Truck,
   '/despacho/estado':         Activity,
   '/conductor-hub':           NavIcon,
