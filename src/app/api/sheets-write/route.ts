@@ -7,7 +7,7 @@ import { clavesConPatente } from './asignacion';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
-const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'RECEPCIÓN TIENDA', 'HISTORIAL', 'CONTROL DESPACHO']);
+const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'DESPACHO CONGELADOS', 'RECEPCIÓN TIENDA', 'HISTORIAL', 'CONTROL DESPACHO']);
 
 // ── Caché de sheetId por nombre de hoja (se llena una vez por proceso) ──────────
 // Evita llamar spreadsheets.get en cada request; se invalida solo si el proceso reinicia.
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
-    const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[] };
+    const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[]; tabla?: string };
     const { sheet, rows = [], fuente, action } = body;
 
     if (!ALLOWED_SHEETS.has(sheet)) {
@@ -426,6 +426,60 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ ok: true, written: rows.length });
       }
+    }
+
+    // ── DESPACHO CONGELADOS: bodega de congelados. SIEMPRE append+mirror (sin dims),
+    //    con la tabla destino EXPLÍCITA (body.tabla) porque una sola hoja alimenta
+    //    despacho_rm (RM/Costa) o despacho_regiones (Nacional) según el sub-tab. ──
+    if (sheet === 'DESPACHO CONGELADOS') {
+      const sb = supabaseServer();
+      const tabla = body.tabla;
+      if (tabla !== 'despacho_rm' && tabla !== 'despacho_regiones') {
+        return NextResponse.json({ error: 'tabla inválida para DESPACHO CONGELADOS (debe ser despacho_rm o despacho_regiones)' }, { status: 400 });
+      }
+      const records = tabla === 'despacho_rm' ? rows.map(toRmRecord) : rows.map(toRegionesRecord);
+      const fuenteCong = fuente ?? 'bodega_congelados';
+
+      // Append SOLO filas nuevas a la hoja (idempotente por id en col A).
+      const idColRes = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'DESPACHO CONGELADOS!A:A' });
+      const sheetIdSet = new Set<string>((idColRes.data.values || []).map(r => String(r?.[0] ?? '')).filter(Boolean));
+      const newSheetRows = rows.filter(r => !sheetIdSet.has(String(r[0])));
+      if (newSheetRows.length > 0) {
+        const appRes = await gs.spreadsheets.values.append({
+          spreadsheetId: SPREADSHEET_ID, range: 'DESPACHO CONGELADOS!A1',
+          valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS',
+          requestBody: { values: newSheetRows },
+        });
+        // La fecha va en col B (índice 1); aplicar formato de fecha post-append.
+        await applyDateFormat(gs, 'DESPACHO CONGELADOS', appRes.data.updates?.updatedRange, 1);
+      }
+
+      // Mirror a Supabase (tabla por región) con fuente='bodega_congelados'.
+      const ids = records.map(r => r.id);
+      const { data: existing } = await sb.from(tabla).select('id').in('id', ids);
+      const existingIds = new Set((existing ?? []).map((e: { id: string }) => e.id));
+      const newRecords = records.filter(r => !existingIds.has(r.id));
+      const existingRecords = records.filter(r => existingIds.has(r.id));
+      if (newRecords.length) {
+        const withFuente = newRecords.map(r => ({ ...r, fuente: fuenteCong }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await sb.from(tabla).insert(withFuente as any[]);
+        if (error) console.error('[sheets-write] Supabase insert congelados', tabla, error.message);
+      }
+      for (const r of existingRecords) {
+        const rm = r as Record<string, unknown>;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const updateObj: Record<string, any> = {
+          tipo: rm.tipo, carga: rm.carga, regimen: rm.regimen,
+          ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
+          fuente: fuenteCong,
+          ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
+          ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
+        };
+        const { error } = await sb.from(tabla).update(updateObj).eq('id', r.id);
+        if (error) console.error('[sheets-write] Supabase update congelados', tabla, error.message);
+      }
+      return NextResponse.json({ ok: true, written: rows.length });
     }
 
     // ── CONTROL DESPACHO: upsert by fecha::cod, update patente columns ──

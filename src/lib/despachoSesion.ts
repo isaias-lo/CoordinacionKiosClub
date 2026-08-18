@@ -18,7 +18,7 @@ function todayISO(): string {
 }
 
 /** Write counts for today to Supabase (upsert) and drop stale rows. Fire-and-forget. */
-export async function pushCounts(fuente: 'regiones' | 'santiago', counts: CountMap): Promise<void> {
+export async function pushCounts(fuente: 'regiones' | 'santiago' | 'congelados-regiones' | 'congelados-santiago', counts: CountMap): Promise<void> {
   const entries = Object.entries(counts);
   // Sin tiendas cargadas → no tocar nada. Evita borrar la data del día durante el arranque,
   // cuando dispatchData aún no se hidrató (guarda anti-wipe).
