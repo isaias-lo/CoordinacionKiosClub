@@ -4,6 +4,7 @@ import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
+import { tipoTienda } from '../utils/tipoTienda';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -818,6 +819,9 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
   requireConfirm?: boolean;
 }) {
   const info = tiendas[store.c];
+  // Tipo de tienda (Mall / Strip / Street / …) para el badge del chip — mismo helper que el Planificador.
+  const tp = info ? tipoTienda(info.tipo, info.d, info.z) : null;
+  const tipoLabel = tp ? tp.label.replace(' Center', '') : '';  // compacto: "Strip Center" → "Strip"
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -860,6 +864,13 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
         >✓</button>
       )}
       <span className="font-mono font-bold text-[13px]">{formatCod(store.c)}</span>
+      {tp && (
+        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
+          style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40` }}
+          title={tp.label}>
+          {tipoLabel}
+        </span>
+      )}
       <span className="text-[11px] text-knavy/60 font-semibold">{store.p}p</span>
       {(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 && (
         <span className="text-[11px] text-knavy/50 font-semibold">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
