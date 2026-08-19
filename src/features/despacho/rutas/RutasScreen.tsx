@@ -447,6 +447,11 @@ export default function RutasScreen() {
     const today = todayStr();
 
     function applyRow(row: SesionRow) {
+      // Congelados NO fluye al pool SECO del Enrutador: tiene su propio flujo (fuentes
+      // 'congelados-santiago'/'congelados-regiones' → tab CONGELADOS). Sin este guard, los
+      // counts de la bodega Congelados inflaban el pool seco (una tienda congelada aparecía
+      // como si fuera despacho seco).
+      if ((row.fuente ?? '').startsWith('congelados')) return;
       const c = norm(row.tienda_cod);
       sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
