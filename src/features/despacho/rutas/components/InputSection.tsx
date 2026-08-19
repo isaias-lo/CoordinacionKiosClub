@@ -116,6 +116,8 @@ export default function InputSection({
   mapPanel,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
+  // Fuente del calendario del tab CALENDARIO: Central (Seco) por defecto, o Congelados.
+  const [calSource, setCalSource] = useState<'despacho' | 'congelados'>('despacho');
   const isMobile = useIsMobile();
 
   // Divisor arrastrable contenido ↔ mapa (desktop): % de ANCHO del mapa (a la derecha).
@@ -175,6 +177,29 @@ export default function InputSection({
       className="mx-3 mt-3 flex-shrink-0 bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-2.5 text-[12px] text-amber-700 leading-relaxed"
     >
       ⚠️ {errors.join(' · ')}
+    </div>
+  );
+
+  // Tab CALENDARIO: toggle Seco (Central) / Congelados + el calendario. Compartido entre el
+  // render móvil y el desktop (mismo estado calSource).
+  const calTabContent = (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
+        <button onClick={() => setCalSource('despacho')}
+          className={`h-[32px] px-4 rounded-[9px] text-[12px] font-bold transition-all ${
+            calSource === 'despacho' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
+          Seco (Central)
+        </button>
+        <button onClick={() => setCalSource('congelados')}
+          className={`h-[32px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5 ${
+            calSource === 'congelados' ? 'text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}
+          style={calSource === 'congelados' ? { background: '#0891B2' } : undefined}>
+          ❄ Congelados
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 bg-kbg">
+        <CalendarioColumnas readOnly forceGeneral source={calSource} />
+      </div>
     </div>
   );
 
@@ -261,7 +286,7 @@ export default function InputSection({
         : modo === 'v2' ? (
           <div className="flex-1 overflow-hidden">{segundaVueltaContent}</div>
         ) : modo === 'cal' ? (
-          <div className="flex-1 overflow-y-auto p-3 bg-kbg"><CalendarioColumnas readOnly forceGeneral /></div>
+          calTabContent
         ) : modo === 'plan' ? (
           <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} /></div>
         ) : rightPanelContent ? (
@@ -358,9 +383,7 @@ export default function InputSection({
           {segundaVueltaContent}
         </div>
       ) : modo === 'cal' ? (
-        <div className="flex-1 overflow-y-auto p-4">
-          <CalendarioColumnas readOnly forceGeneral />
-        </div>
+        calTabContent
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
           <PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} />
