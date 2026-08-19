@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag } from 'lucide-react';
+import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -23,6 +23,10 @@ interface Props {
   flotaStatus?: string;
   modo: string;
   calT: Record<string, CalData>;
+  // Pool + asignación del tab CONGELADOS (paralelo al SECO; alimentado por fuentes 'congelados-*').
+  calTCong: Record<string, CalData>;
+  asignacionesCong: Record<string, StoreAssign[]>;
+  onAsignacionesCong: (a: Record<string, StoreAssign[]>) => void;
   manualText: string;
   errors: string[];
   tiendas: Record<string, TiendaInfo>;
@@ -91,6 +95,7 @@ function TabIcon({ Icon, color }: { Icon: LIcon; color: string }) {
 // panel fijo (ver RutasScreen.tsx), siempre visible junto a este contenido.
 const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
   { id: 'drag',  Icon: Target,     label: 'DESPACHO',    color: '#1B2A6B' },
+  { id: 'cong',  Icon: Snowflake,  label: 'CONGELADOS',  color: '#0891B2' },
   { id: 'man',   Icon: PenLine,    label: 'MANUAL',      color: '#1B2A6B' },
   { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA',   color: '#6B21A8' },
   { id: 'flota', Icon: Truck,      label: 'FLOTA',       color: '#1B2A6B' },
@@ -100,7 +105,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 
 /* ── Main component ──────────────────────────────────────────────── */
 export default function InputSection({
-  flota, flotaStatus, modo, calT, manualText, errors,
+  flota, flotaStatus, modo, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, grupoFiltro, grps, onGroupPill,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
@@ -260,9 +265,11 @@ export default function InputSection({
                 <Flag size={13} strokeWidth={2} aria-hidden="true" /><span>Terminar día</span>
               </button>
             )}
-            <button onClick={onLimpiar} className={`h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ${modo === 'drag' && !rightPanelContent && onTerminarDia ? '' : 'ml-auto'}`}>
-              Limpiar
-            </button>
+            {modo !== 'cong' && (
+              <button onClick={onLimpiar} className={`h-[36px] px-3 rounded-[10px] bg-kbg border border-black/[0.10] text-kmuted text-[12px] font-semibold flex-shrink-0 ${modo === 'drag' && !rightPanelContent && onTerminarDia ? '' : 'ml-auto'}`}>
+                Limpiar
+              </button>
+            )}
             <div className="flex bg-kbg rounded-[10px] p-[3px] gap-1 w-full">
               {MODES.map(({ id, Icon, label }) => (
                 <button key={id} onClick={() => onModo(id)}
@@ -289,6 +296,18 @@ export default function InputSection({
           calTabContent
         ) : modo === 'plan' ? (
           <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} /></div>
+        ) : modo === 'cong' ? (
+          <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
+            <div className="p-3">
+              <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
+                onCalcular={() => {}} hideCalcular
+                grupoFiltro={grupoFiltro} grps={grps} onGroupPill={onGroupPill}
+                camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
+                scrollContainerRef={dragScrollRef}
+                onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} />
+            </div>
+          </div>
         ) : rightPanelContent ? (
           <div className="flex-1 overflow-hidden">{rightPanelContent}</div>
         ) : (
@@ -326,10 +345,10 @@ export default function InputSection({
             {MODES.map(({ id, Icon, label, color }) => (
               <button
                 key={id}
-                onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'cal' || id === 'plan') onModo(id); }}
+                onClick={() => { if (!rightPanelContent || id === 'flota' || id === 'v2' || id === 'cal' || id === 'plan' || id === 'cong') onModo(id); }}
                 style={modo === id ? { background: 'white', boxShadow: '0 1px 5px rgba(0,0,0,0.10)' } : undefined}
                 className={`relative h-[40px] px-3.5 rounded-[10px] flex items-center gap-2 transition-all
-                  ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'cal' && id !== 'plan' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
+                  ${rightPanelContent && id !== 'flota' && id !== 'v2' && id !== 'cal' && id !== 'plan' && id !== 'cong' ? 'opacity-40 cursor-default' : modo === id ? '' : 'hover:bg-white/60'}`}
               >
                 <TabIcon Icon={Icon} color={color} />
                 <span className={`text-[11px] font-extrabold tracking-[0.06em] transition-colors
@@ -353,7 +372,7 @@ export default function InputSection({
               <Flag size={15} strokeWidth={2} /><span>Terminar día</span>
             </button>
           )}
-          {!rightPanelContent && modo !== 'drag' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
+          {!rightPanelContent && modo !== 'drag' && modo !== 'cong' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
             <button
               onClick={onCalcular}
               className="h-[40px] px-6 rounded-[12px] bg-knavy text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-knavy/90 flex items-center gap-2"
@@ -361,7 +380,7 @@ export default function InputSection({
               <Truck size={15} strokeWidth={2} /><span>Calcular Rutas</span>
             </button>
           )}
-          {modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
+          {modo !== 'cong' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
             <button
               onClick={onLimpiar}
               className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
@@ -387,6 +406,18 @@ export default function InputSection({
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
           <PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} />
+        </div>
+      ) : modo === 'cong' ? (
+        <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
+          <div className="p-4">
+            <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+              asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
+              onCalcular={() => {}} hideCalcular
+              grupoFiltro={grupoFiltro} grps={grps} onGroupPill={onGroupPill}
+              camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
+              scrollContainerRef={dragScrollRef}
+              onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} />
+          </div>
         </div>
       ) : rightPanelContent ? (
         <div className="flex-1 overflow-hidden">

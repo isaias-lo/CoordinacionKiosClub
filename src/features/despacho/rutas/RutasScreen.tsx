@@ -17,6 +17,7 @@ import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
 import { grupoArmada } from './utils/flujoArmada';
+import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { ordenarCalT } from './utils/ordenarCalT';
@@ -203,6 +204,13 @@ export default function RutasScreen() {
   const [historialMsg,  setHistorialMsg]  = useState('');
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
+  // ── Tab CONGELADOS (Enrutador): pool + asignación PARALELOS al despacho SECO ──
+  // calTCong se alimenta SOLO de las filas de despacho_sesion con fuente 'congelados-*'
+  // (bodega CONGELADOS, PR #341) — las cajas vienen en `bultos`. asignacionesCong es local
+  // (v1 efímero: la asignación de congelados a camiones todavía no genera manifiesto; ese es
+  // el follow-up 7b-iii). NO comparte estado con el pool seco (calT/manualAsignaciones).
+  const [calTCong,         setCalTCong]         = useState<Record<string, CalData>>({});
+  const [asignacionesCong, setAsignacionesCong] = useState<Record<string, StoreItem[]>>({});
   // Manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device). Se usan
   // para un banner "ya hay manifiestos guardados" y para reconstruir el tablero si hiciera falta
   // (p. ej. al abrir desde otro dispositivo y ver el lienzo vacío). No pisa el flujo de armado.
@@ -475,13 +483,31 @@ export default function RutasScreen() {
       });
     }
 
+    // Alimenta SOLO el pool CONGELADOS (tab del Enrutador) desde las filas 'congelados-*'.
+    // Las cajas vienen en `bultos` (p/c/ch = 0). Es el espejo inverso del guard de applyRow.
+    function applyRowCong(row: SesionRow) {
+      if (!(row.fuente ?? '').startsWith('congelados')) return;
+      const c = norm(row.tienda_cod);
+      const boxes = row.bultos ?? 0;
+      setCalTCong(prev => {
+        if (!prev[c]) {
+          if (boxes <= 0) return prev;
+          // Grupo para el filtro RM/Costa/Regiones (helper puro, testeado).
+          const g = grupoCongelados(row.fuente ?? '', tiendasRef.current[c]?.region);
+          return { ...prev, [c]: { on: true, p: 0, b: boxes, c: 0, ch: 0, g } };
+        }
+        if (prev[c].b === boxes) return prev;
+        return { ...prev, [c]: { ...prev[c], b: boxes, on: boxes > 0 } };
+      });
+    }
+
     // Initial load: fetch any counts already in Supabase (from other devices today)
     const initTimeout = setTimeout(() => {
-      fetchCounts(today).then(rows => rows.forEach(applyRow)).catch(() => {});
+      fetchCounts(today).then(rows => rows.forEach(row => { applyRow(row); applyRowCong(row); })).catch(() => {});
     }, 1500);
 
     // Subscribe to real-time changes from other devices
-    const unsub = subscribeToSesion(today, applyRow);
+    const unsub = subscribeToSesion(today, row => { applyRow(row); applyRowCong(row); });
 
     return () => {
       clearTimeout(initTimeout);
@@ -864,6 +890,15 @@ export default function RutasScreen() {
       esFantasmaCalT,
     );
   }, [calT, cal, fecha, tiendas]);
+
+  // Orden del pool CONGELADOS. No hay orden de calendario cargado para congelados en el
+  // Enrutador (v1): las tiendas se ordenan por grupo (RM/Costa/Regiones) como "extras".
+  const sortedCalTCong = useMemo(() => ordenarCalT<CalData>(
+    calTCong,
+    { rm: [], costa: [], fal: [] },
+    (c) => !!tiendas[c],
+    esFantasmaCalT,
+  ), [calTCong, tiendas]);
 
   // ── Sync calT → manual text ───────────────────────────────────────
   // La generación del texto (con tabs RM/COSTA/REGIONES, CH y totales)
@@ -2070,6 +2105,9 @@ export default function RutasScreen() {
           <InputSection
             flota={flota}
             modo={modo} calT={sortedCalT}
+            calTCong={sortedCalTCong}
+            asignacionesCong={asignacionesCong}
+            onAsignacionesCong={setAsignacionesCong}
             manualText={manualText} errors={errors}
             tiendas={tiendas} gps={gps} cd={cdRef.current}
             manualAsignaciones={manualAsignaciones}
