@@ -47,6 +47,8 @@ import {
   getTiendasAdelantoHoy, deleteTiendaAdelanto, todayISO as adelantoTodayISO,
   type TiendaAdelanto,
 } from '@/features/despacho/shared/tiendasAdelanto';
+import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -144,6 +146,8 @@ export function PickingScreen() {
   const [storesLoading, setStoresLoading] = useState(false);
   // Nombres de tiendas desde Supabase — sobreescriben el hardcoded TIENDAS_INICIAL
   const [tiendaOverrides, setTiendaOverrides] = useState<Record<string, string>>({});
+  // Tipo/dirección/zona desde Supabase — para el badge de tipo de tienda (Mall/Strip/…) del header.
+  const [tiendaTipoInfo, setTiendaTipoInfo] = useState<Record<string, { tipo: string; d: string; z: string }>>({});
 
   const [sectionFilter, setSectionFilter] = useLocalStorage<SectionFilter>(SECTION_FILTER_KEY, 'all');
   const [colsPerRow, setColsPerRow]       = useLocalStorage<number>(COLS_PER_ROW_KEY, 3);
@@ -568,11 +572,16 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('tiendas')
-        .select('codigo, nombre');
+        .select('codigo, nombre, tipo, direccion, sector_comuna');
       if (!data) return;
       const overrides: Record<string, string> = {};
-      for (const t of data) if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
+      const tipoInfo: Record<string, { tipo: string; d: string; z: string }> = {};
+      for (const t of data) {
+        if (t.codigo && t.nombre) overrides[t.codigo] = t.nombre;
+        if (t.codigo) tipoInfo[t.codigo] = { tipo: t.tipo ?? '', d: t.direccion ?? '', z: t.sector_comuna ?? '' };
+      }
       setTiendaOverrides(overrides);
+      setTiendaTipoInfo(tipoInfo);
     } catch { /* silent */ }
   }, []);
   useEffect(() => { void loadTiendaOverrides(); }, [loadTiendaOverrides]);
@@ -647,6 +656,14 @@ export function PickingScreen() {
   // Nombre de tienda: Supabase override primero, luego hardcoded
   const nameFor = useCallback((cod: string): string =>
     tiendaOverrides[cod] || getStoreName(cod), [tiendaOverrides]);
+
+  // Tipo de tienda (Mall / Strip / Street / …) para el badge del header — Supabase primero,
+  // luego el catálogo hardcoded TIENDAS_INICIAL (mismo patrón que nameFor).
+  const tipoFor = useCallback((cod: string) => {
+    const info = tiendaTipoInfo[cod];
+    const base = TIENDAS_INICIAL[cod];
+    return tipoTienda(info?.tipo || base?.tipo, info?.d || base?.d, info?.z || base?.z);
+  }, [tiendaTipoInfo]);
 
   const applyCalendar = useCallback((cal: Record<string, { rm: string[]; costa: string[]; fal: string[] }>) => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
@@ -1360,6 +1377,16 @@ export function PickingScreen() {
                       style={{ background: '#F8FAFC', borderBottom: '1px solid var(--color-border)', borderTopLeftRadius: 11, borderTopRightRadius: 11 }}>
                       <span className="font-mono text-[13px] font-semibold px-2 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#475569' }}>{cod}</span>
                       <span className="text-[18px] font-semibold" style={{ color: '#0F172A' }}>{nameFor(cod)}</span>
+                      {(() => {
+                        const tp = tipoFor(cod);
+                        if (!tp.label || tp.label === 'Otro') return null;
+                        return (
+                          <span className="text-[11px] font-bold rounded"
+                            style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40`, padding: '2px 9px' }}>
+                            {tp.label.replace(' Center', '')}
+                          </span>
+                        );
+                      })()}
                       {storeStatus === 'complete' && (
                         <span className="text-[13px] font-bold px-3 py-0.5 rounded"
                           style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>

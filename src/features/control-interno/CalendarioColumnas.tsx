@@ -13,6 +13,7 @@ import {
   fetchCalendarioCongelados, saveCalendarioCongelados, subscribeToCalendarioCongelados,
 } from '@/lib/calendarioCongeladosSync';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 import {
   Package, Waves, Building2, ClipboardList,
@@ -86,7 +87,7 @@ export default function CalendarioColumnas({
 
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
   const pendingResolveRef = useRef<string[]>([]);
-  const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string }>>({});
+  const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string; tipo: string }>>({});
   const firstDayBtnRef = useRef<HTMLButtonElement>(null);
 
   // Modal de días: cierre con Escape + foco inicial en el primer día (accesibilidad).
@@ -103,11 +104,11 @@ export default function CalendarioColumnas({
   useEffect(() => {
     fetch('/api/tiendas')
       .then(r => r.json())
-      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; activo?: boolean }> }) => {
-        const db: Record<string, { n: string; z: string; d: string }> = {};
+      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; tipo?: string; activo?: boolean }> }) => {
+        const db: Record<string, { n: string; z: string; d: string; tipo: string }> = {};
         for (const t of (json.tiendas ?? [])) {
           if (t.activo === false) continue;
-          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '' };
+          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '', tipo: t.tipo ?? '' };
         }
         setTiendasDB(db);
       })
@@ -115,10 +116,10 @@ export default function CalendarioColumnas({
   }, []);
 
   // Merged lookup: TIENDAS_INICIAL as base, overridden by active DB stores
-  const tiendasAll = useMemo<Record<string, { n: string; z: string; d: string }>>(() => {
-    const base: Record<string, { n: string; z: string; d: string }> = {};
+  const tiendasAll = useMemo<Record<string, { n: string; z: string; d: string; tipo: string }>>(() => {
+    const base: Record<string, { n: string; z: string; d: string; tipo: string }> = {};
     for (const [k, v] of Object.entries(TIENDAS_INICIAL)) {
-      base[k] = { n: v.n, z: v.z, d: v.d ?? '' };
+      base[k] = { n: v.n, z: v.z, d: v.d ?? '', tipo: v.tipo ?? '' };
     }
     return { ...base, ...tiendasDB };
   }, [tiendasDB]);
@@ -757,9 +758,14 @@ export default function CalendarioColumnas({
                             </div>
                           ) : stores.map(({ cod, zone }) => {
                             const zc = GZONE[zone];
+                            const inf = tiendasAll[cod];
+                            const tp = tipoTienda(inf?.tipo, inf?.d, inf?.z);
                             return (
-                              <div key={cod} style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #E2E8F0', borderLeft: `3px solid ${zc.accent}`, borderRadius: 6, padding: '6px 10px', marginBottom: 5, fontSize: 15, fontWeight: 700, fontFamily: 'monospace', textAlign: 'center' }}>
-                                {displayCode(cod)}
+                              <div key={cod} style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #E2E8F0', borderLeft: `3px solid ${zc.accent}`, borderRadius: 6, padding: '6px 10px', marginBottom: 5, textAlign: 'center' }}>
+                                <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'monospace' }}>{displayCode(cod)}</div>
+                                <div style={{ fontSize: 9.5, fontWeight: 800, color: tp.color, background: `${tp.color}22`, borderRadius: 4, padding: '1px 5px', marginTop: 3, display: 'inline-block' }}>
+                                  {tp.label.replace(' Center', '')}
+                                </div>
                               </div>
                             );
                           })}
