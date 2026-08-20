@@ -32,6 +32,7 @@ import {
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
+import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, type Seccion } from './picking-secciones';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -166,13 +167,6 @@ export function PickingScreen() {
   // Decreasing counter for optimistic (temp) slot IDs — negative to never collide with real DB ids
   const tempIdRef = useRef(-1);
 
-  // Derived: count per state_key
-  const pickerPallets = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const s of palletSlots) map[s.state_key] = (map[s.state_key] ?? 0) + 1;
-    return map;
-  }, [palletSlots]);
-
   // Derived: count per (state_key, tipo) — feeds the 3 independent counters
   const palletsByTipoAndStateKey = useMemo(() => {
     const result: Record<string, Record<string, number>> = {};
@@ -280,6 +274,9 @@ export function PickingScreen() {
 
   const [printOnlyStore, setPrintOnlyStore]       = useState<string | null>(null);
   const [printOnlyStateKey, setPrintOnlyStateKey] = useState<string | null>(null);
+  // Sección a imprimir cuando se imprime UNA card estando en un filtro de sección: limita las
+  // etiquetas a los pallets de esa sección (consistente con el contador de la card). null = todo.
+  const [printOnlySection, setPrintOnlySection]   = useState<Seccion | null>(null);
   const [doPrint, setDoPrint]                     = useState(false);
   const [selectionPrint, setSelectionPrint]       = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
   const [mounted, setMounted]                     = useState(false);
@@ -391,7 +388,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at, seq, canonical_id')
+        .select('id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id')
         .eq('date', todayISO())
         .eq('is_active', true)
         .order('created_at', { ascending: true })
@@ -427,6 +424,7 @@ export function PickingScreen() {
           picker_label: (r.picker_label as string) ?? '',
           tipo:         (r.tipo as string) ?? 'P',
           contenido:    (r.contenido as string) ?? 'hogar',
+          section:      (r.section as string | null) ?? null,
           refs:         (r.refs as string) ?? '',
           created_at:   r.created_at as string,
         });
@@ -463,7 +461,7 @@ export function PickingScreen() {
     return unsub;
   }, [loadPalletSlots]);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '') => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null) => {
     const date = todayISO();
     // Idempotencia: id de operación único por click. Si el POST se reintenta (red,
     // doble-click, replay de cola offline), el server deduplica por client_op_id.
@@ -475,21 +473,21 @@ export function PickingScreen() {
     const tempId = tempIdRef.current--;
     const tempSlot: PalletSlot = {
       id: tempId, store_cod: storeCod, state_key: stateKey,
-      picker_label: pickerLabel, tipo, contenido, refs,
+      picker_label: pickerLabel, tipo, contenido, section, refs,
       created_at: new Date().toISOString(),
     };
     setPalletSlots(prev => [...prev, tempSlot]);
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, refs, actor_name: actorName, client_op_id: clientOpId }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
         setPalletSlots(prev => prev.filter(s => s.id !== tempId));
         showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
-        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date, clientOpId, actorName });
+        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
@@ -519,15 +517,19 @@ export function PickingScreen() {
       console.error('[picking] addPalletSlot network error', e);
       setPalletSlots(prev => prev.filter(s => s.id !== tempId));
       showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
-      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, refs, date, clientOpId, actorName });
+      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
     }
   }, [pickingFetch, showToast, loadEventos]);
 
-  const removePalletSlot = useCallback(async (stateKey: string, tipo: string) => {
+  // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
+  // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
+  const removePalletSlot = useCallback(async (stateKey: string, tipo: string, section: Seccion | null = null) => {
     if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
     // Read from ref (avoids stale closure) and skip pending deletes; filters by tipo for 3-counter accuracy
     const slot = palletSlotsRef.current
-      .filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo && !pendingDeleteIds.current.has(s.id))
+      .filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo
+        && (section == null || seccionDeSlot(s) === section)
+        && !pendingDeleteIds.current.has(s.id))
       .at(-1);
     if (!slot) return;
     pendingDeleteIds.current.add(slot.id);
@@ -642,6 +644,7 @@ export function PickingScreen() {
       const handleAfterPrint = () => {
         setPrintOnlyStore(null);
         setPrintOnlyStateKey(null);
+        setPrintOnlySection(null);
         setSelectionPrint(null);
         window.removeEventListener('afterprint', handleAfterPrint);
       };
@@ -799,14 +802,13 @@ export function PickingScreen() {
   );
 
   const filteredGroups = useMemo(() => {
-    return allGroups.filter(g => {
-      if (sectionFilter === 'all') return true;
-      const cats = new Set(g.operations.flatMap(o => o.categories));
-      if (sectionFilter === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
-      if (sectionFilter === 'chocolates')  return cats.has('Chocolates');
-      if (sectionFilter === 'congelados')  return cats.has('Congelados');
-      return cats.has('Hogar');
-    });
+    if (sectionFilter === 'all') return allGroups;
+    // Recorta las operaciones de cada grupo a la sección activa y descarta los grupos sin ops
+    // en ella. Antes era un test de inclusión (dejaba ops de otras secciones dentro de un picker
+    // mixto → se mostraba/contaba la suma cruzada). Ahora cada sección es independiente.
+    return allGroups
+      .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
+      .filter(g => g.operations.length > 0);
   }, [allGroups, sectionFilter]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
@@ -848,17 +850,22 @@ export function PickingScreen() {
     }).catch(() => {});
   }, [slotsByStateKey, palletNumsBySlotId, pickingFetch]);
 
-  const recordPrints = useCallback(async (groups: PickerGroup[]): Promise<number> => {
+  const recordPrints = useCallback(async (groups: PickerGroup[], section: Seccion | null = null): Promise<number> => {
     const date = todayISO();
-    const candidates = groups.filter(group => (pickerPallets[group.stateKey] ?? 0) > 0);
+    // Slots de un grupo, recortados a la sección si se imprime una card en un filtro activo.
+    const slotsOf = (stateKey: string) => {
+      const all = slotsByStateKey[stateKey] ?? [];
+      return section == null ? all : all.filter(s => seccionDeSlot(s) === section);
+    };
+    const candidates = groups.filter(group => slotsOf(group.stateKey).length > 0);
     if (candidates.length === 0) return 0;
 
     const results = await Promise.allSettled(
       candidates.map(group => {
-        const pallets     = pickerPallets[group.stateKey] ?? 0;
+        const pallets     = slotsOf(group.stateKey).length;
         const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-        // Tipo dominante entre todos los slots del picker (evita perder grupos mixtos P+B)
-        const slotTipos = (slotsByStateKey[group.stateKey] ?? []).map(s => s.tipo || 'P');
+        // Tipo dominante entre los slots (de la sección) del picker (evita perder grupos mixtos P+B)
+        const slotTipos = slotsOf(group.stateKey).map(s => s.tipo || 'P');
         const tipo = slotTipos.length === 0 ? 'P' :
           slotTipos.reduce((acc, t) =>
             slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
@@ -886,9 +893,9 @@ export function PickingScreen() {
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
           const group     = candidates[i];
-          const pallets   = pickerPallets[group.stateKey] ?? 0;
+          const pallets   = slotsOf(group.stateKey).length;
           const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-          const slotTipos = (slotsByStateKey[group.stateKey] ?? []).map(s => s.tipo || 'P');
+          const slotTipos = slotsOf(group.stateKey).map(s => s.tipo || 'P');
           const tipo = slotTipos.length === 0 ? 'P' :
             slotTipos.reduce((acc, t) =>
               slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
@@ -915,7 +922,7 @@ export function PickingScreen() {
     void loadPrintRecords();
 
     return failures;
-  }, [pickerPallets, pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords]);
+  }, [pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords]);
 
   // Imprime y registra SOLO los labels de un picker específico.
   // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
@@ -931,16 +938,20 @@ export function PickingScreen() {
     setSelectionPrint(null);
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(group.stateKey);
+    // Si hay filtro de sección activo, imprimir SOLO esa sección de la card (consistente con su contador).
+    const section: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
+    setPrintOnlySection(section);
     // 1) Asignar seq + canonical ANTES de registrar/imprimir → la etiqueta lleva código y queda en BD.
     await assignCanonicalIds([group]);
     // 2) Registrar la impresión y disparar el print del navegador.
-    pendingPrintRef.current = recordPrints([group]);
+    pendingPrintRef.current = recordPrints([group], section);
     setDoPrint(true);
-  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds]);
+  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, sectionFilter]);
 
   const printStoreLabels = useCallback((cod: string) => {
     setSelectionPrint(null);
     setPrintOnlyStateKey(null);
+    setPrintOnlySection(null);
     setPrintOnlyStore(cod);
     const groups = groupedByStore[cod] ?? [];
     pendingPrintRef.current = recordPrints(groups);
@@ -951,6 +962,7 @@ export function PickingScreen() {
   const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
     setSelectionPrint({ stateKey, palletNums });
     setPrintOnlyStore(null);
+    setPrintOnlySection(null); // la selección ya está acotada por palletNums
     setDoPrint(true);
     // Asignar canonical_id para los slots seleccionados
     const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
@@ -960,6 +972,7 @@ export function PickingScreen() {
   const printAll = useCallback(() => {
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(null);
+    setPrintOnlySection(null);
     pendingPrintRef.current = Promise.all(
       selectedCods.map(cod => recordPrints(groupedByStore[cod] ?? []))
     ).then(counts => counts.reduce((s, n) => s + n, 0));
@@ -976,6 +989,7 @@ export function PickingScreen() {
       allCategories: string[]; totalPickers: number; stateKey: string; tipo: string; slotId: number;
       canonicalId: string; footerExtra?: string;
       batch?: string; finishedAt?: string | null;
+      secSlot: Seccion | null; // sección del pallet (para imprimir SOLO una sección de una card)
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -1044,6 +1058,7 @@ export function PickingScreen() {
             footerExtra: slot.refs || undefined,
             batch,
             finishedAt,
+            secSlot: seccionDeSlot(slot),
           });
         }
       }
@@ -1080,7 +1095,7 @@ export function PickingScreen() {
         {(selectionPrint
           ? printableLabels.filter(l => l.stateKey === selectionPrint.stateKey && selectionPrint.palletNums.has(l.palletNum))
           : printOnlyStateKey
-            ? printableLabels.filter(l => l.stateKey === printOnlyStateKey)
+            ? printableLabels.filter(l => l.stateKey === printOnlyStateKey && (printOnlySection == null || l.secSlot === printOnlySection))
             : printOnlyStore
               ? printableLabels.filter(l => l.storeCod === printOnlyStore)
               : printableLabels
@@ -1454,17 +1469,33 @@ export function PickingScreen() {
                         const allStore = allGroupedByStore[cod] ?? [];
 
                         const renderCard = (group: PickerGroup, stickerBelow = false) => {
-                          const nums = assignedNumsByStateKey[group.stateKey] ?? [];
+                          // Slots/conteos/números RECORTADOS a la sección activa (o completos en "Todas"),
+                          // para que contador, chips e impresión de la card sean independientes por sección.
+                          const seccionActiva: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
+                          const allCardSlots = slotsByStateKey[group.stateKey] ?? [];
+                          const cardSlots = seccionActiva == null ? allCardSlots : allCardSlots.filter(s => seccionDeSlot(s) === seccionActiva);
+                          const nums = seccionActiva == null
+                            ? (assignedNumsByStateKey[group.stateKey] ?? [])
+                            : cardSlots.map(s => palletNumsBySlotId[s.id]).filter((n): n is number => n !== undefined).sort((a, b) => a - b);
+                          const cardPalletsByTipo = seccionActiva == null
+                            ? (palletsByTipoAndStateKey[group.stateKey] ?? {})
+                            : cardSlots.reduce<Record<string, number>>((acc, s) => { const t = s.tipo || 'P'; acc[t] = (acc[t] ?? 0) + 1; return acc; }, {});
                           // Congelados se determina por las categorías del propio grupo (no por el
                           // filtro de página): en la vista "Todas" cada card debe mostrar SOLO Caja
                           // Cartón/Caja Negra si es de Congelados, sin importar en qué columna cae.
                           const isCongelados = group.operations.some(o => o.categories.includes('Congelados'));
+                          // Para el CONTENIDO/refs del pallet (que lee Bodega/Sheets) usamos las operaciones
+                          // del grupo COMPLETO (no las recortadas por sección), para NO cambiar lo que Bodega
+                          // ve/escribe respecto a antes. La sección va aparte, en la columna `section`.
+                          const fullOps = (allGroupedByStore[group.storeCod] ?? []).find(g => g.stateKey === group.stateKey)?.operations ?? group.operations;
+                          const fullGroupCats = [...new Set(fullOps.flatMap(o => o.categories))];
+                          const fullIsCongelados = fullOps.some(o => o.categories.includes('Congelados'));
                           return (
                             <PickerGroupCard
                               key={group.stateKey}
                               group={group}
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
-                              palletsByTipo={palletsByTipoAndStateKey[group.stateKey] ?? {}}
+                              palletsByTipo={cardPalletsByTipo}
                               sectionFilter={sectionFilter}
                               isCongelados={isCongelados}
                               adelanto={adelantoByCod[group.storeCod]}
@@ -1475,21 +1506,25 @@ export function PickingScreen() {
                                 renamePickerSlots(group.stateKey, name);
                               }}
                               onTipoPalletsChange={(tipo, n) => {
-                                const current = palletsByTipoAndStateKey[group.stateKey]?.[tipo] ?? 0;
+                                const current = cardPalletsByTipo[tipo] ?? 0;
                                 const delta = n - current;
                                 const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-                                const groupCats = [...new Set(group.operations.flatMap(o => o.categories))];
                                 // [Req 1] En la sección Chocolates el pallet ES de chocolate → forzar el
                                 // contenido (aunque las categorías del grupo digan otra cosa). El tipo (P)
                                 // no cambia; solo el contenido, que en la card de bodega se ve como "CH".
+                                // `contenido`/refs se derivan del grupo COMPLETO (fullGroupCats/fullOps) para
+                                // NO cambiar lo que Bodega/Sheets ve; la sección va aparte, en `section`.
                                 const contenido = sectionFilter === 'chocolates' ? 'chocolate'
-                                  : sectionFilter === 'congelados' || isCongelados ? 'congelados'
-                                  : categoriesToContenido(groupCats);
-                                const groupRefs = group.operations.map(o => o.name).join('+');
+                                  : sectionFilter === 'congelados' || fullIsCongelados ? 'congelados'
+                                  : categoriesToContenido(fullGroupCats);
+                                // Sección a etiquetar en el pallet nuevo: la del filtro activo, o (en "Todas")
+                                // la del grupo (null si es mixto → solo suma en "Todas").
+                                const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
+                                const groupRefs = fullOps.map(o => o.name).join('+');
                                 if (delta > 0) {
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs);
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot);
                                 } else if (delta < 0) {
-                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo);
+                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva);
                                 }
                               }}
                               onRefreshOp={(op) => void refreshOp(op, cod)}
@@ -1500,7 +1535,7 @@ export function PickingScreen() {
                               isPrinted={printedKeys.has(group.stateKey)}
                               colsPerRow={colsPerRow}
                               onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
-                              slots={slotsByStateKey[group.stateKey] ?? []}
+                              slots={cardSlots}
                               stickerBelow={stickerBelow}
                               lastPrint={printRecordByKey.get(group.stateKey)}
                               myName={profile?.full_name ?? ''}

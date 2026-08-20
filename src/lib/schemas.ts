@@ -169,6 +169,7 @@ export const CreatePickingPalletSchema = z.object({
   picker_label: z.string().min(1).max(100),
   tipo:         z.enum(['P', 'B', 'C', 'CH', 'CC', 'CN', 'otro']),
   contenido:    z.string().max(50).optional(),
+  section:      z.string().max(30).optional(), // sección de Picking (aseo-comida/hogar/…); null/omitida = sin clasificar
   refs:         z.string().max(500).optional(),
   actor_name:   z.string().max(100).optional(),
   client_op_id: z.string().uuid().optional(), // idempotencia: mismo id ⇒ no duplica

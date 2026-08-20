@@ -41,6 +41,7 @@ export interface PalletSlot {
   picker_label: string;
   tipo: string;
   contenido: string;
+  section?: string | null;      // sección de Picking del pallet (aseo-comida/hogar/…); null = mixto/legacy
   refs: string;
   created_at: string;
   seq?: number | null;          // ordinal asignado al imprimir (P{seq}/B{seq})
