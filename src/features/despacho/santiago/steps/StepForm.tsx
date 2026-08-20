@@ -40,6 +40,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
+import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -1088,18 +1089,26 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return updated;
     }));
 
-  const saveRow = async (row: FormRow) => {
+  const saveRow = async (row: FormRow, sinPesar = false) => {
     if (!currentTienda || !regimen) return;
-    const p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
     const isChoc     = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
     const isChocTipo = row.tipo === 'Chocolate';
     const isCont     = row.tipo === 'Contenedor';
-    if (isChocTipo && p > CHOCOLATE_DIMS.pesoMax) { showToast(`⚠ Chocolate máx ${CHOCOLATE_DIMS.pesoMax} kg`, '#D32F2F'); return; }
-    const a  = isCont ? CONTENEDOR_ALTO  : isChocTipo ? CHOCOLATE_DIMS.alto  : isChoc ? CHOCOLATE_BULTO_DIMS.alto  : (parseFloat(row.alto)  || 0);
-    const fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : isChocTipo ? CHOCOLATE_DIMS.largo : (isChoc ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(row.largo) || 0));
-    const fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : isChocTipo ? CHOCOLATE_DIMS.ancho : (isChoc ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(row.ancho) || 0));
-    if (!isCont && !isChocTipo && !a) { showToast('Ingresa el alto', '#D97706'); return; }
-    if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
+    let p: number, a: number, fL: number, fA: number, pesoV: number;
+    if (sinPesar) {
+      // "Agregar sin pesar": se guarda con dimensiones en 0 (marca "sin pesar"), sin pedir peso/alto/largo/ancho.
+      p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; fL = DIMS_SIN_PESAR.largo; fA = DIMS_SIN_PESAR.ancho;
+      pesoV = DIMS_SIN_PESAR.pesoVolumetrico;
+    } else {
+      p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
+      if (isChocTipo && p > CHOCOLATE_DIMS.pesoMax) { showToast(`⚠ Chocolate máx ${CHOCOLATE_DIMS.pesoMax} kg`, '#D32F2F'); return; }
+      a  = isCont ? CONTENEDOR_ALTO  : isChocTipo ? CHOCOLATE_DIMS.alto  : isChoc ? CHOCOLATE_BULTO_DIMS.alto  : (parseFloat(row.alto)  || 0);
+      fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : isChocTipo ? CHOCOLATE_DIMS.largo : (isChoc ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(row.largo) || 0));
+      fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : isChocTipo ? CHOCOLATE_DIMS.ancho : (isChoc ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(row.ancho) || 0));
+      if (!isCont && !isChocTipo && !a) { showToast('Ingresa el alto', '#D97706'); return; }
+      if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
+      pesoV = Math.round((a * fL * fA) / 6000 * 100) / 100;
+    }
     const cod = currentTienda.cod;
 
     // Si el row no tiene slot (p. ej. el P1 sembrado al abrir la tienda), crear uno de bodega para
@@ -1129,7 +1138,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const savedItem: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
-      pesoVolumetrico: Math.round((a * fL * fA) / 6000 * 100) / 100, regimen,
+      pesoVolumetrico: pesoV, regimen,
       orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : row.tipo === 'Chocolate' ? `CH${chc}` : `${bc}B`,
       estado: ESTADO_DEFAULT,
       pickingSlotId: slotId,
@@ -1137,7 +1146,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     };
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId } : r));
-    showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
+    // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") tras el await,
+    // así queda determinista sin importar si esta función esperó por el fetch del slot.
+    if (!sinPesar) showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
       tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: p, alto: a,
       contenido: savedItem.contenido, slotId });
@@ -1146,7 +1157,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (slotId) {
       supabase.from('picking_pallets').update({
         peso_kg: p, alto: a, ancho: fA, largo: fL,
-        peso_v: Math.round((a * fL * fA) / 6000 * 10) / 10 || null,
+        peso_v: sinPesar ? 0 : (Math.round((a * fL * fA) / 6000 * 10) / 10 || null),
       }).eq('id', slotId).then(({ error }) => {
         if (error) console.error('[picking_pallets update]', error.message);
       });
@@ -2071,7 +2082,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       </div>
                     </div>
                     <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
-                      <div className="font-semibold">{row.savedItem.peso}kg · {row.savedItem.alto}cm</div>
+                      <div className="font-semibold flex items-center gap-1.5 flex-wrap">
+                        {row.savedItem.peso}kg · {row.savedItem.alto}cm
+                        {esSinPesar(row.savedItem) && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                            style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>
+                            sin pesar
+                          </span>
+                        )}
+                      </div>
                       <div className="text-text-3">{row.savedItem.contenido === 'Chocolate' ? 'CH' : row.savedItem.contenido}</div>
                       {(() => {
                         const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
@@ -2263,6 +2282,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
                   </button>
+                  {/* Agregar sin pesar: no se ofrece en filas mergeReopened — ya traen peso real
+                      sumado de la unificación y "sin pesar" lo pondría en 0, perdiendo ese peso. */}
+                  {!row.mergeReopened && (
+                    <button
+                      onClick={async () => { await saveRow(row, true); showToast('Agregado sin pesar', '#D97706'); }}
+                      className="w-full mt-1 py-1.5 rounded border font-barlow-condensed text-[12px] font-bold cursor-pointer active:scale-[0.98] transition-all"
+                      style={{ borderColor: 'rgba(217,119,6,0.45)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>
+                      Sin pesar
+                    </button>
+                  )}
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.tipo === 'Bulto' || row.tipo === 'Chocolate';
                     // Combinar: mismo tipo, sin guardar (combine dimensional)
