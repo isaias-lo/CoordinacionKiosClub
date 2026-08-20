@@ -36,6 +36,7 @@ import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
+import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -899,18 +900,25 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
-  const saveRow = (row: FormRow) => {
+  const saveRow = (row: FormRow, sinPesar = false) => {
     if (!selectedTienda) return;
-    const p = parseFloat(row.peso);
-    if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
     const isCont = row.pkg === 'contenedor';
     const isChoc = row.pkg === 'chocolate';
-    if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
-    const a  = isCont ? 150 : isChoc ? 42  : (parseFloat(row.alto)  || 0);
-    const aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? 56 : (parseFloat(row.ancho) || 0);
-    const l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? 80 : (parseFloat(row.largo) || 0);
-    const errores = (isCont || isChoc) ? [] : validarDimensiones(row.pkg, p, a, aw, l);
-    if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
+    let p: number, a: number, aw: number, l: number;
+    if (sinPesar) {
+      // "Agregar sin pesar": se guarda con dimensiones en 0 (marca "sin pesar"), sin pedir
+      // peso/alto/largo/ancho ni pasar por validarDimensiones.
+      p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; aw = DIMS_SIN_PESAR.ancho; l = DIMS_SIN_PESAR.largo;
+    } else {
+      p = parseFloat(row.peso);
+      if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
+      if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
+      a  = isCont ? 150 : isChoc ? 42  : (parseFloat(row.alto)  || 0);
+      aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? 56 : (parseFloat(row.ancho) || 0);
+      l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? 80 : (parseFloat(row.largo) || 0);
+      const errores = (isCont || isChoc) ? [] : validarDimensiones(row.pkg, p, a, aw, l);
+      if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
+    }
     const currentItems = dispatchData[selectedTienda] || [];
     const pc  = currentItems.filter(i => i.pkg === 'pallet').length + 1;
     const bc  = currentItems.filter(i => i.pkg === 'box').length + 1;
@@ -930,13 +938,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       : null;
     const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
-    showToast(`✓ ${orden} agregado`, '#16A34A');
+    // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
+    if (!sinPesar) showToast(`✓ ${orden} agregado`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, label: ordenToLabel(orden), peso: p, alto: a, slotId: row.pickingSlotId });
 
     // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
     if (row.pickingSlotId) {
-      const pesoV = Math.round((a * aw * l) / 6000 * 10) / 10 || null;
+      const pesoV = sinPesar ? 0 : (Math.round((a * aw * l) / 6000 * 10) / 10 || null);
       supabase.from('picking_pallets').update({
         peso_kg: p, alto: a, ancho: aw, largo: l, peso_v: pesoV,
       }).eq('id', row.pickingSlotId).then(({ error }) => {
@@ -1346,7 +1355,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       </div>
                     </div>
                     <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
-                      <div className="font-semibold">{row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}</div>
+                      <div className="font-semibold flex items-center gap-1.5 flex-wrap">
+                        {row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}
+                        {esSinPesar(row.savedItem) && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                            style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>
+                            sin pesar
+                          </span>
+                        )}
+                      </div>
                       {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
                       {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
                       {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
@@ -1556,6 +1573,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
                     {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
                   </button>
+                  {/* Agregar sin pesar: no se ofrece en filas mergeReopened — ya traen peso real
+                      sumado de la unificación y "sin pesar" lo pondría en 0, perdiendo ese peso. */}
+                  {!row.mergeReopened && (
+                    <button
+                      onClick={() => { saveRow(row, true); showToast('Agregado sin pesar', '#D97706'); }}
+                      className="w-full mt-1 py-1.5 rounded border font-barlow-condensed text-[12px] font-bold cursor-pointer active:scale-[0.98] transition-all"
+                      style={{ borderColor: 'rgba(217,119,6,0.45)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>
+                      Sin pesar
+                    </button>
+                  )}
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
                     const combineTargets = (row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')

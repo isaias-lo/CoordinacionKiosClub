@@ -1,5 +1,6 @@
 import { TIENDAS } from '../data/tiendas';
 import type { DispatchItem } from '../../../../types';
+import { esSinPesar } from '../../shared/sinPesar';
 
 const CARGA_LABEL: Record<string, string> = {
   comida:         'Comida',
@@ -70,9 +71,13 @@ export function buildRows(
     if (!tienda) continue;
 
     for (const item of items) {
-      const pesoV = item.alto && item.largo && item.ancho
+      // [Agregar sin pesar] Ver mismo comentario en sheetsSantiago.buildRows: si el item no fue
+      // pesado, escribimos el NÚMERO 0 (no '') en PESO_KG/ALTO/LARGO/ANCHO/PESO_V para que
+      // sheets-write vea peso_kg = 0 (no null) y no pierda el batch por `hasDims` falso.
+      const sinPesar = esSinPesar(item);
+      const pesoV = sinPesar ? 0 : (item.alto && item.largo && item.ancho
         ? Math.round((item.alto * item.largo * item.ancho) / 6000 * 100) / 100
-        : '';
+        : '');
 
       rows.push([
         canonicalId(item.pkg, item.orden, tienda.cod, stamp), // ID — mantiene stamp de despacho (idempotencia)
@@ -87,10 +92,10 @@ export function buildRows(
         tienda.region,                                  // REGION
         tienda.comuna,                                  // COMUNA
         URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano', // TIPO_COMUNA
-        item.peso || '',                                // PESO_KG
-        item.alto  || '',                               // ALTO
-        item.largo || '',                               // LARGO
-        item.ancho || '',                               // ANCHO
+        sinPesar ? 0 : (item.peso || ''),               // PESO_KG
+        sinPesar ? 0 : (item.alto  || ''),              // ALTO
+        sinPesar ? 0 : (item.largo || ''),              // LARGO
+        sinPesar ? 0 : (item.ancho || ''),              // ANCHO
         pesoV,                                          // PESO_V
         '',                                             // VENTANA
         'Listo para despachar',                         // ESTADO
