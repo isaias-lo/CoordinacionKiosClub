@@ -31,8 +31,35 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = supabaseServer();
+    const SELECT_COLS = 'id, store_cod, tipo, contenido, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 
-    // Siguiente seq = cantidad de slots activos del mismo tipo + 1
+    // [RC-4] Vía ATÓMICA (recomendada): función Postgres con advisory lock que serializa las
+    // altas concurrentes del mismo (date, store_cod, tipo) y calcula el seq sin carrera → dos
+    // usuarios agregando a la vez ya no crean slots con seq duplicado. Si la función todavía no
+    // está desplegada (PGRST202 = no existe), cae al camino viejo para no romper nada.
+    const rpc = await sb.rpc('fn_create_bodega_slot', {
+      p_date:      body.date,
+      p_store_cod: body.store_cod,
+      p_tipo:      body.tipo,
+      p_contenido: body.contenido ?? 'hogar',
+    });
+    if (!rpc.error) {
+      const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+      if (row) {
+        const r = row as Record<string, unknown>;
+        return NextResponse.json({ data: {
+          id: r.id, store_cod: r.store_cod, tipo: r.tipo, contenido: r.contenido,
+          seq: r.seq, canonical_id: r.canonical_id,
+          peso_kg: r.peso_kg ?? null, alto: r.alto ?? null, largo: r.largo ?? null,
+          ancho: r.ancho ?? null, peso_v: r.peso_v ?? null,
+        } });
+      }
+    } else if (rpc.error.code !== 'PGRST202') {
+      // Error real de la función (no "no existe") → reportarlo.
+      return NextResponse.json({ error: rpc.error.message }, { status: 500 });
+    }
+
+    // Fallback NO atómico (solo hasta que se despliegue la función): seq = activos del tipo + 1.
     const { data: existing } = await sb
       .from('picking_pallets')
       .select('id')
@@ -60,7 +87,7 @@ export async function POST(request: NextRequest) {
         canonical_id,
         is_active:    true,
       })
-      .select('id, store_cod, tipo, contenido, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
+      .select(SELECT_COLS)
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

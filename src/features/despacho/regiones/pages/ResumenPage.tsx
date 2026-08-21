@@ -10,6 +10,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { REGIONES_TERMINADO_KEY } from '@/components/modals/FinishModal';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 
 const TAG: Record<string, string> = {
   comida:        'bg-[rgba(217,119,6,0.15)] text-warn',
@@ -514,6 +515,9 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
                       <button
                         onClick={e => {
                           e.stopPropagation();
+                          // Borra también el slot de picking_pallets: sin esto el ítem reaparecía
+                          // al reconstruir el formulario (backfill lo revivía).
+                          eliminarSlotPicking(item.pickingSlotId);
                           dispatch({ type: 'DELETE_ITEM', tienda: name, idx });
                           showToast(`${item.orden} eliminado`, '#D97706');
                         }}

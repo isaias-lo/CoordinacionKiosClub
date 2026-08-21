@@ -6,6 +6,7 @@ import { useApp } from '../../../../context/AppContext';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar',
@@ -314,6 +315,9 @@ export function StepResumen() {
                           </button>
                           <button
                             onClick={() => {
+                              // Borra también el slot de picking_pallets: sin esto el ítem
+                              // reaparecía al reconstruir el formulario (backfill lo revivía).
+                              eliminarSlotPicking(item.pickingSlotId);
                               dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx });
                               showToast(`${item.orden} eliminado`, '#D97706');
                             }}
