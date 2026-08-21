@@ -2193,9 +2193,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const isChocRow  = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
               const isChocTipo = row.tipo === 'Chocolate';
               const isContRow  = row.tipo === 'Contenedor';
-              const canSaveRow = parseFloat(row.peso) > 0 &&
-                (isChocRow || isChocTipo || isContRow || (parseFloat(row.alto) > 0 &&
-                  (row.tipo === 'Pallet' || (parseFloat(row.largo) > 0 && parseFloat(row.ancho) > 0))));
               return (
                 <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   <div className="flex items-center justify-between mb-2">
@@ -2278,20 +2275,24 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas · máx {CHOCOLATE_DIMS.pesoMax} kg
                     </div>
                   )}
-                  <button onClick={() => saveRow(row)} disabled={!canSaveRow}
-                    className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
+                  {/* UN solo botón: con peso guarda normal; sin peso ofrece "agregar sin pesar"
+                      (confirmación) → dimensiones en 0. En filas mergeReopened siempre hay peso
+                      real de la unificación, así que van por el camino normal. */}
+                  <button
+                    onClick={async () => {
+                      const tienePeso = parseFloat(row.peso) > 0;
+                      if (!tienePeso && !row.mergeReopened) {
+                        if (window.confirm('¿Agregar sin pesar? El peso y las medidas quedarán en 0.')) {
+                          await saveRow(row, true);
+                          showToast('Agregado sin pesar', '#D97706');
+                        }
+                        return;
+                      }
+                      await saveRow(row);
+                    }}
+                    className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
                   </button>
-                  {/* Agregar sin pesar: no se ofrece en filas mergeReopened — ya traen peso real
-                      sumado de la unificación y "sin pesar" lo pondría en 0, perdiendo ese peso. */}
-                  {!row.mergeReopened && (
-                    <button
-                      onClick={async () => { await saveRow(row, true); showToast('Agregado sin pesar', '#D97706'); }}
-                      className="w-full mt-1 py-1.5 rounded border font-barlow-condensed text-[12px] font-bold cursor-pointer active:scale-[0.98] transition-all"
-                      style={{ borderColor: 'rgba(217,119,6,0.45)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>
-                      Sin pesar
-                    </button>
-                  )}
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.tipo === 'Bulto' || row.tipo === 'Chocolate';
                     // Combinar: mismo tipo, sin guardar (combine dimensional)
