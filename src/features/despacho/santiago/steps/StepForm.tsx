@@ -40,6 +40,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
+import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 
 /* ── Calendar localStorage ── */
@@ -614,6 +615,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const slots: Record<string, { tipo: string; contenido: string }[]> = {};
       const full:  Record<string, PickingSlot[]> = {};
       for (const row of data) {
+        if (fueRecienBorrado(row.id as number)) continue; // [RC-3] no revivir un slot recién borrado
         const cod = row.store_cod as string;
         if (!slots[cod]) { slots[cod] = []; full[cod] = []; }
         slots[cod].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
@@ -1179,9 +1181,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // Resumen, que lista items de varias tiendas y no fija `currentTienda`).
     const cod = codArg ?? currentTienda?.cod;
     if (!slotId || !cod) return;
-    supabase.from('picking_pallets').delete().eq('id', slotId).then(({ error }) => {
-      if (error) console.error('[picking_pallets delete]', error.message);
-    });
+    eliminarSlotPicking(slotId); // DB delete + guard anti-revive (RC-3)
     setPickingSlotsFull(prev => {
       const next = { ...prev };
       if (next[cod]) next[cod] = next[cod].filter(s => s.id !== slotId);
