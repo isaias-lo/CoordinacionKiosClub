@@ -54,7 +54,7 @@ begin
   insert into picking_pallets
     (date, store_cod, state_key, picker_label, tipo, contenido, refs, seq, canonical_id, is_active)
   values
-    (p_date, p_store_cod, p_store_cod || '__bodega', 'Bodega', p_tipo,
+    (p_date::date, p_store_cod, p_store_cod || '__bodega', 'Bodega', p_tipo,
      coalesce(p_contenido, 'hogar'), '', v_seq, v_canonical, true)
   returning *;
 end;
