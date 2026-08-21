@@ -19,6 +19,7 @@ import { ResumenPage } from './ResumenPage';
 import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
+import { sumarPesoMultiple } from '../../shared/sumarMultiple';
 import { unionRefs } from '../../shared/unifyPallets';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
@@ -289,10 +290,21 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* Combine items (drag-to-merge) */
   const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
   const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
+
+  /* [Sumar en masa] Selección múltiple de cards Bulto/Chocolate guardadas + pallet destino
+     elegido en la barra. Se limpia al cambiar de tienda o al registrar. */
+  const [mergeSel, setMergeSel] = useState<Set<string>>(new Set());
+  const [palletTargetSel, setPalletTargetSel] = useState<string>('');
+  const toggleMergeSel = (rowId: string) => setMergeSel(prev => {
+    const next = new Set(prev);
+    if (next.has(rowId)) next.delete(rowId); else next.add(rowId);
+    return next;
+  });
   const sheetRef     = useRef<HTMLDivElement>(null);
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
+  useEffect(() => { setMergeSel(new Set()); setPalletTargetSel(''); }, [selectedTienda, registrado]);
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1117,6 +1129,70 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       label: palletLabel, peso: bultoPeso, slotId: targetSlotId });
   };
 
+  // [Sumar en masa] Igual que sumarBultoAPallet pero para VARIOS bultos/CH de una sola vez:
+  // se acumulan todos los pesos con sumarPesoMultiple (NO loopear la single — en un loop síncrono
+  // leería el peso del destino desactualizado entre iteraciones) y se hace UN solo UPDATE_ITEMS,
+  // UN solo setFormRows y UN solo update de BD para el slot destino.
+  const sumarVariosAPallet = (bultoRowIds: string[], palletRowId: string) => {
+    if (!selectedTienda) return;
+    const palletRow = formRows.find(r => r.id === palletRowId);
+    const bultoRows = formRows.filter(r => bultoRowIds.includes(r.id) && (r.pkg === 'box' || r.pkg === 'chocolate'));
+    if (!palletRow || bultoRows.length === 0) {
+      showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
+      return;
+    }
+    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? (parseFloat(r.peso) || 0));
+    const pesoActual  = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
+    const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
+
+    for (const bultoRow of bultoRows) {
+      deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
+    }
+
+    // Contexto: un solo UPDATE_ITEMS — quita TODOS los bultos guardados seleccionados y suma el
+    // peso total al pallet guardado. Mismo match por id ESTABLE (sameStableItem) que la single,
+    // reconfirmando el target contra el contexto vigente (guard "el pallet destino cambió").
+    if (bultoRows.some(r => r.savedItem) || palletRow.savedItem) {
+      const cur = dispatchData[selectedTienda] || [];
+      const targetInCtx = palletRow.savedItem
+        ? findItemForRow(cur, { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })
+        : undefined;
+      if (palletRow.savedItem && !targetInCtx) {
+        showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
+        return;
+      }
+      const newItems = cur
+        .filter(i => !bultoRows.some(r => r.savedItem && sameStableItem(i, r.savedItem)))
+        .map(i => sameStableItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
+      dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
+    }
+
+    // Form: quitar TODOS los bultos seleccionados y reflejar el nuevo peso en el pallet
+    const bultoRowIdSet = new Set(bultoRows.map(r => r.id));
+    setFormRows(prev => prev
+      .filter(r => !bultoRowIdSet.has(r.id))
+      .map(r => r.id === palletRowId
+        ? { ...r, peso: String(nuevoPeso), savedItem: r.savedItem ? { ...r.savedItem, peso: nuevoPeso } : r.savedItem }
+        : r));
+
+    // BD: un solo update del peso del slot destino
+    const targetSlotId = palletRow.pickingSlotId ?? palletRow.savedItem?.pickingSlotId;
+    if (targetSlotId) {
+      supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', targetSlotId)
+        .then(({ error }) => { if (error) console.error('[sumarVariosAPallet peso]', error.message); });
+    }
+
+    const palletIdx = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.pkg === 'pallet').length;
+    const palletLabel = `P${palletIdx}`;
+
+    setFormMergeState(null);
+    setMergeSel(new Set());
+    showToast(`✓ ${bultoRows.length} sumados a ${palletLabel}`, '#16A34A');
+    logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
+      tiendaNombre: selectedTienda, sourceLabel: `${bultoRows.length} ítems`, label: palletLabel,
+      peso: sumarPesoMultiple(0, pesosBultos), slotId: targetSlotId });
+  };
+
   /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────
      Igual de automático que sumar un CH a un pallet: SIN modal ni confirmación. El peso de P3
      se suma a P1; P1 conserva su slot/código; P3 se borra (slot + item) en el acto. Luego P1
@@ -1344,9 +1420,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 return (
                   <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-barlow-condensed text-[16px] font-extrabold" style={{ color: rowColor.text }}>
-                        {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {(row.pkg === 'box' || row.pkg === 'chocolate') && (
+                          <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
+                            aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
+                            className="w-4 h-4 cursor-pointer" style={{ accentColor: '#2563EB' }} />
+                        )}
+                        <span className="font-barlow-condensed text-[16px] font-extrabold" style={{ color: rowColor.text }}>
+                          {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
+                        </span>
+                      </div>
                       <div className="flex gap-0.5">
                         <button onClick={() => editSavedRow(row.id)} title="Editar"
                           className="text-[11px] text-text-3 hover:text-info cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✎</button>
@@ -1683,6 +1766,47 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                   );
                 })}
+              </div>
+            );
+          })()}
+          {(() => {
+            // [Sumar en masa] Barra visible solo si hay ≥1 card Bulto/CH guardada y ≥1 Pallet
+            // guardado destino. "Todos" togglea la selección completa; el select recuerda el
+            // pallet elegido (o preselecciona el único disponible).
+            const sumableRows = formRows.filter(r => r.saved && r.savedItem && (r.pkg === 'box' || r.pkg === 'chocolate'));
+            const palletRows  = formRows.filter(r => r.saved && r.savedItem && r.pkg === 'pallet');
+            if (sumableRows.length === 0 || palletRows.length === 0) return null;
+            const getPalletLabel = (r: FormRow) => {
+              const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === 'pallet').length;
+              return `P${idx}`;
+            };
+            const selectedCount = sumableRows.filter(r => mergeSel.has(r.id)).length;
+            const allSelected = selectedCount > 0 && selectedCount === sumableRows.length;
+            const effectiveTarget = (palletTargetSel && palletRows.some(r => r.id === palletTargetSel))
+              ? palletTargetSel
+              : palletRows[0].id;
+            return (
+              <div className="sticky bottom-0 z-10 -mx-2 mt-1 mb-2 px-3 py-2.5 flex items-center gap-2 flex-wrap shadow-lg"
+                style={{ background: '#1B2A6B' }}>
+                <button onClick={() => setMergeSel(allSelected ? new Set() : new Set(sumableRows.map(r => r.id)))}
+                  className="font-barlow-condensed px-2.5 py-1.5 rounded text-[12px] font-bold cursor-pointer border transition-all"
+                  style={{ borderColor: 'rgba(255,255,255,0.35)', color: 'white', background: 'rgba(255,255,255,0.10)' }}>
+                  Todos
+                </button>
+                <span className="font-barlow-condensed text-[12px] text-white/85 font-semibold flex-1 min-w-[110px]">
+                  {selectedCount > 0 ? `${selectedCount} seleccionados` : 'Marcá varios o Todos'}
+                </span>
+                <select value={effectiveTarget} onChange={e => setPalletTargetSel(e.target.value)}
+                  className="font-barlow-condensed rounded px-2 py-1.5 text-[12px] font-bold text-navy bg-white border-none outline-none cursor-pointer">
+                  {palletRows.map(r => <option key={r.id} value={r.id}>{getPalletLabel(r)}</option>)}
+                </select>
+                <button
+                  disabled={selectedCount === 0}
+                  onClick={() => sumarVariosAPallet([...mergeSel], effectiveTarget)}
+                  className="font-barlow-condensed px-3 py-1.5 rounded text-[12px] font-bold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: '#2563EB', color: 'white' }}>
+                  Sumar {selectedCount}
+                </button>
               </div>
             );
           })()}
