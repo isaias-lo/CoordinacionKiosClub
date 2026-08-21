@@ -38,6 +38,7 @@ import type { PickingSlot } from '@/features/despacho/santiago/components/Pickin
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
+import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
 const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
@@ -431,6 +432,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const slots: Record<string, { tipo: string; contenido: string }[]> = {};
       const full:  Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
       for (const row of data) {
+        if (fueRecienBorrado(row.id as number)) continue; // [RC-3] no revivir un slot recién borrado
         const name = COD_TO_TIENDA_NAME[row.store_cod as string];
         if (!name) continue;
         if (!slots[name]) { slots[name] = []; full[name] = []; }
@@ -985,9 +987,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const deletePickingSlot = (slotId?: number) => {
     if (!slotId || !selectedTienda) return;
     const name = selectedTienda;
-    supabase.from('picking_pallets').delete().eq('id', slotId).then(({ error }) => {
-      if (error) console.error('[picking_pallets delete]', error.message);
-    });
+    eliminarSlotPicking(slotId); // DB delete + guard anti-revive (RC-3)
     setPickingSlotsFull(prev => {
       const next = { ...prev };
       if (next[name]) next[name] = next[name].filter(s => s.id !== slotId);
