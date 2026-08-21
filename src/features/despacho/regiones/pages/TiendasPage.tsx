@@ -825,7 +825,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* Multi-form row helpers */
   // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
   // en ese caso NO se crea un slot nuevo, se usa el reclamado.
-  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot) => {
+  // countOffset: al "agregar de a N" (loop), el nº del chocolate se calcula del `dispatchData` del
+  // closure (que NO se actualiza dentro del loop) → sin offset los N quedarían con el mismo nº.
+  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
     const date = new Date().toISOString().slice(0, 10);
@@ -846,7 +848,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s] }));
       }
       const existing = dispatchData[selectedTienda] || [];
-      const chc = existing.filter(i => i.pkg === 'chocolate').length + 1;
+      const chc = existing.filter(i => i.pkg === 'chocolate').length + 1 + countOffset;
       const stamp = Date.now();
       const item: DispatchItem = {
         orden: `chocolate${chc}`, tipo: 'hogar', pkg: 'chocolate',
@@ -855,7 +857,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       };
       dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
       setFormRows(prev => [...prev, {
-        id: `saved-chadd-${stamp}`, pkg: 'chocolate', tipo: 'hogar',
+        id: `saved-chadd-${stamp}-${countOffset}`, pkg: 'chocolate', tipo: 'hogar',
         peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS_R.alto),
         ancho: String(CHOCOLATE_DIMS_R.ancho), largo: String(CHOCOLATE_DIMS_R.largo),
         guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
@@ -869,7 +871,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return;
     }
 
-    const rowId = `row-${Date.now()}`;
+    const rowId = `row-${Date.now()}-${countOffset}`;
     setFormRows(prev => [...prev, {
       id: rowId, pkg, tipo: 'hogar', peso: '',
       alto:  '',
@@ -1840,7 +1842,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
               date={new Date().toISOString().slice(0, 10)}
               onClose={() => setDialogPkg(null)}
-              onNuevo={() => { const p = dialogPkg; setDialogPkg(null); void addFormRow(p); }}
+              onNuevo={(cantidad) => { const p = dialogPkg; setDialogPkg(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(p, undefined, i); })(); }}
               onExistente={(slot) => {
                 setDialogPkg(null);
                 const p = SLOT_TIPO_TO_PKG[slot.tipo] ?? 'box';

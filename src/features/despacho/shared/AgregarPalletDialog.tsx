@@ -11,8 +11,8 @@ interface Props {
   storeCod: string;
   /** Fecha de hoy (YYYY-MM-DD). */
   date: string;
-  /** Crear uno nuevo (comportamiento actual). */
-  onNuevo: () => void;
+  /** Crear N nuevos (cantidad ≥ 1). El padre hace el loop de altas. */
+  onNuevo: (cantidad: number) => void;
   /** Pallet preexistente reclamado y re-datado a hoy. */
   onExistente: (slot: PickingSlot) => void;
   onClose: () => void;
@@ -29,6 +29,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [cantidad, setCantidad] = useState(1); // "agregar de a N" (crear varios juntos)
 
   async function claim(refValue: string) {
     const r = refValue.trim().replace(/^#/, '');
@@ -86,10 +87,27 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
 
         {modo === 'elegir' ? (
           <div className="p-4 flex flex-col gap-3">
-            <button style={bigBtn} onClick={() => { onClose(); onNuevo(); }}>
+            <div style={bigBtn}>
               <div className="text-[16px] font-bold" style={{ color: '#0F172A' }}>🆕 Nuevo</div>
-              <div className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>Crear uno nuevo (como siempre).</div>
-            </button>
+              <div className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>
+                Crear {cantidad > 1 ? `${cantidad} de una vez` : 'uno nuevo'}.
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <span className="text-[12px] font-semibold" style={{ color: '#475569' }}>Cantidad</span>
+                <button onClick={() => setCantidad(c => Math.max(1, c - 1))} aria-label="Menos"
+                  className="w-8 h-8 rounded-lg text-[18px] font-bold cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', background: '#fff', color: '#334155' }}>−</button>
+                <span className="text-[16px] font-bold tabular-nums" style={{ minWidth: 26, textAlign: 'center', color: '#0F172A' }}>{cantidad}</span>
+                <button onClick={() => setCantidad(c => Math.min(50, c + 1))} aria-label="Más"
+                  className="w-8 h-8 rounded-lg text-[18px] font-bold cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', background: '#fff', color: '#334155' }}>+</button>
+                <button onClick={() => { const n = cantidad; onClose(); onNuevo(n); }}
+                  className="ml-auto rounded-xl px-4 py-2 font-bold text-[14px] cursor-pointer"
+                  style={{ background: '#16A34A', color: '#fff', border: 'none' }}>
+                  Crear{cantidad > 1 ? ` ${cantidad}` : ''}
+                </button>
+              </div>
+            </div>
             <button style={{ ...bigBtn, borderColor: '#BFDBFE', background: '#F8FAFF' }} onClick={() => setModo('preexistente')}>
               <div className="text-[16px] font-bold" style={{ color: '#1E40AF' }}>📦 Preexistente (ya etiquetado)</div>
               <div className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>Pallet adelantado de otro día que ya tiene su etiqueta.</div>

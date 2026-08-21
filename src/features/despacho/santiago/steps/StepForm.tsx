@@ -1519,7 +1519,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
   // en ese caso NO se crea un slot nuevo, se usa el reclamado.
-  const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot) => {
+  // countOffset: al "agregar de a N" (loop), el número del chocolate se calcula del `items` del
+  // closure (que NO se actualiza dentro del loop) → sin offset, los N quedarían con el mismo CH#.
+  // El offset (índice de la iteración) los numera CH{base+1}..CH{base+N} y hace únicos los ids.
+  const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = currentTienda?.cod;
     const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
     const date = new Date().toISOString().slice(0, 10);
@@ -1540,17 +1543,17 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
       }
       const existing = items[cod] || [];
-      const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
+      const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1 + countOffset;
       const stamp = Date.now();
       const item: SantiagoItem = {
-        id: `${cod}-chadd-${stamp}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Hogar',
+        id: `${cod}-chadd-${stamp}-${countOffset}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Hogar',
         peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
         pesoVolumetrico: 0, regimen, orden: `CH${chc}`, estado: ESTADO_DEFAULT,
         pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', item });
       setFormRows(prev => [...prev, {
-        id: `saved-chadd-${stamp}`, tipo: 'Chocolate', contenido: 'Hogar',
+        id: `saved-chadd-${stamp}-${countOffset}`, tipo: 'Chocolate', contenido: 'Hogar',
         peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS.alto),
         largo: String(CHOCOLATE_DIMS.largo), ancho: String(CHOCOLATE_DIMS.ancho),
         saved: true, savedItem: item, pickingSlotId: slot?.id,
@@ -1564,7 +1567,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return;
     }
 
-    const rowId = `row-${Date.now()}`;
+    const rowId = `row-${Date.now()}-${countOffset}`;
     // Agregar el form row de inmediato (respuesta visual), luego vincular el slot
     setFormRows(prev => [...prev, { id: rowId, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
     if (!cod) return;
@@ -2538,7 +2541,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               storeCod={currentTienda.cod}
               date={new Date().toISOString().slice(0, 10)}
               onClose={() => setDialogTipo(null)}
-              onNuevo={() => { const t = dialogTipo; setDialogTipo(null); void addFormRow(t); }}
+              onNuevo={(cantidad) => { const t = dialogTipo; setDialogTipo(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(t, undefined, i); })(); }}
               onExistente={(slot) => {
                 setDialogTipo(null);
                 const t = SLOT_TIPO_TO_CARGAMENTO[slot.tipo] ?? 'Bulto';
