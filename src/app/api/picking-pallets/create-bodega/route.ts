@@ -54,12 +54,12 @@ export async function POST(request: NextRequest) {
           ancho: r.ancho ?? null, peso_v: r.peso_v ?? null,
         } });
       }
-    } else if (rpc.error.code !== 'PGRST202') {
-      // Error real de la función (no "no existe") → reportarlo.
-      return NextResponse.json({ error: rpc.error.message }, { status: 500 });
     }
+    // Ante CUALQUIER error del RPC (no existe todavía, o falla por lo que sea) caemos al
+    // fallback no atómico: AGREGAR nunca se debe bloquear. El seq atómico es best-effort.
+    if (rpc.error) console.error('[create-bodega rpc → fallback]', rpc.error.code, rpc.error.message);
 
-    // Fallback NO atómico (solo hasta que se despliegue la función): seq = activos del tipo + 1.
+    // Fallback NO atómico (hasta que la función atómica esté OK): seq = activos del tipo + 1.
     const { data: existing } = await sb
       .from('picking_pallets')
       .select('id')
