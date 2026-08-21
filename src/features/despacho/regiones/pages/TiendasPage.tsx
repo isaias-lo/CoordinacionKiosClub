@@ -1469,8 +1469,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               /* Active / unsaved card */
               const isChocRow = row.pkg === 'chocolate';
               const isContRow = row.pkg === 'contenedor';
-              const canSave = parseFloat(row.peso) > 0 && (isChocRow || isContRow || (parseFloat(row.alto) > 0 &&
-                (row.pkg === 'pallet' || (parseFloat(row.ancho) > 0 && parseFloat(row.largo) > 0))));
               return (
                 <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                   <div className="flex items-center justify-between mb-1.5">
@@ -1568,21 +1566,25 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       PDF · ${Math.round((pdfInfo?.totalSum || 0) / (items.length + 1)).toLocaleString('es-CL')}
                     </div>
                   )}
-                  <button onClick={() => saveRow(row)} disabled={!canSave}
-                    className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer disabled:opacity-30 transition-all"
+                  {/* UN solo botón: con peso guarda normal; sin peso ofrece "agregar sin pesar"
+                      (confirmación) → dimensiones en 0. En filas mergeReopened siempre hay peso
+                      real de la unificación, así que van por el camino normal. */}
+                  <button
+                    onClick={() => {
+                      const tienePeso = parseFloat(row.peso) > 0;
+                      if (!tienePeso && !row.mergeReopened) {
+                        if (window.confirm('¿Agregar sin pesar? El peso y las medidas quedarán en 0.')) {
+                          saveRow(row, true);
+                          showToast('Agregado sin pesar', '#D97706');
+                        }
+                        return;
+                      }
+                      saveRow(row);
+                    }}
+                    className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer transition-all"
                     style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
                     {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
                   </button>
-                  {/* Agregar sin pesar: no se ofrece en filas mergeReopened — ya traen peso real
-                      sumado de la unificación y "sin pesar" lo pondría en 0, perdiendo ese peso. */}
-                  {!row.mergeReopened && (
-                    <button
-                      onClick={() => { saveRow(row, true); showToast('Agregado sin pesar', '#D97706'); }}
-                      className="w-full mt-1 py-1.5 rounded border font-barlow-condensed text-[12px] font-bold cursor-pointer active:scale-[0.98] transition-all"
-                      style={{ borderColor: 'rgba(217,119,6,0.45)', color: '#D97706', background: 'rgba(217,119,6,0.06)' }}>
-                      Sin pesar
-                    </button>
-                  )}
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
                     const combineTargets = (row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')
