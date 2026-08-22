@@ -14,7 +14,7 @@ function todayISO(): string {
  * fila por (fecha, fuente). `fecha` permite operar sobre un día pasado (p. ej. registrar en el
  * Enrutador una fecha que quedó sin registrar).
  */
-export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<void> {
+export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<number | null> {
   const payload: Record<string, unknown> = {
     fecha,
     fuente,
@@ -23,24 +23,60 @@ export async function pushSessionState(fuente: Fuente, state: unknown, userId?: 
   };
   if (userId) payload.updated_by = userId;
 
-  const { error } = await supabase
-    .from('shared_session_state')
-    .upsert(payload, { onConflict: 'fecha,fuente' });
-
-  if (error) console.error('[sync:push]', fuente, error.message, error.details);
-}
-
-/** Fetch the shared state for a date (default = today). Any authenticated user can read. */
-export async function fetchSessionState(fuente: Fuente, fecha: string = todayISO()): Promise<unknown | null> {
   const { data, error } = await supabase
     .from('shared_session_state')
-    .select('state')
+    .upsert(payload, { onConflict: 'fecha,fuente' })
+    .select('updated_at')
+    .maybeSingle();
+
+  if (error) { console.error('[sync:push]', fuente, error.message, error.details); return null; }
+  // [C3/RC-6] Devolvemos el `updated_at` que quedó en la fila para poder ordenar los sync por reloj
+  // del SERVIDOR (autoritativo cuando el trigger está aplicado) en vez del reloj de cada equipo.
+  return data?.updated_at ? new Date(data.updated_at as string).getTime() : null;
+}
+
+export interface SessionStateMeta { state: unknown; updatedAt: number | null }
+
+/**
+ * Igual que {@link fetchSessionState} pero además devuelve el `updated_at` de la fila (en ms) para
+ * ordenar los sync por reloj del SERVIDOR (C3/RC-6). La usan las vistas de Bodega; el resto de las
+ * fuentes siguen usando `fetchSessionState` sin cambios.
+ */
+export async function fetchSessionStateMeta(fuente: Fuente, fecha: string = todayISO()): Promise<SessionStateMeta | null> {
+  const { data, error } = await supabase
+    .from('shared_session_state')
+    .select('state, updated_at')
     .eq('fecha', fecha)
     .eq('fuente', fuente)
     .maybeSingle();
 
-  if (error) console.error('[sync:fetch]', fuente, error.message);
-  return data?.state ?? null;
+  if (error) { console.error('[sync:fetch]', fuente, error.message); return null; }
+  if (!data) return null;
+  return { state: data.state ?? null, updatedAt: data.updated_at ? new Date(data.updated_at as string).getTime() : null };
+}
+
+/** Fetch the shared state for a date (default = today). Any authenticated user can read. */
+export async function fetchSessionState(fuente: Fuente, fecha: string = todayISO()): Promise<unknown | null> {
+  const meta = await fetchSessionStateMeta(fuente, fecha);
+  return meta?.state ?? null;
+}
+
+/**
+ * ¿Hay que DESCARTAR un remoto por ser más viejo que lo último que ya incorporé (mi último push o la
+ * última adopción)? Usa el reloj del SERVIDOR (`updated_at`, C3/RC-6) cuando ambos lados lo tienen
+ * —así no importa el desfase de relojes entre equipos—; si no (fila legacy o trigger sin aplicar),
+ * cae al `pushedAt` del cliente (comportamiento previo, sin regresión). `ultimo*` en 0 = todavía no
+ * incorporé nada ⇒ nunca descarta (el primer remoto siempre entra).
+ */
+export function remotoEsMasViejo(
+  serverStampRemoto: number | null | undefined,
+  ultimoServerStamp: number,
+  pushedAtRemoto: number | null | undefined,
+  ultimoPushedAtCliente: number,
+): boolean {
+  if (serverStampRemoto != null && ultimoServerStamp > 0) return serverStampRemoto < ultimoServerStamp;
+  if (typeof pushedAtRemoto === 'number') return pushedAtRemoto < ultimoPushedAtCliente;
+  return false;
 }
 
 /**
@@ -140,7 +176,7 @@ export async function fetchPendientesV2Pasadas(sinceDays = 10): Promise<Pendient
 export function subscribeToSessionState(
   fuente: Fuente,
   _userId: string,
-  onState: (state: unknown) => void,
+  onState: (state: unknown, updatedAt?: number) => void,
   onStatus?: (connected: boolean) => void,
   fecha: string = todayISO(),
 ): () => void {
@@ -155,10 +191,10 @@ export function subscribeToSessionState(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'shared_session_state', filter: `fuente=eq.${fuente}` },
       (payload) => {
-        const row = payload.new as { state?: unknown; fecha?: string; fuente?: string } | null;
+        const row = payload.new as { state?: unknown; fecha?: string; fuente?: string; updated_at?: string } | null;
         if (!row) return;
         if (row.fecha !== fecha || row.fuente !== fuente) return; // solo hoy + esta fuente
-        if (row.state) onState(row.state);
+        if (row.state) onState(row.state, row.updated_at ? new Date(row.updated_at).getTime() : undefined);
       },
     )
     .subscribe((status) => onStatus?.(status === 'SUBSCRIBED'));
