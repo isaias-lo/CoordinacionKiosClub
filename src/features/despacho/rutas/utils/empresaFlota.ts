@@ -46,6 +46,34 @@ export function empresaColor(empresaCanon: string): string {
   return PALETTE[h % PALETTE.length];
 }
 
+/**
+ * Filtra la flota por búsqueda de patente + empresa canónica ('all' = todas), preservando el ÍNDICE
+ * original de cada vehículo (los handlers del grid usan onToggle(i)/onEliminar(i) sobre el array
+ * original). Puro y testeable.
+ */
+export function filtrarVehiculosFlota<T extends { p: string; empresa?: string | null }>(
+  flota: T[], q: string, empresa: string,
+): { v: T; i: number }[] {
+  const query = (q ?? '').trim().toUpperCase();
+  return flota
+    .map((v, i) => ({ v, i }))
+    .filter(({ v }) =>
+      (!query || v.p.toUpperCase().includes(query)) &&
+      (empresa === 'all' || empresaCanonica(v.empresa) === empresa));
+}
+
+/**
+ * Resumen de empresas de la flota para los chips de filtro: etiqueta canónica + color + conteo, en
+ * el mismo orden que {@link agruparCamionesPorEmpresa} (marcas conocidas → otras → "Sin empresa").
+ * Puro.
+ */
+export function resumenEmpresasFlota<T extends { empresa?: string | null }>(
+  flota: T[],
+): { empresa: string; color: string; count: number }[] {
+  return agruparCamionesPorEmpresa(flota, v => v.empresa)
+    .map(g => ({ empresa: g.empresa, color: g.color, count: g.items.length }));
+}
+
 export interface EmpresaGrupo<T> {
   empresa: string;
   color: string;

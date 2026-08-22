@@ -174,6 +174,9 @@ export default function InputSection({
       </div>
     </div>
   ) : null;
+  // El tab FLOTA no usa mapa: se oculta el panel del mapa (y su divisor) para que la gestión de
+  // vehículos ocupe todo el ancho. El resto de los tabs sí lo muestran.
+  const hideMap = modo === 'flota';
   // Contenedor real con scroll del tablero DESPACHO — se lo pasamos a ManualDispatch para
   // el auto-scroll al arrastrar cerca del borde (más confiable que buscarlo por DOM-walk).
   const dragScrollRef = useRef<HTMLDivElement>(null);
@@ -398,7 +401,7 @@ export default function InputSection({
 
       {/* Content area — contenido (izquierda) + mapa fijo (derecha, desktop) */}
       <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0">
-        <div className="flex flex-col overflow-hidden min-w-0" style={mapPanel ? { flex: `1 1 ${100 - mapPct}%` } : { flex: '1 1 100%' }}>
+        <div className="flex flex-col overflow-hidden min-w-0" style={mapPanel && !hideMap ? { flex: `1 1 ${100 - mapPct}%` } : { flex: '1 1 100%' }}>
       {modo === 'flota' ? flotaTabContent
       : modo === 'v2' ? (
         <div className="flex-1 overflow-hidden">
@@ -471,8 +474,8 @@ export default function InputSection({
         </div>
       )}
         </div>
-        {mapDivider}
-        {mapPanel && (
+        {!hideMap && mapDivider}
+        {mapPanel && !hideMap && (
           <div className="flex-shrink-0 overflow-hidden border-l border-black/[0.09]" style={{ flex: `0 0 ${mapPct}%`, minWidth: 0 }}>
             {mapPanel}
           </div>
