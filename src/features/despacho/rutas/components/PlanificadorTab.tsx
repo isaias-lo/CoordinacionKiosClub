@@ -2,24 +2,31 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta, formatDuracion, kmRutaAprox,
+  construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
+import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
+import { fetchCalendarioCongelados } from '@/lib/calendarioCongeladosSync';
 
 // Vehículo "virtual" — el planificador es solo visual (rutas sin carga ni patente real).
 const PLAN_VEHICLE: Vehiculo = { p: 'PLAN', c: 0, b: 0, t: 'Planificador', tlbd: false, on: true, porton: null, refrigerado: false, empresa: '' };
 
 // Color de cada ruta = su índice en el array (misma paleta que el mapa: dibMapa usa COLS[ri]).
 const colorRuta = (index: number) => COLS[index % COLS.length];
+
+// Días para "armar desde calendario" (incluye DO; NO usar getDia() que pliega domingo a LU).
+const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'] as const;
+const DIA_LABEL: Record<string, string> = { LU: 'Lun', MA: 'Mar', MI: 'Mié', JU: 'Jue', VI: 'Vie', SA: 'Sáb', DO: 'Dom' };
+const diaHoy = () => ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'][new Date().getDay()];
 
 interface Props {
   gps: Record<string, number[]>;
@@ -120,6 +127,12 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // Compartir: se arma el texto y se abre un panel (shareText != '') para copiar/mandar por WhatsApp.
   const [shareText,   setShareText]   = useState('');
   const [copied,      setCopied]      = useState(false);
+  // Armar desde calendario: fuente (seco/congelados) + día + cuántas rutas.
+  const [calFuente,   setCalFuente]   = useState<'seco' | 'congelados'>('seco');
+  const [calDia,      setCalDia]      = useState<string>(() => diaHoy());
+  const [calN,        setCalN]        = useState(3);
+  const [calStatus,   setCalStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
+  const [calAviso,    setCalAviso]    = useState('');
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -154,6 +167,39 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     if (startMode === 'custom' && customCoord) return customCoord;
     return { lat: CD_INICIAL[0], lng: CD_INICIAL[1] };
   }, [startMode, startTienda, customCoord, gps]);
+
+  // Armar N rutas desde el calendario (seco/congelados) del día elegido → reemplaza las rutas actuales.
+  async function armarDesdeCalendario() {
+    setCalStatus('loading'); setCalAviso('');
+    try {
+      const cal = calFuente === 'seco' ? await fetchCalendarioCompleto() : await fetchCalendarioCongelados();
+      const d = cal[calDia];
+      const cods = d ? [...d.rm, ...d.costa, ...d.fal] : [];
+      const fuenteLbl = calFuente === 'seco' ? 'Seco' : 'Congelados';
+      if (!cods.length) {
+        setCalStatus('error');
+        setCalAviso(`No hay tiendas el ${DIA_LABEL[calDia]} en el calendario ${fuenteLbl}.`);
+        return;
+      }
+      const { rutas, sinGps } = repartirEnNRutas(cods, calN, gps, [startCoord.lat, startCoord.lng]);
+      const stamp = Date.now().toString(36);
+      const nuevas: PlanRoute[] = rutas.map((r, i) => ({
+        id: `r${stamp}-${i}`, nombre: `Ruta ${i + 1}`, selected: r, orderMode: 'cercania', customStops: [],
+      }));
+      setRoutes(nuevas);
+      setVisibleIds(nuevas.map(r => r.id));
+      setEditId(nuevas[0].id);
+      setCalStatus('idle');
+      const nConParadas = rutas.filter(r => r.length).length;
+      const nTiendas = rutas.reduce((s, r) => s + r.length, 0);
+      let aviso = `${nConParadas} ruta${nConParadas === 1 ? '' : 's'} · ${nTiendas} tienda${nTiendas === 1 ? '' : 's'} (${fuenteLbl}, ${DIA_LABEL[calDia]}).`;
+      if (sinGps.length) aviso += ` ${sinGps.length} sin ubicación, omitida${sinGps.length === 1 ? '' : 's'}: ${sinGps.slice(0, 6).join(', ')}${sinGps.length > 6 ? '…' : ''}.`;
+      setCalAviso(aviso);
+    } catch {
+      setCalStatus('error');
+      setCalAviso('No se pudo cargar el calendario.');
+    }
+  }
 
   // Cómputo por ruta: paradas geocodificadas (patch) + orden (cercanía/manual) desde la partida.
   const routesComputed = useMemo(() => routes.map((r) => {
@@ -349,6 +395,57 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       <div>
         <div className="flex items-center gap-2 text-ktext font-bold text-[15px]"><MapPin size={16} className="text-knavy" /> Planificador de rutas</div>
         <div className="text-[12px] text-kmuted mt-0.5">Armá una o varias rutas (cada una con su color) y compará en el mapa; se ordenan por cercanía.</div>
+      </div>
+
+      {/* Armar rutas desde el calendario (seco/congelados · día · N rutas) */}
+      <div className="flex flex-col gap-2.5 rounded-[12px] border border-knavy/20 bg-knavy/[0.03] p-3">
+        <div className="flex items-center gap-2 text-[12px] font-bold text-ktext">
+          <CalendarDays size={14} className="text-knavy" /> Armar desde el calendario
+        </div>
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2.5">
+          {/* Calendario */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">Calendario</span>
+            <div className="flex gap-1 bg-white rounded-[9px] p-1 border border-black/[0.08]">
+              <button onClick={() => setCalFuente('seco')}
+                className={`px-3 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer transition-colors ${calFuente === 'seco' ? 'bg-knavy text-white' : 'text-kmuted hover:text-ktext'}`}>Seco</button>
+              <button onClick={() => setCalFuente('congelados')}
+                className={`px-3 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer transition-colors ${calFuente === 'congelados' ? 'bg-[#0EA5E9] text-white' : 'text-kmuted hover:text-ktext'}`}>Congelados</button>
+            </div>
+          </div>
+          {/* Día */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">Día</span>
+            <div className="flex gap-1 flex-wrap">
+              {DIAS.map(d => (
+                <button key={d} onClick={() => setCalDia(d)}
+                  className={`w-[38px] py-1 rounded-[7px] text-[11px] font-bold cursor-pointer border transition-colors ${calDia === d ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
+                  {DIA_LABEL[d]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* N rutas */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">Rutas</span>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} onClick={() => setCalN(n)}
+                  className={`w-8 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer border transition-colors ${calN === n ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Armar */}
+          <button onClick={armarDesdeCalendario} disabled={calStatus === 'loading'}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-[9px] bg-knavy text-white text-[12px] font-bold cursor-pointer disabled:opacity-50 hover:bg-knavy/90 transition-colors">
+            <Sparkles size={13} /> {calStatus === 'loading' ? 'Armando…' : 'Armar rutas'}
+          </button>
+        </div>
+        {calAviso
+          ? <div className={`text-[11px] ${calStatus === 'error' ? 'text-[#D42B2B] font-semibold' : 'text-kmuted'}`}>{calAviso}</div>
+          : <div className="text-[10px] text-kmuted/80">Trae las tiendas de ese día y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
       </div>
 
       {/* Rutas — chips multi-seleccionables (las activas se dibujan en el mapa y se comparten) */}

@@ -3,6 +3,7 @@
    para reusar dibMapa/nn, y deep-link a Google Maps para el conductor. Sin DOM ni red. */
 
 import { dkm } from './helpers';
+import { nn } from './routing';
 
 export interface TiendaOpcion { cod: string; nombre: string; comuna: string }
 
@@ -71,6 +72,75 @@ export function buscarTiendas(
 /** Paradas "virtuales" (sin carga) para reusar dibMapa/nn, que trabajan con {c,p,b}. */
 export function virtualStops(cods: string[]): { c: string; p: number; b: number }[] {
   return cods.map(c => ({ c, p: 0, b: 0 }));
+}
+
+/* ── Armar N rutas desde una lista de tiendas (Planificador desde calendario) ───
+   Reparte una lista de tiendas (los códigos del día del calendario) en N rutas por
+   CERCANÍA geográfica, balanceando la cantidad, y ordena cada ruta con `nn` desde la
+   partida. Puro, determinista y sin capacidad de camión (el planificador es what-if). */
+
+export interface RepartoRutas {
+  /** N listas de códigos, cada una ya ordenada por cercanía desde la partida. */
+  rutas: string[][];
+  /** Códigos sin coordenadas (se omiten del ruteo; el UI los avisa). */
+  sinGps: string[];
+}
+
+/**
+ * Reparte `cods` en `n` rutas por cercanía usando un barrido angular ("sweep", clásico para ruteo
+ * con depósito): ordena las tiendas por ángulo polar alrededor de la `start`, arranca el barrido en
+ * el MAYOR hueco angular (para no cortar un grupo natural) y corta en N tramos de tamaño ~igual
+ * (balance de cantidad). Cada tramo queda como una "cuña" compacta que sale de la partida; luego se
+ * ordena con `nn`. Determinista. Los códigos sin GPS se devuelven aparte en `sinGps` (no se pierden).
+ */
+export function repartirEnNRutas(
+  cods: string[],
+  n: number,
+  gps: Record<string, number[]>,
+  start: number[],
+): RepartoRutas {
+  const nRutas = Math.max(1, Math.floor(n) || 1);
+  // Dedup preservando el orden de entrada.
+  const vistos = new Set<string>();
+  const unicos = cods.filter(c => (vistos.has(c) ? false : (vistos.add(c), true)));
+  const tieneGps = (c: string) => Array.isArray(gps[c]) && gps[c].length >= 2;
+  const conGps = unicos.filter(tieneGps);
+  const sinGps = unicos.filter(c => !tieneGps(c));
+
+  const vacio = (): string[][] => Array.from({ length: nRutas }, () => []);
+  if (conGps.length === 0) return { rutas: vacio(), sinGps };
+
+  const ordenarCercania = (grupo: string[]) =>
+    nn(virtualStops(grupo), gps, start).map(s => s.c);
+
+  if (nRutas === 1) return { rutas: [ordenarCercania(conGps)], sinGps };
+
+  // Ángulo polar respecto a la partida (lat = eje Y, lng = eje X).
+  const ang = (c: string) => Math.atan2(gps[c][0] - start[0], gps[c][1] - start[1]);
+  const ordByAng = [...conGps].sort((a, b) => ang(a) - ang(b));
+
+  // Arrancar el barrido justo DESPUÉS del mayor hueco angular (evita partir un grupo natural).
+  let gapMax = -Infinity, cutAfter = ordByAng.length - 1;
+  for (let i = 0; i < ordByAng.length; i++) {
+    const cur = ang(ordByAng[i]);
+    const next = i + 1 < ordByAng.length ? ang(ordByAng[i + 1]) : ang(ordByAng[0]) + 2 * Math.PI;
+    const gap = next - cur;
+    if (gap > gapMax) { gapMax = gap; cutAfter = i; }
+  }
+  const cut = (cutAfter + 1) % ordByAng.length;
+  const sweep = [...ordByAng.slice(cut), ...ordByAng.slice(0, cut)];
+
+  // Cortar en N tramos balanceados por cantidad (los primeros `extra` llevan uno más).
+  const base = Math.floor(sweep.length / nRutas);
+  const extra = sweep.length % nRutas;
+  const rutas: string[][] = [];
+  let idx = 0;
+  for (let r = 0; r < nRutas; r++) {
+    const size = base + (r < extra ? 1 : 0);
+    rutas.push(ordenarCercania(sweep.slice(idx, idx + size)));
+    idx += size;
+  }
+  return { rutas, sinGps };
 }
 
 /**
