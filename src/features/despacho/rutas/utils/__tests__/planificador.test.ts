@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta, formatDuracion, kmRutaAprox,
+  construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
   type ParadaDireccion, type LineaParada,
 } from '../planificador';
 
@@ -165,6 +165,81 @@ describe('kmRutaAprox', () => {
   });
   it('ignora cods sin coordenadas', () => {
     expect(kmRutaAprox(['A', 'ZZZ', 'B'], g, start)).toBe(kmRutaAprox(['A', 'B'], g, start));
+  });
+});
+
+describe('repartirEnNRutas', () => {
+  // Dos clústeres claros: ESTE (lng ~ +1) y OESTE (lng ~ -1), partida en el origen.
+  const este = ['E1', 'E2', 'E3'];
+  const oeste = ['W1', 'W2', 'W3'];
+  const gEO: Record<string, number[]> = {
+    E1: [0, 1], E2: [0.1, 1.1], E3: [-0.1, 0.9],
+    W1: [0, -1], W2: [0.1, -1.1], W3: [-0.1, -0.9],
+  };
+  const start = [0, 0];
+  const set = (a: string[]) => new Set(a);
+
+  it('n=1 → una sola ruta con todas las tiendas (ordenada por cercanía)', () => {
+    const { rutas, sinGps } = repartirEnNRutas([...este, ...oeste], 1, gEO, start);
+    expect(rutas).toHaveLength(1);
+    expect(set(rutas[0])).toEqual(set([...este, ...oeste]));
+    expect(sinGps).toEqual([]);
+  });
+
+  it('n=2 → separa los dos clústeres geográficos (este vs oeste)', () => {
+    const { rutas } = repartirEnNRutas([...este, ...oeste], 2, gEO, start);
+    expect(rutas).toHaveLength(2);
+    const grupos = rutas.map(set);
+    // cada ruta es exactamente uno de los clústeres (sin importar cuál va primero)
+    expect(grupos).toContainEqual(set(este));
+    expect(grupos).toContainEqual(set(oeste));
+  });
+
+  it('cubre todas las tiendas exactamente una vez (sin pérdidas ni duplicados)', () => {
+    const { rutas, sinGps } = repartirEnNRutas([...este, ...oeste], 3, gEO, start);
+    const todas = rutas.flat().concat(sinGps).sort();
+    expect(todas).toEqual([...este, ...oeste].sort());
+    // sin duplicados
+    expect(new Set(rutas.flat()).size).toBe(rutas.flat().length);
+  });
+
+  it('balancea la cantidad (los tamaños difieren como mucho en 1)', () => {
+    const cods = ['E1', 'E2', 'E3', 'W1', 'W2', 'W3', 'E1x', 'W1x'];
+    const g = { ...gEO, E1x: [0.2, 1.2], W1x: [0.2, -1.2] };
+    const { rutas } = repartirEnNRutas(cods, 3, g, start);
+    expect(rutas).toHaveLength(3);
+    const sizes = rutas.map(r => r.length);
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
+  });
+
+  it('separa las tiendas sin coordenadas en sinGps (no se pierden ni entran al ruteo)', () => {
+    const { rutas, sinGps } = repartirEnNRutas(['E1', 'NOCOORD', 'W1'], 2, gEO, start);
+    expect(sinGps).toEqual(['NOCOORD']);
+    expect(rutas.flat().sort()).toEqual(['E1', 'W1']);
+  });
+
+  it('dedup: ignora códigos repetidos en la entrada', () => {
+    const { rutas } = repartirEnNRutas(['E1', 'E1', 'W1'], 2, gEO, start);
+    expect(rutas.flat().sort()).toEqual(['E1', 'W1']);
+  });
+
+  it('sin ninguna tienda con GPS → N rutas vacías', () => {
+    const { rutas, sinGps } = repartirEnNRutas(['X', 'Y'], 3, {}, start);
+    expect(rutas).toEqual([[], [], []]);
+    expect(sinGps).toEqual(['X', 'Y']);
+  });
+
+  it('n mayor que la cantidad de tiendas → algunas rutas quedan vacías', () => {
+    const { rutas } = repartirEnNRutas(['E1', 'W1'], 4, gEO, start);
+    expect(rutas).toHaveLength(4);
+    expect(rutas.filter(r => r.length > 0)).toHaveLength(2);
+    expect(rutas.flat().sort()).toEqual(['E1', 'W1']);
+  });
+
+  it('n<1 se normaliza a 1', () => {
+    const { rutas } = repartirEnNRutas([...este], 0, gEO, start);
+    expect(rutas).toHaveLength(1);
+    expect(set(rutas[0])).toEqual(set(este));
   });
 });
 
