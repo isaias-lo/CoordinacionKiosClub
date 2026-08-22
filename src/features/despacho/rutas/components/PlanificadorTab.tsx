@@ -14,6 +14,7 @@ import {
 } from '../utils/planificador';
 import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
+import AddressAutocomplete from './AddressAutocomplete';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados } from '@/lib/calendarioCongeladosSync';
 
@@ -310,7 +311,18 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     });
   }
 
-  // Geocodifica una dirección y la agrega como PARADA (id DIR-<n>) de la ruta ACTIVA, auto-seleccionada.
+  // Agrega una dirección (ya resuelta a coords) como PARADA (id DIR-<n>) de la ruta ACTIVA,
+  // auto-seleccionada. La usa tanto el autocompletado (coords de la sugerencia) como el geocoder.
+  function agregarParadaConCoord(label: string, lat: number, lng: number) {
+    // ids únicos entre TODAS las rutas (van a un gps compartido en el mapa).
+    const usados = [...Object.keys(gps), ...routes.flatMap(r => r.customStops.map(p => p.id))];
+    const id = nuevoParadaDireccionId(usados);
+    setCustomStops(prev => [...prev, { id, label: label.trim(), gps: [lat, lng] }]);
+    setSelected(prev => [...prev, id]);
+    setParadaAddr(''); setParadaGeo('idle');
+  }
+
+  // Fallback (Places no cargó / se escribió sin elegir sugerencia): geocodifica el texto y agrega.
   function agregarParadaDireccion() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const G = (window as any).google?.maps;
@@ -322,13 +334,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const r0 = res[0] as any;
         const loc = r0.geometry.location;
-        // ids únicos entre TODAS las rutas (van a un gps compartido en el mapa).
-        const usados = [...Object.keys(gps), ...routes.flatMap(r => r.customStops.map(p => p.id))];
-        const id = nuevoParadaDireccionId(usados);
-        const label = (r0.formatted_address as string) || paradaAddr.trim();
-        setCustomStops(prev => [...prev, { id, label, gps: [loc.lat(), loc.lng()] }]);
-        setSelected(prev => [...prev, id]);
-        setParadaAddr(''); setParadaGeo('idle');
+        agregarParadaConCoord((r0.formatted_address as string) || paradaAddr.trim(), loc.lat(), loc.lng());
       } else setParadaGeo('error');
     });
   }
@@ -516,13 +522,16 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         {startMode === 'custom' && (
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-1.5">
-              <input value={customAddr} onChange={e => { setCustomAddr(e.target.value); setGeoStatus('idle'); }}
-                onKeyDown={e => { if (e.key === 'Enter') geocodeAddr(); }}
+              <AddressAutocomplete
+                value={customAddr}
+                onChange={v => { setCustomAddr(v); setGeoStatus('idle'); }}
+                onSelect={({ address, lat, lng }) => { setCustomAddr(address); setCustomCoord({ lat, lng }); setStartMode('custom'); setGeoStatus('idle'); }}
+                onEnter={geocodeAddr}
                 placeholder="Dirección (ej: Av. Vitacura 2909)"
                 className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
               <button onClick={geocodeAddr} className="px-3 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer">Buscar</button>
             </div>
-            <div className="text-[11px] text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? '⚠ No se encontró la dirección' : 'Escribe una dirección y toca Buscar.'}</div>
+            <div className="text-[11px] text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? '⚠ No se encontró la dirección' : 'Escribí y elegí una sugerencia (o tocá Buscar).'}</div>
           </div>
         )}
         <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5">
@@ -544,8 +553,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           <div className="hidden sm:block w-px self-stretch bg-black/10" aria-hidden="true" />
           {/* Agregar una dirección libre como parada (se suma a la ruta activa y al mapa) — más ancho (~⅔) */}
           <div className="flex items-center gap-1.5 flex-1 sm:flex-[2] min-w-0">
-            <input value={paradaAddr} onChange={e => { setParadaAddr(e.target.value); setParadaGeo('idle'); }}
-              onKeyDown={e => { if (e.key === 'Enter') agregarParadaDireccion(); }}
+            <AddressAutocomplete
+              value={paradaAddr}
+              onChange={v => { setParadaAddr(v); setParadaGeo('idle'); }}
+              onSelect={({ address, lat, lng }) => agregarParadaConCoord(address, lat, lng)}
+              onEnter={agregarParadaDireccion}
               placeholder="Agregar dirección (ej: Av. Vitacura 2909, Las Condes)"
               className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none min-w-0" />
             <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}

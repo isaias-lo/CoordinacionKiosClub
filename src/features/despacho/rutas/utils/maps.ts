@@ -7,6 +7,7 @@ import type { TiendaInfo } from '../data/tiendas';
 let _gmapsLoaded  = false;
 let _gmapsLoading = false;
 let _pendingMap: (() => void) | null = null;
+const _readyCbs: (() => void)[] = [];
 
 export function cargarGMaps() {
   if (typeof window === 'undefined') return;
@@ -17,13 +18,24 @@ export function cargarGMaps() {
     _gmapsLoaded  = true;
     _gmapsLoading = false;
     if (_pendingMap) { _pendingMap(); _pendingMap = null; }
+    while (_readyCbs.length) { const cb = _readyCbs.shift(); try { cb?.(); } catch (e) {} }
   };
 
+  // libraries=places → habilita el autocompletado de direcciones (Autocomplete) del Planificador.
   const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&callback=gmapsReady&loading=async`;
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&callback=gmapsReady&loading=async&libraries=places`;
   s.async = true; s.defer = true;
   s.onerror = () => { _gmapsLoading = false; };
   document.head.appendChild(s);
+}
+
+/** Ejecuta `cb` cuando la API de Google Maps ya está cargada (ahora si ya lo está, o al terminar
+ *  de cargar). La usa el autocompletado para adjuntarse recién cuando `google.maps.places` existe. */
+export function onGmapsReady(cb: () => void) {
+  if (typeof window === 'undefined') return;
+  if (_gmapsLoaded && gm()) { cb(); return; }
+  _readyCbs.push(cb);
+  cargarGMaps();
 }
 
 interface DibMapaParams {
