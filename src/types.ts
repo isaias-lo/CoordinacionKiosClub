@@ -18,6 +18,7 @@ export interface Tienda {
 }
 
 export interface DispatchItem {
+  id?: string;              // [E3b/C1] id estable (sobrevive al renumber) para el merge por-ítem
   orden: string;
   tipo: TipoContenido;
   pkg: TipoPaquete;

@@ -48,14 +48,22 @@ type Action =
   | { type: 'SET_FECHA_DESPACHO'; payload: string }
   | { type: 'SET_REGISTRADO'; payload: boolean };
 
+// [E3b/C1] Garantiza un `id` estable a cada ítem (los ítems Nacional no lo traían y `renumber`
+// crea objetos nuevos, así que `orden` no sirve como llave). Preserva el id existente (viaja en
+// el objeto entre dispositivos vía shared_session_state), solo asigna si falta.
+let _idCounter = 0;
+function conId(item: DispatchItem): DispatchItem {
+  return item.id ? item : { ...item, id: `di-${Date.now().toString(36)}-${(_idCounter++).toString(36)}` };
+}
+
 function renumber(items: DispatchItem[]): DispatchItem[] {
   let pc = 1, bc = 1, cc = 1, chc = 1;
-  return items.map(i =>
+  return items.map(i => conId(
     i.pkg === 'pallet'     ? { ...i, orden: `pallet${pc++}` }
     : i.pkg === 'contenedor' ? { ...i, orden: `contenedor${cc++}` }
     : i.pkg === 'chocolate'  ? { ...i, orden: `chocolate${chc++}` }
     : { ...i, orden: `bulto${bc++}` }
-  );
+  ));
 }
 
 function reducer(state: AppState, action: Action): AppState {
@@ -96,7 +104,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'UPDATE_ITEMS':
-      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: action.items } };
+      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: action.items.map(conId) } };
     case 'CLEAR_TIENDA': {
       const d = { ...state.dispatch }; delete d[action.tienda];
       const p = { ...state.pdfData }; delete p[action.tienda];
@@ -141,7 +149,9 @@ function reducer(state: AppState, action: Action): AppState {
     case 'LOAD_STATE':
       return {
         ...state,
-        dispatch:   action.payload.dispatch   ?? state.dispatch,
+        dispatch:   action.payload.dispatch
+          ? Object.fromEntries(Object.entries(action.payload.dispatch).map(([k, v]) => [k, v.map(conId)]))
+          : state.dispatch,
         pdfData:    action.payload.pdfData     ?? state.pdfData,
         registrado: action.payload.registrado ?? state.registrado,
       };

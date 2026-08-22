@@ -853,6 +853,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const chc = existing.filter(i => i.pkg === 'chocolate').length + 1 + countOffset;
       const stamp = Date.now();
       const item: DispatchItem = {
+        id: crypto.randomUUID(), // [E3b/C1] id estable compartido con la fila de formulario
         orden: `chocolate${chc}`, tipo: 'hogar', pkg: 'chocolate',
         peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
         guia: '', valor: 0, pickingSlotId: slot?.id,
@@ -952,7 +953,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const pickingSlot = row.pickingSlotId
       ? (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === row.pickingSlotId)
       : null;
-    const savedItem: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
+    const savedItem: DispatchItem = { id: crypto.randomUUID(), orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${orden} agregado`, '#16A34A');
