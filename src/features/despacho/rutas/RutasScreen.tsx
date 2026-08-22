@@ -24,6 +24,8 @@ import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
+import { asignarPorClusters, type CentroideCluster } from './utils/asignarPorClusters';
+import { faseEnrutador } from './utils/faseEnrutador';
 import type { IAStore, IATruck } from './ia/types';
 import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
@@ -165,7 +167,7 @@ export default function RutasScreen() {
   const [fecha,      setFecha]      = useState(todayStr);
   const [manualText, setManualText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
-  const [iaLoading, setIaLoading] = useState(false);
+  const [iaLoading] = useState(false); // (LLM parkeado; el botón "Asignar" usa clusters instantáneos)
   // Días PASADOS con asignaciones en el Enrutador pero sin registrar (aviso de recuperación).
   const [unregisteredDays, setUnregisteredDays] = useState<string[]>([]);
 
@@ -204,6 +206,10 @@ export default function RutasScreen() {
   const [historialMsg,  setHistorialMsg]  = useState('');
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
+  // [E4·4b] Clusters históricos ("líneas" del coordinador) para la auto-asignación instantánea.
+  const [clusters, setClusters] = useState<{ clusterDeTienda: Record<string, number>; centroides: Record<number, CentroideCluster> } | null>(null);
+  const clustersRef = useRef<typeof clusters>(null);
+  clustersRef.current = clusters;
   // ── Tab CONGELADOS (Enrutador): pool + asignación PARALELOS al despacho SECO ──
   // calTCong se alimenta SOLO de las filas de despacho_sesion con fuente 'congelados-*'
   // (bodega CONGELADOS, PR #341) — las cajas vienen en `bultos`. asignacionesCong es local
@@ -1495,26 +1501,58 @@ export default function RutasScreen() {
     })();
   }
 
-  // ── Asistente IA: propone la asignación tienda→patente aprendiendo del historial ──────
-  // Junta las tiendas activas del pool + la flota activa (no-2ªvuelta) → POST /api/asignar-ia →
-  // aplica la propuesta a manualAsignaciones (llena el tablero, se sincroniza) y muestra warnings.
-  async function handleAsignarIA() {
-    const payload = construirPayloadIA();
-    if (!payload.stores.length) { setErrors(['No hay tiendas con carga para asignar con IA.']); return; }
-    if (!payload.trucks.length) { setErrors(['No hay camiones activos para asignar.']); return; }
+  // ── [E4·4b] Auto-asignación por CLUSTERS históricos (instantánea, local, sin LLM) ─────
+  // Carga los clusters una vez al montar. `autoAsignar` arma el pool del día y llena el tablero
+  // replicando las "líneas" históricas (asignarPorClusters). El botón "Asignar" lo re-genera;
+  // el efecto de más abajo lo dispara SOLO con el tablero vacío (nunca pisa lo que ya se tocó).
+  useEffect(() => {
+    let cancel = false;
+    fetch('/api/rutas-clusters')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (!cancel && j?.clusterDeTienda) setClusters({ clusterDeTienda: j.clusterDeTienda, centroides: j.centroides ?? {} }); })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, []);
+
+  const autoAsignar = () => {
+    const cl = clustersRef.current;
+    if (!cl) { setErrors(['Aún cargando los patrones históricos de ruta — probá de nuevo en un segundo.']); return; }
+    const stores: StoreItem[] = Object.keys(calT)
+      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
+      .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
+    if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
+    if (!flota.some(v => v.on && !v.tlbd)) { setErrors(['No hay camiones activos para asignar.']); return; }
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+    const asig = asignarPorClusters(stores, flota, cl.clusterDeTienda, cl.centroides, extGps, extTiendas);
+    setManualAsignaciones(asig);
     setErrors([]);
-    setIaLoading(true);
-    try {
-      const { asignaciones, warnings } = await solicitarAsignacionIA(payload);
-      setManualAsignaciones(asignaciones);
-      setErrors(warnings); // el tablero lleno es la confirmación; solo mostramos avisos si hay
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
-      setErrors([msg ? `Asistente IA: ${msg}` : 'No se pudo conectar con el asistente IA.']);
-    } finally {
-      setIaLoading(false);
-    }
-  }
+  };
+  const autoAsignarRef = useRef(autoAsignar);
+  autoAsignarRef.current = autoAsignar;
+
+  // Dispara la auto-asignación cuando hay pool + camiones activos y el tablero está VACÍO. El
+  // debounce deja "asentar" varias activaciones seguidas (asigna con TODOS los camiones activos).
+  const poolSig   = useMemo(() => Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).sort().join(','), [calT]);
+  const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
+  const boardEmpty = Object.keys(manualAsignaciones).length === 0;
+  useEffect(() => {
+    if (!clusters || !boardEmpty || !poolSig || !trucksSig) return;
+    const t = setTimeout(() => autoAsignarRef.current(), 1000);
+    return () => clearTimeout(t);
+  }, [clusters, boardEmpty, poolSig, trucksSig]);
+
+  // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
+  const faseInfo = useMemo(() => {
+    const poolCount = Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).length;
+    const asignadas = new Set(Object.values(manualAsignaciones).flat().map(s => s.c));
+    const camionesConAsig = Object.values(manualAsignaciones).filter(a => a.length > 0).length;
+    return faseEnrutador({ poolCount, asignadasCount: asignadas.size, camionesConAsig, cerradasCount: cerradasV1.size, diaCerrado: cerrado });
+  }, [calT, manualAsignaciones, cerradasV1, cerrado]);
+
+  // [E4·4b] El botón "Asignar" del tablero ahora usa el motor por clusters históricos
+  // (autoAsignar, instantáneo). El asistente LLM (construirPayloadIA/solicitarAsignacionIA)
+  // queda como columna alternativa opcional en "Calcular" (handleCalcularManual); su botón
+  // dedicado se retiró porque el historial mostró que nunca se usaba (42/42 "mía").
 
   function rebalanceIfOver(manualRutas: Ruta[], gpsMap: Record<string, number[]>, tiendasData: Record<string, TiendaInfo>): Ruta[] {
     const over = manualRutas.filter(r => r.tp > r.v.c);
@@ -2104,7 +2142,7 @@ export default function RutasScreen() {
             (el split contenido↔mapa + su divisor viven dentro de InputSection, vía mapPanel). */}
           <InputSection
             flota={flota}
-            modo={modo} calT={sortedCalT}
+            modo={modo} fase={faseInfo} calT={sortedCalT}
             calTCong={sortedCalTCong}
             asignacionesCong={asignacionesCong}
             onAsignacionesCong={setAsignacionesCong}
@@ -2129,7 +2167,7 @@ export default function RutasScreen() {
             onAsignaciones={setManualAsignaciones}
             onCalcular={handleCalcular}
             onCalcularManual={handleCalcularManual}
-            onAsignarIA={handleAsignarIA}
+            onAsignarIA={autoAsignar}
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
             onLimpiar={handleLimpiar}

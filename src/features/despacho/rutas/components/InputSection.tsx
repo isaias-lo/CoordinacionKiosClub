@@ -4,6 +4,8 @@ import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, Calendar
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
+import { FaseEnrutador } from './FaseEnrutador';
+import type { FaseInfo } from '../utils/faseEnrutador';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
 import PlanificadorTab from './PlanificadorTab';
@@ -22,6 +24,7 @@ interface Props {
   flota: Vehiculo[];
   flotaStatus?: string;
   modo: string;
+  fase: FaseInfo;
   calT: Record<string, CalData>;
   // Pool + asignación del tab CONGELADOS (paralelo al SECO; alimentado por fuentes 'congelados-*').
   calTCong: Record<string, CalData>;
@@ -105,7 +108,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 
 /* ── Main component ──────────────────────────────────────────────── */
 export default function InputSection({
-  flota, flotaStatus, modo, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
+  flota, flotaStatus, modo, fase, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, grupoFiltro, grps, onGroupPill,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
@@ -314,6 +317,7 @@ export default function InputSection({
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
+                <FaseEnrutador fase={fase} />
                 <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
@@ -429,6 +433,7 @@ export default function InputSection({
           {/* DESPACHO MODE */}
           {modo === 'drag' && (
             <div className="p-4">
+              <FaseEnrutador fase={fase} />
               <ManualDispatch
                 calT={calT}
                 flota={flota}
