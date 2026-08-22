@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Target, PenLine, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake } from 'lucide-react';
+import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -99,7 +99,6 @@ function TabIcon({ Icon, color }: { Icon: LIcon; color: string }) {
 const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
   { id: 'drag',  Icon: Target,     label: 'DESPACHO',    color: '#1B2A6B' },
   { id: 'cong',  Icon: Snowflake,  label: 'CONGELADOS',  color: '#0891B2' },
-  { id: 'man',   Icon: PenLine,    label: 'MANUAL',      color: '#1B2A6B' },
   { id: 'v2',    Icon: RotateCcw,  label: '2ª VUELTA',   color: '#6B21A8' },
   { id: 'flota', Icon: Truck,      label: 'FLOTA',       color: '#1B2A6B' },
   { id: 'plan',  Icon: MapIcon,    label: 'PLAN',        color: '#0E7C6B' },
