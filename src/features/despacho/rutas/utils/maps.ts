@@ -8,6 +8,12 @@ let _gmapsLoaded  = false;
 let _gmapsLoading = false;
 let _pendingMap: (() => void) | null = null;
 const _readyCbs: (() => void)[] = [];
+let _authFailed = false;
+
+/** true si Google Maps falló la autenticación (key inválida / sin billing / API no habilitada).
+ *  Cuando esto pasa, Google mostraría el cartel "¿eres el dueño de este sitio?"; lo interceptamos
+ *  (ver `gm_authFailure` abajo) para no mostrarlo y, en su lugar, degradar con un aviso claro. */
+export function isGmapsAuthFailed(): boolean { return _authFailed; }
 
 export function cargarGMaps() {
   if (typeof window === 'undefined') return;
@@ -19,6 +25,15 @@ export function cargarGMaps() {
     _gmapsLoading = false;
     if (_pendingMap) { _pendingMap(); _pendingMap = null; }
     while (_readyCbs.length) { const cb = _readyCbs.shift(); try { cb?.(); } catch (e) {} }
+  };
+
+  // Google llama a window.gm_authFailure cuando la key no está autorizada (billing/API/restricciones).
+  // Sin este handler, inyecta un overlay "This page can't load Google Maps correctly / ¿eres el dueño
+  // de este sitio?". Lo interceptamos para no asustar al usuario y dejar registro claro en consola.
+  (window as Record<string, unknown>)['gm_authFailure'] = function () {
+    _authFailed = true;
+    console.error('[gmaps] Autenticación fallida: revisar la API key (billing, APIs habilitadas — Maps JavaScript API + Places API — y restricciones de la key).');
+    while (_readyCbs.length) { const cb = _readyCbs.shift(); try { cb?.(); } catch (e) {} } // desbloquea a quien espera (mostrará el fallback)
   };
 
   // libraries=places → habilita el autocompletado de direcciones (Autocomplete) del Planificador.
@@ -33,6 +48,7 @@ export function cargarGMaps() {
  *  de cargar). La usa el autocompletado para adjuntarse recién cuando `google.maps.places` existe. */
 export function onGmapsReady(cb: () => void) {
   if (typeof window === 'undefined') return;
+  if (_authFailed) { cb(); return; }              // auth ya falló → resolver ya (el caller muestra el fallback)
   if (_gmapsLoaded && gm()) { cb(); return; }
   _readyCbs.push(cb);
   cargarGMaps();
