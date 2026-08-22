@@ -149,6 +149,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [calN,        setCalN]        = useState(3);
   const [calStatus,   setCalStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
   const [calAviso,    setCalAviso]    = useState('');
+  // Places no disponible (key sin Places API / sin billing) → se avisa y se usa el fallback (Buscar/Enter).
+  const [placesOff,   setPlacesOff]   = useState(false);
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -467,6 +469,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         <div className="text-[12px] text-kmuted mt-0.5">Armá una o varias rutas (cada una con su color) y compará en el mapa; se ordenan por cercanía.</div>
       </div>
 
+      {placesOff && (
+        <div className="flex items-start gap-2 text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-2 leading-relaxed">
+          <span aria-hidden="true">⚠</span>
+          <span>Las <strong>sugerencias de direcciones</strong> no están disponibles (falta habilitar la <strong>Places API</strong> en la key de Google Maps). Igual podés escribir la dirección y tocar <strong>Buscar</strong> o Enter para ubicarla.</span>
+        </div>
+      )}
+
       {/* Armar rutas desde el calendario (seco/congelados · día · N rutas) */}
       <div className="flex flex-col gap-2.5 rounded-[12px] border border-knavy/20 bg-knavy/[0.03] p-3">
         <div className="flex items-center gap-2 text-[12px] font-bold text-ktext">
@@ -599,6 +608,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                 onChange={v => { setCustomAddr(v); setGeoStatus('idle'); }}
                 onSelect={({ address, lat, lng }) => { setCustomAddr(address); setCustomCoord({ lat, lng }); setStartMode('custom'); setGeoStatus('idle'); }}
                 onEnter={geocodeAddr}
+                onUnavailable={() => setPlacesOff(true)}
                 placeholder="Dirección (ej: Av. Vitacura 2909)"
                 className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
               <button onClick={geocodeAddr} className="px-3 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer">Buscar</button>
@@ -626,6 +636,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             onChange={v => setEndAddr(v)}
             onSelect={({ address, lat, lng }) => { setEndAddr(address); setEndCoord({ lat, lng }); setEndMode('custom'); }}
             onEnter={geocodeEndAddr}
+            onUnavailable={() => setPlacesOff(true)}
             placeholder="Dirección de llegada (ej: bodega, CD, punto final)"
             className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
         )}
@@ -655,6 +666,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               onChange={v => { setParadaAddr(v); setParadaGeo('idle'); }}
               onSelect={({ address, lat, lng }) => agregarParadaConCoord(address, lat, lng)}
               onEnter={agregarParadaDireccion}
+              onUnavailable={() => setPlacesOff(true)}
               placeholder="Agregar dirección (ej: Av. Vitacura 2909, Las Condes)"
               className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none min-w-0" />
             <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
