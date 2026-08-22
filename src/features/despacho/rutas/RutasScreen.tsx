@@ -25,6 +25,7 @@ import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { asignarPorClusters, type CentroideCluster } from './utils/asignarPorClusters';
+import { faseEnrutador } from './utils/faseEnrutador';
 import type { IAStore, IATruck } from './ia/types';
 import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
@@ -1540,6 +1541,14 @@ export default function RutasScreen() {
     return () => clearTimeout(t);
   }, [clusters, boardEmpty, poolSig, trucksSig]);
 
+  // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
+  const faseInfo = useMemo(() => {
+    const poolCount = Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).length;
+    const asignadas = new Set(Object.values(manualAsignaciones).flat().map(s => s.c));
+    const camionesConAsig = Object.values(manualAsignaciones).filter(a => a.length > 0).length;
+    return faseEnrutador({ poolCount, asignadasCount: asignadas.size, camionesConAsig, cerradasCount: cerradasV1.size, diaCerrado: cerrado });
+  }, [calT, manualAsignaciones, cerradasV1, cerrado]);
+
   // [E4·4b] El botón "Asignar" del tablero ahora usa el motor por clusters históricos
   // (autoAsignar, instantáneo). El asistente LLM (construirPayloadIA/solicitarAsignacionIA)
   // queda como columna alternativa opcional en "Calcular" (handleCalcularManual); su botón
@@ -2133,7 +2142,7 @@ export default function RutasScreen() {
             (el split contenido↔mapa + su divisor viven dentro de InputSection, vía mapPanel). */}
           <InputSection
             flota={flota}
-            modo={modo} calT={sortedCalT}
+            modo={modo} fase={faseInfo} calT={sortedCalT}
             calTCong={sortedCalTCong}
             asignacionesCong={asignacionesCong}
             onAsignacionesCong={setAsignacionesCong}
