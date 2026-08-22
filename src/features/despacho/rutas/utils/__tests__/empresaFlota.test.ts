@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { empresaCanonica, empresaColor, agruparCamionesPorEmpresa, SIN_EMPRESA } from '../empresaFlota';
+import { empresaCanonica, empresaColor, agruparCamionesPorEmpresa, filtrarVehiculosFlota, resumenEmpresasFlota, SIN_EMPRESA } from '../empresaFlota';
 
 describe('empresaCanonica', () => {
   it('vacío / null / solo espacios → "Sin empresa"', () => {
@@ -89,5 +89,52 @@ describe('agruparCamionesPorEmpresa', () => {
     const f = [{ p: 'O1', empresa: 'Ortiz' }, { p: 'K1', empresa: 'kios' }];
     const g = agruparCamionesPorEmpresa(f, v => v.empresa);
     expect(g[0].empresa).toBe('Kios Club');
+  });
+});
+
+describe('filtrarVehiculosFlota', () => {
+  const flota = [
+    { p: 'TYKK42', empresa: 'Luis Fica' },
+    { p: 'VSDR91', empresa: 'luis fica' },   // variante → misma empresa canónica
+    { p: 'PTFZ21', empresa: 'Ortiz' },
+    { p: 'RZBL80', empresa: '' },            // sin empresa
+  ];
+
+  it('sin filtros devuelve todos con su índice original', () => {
+    const r = filtrarVehiculosFlota(flota, '', 'all');
+    expect(r.map(x => x.i)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('filtra por patente (case-insensitive, substring)', () => {
+    expect(filtrarVehiculosFlota(flota, 'ptf', 'all').map(x => x.v.p)).toEqual(['PTFZ21']);
+  });
+
+  it('filtra por empresa canónica (agrupa variantes) y preserva el índice original', () => {
+    const r = filtrarVehiculosFlota(flota, '', 'Luis Fica');
+    expect(r.map(x => x.v.p)).toEqual(['TYKK42', 'VSDR91']);
+    expect(r.map(x => x.i)).toEqual([0, 1]); // índices originales, no 0..n del subconjunto
+  });
+
+  it('empresa "Sin empresa" agrupa los de empresa vacía', () => {
+    expect(filtrarVehiculosFlota(flota, '', SIN_EMPRESA).map(x => x.v.p)).toEqual(['RZBL80']);
+  });
+
+  it('combina patente + empresa', () => {
+    expect(filtrarVehiculosFlota(flota, 'vs', 'Luis Fica').map(x => x.v.p)).toEqual(['VSDR91']);
+    expect(filtrarVehiculosFlota(flota, 'tykk', 'Ortiz')).toEqual([]); // no matchea ambas
+  });
+});
+
+describe('resumenEmpresasFlota', () => {
+  it('cuenta por empresa canónica en orden (marcas → otras → Sin empresa) con su color', () => {
+    const flota = [
+      { empresa: 'Ortiz' }, { empresa: 'kios' }, { empresa: 'Luis Fica' },
+      { empresa: 'luisfica' }, { empresa: '' },
+    ];
+    const r = resumenEmpresasFlota(flota);
+    expect(r.map(x => [x.empresa, x.count])).toEqual([
+      ['Kios Club', 1], ['Luis Fica', 2], ['Ortiz', 1], [SIN_EMPRESA, 1],
+    ]);
+    expect(r.find(x => x.empresa === 'Kios Club')!.color).toBe(empresaColor('Kios Club'));
   });
 });
