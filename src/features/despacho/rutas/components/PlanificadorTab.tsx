@@ -218,6 +218,19 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const customById  = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
   const kmAprox     = useMemo(() => kmRutaAprox(orderedCods, gpsAll, [startCoord.lat, startCoord.lng]), [orderedCods, gpsAll, startCoord]);
 
+  // [B3] Resumen por ruta (para comparar de un vistazo): #paradas, km (real de Google o aprox) y
+  // tiempo total. Indexado igual que routesComputed / el mapa (misma posición = misma ruta).
+  const routeStats = useMemo(() => routesComputed.map((rc, i) => {
+    const paradas = rc.ordered.length;
+    const rk = kmByRoute?.[i];
+    const km = paradas === 0 ? ''
+      : (rk != null && rk > 0 ? `${rk} km` : `~${kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng])} km`);
+    const legs = legDataByRoute?.[i];
+    const min = (legs && legs.length === paradas && paradas > 0)
+      ? formatDuracion(legs.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
+    return { paradas, km, min };
+  }), [routesComputed, kmByRoute, legDataByRoute, startCoord]);
+
   // Tiempos reales por tramo (Google) de la ruta ACTIVA. `legData[i]` = tramo que llega a la parada
   // i. Solo se usan si coinciden con las paradas actuales (si no, el mapa está recalculando).
   const legData   = legDataByRoute?.[activeIdx];
@@ -408,24 +421,24 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         <div className="flex items-center gap-2 text-[12px] font-bold text-ktext">
           <CalendarDays size={14} className="text-knavy" /> Armar desde el calendario
         </div>
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-2.5">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           {/* Calendario */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">Calendario</span>
             <div className="flex gap-1 bg-white rounded-[9px] p-1 border border-black/[0.08]">
               <button onClick={() => setCalFuente('seco')}
-                className={`px-3 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer transition-colors ${calFuente === 'seco' ? 'bg-knavy text-white' : 'text-kmuted hover:text-ktext'}`}>Seco</button>
+                className={`px-3 py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer transition-colors ${calFuente === 'seco' ? 'bg-knavy text-white' : 'text-kmuted hover:text-ktext'}`}>Seco</button>
               <button onClick={() => setCalFuente('congelados')}
-                className={`px-3 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer transition-colors ${calFuente === 'congelados' ? 'bg-[#0EA5E9] text-white' : 'text-kmuted hover:text-ktext'}`}>Congelados</button>
+                className={`px-3 py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer transition-colors ${calFuente === 'congelados' ? 'bg-[#0EA5E9] text-white' : 'text-kmuted hover:text-ktext'}`}>Congelados</button>
             </div>
           </div>
           {/* Día */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 flex-1 min-w-[220px]">
             <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">Día</span>
             <div className="flex gap-1 flex-wrap">
               {DIAS.map(d => (
                 <button key={d} onClick={() => setCalDia(d)}
-                  className={`w-[38px] py-1 rounded-[7px] text-[11px] font-bold cursor-pointer border transition-colors ${calDia === d ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
+                  className={`flex-1 sm:flex-none sm:w-[40px] min-w-[38px] min-h-[38px] py-1.5 rounded-[7px] text-[11px] font-bold cursor-pointer border transition-colors ${calDia === d ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
                   {DIA_LABEL[d]}
                 </button>
               ))}
@@ -437,7 +450,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map(n => (
                 <button key={n} onClick={() => setCalN(n)}
-                  className={`w-8 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer border transition-colors ${calN === n ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
+                  className={`w-9 min-h-[38px] py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer border transition-colors ${calN === n ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
                   {n}
                 </button>
               ))}
@@ -445,7 +458,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           </div>
           {/* Armar */}
           <button onClick={armarDesdeCalendario} disabled={calStatus === 'loading'}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-[9px] bg-knavy text-white text-[12px] font-bold cursor-pointer disabled:opacity-50 hover:bg-knavy/90 transition-colors">
+            className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 min-h-[42px] rounded-[9px] bg-knavy text-white text-[12px] font-bold cursor-pointer disabled:opacity-50 hover:bg-knavy/90 transition-colors">
             <Sparkles size={13} /> {calStatus === 'loading' ? 'Armando…' : 'Armar rutas'}
           </button>
         </div>
@@ -454,34 +467,42 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           : <div className="text-[10px] text-kmuted/80">Trae las tiendas de ese día y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
       </div>
 
-      {/* Rutas — chips multi-seleccionables (las activas se dibujan en el mapa y se comparten) */}
+      {/* Rutas — tarjetas con resumen (paradas · km · tiempo); tocá para ver/comparar en el mapa */}
       <div className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Rutas <span className="normal-case font-semibold text-kmuted/70">· tocá para ver/comparar</span></div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 items-stretch">
           {routes.map((r, i) => {
             const color = colorRuta(i);
             const vis   = visibleIds.includes(r.id);
             const isEdit = r.id === editId;
+            const st = routeStats[i];
             return (
               <div key={r.id}
-                className={`flex items-center gap-1.5 rounded-[9px] border pl-2 pr-1.5 py-1 transition-colors ${
+                className={`flex flex-col gap-0.5 rounded-[10px] border px-2.5 py-1.5 min-w-0 sm:min-w-[130px] transition-colors ${
                   isEdit ? 'border-knavy bg-knavy/[0.06]' : vis ? 'border-black/[0.14] bg-white' : 'border-black/[0.10] bg-white'}`}>
-                <button onClick={() => toggleVerRuta(r.id)} className="flex items-center gap-1.5 cursor-pointer"
-                  title={vis ? 'Se ve en el mapa · tocá para ocultar' : 'Oculta · tocá para ver'}>
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: vis ? color : 'transparent', border: `2px solid ${color}` }} />
-                  <span className={`text-[12px] font-bold ${vis ? 'text-ktext' : 'text-kmuted/50'}`}>{r.nombre}</span>
-                </button>
-                {isEdit && <span className="text-[8px] font-extrabold uppercase tracking-wide text-knavy bg-knavy/10 rounded px-1 py-px">editando</span>}
-                {routes.length > 1 && (
-                  <button onClick={() => eliminarRuta(r.id)} title="Eliminar ruta"
-                    className="text-kmuted/40 hover:text-[#D42B2B] cursor-pointer flex-shrink-0"><X size={13} /></button>
-                )}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <button onClick={() => toggleVerRuta(r.id)} className="flex items-center gap-1.5 cursor-pointer min-w-0 flex-1"
+                    title={vis ? 'Se ve en el mapa · tocá para ocultar' : 'Oculta · tocá para ver'}>
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ background: vis ? color : 'transparent', border: `2px solid ${color}` }} />
+                    <span className={`text-[12px] font-bold truncate ${vis ? 'text-ktext' : 'text-kmuted/50'}`}>{r.nombre}</span>
+                  </button>
+                  {isEdit && <span className="text-[8px] font-extrabold uppercase tracking-wide text-knavy bg-knavy/10 rounded px-1 py-px flex-shrink-0">edit</span>}
+                  {routes.length > 1 && (
+                    <button onClick={() => eliminarRuta(r.id)} title="Eliminar ruta"
+                      className="text-kmuted/40 hover:text-[#D42B2B] cursor-pointer flex-shrink-0"><X size={13} /></button>
+                  )}
+                </div>
+                <div className="pl-4 text-[10px] font-semibold">
+                  {st?.paradas > 0
+                    ? <span className={vis ? 'text-kmuted' : 'text-kmuted/50'}>{st.paradas} parada{st.paradas === 1 ? '' : 's'}{st.km ? ` · ${st.km}` : ''}{st.min ? ` · ${st.min}` : ''}</span>
+                    : <span className="text-kmuted/45">vacía</span>}
+                </div>
               </div>
             );
           })}
           <button onClick={nuevaRuta}
-            className="flex items-center gap-1 rounded-[9px] border-[1.5px] border-dashed border-knavy/50 text-knavy px-2.5 py-1 text-[12px] font-bold cursor-pointer hover:bg-knavy/[0.04]">
+            className="flex items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-dashed border-knavy/50 text-knavy px-2.5 py-1.5 text-[12px] font-bold cursor-pointer hover:bg-knavy/[0.04] min-h-[44px] sm:min-h-0">
             <Plus size={13} /> Nueva ruta
           </button>
         </div>
@@ -491,7 +512,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             <span className="text-kmuted font-semibold">Editando:</span>
             {visibles.map(r => (
               <button key={r.id} onClick={() => setEditId(r.id)}
-                className={`px-2 py-0.5 rounded-[7px] font-bold cursor-pointer transition-colors ${
+                className={`px-2.5 py-1 rounded-[7px] font-bold cursor-pointer transition-colors ${
                   r.id === editId ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:text-ktext'}`}>
                 {r.nombre}
               </button>
