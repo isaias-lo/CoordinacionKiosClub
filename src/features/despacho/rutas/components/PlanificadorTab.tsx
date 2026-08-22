@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -24,6 +24,11 @@ const PLAN_VEHICLE: Vehiculo = { p: 'PLAN', c: 0, b: 0, t: 'Planificador', tlbd:
 // Color de cada ruta = su índice en el array (misma paleta que el mapa: dibMapa usa COLS[ri]).
 const colorRuta = (index: number) => COLS[index % COLS.length];
 
+// Código sintético del punto de LLEGADA para dibujarlo en el mapa como destino de cada ruta
+// (dibMapa rutea origin=partida → waypoints=paradas → destination=última parada; agregar esta al
+// final hace que el destino sea la llegada y se dibuje el tramo de vuelta). No es una tienda real.
+const END_CODE = 'Llegada';
+
 // Días para "armar desde calendario" (incluye DO; NO usar getDia() que pliega domingo a LU).
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'] as const;
 const DIA_LABEL: Record<string, string> = { LU: 'Lun', MA: 'Mar', MI: 'Mié', JU: 'Jue', VI: 'Vie', SA: 'Sáb', DO: 'Dom' };
@@ -43,6 +48,9 @@ interface Props {
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
+// Punto de llegada (al terminar la ruta): ninguno (termina en la última parada) / volver al CD /
+// volver a la partida / una dirección.
+type EndMode = 'none' | 'cd' | 'start' | 'custom';
 
 /** Una ruta del planificador (paradas + orden + direcciones). El punto de partida es compartido. */
 interface PlanRoute {
@@ -79,6 +87,7 @@ const PLAN_STATE_KEY = 'enrutador_plan_state';
 interface PlanPersist {
   startMode: StartMode; startTienda: string;
   customCoord: { lat: number; lng: number } | null; customAddr: string;
+  endMode: EndMode; endCoord: { lat: number; lng: number } | null; endAddr: string;
   routes: PlanRoute[]; visibleIds: string[]; editId: string;
   // Formato viejo (una sola ruta) — se migra a `routes` al cargar.
   selected?: string[]; orderMode?: 'cercania' | 'manual'; customStops?: ParadaDireccion[];
@@ -86,6 +95,7 @@ interface PlanPersist {
 function loadPlan(): PlanPersist {
   const def: PlanPersist = {
     startMode: 'cd', startTienda: '', customCoord: null, customAddr: '',
+    endMode: 'none', endCoord: null, endAddr: '',
     routes: [{ id: 'r1', nombre: 'Ruta 1', selected: [], orderMode: 'cercania', customStops: [] }],
     visibleIds: ['r1'], editId: 'r1',
   };
@@ -104,6 +114,7 @@ function loadPlan(): PlanPersist {
   return {
     startMode: raw.startMode ?? 'cd', startTienda: raw.startTienda ?? '',
     customCoord: raw.customCoord ?? null, customAddr: raw.customAddr ?? '',
+    endMode: raw.endMode ?? 'none', endCoord: raw.endCoord ?? null, endAddr: raw.endAddr ?? '',
     routes, visibleIds, editId,
   };
 }
@@ -115,6 +126,10 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [customCoord, setCustomCoord] = useState<{ lat: number; lng: number } | null>(() => loadPlan().customCoord);
   const [customAddr,  setCustomAddr]  = useState(() => loadPlan().customAddr);
   const [geoStatus,   setGeoStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
+  // Punto de llegada — COMPARTIDO por todas las rutas (al terminar la ruta).
+  const [endMode,     setEndMode]     = useState<EndMode>(() => loadPlan().endMode);
+  const [endCoord,    setEndCoord]    = useState<{ lat: number; lng: number } | null>(() => loadPlan().endCoord);
+  const [endAddr,     setEndAddr]     = useState(() => loadPlan().endAddr);
   // Rutas + cuáles se ven en el mapa (multi-select) + cuál se edita.
   const [routes,      setRoutes]      = useState<PlanRoute[]>(() => loadPlan().routes);
   const [visibleIds,  setVisibleIds]  = useState<string[]>(() => loadPlan().visibleIds);
@@ -141,9 +156,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // Persistir el plan → se conserva al cambiar de tab (desmontaje) y al recargar.
   useEffect(() => {
     try {
-      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, routes, visibleIds, editId }));
+      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, routes, visibleIds, editId }));
     } catch { /* noop */ }
-  }, [startMode, startTienda, customCoord, customAddr, routes, visibleIds, editId]);
+  }, [startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, routes, visibleIds, editId]);
 
   // ── Ruta activa (la que se edita) + setters ligados a ella ────────────────────
   const activeIdx   = Math.max(0, routes.findIndex(r => r.id === editId));
@@ -168,6 +183,14 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     if (startMode === 'custom' && customCoord) return customCoord;
     return { lat: CD_INICIAL[0], lng: CD_INICIAL[1] };
   }, [startMode, startTienda, customCoord, gps]);
+
+  // Punto de llegada resuelto (coord) — compartido; null = sin llegada (termina en la última parada).
+  const endPoint = useMemo<{ lat: number; lng: number } | null>(() => {
+    if (endMode === 'cd')     return { lat: CD_INICIAL[0], lng: CD_INICIAL[1] };
+    if (endMode === 'start')  return startCoord;
+    if (endMode === 'custom' && endCoord) return endCoord;
+    return null;
+  }, [endMode, endCoord, startCoord]);
 
   // Armar N rutas desde el calendario (seco/congelados) del día elegido → reemplaza las rutas actuales.
   async function armarDesdeCalendario() {
@@ -216,7 +239,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const orderedCods = activeComputed.ordered;
   const gpsAll      = activeComputed.gpsR;                 // catálogo + direcciones de la ruta activa
   const customById  = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
-  const kmAprox     = useMemo(() => kmRutaAprox(orderedCods, gpsAll, [startCoord.lat, startCoord.lng]), [orderedCods, gpsAll, startCoord]);
+  const endArr      = useMemo<[number, number] | null>(() => endPoint ? [endPoint.lat, endPoint.lng] : null, [endPoint]);
+  const kmAprox     = useMemo(() => kmRutaAprox(orderedCods, gpsAll, [startCoord.lat, startCoord.lng], endArr), [orderedCods, gpsAll, startCoord, endArr]);
 
   // [B3] Resumen por ruta (para comparar de un vistazo): #paradas, km (real de Google o aprox) y
   // tiempo total. Indexado igual que routesComputed / el mapa (misma posición = misma ruta).
@@ -224,18 +248,20 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     const paradas = rc.ordered.length;
     const rk = kmByRoute?.[i];
     const km = paradas === 0 ? ''
-      : (rk != null && rk > 0 ? `${rk} km` : `~${kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng])} km`);
+      : (rk != null && rk > 0 ? `${rk} km` : `~${kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng], endArr)} km`);
+    // Con punto de llegada, el mapa dibuja un tramo extra (→ llegada) ⇒ un leg más.
+    const expected = paradas + (endArr ? 1 : 0);
     const legs = legDataByRoute?.[i];
-    const min = (legs && legs.length === paradas && paradas > 0)
+    const min = (legs && legs.length === expected && paradas > 0)
       ? formatDuracion(legs.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
     return { paradas, km, min };
-  }), [routesComputed, kmByRoute, legDataByRoute, startCoord]);
+  }), [routesComputed, kmByRoute, legDataByRoute, startCoord, endArr]);
 
   // Tiempos reales por tramo (Google) de la ruta ACTIVA. `legData[i]` = tramo que llega a la parada
   // i. Solo se usan si coinciden con las paradas actuales (si no, el mapa está recalculando).
   const legData   = legDataByRoute?.[activeIdx];
   const realKm    = kmByRoute?.[activeIdx] ?? null;
-  const legsOk    = !!legData && legData.length === orderedCods.length && orderedCods.length > 0;
+  const legsOk    = !!legData && legData.length === orderedCods.length + (endArr ? 1 : 0) && orderedCods.length > 0;
   const totalMin  = legsOk ? formatDuracion(legData!.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
   const kmLabel   = legsOk && realKm != null && realKm > 0 ? `${realKm} km` : `~${kmAprox} km`;
 
@@ -244,12 +270,14 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const onPlanRutasRef = useRef(onPlanRutas);
   onPlanRutasRef.current = onPlanRutas;
   useEffect(() => {
-    // Ocultas → ts vacío (no dibujan) pero conservan su índice ⇒ el color por ruta no cambia.
-    const rutas: Ruta[] = routesComputed.map(rc => ({
-      v: PLAN_VEHICLE,
-      ts: visibleIds.includes(rc.id) ? virtualStops(rc.ordered) : [],
-      tp: 0, tb: 0,
-    }));
+    // Ocultas → ts vacío (no dibujan) pero conservan su índice ⇒ el color por ruta no cambia. Si hay
+    // punto de llegada, se agrega como último destino de cada ruta con paradas (dibuja el tramo de vuelta).
+    const rutas: Ruta[] = routesComputed.map(rc => {
+      const vis = visibleIds.includes(rc.id);
+      if (!vis || rc.ordered.length === 0) return { v: PLAN_VEHICLE, ts: [], tp: 0, tb: 0 };
+      const cods = endPoint ? [...rc.ordered, END_CODE] : rc.ordered;
+      return { v: PLAN_VEHICLE, ts: virtualStops(cods), tp: 0, tb: 0 };
+    });
     const extGps: Record<string, number[]> = {};
     const extTiendas: Record<string, TiendaInfo> = {};
     routesComputed.forEach(rc => {
@@ -257,9 +285,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       Object.assign(extGps, rc.patch.gps);
       Object.assign(extTiendas, rc.patch.tiendas as unknown as Record<string, TiendaInfo>);
     });
+    if (endPoint) {
+      extGps[END_CODE] = [endPoint.lat, endPoint.lng];
+      extTiendas[END_CODE] = { n: 'Punto de llegada', z: '', v: '', _parada: true } as unknown as TiendaInfo;
+    }
     const anyStops = rutas.some(rt => rt.ts.length > 0);
     onPlanRutasRef.current?.(anyStops ? rutas : [], [startCoord.lat, startCoord.lng], { gps: extGps, tiendas: extTiendas });
-  }, [routesComputed, visibleIds, startCoord]);
+  }, [routesComputed, visibleIds, startCoord, endPoint]);
 
   const resultados = useMemo(() => buscarTiendas(tiendas, gps, search), [tiendas, gps, search]);
   const resultadosFiltrados = useMemo(() => resultados.filter(t => {
@@ -324,6 +356,17 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     });
   }
 
+  // Fallback del punto de LLEGADA por dirección (si Places no cargó o se escribió sin elegir sugerencia).
+  function geocodeEndAddr() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const G = (window as any).google?.maps;
+    if (!G || !endAddr.trim()) return;
+    new G.Geocoder().geocode({ address: endAddr, region: 'cl' }, (res: unknown[], status: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (status === 'OK' && res[0]) { const loc = (res[0] as any).geometry.location; setEndCoord({ lat: loc.lat(), lng: loc.lng() }); setEndMode('custom'); }
+    });
+  }
+
   // Agrega una dirección (ya resuelta a coords) como PARADA (id DIR-<n>) de la ruta ACTIVA,
   // auto-seleccionada. La usa tanto el autocompletado (coords de la sugerencia) como el geocoder.
   function agregarParadaConCoord(label: string, lat: number, lng: number) {
@@ -379,8 +422,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         });
         return construirTextoRuta({
           titulo: r.nombre, lineas,
-          km: kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng]),
-          mapaUrl: googleMapsDeepLink(startCoord, rc.ordered, rc.gpsR),
+          km: kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng], endArr),
+          mapaUrl: googleMapsDeepLink(startCoord, rc.ordered, rc.gpsR, endPoint),
+          regreso: endPoint ? endLabelCorto : undefined,
         });
       });
     if (!bloques.length) return;
@@ -405,6 +449,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const startLabel = startMode === 'cd' ? 'CD KiosClub'
     : startMode === 'tienda' ? (startTienda ? `${startTienda} · ${tiendas[startTienda]?.n ?? startTienda}` : 'Elegir tienda…')
     : (customCoord ? (customAddr || 'Punto personalizado') : 'Ingresar dirección…');
+  // Etiqueta del punto de llegada (para el chip informativo y el texto de compartir).
+  const endLabelCorto = endMode === 'cd' ? 'CD KiosClub'
+    : endMode === 'start' ? 'la partida'
+    : endMode === 'custom' ? (endAddr || 'dirección') : '';
+  const endLabel = endMode === 'none' ? 'Termina en la última parada'
+    : endMode === 'custom' ? (endCoord ? (endAddr || 'Punto de llegada') : 'Ingresar dirección…')
+    : `Volver a ${endLabelCorto}`;
 
   const seg = 'flex-1 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors';
   const visibles = routes.filter(r => visibleIds.includes(r.id));
@@ -560,6 +611,31 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>
       </div>
 
+      {/* Punto de llegada (compartido) — al terminar la ruta */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de llegada <span className="normal-case font-semibold text-kmuted/70">· al terminar</span></div>
+        <div className="flex gap-1 bg-kbg rounded-[10px] p-1">
+          <button onClick={() => setEndMode('none')}   className={`${seg} ${endMode === 'none' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Ninguno</button>
+          <button onClick={() => setEndMode('cd')}     className={`${seg} ${endMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
+          <button onClick={() => setEndMode('start')}  className={`${seg} ${endMode === 'start' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Partida</button>
+          <button onClick={() => setEndMode('custom')} className={`${seg} ${endMode === 'custom' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Dirección</button>
+        </div>
+        {endMode === 'custom' && (
+          <AddressAutocomplete
+            value={endAddr}
+            onChange={v => setEndAddr(v)}
+            onSelect={({ address, lat, lng }) => { setEndAddr(address); setEndCoord({ lat, lng }); setEndMode('custom'); }}
+            onEnter={geocodeEndAddr}
+            placeholder="Dirección de llegada (ej: bodega, CD, punto final)"
+            className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
+        )}
+        {endMode !== 'none' && (
+          <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5">
+            <Flag size={13} className="text-[#0E7C6B] flex-shrink-0" /> <span className="font-semibold truncate">{endLabel}</span>
+          </div>
+        )}
+      </div>
+
       {/* Buscar tiendas + agregar dirección (misma fila, arriba de los filtros) */}
       <div className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar a <span style={{ color: activeColor }}>{activeRoute.nombre}</span></div>
@@ -688,7 +764,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>
         {selected.length > 0 && (
           <div className="mt-1 flex gap-2">
-            <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll)} target="_blank" rel="noopener noreferrer"
+            <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll, endPoint)} target="_blank" rel="noopener noreferrer"
               className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-[13px] font-bold cursor-pointer no-underline">
               <Navigation size={14} /> Abrir en Google Maps
             </a>

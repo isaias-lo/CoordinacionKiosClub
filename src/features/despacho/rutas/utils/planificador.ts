@@ -144,30 +144,40 @@ export function repartirEnNRutas(
 }
 
 /**
- * Deep link a Google Maps con la ruta (para que el conductor navegue): origin = partida,
- * destination = última parada, waypoints = intermedias en orden. Ignora cods sin coordenadas.
+ * Deep link a Google Maps con la ruta (para que el conductor navegue): origin = partida y, si NO
+ * hay punto de llegada, destination = última parada + waypoints = intermedias. Si se pasa `end`
+ * (punto de llegada: volver al CD / a la partida / dirección), destination = `end` y TODAS las
+ * paradas son waypoints en orden. Ignora cods sin coordenadas.
  */
 export function googleMapsDeepLink(
   start: { lat: number; lng: number },
   orderedCods: string[],
   gps: Record<string, number[]>,
+  end?: { lat: number; lng: number } | null,
 ): string {
   const base = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
   const origin = `&origin=${start.lat},${start.lng}`;
-  const stops = orderedCods.map(c => gps[c]).filter(Boolean) as number[][];
-  if (stops.length === 0) return base + origin;
   const coord = (c: number[]) => `${c[0]},${c[1]}`;
+  const stops = orderedCods.map(c => gps[c]).filter(Boolean) as number[][];
+  if (end) {
+    const dest = `&destination=${end.lat},${end.lng}`;
+    const wp = stops.length ? `&waypoints=${encodeURIComponent(stops.map(coord).join('|'))}` : '';
+    return base + origin + dest + wp;
+  }
+  if (stops.length === 0) return base + origin;
   const dest = `&destination=${coord(stops[stops.length - 1])}`;
   const mids = stops.slice(0, -1);
   const wp = mids.length ? `&waypoints=${encodeURIComponent(mids.map(coord).join('|'))}` : '';
   return base + origin + dest + wp;
 }
 
-/** km aproximado (haversine) desde `start` recorriendo `ordered` en orden. Ignora cods sin coords. */
-export function kmRutaAprox(ordered: string[], gps: Record<string, number[]>, start: [number, number]): number {
+/** km aproximado (haversine) desde `start` recorriendo `ordered` en orden; si se pasa `end` (punto
+ *  de llegada) suma el tramo final desde la última parada hasta `end`. Ignora cods sin coords. */
+export function kmRutaAprox(ordered: string[], gps: Record<string, number[]>, start: [number, number], end?: [number, number] | null): number {
   let k = 0;
   let prev: number[] = start;
   for (const c of ordered) { const g = gps[c]; if (g) { k += dkm(prev, g); prev = g; } }
+  if (end) k += dkm(prev, end);
   return Math.round(k);
 }
 
@@ -205,14 +215,18 @@ export function construirTextoRuta(opts: {
   lineas: LineaParada[];
   km?: number;
   mapaUrl?: string;
+  /** Punto de llegada al terminar la ruta (p. ej. "CD", "la partida", una dirección). Se agrega
+   *  como línea final antes del link del mapa. */
+  regreso?: string;
 }): string {
-  const { titulo, lineas, km, mapaUrl } = opts;
+  const { titulo, lineas, km, mapaUrl, regreso } = opts;
   const cab = `${titulo} — ${lineas.length} parada${lineas.length === 1 ? '' : 's'}${km && km > 0 ? ` · ~${km} km` : ''}`;
   const cuerpo = lineas.map((l, i) => {
     if (l.esDireccion) return `${i + 1}. Dirección: ${(l.nombre ?? l.cod).trim()}`;
     const detalle = [l.direccion, l.tipo, l.horario].map(s => (s ?? '').trim()).filter(Boolean).join(' / ');
     return `${i + 1}. ${l.cod}${detalle ? `: ${detalle}` : (l.nombre ? `: ${l.nombre}` : '')}`;
   });
+  if (regreso) cuerpo.push(`↩ Llegada: ${regreso.trim()}`);
   const partes = [cab, ...(cuerpo.length ? ['', ...cuerpo] : [])];
   if (mapaUrl) partes.push('', `Mapa: ${mapaUrl}`);
   return partes.join('\n');

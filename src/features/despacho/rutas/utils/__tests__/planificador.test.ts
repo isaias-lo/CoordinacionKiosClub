@@ -73,6 +73,20 @@ describe('googleMapsDeepLink', () => {
     expect(url).toContain('&destination=-33.4,-70.6'); // DIR-1 queda de destino
     expect(url).toContain('&waypoints=' + encodeURIComponent('-33.39,-70.5'));
   });
+
+  it('con punto de llegada: destino = llegada y TODAS las paradas son waypoints', () => {
+    const end = { lat: -33.412581, lng: -70.632438 }; // volver al CD
+    const url = googleMapsDeepLink(start, ['26ALC', '02SCL', '32BNV'], gps, end);
+    expect(url).toContain('&destination=-33.412581,-70.632438');
+    expect(url).toContain('&waypoints=' + encodeURIComponent('-33.39,-70.5|-33.45,-70.66|-33.36,-70.73'));
+  });
+
+  it('con punto de llegada y sin paradas: origen → llegada directo, sin waypoints', () => {
+    const end = { lat: -33.41, lng: -70.63 };
+    const url = googleMapsDeepLink(start, [], gps, end);
+    expect(url).toContain('&destination=-33.41,-70.63');
+    expect(url).not.toContain('waypoints');
+  });
 });
 
 describe('esParadaDireccion', () => {
@@ -150,6 +164,18 @@ describe('construirTextoRuta', () => {
   it('sin paradas → solo el título', () => {
     expect(construirTextoRuta({ titulo: 'Ruta 2', lineas: [] })).toBe('Ruta 2 — 0 paradas');
   });
+
+  it('con punto de llegada (regreso): agrega la línea "↩ Llegada: …" al final del cuerpo', () => {
+    const txt = construirTextoRuta({
+      titulo: 'Ruta 1',
+      lineas: [{ cod: 'AAA', esDireccion: false, direccion: 'Calle 1' }],
+      regreso: 'CD',
+      mapaUrl: 'https://maps.example/x',
+    });
+    expect(txt).toBe(
+      'Ruta 1 — 1 parada\n\n1. AAA: Calle 1\n↩ Llegada: CD\n\nMapa: https://maps.example/x',
+    );
+  });
 });
 
 describe('kmRutaAprox', () => {
@@ -165,6 +191,14 @@ describe('kmRutaAprox', () => {
   });
   it('ignora cods sin coordenadas', () => {
     expect(kmRutaAprox(['A', 'ZZZ', 'B'], g, start)).toBe(kmRutaAprox(['A', 'B'], g, start));
+  });
+  it('con punto de llegada suma el tramo final (más km que sin llegada)', () => {
+    const end: [number, number] = [-33.30, -70.75];
+    expect(kmRutaAprox(['A', 'B', 'C'], g, start, end)).toBeGreaterThan(kmRutaAprox(['A', 'B', 'C'], g, start));
+  });
+  it('sin paradas pero con llegada: cuenta start→end', () => {
+    const end: [number, number] = [-33.30, -70.75];
+    expect(kmRutaAprox([], g, start, end)).toBe(kmRutaAprox(['A'], { A: end }, start));
   });
 });
 
