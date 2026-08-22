@@ -5,7 +5,8 @@ import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
-import { mergeEntriesByKey } from '@/features/despacho/santiago/context/mergeItems';
+import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
+import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -245,20 +246,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const lastPdfData  = lastPushed.pdfData  ?? {};
 
       // ── dispatch merge ──────────────────────────────────────────────
+      // [E3b/C2] Merge POR-ÍTEM (misma función que RM/Costa). Antes era por TIENDA completa (dirty ⇒
+      // gana toda la local), lo que hacía que dos personas editando la MISMA tienda se pisaran (A
+      // editaba dims mientras B agregaba un bulto ⇒ uno perdía su cambio). Ahora, en las tiendas que
+      // edité, reconcilia ítem por ítem con `stableItemKey` (id estable de C1); las tiendas que no
+      // toqué siguen adoptando la remota tal cual (ausencia remota = borrado intencional).
       const remoteDispatch = remote.dispatch ?? {};
       const localDispatch  = stateRef.current.dispatch;
-      const allTiendas     = new Set([...Object.keys(remoteDispatch), ...Object.keys(localDispatch)]);
-      const mergedDispatch: Record<string, DispatchItem[]> = {};
-      for (const tienda of allTiendas) {
-        const localItems = localDispatch[tienda];
-        const remItems   = remoteDispatch[tienda];
-        const lastItems  = lastDispatch[tienda];
-        const dirty      = JSON.stringify(localItems ?? []) !== JSON.stringify(lastItems ?? []);
-        // When not dirty, remote is authoritative: undefined in remote = intentionally cleared.
-        // Do NOT fall back to localItems — that's what caused cleared sessions to restore themselves
-        // when a second device opened the page and pushed old localStorage data back to Supabase.
-        mergedDispatch[tienda] = dirty ? (localItems ?? []) : (remItems ?? []);
-      }
+      const mergedDispatch = mergeItemsByTienda(remoteDispatch, localDispatch, lastDispatch, stableItemKey);
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto

@@ -19,18 +19,65 @@ export function mergeItemsByTienda<T>(
   remote: Record<string, T[]>,
   local: Record<string, T[]>,
   lastSynced: Record<string, T[]>,
+  keyOf: (item: T) => string,
 ): Record<string, T[]> {
-  // Mismo criterio que la Bodega Nacional (AppContext): recorrer la UNIÓN de tiendas y, por cada
-  // una, si la cambié desde el último sync ("dirty") gana la local; si está limpia, manda la remota
-  // (una ausencia remota = borrado intencional; NO restaurar desde local, que es justo lo que hacía
-  // reaparecer datos ya unidos/limpiados).
+  // [E3b/C2] Antes el merge era por TIENDA completa (dirty ⇒ gana toda la local). Eso pisaba lo
+  // que otro usuario hacía en la MISMA tienda al mismo tiempo (A edita dims mientras B agrega un
+  // CH ⇒ uno perdía su cambio). Ahora, en las tiendas que edité, el merge es POR-ÍTEM (3 vías:
+  // base=lastSynced, local, remoto) usando `keyOf` (id estable de C1) ⇒ conviven ambos cambios.
   const out: Record<string, T[]> = {};
   const allCods = new Set([...Object.keys(remote), ...Object.keys(local)]);
   for (const cod of allCods) {
-    const dirty = JSON.stringify(local[cod] ?? []) !== JSON.stringify(lastSynced[cod] ?? []);
-    out[cod] = dirty ? (local[cod] ?? []) : (remote[cod] ?? []);
+    const loc  = local[cod] ?? [];
+    const rem  = remote[cod] ?? [];
+    const base = lastSynced[cod] ?? [];
+    // Tienda que NO toqué desde el último sync → adopto la remota tal cual (trae ediciones más
+    // nuevas de otro equipo; ausencia remota = borrado intencional). Igual que antes.
+    if (JSON.stringify(loc) === JSON.stringify(base)) { out[cod] = rem; continue; }
+    // Tienda editada localmente → merge por-ítem (protege mi edición sin pisar lo del otro).
+    out[cod] = mergeListaPorItem(rem, loc, base, keyOf);
   }
   return out;
+}
+
+/**
+ * Merge 3-vías de una lista de ítems (una tienda): `base` = último sync, `local`, `remote`.
+ * Reglas por ítem (llave estable `keyOf`):
+ *  - en local y remoto: gana el LOCAL si yo lo cambié (o el remoto no lo cambió); si solo cambió
+ *    el remoto, adopto el remoto.
+ *  - solo en local: alta local nueva (no estaba en base) ⇒ conservar; si estaba en base y el
+ *    remoto ya no lo tiene ⇒ borrado remoto ⇒ no lo re-agrego.
+ *  - solo en remoto: alta remota nueva (no estaba en base) ⇒ conservar; si estaba en base y yo no
+ *    lo tengo ⇒ borrado local ⇒ no resucitar.
+ * El borrado siempre gana sobre "reaparecer" (anti-zombie). Orden: primero la vista local, luego
+ * las altas remotas nuevas al final (el `orden` se renumera aguas abajo).
+ */
+export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: (i: T) => string): T[] {
+  const bMap = new Map(base.map(i => [keyOf(i), i]));
+  const rMap = new Map(remote.map(i => [keyOf(i), i]));
+  const eq = (a?: T, b?: T) => JSON.stringify(a) === JSON.stringify(b);
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of local) {
+    const k = keyOf(item);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const inB = bMap.has(k), inR = rMap.has(k);
+    if (inR) {
+      const lChanged = !inB || !eq(item, bMap.get(k));
+      const rChanged = inB ? !eq(rMap.get(k), bMap.get(k)) : true;
+      result.push(lChanged || !rChanged ? item : rMap.get(k)!);
+    } else if (!inB) {
+      result.push(item); // alta local nueva
+    } // inB && !inR ⇒ borrado remoto ⇒ drop
+  }
+  for (const item of remote) {
+    const k = keyOf(item);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (!bMap.has(k)) result.push(item); // alta remota nueva (si estaba en base y no en local ⇒ borrado local ⇒ drop)
+  }
+  return result;
 }
 
 /**
