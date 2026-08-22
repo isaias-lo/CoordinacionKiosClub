@@ -324,7 +324,7 @@ export default function InputSection({
                   grupoFiltro={grupoFiltro} grps={grps} onGroupPill={onGroupPill}
                   camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                   scrollContainerRef={dragScrollRef}
-                  onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} />
+                  onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular />
               </div>
             )}
             {modo === 'man' && (
@@ -457,6 +457,7 @@ export default function InputSection({
                 onToggleFlota={onToggleFlota}
                 ordenActivacion={ordenActivacion}
                 onCerrarCamion={onCerrarCamion}
+                hideCalcular
               />
             </div>
           )}
