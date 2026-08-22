@@ -3,7 +3,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, ReactNode } from 'react';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
-import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
+import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
@@ -213,6 +213,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearedAtRef    = useRef<number>(0); // timestamp of last intentional CLEAR_ALL push
   const lastPushCompletedAtRef = useRef<number>(0); // timestamp when last Supabase push completed
   const lastPushTimestampRef   = useRef<number>(0); // pushedAt value included in last push payload
+  const lastServerStampRef     = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
   const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
 
@@ -221,7 +222,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isInitializedRef.current = false;
     if (!userId) return;
 
-    const handleRemote = (remoteState: unknown) => {
+    const handleRemote = (remoteState: unknown, updatedAt?: number) => {
       // Block if local push is pending (debounce) or in-flight (async upsert).
       // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
       if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
@@ -233,11 +234,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Reject data from a different calendar day — prevents stale sessions from other devices
       // from pushing yesterday's guides into today's view. Old records without sessionDate are also rejected.
       if (remote.sessionDate !== SESSION_DATE) return;
-      // Reject remote data that is older than our last push — prevents a stale push from another
-      // tab or device from overwriting items we already saved and pushed successfully.
-      if (typeof remote.pushedAt === 'number' && remote.pushedAt < lastPushTimestampRef.current) return;
+      // [C3/RC-6] Rechaza un remoto MÁS VIEJO que lo último que ya incorporé, ordenando por reloj del
+      // SERVIDOR (updated_at) para no depender del reloj de cada equipo; sin server-stamp cae al
+      // pushedAt del cliente (comportamiento previo). Evita que un push stale pise lo ya guardado.
+      if (remotoEsMasViejo(updatedAt, lastServerStampRef.current, remote.pushedAt, lastPushTimestampRef.current)) return;
       const remoteStr = JSON.stringify(remoteState);
       if (remoteStr === lastPushedRef.current) return; // already in sync
+      // Voy a incorporar este remoto → avanzo el reloj de servidor de referencia.
+      if (updatedAt != null && updatedAt > lastServerStampRef.current) lastServerStampRef.current = updatedAt;
 
       // Per-tienda merge: local dirty (changed since last push) → local wins; clean → remote wins.
       let lastPushed: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData> } = {};
@@ -276,16 +280,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
     catchUpRef.current = () => {
-      fetchSessionState('regiones').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+      fetchSessionStateMeta('regiones').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
     };
 
     // Initial fetch: use same per-tienda dirty merge as handleRemote.
     // lastPushedRef is pre-seeded from localStorage so the baseline reflects last session's state.
     // Items added since page load (dirty) → local wins; unchanged items → remote wins.
-    fetchSessionState('regiones')
-      .then((remote) => {
+    fetchSessionStateMeta('regiones')
+      .then((m) => {
         isInitializedRef.current = true;
-        if (remote) handleRemote(remote);
+        if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       })
       .catch(() => { isInitializedRef.current = true; });
 
@@ -298,7 +302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       realtimeConnected = connected;
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
-        fetchSessionState('regiones').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+        fetchSessionStateMeta('regiones').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
       }
     });
 
@@ -307,8 +311,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const pollId = setInterval(async () => {
       if (realtimeConnected) return;
       try {
-        const remote = await fetchSessionState('regiones');
-        if (remote) handleRemote(remote);
+        const m = await fetchSessionStateMeta('regiones');
+        if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
     }, 15_000);
 
@@ -338,6 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastPushTimestampRef.current = pushedAt;
       // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
       pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
+        .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => {
           isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now();
@@ -381,6 +386,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
+      .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
       .catch(() => { lastPushedRef.current = prevPushed; })
       .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}

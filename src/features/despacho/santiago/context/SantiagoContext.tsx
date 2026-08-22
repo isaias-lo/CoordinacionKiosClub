@@ -5,7 +5,7 @@ import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
 } from '../types';
 import { useAuth } from '@/components/AuthProvider';
-import { pushSessionState, fetchSessionState, subscribeToSessionState } from '@/lib/userSessionState';
+import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { stableItemKey } from '../../shared/formRowsReconcile';
@@ -153,6 +153,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const isInitializedRef = useRef(false);
   const clearedAtRef         = useRef<number>(0); // timestamp of last intentional RESET push
   const lastPushTimestampRef = useRef<number>(0); // pushedAt value included in last push payload
+  const lastServerStampRef   = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
   const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
 
@@ -167,7 +168,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       step: ['resumen', 'regimen'].includes(s.step as string) ? 'form' : s.step,
     });
 
-    const handleRemote = (remoteState: unknown) => {
+    const handleRemote = (remoteState: unknown, updatedAt?: number) => {
       // Block if local push is pending (debounce) or in-flight (async upsert).
       // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
       if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
@@ -176,13 +177,16 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       // Reject data without an explicit sessionDate or from a different calendar day
       const remoteSessionDate = (remoteState as { sessionDate?: string }).sessionDate;
       if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
-      // Reject remote data older than our last push — prevents a stale tab/device from overwriting fresh local data
+      // [C3/RC-6] Rechaza un remoto MÁS VIEJO que lo último que incorporé, ordenando por reloj del
+      // SERVIDOR (updated_at) y no por el de cada equipo; sin server-stamp cae al pushedAt del cliente.
       const rawPushedAt = (remoteState as { pushedAt?: number }).pushedAt;
-      if (typeof rawPushedAt === 'number' && rawPushedAt < lastPushTimestampRef.current) return;
+      if (remotoEsMasViejo(updatedAt, lastServerStampRef.current, rawPushedAt, lastPushTimestampRef.current)) return;
 
       const remote = normalize(remoteState as SyncableState);
       const remoteStr = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
       if (remoteStr === lastPushedRef.current) return; // already in sync
+      // Voy a incorporar este remoto → avanzo el reloj de servidor de referencia.
+      if (updatedAt != null && updatedAt > lastServerStampRef.current) lastServerStampRef.current = updatedAt;
 
       const localStr = JSON.stringify({
         step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
@@ -205,19 +209,20 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
     // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
     catchUpRef.current = () => {
-      fetchSessionState('santiago').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+      fetchSessionStateMeta('santiago').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
     };
 
     // Initial fetch
-    fetchSessionState('santiago')
-      .then((remote) => {
+    fetchSessionStateMeta('santiago')
+      .then((m) => {
         isInitializedRef.current = true;
-        if (!remote) return;
+        if (!m?.state) return;
         // Reject data without an explicit sessionDate or from a different calendar day
-        const remoteSessionDate = (remote as { sessionDate?: string }).sessionDate;
+        const remoteSessionDate = (m.state as { sessionDate?: string }).sessionDate;
         if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
-        const s = normalize(remote as SyncableState);
+        const s = normalize(m.state as SyncableState);
         lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
+        if (m.updatedAt != null) lastServerStampRef.current = m.updatedAt; // [C3/RC-6] base del reloj de servidor
         dispatch({ type: 'LOAD_STATE', payload: s });
       })
       .catch(() => { isInitializedRef.current = true; });
@@ -231,7 +236,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       realtimeConnected = connected;
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
-        fetchSessionState('santiago').then((remote) => { if (remote) handleRemote(remote); }).catch(() => {});
+        fetchSessionStateMeta('santiago').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
       }
     });
 
@@ -239,8 +244,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const pollId = setInterval(async () => {
       if (realtimeConnected) return;
       try {
-        const remote = await fetchSessionState('santiago');
-        if (remote) handleRemote(remote);
+        const m = await fetchSessionStateMeta('santiago');
+        if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
     }, 15000);
 
@@ -271,6 +276,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
       pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
+        .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
         .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
         .finally(() => {
           isPushingRef.current = false;
@@ -313,6 +319,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
+      .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
       .catch(() => { lastPushedRef.current = prevPushed; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
