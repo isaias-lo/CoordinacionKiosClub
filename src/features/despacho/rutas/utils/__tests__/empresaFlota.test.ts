@@ -72,4 +72,22 @@ describe('agruparCamionesPorEmpresa', () => {
   it('lista vacía → sin grupos', () => {
     expect(agruparCamionesPorEmpresa([], (v: { empresa: string }) => v.empresa)).toEqual([]);
   });
+
+  it('con getRecencia: la empresa de la patente activada más reciente va primero', () => {
+    const f = [
+      { p: 'K1', empresa: 'kios' },
+      { p: 'L1', empresa: 'Luis Fica' },
+      { p: 'O1', empresa: 'Ortiz' },
+    ];
+    // Ortiz activada última (timestamp mayor) → su grupo va primero, pese al rank fijo.
+    const rec: Record<string, number> = { K1: 100, L1: 200, O1: 300 };
+    const g = agruparCamionesPorEmpresa(f, v => v.empresa, v => rec[v.p] ?? 0);
+    expect(g[0].empresa).toBe('Ortiz');
+  });
+
+  it('sin getRecencia: mantiene el orden por rank (marcas primero)', () => {
+    const f = [{ p: 'O1', empresa: 'Ortiz' }, { p: 'K1', empresa: 'kios' }];
+    const g = agruparCamionesPorEmpresa(f, v => v.empresa);
+    expect(g[0].empresa).toBe('Kios Club');
+  });
 });

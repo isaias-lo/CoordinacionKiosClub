@@ -397,18 +397,34 @@ export default function ManualDispatch({
             <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
             <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">toca para activar / desactivar</span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {flota.map((v, i) => ({ v, i })).sort((a, b) => porRecencia(a.v, b.v)).map(({ v, i }) => (
-              <button
-                key={v.p} type="button"
-                onClick={() => onToggleFlota(i)}
-                title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
-                className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
-                  ${v.on ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
-                  ${v.tlbd ? 'border-dashed' : ''}`}
-              >
-                {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
-              </button>
+          {/* Agrupados por empresa (preserva el índice original para onToggleFlota); la empresa
+              con la patente activada más reciente va primero. */}
+          <div className="space-y-2">
+            {agruparCamionesPorEmpresa(
+              flota.map((v, i) => ({ v, i })).sort((a, b) => porRecencia(a.v, b.v)),
+              x => x.v.empresa,
+              x => ordAct[x.v.p] ?? 0,
+            ).map(g => (
+              <div key={g.empresa}>
+                <div className="flex items-center gap-1.5 mb-1 px-0.5">
+                  <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: g.color }} aria-hidden="true" />
+                  <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {g.items.map(({ v, i }) => (
+                    <button
+                      key={v.p} type="button"
+                      onClick={() => onToggleFlota(i)}
+                      title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
+                      className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
+                        ${v.on ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
+                        ${v.tlbd ? 'border-dashed' : ''}`}
+                    >
+                      {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -531,7 +547,7 @@ export default function ManualDispatch({
         </div>
       ) : (
         <div className="space-y-4">
-        {agruparCamionesPorEmpresa(flotaDisp, v => v.empresa).map(g => (
+        {agruparCamionesPorEmpresa(flotaDisp, v => v.empresa, v => ordAct[v.p] ?? 0).map(g => (
           <div key={g.empresa}>
             {/* Encabezado de sección por empresa (color de marca / determinista / gris "Sin empresa") */}
             <div className="flex items-center gap-2 mb-2 px-0.5">
@@ -562,7 +578,7 @@ export default function ManualDispatch({
                 borderLeftWidth: '4px',
                 borderLeftColor: g.color,
               }}
-              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col ${isOver || isPreview ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
+              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col min-w-0 ${isOver || isPreview ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
@@ -620,7 +636,7 @@ export default function ManualDispatch({
               </div>
 
               {/* ── Tiendas asignadas ── */}
-              <div className="px-2.5 pb-2 pt-1.5 flex flex-wrap gap-[5px] min-h-[42px] flex-1">
+              <div className="px-2.5 pb-2 pt-1.5 flex flex-wrap gap-[5px] min-h-[42px] flex-1 min-w-0">
                 {stores.length === 0 ? (
                   <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-knavy/50 bg-knavy/[0.04]' : 'border-black/[0.12]'}`}>
                     <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-knavy' : 'text-kmuted/50'}`}>
@@ -775,7 +791,7 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
-      className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] touch-manipulation ${isDragging
+      className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] min-w-0 max-w-full touch-manipulation ${isDragging
         ? 'opacity-30 scale-95'
         : selected
           ? `ring-2 ring-knavy/40 ${isEntrega ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-orange-100 border-orange-400 text-orange-800'}`
@@ -846,7 +862,7 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
       style={!isDragging ? { boxShadow: '0 1px 3px rgba(27,42,107,0.15)' } : undefined}
-      className={`flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] cursor-grab select-none transition-all border min-h-[38px] touch-manipulation ${isDragging
+      className={`flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] cursor-grab select-none transition-all border min-h-[38px] min-w-0 max-w-full touch-manipulation ${isDragging
         ? 'opacity-30 scale-95 bg-knavy/[0.05] border-knavy/20'
         : selected
           ? 'bg-knavy/[0.15] border-knavy text-knavy ring-2 ring-knavy/40'
@@ -863,7 +879,7 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
         >✓</button>
       )}
-      <span className="font-mono font-bold text-[13px]">{formatCod(store.c)}</span>
+      <span className="font-mono font-bold text-[13px] truncate min-w-0">{formatCod(store.c)}</span>
       {tp && (
         <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
           style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40` }}

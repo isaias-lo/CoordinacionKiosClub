@@ -53,11 +53,15 @@ export interface EmpresaGrupo<T> {
 }
 
 /** Agrupa items por empresa canónica, preservando el orden de entrada dentro de cada grupo.
- *  Orden de los grupos: marcas conocidas (en el orden de CANON) → otras empresas (alfabético)
- *  → "Sin empresa" al final. */
+ *  Orden de los grupos: por defecto marcas conocidas (CANON) → otras (alfabético) → "Sin
+ *  empresa" al final. Si se pasa `getRecencia` (p. ej. timestamp de activación del camión), la
+ *  empresa con la patente activada MÁS RECIENTE flota al tope (el orden por defecto es el
+ *  desempate). Así, al activar otra patente, su empresa sube y esa patente queda primera dentro
+ *  (el orden dentro del grupo lo preserva el orden de entrada, ya pre-ordenado por recencia). */
 export function agruparCamionesPorEmpresa<T>(
   items: T[],
   getEmpresa: (item: T) => string | null | undefined,
+  getRecencia?: (item: T) => number,
 ): EmpresaGrupo<T>[] {
   const map = new Map<string, T[]>();
   for (const it of items) {
@@ -72,11 +76,15 @@ export function agruparCamionesPorEmpresa<T>(
     if (idx >= 0) return [0, String(idx).padStart(3, '0')];
     return [1, normKey(label)];
   };
-  return [...map.entries()]
-    .map(([empresa, grpItems]) => ({ empresa, color: empresaColor(empresa), items: grpItems }))
-    .sort((a, b) => {
-      const ra = rank(a.empresa);
-      const rb = rank(b.empresa);
-      return ra[0] - rb[0] || ra[1].localeCompare(rb[1]);
-    });
+  const grupos = [...map.entries()].map(([empresa, grpItems]) => ({ empresa, color: empresaColor(empresa), items: grpItems }));
+  const recDe = (g: EmpresaGrupo<T>) => getRecencia ? g.items.reduce((m, it) => Math.max(m, getRecencia(it) || 0), 0) : 0;
+  return grupos.sort((a, b) => {
+    if (getRecencia) {
+      const rdiff = recDe(b) - recDe(a); // la empresa con activación más reciente primero
+      if (rdiff !== 0) return rdiff;
+    }
+    const ra = rank(a.empresa);
+    const rb = rank(b.empresa);
+    return ra[0] - rb[0] || ra[1].localeCompare(rb[1]);
+  });
 }
