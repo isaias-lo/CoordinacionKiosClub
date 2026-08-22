@@ -1955,14 +1955,24 @@ export default function RutasScreen() {
   }
 
   const isMobile = useIsMobile();
+  // [E4·A5] En DESPACHO sin `results` (flujo auto-asignar, sin "Calcular"), dibujar TODAS las
+  // rutas asignadas en vivo desde `manualAsignaciones` — no solo la del camión seleccionado.
+  const dragLive = (modo === 'drag' && !results && Object.keys(manualAsignaciones).length > 0)
+    ? (() => {
+        const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+        return { rutas: rutasDesdeAsignaciones(manualAsignaciones, flota, extGps, cdRef.current, extTiendas), extGps, extTiendas };
+      })()
+    : null;
+
   const mapPanel = (
     <MapSection
-      rutas={modo === 'plan' ? planRutas : (results?.rutas ?? previewRutas)}
+      rutas={modo === 'plan' ? planRutas : (results?.rutas ?? dragLive?.rutas ?? previewRutas)}
       // En modo plan sumamos las paradas por dirección (coords + nombre) al catálogo base;
-      // fuera de plan mandan los extendidos de results (paradas del flujo manual).
-      gps={modo === 'plan' ? { ...gps, ...planExt.gps } : (results?.extGps || gps)}
+      // en DESPACHO sin results mandan los extendidos de dragLive (rutas asignadas en vivo);
+      // con results mandan los extendidos de results (paradas del flujo manual).
+      gps={modo === 'plan' ? { ...gps, ...planExt.gps } : (results?.extGps || dragLive?.extGps || gps)}
       cd={modo === 'plan' && planCd ? planCd : cdRef.current}
-      tiendas={(modo === 'plan' ? { ...tiendas, ...planExt.tiendas } : (results?.extTiendas || tiendas)) as Record<string, TiendaInfo>}
+      tiendas={(modo === 'plan' ? { ...tiendas, ...planExt.tiendas } : (results?.extTiendas || dragLive?.extTiendas || tiendas)) as Record<string, TiendaInfo>}
       onKmReady={handleKmReady}
       onCdUpdate={coords => { if (modo !== 'plan') cdRef.current = coords; }}
     />
