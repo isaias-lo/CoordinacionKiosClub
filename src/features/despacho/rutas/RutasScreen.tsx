@@ -1975,6 +1975,7 @@ export default function RutasScreen() {
       tiendas={(modo === 'plan' ? { ...tiendas, ...planExt.tiendas } : (results?.extTiendas || dragLive?.extTiendas || tiendas)) as Record<string, TiendaInfo>}
       onKmReady={handleKmReady}
       onCdUpdate={coords => { if (modo !== 'plan') cdRef.current = coords; }}
+      statMode={modo === 'plan' ? 'stops' : 'load'}
     />
   );
 

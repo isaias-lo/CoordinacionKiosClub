@@ -12,9 +12,12 @@ interface Props {
   tiendas: Record<string, TiendaInfo>;
   onKmReady: (kmMap: Record<number, number>, legMap: Record<number, {dist: string; dur: string; durSec?: number}[]>) => void;
   onCdUpdate: (coords: number[]) => void;
+  // 'load' (DESPACHO): la leyenda muestra "{pallets}P · {n} tiendas". 'stops' (PLANIFICADOR): muestra
+  // "{n} paradas" (el plan no tiene carga). El nombre de cada ruta sale de `r.v.p` en ambos casos.
+  statMode?: 'load' | 'stops';
 }
 
-export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpdate }: Props) {
+export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpdate, statMode = 'load' }: Props) {
   const elRef         = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<unknown>(null);
   const overlaysRef   = useRef<unknown[]>([]);
@@ -68,27 +71,33 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rutas, activeFilter]);
 
+  // Rutas realmente DIBUJADAS (con paradas), conservando el índice original para el color. Las rutas
+  // ocultas/vacías (que el Planificador pasa con ts:[] para preservar el color por índice) no se
+  // listan — así no aparece "Ruta 1 · 0 paradas" cuando en el panel tiene paradas pero está oculta.
+  const dibujadas = rutas.map((r, i) => ({ r, i })).filter(({ r }) => r.ts.length > 0);
+  const unidad = statMode === 'stops' ? 'paradas' : 'tiendas';
+
   return (
     <div className="h-full flex flex-col bg-white no-print overflow-hidden">
 
-      {/* Filtro de rutas — solo cuando hay más de una (con 0/1 no hay nada que filtrar). */}
-      {rutas.length > 1 && (
+      {/* Filtro de rutas — solo cuando hay más de una dibujada (con 0/1 no hay nada que filtrar). */}
+      {dibujadas.length > 1 && (
         <div className="px-3 py-2 border-b border-black/[0.09] flex-shrink-0 flex gap-1.5 flex-wrap">
           <button
             onClick={() => setActiveFilter('all')}
-            className={`h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] transition-all ${
+            className={`h-[28px] px-3 rounded-[7px] text-[11px] font-bold border-[1.5px] transition-all ${
               activeFilter === 'all' ? 'border-knavy bg-knavy text-white' : 'border-black/[0.12] bg-kbg text-kmuted'}`}
           >
             Todas
           </button>
-          {rutas.map((r, i) => {
+          {dibujadas.map(({ r, i }) => {
             const col = COLS[i % COLS.length];
             const active = activeFilter === i;
             return (
               <button
                 key={r.v.p}
                 onClick={() => setActiveFilter(i)}
-                className="h-[28px] px-3 rounded-[7px] text-[11px] font-bold font-mono border-[1.5px] transition-all"
+                className="h-[28px] px-3 rounded-[7px] text-[11px] font-bold border-[1.5px] transition-all"
                 style={active ? { borderColor: col, background: col, color: '#fff' } : { borderColor: col, background: '#F8FAFC', color: col }}
               >
                 {r.v.p}
@@ -98,15 +107,15 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
         </div>
       )}
 
-      {rutas.length > 0 && (
+      {dibujadas.length > 0 && (
         <div className="px-3.5 py-2 border-b border-black/[0.09] flex flex-wrap gap-[9px] flex-shrink-0">
-          {rutas.map((r, i) => {
+          {dibujadas.map(({ r, i }) => {
             const col = COLS[i % COLS.length];
             return (
-              <div key={r.v.p} className="flex items-center gap-[5px] text-[11px] font-mono">
+              <div key={r.v.p} className="flex items-center gap-[5px] text-[11px]">
                 <div className="w-[9px] h-[9px] rounded-full flex-shrink-0" style={{ background: col }} />
                 <span className="font-bold" style={{ color: col }}>{r.v.p}</span>
-                <span className="text-kmuted">{r.tp}P · {r.ts.length} tiendas</span>
+                <span className="text-kmuted">{statMode === 'load' ? `${r.tp}P · ${r.ts.length} ${unidad}` : `${r.ts.length} ${unidad}`}</span>
               </div>
             );
           })}
