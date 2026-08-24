@@ -181,6 +181,67 @@ export function kmRutaAprox(ordered: string[], gps: Record<string, number[]>, st
   return Math.round(k);
 }
 
+/* ── ETA por parada + ventana horaria ──────────────────────────────────────────
+   Con los tiempos de manejo reales (Google) + una hora de salida se calcula la hora
+   estimada de llegada (ETA) a cada parada, y se compara con la ventana horaria de la
+   tienda para avisar si se llega temprano (antes de abrir) o tarde (después de cerrar).
+   Todo puro y testeable. */
+
+/** "HH:MM" → minutos del día (0..1439). null si no parsea. */
+export function hhmmAMin(s: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? '').trim());
+  if (!m) return null;
+  const h = +m[1], mm = +m[2];
+  if (h > 23 || mm > 59) return null;
+  return h * 60 + mm;
+}
+
+/** minutos del día → "HH:MM" (envuelve a 24 h por si la jornada cruza medianoche). */
+export function minAHHMM(min: number): string {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/** Parsea una ventana "08:30-09:30" → {open, close} en minutos del día, o null si no aplica. */
+export function parseVentana(v?: string): { open: number; close: number } | null {
+  if (!v) return null;
+  const parts = v.split('-');
+  if (parts.length !== 2) return null;
+  const open = hhmmAMin(parts[0]);
+  const close = hhmmAMin(parts[1]);
+  if (open == null || close == null) return null;
+  return { open, close };
+}
+
+export type EstadoVentana = 'ok' | 'temprano' | 'tarde' | 'sin-ventana';
+
+/** Estado de una ETA (min del día) respecto a la ventana horaria de la tienda:
+ *  'temprano' = llegás antes de abrir · 'tarde' = después de cerrar · 'ok' = dentro ·
+ *  'sin-ventana' = la tienda no tiene ventana definida. */
+export function estadoVentana(etaMin: number, ventana?: string): EstadoVentana {
+  const w = parseVentana(ventana);
+  if (!w) return 'sin-ventana';
+  if (etaMin < w.open) return 'temprano';
+  if (etaMin > w.close) return 'tarde';
+  return 'ok';
+}
+
+/**
+ * ETA (minutos del día) de cada parada, acumulando desde `salidaMin` los tiempos de MANEJO
+ * (`legSec[i]` = segundos para LLEGAR a la parada i) + `servicioMin` de atención por parada (se
+ * suma tras llegar, antes de arrancar a la siguiente). Puro. `legSec` faltante/0 se trata como 0.
+ */
+export function calcularETAs(legSec: number[], salidaMin: number, servicioMin = 0): number[] {
+  const etas: number[] = [];
+  let t = salidaMin;
+  for (let i = 0; i < legSec.length; i++) {
+    t += (legSec[i] ?? 0) / 60;   // manejo hasta la parada i
+    etas.push(Math.round(t));
+    t += servicioMin;             // atención en la parada i (antes de salir a la siguiente)
+  }
+  return etas;
+}
+
 /** Formatea una duración en segundos a texto corto: "8 min" / "1 h 12 min". 0/undefined → ''. */
 export function formatDuracion(segundos?: number): string {
   if (!segundos || segundos <= 0) return '';

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -10,6 +10,7 @@ import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
   construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
+  hhmmAMin, minAHHMM, calcularETAs, estadoVentana, type EstadoVentana,
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { cargarGMaps } from '../utils/maps';
@@ -88,6 +89,7 @@ interface PlanPersist {
   startMode: StartMode; startTienda: string;
   customCoord: { lat: number; lng: number } | null; customAddr: string;
   endMode: EndMode; endCoord: { lat: number; lng: number } | null; endAddr: string;
+  horaSalida: string; servicioMin: number;
   routes: PlanRoute[]; visibleIds: string[]; editId: string;
   // Formato viejo (una sola ruta) — se migra a `routes` al cargar.
   selected?: string[]; orderMode?: 'cercania' | 'manual'; customStops?: ParadaDireccion[];
@@ -96,6 +98,7 @@ function loadPlan(): PlanPersist {
   const def: PlanPersist = {
     startMode: 'cd', startTienda: '', customCoord: null, customAddr: '',
     endMode: 'none', endCoord: null, endAddr: '',
+    horaSalida: '08:00', servicioMin: 10,
     routes: [{ id: 'r1', nombre: 'Ruta 1', selected: [], orderMode: 'cercania', customStops: [] }],
     visibleIds: ['r1'], editId: 'r1',
   };
@@ -115,6 +118,7 @@ function loadPlan(): PlanPersist {
     startMode: raw.startMode ?? 'cd', startTienda: raw.startTienda ?? '',
     customCoord: raw.customCoord ?? null, customAddr: raw.customAddr ?? '',
     endMode: raw.endMode ?? 'none', endCoord: raw.endCoord ?? null, endAddr: raw.endAddr ?? '',
+    horaSalida: raw.horaSalida ?? '08:00', servicioMin: typeof raw.servicioMin === 'number' ? raw.servicioMin : 10,
     routes, visibleIds, editId,
   };
 }
@@ -130,6 +134,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [endMode,     setEndMode]     = useState<EndMode>(() => loadPlan().endMode);
   const [endCoord,    setEndCoord]    = useState<{ lat: number; lng: number } | null>(() => loadPlan().endCoord);
   const [endAddr,     setEndAddr]     = useState(() => loadPlan().endAddr);
+  // ETA: hora de salida + minutos de atención por parada (para estimar llegada a cada parada).
+  const [horaSalida,  setHoraSalida]  = useState(() => loadPlan().horaSalida);
+  const [servicioMin, setServicioMin] = useState(() => loadPlan().servicioMin);
   // Rutas + cuáles se ven en el mapa (multi-select) + cuál se edita.
   const [routes,      setRoutes]      = useState<PlanRoute[]>(() => loadPlan().routes);
   const [visibleIds,  setVisibleIds]  = useState<string[]>(() => loadPlan().visibleIds);
@@ -159,9 +166,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // Persistir el plan → se conserva al cambiar de tab (desmontaje) y al recargar.
   useEffect(() => {
     try {
-      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, routes, visibleIds, editId }));
+      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId }));
     } catch { /* noop */ }
-  }, [startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, routes, visibleIds, editId]);
+  }, [startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId]);
 
   // ── Ruta activa (la que se edita) + setters ligados a ella ────────────────────
   const activeIdx   = Math.max(0, routes.findIndex(r => r.id === editId));
@@ -289,6 +296,15 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const legsOk    = !!legData && legData.length === orderedCods.length + (endArr ? 1 : 0) && orderedCods.length > 0;
   const totalMin  = legsOk ? formatDuracion(legData!.reduce((s, l) => s + (l.durSec ?? 0), 0)) : '';
   const kmLabel   = legsOk && realKm != null && realKm > 0 ? `${realKm} km` : `~${kmAprox} km`;
+
+  // [Mejora] ETA por parada de la ruta ACTIVA: acumula los tiempos reales de manejo (Google) desde
+  // la hora de salida + minutos de atención por parada. Solo con tiempos reales del mapa (legsOk).
+  const salidaMin = hhmmAMin(horaSalida);
+  const etasActive = useMemo<number[] | null>(() => {
+    if (!legsOk || salidaMin == null) return null;
+    const legSec = legData!.slice(0, orderedCods.length).map(l => l.durSec ?? 0);
+    return calcularETAs(legSec, salidaMin, servicioMin);
+  }, [legsOk, legData, orderedCods.length, salidaMin, servicioMin]);
 
   // Levantar TODAS las rutas al padre (RutasScreen → MapSection). Ref fuera de deps para no
   // reventar el debounce del mapa (el callback llega inline en cada render de RutasScreen).
@@ -794,9 +810,26 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             <button onClick={() => setOrderMode('manual')}   className={`${seg} ${orderMode === 'manual' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Manual</button>
           </div>
         )}
+        {/* Hora de salida + atención por parada → ETA (hora estimada de llegada) por parada */}
+        {selected.length > 0 && (
+          <div className="flex items-center gap-1.5 text-[11px] text-kmuted flex-wrap">
+            <Clock size={12} className="text-knavy flex-shrink-0" aria-hidden="true" />
+            <span className="font-semibold">Salida</span>
+            <input type="time" value={horaSalida} onChange={e => setHoraSalida(e.target.value)}
+              className="border border-black/[0.12] rounded-[7px] px-2 py-1 text-[12px] bg-white text-ktext outline-none" />
+            <span className="font-semibold ml-1">Atención</span>
+            <input type="number" min={0} max={120} value={servicioMin}
+              onChange={e => setServicioMin(Math.max(0, Math.min(120, parseInt(e.target.value) || 0)))}
+              className="w-[52px] border border-black/[0.12] rounded-[7px] px-2 py-1 text-[12px] bg-white text-ktext outline-none tabular-nums" />
+            <span>min/parada</span>
+            {!legsOk && <span className="text-kmuted/70 w-full">La ETA aparece cuando el mapa calcula los tiempos (mostrá esta ruta en el mapa).</span>}
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           {orderedCods.map((cod, i) => {
             const esDir = esParadaDireccion(cod);
+            const eta = etasActive?.[i];
+            const estV: EstadoVentana | null = eta == null ? null : (esDir ? 'sin-ventana' : estadoVentana(eta, tiendas[cod]?.v));
             return (
             <div key={cod} draggable
               onDragStart={() => setDragIdx(i)}
@@ -822,6 +855,21 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                   </>
                 )}
               </span>
+              {eta != null && (
+                <span
+                  title={estV === 'tarde' ? `Llegás ~${minAHHMM(eta)} — DESPUÉS de la ventana (${tiendas[cod]?.v})`
+                    : estV === 'temprano' ? `Llegás ~${minAHHMM(eta)} — ANTES de que abra (${tiendas[cod]?.v})`
+                    : estV === 'ok' ? `Llegás ~${minAHHMM(eta)} — dentro de la ventana (${tiendas[cod]?.v})`
+                    : `Hora estimada de llegada ~${minAHHMM(eta)}`}
+                  className={`inline-flex items-center gap-0.5 text-[10px] font-bold flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 ${
+                    estV === 'tarde' ? 'text-[#D42B2B] bg-[#D42B2B14]'
+                    : estV === 'temprano' ? 'text-[#B4690E] bg-[#B4690E14]'
+                    : estV === 'ok' ? 'text-[#1A7D3A] bg-[#1A7D3A14]'
+                    : 'text-kmuted bg-black/[0.04]'}`}>
+                  {estV === 'tarde' ? <AlertTriangle size={10} aria-hidden="true" /> : <Clock size={10} aria-hidden="true" />}
+                  {minAHHMM(eta)}
+                </span>
+              )}
               {legsOk && legData![i]?.dur && (
                 <span title="Tiempo de manejo desde la parada anterior (Google)"
                   className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-kmuted flex-shrink-0 whitespace-nowrap">

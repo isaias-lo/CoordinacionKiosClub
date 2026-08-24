@@ -3,6 +3,7 @@ import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
   construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
+  hhmmAMin, minAHHMM, parseVentana, estadoVentana, calcularETAs,
   type ParadaDireccion, type LineaParada,
 } from '../planificador';
 
@@ -274,6 +275,60 @@ describe('repartirEnNRutas', () => {
     const { rutas } = repartirEnNRutas([...este], 0, gEO, start);
     expect(rutas).toHaveLength(1);
     expect(set(rutas[0])).toEqual(set(este));
+  });
+});
+
+describe('ETA + ventana horaria', () => {
+  it('hhmmAMin parsea HH:MM a minutos del día y rechaza inválidos', () => {
+    expect(hhmmAMin('08:30')).toBe(510);
+    expect(hhmmAMin('00:00')).toBe(0);
+    expect(hhmmAMin('23:59')).toBe(1439);
+    expect(hhmmAMin('9:05')).toBe(545);
+    expect(hhmmAMin('24:00')).toBeNull();
+    expect(hhmmAMin('08:70')).toBeNull();
+    expect(hhmmAMin('')).toBeNull();
+    expect(hhmmAMin('abc')).toBeNull();
+  });
+
+  it('minAHHMM formatea y envuelve a 24h', () => {
+    expect(minAHHMM(510)).toBe('08:30');
+    expect(minAHHMM(0)).toBe('00:00');
+    expect(minAHHMM(1439)).toBe('23:59');
+    expect(minAHHMM(1440 + 90)).toBe('01:30'); // envuelve
+  });
+
+  it('parseVentana parsea "08:30-09:30" y descarta lo inválido', () => {
+    expect(parseVentana('08:30-09:30')).toEqual({ open: 510, close: 570 });
+    expect(parseVentana('09:00-12:00')).toEqual({ open: 540, close: 720 });
+    expect(parseVentana('')).toBeNull();
+    expect(parseVentana(undefined)).toBeNull();
+    expect(parseVentana('08:30')).toBeNull();     // falta el cierre
+    expect(parseVentana('xx-yy')).toBeNull();
+  });
+
+  it('estadoVentana clasifica temprano / ok / tarde / sin-ventana', () => {
+    expect(estadoVentana(500, '08:30-09:30')).toBe('temprano'); // 08:20 < 08:30
+    expect(estadoVentana(540, '08:30-09:30')).toBe('ok');       // 09:00 dentro
+    expect(estadoVentana(510, '08:30-09:30')).toBe('ok');       // 08:30 justo al abrir
+    expect(estadoVentana(570, '08:30-09:30')).toBe('ok');       // 09:30 justo al cerrar
+    expect(estadoVentana(600, '08:30-09:30')).toBe('tarde');    // 10:00 > 09:30
+    expect(estadoVentana(600, '')).toBe('sin-ventana');
+  });
+
+  it('calcularETAs acumula manejo + servicio desde la salida', () => {
+    // salida 08:00 (480). Manejo: 10 min, 20 min, 5 min. Servicio 0.
+    const legSec = [600, 1200, 300];
+    expect(calcularETAs(legSec, 480, 0)).toEqual([490, 510, 515]); // 08:10, 08:30, 08:35
+  });
+
+  it('calcularETAs suma el servicio por parada (antes de la siguiente)', () => {
+    // salida 08:00, manejo 10 y 10 min, servicio 15 min/parada.
+    // parada 1: 08:00 +10 = 08:10 (490). luego +15 servicio. parada 2: 08:25 +10 = 08:35 (515).
+    expect(calcularETAs([600, 600], 480, 15)).toEqual([490, 515]);
+  });
+
+  it('calcularETAs trata legs faltantes como 0', () => {
+    expect(calcularETAs([600, undefined as unknown as number, 600], 480, 0)).toEqual([490, 490, 500]);
   });
 });
 
