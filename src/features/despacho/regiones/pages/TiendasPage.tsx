@@ -292,10 +292,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number } | null>(null);
   const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
 
-  /* [Sumar en masa] Selección múltiple de cards Bulto/Chocolate guardadas + pallet destino
-     elegido en la barra. Se limpia al cambiar de tienda o al registrar. */
+  /* [Sumar en masa] Selección múltiple de cards Bulto/Chocolate guardadas. El pallet destino se
+     elige con UN clic en su botón en la barra. Se limpia al cambiar de tienda o al registrar. */
   const [mergeSel, setMergeSel] = useState<Set<string>>(new Set());
-  const [palletTargetSel, setPalletTargetSel] = useState<string>('');
   const toggleMergeSel = (rowId: string) => setMergeSel(prev => {
     const next = new Set(prev);
     if (next.has(rowId)) next.delete(rowId); else next.add(rowId);
@@ -305,7 +304,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
-  useEffect(() => { setMergeSel(new Set()); setPalletTargetSel(''); }, [selectedTienda, registrado]);
+  useEffect(() => { setMergeSel(new Set()); }, [selectedTienda, registrado]);
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1773,42 +1772,43 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             );
           })()}
           {(() => {
-            // [Sumar en masa] Barra visible solo si hay ≥1 card Bulto/CH guardada y ≥1 Pallet
-            // guardado destino. "Todos" togglea la selección completa; el select recuerda el
-            // pallet elegido (o preselecciona el único disponible).
+            // [Sumar en masa · botones] La barra aparece apenas hay ≥1 Bulto/CH guardado (aunque NO
+            // haya pallet todavía). El destino se elige con UN clic en el botón del pallet (P1/P2…);
+            // antes era un <select> + botón "Sumar" aparte. "+ Nuevo" abre el diálogo de "+ Pallet"
+            // de siempre: la selección se mantiene y al crear el pallet aparece su botón para sumar.
             const sumableRows = formRows.filter(r => r.saved && r.savedItem && (r.pkg === 'box' || r.pkg === 'chocolate'));
-            const palletRows  = formRows.filter(r => r.saved && r.savedItem && r.pkg === 'pallet');
-            if (sumableRows.length === 0 || palletRows.length === 0) return null;
+            if (sumableRows.length === 0) return null;
+            const palletRows = formRows.filter(r => r.saved && r.savedItem && r.pkg === 'pallet');
             const getPalletLabel = (r: FormRow) => {
               const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === 'pallet').length;
               return `P${idx}`;
             };
             const selectedCount = sumableRows.filter(r => mergeSel.has(r.id)).length;
             const allSelected = selectedCount > 0 && selectedCount === sumableRows.length;
-            const effectiveTarget = (palletTargetSel && palletRows.some(r => r.id === palletTargetSel))
-              ? palletTargetSel
-              : palletRows[0].id;
             return (
               <div className="sticky bottom-0 z-10 -mx-2 mt-1 mb-2 px-3 py-2.5 flex items-center gap-2 flex-wrap shadow-lg"
                 style={{ background: '#1B2A6B' }}>
                 <button onClick={() => setMergeSel(allSelected ? new Set() : new Set(sumableRows.map(r => r.id)))}
-                  className="font-barlow-condensed px-2.5 py-1.5 rounded text-[12px] font-bold cursor-pointer border transition-all"
-                  style={{ borderColor: 'rgba(255,255,255,0.35)', color: 'white', background: 'rgba(255,255,255,0.10)' }}>
+                  className={`font-barlow-condensed px-2.5 py-1.5 rounded text-[12px] font-bold cursor-pointer border transition-all ${
+                    allSelected ? 'bg-white text-navy border-white' : 'text-white border-white/35 bg-white/10'}`}>
                   Todos
                 </button>
-                <span className="font-barlow-condensed text-[12px] text-white/85 font-semibold flex-1 min-w-[110px]">
+                <span className="font-barlow-condensed text-[12px] text-white/85 font-semibold flex-1 min-w-[96px]">
                   {selectedCount > 0 ? `${selectedCount} seleccionados` : 'Marcá varios o Todos'}
                 </span>
-                <select value={effectiveTarget} onChange={e => setPalletTargetSel(e.target.value)}
-                  className="font-barlow-condensed rounded px-2 py-1.5 text-[12px] font-bold text-navy bg-white border-none outline-none cursor-pointer">
-                  {palletRows.map(r => <option key={r.id} value={r.id}>{getPalletLabel(r)}</option>)}
-                </select>
-                <button
-                  disabled={selectedCount === 0}
-                  onClick={() => sumarVariosAPallet([...mergeSel], effectiveTarget)}
-                  className="font-barlow-condensed px-3 py-1.5 rounded text-[12px] font-bold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ background: '#2563EB', color: 'white' }}>
-                  Sumar {selectedCount}
+                <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wide text-white/55">Sumar a</span>
+                {palletRows.map(r => (
+                  <button key={r.id} disabled={selectedCount === 0}
+                    onClick={() => sumarVariosAPallet([...mergeSel], r.id)}
+                    title={`Sumar los seleccionados a ${getPalletLabel(r)}`}
+                    className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-white/40 bg-white/10 text-white hover:bg-[#2f7bff] hover:border-[#2f7bff] disabled:opacity-40 disabled:hover:bg-white/10 disabled:hover:border-white/40 disabled:cursor-not-allowed">
+                    {getPalletLabel(r)}
+                  </button>
+                ))}
+                <button onClick={() => setDialogPkg('pallet')}
+                  title="Crear un pallet nuevo para sumar los seleccionados"
+                  className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-dashed border-white/45 text-[#CDE0FF] hover:bg-white/10">
+                  + Nuevo
                 </button>
               </div>
             );
