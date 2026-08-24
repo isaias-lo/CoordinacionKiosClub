@@ -142,7 +142,9 @@ describe('construirTextoRuta', () => {
       'Ruta 1 — 3 paradas · ~28 km\n' +
       '\n' +
       '1. SMB: Av. Simón Bolívar 4800, Ñuñoa / Strip Center / 09:00-12:00\n' +
+      '\n' +
       '2. MAI: Av. Américo Vespucio 399, Maipú / Mall / 08:30-09:30\n' +
+      '\n' +
       '3. Dirección: Av. Vitacura 2909, Las Condes\n' +
       '\n' +
       'Mapa: https://maps.example/x',
@@ -174,7 +176,7 @@ describe('construirTextoRuta', () => {
       mapaUrl: 'https://maps.example/x',
     });
     expect(txt).toBe(
-      'Ruta 1 — 1 parada\n\n1. AAA: Calle 1\n↩ Llegada: CD\n\nMapa: https://maps.example/x',
+      'Ruta 1 — 1 parada\n\n1. AAA: Calle 1\n\n↩ Llegada: CD\n\nMapa: https://maps.example/x',
     );
   });
 });

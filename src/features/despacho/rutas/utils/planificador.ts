@@ -288,7 +288,9 @@ export function construirTextoRuta(opts: {
     return `${i + 1}. ${l.cod}${detalle ? `: ${detalle}` : (l.nombre ? `: ${l.nombre}` : '')}`;
   });
   if (regreso) cuerpo.push(`↩ Llegada: ${regreso.trim()}`);
-  const partes = [cab, ...(cuerpo.length ? ['', ...cuerpo] : [])];
+  // Cada parada separada por una línea en blanco (más legible al pegar en WhatsApp).
+  const partes = [cab];
+  if (cuerpo.length) partes.push('', cuerpo.join('\n\n'));
   if (mapaUrl) partes.push('', `Mapa: ${mapaUrl}`);
   return partes.join('\n');
 }
