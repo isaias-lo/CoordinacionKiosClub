@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -151,6 +151,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [calAviso,    setCalAviso]    = useState('');
   // Places no disponible (key sin Places API / sin billing) → se avisa y se usa el fallback (Buscar/Enter).
   const [placesOff,   setPlacesOff]   = useState(false);
+  const [calOpen,     setCalOpen]     = useState(true); // panel "Armar desde el calendario" colapsable
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -216,6 +217,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       setVisibleIds(nuevas.map(r => r.id));
       setEditId(nuevas[0].id);
       setCalStatus('idle');
+      setCalOpen(false); // colapsa el panel tras armar → deja ver las rutas/paradas
       const nConParadas = rutas.filter(r => r.length).length;
       const nTiendas = rutas.reduce((s, r) => s + r.length, 0);
       let aviso = `${nConParadas} ruta${nConParadas === 1 ? '' : 's'} · ${nTiendas} tienda${nTiendas === 1 ? '' : 's'} (${fuenteLbl}, ${DIA_LABEL[calDia]}).`;
@@ -234,7 +236,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     const ordered = r.orderMode === 'cercania'
       ? nn(virtualStops(r.selected), gpsR, [startCoord.lat, startCoord.lng]).map(s => s.c)
       : r.selected;
-    return { id: r.id, ordered, patch, gpsR };
+    return { id: r.id, nombre: r.nombre, ordered, patch, gpsR };
   }), [routes, gps, startCoord]);
 
   const activeComputed = routesComputed[activeIdx] ?? routesComputed[0];
@@ -259,6 +261,27 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     return { paradas, km, min };
   }), [routesComputed, kmByRoute, legDataByRoute, startCoord, endArr]);
 
+  // [Mejora] Totales + balance de las rutas VISIBLES (con paradas) — para dimensionar la jornada y
+  // ver de un vistazo si quedaron desparejas. km real de Google si está, si no aprox (haversine).
+  const totales = useMemo(() => {
+    let paradas = 0, km = 0, sec = 0, tiempoCompleto = true;
+    const porRuta = routesComputed
+      .map((rc, i) => ({ rc, i }))
+      .filter(({ rc }) => visibleIds.includes(rc.id) && rc.ordered.length > 0)
+      .map(({ rc, i }) => {
+        const p = rc.ordered.length;
+        const rk = kmByRoute?.[i];
+        const kmNum = (rk != null && rk > 0) ? rk : kmRutaAprox(rc.ordered, rc.gpsR, [startCoord.lat, startCoord.lng], endArr);
+        paradas += p; km += kmNum;
+        const legs = legDataByRoute?.[i];
+        const expected = p + (endArr ? 1 : 0);
+        if (legs && legs.length === expected) sec += legs.reduce((s, l) => s + (l.durSec ?? 0), 0);
+        else tiempoCompleto = false;
+        return { id: rc.id, nombre: rc.nombre, color: colorRuta(i), paradas: p, kmNum: Math.round(kmNum) };
+      });
+    return { nRutas: porRuta.length, paradas, km: Math.round(km), min: tiempoCompleto && sec > 0 ? formatDuracion(sec) : '', porRuta };
+  }, [routesComputed, visibleIds, kmByRoute, legDataByRoute, startCoord, endArr]);
+
   // Tiempos reales por tramo (Google) de la ruta ACTIVA. `legData[i]` = tramo que llega a la parada
   // i. Solo se usan si coinciden con las paradas actuales (si no, el mapa está recalculando).
   const legData   = legDataByRoute?.[activeIdx];
@@ -275,10 +298,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     // Ocultas → ts vacío (no dibujan) pero conservan su índice ⇒ el color por ruta no cambia. Si hay
     // punto de llegada, se agrega como último destino de cada ruta con paradas (dibuja el tramo de vuelta).
     const rutas: Ruta[] = routesComputed.map(rc => {
+      const v = { ...PLAN_VEHICLE, p: rc.nombre }; // nombre de la ruta como "patente" → el mapa lo muestra
       const vis = visibleIds.includes(rc.id);
-      if (!vis || rc.ordered.length === 0) return { v: PLAN_VEHICLE, ts: [], tp: 0, tb: 0 };
+      if (!vis || rc.ordered.length === 0) return { v, ts: [], tp: 0, tb: 0 };
       const cods = endPoint ? [...rc.ordered, END_CODE] : rc.ordered;
-      return { v: PLAN_VEHICLE, ts: virtualStops(cods), tp: 0, tb: 0 };
+      return { v, ts: virtualStops(cods), tp: 0, tb: 0 };
     });
     const extGps: Record<string, number[]> = {};
     const extTiendas: Record<string, TiendaInfo> = {};
@@ -464,9 +488,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
 
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">
-      <div>
-        <div className="flex items-center gap-2 text-ktext font-bold text-[15px]"><MapPin size={16} className="text-knavy" /> Planificador de rutas</div>
-        <div className="text-[12px] text-kmuted mt-0.5">Armá una o varias rutas (cada una con su color) y compará en el mapa; se ordenan por cercanía.</div>
+      <div className="flex items-center gap-2 text-ktext font-bold text-[15px]">
+        <MapPin size={16} className="text-knavy" /> Planificador de rutas
+        <span className="font-medium text-[11px] text-kmuted/80 hidden sm:inline">· armá y compará rutas en el mapa</span>
       </div>
 
       {placesOff && (
@@ -476,11 +500,19 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>
       )}
 
-      {/* Armar rutas desde el calendario (seco/congelados · día · N rutas) */}
+      {/* Armar rutas desde el calendario (seco/congelados · día · N rutas) — colapsable */}
       <div className="flex flex-col gap-2.5 rounded-[12px] border border-knavy/20 bg-knavy/[0.03] p-3">
-        <div className="flex items-center gap-2 text-[12px] font-bold text-ktext">
+        <button onClick={() => setCalOpen(o => !o)}
+          className="flex items-center gap-2 text-[12px] font-bold text-ktext cursor-pointer w-full text-left">
+          {calOpen ? <ChevronDown size={15} className="text-knavy" /> : <ChevronRight size={15} className="text-knavy" />}
           <CalendarDays size={14} className="text-knavy" /> Armar desde el calendario
-        </div>
+          {!calOpen && (
+            <span className="ml-auto font-semibold text-[11px] text-kmuted normal-case">
+              {calFuente === 'seco' ? 'Seco' : 'Congelados'} · {DIA_LABEL[calDia]} · {calN} ruta{calN === 1 ? '' : 's'}
+            </span>
+          )}
+        </button>
+        {calOpen && (<>
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           {/* Calendario */}
           <div className="flex flex-col gap-1 min-w-0">
@@ -525,6 +557,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         {calAviso
           ? <div className={`text-[11px] ${calStatus === 'error' ? 'text-[#D42B2B] font-semibold' : 'text-kmuted'}`}>{calAviso}</div>
           : <div className="text-[10px] text-kmuted/80">Trae las tiendas de ese día y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
+        </>)}
       </div>
 
       {/* Rutas — tarjetas con resumen (paradas · km · tiempo); tocá para ver/comparar en el mapa */}
@@ -579,12 +612,38 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             ))}
           </div>
         )}
+
+        {/* Totales + balance de las rutas visibles (para comparar la carga entre rutas) */}
+        {totales.nRutas > 1 && (
+          <div className="rounded-[10px] border border-black/[0.08] bg-kbg/60 p-2.5 flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-bold uppercase tracking-wider text-kmuted">Total visible</span>
+              <span className="font-semibold text-ktext tabular-nums">{totales.nRutas} rutas · {totales.paradas} paradas · ~{totales.km} km{totales.min ? ` · ${totales.min}` : ''}</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              {totales.porRuta.map(r => {
+                const max = Math.max(...totales.porRuta.map(x => x.paradas), 1);
+                return (
+                  <div key={r.id} className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold w-[52px] flex-shrink-0 truncate" style={{ color: r.color }}>{r.nombre}</span>
+                    <div className="flex-1 h-[8px] rounded-full bg-black/[0.06] overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${(r.paradas / max) * 100}%`, background: r.color }} />
+                    </div>
+                    <span className="text-[10px] text-kmuted w-[96px] text-right flex-shrink-0 tabular-nums">{r.paradas} par · ~{r.kmNum} km</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 2 columnas en desktop: (izq) partida + agregar tiendas · (der) paradas/ruta */}
       <div className="grid gap-4 items-start lg:grid-cols-2">
         <div className="flex flex-col gap-4 min-w-0">
 
+      {/* Partida + llegada lado a lado en desktop (ahorra alto) */}
+      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3 items-start">
       {/* Punto de partida (compartido por todas las rutas) */}
       <div className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de partida <span className="normal-case font-semibold text-kmuted/70">· común a todas</span></div>
@@ -646,6 +705,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           </div>
         )}
       </div>
+      </div>{/* fin partida + llegada */}
 
       {/* Buscar tiendas + agregar dirección (misma fila, arriba de los filtros) */}
       <div className="flex flex-col gap-2">
