@@ -37,6 +37,30 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
 
   useEffect(() => { cdRef.current = cd; }, [cd]);
 
+  // [Fix divisor] Cuando el contenedor del mapa cambia de tamaño (al arrastrar el divisor
+  // contenido↔mapa), Google Maps no re-dibuja las tiles en el área nueva y deja una franja en
+  // blanco. Un ResizeObserver le avisa al mapa que se redimensionó y re-centra para que se rellene.
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const map = mapRef.current as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const G = (window as any).google?.maps;
+        if (!map || !G?.event) return;
+        const center = map.getCenter?.();
+        G.event.trigger(map, 'resize');
+        if (center) map.setCenter(center); // el trigger recorta el centro → lo restauramos
+      });
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); cancelAnimationFrame(raf); };
+  }, []);
+
   // Un filtro de una ruta puntual que ya no existe (recalculó, cambió el camión
   // previsualizado) no tiene sentido — vuelve a "Todas las rutas".
   useEffect(() => { setActiveFilter('all'); }, [rutas]);
