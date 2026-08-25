@@ -295,6 +295,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* [Sumar en masa] Selección múltiple de cards Bulto/Chocolate guardadas. El pallet destino se
      elige con UN clic en su botón en la barra. Se limpia al cambiar de tienda o al registrar. */
   const [mergeSel, setMergeSel] = useState<Set<string>>(new Set());
+  // [Duplicar bulto] Card cuyo control de "duplicar ×N" está abierto + la cantidad elegida.
+  const [dupRow, setDupRow] = useState<string | null>(null);
+  const [dupN, setDupN]     = useState(2);
   const toggleMergeSel = (rowId: string) => setMergeSel(prev => {
     const next = new Set(prev);
     if (next.has(rowId)) next.delete(rowId); else next.add(rowId);
@@ -304,7 +307,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
-  useEffect(() => { setMergeSel(new Set()); }, [selectedTienda, registrado]);
+  useEffect(() => { setMergeSel(new Set()); setDupRow(null); }, [selectedTienda, registrado]);
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -908,6 +911,44 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     } catch { /* fallback: el row queda sin slot */ }
   };
 
+  // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
+  // agregadas al instante (mismo patrón que auto-agregar un chocolate). Solo para bultos (pkg 'box').
+  const duplicarBulto = async (row: FormRow, cantidad: number) => {
+    const src = row.savedItem;
+    if (!src || !selectedTienda) return;
+    const cod  = TIENDAS[selectedTienda]?.cod ?? '';
+    const date = new Date().toISOString().slice(0, 10);
+    const baseCount = (dispatchData[selectedTienda] || []).filter(i => i.pkg === 'box').length;
+    for (let k = 0; k < cantidad; k++) {
+      let slot: PickingSlot | undefined;
+      if (cod) try {
+        const res = await fetch('/api/picking-pallets/create-bodega', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, store_cod: cod, tipo: 'B', contenido: 'hogar' }),
+        });
+        slot = (await res.json() as { data?: PickingSlot }).data;
+      } catch { /* sin slot: queda como bulto sin ID */ }
+      if (slot) { const s = slot; setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s] })); }
+      const stamp = Date.now();
+      const item: DispatchItem = {
+        id: crypto.randomUUID(), orden: `bulto${baseCount + 1 + k}`, tipo: src.tipo, pkg: 'box',
+        peso: src.peso, alto: src.alto, ancho: src.ancho, largo: src.largo,
+        guia: '', valor: 0, pickingSlotId: slot?.id,
+      };
+      dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
+      setFormRows(prev => [...prev, {
+        id: `saved-dup-${stamp}-${k}`, pkg: 'box', tipo: src.tipo,
+        peso: String(src.peso), alto: String(src.alto), ancho: String(src.ancho), largo: String(src.largo),
+        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
+      }]);
+      if (slot?.id) {
+        supabase.from('picking_pallets').update({ peso_kg: src.peso, alto: src.alto, ancho: src.ancho, largo: src.largo })
+          .eq('id', slot.id).then(({ error }) => { if (error) console.error('[duplicarBulto]', error.message); });
+      }
+    }
+    showToast(`✓ ${cantidad} bulto${cantidad === 1 ? '' : 's'} duplicado${cantidad === 1 ? '' : 's'}`, '#16A34A');
+  };
+
   // Mapea el tipo del slot (P/B/C/CH) al TipoPaquete del formulario
   const SLOT_TIPO_TO_PKG: Record<string, TipoPaquete> = { P: 'pallet', B: 'box', C: 'contenedor', CH: 'chocolate' };
   // Estado del diálogo "Nuevo / Preexistente"
@@ -1433,6 +1474,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         </span>
                       </div>
                       <div className="flex gap-0.5">
+                        {row.pkg === 'box' && (
+                          <button onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }} title="Duplicar bulto (mismo peso y medidas)"
+                            className={`text-[11px] cursor-pointer border-none bg-transparent px-1 py-0.5 rounded ${dupRow === row.id ? 'text-warn' : 'text-text-3 hover:text-warn'}`}>⧉</button>
+                        )}
                         <button onClick={() => editSavedRow(row.id)} title="Editar"
                           className="text-[11px] text-text-3 hover:text-info cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✎</button>
                         <button onClick={() => deleteSavedRow(row.id)} title="Eliminar"
@@ -1467,6 +1512,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
                       <span className="text-[10px] text-success font-bold">Agregado</span>
                     </div>
+                    {dupRow === row.id && row.pkg === 'box' && (
+                      <div className="mt-1.5 pt-1.5 border-t border-black/[0.08] flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-warn">Duplicar</span>
+                        <div className="flex items-center border border-black/[0.15] rounded-md overflow-hidden bg-white">
+                          <button onClick={() => setDupN(n => Math.max(1, n - 1))} className="w-6 h-7 text-navy font-bold text-[15px] leading-none">−</button>
+                          <span className="w-7 text-center font-bold text-[14px] tabular-nums">{dupN}</span>
+                          <button onClick={() => setDupN(n => Math.min(20, n + 1))} className="w-6 h-7 text-navy font-bold text-[15px] leading-none">+</button>
+                        </div>
+                        <button onClick={() => { const n = dupN; setDupRow(null); void duplicarBulto(row, n); }}
+                          className="h-7 px-2.5 rounded-md bg-warn text-white text-[11px] font-bold flex items-center gap-1">⧉ Duplicar {dupN}</button>
+                      </div>
+                    )}
                     {/* P1: Sumar a Pallet directo en la card guardada (box/chocolate) sin abrir ✎ */}
                     {(row.pkg === 'box' || row.pkg === 'chocolate') && (() => {
                       const palletTargets = formRows.filter(r => r.id !== row.id && r.pkg === 'pallet');
