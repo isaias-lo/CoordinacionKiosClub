@@ -931,24 +931,26 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
         >✓</button>
       )}
-      {/* [Propuesta A] El código NUNCA se achica (es la identidad de la tienda). Si falta lugar,
-          cede el badge de tipo (min-w-0/truncate), no el código. */}
+      {/* [Propuesta A + fix overflow] Prioridades para que NADA se salga del card cuando queda
+          angosto: el CÓDIGO nunca se achica (identidad de la tienda) y la × siempre queda visible;
+          la CARGA es la que cede (flex-1 + truncate) y absorbe el espacio; el badge de tipo queda
+          fijo pero chico. Antes código y carga eran ambos flex-shrink-0 y se desbordaban afuera. */}
       <span className="font-mono font-bold text-[13px] flex-shrink-0 whitespace-nowrap">{formatCod(store.c)}</span>
       {tp && (
-        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none min-w-0 truncate"
+        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
           style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40` }}
           title={tp.label}>
           {tipoLabel}
         </span>
       )}
-      <span className="text-[11px] text-knavy/60 font-semibold flex-shrink-0 whitespace-nowrap ml-auto">
+      <span className="text-[11px] text-knavy/60 font-semibold flex-1 min-w-0 truncate text-right">
         {store.p}p{(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 ? `·${store.b + ((store as { ch?: number }).ch ?? 0)}b` : ''}
       </span>
       {onRemove && (
         <button
           onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
           onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          className="text-[13px] text-knavy/40 hover:text-knavy font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center">×</button>
+          className="text-[13px] text-knavy/40 hover:text-knavy font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center flex-shrink-0">×</button>
       )}
     </div>
   );
