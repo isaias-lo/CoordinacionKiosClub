@@ -15,9 +15,13 @@ interface Props {
   // 'load' (DESPACHO): la leyenda muestra "{pallets}P · {n} tiendas". 'stops' (PLANIFICADOR): muestra
   // "{n} paradas" (el plan no tiene carga). El nombre de cada ruta sale de `r.v.p` en ambos casos.
   statMode?: 'load' | 'stops';
+  // [D] Filtro CONTROLADO por patente: si se pasa `onSelectPatente`, el filtro del mapa lo maneja el
+  // padre (la patente = `v.p`). Así tocar la tarjeta del camión y el chip del mapa quedan sincronizados.
+  selectedPatente?: string | null;
+  onSelectPatente?: (patente: string | null) => void;
 }
 
-export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpdate, statMode = 'load' }: Props) {
+export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpdate, statMode = 'load', selectedPatente, onSelectPatente }: Props) {
   const elRef         = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<unknown>(null);
   const overlaysRef   = useRef<unknown[]>([]);
@@ -36,6 +40,16 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
   // Un filtro de una ruta puntual que ya no existe (recalculó, cambió el camión
   // previsualizado) no tiene sentido — vuelve a "Todas las rutas".
   useEffect(() => { setActiveFilter('all'); }, [rutas]);
+
+  // [D] Filtro EFECTIVO: si es controlado (onSelectPatente), deriva de la patente seleccionada por el
+  // padre (tarjeta del camión); si no, usa el estado interno de los chips. Un solo origen de verdad.
+  const controlado = onSelectPatente != null;
+  const selIdx = selectedPatente ? rutas.findIndex(r => r.v.p === selectedPatente) : -1;
+  const activeIdx: number | 'all' = controlado ? (selIdx >= 0 ? selIdx : 'all') : activeFilter;
+  const setFiltro = (idx: number | 'all') => {
+    if (controlado) onSelectPatente!(idx === 'all' ? null : (rutas[idx as number]?.v.p ?? null));
+    else setActiveFilter(idx);
+  };
 
   function dibujar(rutasFiltradas: Ruta[]) {
     if (!elRef.current) return;
@@ -61,7 +75,7 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
   const lastDrawnRef = useRef<string>('');
   useEffect(() => {
     cargarGMaps();
-    const filtradas = activeFilter === 'all' ? rutas : rutas.filter((_, i) => i === activeFilter);
+    const filtradas = activeIdx === 'all' ? rutas : rutas.filter((_, i) => i === activeIdx);
     const sig = JSON.stringify({ r: filtradas.map(rt => [rt.v.p, rt.ts.map(t => t.c)]), cd: cdRef.current });
     if (sig === lastDrawnRef.current) return; // idéntico a lo ya dibujado → no re-llamar a Directions
     // 400ms — cada dibujo llama a Google Directions (facturable). Debounce para no disparar una
@@ -69,7 +83,7 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
     const timer = setTimeout(() => { lastDrawnRef.current = sig; dibujar(filtradas); }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rutas, activeFilter]);
+  }, [rutas, activeIdx]);
 
   // Rutas realmente DIBUJADAS (con paradas), conservando el índice original para el color. Las rutas
   // ocultas/vacías (que el Planificador pasa con ts:[] para preservar el color por índice) no se
@@ -84,19 +98,19 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
       {dibujadas.length > 1 && (
         <div className="px-3 py-2 border-b border-black/[0.09] flex-shrink-0 flex gap-1.5 flex-wrap">
           <button
-            onClick={() => setActiveFilter('all')}
+            onClick={() => setFiltro('all')}
             className={`h-[28px] px-3 rounded-[7px] text-[11px] font-bold border-[1.5px] transition-all ${
-              activeFilter === 'all' ? 'border-knavy bg-knavy text-white' : 'border-black/[0.12] bg-kbg text-kmuted'}`}
+              activeIdx === 'all' ? 'border-knavy bg-knavy text-white' : 'border-black/[0.12] bg-kbg text-kmuted'}`}
           >
             Todas
           </button>
           {dibujadas.map(({ r, i }) => {
             const col = COLS[i % COLS.length];
-            const active = activeFilter === i;
+            const active = activeIdx === i;
             return (
               <button
                 key={r.v.p}
-                onClick={() => setActiveFilter(i)}
+                onClick={() => setFiltro(i)}
                 className="h-[28px] px-3 rounded-[7px] text-[11px] font-bold border-[1.5px] transition-all"
                 style={active ? { borderColor: col, background: col, color: '#fff' } : { borderColor: col, background: '#F8FAFC', color: col }}
               >

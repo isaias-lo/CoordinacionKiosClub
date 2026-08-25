@@ -180,6 +180,8 @@ export default function RutasScreen() {
   // Camión elegido en el tablero DESPACHO (click en la tarjeta) para previsualizar su ruta
   // en el mapa ANTES de calcular — se limpia al cambiar de tab o al limpiar el tablero.
   const [camionSeleccionado, setCamionSeleccionado] = useState<string | null>(null);
+  // [Cerrar en masa] Patentes marcadas para cerrar de una en el tablero DESPACHO. Se limpia al cambiar de fecha.
+  const [cerrarSel, setCerrarSel] = useState<Set<string>>(new Set());
   // Km real (Google Directions) de esa preview — se muestra en la tarjeta del camión
   // elegido. null mientras el mapa todavía no resuelve la ruta (o no hay camión elegido).
   const [previewKm, setPreviewKm] = useState<number | null>(null);
@@ -1348,6 +1350,22 @@ export default function RutasScreen() {
     // hace una sola vez al cerrar la jornada ("Listo por hoy", ver handleListoPorHoy).
   }
 
+  // [Cerrar en masa] Marca/desmarca una patente para cerrar en grupo.
+  const toggleCerrarSel = (patente: string) => setCerrarSel(prev => {
+    const next = new Set(prev);
+    if (next.has(patente)) next.delete(patente); else next.add(patente);
+    return next;
+  });
+  // Cierra todos los camiones seleccionados de una (cerrarCamionV1Board ya es idempotente; los que
+  // no tienen tiendas o exceden capacidad simplemente no se cierran adentro).
+  const cerrarVariosCamiones = (patentes: string[]) => {
+    patentes.forEach(p => cerrarCamionV1Board(p));
+    setCerrarSel(new Set());
+  };
+
+  // [Cerrar en masa] al cambiar de fecha, limpiar la selección de camiones para cerrar.
+  useEffect(() => { setCerrarSel(new Set()); }, [fecha]);
+
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
   useEffect(() => {
     setCerrado(false);
@@ -1976,6 +1994,10 @@ export default function RutasScreen() {
       onKmReady={handleKmReady}
       onCdUpdate={coords => { if (modo !== 'plan') cdRef.current = coords; }}
       statMode={modo === 'plan' ? 'stops' : 'load'}
+      // [D] En el tablero DESPACHO, tocar la tarjeta del camión filtra el mapa a su ruta (y se
+      // sincroniza con los chips) — antes la tarjeta no filtraba porque dragLive dibuja todas.
+      selectedPatente={modo === 'drag' ? camionSeleccionado : undefined}
+      onSelectPatente={modo === 'drag' ? setCamionSeleccionado : undefined}
     />
   );
 
@@ -2181,6 +2203,10 @@ export default function RutasScreen() {
             onAsignarIA={autoAsignar}
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
+            cerrarSel={cerrarSel}
+            onToggleCerrarSel={toggleCerrarSel}
+            onCerrarVarios={cerrarVariosCamiones}
+            esCerrada={p => isCerrada(cerradasV1, p)}
             onLimpiar={handleLimpiar}
             onEliminarParada={handleEliminarParada}
             onPlanRutas={(rutas, cdArr, ext) => { setPlanRutas(rutas); setPlanCd(cdArr); setPlanExt(ext ?? { gps: {}, tiendas: {} }); }}

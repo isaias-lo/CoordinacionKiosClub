@@ -61,6 +61,11 @@ interface Props {
   onAsignarIA?: () => void;
   iaLoading?: boolean;
   onCerrarCamion?: (patente: string) => void;
+  // [Cerrar en masa] selección de patentes a cerrar de una en el tablero DESPACHO.
+  cerrarSel?: Set<string>;
+  onToggleCerrarSel?: (patente: string) => void;
+  onCerrarVarios?: (patentes: string[]) => void;
+  esCerrada?: (patente: string) => boolean;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
   // Abre el Cierre de Jornada directamente desde el tablero DESPACHO, sin pasar por
@@ -115,6 +120,7 @@ export default function InputSection({
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
+  cerrarSel, onToggleCerrarSel, onCerrarVarios, esCerrada,
   onTerminarDia,
   pendientesBacklogCount = 0,
   rightPanelContent,
@@ -326,6 +332,7 @@ export default function InputSection({
                   grupoFiltro={grupoFiltro} grps={grps} onGroupPill={onGroupPill}
                   camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                   scrollContainerRef={dragScrollRef}
+                  cerrarSel={cerrarSel} onToggleCerrarSel={onToggleCerrarSel} onCerrarVarios={onCerrarVarios} esCerrada={esCerrada}
                   onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular />
               </div>
             )}
@@ -459,6 +466,10 @@ export default function InputSection({
                 onToggleFlota={onToggleFlota}
                 ordenActivacion={ordenActivacion}
                 onCerrarCamion={onCerrarCamion}
+                cerrarSel={cerrarSel}
+                onToggleCerrarSel={onToggleCerrarSel}
+                onCerrarVarios={onCerrarVarios}
+                esCerrada={esCerrada}
                 hideCalcular
               />
             </div>
