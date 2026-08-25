@@ -54,6 +54,13 @@ interface Props {
    *  Reemplaza la búsqueda del ancestro scrolleable por DOM-walking, que podía fallar si
    *  el tablero estaba vacío al montar. Sin este prop cae al DOM-walk como fallback. */
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
+  /** [Cerrar en masa] Si se provee `onCerrarVarios`, cada tarjeta de camión cerrable muestra un
+   *  checkbox y aparece una barra "Cerrar seleccionados" para cerrarlos todos de una. `cerrarSel`
+   *  = patentes seleccionadas; `esCerrada(p)` = true si ya está cerrada (tarjeta en verde). */
+  cerrarSel?: Set<string>;
+  onToggleCerrarSel?: (patente: string) => void;
+  onCerrarVarios?: (patentes: string[]) => void;
+  esCerrada?: (patente: string) => boolean;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -106,6 +113,10 @@ export default function ManualDispatch({
   camionSeleccionadoKm = null,
   onSelectTruck,
   scrollContainerRef,
+  cerrarSel,
+  onToggleCerrarSel,
+  onCerrarVarios,
+  esCerrada,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -562,23 +573,37 @@ export default function ManualDispatch({
           const isOver  = dragOver === v.p;
           const isPreview = camionSeleccionado === v.p;
           const pctColor = m.overCap ? 'bg-red-400' : m.pct > 0.85 ? 'bg-amber-400' : 'bg-green-500';
+          // [Cerrar en masa] estado por camión: cerrado (verde), modo selección, si se puede cerrar,
+          // y si está marcado para cerrar en masa.
+          const cerrado    = esCerrada?.(v.p) ?? false;
+          const selMode    = !!onCerrarVarios;
+          const puedeCerrar = !!onCerrarCamion && stores.length > 0 && !m.overCap && !cerrado;
+          const selForClose = cerrarSel?.has(v.p) ?? false;
 
           return (
             <div
               key={v.p}
               data-dropzone={v.p}
               style={{
-                boxShadow: isOver
-                  ? '0 0 0 2px rgba(27,42,107,0.25), 0 4px 20px rgba(27,42,107,0.12)'
-                  : isPreview
-                    ? '0 0 0 2px rgba(27,42,107,0.35)'
-                    : m.overCap
-                      ? '0 2px 10px rgba(245,158,11,0.18)'
-                      : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
+                boxShadow: cerrado
+                  ? '0 1px 4px rgba(22,163,74,0.14)'
+                  : selForClose
+                    ? '0 0 0 2px rgba(27,42,107,0.4)'
+                    : isOver
+                      ? '0 0 0 2px rgba(27,42,107,0.25), 0 4px 20px rgba(27,42,107,0.12)'
+                      : isPreview
+                        ? '0 0 0 2px rgba(27,42,107,0.35)'
+                        : m.overCap
+                          ? '0 2px 10px rgba(245,158,11,0.18)'
+                          : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
                 borderLeftWidth: '4px',
-                borderLeftColor: g.color,
+                borderLeftColor: cerrado ? '#16A34A' : g.color,
               }}
-              className={`rounded-[14px] border-[1.5px] transition-all bg-white flex flex-col min-w-0 ${isOver || isPreview ? 'border-knavy' : m.overCap ? 'border-amber-400' : 'border-black/[0.08]'}`}
+              className={`rounded-[14px] border-[1.5px] transition-all flex flex-col min-w-0 ${
+                cerrado ? 'bg-green-50/70 border-green-500/50'
+                : isOver || isPreview || selForClose ? 'bg-white border-knavy'
+                : m.overCap ? 'bg-white border-amber-400'
+                : 'bg-white border-black/[0.08]'}`}
               onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
@@ -590,10 +615,19 @@ export default function ManualDispatch({
             >
               {/* ── Cabecera: patente + badges (el conductor se asigna en FLOTA → Gestionar) ── */}
               <div className="px-2.5 pt-2 pb-1.5 border-b border-black/[0.06]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono font-bold text-[17px] text-ktext leading-none tracking-tight">{v.p}</span>
-                  <div className="flex gap-1 flex-wrap justify-end">
-                    {isPreview   && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
+                <div className="flex items-center gap-2">
+                  {selMode && puedeCerrar && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onToggleCerrarSel?.(v.p); }}
+                      onMouseDown={e => e.stopPropagation()}
+                      title="Seleccionar para cerrar en masa"
+                      className={`w-[20px] h-[20px] rounded-full border-2 flex items-center justify-center flex-shrink-0 text-[11px] font-bold leading-none ${selForClose ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
+                    >✓</button>
+                  )}
+                  <span className={`font-mono font-bold text-[17px] leading-none tracking-tight ${cerrado ? 'text-green-700' : 'text-ktext'}`}>{v.p}</span>
+                  <div className="flex gap-1 flex-wrap justify-end ml-auto">
+                    {cerrado     && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
+                    {isPreview && !cerrado && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
                     {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
                     {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded font-semibold">❄ Frío</span>}
@@ -675,15 +709,17 @@ export default function ManualDispatch({
                 )}
               </div>
 
-              {/* [2ª VUELTA] Cerrar camión y generar su manifiesto (registro por camión) */}
+              {/* Cerrar camión y generar su manifiesto (registro por camión). Cerrado → verde. */}
               {onCerrarCamion && stores.length > 0 && (
                 <div className="px-2.5 pb-2.5 pt-0.5">
                   <button
-                    onClick={e => { e.stopPropagation(); onCerrarCamion(v.p); }}
-                    disabled={m.overCap}
-                    className="w-full h-[38px] rounded-[10px] bg-knavy text-white text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-40"
+                    onClick={e => { e.stopPropagation(); if (!cerrado) onCerrarCamion(v.p); }}
+                    disabled={m.overCap || cerrado}
+                    className={`w-full h-[38px] rounded-[10px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                      cerrado ? 'bg-green-50 text-green-700 border-[1.5px] border-green-500/40 cursor-default'
+                      : `bg-knavy text-white active:scale-[0.98] ${m.overCap ? 'opacity-40' : ''}`}`}
                   >
-                    🚚 Cerrar camión y manifiesto
+                    {cerrado ? '✓ Cerrado · ver manifiesto' : '🚚 Cerrar camión y manifiesto'}
                   </button>
                 </div>
               )}
@@ -750,6 +786,22 @@ export default function ManualDispatch({
               Opcional · o cierra cada camión arriba. Calcular compara rutas y define los pendientes de 2ª vuelta.
             </p>
           )}
+        </div>
+      )}
+
+      {/* [Cerrar en masa] Barra flotante para cerrar todos los camiones seleccionados de una. */}
+      {onCerrarVarios && cerrarSel && cerrarSel.size > 0 && (
+        <div className="sticky bottom-0 z-20 px-3 py-2.5 rounded-[12px] flex items-center gap-2 flex-wrap"
+          style={{ background: '#1B2A6B', boxShadow: '0 -2px 18px rgba(0,0,0,0.14)' }}>
+          <span className="text-[13px] font-bold text-white flex-1 min-w-[130px]">
+            {cerrarSel.size} camión{cerrarSel.size === 1 ? '' : 'es'} seleccionado{cerrarSel.size === 1 ? '' : 's'}
+          </span>
+          <button onClick={() => { const sel = [...cerrarSel]; sel.forEach(p => onToggleCerrarSel?.(p)); }}
+            className="text-[12px] font-semibold text-white/75 underline cursor-pointer">Deseleccionar</button>
+          <button onClick={() => onCerrarVarios([...cerrarSel])}
+            className="h-[36px] px-4 rounded-[9px] bg-green-500 hover:bg-green-600 text-white text-[13px] font-bold flex items-center gap-1.5 active:scale-[0.98] transition-all">
+            🚚 Cerrar seleccionados
+          </button>
         </div>
       )}
     </div>
@@ -879,18 +931,19 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
         >✓</button>
       )}
-      <span className="font-mono font-bold text-[13px] truncate min-w-0">{formatCod(store.c)}</span>
+      {/* [Propuesta A] El código NUNCA se achica (es la identidad de la tienda). Si falta lugar,
+          cede el badge de tipo (min-w-0/truncate), no el código. */}
+      <span className="font-mono font-bold text-[13px] flex-shrink-0 whitespace-nowrap">{formatCod(store.c)}</span>
       {tp && (
-        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
+        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none min-w-0 truncate"
           style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40` }}
           title={tp.label}>
           {tipoLabel}
         </span>
       )}
-      <span className="text-[11px] text-knavy/60 font-semibold">{store.p}p</span>
-      {(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 && (
-        <span className="text-[11px] text-knavy/50 font-semibold">{store.b + ((store as { ch?: number }).ch ?? 0)}b</span>
-      )}
+      <span className="text-[11px] text-knavy/60 font-semibold flex-shrink-0 whitespace-nowrap ml-auto">
+        {store.p}p{(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 ? `·${store.b + ((store as { ch?: number }).ch ?? 0)}b` : ''}
+      </span>
       {onRemove && (
         <button
           onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
