@@ -1778,7 +1778,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             // de siempre: la selección se mantiene y al crear el pallet aparece su botón para sumar.
             const sumableRows = formRows.filter(r => r.saved && r.savedItem && (r.pkg === 'box' || r.pkg === 'chocolate'));
             if (sumableRows.length === 0) return null;
-            const palletRows = formRows.filter(r => r.saved && r.savedItem && r.pkg === 'pallet');
+            // Incluye pallets AÚN NO agregados (marcados con borde punteado). Sumar les fija el peso
+            // en su card + slot; hay que acordarse de agregarlos para que queden registrados.
+            const palletRows = formRows.filter(r => r.pkg === 'pallet' && (r.savedItem || r.pickingSlotId));
             const getPalletLabel = (r: FormRow) => {
               const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === 'pallet').length;
               return `P${idx}`;
@@ -1797,14 +1799,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   {selectedCount > 0 ? `${selectedCount} seleccionados` : 'Marcá varios o Todos'}
                 </span>
                 <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wide text-white/55">Sumar a</span>
-                {palletRows.map(r => (
+                {palletRows.map(r => {
+                  const agregado = !!r.savedItem;
+                  return (
                   <button key={r.id} disabled={selectedCount === 0}
                     onClick={() => sumarVariosAPallet([...mergeSel], r.id)}
-                    title={`Sumar los seleccionados a ${getPalletLabel(r)}`}
-                    className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-white/40 bg-white/10 text-white hover:bg-[#2f7bff] hover:border-[#2f7bff] disabled:opacity-40 disabled:hover:bg-white/10 disabled:hover:border-white/40 disabled:cursor-not-allowed">
+                    title={agregado ? `Sumar los seleccionados a ${getPalletLabel(r)}` : `Sumar a ${getPalletLabel(r)} — aún sin agregar (acordate de agregarlo después)`}
+                    className={`font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] text-white hover:bg-[#2f7bff] hover:border-[#2f7bff] disabled:opacity-40 disabled:cursor-not-allowed ${
+                      agregado ? 'border-white/40 bg-white/10' : 'border-dashed border-amber-300 bg-transparent'}`}>
                     {getPalletLabel(r)}
                   </button>
-                ))}
+                  );
+                })}
                 <button onClick={() => setDialogPkg('pallet')}
                   title="Crear un pallet nuevo para sumar los seleccionados"
                   className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-dashed border-white/45 text-[#CDE0FF] hover:bg-white/10">
