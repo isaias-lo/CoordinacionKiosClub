@@ -83,6 +83,21 @@ describe('empresaHabitual', () => {
     expect(empresaHabitual(hist, 200)!.empresa).toBe('Falabella');
   });
 
+  it('ignora las entradas con diasAtras no finito en vez de envenenar el cálculo', () => {
+    // Una sola fecha mal parseada daba peso NaN → empresa al azar y confianza NaN. Y como
+    // `NaN < umbral` es false, el aviso salía igual mostrando "NaN%".
+    const r = empresaHabitual([
+      { empresa: 'Ortiz', diasAtras: NaN },
+      D('Luis Fica', 1), D('Luis Fica', 2),
+    ]);
+    expect(r!.empresa).toBe('Luis Fica');
+    expect(Number.isFinite(r!.confianza)).toBe(true);
+    expect(r!.confianza).toBe(1);
+  });
+  it('si TODAS las entradas tienen fecha inválida devuelve null', () => {
+    expect(empresaHabitual([{ empresa: 'Ortiz', diasAtras: NaN }])).toBeNull();
+  });
+
   it('sin historial devuelve null', () => {
     expect(empresaHabitual([])).toBeNull();
     expect(empresaHabitual([D('',0), D('  ',0)])).toBeNull();

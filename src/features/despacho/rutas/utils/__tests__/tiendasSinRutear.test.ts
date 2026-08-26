@@ -24,6 +24,13 @@ describe('tiendasArmadasSinRutear', () => {
     expect(tiendasArmadasSinRutear(calT, [])).toEqual([]);
   });
 
+  it('cuenta contenedores como carga', () => {
+    // Desde que el pool incluye tiendas de SOLO contenedores, la red de seguridad tiene que
+    // verlas: si no, una tienda con solo contenedores podía caerse del despacho sin aviso.
+    expect(tiendasArmadasSinRutear({ A: { on: true, p: 0, b: 0, c: 2, ch: 0 } }, [])).toEqual(['A']);
+    expect(tiendasArmadasSinRutear({ A: { on: true, p: 0, b: 0, c: 0, ch: 0 } }, [])).toEqual([]);
+  });
+
   it('cuenta chocolates como carga', () => {
     const calT = { '26ALC': cal({ p: 0, b: 0, ch: 6 }) };
     expect(tiendasArmadasSinRutear(calT, [])).toEqual(['26ALC']);

@@ -1507,7 +1507,11 @@ export default function RutasScreen() {
     // Columna alternativa: se muestra YA con el optimizador GPS (síncrono) y, en segundo plano, se
     // consulta la IA para reemplazarla. Si la IA falla o tarda, queda el GPS con aviso — el usuario
     // siempre sabe qué motor ve (etiqueta "Ruta IA" 🤖 vs "Ruta Óptima (GPS)" 🗺️ + aviso de caída).
-    const gpsRutas = enrutar(allItems, extGps, extTiendas).rutas;
+    // Los avisos del motor (tiendas fuera del radio RM, sin coordenadas, camión sobrecargado) se
+    // muestran ACÁ, al calcular. Antes se descartaban en esta rama y la tienda desaparecía de la
+    // propuesta sin explicación: recién se enteraba al registrar, y sin el motivo.
+    const { rutas: gpsRutas, avisos } = enrutar(allItems, extGps, extTiendas);
+    if (avisos.length) setErrors(avisos);
     const token    = ++comparacionTokenRef.current;
     const payload  = construirPayloadIA();
     const usaIA    = payload.stores.length > 0 && payload.trucks.length > 0;

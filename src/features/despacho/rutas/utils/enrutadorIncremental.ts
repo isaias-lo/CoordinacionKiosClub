@@ -158,7 +158,11 @@ export function empresaHabitual(
   historial: DespachoPasado[],
   semividaDias = 21,
 ): { empresa: string; confianza: number } | null {
-  const v = historial.filter(d => String(d?.empresa ?? '').trim());
+  // Se descartan las entradas con `diasAtras` no finito. Sin este filtro, una sola fecha mal
+  // parseada envenenaba TODO el cálculo: el peso salía NaN, la empresa quedaba al azar y la
+  // confianza NaN — que además burla el umbral, porque `NaN < 0.6` es false y el aviso se emitía
+  // igual mostrando "NaN%". Pasó de verdad con las fechas DD/MM/YYYY de despacho_rm.
+  const v = historial.filter(d => String(d?.empresa ?? '').trim() && Number.isFinite(d?.diasAtras));
   if (!v.length) return null;
   const peso = new Map<string, number>();
   let total = 0;
