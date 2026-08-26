@@ -24,6 +24,8 @@ import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
+import { enrutarV2, type ResultadoEnrutador } from './utils/enrutadorV2';
+import { poolDesdeCalT } from './utils/poolDespacho';
 import { asignarPorClusters, type CentroideCluster } from './utils/asignarPorClusters';
 import { faseEnrutador } from './utils/faseEnrutador';
 import type { IAStore, IATruck } from './ia/types';
@@ -44,6 +46,11 @@ import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
+// [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
+// km que el armado manual, 31% menos que asignar(), cero llegadas fuera de ventana); en false cae a
+// asignar() sin revertir el commit. asignar()/asignarPorClusters quedan como respaldo.
+const ENRUTADOR_V2 = true;
+
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
 
 function mergeCalT(
@@ -1407,6 +1414,14 @@ export default function RutasScreen() {
     return { extGps, extTiendas };
   }
 
+  // [Enrutador V2] Enruta un pool con el motor geográfico nuevo (o cae a asignar() con el flag
+  // apagado). Devuelve { rutas, fueraDeRadio, avisos }. enrutarV2 recibe el pool COMPLETO y hace
+  // el triage de radio RM solo — NO hay que filtrarle las tiendas lejanas antes.
+  const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
+    ENRUTADOR_V2
+      ? enrutarV2(pool, flota, egps, cdRef.current, etiendas)
+      : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false), fueraDeRadio: [], avisos: [] };
+
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
   function handleCalcular() {
@@ -1422,7 +1437,8 @@ export default function RutasScreen() {
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
     paradasAdicionales.filter(p => p.gps).forEach(p => ts.push({ c: p.id, p: p.p, b: p.b }));
 
-    const rutas = asignar(ts, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
+    const { rutas, avisos } = enrutar(ts, extGps, extTiendas);
+    if (avisos.length) setErrors(prev => [...prev, ...avisos]);
     setResults({ ts, rutas, extGps, extTiendas });
     kmTotalRealRef.current = null;
     setKmPorRuta({}); setLegDataPorRuta({});
@@ -1439,9 +1455,11 @@ export default function RutasScreen() {
   // Payload para /api/asignar-ia: tiendas activas con carga, camiones disponibles (no-2ªvuelta) y la
   // referencia por cercanía GPS del optimizador (cómputo local, gratis; pista no obligatoria).
   function construirPayloadIA(): { stores: IAStore[]; trucks: IATruck[]; gpsRef?: Record<string, string[]> } {
+    // [PASO 2] Pool con los CUATRO tipos: contenedores (calT[c].c) suman a p (ocupan piso como un
+    // pallet), chocolates van en ch. El filtro incluye tiendas de solo cont./choc. (antes se perdían).
     const stores: IAStore[] = Object.keys(calT)
-      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
-      .map(c => ({ cod: c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
+      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].c ?? 0) > 0 || (calT[c].ch ?? 0) > 0))
+      .map(c => ({ cod: c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
     const trucks: IATruck[] = flota
       .filter(v => v.on && !v.tlbd)
       .map(v => ({ patente: v.p, tipo: v.t, capP: v.c, capB: v.b, refrigerado: !!v.refrigerado, porton: !!v.porton }));
@@ -1449,8 +1467,8 @@ export default function RutasScreen() {
     let gpsRef: Record<string, string[]> | undefined;
     try {
       const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
-      const items: StoreItem[] = stores.map(s => ({ c: s.cod, p: s.p, b: s.b }));
-      const gpsRutas = asignar(items, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
+      const items: StoreItem[] = stores.map(s => ({ c: s.cod, p: s.p, b: s.b, ch: s.ch }));
+      const gpsRutas = enrutar(items, extGps, extTiendas).rutas;
       const truckSet = new Set(trucks.map(t => t.patente));
       const ref: Record<string, string[]> = {};
       gpsRutas.forEach(r => { if (r.ts.length && truckSet.has(r.v.p)) ref[r.v.p] = r.ts.map(t => t.c); });
@@ -1476,9 +1494,9 @@ export default function RutasScreen() {
   function handleCalcularManual() {
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
 
-    const tiendasActivas = Object.keys(calT)
-      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0))
-      .map(c => ({ c, p: calT[c].p, b: calT[c].b }));
+    // [PASO 2] Pool con los cuatro tipos (contenedores suman a p, chocolates en ch, incluye tiendas
+    // de solo cont./choc.) — antes armaba {c,p,b} y perdía contenedores y chocolates.
+    const tiendasActivas = poolDesdeCalT(calT);
 
     const paradasItems = paradasAdicionales.filter(p => p.gps).map(p => ({ c: p.id, p: p.p, b: p.b }));
     const allItems     = [...tiendasActivas, ...paradasItems];
@@ -1489,7 +1507,7 @@ export default function RutasScreen() {
     // Columna alternativa: se muestra YA con el optimizador GPS (síncrono) y, en segundo plano, se
     // consulta la IA para reemplazarla. Si la IA falla o tarda, queda el GPS con aviso — el usuario
     // siempre sabe qué motor ve (etiqueta "Ruta IA" 🤖 vs "Ruta Óptima (GPS)" 🗺️ + aviso de caída).
-    const gpsRutas = asignar(allItems, flota, extGps, cdRef.current, null, null, null, extTiendas, false);
+    const gpsRutas = enrutar(allItems, extGps, extTiendas).rutas;
     const token    = ++comparacionTokenRef.current;
     const payload  = construirPayloadIA();
     const usaIA    = payload.stores.length > 0 && payload.trucks.length > 0;
