@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   aMinutos, parseVentana, kmRuta, diametroKm, horariosLlegada, ventanasIncumplidas,
-  ordenVecinoCercano, dosOpt, ordenarParadas, agruparPorAhorro, emparejarCamiones,
+  ordenVecinoCercano, dosOpt, ordenarParadas, agruparPorAhorro,
+  empresaDelGrupo, mejorCamion, empacarEnFlota,
   enrutarV2, OPCIONES_DEFAULT,
 } from '../enrutadorV2';
 import type { StoreItem } from '../routing';
@@ -17,7 +18,7 @@ const GPS: Record<string, number[]> = {
   D: [-33.4126, -70.6024], LEJOS: [-33.4126, -69.6024], SUR: [-33.5126, -70.6324],
 };
 const S = (c: string, p = 1, b = 0, ch = 0): StoreItem => ({ c, p, b, ch });
-const V = (p: string, c: number, b: number, extra: Partial<Vehiculo> = {}): Vehiculo => ({
+const V = (p: string, c: number, b = 20, extra: Partial<Vehiculo> = {}): Vehiculo => ({
   p, c, b, t: 'Camión', tlbd: false, on: true, porton: null, refrigerado: false, empresa: '', ...extra,
 });
 const T = (v: string): TiendaInfo => ({ n: '', z: '', v });
@@ -185,50 +186,121 @@ describe('agruparPorAhorro', () => {
   });
 });
 
-describe('emparejarCamiones', () => {
-  const g = (p: number, b = 0, ch = 0) => ({ cods: ['X'], p, b, ch });
+describe('empresaDelGrupo', () => {
+  it('devuelve la empresa mayoritaria del grupo', () => {
+    expect(empresaDelGrupo(['A','B','C'], { A:'Luis Fica', B:'Luis Fica', C:'Ortiz' })).toBe('Luis Fica');
+  });
+  it('sin empresas conocidas devuelve null', () => {
+    expect(empresaDelGrupo(['A','B'], {})).toBeNull();
+    expect(empresaDelGrupo([], { A:'Ortiz' })).toBeNull();
+  });
+  it('rompe empates de forma determinista', () => {
+    expect(empresaDelGrupo(['A','B'], { A:'Ortiz', B:'Kios Club' })).toBe('Kios Club');
+    expect(empresaDelGrupo(['B','A'], { A:'Ortiz', B:'Kios Club' })).toBe('Kios Club');
+  });
+});
 
-  it('la capacidad se mide solo en pallets, no en bultos', () => {
-    const flota = [V('CHICO', 4, 2)];   // capacidad de bultos ridícula, da igual
-    expect(emparejarCamiones([g(3, 99)], flota)[0].v?.p).toBe('CHICO');
+describe('mejorCamion', () => {
+  const g = (p: number, ch = 0, cods = ['X']) => ({ cods, p, ch });
+
+  it('elige el más chico que aguante, no el primero', () => {
+    expect(mejorCamion(g(3), [V('GRANDE', 14), V('CHICO', 4)], {})!.p).toBe('CHICO');
+  });
+  it('devuelve null si ninguno lo aguanta entero', () => {
+    expect(mejorCamion(g(20), [V('A', 10), V('B', 14)], {})).toBeNull();
+  });
+  it('la capacidad se mide solo en pallets', () => {
+    expect(mejorCamion(g(3), [V('CHICO', 4, 1)], {})!.p).toBe('CHICO');
+  });
+  it('prefiere un camión de la empresa habitual del grupo', () => {
+    const flota = [V('OTRO', 10, 20, { empresa: 'Ortiz' }), V('SUYO', 10, 20, { empresa: 'Luis Fica' })];
+    expect(mejorCamion(g(2, 0, ['A','B']), flota, { A:'Luis Fica', B:'Luis Fica' })!.p).toBe('SUYO');
+  });
+  it('la empresa manda por sobre el best-fit', () => {
+    // el chico entraría por tamaño, pero es de otra empresa
+    const flota = [V('CHICO_OTRO', 4, 20, { empresa: 'Ortiz' }), V('GRANDE_SUYO', 14, 20, { empresa: 'Luis Fica' })];
+    expect(mejorCamion(g(3, 0, ['A']), flota, { A:'Luis Fica' })!.p).toBe('GRANDE_SUYO');
+  });
+  it('sin empresa conocida cae al best-fit normal', () => {
+    const flota = [V('CHICO', 4), V('GRANDE', 14)];
+    expect(mejorCamion(g(3, 0, ['A']), flota, {})!.p).toBe('CHICO');
+  });
+  it('con chocolates prefiere refrigerado; sin ellos lo evita', () => {
+    const flota = [V('SECO', 10), V('FRIO', 10, 20, { refrigerado: true })];
+    expect(mejorCamion(g(2, 1), flota, {})!.p).toBe('FRIO');
+    expect(mejorCamion(g(2, 0), flota, {})!.p).toBe('SECO');
+  });
+});
+
+describe('empacarEnFlota', () => {
+  const P: Record<string, number> = { A:3, B:3, C:3, D:3, E:3, F:3, G:3, H:3, PESADA:20 };
+  const pal = (c: string) => P[c] ?? 1;
+  const ord = (cods: string[]) => cods.slice().sort();
+  const G = (cods: string[]) => ({ cods, p: cods.reduce((s,c)=>s+pal(c),0), ch: 0 });
+
+  it('NUNCA supera la capacidad de un camión', () => {
+    // 24 pallets contra un solo camión de 10: antes se metían los 24 adentro.
+    const r = empacarEnFlota([G(['A','B','C','D','E','F','G','H'])], [V('UNICO', 10)], pal, ord);
+    for (const a of r.asignaciones)
+      expect(a.cods.reduce((s,c)=>s+pal(c),0)).toBeLessThanOrEqual(a.v.c);
   });
 
-  it('usa el camión más chico que aguante, no el primero', () => {
-    const flota = [V('CHICO', 4, 20), V('GRANDE', 14, 40)];
-    expect(emparejarCamiones([g(3)], flota)[0].v?.p).toBe('CHICO');
+  it('NO pierde ninguna tienda: lo asignado + el sobrante es todo el pool', () => {
+    const cods = ['A','B','C','D','E','F','G','H'];
+    const r = empacarEnFlota([G(cods)], [V('UNICO', 10)], pal, ord);
+    expect([...r.asignaciones.flatMap(a => a.cods), ...r.sobrante].sort()).toEqual(cods.slice().sort());
   });
 
-  it('deja el grande para el grupo pesado', () => {
-    const flota = [V('CHICO', 4, 20), V('GRANDE', 14, 40)];
-    const r = emparejarCamiones([g(10), g(2)], flota);
-    expect(r[0].v?.p).toBe('GRANDE');
-    expect(r[1].v?.p).toBe('CHICO');
+  it('parte el grupo que no entra en vez de descartarlo', () => {
+    const r = empacarEnFlota([G(['A','B','C','D'])], [V('UNICO', 6)], pal, ord);
+    expect(r.asignaciones).toHaveLength(1);
+    expect(r.asignaciones[0].cods).toHaveLength(2);      // 2 tiendas × 3p = 6p
+    expect(r.sobrante.sort()).toEqual(['C','D']);
   });
 
-  it('prefiere un refrigerado cuando el grupo lleva congelados', () => {
-    const flota = [V('SECO', 10, 20), V('FRIO', 10, 20, { refrigerado: true })];
-    expect(emparejarCamiones([g(2, 1, 1)], flota)[0].v?.p).toBe('FRIO');
-    expect(emparejarCamiones([g(2, 0, 0)], flota)[0].v?.p).toBe('SECO');
+  it('con flota suficiente no deja sobrante', () => {
+    const r = empacarEnFlota([G(['A','B','C','D'])], [V('A1', 6), V('A2', 6)], pal, ord);
+    expect(r.sobrante).toEqual([]);
+    expect(r.asignaciones).toHaveLength(2);
   });
 
-  it('no reutiliza el mismo camión en dos grupos', () => {
-    const flota = [V('UNO', 10, 20), V('DOS', 10, 20)];
-    const r = emparejarCamiones([g(1), g(1)], flota);
-    expect(r[0].v?.p).not.toBe(r[1].v?.p);
+  it('una tienda más pesada que cualquier camión queda en el sobrante, sin romper el resto', () => {
+    const r = empacarEnFlota([G(['PESADA','A','B'])], [V('UNICO', 10)], pal, ord);
+    expect(r.sobrante).toContain('PESADA');
+    expect(r.asignaciones.flatMap(a => a.cods).sort()).toEqual(['A','B']);
   });
 
-  it('cae al furgón TLBD cuando ya no quedan camiones', () => {
-    const flota = [V('UNO', 10, 20), V('TLBD', 3, 6, { tlbd: true })];
-    const r = emparejarCamiones([g(1), g(1)], flota);
-    expect(r[1].v?.p).toBe('TLBD');
+  it('sin camiones, todo queda en el sobrante', () => {
+    const r = empacarEnFlota([G(['A','B'])], [], pal, ord);
+    expect(r.asignaciones).toEqual([]);
+    expect(r.sobrante.sort()).toEqual(['A','B']);
   });
 
-  it('devuelve null si no hay ningún vehículo', () => {
-    expect(emparejarCamiones([g(1)], [])[0].v).toBeNull();
+  it('usa el furgón TLBD solo cuando ya no quedan camiones, y respeta su capacidad', () => {
+    const flota = [V('CAMION', 6), V('FURGON', 3, 6, { tlbd: true })];
+    const r = empacarEnFlota([G(['A','B']), G(['C'])], flota, pal, ord);
+    const furgon = r.asignaciones.find(a => a.v.p === 'FURGON');
+    expect(furgon).toBeDefined();
+    expect(furgon!.cods.reduce((s,c)=>s+pal(c),0)).toBeLessThanOrEqual(3);
   });
 
   it('ignora los camiones apagados', () => {
-    expect(emparejarCamiones([g(1)], [V('OFF', 10, 20, { on: false })])[0].v).toBeNull();
+    const r = empacarEnFlota([G(['A'])], [V('OFF', 10, 20, { on: false })], pal, ord);
+    expect(r.asignaciones).toEqual([]);
+    expect(r.sobrante).toEqual(['A']);
+  });
+
+  it('no reutiliza el mismo camión en dos grupos', () => {
+    const r = empacarEnFlota([G(['A']), G(['B'])], [V('U1', 10), V('U2', 10)], pal, ord);
+    expect(r.asignaciones[0].v.p).not.toBe(r.asignaciones[1].v.p);
+  });
+
+  it('es determinista ante distinto orden de los grupos', () => {
+    const f = [V('X', 6), V('Y', 6)];
+    const a = empacarEnFlota([G(['A','B']), G(['C','D'])], f, pal, ord);
+    const b = empacarEnFlota([G(['C','D']), G(['A','B'])], f, pal, ord);
+    const plano = (r: typeof a) => r.asignaciones.map(x => `${x.v.p}:${x.cods.join(',')}`).sort();
+    expect(plano(a)).toEqual(plano(b));
   });
 });
 
@@ -277,9 +349,55 @@ describe('enrutarV2', () => {
     expect(enrutarV2([], flota, GPS, CD).rutas).toEqual([]);
   });
 
-  it('avisa cuando un camión queda sobrecargado', () => {
-    const r = enrutarV2([S('A', 12)], [V('CHICO', 4, 20)], GPS, CD, undefined, { respetarVentanas: false });
-    expect(r.avisos.join(' ')).toContain('sobrecargado');
+  it('lo que no cabe va a 2ª vuelta en vez de sobrecargar el camión', () => {
+    const r = enrutarV2([S('A', 12)], [V('CHICO', 4)], GPS, CD, undefined, { respetarVentanas: false });
+    expect(r.rutas.every(x => x.tp <= x.v.c)).toBe(true);
+    expect(r.segundaVuelta.map(s => s.c)).toEqual(['A']);
+    expect(r.avisos.join(' ')).toContain('2ª vuelta');
+  });
+
+  it('ningún camión supera su capacidad, con la flota que sea', () => {
+    const pool = [S('A',3), S('B',3), S('C',3), S('D',3), S('SUR',3)];
+    for (const flota of [[V('U',10)], [V('U',4)], [V('A',6),V('B',6)], [V('G',14)]]) {
+      const r = enrutarV2(pool, flota, GPS, CD, undefined, { maxDiametroKm: 0, respetarVentanas: false });
+      for (const x of r.rutas) expect(x.tp).toBeLessThanOrEqual(x.v.c);
+    }
+  });
+
+  it('INVARIANTE: rutas + fueraDeRadio + segundaVuelta + sinFlota = el pool completo', () => {
+    const pool = [S('A',3), S('B',3), S('C',3), S('D',3), S('LEJOS',3), S('XX',3)];
+    for (const flota of [[V('U',10)], [V('U',4)], [], [V('OFF',10,20,{on:false})]]) {
+      const r = enrutarV2(pool, flota, GPS, CD, undefined, { maxDiametroKm: 0, respetarVentanas: false });
+      const vistas = [
+        ...r.rutas.flatMap(x => x.ts.map(t => t.c)),
+        ...r.fueraDeRadio.map(s => s.c),
+        ...r.segundaVuelta.map(s => s.c),
+        ...r.sinFlota.map(s => s.c),
+      ].sort();
+      expect(vistas).toEqual(pool.map(s => s.c).sort());
+    }
+  });
+
+  it('sin ningún vehículo activo, todo el pool queda en sinFlota', () => {
+    const r = enrutarV2([S('A')], [V('OFF', 10, 20, { on: false })], GPS, CD);
+    expect(r.rutas).toEqual([]);
+    expect(r.sinFlota.map(s => s.c)).toEqual(['A']);
+  });
+
+  it('prefiere el camión de la empresa habitual de la tienda', () => {
+    const flota = [V('OTRO', 10, 20, { empresa: 'Ortiz' }), V('SUYO', 10, 20, { empresa: 'Luis Fica' })];
+    const r = enrutarV2([S('A')], flota, GPS, CD, undefined,
+      { maxDiametroKm: 0, respetarVentanas: false, empresaPorTienda: { A: 'Luis Fica' } });
+    expect(r.rutas[0].v.p).toBe('SUYO');
+    expect(r.avisos.join(' ')).not.toContain('no había camión libre');
+  });
+
+  it('si no queda camión de esa empresa, lo asigna igual y ahí sí avisa', () => {
+    const flota = [V('OTRO', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A')], flota, GPS, CD, undefined,
+      { maxDiametroKm: 0, respetarVentanas: false, empresaPorTienda: { A: 'Luis Fica' } });
+    expect(r.rutas[0].v.p).toBe('OTRO');
+    expect(r.avisos.join(' ')).toContain('Luis Fica');
   });
 
   it('no supera el diámetro máximo dentro de una misma ruta', () => {
