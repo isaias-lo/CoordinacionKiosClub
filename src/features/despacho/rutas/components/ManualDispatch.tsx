@@ -566,7 +566,12 @@ export default function ManualDispatch({
               <span className="text-[12px] font-extrabold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
               <span className="text-[11px] text-kmuted font-semibold">· {g.items.length}</span>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {/* Grilla ADAPTABLE al ancho real del board (no al viewport): antes era grid-cols-2/3/4
+                por breakpoint, así que al arrastrar el divisor board↔mapa las columnas NO bajaban y
+                las tarjetas se aplastaban (el chip de tienda se estiraba y clipeaba el badge/×). Con
+                auto-fill+minmax, al angostar el board bajan las columnas y la tarjeta nunca cae por
+                debajo de ~186px legibles. */}
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(186px,1fr))]">
             {g.items.map((v) => {
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
@@ -843,7 +848,7 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
-      className={`flex items-center gap-1 rounded-[6px] px-2 py-[5px] cursor-grab select-none transition-all border min-h-[36px] min-w-0 max-w-full touch-manipulation ${isDragging
+      className={`flex items-center gap-1 rounded-[6px] px-2 py-[3px] cursor-grab select-none transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
         ? 'opacity-30 scale-95'
         : selected
           ? `ring-2 ring-knavy/40 ${isEntrega ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-orange-100 border-orange-400 text-orange-800'}`
@@ -861,16 +866,16 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
           className={`w-[16px] h-[16px] rounded-full border flex items-center justify-center text-[9px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-black/25 text-transparent'}`}
         >✓</button>
       )}
-      <span className="text-[11px] font-bold">{isEntrega ? '↓' : '↑'}</span>
-      <span className="text-[11px] font-semibold truncate max-w-[80px]">{short}</span>
+      <span className="text-[11px] font-bold flex-shrink-0">{isEntrega ? '↓' : '↑'}</span>
+      <span className="text-[11px] font-semibold truncate min-w-0 max-w-[80px]">{short}</span>
       {(parada.p > 0 || parada.b > 0) && (
-        <span className="text-[10px] opacity-60">{parada.p > 0 ? `${parada.p}p` : ''}{parada.b > 0 ? `${parada.b}b` : ''}</span>
+        <span className="text-[10px] opacity-60 flex-shrink-0">{parada.p > 0 ? `${parada.p}p` : ''}{parada.b > 0 ? `${parada.b}b` : ''}</span>
       )}
       {onRemove && (
         <button
           onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
           onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          className="text-[11px] opacity-40 hover:opacity-80 font-bold leading-none ml-0.5 w-[14px] h-[14px] flex items-center justify-center">×</button>
+          className="text-[11px] opacity-40 hover:opacity-80 font-bold leading-none ml-auto pl-1 w-[14px] h-[14px] flex items-center justify-center flex-shrink-0">×</button>
       )}
     </div>
   );
@@ -914,7 +919,7 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
       style={!isDragging ? { boxShadow: '0 1px 3px rgba(27,42,107,0.15)' } : undefined}
-      className={`flex items-center gap-1.5 rounded-[8px] px-2.5 py-[6px] cursor-grab select-none transition-all border min-h-[38px] min-w-0 max-w-full touch-manipulation ${isDragging
+      className={`flex items-center gap-1.5 rounded-[8px] px-2 py-[3px] cursor-grab select-none transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
         ? 'opacity-30 scale-95 bg-knavy/[0.05] border-knavy/20'
         : selected
           ? 'bg-knavy/[0.15] border-knavy text-knavy ring-2 ring-knavy/40'
@@ -931,10 +936,10 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           className={`w-[17px] h-[17px] rounded-full border flex items-center justify-center text-[10px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
         >✓</button>
       )}
-      {/* [Propuesta A + fix overflow] Prioridades para que NADA se salga del card cuando queda
-          angosto: el CÓDIGO nunca se achica (identidad de la tienda) y la × siempre queda visible;
-          la CARGA es la que cede (flex-1 + truncate) y absorbe el espacio; el badge de tipo queda
-          fijo pero chico. Antes código y carga eran ambos flex-shrink-0 y se desbordaban afuera. */}
+      {/* [Opción A] Contenido pegado a la izquierda (código · tipo · carga), sin hueco muerto, y la ×
+          fija al borde derecho (ml-auto). Prioridad ante angostura: el CÓDIGO no se achica (identidad
+          de la tienda) y la × siempre queda visible; la CARGA es la que cede (min-w-0 + truncate). El
+          alto bajó de 38 a 30px; la grilla adaptable evita que la tarjeta llegue a angostarse tanto. */}
       <span className="font-mono font-bold text-[13px] flex-shrink-0 whitespace-nowrap">{formatCod(store.c)}</span>
       {tp && (
         <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
@@ -943,14 +948,14 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           {tipoLabel}
         </span>
       )}
-      <span className="text-[11px] text-knavy/60 font-semibold flex-1 min-w-0 truncate text-right">
+      <span className="text-[11px] text-knavy/60 font-semibold min-w-0 truncate">
         {store.p}p{(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 ? `·${store.b + ((store as { ch?: number }).ch ?? 0)}b` : ''}
       </span>
       {onRemove && (
         <button
           onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
           onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          className="text-[13px] text-knavy/40 hover:text-knavy font-bold leading-none ml-0.5 w-[16px] h-[16px] flex items-center justify-center flex-shrink-0">×</button>
+          className="text-[13px] text-knavy/40 hover:text-knavy font-bold leading-none ml-auto pl-1 w-[16px] h-[16px] flex items-center justify-center flex-shrink-0">×</button>
       )}
     </div>
   );
