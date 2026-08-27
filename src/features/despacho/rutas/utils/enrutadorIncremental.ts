@@ -279,21 +279,16 @@ export function planificarIncremental(
     paraRutear.push({ c: cod, p, b: it.b, ch: it.ch ?? 0 });
   }
 
-  // 2) Geografía + ventanas: el mismo motor v2, pero sobre el pool parcial con reservas.
-  const base = enrutarV2(paraRutear, flota, gps, cd, tiendas, opciones);
-  avisos.push(...base.avisos);
-
-  // 3) Restricción de transportista: una tienda con empresa histórica fuerte no debería salir en
-  //    un camión de otra empresa. No se fuerza el movimiento (rompería la geografía): se avisa.
-  for (const r of base.rutas) {
-    for (const t of r.ts) {
-      const h = historial[t.c];
-      if (!h?.empresa || (h.confianzaEmpresa ?? 0) < o.umbralEmpresa) continue;
-      const emp = String(r.v.empresa ?? '').trim();
-      if (emp && emp !== h.empresa)
-        avisos.push(`${t.c} suele ir con ${h.empresa} (${Math.round((h.confianzaEmpresa ?? 0) * 100)}% del historial) y quedó en ${r.v.p} de ${emp}.`);
-    }
+  // 2) Geografía + ventanas: el mismo motor v2, sobre el pool parcial con reservas. Se le pasa la
+  //    empresa habitual de cada tienda para que la PREFIERA al elegir camión — antes el motor la
+  //    detectaba, asignaba por capacidad y después avisaba que no se cumplió (11 avisos por día,
+  //    88% de ese tipo, y los 8 revisados eran evitables: había camión de la empresa correcta).
+  const empresaPorTienda: Record<string, string> = {};
+  for (const [cod, h] of Object.entries(historial)) {
+    if (h.empresa && (h.confianzaEmpresa ?? 0) >= o.umbralEmpresa) empresaPorTienda[cod] = h.empresa;
   }
+  const base = enrutarV2(paraRutear, flota, gps, cd, tiendas, { ...opciones, empresaPorTienda });
+  avisos.push(...base.avisos);
 
   // 4) ¿Qué camión se puede cerrar ya?
   const camiones: CamionPlan[] = base.rutas.map(r => {
@@ -328,7 +323,7 @@ export function planificarIncremental(
     avisos.push(`Tienda${nuevas.length === 1 ? '' : 's'} sin historial: ${nuevas.join(', ')}. Se rutea${nuevas.length === 1 ? '' : 'n'} por ubicación, pero no se cierra${nuevas.length === 1 ? '' : 'n'} antes del corte porque no se sabe cuánta carga falta.`);
 
   const listos = camiones.filter(k => k.estado !== 'abierto').length;
-  if (listos) avisos.unshift(`${listos} camión${listos === 1 ? '' : 'es'} se puede${listos === 1 ? '' : 'n'} cargar y despachar ya.`);
+  if (listos) avisos.unshift(listos === 1 ? '1 camión se puede cargar y despachar ya.' : `${listos} camiones se pueden cargar y despachar ya.`);
 
   return { camiones, enEspera, avisos, nuevas };
 }

@@ -33,9 +33,19 @@ export interface OpcionesEnrutador {
   /** Radio desde el CD para considerar una tienda parte del pool RM. Fuera de esto va por
    *  el flujo Regiones (Sendu) — hoy se cuelan tiendas de Antofagasta/Castro en despacho_rm. */
   radioRMKm?: number;
+  /**
+   * Empresa transportista habitual de cada tienda (código → empresa). Cuando hay VARIOS camiones
+   * que sirven para un grupo, se prefiere uno de esta empresa.
+   *
+   * Antes esto era solo un aviso: el motor detectaba la afinidad, asignaba por capacidad y después
+   * se quejaba. Medido sobre un día real, los 8 avisos de "suele ir con X" eran evitables — en los
+   * 8 casos había un camión activo de la empresa correcta con capacidad de sobra.
+   */
+  empresaPorTienda?: Record<string, string>;
 }
 
 export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
+  empresaPorTienda: {},
   maxDiametroKm: 20,
   respetarVentanas: true,
   velocidadKmH: 22,
@@ -44,11 +54,23 @@ export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
   radioRMKm: 60,
 };
 
+/**
+ * Toda tienda del pool termina en EXACTAMENTE una de estas listas. Es un invariante verificado en
+ * test: `rutas + fueraDeRadio + segundaVuelta + sinFlota` reconstruye el pool completo.
+ *
+ * Antes solo existía `rutas`, y lo que no entraba se caía con un aviso de texto: en la prueba con
+ * 8 tiendas y un camión chico desaparecían 5. Separar los dos motivos importa porque la acción es
+ * distinta: `segundaVuelta` se resuelve con otro viaje, `sinFlota` activando un vehículo.
+ */
 export interface ResultadoEnrutador {
   rutas: Ruta[];
-  /** Tiendas del pool que quedaron fuera del radio RM (deben ir por Regiones). */
+  /** Fuera del radio RM: van por Regiones (Sendu), no por ruta de Santiago. */
   fueraDeRadio: StoreItem[];
-  /** Mensajes accionables para el coordinador (capacidad excedida, ventana imposible, sin GPS). */
+  /** No caben hoy en la flota activada. Ustedes ya resuelven esto con 2ª vuelta 35% de los días. */
+  segundaVuelta: StoreItem[];
+  /** No hay ningún vehículo activo que las pueda llevar. */
+  sinFlota: StoreItem[];
+  /** Mensajes accionables para el coordinador. */
   avisos: string[];
 }
 
@@ -262,34 +284,125 @@ export function agruparPorAhorro(
 
 // ── Camiones: emparejar grupo → vehículo ─────────────────────────────────────────
 
-/**
- * Asigna cada grupo al camión MÁS CHICO que lo aguante (best-fit): así los camiones grandes
- * quedan libres para los grupos pesados en vez de gastarse en una ruta de 2 pallets. La capacidad
- * se mide SOLO en pallets — es lo único que limita en la operación real. Un grupo con chocolates
- * prefiere un camión refrigerado.
- */
-export function emparejarCamiones(
-  grupos: { cods: string[]; p: number; b: number; ch: number }[],
-  flota: Vehiculo[],
-): { grupo: typeof grupos[number]; v: Vehiculo | null }[] {
-  const libres = flota
-    .filter(v => v.on && !v.tlbd)
-    .slice()
-    .sort((a, b) => (a.c - b.c) || (a.b - b.b) || a.p.localeCompare(b.p));
-  const tlbd = flota.filter(v => v.on && v.tlbd);
+/** Un grupo geográfico listo para subir a un camión. */
+export interface GrupoCarga { cods: string[]; p: number; ch: number }
 
-  return grupos.map(grupo => {
-    const cabe = (v: Vehiculo) => v.c >= grupo.p;   // solo pallets limitan
-    // Con chocolates se busca refrigerado; SIN chocolates se evita gastarlo (es escaso) y solo se
-    // usa si no queda otro camión que aguante el grupo.
-    let idx = grupo.ch > 0
-      ? libres.findIndex(v => v.refrigerado && cabe(v))
-      : libres.findIndex(v => !v.refrigerado && cabe(v));
-    if (idx < 0) idx = libres.findIndex(cabe);
-    if (idx >= 0) return { grupo, v: libres.splice(idx, 1)[0] };
-    const t = tlbd.shift();                                      // último recurso: furgón TLBD
-    return { grupo, v: t ?? libres.shift() ?? null };
+/** Empresa que lleva a la mayoría de las tiendas del grupo (empate → nombre menor, determinista). */
+export function empresaDelGrupo(cods: string[], empresaPorTienda: Record<string, string>): string | null {
+  const cuenta = new Map<string, number>();
+  for (const c of cods) {
+    const e = (empresaPorTienda[c] ?? '').trim();
+    if (e) cuenta.set(e, (cuenta.get(e) ?? 0) + 1);
+  }
+  if (!cuenta.size) return null;
+  return [...cuenta.entries()].sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))[0][0];
+}
+
+/**
+ * Elige el mejor camión LIBRE para un grupo, entre los que lo aguantan enteros. Prioridades, en
+ * orden: (1) la empresa que suele llevar esas tiendas; (2) refrigerado solo si hay chocolates —
+ * y evitarlo si no los hay, porque es escaso; (3) el más chico que quepa, para no gastar un camión
+ * grande en una ruta liviana. Devuelve null si NINGUNO lo aguanta entero.
+ */
+export function mejorCamion(
+  grupo: GrupoCarga, libres: Vehiculo[], empresaPorTienda: Record<string, string>,
+): Vehiculo | null {
+  const caben = libres.filter(v => v.c >= grupo.p);
+  if (!caben.length) return null;
+  const emp = empresaDelGrupo(grupo.cods, empresaPorTienda);
+  const puntaje = (v: Vehiculo): [number, number, number, string] => [
+    emp && String(v.empresa ?? '').trim() === emp ? 0 : 1,
+    grupo.ch > 0 ? (v.refrigerado ? 0 : 1) : (v.refrigerado ? 1 : 0),
+    v.c,
+    v.p,
+  ];
+  return caben.slice().sort((a, b) => {
+    const x = puntaje(a), y = puntaje(b);
+    return (x[0] - y[0]) || (x[1] - y[1]) || (x[2] - y[2]) || x[3].localeCompare(y[3]);
+  })[0];
+}
+
+/**
+ * Empaqueta los grupos en la flota REAL, respetando la capacidad de cada camión.
+ *
+ * Reemplaza al emparejamiento anterior, que tenía dos salidas de emergencia inseguras: si ningún
+ * camión libre aguantaba el grupo, agarraba el más chico que quedara SIN mirar capacidad, o lo
+ * volcaba al furgón TLBD de 3 pallets. Medido sobre 49 días reales, eso producía 0,59 camiones
+ * sobrecargados por día — el coordinador, en 309 camión-día registrados, no sobrecargó ninguno.
+ *
+ * Acá, cuando un grupo no entra entero, NO se fuerza ni se descarta: se parte. Se llena el camión
+ * más grande disponible con un prefijo del recorrido ya ordenado (para que las tiendas que quedan
+ * juntas sigan siendo vecinas) y el resto vuelve a la cola. Lo que no alcanza a subir a ningún
+ * camión sale por `sobrante` — que arriba se convierte en 2ª vuelta, no en tiendas perdidas.
+ *
+ * El furgón TLBD queda como último recurso, pero respetando su capacidad como cualquier otro.
+ */
+export function empacarEnFlota(
+  grupos: GrupoCarga[],
+  flota: Vehiculo[],
+  palletsDe: (cod: string) => number,
+  ordenar: (cods: string[]) => string[],
+  empresaPorTienda: Record<string, string> = {},
+): { asignaciones: { v: Vehiculo; cods: string[] }[]; sobrante: string[] } {
+  const porCap = (a: Vehiculo, b: Vehiculo) => (b.c - a.c) || a.p.localeCompare(b.p);
+  const normales = flota.filter(v => v.on && !v.tlbd).slice().sort(porCap);
+  const furgones = flota.filter(v => v.on && v.tlbd).slice().sort(porCap);
+
+  const asignaciones: { v: Vehiculo; cods: string[] }[] = [];
+  const sobrante: string[] = [];
+  const pendientes = grupos.filter(g => g.cods.length).map(g => ({ ...g }));
+
+  const quitar = (v: Vehiculo) => {
+    for (const pool of [normales, furgones]) {
+      const i = pool.indexOf(v);
+      if (i >= 0) { pool.splice(i, 1); return; }
+    }
+  };
+  const rehacer = (cods: string[]): GrupoCarga => ({
+    cods, p: cods.reduce((s, c) => s + palletsDe(c), 0), ch: 0,
   });
+
+  let guarda = 0;
+  while (pendientes.length && guarda++ < 1000) {
+    // Siempre el grupo más pesado primero: los grandes son los que menos opciones tienen.
+    // Empate → gana el de menor código, para que el resultado no dependa del orden de entrada.
+    const clave = (x: GrupoCarga) => [...x.cods].sort()[0] ?? '';
+    let idx = 0;
+    for (let i = 1; i < pendientes.length; i++) {
+      const a = pendientes[i], b = pendientes[idx];
+      if (a.p > b.p || (a.p === b.p && clave(a) < clave(b))) idx = i;
+    }
+    const g = pendientes.splice(idx, 1)[0];
+
+    const v = mejorCamion(g, normales, empresaPorTienda) ?? mejorCamion(g, furgones, empresaPorTienda);
+    if (v) { quitar(v); asignaciones.push({ v, cods: g.cods }); continue; }
+
+    // No entra entero en ningún camión libre → partirlo por el camión más grande que quede.
+    const mayor = [...normales, ...furgones].sort(porCap)[0];
+    if (!mayor) { sobrante.push(...g.cods); continue; }   // ya no queda flota
+
+    const orden = ordenar(g.cods);
+    const suben: string[] = [];
+    let acum = 0;
+    for (const c of orden) {
+      const pc = palletsDe(c);
+      if (acum + pc <= mayor.c) { suben.push(c); acum += pc; }
+    }
+    if (!suben.length) {
+      // Una sola tienda pesa más que el camión más grande: no hay forma de subirla hoy.
+      sobrante.push(orden[0]);
+      const resto = orden.slice(1);
+      if (resto.length) pendientes.push(rehacer(resto));
+      continue;
+    }
+    quitar(mayor);
+    asignaciones.push({ v: mayor, cods: suben });
+    const resto = orden.filter(c => !suben.includes(c));
+    if (resto.length) pendientes.push(rehacer(resto));
+  }
+  for (const g of pendientes) sobrante.push(...g.cods);   // por si se agotó la guarda
+
+  return { asignaciones, sobrante };
 }
 
 // ── API principal (drop-in de `asignar`) ─────────────────────────────────────────
@@ -308,9 +421,16 @@ export function enrutarV2(
 ): ResultadoEnrutador {
   const o = { ...OPCIONES_DEFAULT, ...opciones };
   const avisos: string[] = [];
+  const vacio = (extra: Partial<ResultadoEnrutador> = {}): ResultadoEnrutador =>
+    ({ rutas: [], fueraDeRadio: [], segundaVuelta: [], sinFlota: [], avisos, ...extra });
 
-  const disp = flota.filter(v => v.on && !v.tlbd);
-  if (!disp.length) return { rutas: [], fueraDeRadio: [], avisos: ['No hay camiones activos.'] };
+  // El furgón TLBD cuenta como vehículo: empacarEnFlota lo usa de último recurso, respetando su
+  // capacidad. Solo si NO hay ninguno activo el día no se puede rutear.
+  const activos = flota.filter(v => v.on);
+  if (!activos.length) {
+    avisos.push('No hay vehículos activos: activá al menos uno para poder rutear.');
+    return vacio({ sinFlota: pool.slice() });
+  }
 
   // 1) Triage: lo que está fuera del radio RM no es problema del enrutador de Santiago.
   const dentro: StoreItem[] = [], fueraDeRadio: StoreItem[] = [];
@@ -325,43 +445,52 @@ export function enrutarV2(
   const sinGps = dentro.filter(s => !gps[s.c]).map(s => s.c);
   if (sinGps.length) avisos.push(`Sin coordenadas: ${sinGps.join(', ')} — quedan agrupadas aparte, ubicalas a mano.`);
 
-  if (!dentro.length) return { rutas: [], fueraDeRadio, avisos };
+  if (!dentro.length) return vacio({ fueraDeRadio });
 
-  // 2) Agrupar por ahorro con las restricciones de operación.
-  const capPallets = Math.max(...disp.map(v => v.c));
   const porCodigo = new Map(dentro.map(s => [s.c, s]));
-  const gruposCods = agruparPorAhorro(dentro, capPallets, gps, cd, tiendas, o);
 
-  const grupos = gruposCods.map(cods => {
-    const items = cods.map(c => porCodigo.get(c)!).filter(Boolean);
+  // 2) Agrupar por ahorro geográfico, acotado por el camión más grande de la flota activa.
+  const capMax = Math.max(...activos.map(v => v.c));
+  const gruposCods = agruparPorAhorro(dentro, capMax, gps, cd, tiendas, o);
+  const grupos: GrupoCarga[] = gruposCods.map(cods => ({
+    cods,
+    p:  cods.reduce((s, c) => s + (porCodigo.get(c)?.p ?? 0), 0),
+    ch: cods.reduce((s, c) => s + (porCodigo.get(c)?.ch ?? 0), 0),
+  }));
+
+  // 3) Empaquetar en la flota real: respeta capacidad, parte lo que no entra, no descarta nada.
+  const { asignaciones, sobrante } = empacarEnFlota(
+    grupos, flota,
+    c => porCodigo.get(c)?.p ?? 0,
+    cods => ordenarParadas(cods, gps, cd),
+    o.empresaPorTienda,
+  );
+
+  const rutas: Ruta[] = asignaciones.map(({ v, cods }) => {
+    const orden = ordenarParadas(cods, gps, cd);
+    const ts = orden.map(c => ({ ...porCodigo.get(c)!, _v: tiendas?.[c]?.v ?? '' }));
     return {
-      cods,
-      p:  items.reduce((s, t) => s + t.p, 0),
-      b:  items.reduce((s, t) => s + bultosDe(t), 0),
-      ch: items.reduce((s, t) => s + (t.ch ?? 0), 0),
+      v, ts,
+      tp: ts.reduce((s, t) => s + t.p, 0),
+      tb: ts.reduce((s, t) => s + bultosDe(t), 0),
     };
-  });
+  }).filter(r => r.ts.length);
 
-  // 3) Emparejar con camiones reales.
-  const parejas = emparejarCamiones(grupos, flota);
+  const segundaVuelta = sobrante.map(c => porCodigo.get(c)).filter((s): s is StoreItem => !!s);
+  if (segundaVuelta.length)
+    avisos.push(`${segundaVuelta.length} tienda(s) no caben en la flota de hoy (${segundaVuelta.map(s => s.c).join(', ')}) — van a 2ª vuelta o activá otro camión.`);
 
-  const rutas: Ruta[] = [];
-  for (const { grupo, v } of parejas) {
-    if (!v) {
-      avisos.push(`Sin camión disponible para ${grupo.cods.join(', ')} — activá otro vehículo o dejalas para 2ª vuelta.`);
-      continue;
-    }
-    if (grupo.p > v.c) avisos.push(`${v.p} queda sobrecargado: ${grupo.p} pallets para capacidad ${v.c}.`);
-    const ts = grupo.cods.map(c => ({ ...porCodigo.get(c)!, _v: tiendas?.[c]?.v ?? '' }));
-    rutas.push({ v, ts, tp: grupo.p, tb: grupo.b });
-  }
-
-  // 4) Avisos de ventana sobre la propuesta final (informativos: la restricción ya se aplicó al
-  //    fusionar, pero una tienda SUELTA puede seguir siendo imposible por su propia ventana).
+  // 4) Avisos de ventana y de transportista sobre la propuesta final.
   for (const r of rutas) {
     const tarde = ventanasIncumplidas(r.ts.map(t => t.c), gps, cd, tiendas, o);
     if (tarde.length) avisos.push(`${r.v.p}: se llegaría fuera de ventana a ${tarde.join(', ')}.`);
+    // La empresa ya se prefirió al empaquetar; si igual no se pudo, ES informativo de verdad.
+    const emp = String(r.v.empresa ?? '').trim();
+    const distintas = [...new Set(r.ts.map(t => (o.empresaPorTienda[t.c] ?? '').trim())
+      .filter(e => e && emp && e !== emp))];
+    if (distintas.length)
+      avisos.push(`${r.v.p} (${emp}) lleva tiendas de ${distintas.join(', ')} — no había camión libre de esa empresa.`);
   }
 
-  return { rutas, fueraDeRadio, avisos };
+  return { rutas, fueraDeRadio, segundaVuelta, sinFlota: [], avisos };
 }

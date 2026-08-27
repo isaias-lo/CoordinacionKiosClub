@@ -1432,7 +1432,8 @@ export default function RutasScreen() {
   const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
     ENRUTADOR_V2
       ? enrutarV2(pool, flota, egps, cdRef.current, etiendas)
-      : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false), fueraDeRadio: [], avisos: [] };
+      : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false),
+          fueraDeRadio: [], segundaVuelta: [], sinFlota: [], avisos: [] };
 
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
