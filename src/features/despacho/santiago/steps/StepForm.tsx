@@ -26,6 +26,7 @@ import { tipoBadge } from '../tipoTienda';
 import { logActividad } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
+import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
@@ -1136,7 +1137,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       try {
         const resSlot = await fetch('/api/picking-pallets/create-bodega', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: (row.contenido || 'hogar').toLowerCase() }),
+          body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: (row.contenido || 'hogar').toLowerCase() }),
         });
         nuevoSlot = (await resSlot.json() as { data?: PickingSlot }).data;
         if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot!] })); }
@@ -1235,7 +1236,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     try {
       const res = await fetch('/api/picking-pallets/create-bodega', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: tipoCodeSantiago(item.tipo), contenido: (item.contenido || 'hogar').toLowerCase() }),
+        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(item.tipo), contenido: (item.contenido || 'hogar').toLowerCase() }),
       });
       nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
       if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot!] })); }
@@ -1259,7 +1260,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     try {
       const res = await fetch('/api/picking-pallets/create-bodega', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: tipoCodeSantiago(sourceItem.tipo), contenido: (sourceItem.contenido || 'hogar').toLowerCase() }),
+        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(sourceItem.tipo), contenido: (sourceItem.contenido || 'hogar').toLowerCase() }),
       });
       nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
       if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
@@ -1527,7 +1528,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = currentTienda?.cod;
     const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
-    const date = new Date().toISOString().slice(0, 10);
+    const date = fechaISOLocal();
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
     if (t === 'Chocolate') {
@@ -1607,7 +1608,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const src = row.savedItem;
     if (!src || !currentTienda || !regimen) return;
     const cod  = currentTienda.cod;
-    const date = new Date().toISOString().slice(0, 10);
+    const date = fechaISOLocal();
     const baseCount = (items[cod] || []).filter(i => i.tipo === 'Bulto').length; // # antes de duplicar (sin lecturas stale)
     for (let k = 0; k < cantidad; k++) {
       let slot: PickingSlot | undefined;
@@ -2605,7 +2606,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             <AgregarPalletDialog
               tipoLabel={dialogTipo}
               storeCod={currentTienda.cod}
-              date={new Date().toISOString().slice(0, 10)}
+              date={fechaISOLocal()}
               onClose={() => setDialogTipo(null)}
               onNuevo={(cantidad) => { const t = dialogTipo; setDialogTipo(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(t, undefined, i); })(); }}
               onExistente={(slot) => {

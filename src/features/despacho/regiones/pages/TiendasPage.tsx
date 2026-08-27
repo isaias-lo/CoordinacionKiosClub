@@ -28,6 +28,7 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
+import { fechaISOLocal } from '../../shared/fechaLocal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -834,7 +835,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
-    const date = new Date().toISOString().slice(0, 10);
+    const date = fechaISOLocal();
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
     if (pkg === 'chocolate') {
@@ -917,7 +918,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const src = row.savedItem;
     if (!src || !selectedTienda) return;
     const cod  = TIENDAS[selectedTienda]?.cod ?? '';
-    const date = new Date().toISOString().slice(0, 10);
+    const date = fechaISOLocal();
     const baseCount = (dispatchData[selectedTienda] || []).filter(i => i.pkg === 'box').length;
     for (let k = 0; k < cantidad; k++) {
       let slot: PickingSlot | undefined;
@@ -1067,7 +1068,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     try {
       const res = await fetch('/api/picking-pallets/create-bodega', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: pkgCodeNacional(item.pkg), contenido: 'hogar' }),
+        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(item.pkg), contenido: 'hogar' }),
       });
       const slot = (await res.json() as { data?: PickingSlot }).data;
       if (slot) { slotId = slot.id; setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] })); }
@@ -1092,7 +1093,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     try {
       const res = await fetch('/api/picking-pallets/create-bodega', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' }),
+        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' }),
       });
       nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
       if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
@@ -1904,7 +1905,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             <AgregarPalletDialog
               tipoLabel={PKG_LABEL[dialogPkg]}
               storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
-              date={new Date().toISOString().slice(0, 10)}
+              date={fechaISOLocal()}
               onClose={() => setDialogPkg(null)}
               onNuevo={(cantidad) => { const p = dialogPkg; setDialogPkg(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(p, undefined, i); })(); }}
               onExistente={(slot) => {
