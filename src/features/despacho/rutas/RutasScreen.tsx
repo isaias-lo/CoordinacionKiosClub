@@ -235,6 +235,11 @@ export default function RutasScreen() {
   // Cross-device vía shared_session_state fuente 'rutas_cerradas'. El registro global SALTA estas
   // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
   const [cerradasV1, setCerradasV1] = useState<Set<string>>(new Set());
+  // Espejo síncrono de `cerradasV1`. El cierre EN MASA cierra N camiones en un mismo tick (forEach):
+  // si cada cierre mergeara sobre el `cerradasV1` del closure (congelado del render), cada uno pisaría
+  // al anterior y quedaría solo la última patente (bug "solo se cierra uno"). El ref acumula al toque.
+  const cerradasV1Ref = useRef<Set<string>>(cerradasV1);
+  useEffect(() => { cerradasV1Ref.current = cerradasV1; }, [cerradasV1]);
   // ── Tab "2ª VUELTA": pendientes de días anteriores, board y manifiesto AISLADOS del día actual ──
   const [pendientesV2Origen, setPendientesV2Origen] = useState<PendienteV2[]>([]);
   // Tablero V2 por FECHA de origen: fecha → (patente → tiendas). Antes era plano (patente → tiendas)
@@ -1280,8 +1285,8 @@ export default function RutasScreen() {
   // postea el summary una vez y marca el día `rutas_reg` (igual que el registro global).
   // rutaOverride: para cerrar desde el board DESPACHO (sin "Calcular"), pasando la ruta armada
   // desde las asignaciones crudas. Sin override, usa la ruta ya calculada de `results`.
-  function cerrarCamionV1(patente: string, rutaOverride?: Ruta) {
-    if (isCerrada(cerradasV1, patente)) return; // ya cerrado → idempotente, no re-escribir
+  function cerrarCamionV1(patente: string, rutaOverride?: Ruta, skipPush = false) {
+    if (isCerrada(cerradasV1Ref.current, patente)) return; // ya cerrado → idempotente, no re-escribir
     const ruta = rutaOverride ?? results?.rutas.find(r => normPatente(r.v.p) === normPatente(patente));
     if (!ruta || ruta.ts.length === 0) return;
 
@@ -1323,10 +1328,13 @@ export default function RutasScreen() {
     fetch('/api/sheets-write', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sheet: 'HISTORIAL', rows: [histRow] }) }).catch(e => console.error('[v1 historial]', e));
 
-    // 5) Marcar la patente como cerrada (cross-device) y abrir su manifiesto
-    const next = mergeCerradas(cerradasV1, [patente]);
+    // 5) Marcar la patente como cerrada (cross-device) y abrir su manifiesto.
+    //    Merge sobre el REF (no el closure): así el cierre en masa acumula en vez de pisarse. En masa
+    //    el push se hace una sola vez al final con el set completo (skipPush) para no correr N upserts.
+    const next = mergeCerradas(cerradasV1Ref.current, [patente]);
+    cerradasV1Ref.current = next;
     setCerradasV1(next);
-    pushCerradasV1(next);
+    if (!skipPush) pushCerradasV1(next);
     setManifiestoV1([ruta]);
 
     // 6) Si con este cierre quedan TODAS las rutas cerradas → completar el día:
@@ -1342,7 +1350,7 @@ export default function RutasScreen() {
   // desde las asignaciones crudas (manualAsignaciones) + nn (secuencia del manifiesto) y reutiliza
   // cerrarCamionV1 vía rutaOverride. Mismo modelo que cerrarCamionV2 (2ª vuelta). El "completar
   // día" se hace con "Listo por hoy" o el registro global.
-  function cerrarCamionV1Board(patente: string) {
+  function cerrarCamionV1Board(patente: string, skipPush = false) {
     const stores = manualAsignaciones[patente] || [];
     if (!stores.length) return;
     const vehicle = flota.find(v => normPatente(v.p) === normPatente(patente));
@@ -1354,7 +1362,7 @@ export default function RutasScreen() {
       tp: ordered.reduce((s, t) => s + t.p, 0),
       tb: ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0),
     };
-    cerrarCamionV1(patente, ruta);
+    cerrarCamionV1(patente, ruta, skipPush);
     // NOTA: el "leftover → 2ª vuelta" NO se hace aquí (en cada cierre de camión) porque mandaba a
     // 2ª vuelta todo lo que aún no se había asignado a los OTROS camiones, cortando el flujo. Se
     // hace una sola vez al cerrar la jornada ("Listo por hoy", ver handleListoPorHoy).
@@ -1369,7 +1377,8 @@ export default function RutasScreen() {
   // Cierra todos los camiones seleccionados de una (cerrarCamionV1Board ya es idempotente; los que
   // no tienen tiendas o exceden capacidad simplemente no se cierran adentro).
   const cerrarVariosCamiones = (patentes: string[]) => {
-    patentes.forEach(p => cerrarCamionV1Board(p));
+    patentes.forEach(p => cerrarCamionV1Board(p, true)); // skipPush: acumulan en el ref
+    pushCerradasV1(cerradasV1Ref.current);               // un solo push con TODAS las cerradas
     setCerrarSel(new Set());
   };
 
