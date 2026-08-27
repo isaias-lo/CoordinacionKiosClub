@@ -9,6 +9,7 @@ import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
 import CierreJornadaPanel from './components/CierreJornadaPanel';
+import TableroVivo from './components/TableroVivo';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
 
@@ -251,6 +252,8 @@ export default function RutasScreen() {
   // Panel de Cierre de Jornada — compartido entre ResultsSection (post-Calcular) y el
   // botón "Terminar día" del tablero DESPACHO (ver CierreJornadaPanel más abajo).
   const [cierreOpen, setCierreOpen] = useState(false);
+  // Tablero vivo (motor incremental) — panel de la fase "Asignado".
+  const [tableroOpen, setTableroOpen] = useState(false);
   // Contenedor con scroll real del board de 2ª vuelta — mismo motivo que en InputSection:
   // auto-scroll al arrastrar cerca del borde más confiable que buscarlo por DOM-walk.
   const v2ScrollRef = useRef<HTMLDivElement>(null);
@@ -2234,6 +2237,7 @@ export default function RutasScreen() {
             onPlanRutas={(rutas, cdArr, ext) => { setPlanRutas(rutas); setPlanCd(cdArr); setPlanExt(ext ?? { gps: {}, tiendas: {} }); }}
             planLegsByRoute={planLegsByRoute} planKmByRoute={planKmByRoute}
             onTerminarDia={() => setCierreOpen(true)}
+            onAbrirTablero={() => setTableroOpen(true)}
             pendientesBacklogCount={pendientesV2Origen.length}
             rightPanelContent={
               results ? (
@@ -2373,6 +2377,16 @@ export default function RutasScreen() {
         pendientesBacklog={pendientesV2Origen}
         onCargarPendientes={handleCargarPendientes}
         onListoPorHoy={handleListoPorHoy}
+      />
+
+      <TableroVivo
+        isOpen={tableroOpen}
+        onClose={() => setTableroOpen(false)}
+        flota={flota}
+        gps={gps}
+        tiendas={tiendas}
+        cd={cdRef.current}
+        fecha={fecha}
       />
 
       <ParadasAdicionales
