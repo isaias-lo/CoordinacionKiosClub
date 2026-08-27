@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake } from 'lucide-react';
+import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake, Radio } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -72,6 +72,8 @@ interface Props {
   // "Calcular" — es el único lugar que manda lo que quedó sin asignar a pendientes 2ª
   // vuelta ("Listo por hoy"), y antes solo se podía llegar ahí después de calcular.
   onTerminarDia?: () => void;
+  // Abre el Tablero vivo (motor incremental: qué camión se puede despachar ya). Fase "Asignado".
+  onAbrirTablero?: () => void;
   // Backlog de tiendas pendientes de 2ª vuelta de DÍAS ANTERIORES (no las de hoy) — badge
   // en el tab "2ª VUELTA" para que no pase desapercibido (antes no había ninguna señal ahí).
   pendientesBacklogCount?: number;
@@ -122,6 +124,7 @@ export default function InputSection({
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
   cerrarSel, onToggleCerrarSel, onCerrarVarios, esCerrada,
   onTerminarDia,
+  onAbrirTablero,
   pendientesBacklogCount = 0,
   rightPanelContent,
   segundaVueltaContent,
@@ -271,8 +274,13 @@ export default function InputSection({
       <div className="flex flex-col h-full overflow-hidden">
         <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
           <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
+            {modo === 'drag' && !rightPanelContent && onAbrirTablero && (
+              <button onClick={onAbrirTablero} className="h-[36px] px-3 rounded-[10px] bg-white border-2 border-emerald-500/40 text-emerald-700 text-[12px] font-bold flex-shrink-0 flex items-center gap-1 ml-auto">
+                <Radio size={13} strokeWidth={2} aria-hidden="true" /><span>Tablero vivo</span>
+              </button>
+            )}
             {modo === 'drag' && !rightPanelContent && onTerminarDia && (
-              <button onClick={onTerminarDia} className="h-[36px] px-3 rounded-[10px] bg-white border-2 border-knavy/30 text-knavy text-[12px] font-bold flex-shrink-0 flex items-center gap-1 ml-auto">
+              <button onClick={onTerminarDia} className={`h-[36px] px-3 rounded-[10px] bg-white border-2 border-knavy/30 text-knavy text-[12px] font-bold flex-shrink-0 flex items-center gap-1 ${onAbrirTablero ? '' : 'ml-auto'}`}>
                 <Flag size={13} strokeWidth={2} aria-hidden="true" /><span>Terminar día</span>
               </button>
             )}
@@ -377,6 +385,14 @@ export default function InputSection({
             ))}
           </div>
           <div className="flex-1" />
+          {!rightPanelContent && modo === 'drag' && onAbrirTablero && (
+            <button
+              onClick={onAbrirTablero}
+              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-emerald-500/40 text-emerald-700 text-[13px] font-bold hover:border-emerald-600 transition-all flex items-center gap-2 mr-2"
+            >
+              <Radio size={15} strokeWidth={2} /><span>Tablero vivo</span>
+            </button>
+          )}
           {!rightPanelContent && modo === 'drag' && onTerminarDia && (
             <button
               onClick={onTerminarDia}
