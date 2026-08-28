@@ -27,7 +27,7 @@ import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { enrutarV2, type ResultadoEnrutador } from './utils/enrutadorV2';
 import { poolDesdeCalT } from './utils/poolDespacho';
-import { asignarPorClusters, type CentroideCluster } from './utils/asignarPorClusters';
+import type { CentroideCluster } from './utils/asignarPorClusters';
 import { faseEnrutador } from './utils/faseEnrutador';
 import type { IAStore, IATruck } from './ia/types';
 import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
@@ -1454,7 +1454,7 @@ export default function RutasScreen() {
     ENRUTADOR_V2
       ? enrutarV2(pool, flota, egps, cdRef.current, etiendas)
       : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false),
-          fueraDeRadio: [], segundaVuelta: [], sinFlota: [], avisos: [] };
+          fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos: [] };
 
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
@@ -1589,18 +1589,21 @@ export default function RutasScreen() {
     return () => { cancel = true; };
   }, []);
 
+  // [E7] El tablero pasa a usar `enrutarV2`. Antes usaba `asignarPorClusters`, que agrupa por
+  // co-ocurrencia histórica y rellena por capacidad — sin ninguna noción de distancia ni de
+  // transportista. Eso producía camiones con Castro (1.045 km) y Puente Alto (18 km) en el mismo
+  // viaje, y mandaba tiendas de Regiones a camiones que nunca las llevan.
+  // Medido sobre 49 días reales: 143 km/día y 5,8 camiones con el viejo, contra 117 y 4,3 con este.
   const autoAsignar = () => {
-    const cl = clustersRef.current;
-    if (!cl) { setErrors(['Aún cargando los patrones históricos de ruta — probá de nuevo en un segundo.']); return; }
-    const stores: StoreItem[] = Object.keys(calT)
-      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
-      .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
+    const stores = poolDesdeCalT(calT);
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
-    if (!flota.some(v => v.on && !v.tlbd)) { setErrors(['No hay camiones activos para asignar.']); return; }
+    if (!flota.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
-    const asig = asignarPorClusters(stores, flota, cl.clusterDeTienda, cl.centroides, extGps, extTiendas);
+    const { rutas, avisos } = enrutar(stores, extGps, extTiendas);
+    const asig: Record<string, StoreItem[]> = {};
+    for (const r of rutas) if (r.ts.length) asig[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
     setManualAsignaciones(asig);
-    setErrors([]);
+    setErrors(avisos);
   };
   const autoAsignarRef = useRef(autoAsignar);
   autoAsignarRef.current = autoAsignar;
@@ -1611,10 +1614,10 @@ export default function RutasScreen() {
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
   const boardEmpty = Object.keys(manualAsignaciones).length === 0;
   useEffect(() => {
-    if (!clusters || !boardEmpty || !poolSig || !trucksSig) return;
+    if (!boardEmpty || !poolSig || !trucksSig) return;
     const t = setTimeout(() => autoAsignarRef.current(), 1000);
     return () => clearTimeout(t);
-  }, [clusters, boardEmpty, poolSig, trucksSig]);
+  }, [boardEmpty, poolSig, trucksSig]);
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
