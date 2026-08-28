@@ -80,7 +80,18 @@ export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
  */
 export interface ResultadoEnrutador {
   rutas: Ruta[];
-  /** Fuera de todo radio: van por Regiones (Sendu), no por ruta propia desde el CD. */
+  /**
+   * CONSOLIDACIÓN de Regiones: tiendas que no se rutean desde el CD, pero a las que sí hay que
+   * asignarles transportista. En la operación el coordinador arma un "camión" con las tiendas de
+   * Regiones que se lleva cada empresa; no es un recorrido —puede tener La Serena y Castro juntas—
+   * así que estas rutas no llevan km ni chequeo de ventana.
+   *
+   * Antes estas tiendas caían en `fueraDeRadio` sin camión, y el flujo quedaba incompleto: en el
+   * despacho del 28/08 eran 6 tiendas que el coordinador sí había asignado a Ortiz y a otro
+   * vehículo.
+   */
+  consolidacion: Ruta[];
+  /** De Regiones y sin transportista posible: no quedó vehículo para llevarlas. */
   fueraDeRadio: StoreItem[];
   /** Tiendas de Costa que sí se rutean, para que la pantalla las pueda distinguir. */
   costa: StoreItem[];
@@ -467,6 +478,56 @@ export function empacarEnFlota(
   return { asignaciones, sobrante };
 }
 
+/**
+ * Asigna transportista a las tiendas de Regiones, con los camiones que NO quedaron en ruta.
+ *
+ * Corre DESPUÉS del ruteo a propósito: las rutas de Santiago y Costa tienen ventana horaria y son
+ * las que no pueden esperar; la consolidación de Regiones la retira el transportista y no depende
+ * de una hora. Si se hiciera antes, un camión que Santiago necesita podía terminar cargando Castro.
+ *
+ * No calcula ruta ni kilómetros: un mismo camión puede consolidar La Serena y Castro, que están en
+ * puntas opuestas del país. Es un registro de quién se lleva qué, no un recorrido.
+ */
+export function consolidarRegiones(
+  regiones: StoreItem[],
+  flota: Vehiculo[],
+  tiendas: Record<string, TiendaInfo> | undefined,
+  o: Required<OpcionesEnrutador>,
+  usados: Set<string>,
+  consolidacion: Ruta[],
+  fueraDeRadio: StoreItem[],
+  avisos: string[],
+): void {
+  if (!regiones.length) return;
+  const porEmpresa = new Map<string, StoreItem[]>();
+  for (const s of regiones) {
+    const e = (o.empresaPorTienda[s.c] ?? '').trim() || '_sin';
+    (porEmpresa.get(e) ?? porEmpresa.set(e, []).get(e)!).push(s);
+  }
+  const libres = flota.filter(v => v.on && !usados.has(v.p))
+    .sort((a, b) => (b.c - a.c) || a.p.localeCompare(b.p));
+  for (const [emp, items] of [...porEmpresa.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const carga = items.reduce((t, x) => t + x.p, 0);
+    const cand = libres.filter(v => !usados.has(v.p));
+    // SOLO se asigna si hay un camión de la empresa que suele llevar esas tiendas. Sin ese
+    // filtro el motor elegía cualquier vehículo libre y, como las rutas de Santiago se arman
+    // primero, terminaba poniendo Castro en un camión de Kios Club mientras el de Ortiz —que es
+    // el que de verdad hace Regiones— se había ido a Santiago. Asignar el transportista
+    // equivocado es peor que no asignar ninguno: parece decidido y no lo está.
+    const mismaEmpresa = (v: Vehiculo) => emp !== '_sin' && String(v.empresa ?? '').trim() === emp;
+    const elegido = cand.find(v => mismaEmpresa(v) && v.c >= carga) ?? cand.find(mismaEmpresa);
+    if (!elegido) { fueraDeRadio.push(...items); continue; }
+    usados.add(elegido.p);
+    const ts = items.map(x => ({ ...x, _v: tiendas?.[x.c]?.v ?? '' }));
+    consolidacion.push({ v: elegido, ts,
+      tp: ts.reduce((t, x) => t + x.p, 0), tb: ts.reduce((t, x) => t + bultosDe(x), 0) });
+  }
+  for (const c of consolidacion)
+    avisos.push(`${c.v.p} (${String(c.v.empresa ?? '').trim() || 'sin empresa'}) consolida ${c.ts.length} tienda(s) de Regiones: ${c.ts.map(t => t.c).join(', ')} — sin ruta desde el CD.`);
+  if (fueraDeRadio.length)
+    avisos.push(`${fueraDeRadio.map(s => s.c).join(', ')}: no quedó camión del transportista que suele llevarlas — asignalas a mano.`);
+}
+
 // ── API principal (drop-in de `asignar`) ─────────────────────────────────────────
 
 /**
@@ -484,7 +545,7 @@ export function enrutarV2(
   const o = { ...OPCIONES_DEFAULT, ...opciones };
   const avisos: string[] = [];
   const vacio = (extra: Partial<ResultadoEnrutador> = {}): ResultadoEnrutador =>
-    ({ rutas: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos, ...extra });
+    ({ rutas: [], consolidacion: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos, ...extra });
 
   // El furgón TLBD cuenta como vehículo: empacarEnFlota lo usa de último recurso, respetando su
   // capacidad. Solo si NO hay ninguno activo el día no se puede rutear.
@@ -497,27 +558,33 @@ export function enrutarV2(
   // 1) Triage en TRES zonas, no dos. Antes solo había "dentro" y "fuera del radio RM", y las
   //    cinco tiendas de Costa (86–100 km) caían en "fuera" con el mensaje de Regiones — falso:
   //    Costa se despacha desde el CD con camión propio. Regiones (>200 km) sí sale por Sendu.
-  const santiago: StoreItem[] = [], costa: StoreItem[] = [], fueraDeRadio: StoreItem[] = [];
+  const santiago: StoreItem[] = [], costa: StoreItem[] = [], regiones: StoreItem[] = [];
   for (const s of pool) {
     const g = gps[s.c];
     const d = g ? dkm(cd, g) : 0;
     switch (zonaDeTienda(s.c, tiendas, d, o)) {
       case 'costa':    costa.push(s); break;
-      case 'regiones': fueraDeRadio.push(s); break;
+      case 'regiones': regiones.push(s); break;
       default:         santiago.push(s);
     }
   }
-  if (fueraDeRadio.length)
-    avisos.push(`${fueraDeRadio.length} tienda(s) a más de ${o.radioCostaKm} km del CD (${fueraDeRadio.map(s => s.c).join(', ')}) — van por Regiones, no por ruta propia.`);
+
+  const consolidacion: Ruta[] = [];
+  const fueraDeRadio: StoreItem[] = [];
+  const usados = new Set<string>();
+
+  // Lo que SÍ se rutea desde el CD: Santiago y Costa. Regiones se consolida al final.
+  const dentro = [...santiago, ...costa];
   if (costa.length)
     avisos.push(`${costa.length} tienda(s) de Costa (${costa.map(s => s.c).join(', ')}) — van en camión aparte, no se mezclan con Santiago.`);
-
-  const dentro = [...santiago, ...costa];
 
   const sinGps = dentro.filter(s => !gps[s.c]).map(s => s.c);
   if (sinGps.length) avisos.push(`Sin coordenadas: ${sinGps.join(', ')} — quedan agrupadas aparte, ubicalas a mano.`);
 
-  if (!dentro.length) return vacio({ fueraDeRadio });
+  if (!dentro.length) {
+    consolidarRegiones(regiones, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
+    return vacio({ consolidacion, fueraDeRadio, costa });
+  }
 
   const porCodigo = new Map(dentro.map(s => [s.c, s]));
 
@@ -552,6 +619,10 @@ export function enrutarV2(
     };
   }).filter(r => r.ts.length);
 
+  // Los camiones que quedaron en ruta no pueden además consolidar Regiones.
+  for (const r of rutas) usados.add(r.v.p);
+  consolidarRegiones(regiones, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
+
   const segundaVuelta = sobrante.map(c => porCodigo.get(c)).filter((s): s is StoreItem => !!s);
   if (segundaVuelta.length)
     avisos.push(`${segundaVuelta.length} tienda(s) no caben en la flota de hoy (${segundaVuelta.map(s => s.c).join(', ')}) — van a 2ª vuelta o activá otro camión.`);
@@ -568,5 +639,5 @@ export function enrutarV2(
       avisos.push(`${r.v.p} (${emp}) lleva tiendas de ${distintas.join(', ')} — no había camión libre de esa empresa.`);
   }
 
-  return { rutas, fueraDeRadio, costa, segundaVuelta, sinFlota: [], avisos };
+  return { rutas, consolidacion, fueraDeRadio, costa, segundaVuelta, sinFlota: [], avisos };
 }

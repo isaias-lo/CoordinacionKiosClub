@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
+import { zonaDeSector } from '@/lib/sectores';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
 import type { Vehiculo } from '../data/flota';
@@ -71,6 +72,18 @@ function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number
   ordered.forEach(t => { const g = gps[t.c]; if (g) { km += dkm(prev, g); prev = g; } });
   if (ordered.length && gps[ordered[ordered.length - 1].c]) km += dkm(prev, cd);
   return Math.round(km);
+}
+
+/**
+ * Un camión de CONSOLIDACIÓN no hace una ruta: lleva tiendas de Regiones a un transportista, que
+ * después las reparte por su cuenta. Sus "kilómetros" son la suma de distancias a destinos que
+ * pueden estar en puntas opuestas del país — un camión con La Serena y Castro marcaba 2.868 km
+ * para 5 tiendas, y eso inflaba el total del día a 4.467 km cuando la ruta real de Santiago eran
+ * menos de 200. Separarlos es lo que hace que el número del tablero signifique algo.
+ */
+function esConsolidacion(stores: StoreTag[], tiendas: Record<string, TiendaInfo>): boolean {
+  if (!stores.length) return false;
+  return stores.every(s => zonaDeSector((tiendas[s.c] as { sector?: string } | undefined)?.sector) === 'regiones');
 }
 
 interface DraggingState extends StoreTag { from: string; }
@@ -392,7 +405,12 @@ export default function ManualDispatch({
     if (m.overCap) issues.push(`${v.p} excede capacidad (${m.tp}/${m.cap}p)`);
   });
 
-  const totalEstKm    = flotaDisp.reduce((s, v) => s + getMetrics(v.p, v).kmEst, 0);
+  // El total del día suma solo las RUTAS. Los camiones de consolidación (Regiones) se cuentan
+  // aparte: sus km no son un recorrido y arruinaban el número.
+  const esConsol      = (p: string) => esConsolidacion(asignaciones[p] || [], tiendas);
+  const totalEstKm    = flotaDisp.filter(v => !esConsol(v.p)).reduce((s, v) => s + getMetrics(v.p, v).kmEst, 0);
+  const camsConsol    = flotaDisp.filter(v => (asignaciones[v.p] || []).length && esConsol(v.p));
+  const tiendasConsol = camsConsol.reduce((s, v) => s + (asignaciones[v.p] || []).length, 0);
   const tiendasCount  = tiendasActivas.length + paradasConGps.length;
   const isSelected    = dragging !== null;
   const hasSelection  = selected.size > 0;
@@ -445,7 +463,8 @@ export default function ManualDispatch({
         <div className="flex gap-2 text-[11px] text-kmuted bg-kbg rounded-kios2 px-3 py-2">
           <span><span className="font-semibold text-ktext">{tiendasCount}</span> tiendas ·</span>
           <span><span className="font-semibold text-ktext">{tiendasCount - pool.length}</span> asignadas</span>
-          {totalEstKm > 0 && <><span>·</span><span><span className="font-semibold text-ktext">~{totalEstKm} km</span> total</span></>}
+          {totalEstKm > 0 && <><span>·</span><span><span className="font-semibold text-ktext">~{totalEstKm} km</span> en ruta</span></>}
+          {tiendasConsol > 0 && <><span>·</span><span><span className="font-semibold text-ktext">{tiendasConsol}</span> a Regiones (sin ruta)</span></>}
         </div>
       )}
 

@@ -53,10 +53,12 @@ describe('simulación del día de despacho', () => {
   });
 
   // ── Mañana: sale Regiones primero, como en la operación real ──────────────────
-  it('paso 1 · con solo Regiones en el pool, no se arma ninguna ruta desde el CD', () => {
-    const r = enrutarV2(poolDesdeCalT(calT(REGIONES)), flota, gps, CD, tiendas);
-    expect(r.rutas).toEqual([]);
-    expect(r.fueraDeRadio.map(s => s.c).sort()).toEqual([...REGIONES].sort());
+  it('paso 1 · Regiones no se rutea desde el CD, pero recibe transportista', () => {
+    const r = enrutarV2(poolDesdeCalT(calT(REGIONES)), flota, gps, CD, tiendas,
+      { empresaPorTienda: Object.fromEntries(REGIONES.map(c => [c, 'Luis Fica'])) });
+    expect(r.rutas).toEqual([]);                                    // ninguna ruta calculada
+    expect(r.consolidacion.flatMap(x => x.ts.map(t => t.c)).sort())  // pero sí camión asignado
+      .toEqual([...REGIONES].sort());
     expect(r.avisos.join(' ')).toContain('Regiones');
   });
 
@@ -84,19 +86,20 @@ describe('simulación del día de despacho', () => {
   });
 
   it('paso 3b · Castro nunca viaja con una tienda de Santiago', () => {
-    const r = enrutarV2(poolDesdeCalT(calT([...REGIONES, ...SANTIAGO])), flota, gps, CD, tiendas);
-    for (const ruta of r.rutas) {
-      const cods = ruta.ts.map(t => t.c);
-      expect(cods.includes('57CAS')).toBe(false);
-    }
-    expect(r.fueraDeRadio.map(s => s.c)).toContain('57CAS');
+    const r = enrutarV2(poolDesdeCalT(calT([...REGIONES, ...SANTIAGO])), flota, gps, CD, tiendas,
+      { empresaPorTienda: Object.fromEntries(REGIONES.map(c => [c, 'Luis Fica'])) });
+    for (const ruta of r.rutas) expect(ruta.ts.map(t => t.c).includes('57CAS')).toBe(false);
+    // Castro va en un camión de consolidación, con solo tiendas de Regiones
+    const suyo = r.consolidacion.find(x => x.ts.some(t => t.c === '57CAS'));
+    expect(suyo).toBeDefined();
+    for (const t of suyo!.ts) expect(zonaDe(t.c)).toBe('regiones');
   });
 
   it('paso 3c · ninguna tienda del pool se pierde', () => {
     const pool = poolDesdeCalT(calT([...REGIONES, ...COSTA, ...SANTIAGO]));
     const r = enrutarV2(pool, flota, gps, CD, tiendas);
     const vistas = [
-      ...codsDe(r.rutas), ...r.fueraDeRadio.map(s => s.c),
+      ...codsDe(r.rutas), ...codsDe(r.consolidacion), ...r.fueraDeRadio.map(s => s.c),
       ...r.segundaVuelta.map(s => s.c), ...r.sinFlota.map(s => s.c),
     ].sort();
     expect(vistas).toEqual(pool.map(s => s.c).sort());

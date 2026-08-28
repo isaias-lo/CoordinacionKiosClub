@@ -325,11 +325,39 @@ describe('enrutarV2', () => {
     expect(tb).toBe(5); // 3+1 bultos + 1 congelado
   });
 
-  it('manda a Regiones solo lo que está más allá del radio de Costa', () => {
-    const r = enrutarV2([S('A'), S('REGION')], flota, GPS, CD, undefined, { radioRMKm: 60, radioCostaKm: 200 });
-    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['REGION']);
+  it('lo que está más allá del radio de Costa NO se rutea, pero SÍ recibe transportista', () => {
+    const conEmp = [V('T1', 10, 20, { empresa: 'Ortiz' }), V('T2', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A'), S('REGION')], conEmp, GPS, CD, undefined,
+      { radioRMKm: 60, radioCostaKm: 200, empresaPorTienda: { REGION: 'Ortiz' } });
+    // no entra en las rutas de Santiago…
     expect(r.rutas.flatMap(x => x.ts.map(t => t.c))).not.toContain('REGION');
+    // …pero queda en un camión de consolidación, que es lo que hace el coordinador
+    expect(r.consolidacion.flatMap(x => x.ts.map(t => t.c))).toEqual(['REGION']);
+    expect(r.fueraDeRadio).toEqual([]);
     expect(r.avisos.join(' ')).toContain('REGION');
+  });
+
+  it('el camión que consolida Regiones no se usa además para Santiago', () => {
+    const conEmp = [V('T1', 10, 20, { empresa: 'Ortiz' }), V('T2', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A'), S('B'), S('REGION')], conEmp, GPS, CD, undefined,
+      { maxDiametroKm: 0, respetarVentanas: false, empresaPorTienda: { REGION: 'Ortiz' } });
+    const enConsol = new Set(r.consolidacion.map(x => x.v.p));
+    for (const x of r.rutas) expect(enConsol.has(x.v.p)).toBe(false);
+  });
+
+  it('sin vehículo para Regiones, quedan en fueraDeRadio con aviso', () => {
+    const r = enrutarV2([S('REGION')], [], GPS, CD, undefined, {});
+    expect(r.consolidacion).toEqual([]);
+    expect(r.sinFlota.map(s => s.c)).toEqual(['REGION']);
+  });
+
+  it('sin camión del transportista habitual, NO inventa: quedan sin asignar y avisa', () => {
+    // el único camión libre es de otra empresa → no se le encaja Regiones
+    const otra = [V('T1', 10, 20, { empresa: 'Kios Club' })];
+    const r = enrutarV2([S('REGION')], otra, GPS, CD, undefined, { empresaPorTienda: { REGION: 'Ortiz' } });
+    expect(r.consolidacion).toEqual([]);
+    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['REGION']);
+    expect(r.avisos.join(' ')).toContain('a mano');
   });
 
   // Las 5 tiendas de Costa están a 86–100 km: antes caían en "fuera de radio" con el mensaje de
@@ -393,12 +421,13 @@ describe('enrutarV2', () => {
     }
   });
 
-  it('INVARIANTE: rutas + fueraDeRadio + segundaVuelta + sinFlota = el pool completo', () => {
+  it('INVARIANTE: rutas + consolidación + fueraDeRadio + 2ª vuelta + sinFlota = el pool completo', () => {
     const pool = [S('A',3), S('B',3), S('C',3), S('D',3), S('LEJOS',3), S('REGION',3), S('XX',3)];
     for (const flota of [[V('U',10)], [V('U',4)], [], [V('OFF',10,20,{on:false})]]) {
       const r = enrutarV2(pool, flota, GPS, CD, undefined, { maxDiametroKm: 0, respetarVentanas: false });
       const vistas = [
         ...r.rutas.flatMap(x => x.ts.map(t => t.c)),
+        ...r.consolidacion.flatMap(x => x.ts.map(t => t.c)),
         ...r.fueraDeRadio.map(s => s.c),
         ...r.segundaVuelta.map(s => s.c),
         ...r.sinFlota.map(s => s.c),
