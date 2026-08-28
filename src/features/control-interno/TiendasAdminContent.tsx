@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { opcionesSector } from '@/lib/sectores';
 import {
   Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload,
   Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
@@ -604,7 +605,18 @@ export default function TiendasAdminContent({
             <div style={{ marginTop: 12 }}><label style={lbl}>Dirección</label><input style={inp} value={form.direccion} onChange={f('direccion')} placeholder="Av. Plaza 1250, Las Condes" /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Región</label><input style={inp} value={form.region} onChange={f('region')} placeholder="Región Metropolitana" /></div>
-              <div><label style={lbl}>Sector / Comuna</label><input style={inp} value={form.sector_comuna} onChange={f('sector_comuna')} placeholder="Las Condes" /></div>
+              <div>
+                {/* Lista cerrada: este campo decide en qué zona rutea la tienda, así que un typo
+                    la cambia de camión. Si ya tenía un valor viejo fuera de la lista se conserva
+                    como opción para no perderlo al editar. */}
+                <label style={lbl}>Sector / Comuna</label>
+                <select style={inp} value={form.sector_comuna} onChange={f('sector_comuna')}>
+                  <option value="">— Sector —</option>
+                  {opcionesSector(form.sector_comuna).map(o => (
+                    <option key={o.valor} value={o.valor}>{o.valor} · {o.detalle}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Corredor</label><input style={inp} value={form.corredor} onChange={f('corredor')} placeholder="Corredor Oriente" /></div>
