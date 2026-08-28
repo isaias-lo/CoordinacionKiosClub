@@ -71,9 +71,32 @@ export async function POST(request: NextRequest) {
 
   const row = vehiculoToRow(body);
   const sb = supabaseServer();
-  const { error } = await sb.from('flota_vehiculos').insert(row);
 
+  // La patente es PK y el DELETE es SOFT (activo=false), así que una patente borrada SIGUE en la
+  // tabla. Un INSERT plano chocaba con la PK (23505) y el front caía a PATCH, que NO toca `activo`:
+  // la fila quedaba activo=false y el camión "desaparecía" al recargar (el GET filtra activo=true).
+  // Por eso: si ya existe una fila borrada, la REVIVIMOS (activo=true + su config); si existe activa,
+  // es un duplicado real (409); si no existe, insert normal.
+  const { data: existing } = await sb
+    .from('flota_vehiculos')
+    .select('activo')
+    .eq('patente', body.p)
+    .maybeSingle();
+
+  if (existing?.activo) {
+    return NextResponse.json({ error: 'Ya existe', code: 'DUPLICATE' }, { status: 409 });
+  }
+
+  if (existing) {
+    // Estaba soft-deleted → revivir con la config re-ingresada (row ya trae activo:true).
+    const { error } = await sb.from('flota_vehiculos').update(row).eq('patente', body.p);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, revived: true });
+  }
+
+  const { error } = await sb.from('flota_vehiculos').insert(row);
   if (error) {
+    // Carrera: alguien insertó la misma patente entre el select y el insert.
     if (error.code === '23505') {
       return NextResponse.json({ error: 'Ya existe', code: 'DUPLICATE' }, { status: 409 });
     }
