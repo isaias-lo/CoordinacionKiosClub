@@ -1,6 +1,9 @@
 export interface TiendaInfo {
   n: string;        // nombre
-  z: string;        // sector/comuna (zona)
+  z: string;        // corredor (para display/agrupación)
+  /** SECTOR/COMUNA del catálogo, tal cual viene de la hoja TIENDAS: 'Costa', 'Región',
+   *  'Corredor Oriente', etc. Es la fuente de verdad de a qué zona pertenece la tienda. */
+  sector?: string;
   v: string;        // ventana horaria
   d?: string;       // dirección
   activo?: boolean;

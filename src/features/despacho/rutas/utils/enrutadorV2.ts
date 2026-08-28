@@ -27,12 +27,25 @@ export interface OpcionesEnrutador {
   maxDiametroKm?: number;
   /** Rechaza fusiones que hagan llegar tarde a alguna tienda según su ventana. */
   respetarVentanas?: boolean;
-  velocidadKmH?: number;      // velocidad media urbana puerta a puerta
+  velocidadKmH?: number;      // velocidad media URBANA puerta a puerta (tramos cortos)
+  /**
+   * Velocidad media INTERURBANA, para los tramos largos. Medido con la Routes API: el viaje del
+   * CD a las tiendas de Costa va a 71–84 km/h reales por carretera, que sobre la distancia en
+   * línea recta equivale a ~57 km/h. Con la velocidad urbana plana de 22, el motor creía que
+   * llegar a Viña tomaba 4h22 en vez de 1h41 — y por eso se negaba a juntar Viña, Reñaca y
+   * Concón en un mismo camión aunque estén a 10 km entre sí.
+   */
+  velocidadInterurbanaKmH?: number;
   minutosPorParada?: number;  // descarga + firma
   horaSalida?: string;        // 'HH:MM' de salida del CD
-  /** Radio desde el CD para considerar una tienda parte del pool RM. Fuera de esto va por
-   *  el flujo Regiones (Sendu) — hoy se cuelan tiendas de Antofagasta/Castro en despacho_rm. */
+  /** Hasta acá una tienda es de SANTIAGO. Más lejos empieza Costa. */
   radioRMKm?: number;
+  /**
+   * Hasta acá una tienda es de COSTA (Viña, Reñaca, Concón, Curauma, Quilpué: 86–100 km). Se
+   * rutea desde el CD igual que Santiago, pero SIEMPRE en camión aparte — nunca mezclada.
+   * Más lejos que esto es Regiones y sale por Sendu, no por ruta propia.
+   */
+  radioCostaKm?: number;
   /**
    * Empresa transportista habitual de cada tienda (código → empresa). Cuando hay VARIOS camiones
    * que sirven para un grupo, se prefiere uno de esta empresa.
@@ -49,9 +62,11 @@ export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
   maxDiametroKm: 20,
   respetarVentanas: true,
   velocidadKmH: 22,
+  velocidadInterurbanaKmH: 57,
   minutosPorParada: 12,
   horaSalida: '08:00',
   radioRMKm: 60,
+  radioCostaKm: 200,
 };
 
 /**
@@ -64,14 +79,43 @@ export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
  */
 export interface ResultadoEnrutador {
   rutas: Ruta[];
-  /** Fuera del radio RM: van por Regiones (Sendu), no por ruta de Santiago. */
+  /** Fuera de todo radio: van por Regiones (Sendu), no por ruta propia desde el CD. */
   fueraDeRadio: StoreItem[];
+  /** Tiendas de Costa que sí se rutean, para que la pantalla las pueda distinguir. */
+  costa: StoreItem[];
   /** No caben hoy en la flota activada. Ustedes ya resuelven esto con 2ª vuelta 35% de los días. */
   segundaVuelta: StoreItem[];
   /** No hay ningún vehículo activo que las pueda llevar. */
   sinFlota: StoreItem[];
   /** Mensajes accionables para el coordinador. */
   avisos: string[];
+}
+
+export type Zona = 'santiago' | 'costa' | 'regiones';
+
+/**
+ * Zona de una tienda. Manda el CATÁLOGO (`sector` = columna SECTOR/COMUNA de la hoja TIENDAS);
+ * la distancia es solo el respaldo para tiendas nuevas que todavía no lo tienen cargado.
+ *
+ * Cortar solo por distancia estaba mal: Machalí está a 85 km, dentro de la banda de Costa, pero
+ * es tierra adentro y en la operación va como última entrega de la ruta SUR. Con el corte
+ * geométrico se habría subido al camión de Viña.
+ */
+export function zonaDeTienda(
+  cod: string,
+  tiendas: Record<string, TiendaInfo> | undefined,
+  distanciaKm: number,
+  o: Required<OpcionesEnrutador>,
+): Zona {
+  const sector = String(tiendas?.[cod]?.sector ?? '').trim().toLowerCase();
+  if (sector) {
+    if (sector.startsWith('costa')) return 'costa';
+    if (sector.startsWith('regi'))  return 'regiones';   // 'Región' / 'Region'
+    return 'santiago';                                    // Corredor Oriente/Poniente/Sur/Norte…
+  }
+  if (o.radioRMKm > 0 && distanciaKm > o.radioRMKm)
+    return (o.radioCostaKm > 0 && distanciaKm > o.radioCostaKm) ? 'regiones' : 'costa';
+  return 'santiago';
 }
 
 // ── Ventanas horarias ────────────────────────────────────────────────────────────
@@ -123,6 +167,19 @@ export function diametroKm(cods: string[], gps: Record<string, number[]>): numbe
   return max;
 }
 
+/**
+ * Velocidad efectiva de un tramo, según su largo en línea recta. Un tramo de 2 km por el centro
+ * y uno de 95 km por la Ruta 68 no se recorren a la misma velocidad: medido, el primero va a
+ * ~22 km/h y el segundo a ~57 (equivalente sobre la recta). Entre 20 y 60 km se interpola.
+ */
+export function velocidadTramo(km: number, o: Required<OpcionesEnrutador>): number {
+  const urb = o.velocidadKmH > 0 ? o.velocidadKmH : 22;
+  const inter = o.velocidadInterurbanaKmH > 0 ? o.velocidadInterurbanaKmH : urb;
+  if (km <= 20) return urb;
+  if (km >= 60) return inter;
+  return urb + ((km - 20) / 40) * (inter - urb);
+}
+
 /** Minuto de llegada estimado a cada parada, en orden. */
 export function horariosLlegada(
   cods: string[], gps: Record<string, number[]>, cd: number[], o: Required<OpcionesEnrutador>,
@@ -131,7 +188,14 @@ export function horariosLlegada(
   let cur = cd;
   return cods.map(c => {
     const g = gps[c];
-    if (g) { t += (dkm(cur, g) / o.velocidadKmH) * 60; cur = g; }
+    if (g) {
+      // La velocidad depende del LARGO del tramo: 2 km por el centro no se recorren a la misma
+      // velocidad que 95 km por la Ruta 68. Con una constante de 22 km/h el motor calculaba que
+      // llegar a Viña tomaba 4h22 cuando toma 1h41, y por eso partía Costa en un camión por tienda.
+      const d = dkm(cur, g);
+      t += (d / velocidadTramo(d, o)) * 60;
+      cur = g;
+    }
     const llegada = t;
     t += o.minutosPorParada;
     return llegada;
@@ -422,7 +486,7 @@ export function enrutarV2(
   const o = { ...OPCIONES_DEFAULT, ...opciones };
   const avisos: string[] = [];
   const vacio = (extra: Partial<ResultadoEnrutador> = {}): ResultadoEnrutador =>
-    ({ rutas: [], fueraDeRadio: [], segundaVuelta: [], sinFlota: [], avisos, ...extra });
+    ({ rutas: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos, ...extra });
 
   // El furgón TLBD cuenta como vehículo: empacarEnFlota lo usa de último recurso, respetando su
   // capacidad. Solo si NO hay ninguno activo el día no se puede rutear.
@@ -432,15 +496,25 @@ export function enrutarV2(
     return vacio({ sinFlota: pool.slice() });
   }
 
-  // 1) Triage: lo que está fuera del radio RM no es problema del enrutador de Santiago.
-  const dentro: StoreItem[] = [], fueraDeRadio: StoreItem[] = [];
+  // 1) Triage en TRES zonas, no dos. Antes solo había "dentro" y "fuera del radio RM", y las
+  //    cinco tiendas de Costa (86–100 km) caían en "fuera" con el mensaje de Regiones — falso:
+  //    Costa se despacha desde el CD con camión propio. Regiones (>200 km) sí sale por Sendu.
+  const santiago: StoreItem[] = [], costa: StoreItem[] = [], fueraDeRadio: StoreItem[] = [];
   for (const s of pool) {
     const g = gps[s.c];
-    if (o.radioRMKm > 0 && g && dkm(cd, g) > o.radioRMKm) fueraDeRadio.push(s);
-    else dentro.push(s);
+    const d = g ? dkm(cd, g) : 0;
+    switch (zonaDeTienda(s.c, tiendas, d, o)) {
+      case 'costa':    costa.push(s); break;
+      case 'regiones': fueraDeRadio.push(s); break;
+      default:         santiago.push(s);
+    }
   }
   if (fueraDeRadio.length)
-    avisos.push(`${fueraDeRadio.length} tienda(s) a más de ${o.radioRMKm} km del CD (${fueraDeRadio.map(s => s.c).join(', ')}) — van por Regiones, no por ruta RM.`);
+    avisos.push(`${fueraDeRadio.length} tienda(s) a más de ${o.radioCostaKm} km del CD (${fueraDeRadio.map(s => s.c).join(', ')}) — van por Regiones, no por ruta propia.`);
+  if (costa.length)
+    avisos.push(`${costa.length} tienda(s) de Costa (${costa.map(s => s.c).join(', ')}) — van en camión aparte, no se mezclan con Santiago.`);
+
+  const dentro = [...santiago, ...costa];
 
   const sinGps = dentro.filter(s => !gps[s.c]).map(s => s.c);
   if (sinGps.length) avisos.push(`Sin coordenadas: ${sinGps.join(', ')} — quedan agrupadas aparte, ubicalas a mano.`);
@@ -449,9 +523,13 @@ export function enrutarV2(
 
   const porCodigo = new Map(dentro.map(s => [s.c, s]));
 
-  // 2) Agrupar por ahorro geográfico, acotado por el camión más grande de la flota activa.
+  // 2) Agrupar por ahorro geográfico DENTRO de cada zona. Agruparlas juntas es lo que producía
+  //    camiones con Castro y Puente Alto en el mismo viaje.
   const capMax = Math.max(...activos.map(v => v.c));
-  const gruposCods = agruparPorAhorro(dentro, capMax, gps, cd, tiendas, o);
+  const gruposCods = [
+    ...(santiago.length ? agruparPorAhorro(santiago, capMax, gps, cd, tiendas, o) : []),
+    ...(costa.length    ? agruparPorAhorro(costa,    capMax, gps, cd, tiendas, o) : []),
+  ];
   const grupos: GrupoCarga[] = gruposCods.map(cods => ({
     cods,
     p:  cods.reduce((s, c) => s + (porCodigo.get(c)?.p ?? 0), 0),
@@ -492,5 +570,5 @@ export function enrutarV2(
       avisos.push(`${r.v.p} (${emp}) lleva tiendas de ${distintas.join(', ')} — no había camión libre de esa empresa.`);
   }
 
-  return { rutas, fueraDeRadio, segundaVuelta, sinFlota: [], avisos };
+  return { rutas, fueraDeRadio, costa, segundaVuelta, sinFlota: [], avisos };
 }

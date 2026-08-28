@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   aMinutos, parseVentana, kmRuta, diametroKm, horariosLlegada, ventanasIncumplidas,
   ordenVecinoCercano, dosOpt, ordenarParadas, agruparPorAhorro,
-  empresaDelGrupo, mejorCamion, empacarEnFlota,
+  empresaDelGrupo, mejorCamion, empacarEnFlota, zonaDeTienda,
   enrutarV2, OPCIONES_DEFAULT,
 } from '../enrutadorV2';
 import type { StoreItem } from '../routing';
@@ -15,7 +15,11 @@ const O = OPCIONES_DEFAULT;
 // Tiendas sintéticas sobre un eje este-oeste: separadas ~1 km cada 0.01 de longitud.
 const GPS: Record<string, number[]> = {
   A: [-33.4126, -70.6324], B: [-33.4126, -70.6224], C: [-33.4126, -70.6124],
-  D: [-33.4126, -70.6024], LEJOS: [-33.4126, -69.6024], SUR: [-33.5126, -70.6324],
+  D: [-33.4126, -70.6024], SUR: [-33.5126, -70.6324],
+  // ~93 km del CD → zona COSTA (se rutea, en camión aparte)
+  LEJOS: [-33.4126, -69.6024],
+  // ~465 km del CD → zona REGIONES (sale por Sendu)
+  REGION: [-33.4126, -65.6024],
 };
 const S = (c: string, p = 1, b = 0, ch = 0): StoreItem => ({ c, p, b, ch });
 const V = (p: string, c: number, b = 20, extra: Partial<Vehiculo> = {}): Vehiculo => ({
@@ -321,16 +325,41 @@ describe('enrutarV2', () => {
     expect(tb).toBe(5); // 3+1 bultos + 1 congelado
   });
 
-  it('saca del pool RM las tiendas fuera del radio y lo avisa', () => {
-    const r = enrutarV2([S('A'), S('LEJOS')], flota, GPS, CD, undefined, { radioRMKm: 60 });
-    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['LEJOS']);
-    expect(r.rutas.flatMap(x => x.ts.map(t => t.c))).not.toContain('LEJOS');
-    expect(r.avisos.join(' ')).toContain('LEJOS');
+  it('manda a Regiones solo lo que está más allá del radio de Costa', () => {
+    const r = enrutarV2([S('A'), S('REGION')], flota, GPS, CD, undefined, { radioRMKm: 60, radioCostaKm: 200 });
+    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['REGION']);
+    expect(r.rutas.flatMap(x => x.ts.map(t => t.c))).not.toContain('REGION');
+    expect(r.avisos.join(' ')).toContain('REGION');
   });
 
-  it('con radioRMKm 0 no descarta nada', () => {
-    const r = enrutarV2([S('A'), S('LEJOS')], flota, GPS, CD, undefined, { radioRMKm: 0, maxDiametroKm: 0, respetarVentanas: false });
+  // Las 5 tiendas de Costa están a 86–100 km: antes caían en "fuera de radio" con el mensaje de
+  // Regiones, que es falso — se despachan desde el CD con camión propio.
+  it('Costa SÍ se rutea: no cae en fueraDeRadio', () => {
+    const r = enrutarV2([S('A'), S('LEJOS')], flota, GPS, CD, undefined, { radioRMKm: 60, radioCostaKm: 200, respetarVentanas: false });
     expect(r.fueraDeRadio).toEqual([]);
+    expect(r.costa.map(s => s.c)).toEqual(['LEJOS']);
+    expect(r.rutas.flatMap(x => x.ts.map(t => t.c))).toContain('LEJOS');
+  });
+
+  it('Costa NUNCA viaja en el mismo camión que Santiago', () => {
+    // el caso real que se vio en producción: Castro y Puente Alto en el mismo viaje
+    const r = enrutarV2([S('A'), S('B'), S('C'), S('LEJOS')], flota, GPS, CD, undefined,
+      { radioRMKm: 60, radioCostaKm: 200, maxDiametroKm: 0, respetarVentanas: false });
+    for (const x of r.rutas) {
+      const cods = x.ts.map(t => t.c);
+      expect(cods.includes('LEJOS') && cods.some(c => ['A','B','C'].includes(c))).toBe(false);
+    }
+  });
+
+  it('avisa que Costa va aparte', () => {
+    const r = enrutarV2([S('A'), S('LEJOS')], flota, GPS, CD, undefined, { respetarVentanas: false });
+    expect(r.avisos.join(' ')).toContain('Costa');
+  });
+
+  it('con radioRMKm 0 todo es Santiago y no se descarta nada', () => {
+    const r = enrutarV2([S('A'), S('REGION')], flota, GPS, CD, undefined, { radioRMKm: 0, maxDiametroKm: 0, respetarVentanas: false });
+    expect(r.fueraDeRadio).toEqual([]);
+    expect(r.costa).toEqual([]);
   });
 
   it('avisa de las tiendas sin coordenadas', () => {
@@ -365,7 +394,7 @@ describe('enrutarV2', () => {
   });
 
   it('INVARIANTE: rutas + fueraDeRadio + segundaVuelta + sinFlota = el pool completo', () => {
-    const pool = [S('A',3), S('B',3), S('C',3), S('D',3), S('LEJOS',3), S('XX',3)];
+    const pool = [S('A',3), S('B',3), S('C',3), S('D',3), S('LEJOS',3), S('REGION',3), S('XX',3)];
     for (const flota of [[V('U',10)], [V('U',4)], [], [V('OFF',10,20,{on:false})]]) {
       const r = enrutarV2(pool, flota, GPS, CD, undefined, { maxDiametroKm: 0, respetarVentanas: false });
       const vistas = [
@@ -413,5 +442,34 @@ describe('enrutarV2', () => {
     const b = enrutarV2(pool.slice().reverse(), flota, GPS, CD);
     const plano = (x: typeof a) => x.rutas.map(r => [r.v.p, ...r.ts.map(t => t.c)].join('>')).sort();
     expect(plano(a)).toEqual(plano(b));
+  });
+});
+
+// ── La zona sale del catálogo, no de la distancia ────────────────────────────────
+describe('zonaDeTienda', () => {
+  const O2 = { ...OPCIONES_DEFAULT };
+  const T2 = (sector: string): TiendaInfo => ({ n: '', z: '', v: '', sector });
+
+  it('el catálogo manda por sobre la distancia', () => {
+    // Machalí: 85 km (banda de Costa por geometría) pero el catálogo dice Región.
+    expect(zonaDeTienda('27MCH', { '27MCH': T2('Región') }, 85, O2)).toBe('regiones');
+    // Quilpué: misma distancia, pero el catálogo dice Costa.
+    expect(zonaDeTienda('54MPQ', { '54MPQ': T2('Costa') }, 86, O2)).toBe('costa');
+  });
+
+  it('los corredores de Santiago son Santiago', () => {
+    for (const s of ['Corredor Oriente', 'Corredor Sur', 'Ñuñoa', 'Las Condes'])
+      expect(zonaDeTienda('X', { X: T2(s) }, 12, O2)).toBe('santiago');
+  });
+
+  it('tolera mayúsculas y acentos del catálogo', () => {
+    expect(zonaDeTienda('X', { X: T2('COSTA') }, 5, O2)).toBe('costa');
+    expect(zonaDeTienda('X', { X: T2('Region') }, 5, O2)).toBe('regiones');
+  });
+
+  it('sin sector cargado cae a la distancia', () => {
+    expect(zonaDeTienda('X', undefined, 12, O2)).toBe('santiago');
+    expect(zonaDeTienda('X', {}, 95, O2)).toBe('costa');
+    expect(zonaDeTienda('X', { X: T2('') }, 400, O2)).toBe('regiones');
   });
 });

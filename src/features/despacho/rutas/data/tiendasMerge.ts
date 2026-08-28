@@ -57,6 +57,7 @@ export function mergeTiendas(
       // recurso). Antes la comuna PISABA el corredor (26ALC mostraba "Las Condes" en vez de
       // "Corredor Oriente"). No afecta el ruteo (`asignar` no usa `z`).
       z: t.corredor || base?.z || corredorFn({ lat: t.lat, lng: t.lon, comuna: t.sector_comuna, direccion: t.direccion }) || t.sector_comuna || '',
+      sector: t.sector_comuna || base?.sector || '',
       v: t.ventana ?? base?.v ?? '',
       d: t.direccion || base?.d,
       region: t.region || base?.region,
