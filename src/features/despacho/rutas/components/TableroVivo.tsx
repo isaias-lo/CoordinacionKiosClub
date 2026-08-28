@@ -11,6 +11,7 @@ import {
 } from '../utils/enrutadorIncremental';
 import { enrutarV2, kmRuta, horariosLlegada, aMinutos, OPCIONES_DEFAULT, type OpcionesEnrutador } from '../utils/enrutadorV2';
 import { unidadesDesdeFilas, ahoraMinutoChile, type FilaPicking } from '../utils/tableroVivo';
+import { resumenCoincidencia, type FilaFeedback } from '../utils/coincidenciaAsignacion';
 import {
   parseParametros, serializarParametros, aOpcionesMotor, minutosAHHMM,
   PARAMETROS_DEFAULT, type ParametrosMotor,
@@ -37,6 +38,10 @@ const ESTADO_TIENDA: Record<string, string> = {
   probable:  'probablemente completa',
   completa:  'completa',
 };
+
+const pct = (x: number) => Math.round(x * 100);
+const colorAcuerdo = (f1: number | null | undefined) =>
+  f1 == null ? '#6B7280' : f1 >= 0.75 ? '#16A34A' : f1 >= 0.5 ? '#D97706' : '#DC2626';
 
 function Num({ label, value, onChange, step = 1, min = 0, suffix }: {
   label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; suffix?: string;
@@ -76,16 +81,19 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
   const [showParams, setShowP]  = useState(false);
   const [savingP, setSavingP]   = useState(false);
   const [paramsMsg, setPMsg]    = useState('');
+  const [feedbackRows, setFeedbackRows] = useState<FilaFeedback[]>([]);
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [pRes, hRes] = await Promise.all([
+      const [pRes, hRes, fRes] = await Promise.all([
         fetch(`/api/picking-pallets?date=${encodeURIComponent(fecha)}`).then(r => r.json()),
         fetch(`/api/rutas-historial?fecha=${encodeURIComponent(fecha)}`).then(r => r.json()),
+        fetch('/api/ia-feedback?dias=30').then(r => r.json()).catch(() => ({ data: [] })),
       ]);
       setFilas((pRes?.data ?? []) as FilaPicking[]);
       setHist((hRes?.data ?? {}) as Record<string, EsperadoTienda>);
+      setFeedbackRows((fRes?.data ?? []) as FilaFeedback[]);
       setAhora(ahoraMinutoChile());
       setUltAct(Date.now());
     } catch {
@@ -129,6 +137,7 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
   }, [filas, historial, params, ahora, flota, gps, cd, tiendas]);
 
   const prioridades = useMemo(() => prioridadPicking(plan), [plan]);
+  const acuerdo     = useMemo(() => resumenCoincidencia(feedbackRows, fecha), [feedbackRows, fecha]);
   const camionSel   = useMemo(() => plan.camiones.find(k => k.v.p === sel) ?? null, [plan, sel]);
   const horariosSel = useMemo(
     () => camionSel ? horariosLlegada(camionSel.orden, gps, cd, opcEnr) : [],
@@ -231,6 +240,49 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
                   Cada cambio recalcula el tablero al instante. &laquo;Guardar&raquo; los deja fijos para todos.
                 </p>
               </div>
+            )}
+          </div>
+
+          {/* Qué tan de acuerdo estamos (motor ↔ coordinador) */}
+          <div className="bg-white rounded-kios shadow-kios mb-4 px-4 py-3">
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <span className="text-[12px] font-bold text-knavy uppercase tracking-[0.5px]">Qué tan de acuerdo estamos</span>
+              <span className="text-[10px] text-kmuted">motor ↔ coordinador · por pares de tiendas</span>
+            </div>
+            {acuerdo.promedioF1 == null ? (
+              <div className="text-[12px] text-kmuted">Todavía sin registros para medir. Se llena al usar una ruta o terminar el día.</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-end gap-5 mb-3">
+                  <div>
+                    <div className="text-[24px] font-extrabold leading-none tabular-nums" style={{ color: colorAcuerdo(acuerdo.hoy?.f1) }}>
+                      {acuerdo.hoy ? `${pct(acuerdo.hoy.f1)}%` : '—'}
+                    </div>
+                    <div className="text-[10px] text-kmuted uppercase tracking-[0.4px] mt-0.5">Hoy</div>
+                  </div>
+                  <div>
+                    <div className="text-[24px] font-extrabold leading-none tabular-nums text-knavy">{pct(acuerdo.promedioF1)}%</div>
+                    <div className="text-[10px] text-kmuted uppercase tracking-[0.4px] mt-0.5">Prom. {acuerdo.dias} día{acuerdo.dias === 1 ? '' : 's'}</div>
+                  </div>
+                  {acuerdo.hoy && (
+                    <div className="text-[11px] text-kmuted pb-0.5">
+                      precisión {pct(acuerdo.hoy.precision)}% · cobertura {pct(acuerdo.hoy.cobertura)}% · {acuerdo.hoy.tiendasMovidas} movida{acuerdo.hoy.tiendasMovidas === 1 ? '' : 's'}
+                    </div>
+                  )}
+                </div>
+                {acuerdo.tiendasTop.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-semibold text-kmuted uppercase tracking-[0.6px] mb-1.5">Las que más se mueven · excepciones que el motor no entiende</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {acuerdo.tiendasTop.map(t => (
+                        <span key={t.cod} className="text-[11px] font-semibold px-2 py-1 rounded-[7px] bg-amber-50 text-amber-800 border border-amber-200">
+                          <span className="font-mono">{t.cod}</span> <span className="opacity-70">×{t.veces}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

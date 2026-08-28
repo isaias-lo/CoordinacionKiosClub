@@ -115,6 +115,10 @@ interface ComparisonData {
   fuenteAlt: 'ia' | 'gps';   // qué motor produjo `optima` (IA o el optimizador GPS de respaldo)
   iaCargando?: boolean;      // true mientras se consulta la IA en segundo plano (muestra GPS entretanto)
   iaError?: string;          // si la IA falló → se cayó a GPS; se avisa al usuario
+  // Feedback: tiendas que el motor dejó fuera A PROPÓSITO (no caben / sin flota). Se guardan para
+  // EXCLUIRLAS del cálculo de coincidencia: bien mandadas a 2ª vuelta no son un desacuerdo.
+  segundaVuelta?: StoreItem[];
+  sinFlota?: StoreItem[];
 }
 
 type PendientesGuardados = { savedAt: string; stores: { c: string; p: number; b: number; ch: number }[] };
@@ -210,6 +214,9 @@ export default function RutasScreen() {
   const [kmPorRuta,      setKmPorRuta]      = useState<Record<number, number>>({});
   const [legDataPorRuta, setLegDataPorRuta] = useState<Record<number, {dist: string; dur: string; durSec?: number}[]>>({});
   const comparacionTokenRef             = useRef(0); // evita que una respuesta IA vieja pise una comparación nueva
+  // [Feedback motor] fecha para la que ya se grabó feedback en esta sesión — evita que "Terminar día"
+  // (cobertura modo drag) duplique la fila cuando el día ya se registró desde la vista de comparación.
+  const feedbackFechaRef                = useRef<string | null>(null);
   const [updateStatus,  setUpdateStatus]  = useState('idle');
   const [historialStatus, setHistorialStatus] = useState('idle');
   const [flotaStatus, setFlotaStatus]     = useState('idle');
@@ -1402,6 +1409,20 @@ export default function RutasScreen() {
   }, [fecha]);
 
   function handleListoPorHoy() {
+    // [Feedback motor — cobertura modo drag] En el tablero DESPACHO el coordinador arma a mano y
+    // nunca pasa por la vista de comparación, así que `handleUsarRuta` no graba nada: sin esto, los
+    // días 100% drag no entran al corpus. Al terminar el día calculamos qué HABRÍA propuesto el motor
+    // y lo comparamos con lo que quedó armado. Solo si el día no se grabó ya desde la comparación.
+    if (feedbackFechaRef.current !== fecha && Object.keys(manualAsignaciones).length > 0) {
+      const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+      const paradasItems = paradasAdicionales.filter(p => p.gps).map(p => ({ c: p.id, p: p.p, b: p.b }));
+      const allItems     = [...poolDesdeCalT(calT), ...paradasItems];
+      const finalRutas    = rutasDesdeAsignaciones(manualAsignaciones, flota, extGps, cdRef.current, extTiendas);
+      if (finalRutas.length) {
+        const { rutas: propuesta, segundaVuelta, sinFlota } = enrutar(allItems, extGps, extTiendas);
+        registrarFeedback({ propuestaRutas: propuesta, motor: 'v2', finalRutas, segundaVuelta, sinFlota, elegida: 'mia' });
+      }
+    }
     // Al cerrar la JORNADA (no en cada camión), lo que quedó SIN asignar a ningún camión pasa a
     // pendiente de 2ª vuelta — así no se pierde, pero sin cortar el flujo de asignación mientras
     // todavía estás cerrando camiones.
@@ -1523,7 +1544,7 @@ export default function RutasScreen() {
     // Los avisos del motor (tiendas fuera del radio RM, sin coordenadas, camión sobrecargado) se
     // muestran ACÁ, al calcular. Antes se descartaban en esta rama y la tienda desaparecía de la
     // propuesta sin explicación: recién se enteraba al registrar, y sin el motivo.
-    const { rutas: gpsRutas, avisos } = enrutar(allItems, extGps, extTiendas);
+    const { rutas: gpsRutas, avisos, segundaVuelta, sinFlota } = enrutar(allItems, extGps, extTiendas);
     if (avisos.length) setErrors(avisos);
     const token    = ++comparacionTokenRef.current;
     const payload  = construirPayloadIA();
@@ -1533,6 +1554,7 @@ export default function RutasScreen() {
       manual: rebalanceadas, optima: gpsRutas, ts: allItems, extGps, extTiendas,
       rebalanceada: rebalanceadas !== manualRutas,
       fuenteAlt: 'gps', iaCargando: usaIA,
+      segundaVuelta, sinFlota,
     });
     if (!usaIA) return;
 
@@ -1663,18 +1685,40 @@ export default function RutasScreen() {
       return next;
     });
   }
+  // [Feedback motor] Graba una fila de feedback: qué PROPUSO el motor (venga de v2 o del LLM), la
+  // asignación FINAL y cuál se eligió → corpus para medir y aprender. Fire-and-forget: nunca bloquea.
+  // Antes solo se guardaba la propuesta si la había producido el LLM ('ia'), que casi nunca corre;
+  // por eso el corpus estaba vacío de propuestas. Ahora se guarda SIEMPRE, con `motor` para saber
+  // quién la produjo, y `segunda_vuelta`/`sin_flota` para no contar como desacuerdo lo que el motor
+  // dejó fuera a propósito.
+  function registrarFeedback(args: {
+    propuestaRutas: Ruta[]; motor: 'v2' | 'ia'; finalRutas: Ruta[];
+    segundaVuelta?: StoreItem[]; sinFlota?: StoreItem[]; elegida: 'mia' | 'ia' | 'gps';
+  }) {
+    const propuesta_ia = rutasAAsignacion(args.propuestaRutas);
+    const final        = rutasAAsignacion(args.finalRutas);
+    const edit_count   = contarEdiciones(propuesta_ia, final);
+    feedbackFechaRef.current = fecha;
+    fetch('/api/ia-feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fecha, fuente: 'despacho', propuesta_ia, motor: args.motor, final, elegida: args.elegida, edit_count,
+        segunda_vuelta: (args.segundaVuelta ?? []).map(s => s.c),
+        sin_flota:      (args.sinFlota ?? []).map(s => s.c),
+        supervisor,
+      }),
+    }).catch(e => console.error('[ia-feedback]', e));
+  }
+
   function handleUsarRuta(rutas: Ruta[], ts: StoreItem[], elegida: 'mia' | 'ia' | 'gps') {
-    // [Fase 4 PR-C] Feedback IA: guarda qué propuso la IA (si la hubo), la asignación final y cuál
-    // se eligió → corpus de aprendizaje. Fire-and-forget: no debe bloquear ni romper el "usar ruta".
     const comp = comparisonData;
     if (comp) {
-      const final        = rutasAAsignacion(rutas);
-      const propuesta_ia = comp.fuenteAlt === 'ia' ? rutasAAsignacion(comp.optima) : null;
-      const edit_count   = contarEdiciones(propuesta_ia, final);
-      fetch('/api/ia-feedback', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha, fuente: 'despacho', propuesta_ia, final, elegida, edit_count, supervisor }),
-      }).catch(e => console.error('[ia-feedback]', e));
+      // La propuesta que se mostró SIEMPRE es `comp.optima` (columna alternativa). `fuenteAlt` dice
+      // qué motor la produjo: 'ia' = LLM, 'gps' = optimizador geográfico v2.
+      registrarFeedback({
+        propuestaRutas: comp.optima, motor: comp.fuenteAlt === 'ia' ? 'ia' : 'v2', finalRutas: rutas,
+        segundaVuelta: comp.segundaVuelta, sinFlota: comp.sinFlota, elegida,
+      });
     }
     setResults({
       ts, rutas,
