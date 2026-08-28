@@ -91,6 +91,33 @@ export interface ResultadoEnrutador {
   avisos: string[];
 }
 
+export type Zona = 'santiago' | 'costa' | 'regiones';
+
+/**
+ * Zona de una tienda. Manda el CATÁLOGO (`sector` = columna SECTOR/COMUNA de la hoja TIENDAS);
+ * la distancia es solo el respaldo para tiendas nuevas que todavía no lo tienen cargado.
+ *
+ * Cortar solo por distancia estaba mal: Machalí está a 85 km, dentro de la banda de Costa, pero
+ * es tierra adentro y en la operación va como última entrega de la ruta SUR. Con el corte
+ * geométrico se habría subido al camión de Viña.
+ */
+export function zonaDeTienda(
+  cod: string,
+  tiendas: Record<string, TiendaInfo> | undefined,
+  distanciaKm: number,
+  o: Required<OpcionesEnrutador>,
+): Zona {
+  const sector = String(tiendas?.[cod]?.sector ?? '').trim().toLowerCase();
+  if (sector) {
+    if (sector.startsWith('costa')) return 'costa';
+    if (sector.startsWith('regi'))  return 'regiones';   // 'Región' / 'Region'
+    return 'santiago';                                    // Corredor Oriente/Poniente/Sur/Norte…
+  }
+  if (o.radioRMKm > 0 && distanciaKm > o.radioRMKm)
+    return (o.radioCostaKm > 0 && distanciaKm > o.radioCostaKm) ? 'regiones' : 'costa';
+  return 'santiago';
+}
+
 // ── Ventanas horarias ────────────────────────────────────────────────────────────
 
 /** Convierte 'HH:MM' a minutos desde medianoche. Devuelve null si no parsea. */
@@ -476,9 +503,11 @@ export function enrutarV2(
   for (const s of pool) {
     const g = gps[s.c];
     const d = g ? dkm(cd, g) : 0;
-    if (!g || o.radioRMKm <= 0 || d <= o.radioRMKm) santiago.push(s);
-    else if (o.radioCostaKm <= 0 || d <= o.radioCostaKm) costa.push(s);
-    else fueraDeRadio.push(s);
+    switch (zonaDeTienda(s.c, tiendas, d, o)) {
+      case 'costa':    costa.push(s); break;
+      case 'regiones': fueraDeRadio.push(s); break;
+      default:         santiago.push(s);
+    }
   }
   if (fueraDeRadio.length)
     avisos.push(`${fueraDeRadio.length} tienda(s) a más de ${o.radioCostaKm} km del CD (${fueraDeRadio.map(s => s.c).join(', ')}) — van por Regiones, no por ruta propia.`);

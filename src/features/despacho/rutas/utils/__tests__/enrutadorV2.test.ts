@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   aMinutos, parseVentana, kmRuta, diametroKm, horariosLlegada, ventanasIncumplidas,
   ordenVecinoCercano, dosOpt, ordenarParadas, agruparPorAhorro,
-  empresaDelGrupo, mejorCamion, empacarEnFlota,
+  empresaDelGrupo, mejorCamion, empacarEnFlota, zonaDeTienda,
   enrutarV2, OPCIONES_DEFAULT,
 } from '../enrutadorV2';
 import type { StoreItem } from '../routing';
@@ -442,5 +442,34 @@ describe('enrutarV2', () => {
     const b = enrutarV2(pool.slice().reverse(), flota, GPS, CD);
     const plano = (x: typeof a) => x.rutas.map(r => [r.v.p, ...r.ts.map(t => t.c)].join('>')).sort();
     expect(plano(a)).toEqual(plano(b));
+  });
+});
+
+// ── La zona sale del catálogo, no de la distancia ────────────────────────────────
+describe('zonaDeTienda', () => {
+  const O2 = { ...OPCIONES_DEFAULT };
+  const T2 = (sector: string): TiendaInfo => ({ n: '', z: '', v: '', sector });
+
+  it('el catálogo manda por sobre la distancia', () => {
+    // Machalí: 85 km (banda de Costa por geometría) pero el catálogo dice Región.
+    expect(zonaDeTienda('27MCH', { '27MCH': T2('Región') }, 85, O2)).toBe('regiones');
+    // Quilpué: misma distancia, pero el catálogo dice Costa.
+    expect(zonaDeTienda('54MPQ', { '54MPQ': T2('Costa') }, 86, O2)).toBe('costa');
+  });
+
+  it('los corredores de Santiago son Santiago', () => {
+    for (const s of ['Corredor Oriente', 'Corredor Sur', 'Ñuñoa', 'Las Condes'])
+      expect(zonaDeTienda('X', { X: T2(s) }, 12, O2)).toBe('santiago');
+  });
+
+  it('tolera mayúsculas y acentos del catálogo', () => {
+    expect(zonaDeTienda('X', { X: T2('COSTA') }, 5, O2)).toBe('costa');
+    expect(zonaDeTienda('X', { X: T2('Region') }, 5, O2)).toBe('regiones');
+  });
+
+  it('sin sector cargado cae a la distancia', () => {
+    expect(zonaDeTienda('X', undefined, 12, O2)).toBe('santiago');
+    expect(zonaDeTienda('X', {}, 95, O2)).toBe('costa');
+    expect(zonaDeTienda('X', { X: T2('') }, 400, O2)).toBe('regiones');
   });
 });
