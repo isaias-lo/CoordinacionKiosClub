@@ -17,6 +17,7 @@
 // siempre la misma propuesta (los empates se rompen por código de tienda).
 
 import { dkm } from './helpers';
+import { zonaDeSector, type ZonaRuteo } from '@/lib/sectores';
 import type { StoreItem, Ruta } from './routing';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -91,7 +92,8 @@ export interface ResultadoEnrutador {
   avisos: string[];
 }
 
-export type Zona = 'santiago' | 'costa' | 'regiones';
+/** Alias local de la zona de ruteo; la definición vive en `@/lib/sectores`. */
+export type Zona = ZonaRuteo;
 
 /**
  * Zona de una tienda. Manda el CATÁLOGO (`sector` = columna SECTOR/COMUNA de la hoja TIENDAS);
@@ -107,12 +109,8 @@ export function zonaDeTienda(
   distanciaKm: number,
   o: Required<OpcionesEnrutador>,
 ): Zona {
-  const sector = String(tiendas?.[cod]?.sector ?? '').trim().toLowerCase();
-  if (sector) {
-    if (sector.startsWith('costa')) return 'costa';
-    if (sector.startsWith('regi'))  return 'regiones';   // 'Región' / 'Region'
-    return 'santiago';                                    // Corredor Oriente/Poniente/Sur/Norte…
-  }
+  const porCatalogo = zonaDeSector(tiendas?.[cod]?.sector);
+  if (porCatalogo) return porCatalogo;
   if (o.radioRMKm > 0 && distanciaKm > o.radioRMKm)
     return (o.radioCostaKm > 0 && distanciaKm > o.radioCostaKm) ? 'regiones' : 'costa';
   return 'santiago';
