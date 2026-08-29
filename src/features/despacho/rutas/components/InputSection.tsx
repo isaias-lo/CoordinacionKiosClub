@@ -4,6 +4,7 @@ import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
+import type { ConfigZonas } from '../utils/zonasTransporte';
 import { FaseEnrutador } from './FaseEnrutador';
 import type { FaseInfo } from '../utils/faseEnrutador';
 import FlotaGrid      from './FlotaGrid';
@@ -66,6 +67,8 @@ interface Props {
   onToggleCerrarSel?: (patente: string) => void;
   onCerrarVarios?: (patentes: string[]) => void;
   esCerrada?: (patente: string) => boolean;
+  /** [E8] Config de zonas para las etiquetas zona·modo y avisos de transportista de cada camión. */
+  zonasCfg?: ConfigZonas;
   onLimpiar: () => void;
   onEliminarParada?: (id: string) => void;
   // Abre el Cierre de Jornada directamente desde el tablero DESPACHO, sin pasar por
@@ -122,7 +125,7 @@ export default function InputSection({
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
   onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
-  cerrarSel, onToggleCerrarSel, onCerrarVarios, esCerrada,
+  cerrarSel, onToggleCerrarSel, onCerrarVarios, esCerrada, zonasCfg,
   onTerminarDia,
   onAbrirTablero,
   pendientesBacklogCount = 0,
@@ -341,6 +344,7 @@ export default function InputSection({
                   camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                   scrollContainerRef={dragScrollRef}
                   cerrarSel={cerrarSel} onToggleCerrarSel={onToggleCerrarSel} onCerrarVarios={onCerrarVarios} esCerrada={esCerrada}
+                  zonasCfg={zonasCfg}
                   onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular />
               </div>
             )}
@@ -486,6 +490,7 @@ export default function InputSection({
                 onToggleCerrarSel={onToggleCerrarSel}
                 onCerrarVarios={onCerrarVarios}
                 esCerrada={esCerrada}
+                zonasCfg={zonasCfg}
                 hideCalcular
               />
             </div>

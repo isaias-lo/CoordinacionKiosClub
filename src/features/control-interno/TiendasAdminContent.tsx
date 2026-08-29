@@ -3,10 +3,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { opcionesSector } from '@/lib/sectores';
 import {
-  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload,
+  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck,
   Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
+import TransportistasTab from './TransportistasTab';
 import { parseCoord } from './coords';
 import { frecuenciasPorTienda } from './frecuencia';
 import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
@@ -144,7 +145,7 @@ export default function TiendasAdminContent({
   const [saving,    setSaving]    = useState(false);
   const [togglingCod, setTogglingCod] = useState<string | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
-  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados'>('tiendas');
+  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
   const [sortBy,  setSortBy]  = useState<SortBy>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre' : 'nombre');
@@ -356,7 +357,10 @@ export default function TiendasAdminContent({
           { id: 'calendario' as const, label: source === 'armado' ? 'Calendario Armado' : 'Calendario de Abastecimiento', Icon: CalendarDays },
           // El calendario de Congelados es propio del flujo de despacho (no aplica a "armado").
           ...(source === 'despacho'
-            ? [{ id: 'congelados' as const, label: 'Calendario de Congelados', Icon: Snowflake }]
+            ? [
+                { id: 'congelados'     as const, label: 'Calendario de Congelados', Icon: Snowflake },
+                { id: 'transportistas' as const, label: 'Transportistas',           Icon: Truck },
+              ]
             : []),
         ]).map(({ id, label, Icon }) => {
           const active = activeTab === id;
@@ -383,6 +387,9 @@ export default function TiendasAdminContent({
 
         {/* Calendario de Congelados tab */}
         {activeTab === 'congelados' && <CalendarioColumnas readOnly={!canEditCalendario} source="congelados" />}
+
+        {/* Transportistas por zona (capa 3 del Enrutador) */}
+        {activeTab === 'transportistas' && <TransportistasTab canEdit={canEditTiendas} />}
 
         {/* Tiendas tab */}
         {activeTab === 'tiendas' && (
