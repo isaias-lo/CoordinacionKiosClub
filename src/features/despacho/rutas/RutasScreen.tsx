@@ -1454,7 +1454,7 @@ export default function RutasScreen() {
     ENRUTADOR_V2
       ? enrutarV2(pool, flota, egps, cdRef.current, etiendas)
       : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false),
-          fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos: [] };
+          consolidacion: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos: [] };
 
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
@@ -1599,9 +1599,12 @@ export default function RutasScreen() {
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
     if (!flota.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
-    const { rutas, avisos } = enrutar(stores, extGps, extTiendas);
+    const { rutas, consolidacion, avisos } = enrutar(stores, extGps, extTiendas);
     const asig: Record<string, StoreItem[]> = {};
-    for (const r of rutas) if (r.ts.length) asig[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
+    // Las de consolidación también van al tablero: son camiones con transportista asignado, aunque
+    // no lleven ruta calculada. Si no se agregaran, las tiendas de Regiones quedarían sin camión.
+    for (const r of [...rutas, ...consolidacion])
+      if (r.ts.length) asig[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
     setManualAsignaciones(asig);
     setErrors(avisos);
   };

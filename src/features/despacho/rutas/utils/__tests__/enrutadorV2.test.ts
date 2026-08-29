@@ -8,6 +8,13 @@ import {
 import type { StoreItem } from '../routing';
 import type { Vehiculo } from '../../data/flota';
 import type { TiendaInfo } from '../../data/tiendas';
+import { ZONAS_DEFAULT, type ConfigZonas } from '../zonasTransporte';
+
+/** Config de zonas para los tests: la zona `sur` la lleva Ortiz. */
+const ZONAS_ORTIZ: ConfigZonas = {
+  ...ZONAS_DEFAULT,
+  sur: { ...ZONAS_DEFAULT.sur, empresas: ['Ortiz'] },
+};
 
 const CD: [number, number] = [-33.412581, -70.632438];
 const O = OPCIONES_DEFAULT;
@@ -325,11 +332,72 @@ describe('enrutarV2', () => {
     expect(tb).toBe(5); // 3+1 bultos + 1 congelado
   });
 
-  it('manda a Regiones solo lo que está más allá del radio de Costa', () => {
-    const r = enrutarV2([S('A'), S('REGION')], flota, GPS, CD, undefined, { radioRMKm: 60, radioCostaKm: 200 });
-    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['REGION']);
+  it('lo que está más allá del radio de Costa NO se rutea, pero SÍ recibe transportista', () => {
+    const conEmp = [V('T1', 10, 20, { empresa: 'Ortiz' }), V('T2', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A'), S('REGION')], conEmp, GPS, CD, undefined,
+      { radioRMKm: 60, radioCostaKm: 200, zonas: ZONAS_ORTIZ });
+    // no entra en las rutas de Santiago…
     expect(r.rutas.flatMap(x => x.ts.map(t => t.c))).not.toContain('REGION');
+    // …pero queda en un camión de consolidación, que es lo que hace el coordinador
+    expect(r.consolidacion.flatMap(x => x.ts.map(t => t.c))).toEqual(['REGION']);
+    expect(r.fueraDeRadio).toEqual([]);
     expect(r.avisos.join(' ')).toContain('REGION');
+  });
+
+  it('el camión que consolida Regiones no se usa además para Santiago', () => {
+    const conEmp = [V('T1', 10, 20, { empresa: 'Ortiz' }), V('T2', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A'), S('B'), S('REGION')], conEmp, GPS, CD, undefined,
+      { maxDiametroKm: 0, respetarVentanas: false, zonas: ZONAS_ORTIZ });
+    const enConsol = new Set(r.consolidacion.map(x => x.v.p));
+    for (const x of r.rutas) expect(enConsol.has(x.v.p)).toBe(false);
+  });
+
+  it('sin vehículo para Regiones, quedan en fueraDeRadio con aviso', () => {
+    const r = enrutarV2([S('REGION')], [], GPS, CD, undefined, {});
+    expect(r.consolidacion).toEqual([]);
+    expect(r.sinFlota.map(s => s.c)).toEqual(['REGION']);
+  });
+
+  // El día del traspaso, proponer al transportista viejo es peor que no proponer: parece
+  // decidido y no lo está. Por eso sin camión habilitado NO se inventa.
+  it('sin camión de una empresa habilitada, no asigna y lo avisa', () => {
+    const otra = [V('T1', 10, 20, { empresa: 'Kios Club' })];
+    const r = enrutarV2([S('REGION')], otra, GPS, CD, undefined, { zonas: ZONAS_ORTIZ });
+    expect(r.consolidacion).toEqual([]);
+    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['REGION']);
+    expect(r.avisos.join(' ')).toContain('a mano');
+  });
+
+  it('con la zona sin transportista configurado, tampoco inventa', () => {
+    const sinEmpresas: ConfigZonas = { ...ZONAS_DEFAULT, sur: { ...ZONAS_DEFAULT.sur, empresas: [] } };
+    const r = enrutarV2([S('REGION')], [V('T1', 10, 20, { empresa: 'Ortiz' })], GPS, CD, undefined,
+      { zonas: sinEmpresas });
+    expect(r.consolidacion).toEqual([]);
+    expect(r.avisos.join(' ')).toContain('no hay transportista configurado');
+  });
+
+  // El caso del lunes 31: mover el sur de Falabella a Luis Fica es cambiar un dato.
+  it('cambiar la empresa de la zona cambia el camión, sin tocar nada más', () => {
+    const flotaMixta = [V('FAL', 10, 20, { empresa: 'Falabella' }), V('LF', 10, 20, { empresa: 'Luis Fica' })];
+    const antes: ConfigZonas = { ...ZONAS_DEFAULT, sur: { ...ZONAS_DEFAULT.sur, empresas: ['Falabella'] } };
+    const despues: ConfigZonas = { ...ZONAS_DEFAULT, sur: { ...ZONAS_DEFAULT.sur, empresas: ['Luis Fica'] } };
+    expect(enrutarV2([S('REGION')], flotaMixta, GPS, CD, undefined, { zonas: antes })
+      .consolidacion[0].v.p).toBe('FAL');
+    expect(enrutarV2([S('REGION')], flotaMixta, GPS, CD, undefined, { zonas: despues })
+      .consolidacion[0].v.p).toBe('LF');
+  });
+
+  // El orden de armado es el de la operación: Regiones primero porque es lo más lejano y sale
+  // más temprano, después Costa, y Santiago al final.
+  it('Regiones elige camión ANTES que Santiago', () => {
+    const uno = [V('SOLO', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A'), S('REGION')], uno, GPS, CD, undefined,
+      { respetarVentanas: false, zonas: ZONAS_ORTIZ });
+    // el único camión se lo lleva Regiones
+    expect(r.consolidacion.map(x => x.v.p)).toEqual(['SOLO']);
+    expect(r.rutas).toEqual([]);
+    // y Santiago queda señalado, no se pierde
+    expect([...r.segundaVuelta, ...r.sinFlota].map(s => s.c)).toContain('A');
   });
 
   // Las 5 tiendas de Costa están a 86–100 km: antes caían en "fuera de radio" con el mensaje de
@@ -393,12 +461,13 @@ describe('enrutarV2', () => {
     }
   });
 
-  it('INVARIANTE: rutas + fueraDeRadio + segundaVuelta + sinFlota = el pool completo', () => {
+  it('INVARIANTE: rutas + consolidación + fueraDeRadio + 2ª vuelta + sinFlota = el pool completo', () => {
     const pool = [S('A',3), S('B',3), S('C',3), S('D',3), S('LEJOS',3), S('REGION',3), S('XX',3)];
     for (const flota of [[V('U',10)], [V('U',4)], [], [V('OFF',10,20,{on:false})]]) {
       const r = enrutarV2(pool, flota, GPS, CD, undefined, { maxDiametroKm: 0, respetarVentanas: false });
       const vistas = [
         ...r.rutas.flatMap(x => x.ts.map(t => t.c)),
+        ...r.consolidacion.flatMap(x => x.ts.map(t => t.c)),
         ...r.fueraDeRadio.map(s => s.c),
         ...r.segundaVuelta.map(s => s.c),
         ...r.sinFlota.map(s => s.c),
@@ -452,9 +521,16 @@ describe('zonaDeTienda', () => {
 
   it('el catálogo manda por sobre la distancia', () => {
     // Machalí: 85 km (banda de Costa por geometría) pero el catálogo dice Región.
-    expect(zonaDeTienda('27MCH', { '27MCH': T2('Región') }, 85, O2)).toBe('regiones');
+    expect(zonaDeTienda('27MCH', { '27MCH': T2('Región') }, 85, O2, -34.18)).toBe('sur');
     // Quilpué: misma distancia, pero el catálogo dice Costa.
     expect(zonaDeTienda('54MPQ', { '54MPQ': T2('Costa') }, 86, O2)).toBe('costa');
+  });
+
+  it('separa sur de norte, que es lo que decide quién transporta', () => {
+    expect(zonaDeTienda('57CAS', { '57CAS': T2('Región') }, 1045, O2, -42.48)).toBe('sur');
+    expect(zonaDeTienda('41ANA', { '41ANA': T2('Región') }, 1084, O2, -23.67)).toBe('norte');
+    // y el sector explícito le gana a la latitud
+    expect(zonaDeTienda('X', { X: T2('Región Norte') }, 900, O2, -42)).toBe('norte');
   });
 
   it('los corredores de Santiago son Santiago', () => {
@@ -464,12 +540,13 @@ describe('zonaDeTienda', () => {
 
   it('tolera mayúsculas y acentos del catálogo', () => {
     expect(zonaDeTienda('X', { X: T2('COSTA') }, 5, O2)).toBe('costa');
-    expect(zonaDeTienda('X', { X: T2('Region') }, 5, O2)).toBe('regiones');
+    expect(zonaDeTienda('X', { X: T2('REGIÓN SUR') }, 5, O2)).toBe('sur');
   });
 
-  it('sin sector cargado cae a la distancia', () => {
+  it('sin sector cargado cae a la distancia, y la latitud decide sur o norte', () => {
     expect(zonaDeTienda('X', undefined, 12, O2)).toBe('santiago');
     expect(zonaDeTienda('X', {}, 95, O2)).toBe('costa');
-    expect(zonaDeTienda('X', { X: T2('') }, 400, O2)).toBe('regiones');
+    expect(zonaDeTienda('X', { X: T2('') }, 400, O2, -36.6)).toBe('sur');
+    expect(zonaDeTienda('X', { X: T2('') }, 400, O2, -29.9)).toBe('norte');
   });
 });
