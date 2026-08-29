@@ -479,11 +479,12 @@ export function empacarEnFlota(
 }
 
 /**
- * Asigna transportista a las tiendas de Regiones, con los camiones que NO quedaron en ruta.
+ * Asigna transportista a las tiendas de Regiones.
  *
- * Corre DESPUÉS del ruteo a propósito: las rutas de Santiago y Costa tienen ventana horaria y son
- * las que no pueden esperar; la consolidación de Regiones la retira el transportista y no depende
- * de una hora. Si se hiciera antes, un camión que Santiago necesita podía terminar cargando Castro.
+ * Corre PRIMERO, antes de rutear Santiago y Costa, porque así se arma en la operación: Regiones
+ * es lo más lejano, se carga primero y sale más temprano. Después va Costa los días que se arma, y
+ * Santiago al final. Que Regiones elija camión primero es además lo que evita el cruce que se veía
+ * en producción — el camión de Ortiz irse a Santiago mientras Castro quedaba en uno de Kios Club.
  *
  * No calcula ruta ni kilómetros: un mismo camión puede consolidar La Serena y Castro, que están en
  * puntas opuestas del país. Es un registro de quién se lleva qué, no un recorrido.
@@ -509,14 +510,30 @@ export function consolidarRegiones(
   for (const [emp, items] of [...porEmpresa.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const carga = items.reduce((t, x) => t + x.p, 0);
     const cand = libres.filter(v => !usados.has(v.p));
-    // SOLO se asigna si hay un camión de la empresa que suele llevar esas tiendas. Sin ese
-    // filtro el motor elegía cualquier vehículo libre y, como las rutas de Santiago se arman
-    // primero, terminaba poniendo Castro en un camión de Kios Club mientras el de Ortiz —que es
-    // el que de verdad hace Regiones— se había ido a Santiago. Asignar el transportista
-    // equivocado es peor que no asignar ninguno: parece decidido y no lo está.
     const mismaEmpresa = (v: Vehiculo) => emp !== '_sin' && String(v.empresa ?? '').trim() === emp;
-    const elegido = cand.find(v => mismaEmpresa(v) && v.c >= carga) ?? cand.find(mismaEmpresa);
+
+    // 1) camión libre de la empresa habitual: es lo ideal.
+    let elegido = cand.find(v => mismaEmpresa(v) && v.c >= carga) ?? cand.find(mismaEmpresa);
+
+    // 2) si no hay, ANTES de abrir un camión nuevo se intenta sumar a uno ya consolidando. Abrir
+    //    uno por transportista le saca flota a Santiago sin necesidad: el coordinador junta las
+    //    tiendas de Regiones en pocos camiones y corrige el transportista después.
+    if (!elegido) {
+      const yaAbierto = consolidacion.find(c => c.tp + carga <= c.v.c);
+      if (yaAbierto) {
+        for (const x of items) yaAbierto.ts.push({ ...x, _v: tiendas?.[x.c]?.v ?? '' });
+        yaAbierto.tp += carga;
+        yaAbierto.tb += items.reduce((t, x) => t + bultosDe(x), 0);
+        if (emp !== '_sin')
+          avisos.push(`${yaAbierto.v.p} (${String(yaAbierto.v.empresa ?? '').trim() || 'sin empresa'}) también lleva ${items.map(x => x.c).join(', ')}, que suelen ir con ${emp}.`);
+        continue;
+      }
+      // 3) recién acá se abre uno nuevo.
+      elegido = cand.find(v => v.c >= carga) ?? cand[0];
+    }
     if (!elegido) { fueraDeRadio.push(...items); continue; }
+    if (!mismaEmpresa(elegido) && emp !== '_sin')
+      avisos.push(`${elegido.p} (${String(elegido.empresa ?? '').trim() || 'sin empresa'}) consolida tiendas de ${emp} — no quedaba camión de esa empresa.`);
     usados.add(elegido.p);
     const ts = items.map(x => ({ ...x, _v: tiendas?.[x.c]?.v ?? '' }));
     consolidacion.push({ v: elegido, ts,
@@ -524,6 +541,7 @@ export function consolidarRegiones(
   }
   for (const c of consolidacion)
     avisos.push(`${c.v.p} (${String(c.v.empresa ?? '').trim() || 'sin empresa'}) consolida ${c.ts.length} tienda(s) de Regiones: ${c.ts.map(t => t.c).join(', ')} — sin ruta desde el CD.`);
+  // los avisos de mezcla se agregaron durante el armado, arriba de estos
   if (fueraDeRadio.length)
     avisos.push(`${fueraDeRadio.map(s => s.c).join(', ')}: no quedó camión del transportista que suele llevarlas — asignalas a mano.`);
 }
@@ -573,27 +591,34 @@ export function enrutarV2(
   const fueraDeRadio: StoreItem[] = [];
   const usados = new Set<string>();
 
-  // Lo que SÍ se rutea desde el CD: Santiago y Costa. Regiones se consolida al final.
-  const dentro = [...santiago, ...costa];
+  // ORDEN DE ARMADO, igual que en la operación: Regiones primero (es lo más lejano, se carga
+  // primero y sale más temprano), después Costa los días que se arma, y Santiago al final.
+  consolidarRegiones(regiones, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
+
+  // Lo que SÍ se rutea desde el CD: Costa y Santiago, en ese orden.
+  const dentro = [...costa, ...santiago];
   if (costa.length)
     avisos.push(`${costa.length} tienda(s) de Costa (${costa.map(s => s.c).join(', ')}) — van en camión aparte, no se mezclan con Santiago.`);
 
   const sinGps = dentro.filter(s => !gps[s.c]).map(s => s.c);
   if (sinGps.length) avisos.push(`Sin coordenadas: ${sinGps.join(', ')} — quedan agrupadas aparte, ubicalas a mano.`);
 
-  if (!dentro.length) {
-    consolidarRegiones(regiones, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
-    return vacio({ consolidacion, fueraDeRadio, costa });
-  }
+  if (!dentro.length) return vacio({ consolidacion, fueraDeRadio, costa });
 
   const porCodigo = new Map(dentro.map(s => [s.c, s]));
 
   // 2) Agrupar por ahorro geográfico DENTRO de cada zona. Agruparlas juntas es lo que producía
   //    camiones con Castro y Puente Alto en el mismo viaje.
-  const capMax = Math.max(...activos.map(v => v.c));
+  const paraRuteo = activos.filter(v => !usados.has(v.p));
+  if (!paraRuteo.length) {
+    avisos.push('No quedan camiones para rutear: los activos se usaron en Regiones. Activá otro vehículo.');
+    return vacio({ consolidacion, fueraDeRadio, costa, sinFlota: dentro.slice() });
+  }
+  const capMax = Math.max(...paraRuteo.map(v => v.c));
+  // Costa primero: sale antes que Santiago, así que elige camión antes.
   const gruposCods = [
-    ...(santiago.length ? agruparPorAhorro(santiago, capMax, gps, cd, tiendas, o) : []),
     ...(costa.length    ? agruparPorAhorro(costa,    capMax, gps, cd, tiendas, o) : []),
+    ...(santiago.length ? agruparPorAhorro(santiago, capMax, gps, cd, tiendas, o) : []),
   ];
   const grupos: GrupoCarga[] = gruposCods.map(cods => ({
     cods,
@@ -602,8 +627,9 @@ export function enrutarV2(
   }));
 
   // 3) Empaquetar en la flota real: respeta capacidad, parte lo que no entra, no descarta nada.
+  const flotaRuteo = flota.filter(v => !usados.has(v.p));
   const { asignaciones, sobrante } = empacarEnFlota(
-    grupos, flota,
+    grupos, flotaRuteo,
     c => porCodigo.get(c)?.p ?? 0,
     cods => ordenarParadas(cods, gps, cd),
     o.empresaPorTienda,
@@ -618,10 +644,6 @@ export function enrutarV2(
       tb: ts.reduce((s, t) => s + bultosDe(t), 0),
     };
   }).filter(r => r.ts.length);
-
-  // Los camiones que quedaron en ruta no pueden además consolidar Regiones.
-  for (const r of rutas) usados.add(r.v.p);
-  consolidarRegiones(regiones, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
 
   const segundaVuelta = sobrante.map(c => porCodigo.get(c)).filter((s): s is StoreItem => !!s);
   if (segundaVuelta.length)

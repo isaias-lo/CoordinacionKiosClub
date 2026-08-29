@@ -351,13 +351,26 @@ describe('enrutarV2', () => {
     expect(r.sinFlota.map(s => s.c)).toEqual(['REGION']);
   });
 
-  it('sin camión del transportista habitual, NO inventa: quedan sin asignar y avisa', () => {
-    // el único camión libre es de otra empresa → no se le encaja Regiones
+  it('sin camión del transportista habitual usa otro, pero lo avisa', () => {
+    // Regiones sale igual: se toma el camión que haya y el transportista se corrige a mano.
     const otra = [V('T1', 10, 20, { empresa: 'Kios Club' })];
     const r = enrutarV2([S('REGION')], otra, GPS, CD, undefined, { empresaPorTienda: { REGION: 'Ortiz' } });
-    expect(r.consolidacion).toEqual([]);
-    expect(r.fueraDeRadio.map(s => s.c)).toEqual(['REGION']);
-    expect(r.avisos.join(' ')).toContain('a mano');
+    expect(r.consolidacion.flatMap(x => x.ts.map(t => t.c))).toEqual(['REGION']);
+    expect(r.fueraDeRadio).toEqual([]);
+    expect(r.avisos.join(' ')).toContain('no quedaba camión de esa empresa');
+  });
+
+  // El orden de armado es el de la operación: Regiones primero porque es lo más lejano y sale
+  // más temprano, después Costa, y Santiago al final.
+  it('Regiones elige camión ANTES que Santiago', () => {
+    const uno = [V('SOLO', 10, 20, { empresa: 'Ortiz' })];
+    const r = enrutarV2([S('A'), S('REGION')], uno, GPS, CD, undefined,
+      { respetarVentanas: false, empresaPorTienda: { REGION: 'Ortiz' } });
+    // el único camión se lo lleva Regiones
+    expect(r.consolidacion.map(x => x.v.p)).toEqual(['SOLO']);
+    expect(r.rutas).toEqual([]);
+    // y Santiago queda señalado, no se pierde
+    expect([...r.segundaVuelta, ...r.sinFlota].map(s => s.c)).toContain('A');
   });
 
   // Las 5 tiendas de Costa están a 86–100 km: antes caían en "fuera de radio" con el mensaje de
