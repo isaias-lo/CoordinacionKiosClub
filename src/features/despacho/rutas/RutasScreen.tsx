@@ -594,11 +594,19 @@ export default function RutasScreen() {
 
   // [E8] Config de zonas de transporte (capa 3): alimenta las etiquetas zona·modo y los avisos de
   // transportista de cada camión en el tablero. Si falla, el tablero cae al default geográfico.
+  // Se revalida al volver el foco a la pestaña (refresh=1 saltea el caché de 60 s del endpoint), así
+  // un cambio de transportista desde Config se ve sin recargar la página.
   useEffect(() => {
-    fetch('/api/zonas-transporte')
-      .then(r => r.ok ? r.json() : null)
-      .then((j: { data?: ConfigZonas } | null) => { if (j?.data) setZonasCfg(j.data); })
-      .catch(() => {});
+    const cargarZonas = (force = false) => {
+      fetch(`/api/zonas-transporte${force ? '?refresh=1' : ''}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((j: { data?: ConfigZonas } | null) => { if (j?.data) setZonasCfg(j.data); })
+        .catch(() => {});
+    };
+    cargarZonas();
+    const onFocus = () => cargarZonas(true);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   // ── Load fleet from Supabase (source of truth) ───────────────────

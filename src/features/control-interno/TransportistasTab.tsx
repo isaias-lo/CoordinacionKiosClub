@@ -177,8 +177,10 @@ export default function TransportistasTab({ canEdit }: { canEdit: boolean }) {
                   })}
                 </div>
                 {z.empresas.length === 0 && (
-                  <div style={{ fontSize: 11.5, color: '#B45309', marginTop: 7 }}>
-                    Sin empresas: nadie puede llevar esta zona (queda para asignar a mano).
+                  <div style={{ fontSize: 11.5, color: z.modo === 'consolidacion' ? '#B45309' : '#64748B', marginTop: 7 }}>
+                    {z.modo === 'consolidacion'
+                      ? 'Sin empresas: nadie puede llevar esta zona (queda para asignar a mano).'
+                      : 'Sin empresas: sin preferencia — el motor asigna el camión que mejor calce.'}
                   </div>
                 )}
               </div>
