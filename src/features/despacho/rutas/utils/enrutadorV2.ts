@@ -17,7 +17,8 @@
 // siempre la misma propuesta (los empates se rompen por código de tienda).
 
 import { dkm } from './helpers';
-import { zonaDeSector, type ZonaRuteo } from '@/lib/sectores';
+import { zonaDeSectorOGeo, type ZonaRuteo } from '@/lib/sectores';
+import { ZONAS_DEFAULT, empresaHabilitada, zonasDeConsolidacion, type ConfigZonas } from './zonasTransporte';
 import type { StoreItem, Ruta } from './routing';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -56,10 +57,18 @@ export interface OpcionesEnrutador {
    * 8 casos había un camión activo de la empresa correcta con capacidad de sobra.
    */
   empresaPorTienda?: Record<string, string>;
+  /**
+   * Qué empresa transporta cada zona y si se rutea o se consolida. Antes esto se deducía del
+   * historial, y el historial está en plena migración — Luis Fica está tomando el sur que
+   * hacía Falabella. Con la configuración explícita, mover una zona de un transportista a
+   * otro es cambiar un dato, no desplegar código.
+   */
+  zonas?: ConfigZonas;
 }
 
 export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
   empresaPorTienda: {},
+  zonas: ZONAS_DEFAULT,
   maxDiametroKm: 20,
   respetarVentanas: true,
   velocidadKmH: 22,
@@ -119,11 +128,15 @@ export function zonaDeTienda(
   tiendas: Record<string, TiendaInfo> | undefined,
   distanciaKm: number,
   o: Required<OpcionesEnrutador>,
+  lat?: number | null,
+  latCD = -33.412581,
 ): Zona {
-  const porCatalogo = zonaDeSector(tiendas?.[cod]?.sector);
+  const porCatalogo = zonaDeSectorOGeo(tiendas?.[cod]?.sector, lat, latCD);
   if (porCatalogo) return porCatalogo;
-  if (o.radioRMKm > 0 && distanciaKm > o.radioRMKm)
-    return (o.radioCostaKm > 0 && distanciaKm > o.radioCostaKm) ? 'regiones' : 'costa';
+  if (o.radioRMKm > 0 && distanciaKm > o.radioRMKm) {
+    if (o.radioCostaKm <= 0 || distanciaKm <= o.radioCostaKm) return 'costa';
+    return (lat != null && Number.isFinite(lat) && lat >= latCD) ? 'norte' : 'sur';
+  }
   return 'santiago';
 }
 
@@ -490,60 +503,59 @@ export function empacarEnFlota(
  * puntas opuestas del país. Es un registro de quién se lleva qué, no un recorrido.
  */
 export function consolidarRegiones(
-  regiones: StoreItem[],
+  porZona: Partial<Record<ZonaRuteo, StoreItem[]>>,
   flota: Vehiculo[],
   tiendas: Record<string, TiendaInfo> | undefined,
   o: Required<OpcionesEnrutador>,
   usados: Set<string>,
   consolidacion: Ruta[],
-  fueraDeRadio: StoreItem[],
+  sinTransportista: StoreItem[],
   avisos: string[],
 ): void {
-  if (!regiones.length) return;
-  const porEmpresa = new Map<string, StoreItem[]>();
-  for (const s of regiones) {
-    const e = (o.empresaPorTienda[s.c] ?? '').trim() || '_sin';
-    (porEmpresa.get(e) ?? porEmpresa.set(e, []).get(e)!).push(s);
-  }
-  const libres = flota.filter(v => v.on && !usados.has(v.p))
-    .sort((a, b) => (b.c - a.c) || a.p.localeCompare(b.p));
-  for (const [emp, items] of [...porEmpresa.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const carga = items.reduce((t, x) => t + x.p, 0);
-    const cand = libres.filter(v => !usados.has(v.p));
-    const mismaEmpresa = (v: Vehiculo) => emp !== '_sin' && String(v.empresa ?? '').trim() === emp;
+  // Las zonas de consolidación, en el orden en que se arman (lo más lejano primero).
+  const zonas = zonasDeConsolidacion(o.zonas);
 
-    // 1) camión libre de la empresa habitual: es lo ideal.
-    let elegido = cand.find(v => mismaEmpresa(v) && v.c >= carga) ?? cand.find(mismaEmpresa);
+  for (const cfg of zonas) {
+    const items = porZona[cfg.zona] ?? [];
+    if (!items.length) continue;
 
-    // 2) si no hay, ANTES de abrir un camión nuevo se intenta sumar a uno ya consolidando. Abrir
-    //    uno por transportista le saca flota a Santiago sin necesidad: el coordinador junta las
-    //    tiendas de Regiones en pocos camiones y corrige el transportista después.
-    if (!elegido) {
-      const yaAbierto = consolidacion.find(c => c.tp + carga <= c.v.c);
-      if (yaAbierto) {
-        for (const x of items) yaAbierto.ts.push({ ...x, _v: tiendas?.[x.c]?.v ?? '' });
-        yaAbierto.tp += carga;
-        yaAbierto.tb += items.reduce((t, x) => t + bultosDe(x), 0);
-        if (emp !== '_sin')
-          avisos.push(`${yaAbierto.v.p} (${String(yaAbierto.v.empresa ?? '').trim() || 'sin empresa'}) también lleva ${items.map(x => x.c).join(', ')}, que suelen ir con ${emp}.`);
-        continue;
-      }
-      // 3) recién acá se abre uno nuevo.
-      elegido = cand.find(v => v.c >= carga) ?? cand[0];
+    // Solo los camiones de una empresa HABILITADA para esta zona. Es el cambio de fondo:
+    // antes la empresa se deducía del historial, que está a mitad del traspaso del sur de
+    // Falabella a Luis Fica. Sin empresas configuradas no se asigna nada — deliberado: la
+    // salida segura el día del cambio es "asignar a mano", no proponer al transportista viejo.
+    const habilitados = flota
+      .filter(v => v.on && !usados.has(v.p) && empresaHabilitada(v.empresa, cfg))
+      .sort((a, b) => (b.c - a.c) || a.p.localeCompare(b.p));
+
+    if (!habilitados.length) {
+      sinTransportista.push(...items);
+      avisos.push(
+        cfg.empresas.length
+          ? `Regiones ${cfg.zona}: no quedó camión de ${cfg.empresas.join(' ni ')} — ${items.map(x => x.c).join(', ')} van a mano.`
+          : `Regiones ${cfg.zona}: no hay transportista configurado — ${items.map(x => x.c).join(', ')} van a mano.`,
+      );
+      continue;
     }
-    if (!elegido) { fueraDeRadio.push(...items); continue; }
-    if (!mismaEmpresa(elegido) && emp !== '_sin')
-      avisos.push(`${elegido.p} (${String(elegido.empresa ?? '').trim() || 'sin empresa'}) consolida tiendas de ${emp} — no quedaba camión de esa empresa.`);
-    usados.add(elegido.p);
-    const ts = items.map(x => ({ ...x, _v: tiendas?.[x.c]?.v ?? '' }));
-    consolidacion.push({ v: elegido, ts,
-      tp: ts.reduce((t, x) => t + x.p, 0), tb: ts.reduce((t, x) => t + bultosDe(x), 0) });
+
+    // Se llenan camiones en vez de abrir uno por tienda: abrir de más le saca flota al ruteo.
+    let restantes = items.slice().sort((a, b) => (b.p - a.p) || a.c.localeCompare(b.c));
+    for (const v of habilitados) {
+      if (!restantes.length) break;
+      const suben: StoreItem[] = [];
+      let acum = 0;
+      for (const x of restantes) if (acum + x.p <= v.c) { suben.push(x); acum += x.p; }
+      if (!suben.length) continue;
+      usados.add(v.p);
+      const ts = suben.map(x => ({ ...x, _v: tiendas?.[x.c]?.v ?? '' }));
+      consolidacion.push({ v, ts, tp: acum, tb: ts.reduce((t, x) => t + bultosDe(x), 0) });
+      avisos.push(`${v.p} (${String(v.empresa ?? '').trim() || 'sin empresa'}) consolida ${ts.length} tienda(s) de Regiones ${cfg.zona}: ${ts.map(t => t.c).join(', ')} — sin ruta desde el CD.`);
+      restantes = restantes.filter(x => !suben.includes(x));
+    }
+    if (restantes.length) {
+      sinTransportista.push(...restantes);
+      avisos.push(`Regiones ${cfg.zona}: no cabe ${restantes.map(x => x.c).join(', ')} en los camiones de ${cfg.empresas.join(' / ')} — activá otro.`);
+    }
   }
-  for (const c of consolidacion)
-    avisos.push(`${c.v.p} (${String(c.v.empresa ?? '').trim() || 'sin empresa'}) consolida ${c.ts.length} tienda(s) de Regiones: ${c.ts.map(t => t.c).join(', ')} — sin ruta desde el CD.`);
-  // los avisos de mezcla se agregaron durante el armado, arriba de estos
-  if (fueraDeRadio.length)
-    avisos.push(`${fueraDeRadio.map(s => s.c).join(', ')}: no quedó camión del transportista que suele llevarlas — asignalas a mano.`);
 }
 
 // ── API principal (drop-in de `asignar`) ─────────────────────────────────────────
@@ -576,14 +588,16 @@ export function enrutarV2(
   // 1) Triage en TRES zonas, no dos. Antes solo había "dentro" y "fuera del radio RM", y las
   //    cinco tiendas de Costa (86–100 km) caían en "fuera" con el mensaje de Regiones — falso:
   //    Costa se despacha desde el CD con camión propio. Regiones (>200 km) sí sale por Sendu.
-  const santiago: StoreItem[] = [], costa: StoreItem[] = [], regiones: StoreItem[] = [];
+  const santiago: StoreItem[] = [], costa: StoreItem[] = [];
+  const porZona: Partial<Record<ZonaRuteo, StoreItem[]>> = { sur: [], norte: [] };
   for (const s of pool) {
     const g = gps[s.c];
     const d = g ? dkm(cd, g) : 0;
-    switch (zonaDeTienda(s.c, tiendas, d, o)) {
-      case 'costa':    costa.push(s); break;
-      case 'regiones': regiones.push(s); break;
-      default:         santiago.push(s);
+    switch (zonaDeTienda(s.c, tiendas, d, o, g?.[0], cd[0])) {
+      case 'costa':          costa.push(s); break;
+      case 'sur':   porZona.sur!.push(s); break;
+      case 'norte': porZona.norte!.push(s); break;
+      default:               santiago.push(s);
     }
   }
 
@@ -593,7 +607,7 @@ export function enrutarV2(
 
   // ORDEN DE ARMADO, igual que en la operación: Regiones primero (es lo más lejano, se carga
   // primero y sale más temprano), después Costa los días que se arma, y Santiago al final.
-  consolidarRegiones(regiones, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
+  consolidarRegiones(porZona, flota, tiendas, o, usados, consolidacion, fueraDeRadio, avisos);
 
   // Lo que SÍ se rutea desde el CD: Costa y Santiago, en ese orden.
   const dentro = [...costa, ...santiago];
