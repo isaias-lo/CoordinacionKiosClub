@@ -6,6 +6,8 @@ import { dkm, formatCod } from '../utils/helpers';
 import { zonaDeSector } from '@/lib/sectores';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
+import { etiquetaCamion, avisoCamionNoHabilitado } from '../utils/zonaCamion';
+import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
@@ -62,6 +64,9 @@ interface Props {
   onToggleCerrarSel?: (patente: string) => void;
   onCerrarVarios?: (patentes: string[]) => void;
   esCerrada?: (patente: string) => boolean;
+  /** [E8] Config de zonas (capa 3): para la etiqueta zona·modo y el aviso de transportista por
+   *  camión. Si no viene, la etiqueta cae al default geográfico y no se muestran avisos de zona. */
+  zonasCfg?: ConfigZonas;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -137,6 +142,7 @@ export default function ManualDispatch({
   onToggleCerrarSel,
   onCerrarVarios,
   esCerrada,
+  zonasCfg,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -610,6 +616,11 @@ export default function ManualDispatch({
           const selMode    = !!onCerrarVarios;
           const puedeCerrar = !!onCerrarCamion && stores.length > 0 && !m.overCap && !cerrado;
           const selForClose = cerrarSel?.has(v.p) ?? false;
+          // [E8] Zona·modo del camión (según sus tiendas + config) y aviso si su empresa no está
+          // habilitada para esa zona. Un camión de consolidación NO es un recorrido: sin km ni horas.
+          const etiquetaZona  = etiquetaCamion(stores, tiendas, zonasCfg);
+          const avisoZona     = avisoCamionNoHabilitado(v.p, v.empresa, stores, tiendas, zonasCfg);
+          const esConsolidado = etiquetaZona?.modo === 'consolidacion';
 
           return (
             <div
@@ -665,6 +676,14 @@ export default function ManualDispatch({
                   </div>
                 </div>
                 {v.t && <div className="text-[10px] text-kmuted/60 mt-0.5 truncate">{v.t}</div>}
+                {etiquetaZona && (
+                  <div className="mt-1 inline-flex items-center gap-1">
+                    <span className={`text-[9px] font-bold uppercase tracking-[0.3px] px-1.5 py-[2px] rounded ${
+                      esConsolidado ? 'bg-purple-50 text-purple-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      {etiquetaZona.label}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* ── Métricas: carga + km (compacto) ── */}
@@ -685,19 +704,31 @@ export default function ManualDispatch({
                     <div className={`h-full rounded-full transition-all duration-300 ${pctColor}`} style={{ width: `${Math.min(m.pct * 100, 100)}%` }} />
                   </div>
                 </div>
-                {/* KM estimado (línea recta) + km real de Google si este camión está en preview */}
+                {/* KM estimado (línea recta) + km real de Google si este camión está en preview.
+                    Un camión de consolidación NO recorre: se muestra el nº de tiendas, sin km ni horas
+                    (sus "km" serían destinos en puntas opuestas del país y no significan nada). */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  {m.kmEst > 0 ? (
+                  {esConsolidado ? (
+                    <span className="text-[11px] text-purple-700">
+                      Consolidación · {stores.length} tienda{stores.length !== 1 ? 's' : ''} · sin recorrido
+                    </span>
+                  ) : m.kmEst > 0 ? (
                     <span className="text-[11px] text-kmuted"><span className="font-bold text-ktext">~{m.kmEst} km</span> · {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
                   ) : (
                     <span className="text-[10px] text-kmuted/40 italic">Sin tiendas aún</span>
                   )}
-                  {isPreview && (
+                  {isPreview && !esConsolidado && (
                     <span className="text-[10px] font-bold text-knavy">
                       {camionSeleccionadoKm != null ? `· ${camionSeleccionadoKm} km reales` : '· calculando km real…'}
                     </span>
                   )}
                 </div>
+                {/* [E8] Aviso de transportista, específico de ESTE camión (no va a la lista general). */}
+                {avisoZona && (
+                  <div className="flex items-start gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-[6px] px-2 py-1 leading-snug">
+                    <span aria-hidden="true">⚠</span><span>{avisoZona}</span>
+                  </div>
+                )}
               </div>
 
               {/* ── Tiendas asignadas ── */}

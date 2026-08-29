@@ -27,6 +27,7 @@ import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { enrutarV2, type ResultadoEnrutador } from './utils/enrutadorV2';
 import { poolDesdeCalT } from './utils/poolDespacho';
+import type { ConfigZonas } from './utils/zonasTransporte';
 import type { CentroideCluster } from './utils/asignarPorClusters';
 import { faseEnrutador } from './utils/faseEnrutador';
 import type { IAStore, IATruck } from './ia/types';
@@ -149,6 +150,8 @@ export default function RutasScreen() {
   const [gps,     setGps]     = useState<Record<string, number[]>>(() => ({ ...GPS_INICIAL }));
   const cdRef                 = useRef<number[]>([...CD_INICIAL]);
   const [flota,   setFlota]   = useState<Vehiculo[]>(() => FLOTA_INICIAL.map(v => ({ ...v })));
+  // [E8] Config de zonas (capa 3): etiqueta zona·modo y aviso de transportista por camión en el tablero.
+  const [zonasCfg, setZonasCfg] = useState<ConfigZonas | undefined>(undefined);
   // [F2] patente→ts de activación (ordena los camiones). Persiste en localStorage → sobrevive al
   // recargar en este equipo (no se sincroniza cross-device: es una comodidad de armado local).
   const [flotaActivadaEn, setFlotaActivadaEn] = useState<Record<string, number>>(() => {
@@ -588,6 +591,15 @@ export default function RutasScreen() {
     });
     localStorage.setItem('despachoCounts', JSON.stringify({ date: fecha, counts }));
   }, [calT, fecha]);
+
+  // [E8] Config de zonas de transporte (capa 3): alimenta las etiquetas zona·modo y los avisos de
+  // transportista de cada camión en el tablero. Si falla, el tablero cae al default geográfico.
+  useEffect(() => {
+    fetch('/api/zonas-transporte')
+      .then(r => r.ok ? r.json() : null)
+      .then((j: { data?: ConfigZonas } | null) => { if (j?.data) setZonasCfg(j.data); })
+      .catch(() => {});
+  }, []);
 
   // ── Load fleet from Supabase (source of truth) ───────────────────
   useEffect(() => {
@@ -2298,6 +2310,7 @@ export default function RutasScreen() {
             planLegsByRoute={planLegsByRoute} planKmByRoute={planKmByRoute}
             onTerminarDia={() => setCierreOpen(true)}
             onAbrirTablero={() => setTableroOpen(true)}
+            zonasCfg={zonasCfg}
             pendientesBacklogCount={pendientesV2Origen.length}
             rightPanelContent={
               results ? (
