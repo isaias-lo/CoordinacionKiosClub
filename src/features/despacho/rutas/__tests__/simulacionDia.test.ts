@@ -41,21 +41,21 @@ const flota = [V('AAA111', 10), V('BBB222', 10), V('CCC333', 10), V('DDD444', 14
 const calT = (cods: string[], p = 2): Record<string, CalTData> =>
   Object.fromEntries(cods.map(c => [c, { on: true, p, b: 1, c: 0, ch: 0 }]));
 
-const zonaDe = (c: string) => zonaDeTienda(c, tiendas, 0, OPCIONES_DEFAULT);
+const zonaDe = (c: string) => zonaDeTienda(c, tiendas, 0, OPCIONES_DEFAULT, gps[c]?.[0], CD[0]);
 const codsDe = (r: Ruta[]) => r.flatMap(x => x.ts.map(t => t.c));
 
 describe('simulación del día de despacho', () => {
 
-  it('el catálogo clasifica bien las tres zonas', () => {
-    for (const c of REGIONES) expect(zonaDe(c)).toBe('regiones');
+  it('el catálogo clasifica bien las cuatro zonas', () => {
+    // 57CAS Castro y 31TLC Talca están al sur del CD → zona sur
+    for (const c of REGIONES) expect(zonaDe(c)).toBe('sur');
     for (const c of COSTA)    expect(zonaDe(c)).toBe('costa');
     for (const c of SANTIAGO) expect(zonaDe(c)).toBe('santiago');
   });
 
   // ── Mañana: sale Regiones primero, como en la operación real ──────────────────
   it('paso 1 · Regiones no se rutea desde el CD, pero recibe transportista', () => {
-    const r = enrutarV2(poolDesdeCalT(calT(REGIONES)), flota, gps, CD, tiendas,
-      { empresaPorTienda: Object.fromEntries(REGIONES.map(c => [c, 'Luis Fica'])) });
+    const r = enrutarV2(poolDesdeCalT(calT(REGIONES)), flota, gps, CD, tiendas);
     expect(r.rutas).toEqual([]);                                    // ninguna ruta calculada
     expect(r.consolidacion.flatMap(x => x.ts.map(t => t.c)).sort())  // pero sí camión asignado
       .toEqual([...REGIONES].sort());
@@ -86,13 +86,12 @@ describe('simulación del día de despacho', () => {
   });
 
   it('paso 3b · Castro nunca viaja con una tienda de Santiago', () => {
-    const r = enrutarV2(poolDesdeCalT(calT([...REGIONES, ...SANTIAGO])), flota, gps, CD, tiendas,
-      { empresaPorTienda: Object.fromEntries(REGIONES.map(c => [c, 'Luis Fica'])) });
+    const r = enrutarV2(poolDesdeCalT(calT([...REGIONES, ...SANTIAGO])), flota, gps, CD, tiendas);
     for (const ruta of r.rutas) expect(ruta.ts.map(t => t.c).includes('57CAS')).toBe(false);
     // Castro va en un camión de consolidación, con solo tiendas de Regiones
     const suyo = r.consolidacion.find(x => x.ts.some(t => t.c === '57CAS'));
     expect(suyo).toBeDefined();
-    for (const t of suyo!.ts) expect(zonaDe(t.c)).toBe('regiones');
+    for (const t of suyo!.ts) expect(['sur', 'norte']).toContain(zonaDe(t.c));
   });
 
   it('paso 3c · ninguna tienda del pool se pierde', () => {

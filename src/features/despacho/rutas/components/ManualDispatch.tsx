@@ -83,7 +83,14 @@ function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number
  */
 function esConsolidacion(stores: StoreTag[], tiendas: Record<string, TiendaInfo>): boolean {
   if (!stores.length) return false;
-  return stores.every(s => zonaDeSector((tiendas[s.c] as { sector?: string } | undefined)?.sector) === 'regiones');
+  return stores.every(s => {
+    const z = zonaDeSector((tiendas[s.c] as { sector?: string } | undefined)?.sector);
+    // 'Región' a secas devuelve null (hace falta la latitud); se cuenta igual como Regiones.
+    if (z === 'sur' || z === 'norte') return true;
+    if (z) return false;
+    return String((tiendas[s.c] as { sector?: string } | undefined)?.sector ?? '')
+      .trim().toLowerCase().startsWith('regi');
+  });
 }
 
 interface DraggingState extends StoreTag { from: string; }
