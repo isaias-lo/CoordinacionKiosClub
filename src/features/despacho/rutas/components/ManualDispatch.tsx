@@ -3,10 +3,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
-import { zonaDeSector } from '@/lib/sectores';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
-import { etiquetaCamion, avisoCamionNoHabilitado } from '../utils/zonaCamion';
+import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -77,25 +76,6 @@ function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number
   ordered.forEach(t => { const g = gps[t.c]; if (g) { km += dkm(prev, g); prev = g; } });
   if (ordered.length && gps[ordered[ordered.length - 1].c]) km += dkm(prev, cd);
   return Math.round(km);
-}
-
-/**
- * Un camión de CONSOLIDACIÓN no hace una ruta: lleva tiendas de Regiones a un transportista, que
- * después las reparte por su cuenta. Sus "kilómetros" son la suma de distancias a destinos que
- * pueden estar en puntas opuestas del país — un camión con La Serena y Castro marcaba 2.868 km
- * para 5 tiendas, y eso inflaba el total del día a 4.467 km cuando la ruta real de Santiago eran
- * menos de 200. Separarlos es lo que hace que el número del tablero signifique algo.
- */
-function esConsolidacion(stores: StoreTag[], tiendas: Record<string, TiendaInfo>): boolean {
-  if (!stores.length) return false;
-  return stores.every(s => {
-    const z = zonaDeSector((tiendas[s.c] as { sector?: string } | undefined)?.sector);
-    // 'Región' a secas devuelve null (hace falta la latitud); se cuenta igual como Regiones.
-    if (z === 'sur' || z === 'norte') return true;
-    if (z) return false;
-    return String((tiendas[s.c] as { sector?: string } | undefined)?.sector ?? '')
-      .trim().toLowerCase().startsWith('regi');
-  });
 }
 
 interface DraggingState extends StoreTag { from: string; }
@@ -420,7 +400,9 @@ export default function ManualDispatch({
 
   // El total del día suma solo las RUTAS. Los camiones de consolidación (Regiones) se cuentan
   // aparte: sus km no son un recorrido y arruinaban el número.
-  const esConsol      = (p: string) => esConsolidacion(asignaciones[p] || [], tiendas);
+  // [E8] Consolidación = una SOLA definición: la etiqueta zona·modo del camión (config-driven, con la
+  // zona por latitud). El encabezado excluye del total de km los mismos camiones que la tarjeta oculta.
+  const esConsol      = (p: string) => etiquetaCamion(asignaciones[p] || [], tiendas, gps, cd[0], zonasCfg)?.modo === 'consolidacion';
   const totalEstKm    = flotaDisp.filter(v => !esConsol(v.p)).reduce((s, v) => s + getMetrics(v.p, v).kmEst, 0);
   const camsConsol    = flotaDisp.filter(v => (asignaciones[v.p] || []).length && esConsol(v.p));
   const tiendasConsol = camsConsol.reduce((s, v) => s + (asignaciones[v.p] || []).length, 0);
@@ -618,8 +600,8 @@ export default function ManualDispatch({
           const selForClose = cerrarSel?.has(v.p) ?? false;
           // [E8] Zona·modo del camión (según sus tiendas + config) y aviso si su empresa no está
           // habilitada para esa zona. Un camión de consolidación NO es un recorrido: sin km ni horas.
-          const etiquetaZona  = etiquetaCamion(stores, tiendas, zonasCfg);
-          const avisoZona     = avisoCamionNoHabilitado(v.p, v.empresa, stores, tiendas, zonasCfg);
+          const etiquetaZona  = etiquetaCamion(stores, tiendas, gps, cd[0], zonasCfg);
+          const avisosZona    = avisosCamionNoHabilitado(v.p, v.empresa, stores, tiendas, gps, cd[0], zonasCfg);
           const esConsolidado = etiquetaZona?.modo === 'consolidacion';
 
           return (
@@ -723,12 +705,13 @@ export default function ManualDispatch({
                     </span>
                   )}
                 </div>
-                {/* [E8] Aviso de transportista, específico de ESTE camión (no va a la lista general). */}
-                {avisoZona && (
-                  <div className="flex items-start gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-[6px] px-2 py-1 leading-snug">
-                    <span aria-hidden="true">⚠</span><span>{avisoZona}</span>
+                {/* [E8] Avisos de transportista, específicos de ESTE camión (uno por zona que lleva y
+                    que su empresa no cubre) — no van a la lista general de avisos. */}
+                {avisosZona.map(aviso => (
+                  <div key={aviso} className="flex items-start gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-[6px] px-2 py-1 leading-snug">
+                    <span aria-hidden="true">⚠</span><span>{aviso}</span>
                   </div>
-                )}
+                ))}
               </div>
 
               {/* ── Tiendas asignadas ── */}
