@@ -18,7 +18,7 @@
 
 import { dkm } from './helpers';
 import { zonaDeSectorOGeo, type ZonaRuteo } from '@/lib/sectores';
-import { ZONAS_DEFAULT, empresaHabilitada, zonasDeConsolidacion, type ConfigZonas } from './zonasTransporte';
+import { ZONAS_DEFAULT, empresaHabilitada, zonasDeConsolidacion, type ConfigZona, type ConfigZonas } from './zonasTransporte';
 import type { StoreItem, Ruta } from './routing';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -371,7 +371,7 @@ export function agruparPorAhorro(
 // ── Camiones: emparejar grupo → vehículo ─────────────────────────────────────────
 
 /** Un grupo geográfico listo para subir a un camión. */
-export interface GrupoCarga { cods: string[]; p: number; ch: number }
+export interface GrupoCarga { cods: string[]; p: number; ch: number; zona?: ZonaRuteo }
 
 /** Empresa que lleva a la mayoría de las tiendas del grupo (empate → nombre menor, determinista). */
 export function empresaDelGrupo(cods: string[], empresaPorTienda: Record<string, string>): string | null {
@@ -392,11 +392,18 @@ export function empresaDelGrupo(cods: string[], empresaPorTienda: Record<string,
  */
 export function mejorCamion(
   grupo: GrupoCarga, libres: Vehiculo[], empresaPorTienda: Record<string, string>,
+  cfgZona?: ConfigZona,
 ): Vehiculo | null {
   const caben = libres.filter(v => v.c >= grupo.p);
   if (!caben.length) return null;
   const emp = empresaDelGrupo(grupo.cods, empresaPorTienda);
-  const puntaje = (v: Vehiculo): [number, number, number, string] => [
+  const puntaje = (v: Vehiculo): [number, number, number, number, string] => [
+    // BLANDA, no dura: si la zona tiene empresas configuradas se prefieren, pero un camión no
+    // habilitado sigue siendo elegible. Cerrarlo del todo dejaría un día entero sin asignar
+    // cuando el coordinador activa flota de otra empresa — y eso es peor que una propuesta
+    // discutible, que él corrige arrastrando. Lo que no puede pasar es que ocurra en silencio:
+    // enrutarV2 avisa cuando el camión elegido no está habilitado para la zona.
+    cfgZona?.empresas.length && !empresaHabilitada(v.empresa, cfgZona) ? 1 : 0,
     emp && String(v.empresa ?? '').trim() === emp ? 0 : 1,
     grupo.ch > 0 ? (v.refrigerado ? 0 : 1) : (v.refrigerado ? 1 : 0),
     v.c,
@@ -404,7 +411,7 @@ export function mejorCamion(
   ];
   return caben.slice().sort((a, b) => {
     const x = puntaje(a), y = puntaje(b);
-    return (x[0] - y[0]) || (x[1] - y[1]) || (x[2] - y[2]) || x[3].localeCompare(y[3]);
+    return (x[0] - y[0]) || (x[1] - y[1]) || (x[2] - y[2]) || (x[3] - y[3]) || x[4].localeCompare(y[4]);
   })[0];
 }
 
@@ -429,6 +436,7 @@ export function empacarEnFlota(
   palletsDe: (cod: string) => number,
   ordenar: (cods: string[]) => string[],
   empresaPorTienda: Record<string, string> = {},
+  zonas?: ConfigZonas,
 ): { asignaciones: { v: Vehiculo; cods: string[] }[]; sobrante: string[] } {
   const porCap = (a: Vehiculo, b: Vehiculo) => (b.c - a.c) || a.p.localeCompare(b.p);
   const normales = flota.filter(v => v.on && !v.tlbd).slice().sort(porCap);
@@ -460,7 +468,9 @@ export function empacarEnFlota(
     }
     const g = pendientes.splice(idx, 1)[0];
 
-    const v = mejorCamion(g, normales, empresaPorTienda) ?? mejorCamion(g, furgones, empresaPorTienda);
+    const cfgZona = zonas && g.zona ? zonas[g.zona] : undefined;
+    const v = mejorCamion(g, normales, empresaPorTienda, cfgZona)
+           ?? mejorCamion(g, furgones, empresaPorTienda, cfgZona);
     if (v) { quitar(v); asignaciones.push({ v, cods: g.cods }); continue; }
 
     // No entra entero en ningún camión libre → partirlo por el camión más grande que quede.
@@ -590,10 +600,13 @@ export function enrutarV2(
   //    Costa se despacha desde el CD con camión propio. Regiones (>200 km) sí sale por Sendu.
   const santiago: StoreItem[] = [], costa: StoreItem[] = [];
   const porZona: Partial<Record<ZonaRuteo, StoreItem[]>> = { sur: [], norte: [] };
+  const zonaPorCodigo = new Map<string, ZonaRuteo>();
   for (const s of pool) {
     const g = gps[s.c];
     const d = g ? dkm(cd, g) : 0;
-    switch (zonaDeTienda(s.c, tiendas, d, o, g?.[0], cd[0])) {
+    const z = zonaDeTienda(s.c, tiendas, d, o, g?.[0], cd[0]);
+    zonaPorCodigo.set(s.c, z);
+    switch (z) {
       case 'costa':          costa.push(s); break;
       case 'sur':   porZona.sur!.push(s); break;
       case 'norte': porZona.norte!.push(s); break;
@@ -630,12 +643,12 @@ export function enrutarV2(
   }
   const capMax = Math.max(...paraRuteo.map(v => v.c));
   // Costa primero: sale antes que Santiago, así que elige camión antes.
-  const gruposCods = [
-    ...(costa.length    ? agruparPorAhorro(costa,    capMax, gps, cd, tiendas, o) : []),
-    ...(santiago.length ? agruparPorAhorro(santiago, capMax, gps, cd, tiendas, o) : []),
+  const gruposCods: { cods: string[]; zona: ZonaRuteo }[] = [
+    ...(costa.length    ? agruparPorAhorro(costa,    capMax, gps, cd, tiendas, o).map(cods => ({ cods, zona: 'costa'    as const })) : []),
+    ...(santiago.length ? agruparPorAhorro(santiago, capMax, gps, cd, tiendas, o).map(cods => ({ cods, zona: 'santiago' as const })) : []),
   ];
-  const grupos: GrupoCarga[] = gruposCods.map(cods => ({
-    cods,
+  const grupos: GrupoCarga[] = gruposCods.map(({ cods, zona }) => ({
+    cods, zona,
     p:  cods.reduce((s, c) => s + (porCodigo.get(c)?.p ?? 0), 0),
     ch: cods.reduce((s, c) => s + (porCodigo.get(c)?.ch ?? 0), 0),
   }));
@@ -647,6 +660,7 @@ export function enrutarV2(
     c => porCodigo.get(c)?.p ?? 0,
     cods => ordenarParadas(cods, gps, cd),
     o.empresaPorTienda,
+    o.zonas,
   );
 
   const rutas: Ruta[] = asignaciones.map(({ v, cods }) => {
@@ -673,6 +687,16 @@ export function enrutarV2(
       .filter(e => e && emp && e !== emp))];
     if (distintas.length)
       avisos.push(`${r.v.p} (${emp}) lleva tiendas de ${distintas.join(', ')} — no había camión libre de esa empresa.`);
+
+    // La contracara del filtro blando: si igual se le dio carga de una zona que su empresa no
+    // cubre, el coordinador tiene que enterarse — si no, la configuración parecería no aplicarse.
+    const zr = [...new Set(r.ts.map(t => zonaPorCodigo.get(t.c)).filter((z): z is ZonaRuteo => !!z))];
+    for (const z of zr) {
+      const cfg = o.zonas[z];
+      if (cfg?.empresas.length && !empresaHabilitada(r.v.empresa, cfg)) {
+        avisos.push(`${r.v.p} (${emp || 'sin empresa'}) no está habilitado para ${z} — habilitados: ${cfg.empresas.join(', ')}. Se le asignó igual porque no quedaba otro camión.`);
+      }
+    }
   }
 
   return { rutas, consolidacion, fueraDeRadio, costa, segundaVuelta, sinFlota: [], avisos };

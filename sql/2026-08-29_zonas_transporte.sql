@@ -48,3 +48,10 @@ alter table public.zonas_transporte enable row level security;
 
 drop policy if exists "zonas_transporte_select" on public.zonas_transporte;
 create policy "zonas_transporte_select" on public.zonas_transporte for select using (true);
+
+-- El PATCH escribe con la service role, que salta RLS. Pero supabaseServer() cae a la anon key
+-- si SUPABASE_SERVICE_ROLE_KEY no está en el entorno, y ahí un update sin policy no falla: no
+-- modifica nada y no devuelve error. La policy de update cierra ese modo de fallo silencioso;
+-- el endpoint ya exige autenticación antes de llegar acá.
+drop policy if exists "zonas_transporte_update" on public.zonas_transporte;
+create policy "zonas_transporte_update" on public.zonas_transporte for update using (true) with check (true);

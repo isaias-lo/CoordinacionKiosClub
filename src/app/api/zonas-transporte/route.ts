@@ -12,7 +12,10 @@ import { parseZonas, ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho
 // Con esto, mover una zona de un transportista a otro es un PATCH, no un deploy.
 
 let cache: { at: number; data: ConfigZonas } | null = null;
-const TTL_MS = 60 * 60 * 1000; // 1 h, como /api/rutas-clusters
+const TTL_MS = 60 * 1000;
+// Un minuto, no una hora. El caché es por instancia de lambda, así que un PATCH solo invalida
+// el de la instancia que lo atendió: el TTL es el techo real de cuánto puede tardar un cambio
+// de transportista en verse. Son 4 filas — releerlas cada minuto no se nota.
 
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -48,10 +51,21 @@ export async function PATCH(request: NextRequest) {
     if (Array.isArray(body.empresas)) patch.empresas = body.empresas.map(e => String(e).trim()).filter(Boolean);
     if (typeof body.activo === 'boolean') patch.activo = body.activo;
 
-    const { error } = await supabaseServer().from('zonas_transporte').update(patch).eq('zona', zona);
+    const { data, error } = await supabaseServer()
+      .from('zonas_transporte').update(patch).eq('zona', zona).select('zona');
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Sin el .select() esto devolvía ok:true aunque no se hubiera modificado ninguna fila —
+    // pasa si falta la fila, o si SUPABASE_SERVICE_ROLE_KEY no está y el cliente cae a la anon
+    // key, que RLS bloquea sin error. Decir "guardado" sin haber guardado es el peor resultado
+    // posible para un traspaso de transportista.
+    if (!data?.length) {
+      return NextResponse.json(
+        { error: `No se modificó la zona "${zona}". ¿Está creada la tabla zonas_transporte y tiene esa fila?` },
+        { status: 409 },
+      );
+    }
     cache = null;   // el próximo GET relee
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, zona });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

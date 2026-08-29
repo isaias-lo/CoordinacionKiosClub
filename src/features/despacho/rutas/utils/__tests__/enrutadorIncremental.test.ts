@@ -270,14 +270,14 @@ describe('planificarIncremental', () => {
     const u = [U('A','P',600)];
     const hist = { A: H(1, 2, { empresa: 'Luis Fica', confianzaEmpresa: 0.9 }) };
     const p = planificarIncremental(u, conEmpresa, GPS, CD, undefined, hist, 700, opts);
-    expect(p.avisos.join(' ')).toContain('Luis Fica');
+    expect(p.avisos.some(a => a.includes('lleva tiendas de') && a.includes('Luis Fica'))).toBe(true);
   });
 
   it('no avisa si la empresa histórica es débil', () => {
     const conEmpresa = [V('T1', 10, 20, { empresa: 'Ortiz' })];
     const hist = { A: H(1, 2, { empresa: 'Luis Fica', confianzaEmpresa: 0.2 }) };
     const p = planificarIncremental([U('A','P',600)], conEmpresa, GPS, CD, undefined, hist, 700, opts);
-    expect(p.avisos.join(' ')).not.toContain('Luis Fica');
+    expect(p.avisos.some(a => a.includes('lleva tiendas de'))).toBe(false);
   });
 
   it('solo lista como carga las unidades realmente salidas', () => {
