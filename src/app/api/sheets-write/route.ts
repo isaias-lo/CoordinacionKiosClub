@@ -3,6 +3,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/registroFaltantes';
+import { esRespaldoEnrutador, reconciliarRespaldo, aplicarRuteoAFila, aplicarRuteoARecord, COL_RUTEO, type FilaRespaldo } from '@/features/despacho/rutas/utils/reconciliarRespaldo';
 import { clavesConPatente } from './asignacion';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -371,20 +372,47 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true, updated: updateData.length > 0 ? seenSheets.size : 0, appended });
 
       } else {
-        // ── Bodega path: append SOLO filas nuevas (idempotente por id en col A) ──
-        // Evita duplicar filas en la hoja al re-registrar el mismo despacho (p.ej. el
-        // "Reabrir" de Santiago). El id es estable (usa la fecha de despacho), igual que
-        // el upsert de Supabase. Las filas ya existentes se dejan intactas en la hoja
-        // (no se pisa el ruteo que el Enrutador haya escrito); su data se actualiza igual
-        // en Supabase (upsert por id, más abajo).
-        const idColRes = await gs.spreadsheets.values.get({
+        // ── Bodega path: append filas nuevas (idempotente por id) + RECONCILIAR el respaldo ──
+        // Si el Enrutador cerró el camión ANTES de que Bodega registrara, dejó filas de respaldo
+        // (ids R…/ENR-…: con ruteo pero sin dimensiones). Las filas por-pallet de Bodega HEREDAN
+        // ese ruteo y el respaldo se ELIMINA — si no, quedan dos juegos de filas para el mismo
+        // despacho (el bug de "registros dobles").
+        const readRes = await gs.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
-          range:         `${sheet}!A:A`,
+          range:         `${sheet}!A:X`,
         });
-        const sheetIdSet = new Set<string>(
-          (idColRes.data.values || []).map(r => String(r?.[0] ?? '')).filter(Boolean),
-        );
-        const newSheetRows = rows.filter(r => !sheetIdSet.has(String(r[0])));
+        const sheetRows  = readRes.data.values || [];
+        const sheetIdSet = new Set<string>();
+        const respaldo: FilaRespaldo[] = [];
+        for (let i = 0; i < sheetRows.length; i++) {
+          const r = sheetRows[i]; if (!r) continue;
+          const id = String(r[0] ?? '');
+          if (id) sheetIdSet.add(id);
+          if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(r[1] ?? ''))) continue; // solo filas de datos
+          if (!esRespaldoEnrutador(id)) continue;
+          respaldo.push({
+            fila: i + 1, id, fecha: String(r[1] ?? ''), cod: String(r[2] ?? ''),
+            transporte: String(r[COL_RUTEO.transporte] ?? ''), patente: String(r[COL_RUTEO.patente] ?? ''),
+            estado: String(r[COL_RUTEO.estado] ?? ''), conductor: String(r[COL_RUTEO.conductor] ?? ''),
+            ruta: String(r[COL_RUTEO.ruta] ?? ''), supervisor: String(r[COL_RUTEO.supervisor] ?? ''),
+          });
+        }
+
+        const claves = new Set(records.map(r => `${(r as Record<string, unknown>).fecha}::${(r as Record<string, unknown>).cod}`));
+        const { ruteoPorClave, filasABorrar, idsABorrar } = reconciliarRespaldo(claves, respaldo);
+
+        // Heredar el ruteo del respaldo en las filas (hoja) y records (Supabase) de Bodega.
+        const rutRow = (row: (string | number)[]) => {
+          const rt = ruteoPorClave.get(`${row[1]}::${row[2]}`);
+          return rt ? aplicarRuteoAFila(row, rt) : row;
+        };
+        const rutRec = <T extends Record<string, unknown>>(rec: T) => {
+          const rt = ruteoPorClave.get(`${rec.fecha}::${rec.cod}`);
+          return rt ? aplicarRuteoARecord(rec, rt) : rec;
+        };
+
+        // Append SOLO filas nuevas (idempotente por id), ya con el ruteo heredado.
+        const newSheetRows = rows.filter(r => !sheetIdSet.has(String(r[0]))).map(rutRow);
         if (newSheetRows.length > 0) {
           await gs.spreadsheets.values.append({
             spreadsheetId:    SPREADSHEET_ID,
@@ -395,11 +423,30 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        const ids = records.map(r => r.id);
+        // Borrar de la HOJA las filas de respaldo (deleteDimension, ya vienen en orden descendente).
+        if (filasABorrar.length > 0) {
+          const sid = await getSheetId(gs, sheet);
+          if (sid !== null) {
+            await gs.spreadsheets.batchUpdate({
+              spreadsheetId: SPREADSHEET_ID,
+              requestBody: { requests: filasABorrar.map(fila => ({
+                deleteDimension: { range: { sheetId: sid, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila } },
+              })) },
+            });
+          }
+        }
+        // Borrar de Supabase las filas de respaldo (su info ya está en las P…).
+        if (idsABorrar.length > 0) {
+          const { error } = await sb.from(table).delete().in('id', idsABorrar);
+          if (error) console.error(`[sheets-write] Supabase delete respaldo ${table}:`, error.message);
+        }
+
+        const enriched = records.map(r => rutRec(r as Record<string, unknown>));
+        const ids = enriched.map(r => r.id as string);
         const { data: existing } = await sb.from(table).select('id').in('id', ids);
         const existingIds = new Set((existing ?? []).map((e: { id: string }) => e.id));
-        const newRecords      = records.filter(r => !existingIds.has(r.id));
-        const existingRecords = records.filter(r =>  existingIds.has(r.id));
+        const newRecords      = enriched.filter(r => !existingIds.has(r.id as string));
+        const existingRecords = enriched.filter(r =>  existingIds.has(r.id as string));
 
         if (newRecords.length) {
           const withFuente = fuente ? newRecords.map(r => ({ ...r, fuente })) : newRecords;
@@ -408,23 +455,23 @@ export async function POST(request: NextRequest) {
           if (error) console.error(`[sheets-write] Supabase insert ${table}:`, error.message);
         }
 
-        for (const r of existingRecords) {
-          const rm = r as Record<string, unknown>;
+        for (const rm of existingRecords) {
+          // El ruteo (transporte/patente/ruta/conductor/supervisor) es dominio del Enrutador: al
+          // re-registrar Bodega NO se toca, para no pisar lo que dejó el cierre del camión.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const updateObj: Record<string, any> = {
-            tipo: rm.tipo, carga: rm.carga, regimen: rm.regimen, transporte: rm.transporte,
-            tipo_comuna: rm.tipo_comuna,
+            tipo: rm.tipo, carga: rm.carga, regimen: rm.regimen, tipo_comuna: rm.tipo_comuna,
             peso_kg: rm.peso_kg, alto: rm.alto, largo: rm.largo, ancho: rm.ancho, peso_v: rm.peso_v,
-            ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
+            ventana: rm.ventana, n_pallet_bulto: rm.n_pallet_bulto,
             ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
             ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
           };
           if (fuente) updateObj.fuente = fuente;
-          const { error } = await sb.from(table).update(updateObj).eq('id', r.id);
+          const { error } = await sb.from(table).update(updateObj).eq('id', rm.id as string);
           if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
         }
 
-        return NextResponse.json({ ok: true, written: rows.length });
+        return NextResponse.json({ ok: true, written: rows.length, respaldoReconciliado: idsABorrar.length });
       }
     }
 
