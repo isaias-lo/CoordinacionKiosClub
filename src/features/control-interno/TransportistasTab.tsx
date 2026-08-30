@@ -39,13 +39,16 @@ export default function TransportistasTab({ canEdit }: { canEdit: boolean }) {
     return () => { alive = false; };
   }, []);
 
-  // Empresas a ofrecer por fila: las de flota + las ya configuradas (para no perder una que no
-  // tenga vehículo activo hoy, como Ortiz durante el traspaso).
-  const empresasPorFila = useMemo(() => {
-    if (!cfg) return empresas;
-    const configuradas = Object.values(cfg).flatMap(z => z.empresas);
-    return [...new Set([...empresas, ...configuradas])].sort((a, b) => a.localeCompare(b));
-  }, [cfg, empresas]);
+  // Empresas con vehículo ACTIVO en flota (la realidad operativa).
+  const empresasFlota = useMemo(() => new Set(empresas), [empresas]);
+
+  // Opciones a ofrecer en UNA zona: las de flota + las que ya están habilitadas EN ESA zona pero
+  // no tienen vehículos (huérfanas — p. ej. Ortiz en el traspaso). Así no se pierde la config, pero
+  // la huérfana se marca aparte y se puede quitar. Una huérfana NO aparece en zonas donde no está.
+  function opcionesZona(z: ConfigZona): string[] {
+    const huerfanasDeLaZona = z.empresas.filter(e => !empresasFlota.has(e));
+    return [...new Set([...empresas, ...huerfanasDeLaZona])].sort((a, b) => a.localeCompare(b));
+  }
 
   const filas = useMemo(
     () => (cfg ? Object.values(cfg).sort((a, b) => a.orden - b.orden) : []),
@@ -160,22 +163,37 @@ export default function TransportistasTab({ canEdit }: { canEdit: boolean }) {
                   Empresas habilitadas
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {empresasPorFila.length === 0 && <span style={{ fontSize: 12.5, color: '#94A3B8' }}>No hay empresas en la flota.</span>}
-                  {empresasPorFila.map(emp => {
+                  {opcionesZona(z).length === 0 && <span style={{ fontSize: 12.5, color: '#94A3B8' }}>No hay empresas en la flota.</span>}
+                  {opcionesZona(z).map(emp => {
                     const sel = z.empresas.some(e => e === emp);
+                    const enFlota  = empresasFlota.has(emp);
+                    const huerfana = sel && !enFlota; // habilitada pero sin vehículos activos
+                    const st = huerfana
+                      ? { border: '1.5px solid #F0D08A', background: '#FEF6E7', color: '#B45309' }
+                      : sel
+                        ? { border: '1.5px solid #2563EB', background: '#EFF6FF', color: '#1D4ED8' }
+                        : { border: '1.5px solid #E2E8F0', background: '#fff', color: '#64748B' };
                     return (
                       <button key={emp} disabled={!canEdit} onClick={() => toggleEmpresa(z, emp)}
+                        title={huerfana ? `${emp} no tiene vehículos activos en Flota — clic para quitarla de ${ZONA_LABEL[z.zona] ?? z.zona}` : undefined}
                         style={{
-                          padding: '5px 11px', fontSize: 12.5, fontWeight: sel ? 700 : 500,
-                          border: `1.5px solid ${sel ? '#2563EB' : '#E2E8F0'}`, borderRadius: 999,
-                          cursor: canEdit ? 'pointer' : 'default',
-                          background: sel ? '#EFF6FF' : '#fff', color: sel ? '#1D4ED8' : '#64748B',
+                          padding: '5px 11px', fontSize: 12.5, fontWeight: sel ? 700 : 500, borderRadius: 999,
+                          cursor: canEdit ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 6, ...st,
                         }}>
                         {sel ? '✓ ' : ''}{emp}
+                        {huerfana && (
+                          <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, padding: '1px 5px', borderRadius: 5, background: '#F0D08A', color: '#7C4A03' }}>sin vehículos</span>
+                        )}
+                        {huerfana && <span style={{ fontWeight: 700, opacity: 0.7 }}>✕</span>}
                       </button>
                     );
                   })}
                 </div>
+                {z.empresas.some(e => !empresasFlota.has(e)) && (
+                  <div style={{ fontSize: 11.5, color: '#B45309', marginTop: 7 }}>
+                    {z.empresas.filter(e => !empresasFlota.has(e)).join(', ')} — habilitada(s) sin vehículos activos en Flota; quitala(s) si ya no trabaja(n) con ustedes.
+                  </div>
+                )}
                 {z.empresas.length === 0 && (
                   <div style={{ fontSize: 11.5, color: z.modo === 'consolidacion' ? '#B45309' : '#64748B', marginTop: 7 }}>
                     {z.modo === 'consolidacion'
