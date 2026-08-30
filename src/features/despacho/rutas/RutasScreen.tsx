@@ -667,6 +667,10 @@ export default function RutasScreen() {
           tiendasPatch[cod] = {
             n: t.nombre,
             z: t.sector_comuna || t.corredor || '',
+            // [E8] `sector` alimenta la zona (santiago/costa/sur/norte) en el tablero. Antes NO se
+            // escribía: sector_comuna caía en `z` y se perdía, así que zonaCamion siempre daba null
+            // y toda la capa E8 quedaba inerte (sin etiquetas, km inflados por consolidación).
+            sector: t.sector_comuna || '',
             v: t.ventana || '',
             d: t.direccion,
             region: t.region,

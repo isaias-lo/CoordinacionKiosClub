@@ -402,7 +402,7 @@ export default function ManualDispatch({
   // aparte: sus km no son un recorrido y arruinaban el número.
   // [E8] Consolidación = una SOLA definición: la etiqueta zona·modo del camión (config-driven, con la
   // zona por latitud). El encabezado excluye del total de km los mismos camiones que la tarjeta oculta.
-  const esConsol      = (p: string) => etiquetaCamion(asignaciones[p] || [], tiendas, gps, cd[0], zonasCfg)?.modo === 'consolidacion';
+  const esConsol      = (p: string) => etiquetaCamion(asignaciones[p] || [], tiendas, gps, cd, zonasCfg)?.modo === 'consolidacion';
   const totalEstKm    = flotaDisp.filter(v => !esConsol(v.p)).reduce((s, v) => s + getMetrics(v.p, v).kmEst, 0);
   const camsConsol    = flotaDisp.filter(v => (asignaciones[v.p] || []).length && esConsol(v.p));
   const tiendasConsol = camsConsol.reduce((s, v) => s + (asignaciones[v.p] || []).length, 0);
@@ -600,8 +600,8 @@ export default function ManualDispatch({
           const selForClose = cerrarSel?.has(v.p) ?? false;
           // [E8] Zona·modo del camión (según sus tiendas + config) y aviso si su empresa no está
           // habilitada para esa zona. Un camión de consolidación NO es un recorrido: sin km ni horas.
-          const etiquetaZona  = etiquetaCamion(stores, tiendas, gps, cd[0], zonasCfg);
-          const avisosZona    = avisosCamionNoHabilitado(v.p, v.empresa, stores, tiendas, gps, cd[0], zonasCfg);
+          const etiquetaZona  = etiquetaCamion(stores, tiendas, gps, cd, zonasCfg);
+          const avisosZona    = avisosCamionNoHabilitado(v.p, v.empresa, stores, tiendas, gps, cd, zonasCfg);
           const esConsolidado = etiquetaZona?.modo === 'consolidacion';
 
           return (

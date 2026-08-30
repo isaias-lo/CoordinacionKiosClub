@@ -318,6 +318,11 @@ export function AppSidebar() {
       <nav aria-label="Navegación principal" className="flex-1 overflow-y-auto overflow-x-hidden py-1 no-scrollbar">
         {MODULE_GROUPS.map(group => {
           const accessibleRoutes = group.routes.filter(r => canSee(r.path) && !r.hidden);
+          // Config. Despacho va debajo de ENRUTADOR (dentro del grupo Despacho), solo para admin —
+          // se mantiene el mismo gating que tenía en la sección Admin, sin exponerlo por prefijo.
+          if (group.id === 'despacho' && isAdmin) {
+            accessibleRoutes.push({ path: '/despacho/config-tiendas', label: 'Config. Despacho' });
+          }
           if (!accessibleRoutes.length) return null;
           return (
             <NavGroup
@@ -335,8 +340,7 @@ export function AppSidebar() {
             group={{ id: 'admin', label: 'Admin', color: '#6B7280', routes: [] }}
             collapsed={effectiveCollapsed}
             routes={[
-              { path: '/admin/usuarios',          label: 'Usuarios'     },
-              { path: '/despacho/config-tiendas', label: 'Config. Despacho' },
+              { path: '/admin/usuarios', label: 'Usuarios' },
             ]}
           />
         )}

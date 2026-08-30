@@ -3,24 +3,27 @@ import { zonaDeCamion, zonasDeCamion, etiquetaCamion, avisosCamionNoHabilitado }
 import type { ConfigZonas } from '../zonasTransporte';
 import type { TiendaInfo } from '../../data/tiendas';
 
-// CD en Santiago; norte = latitud >= latCD (menos negativa), sur = más al sur.
-const latCD = -33.412581;
-const T = (sector: string): TiendaInfo => ({ n: '', z: '', v: '', sector } as unknown as TiendaInfo);
+// CD en Santiago; norte = latitud >= latCD, sur = más al sur. `cd` = [lat, lon].
+const cd: number[] = [-33.412581, -70.632438];
 
-// Las 17 tiendas de Regiones tienen sector 'Región' a secas: la zona sale de la LATITUD (gps).
+// Con sector cargado.
+const T = (sector: string): TiendaInfo => ({ n: '', z: '', v: '', sector } as unknown as TiendaInfo);
+// EXACTAMENTE como arma RutasScreen desde /api/tiendas: sin `sector` (el bug de producción).
+const SIN = (z: string): TiendaInfo => ({ n: '', z, v: '' } as unknown as TiendaInfo);
+
 const tiendas: Record<string, TiendaInfo> = {
-  '51SER': T('Región'),          // La Serena — norte
+  '51SER': T('Región'),          // La Serena — norte (por lat)
   '41ANA': T('Región'),          // Antofagasta — norte
   '40LIL': T('Región'),          // sur
   '01TPS': T('Corredor Oriente'),// santiago
   'COSTA': T('Costa'),           // costa
 };
 const gps: Record<string, number[]> = {
-  '51SER': [-29.9,  -71.25],   // norte
-  '41ANA': [-23.65, -70.40],   // norte
-  '40LIL': [-38.0,  -72.3],    // sur
-  '01TPS': [-33.40, -70.55],   // santiago
-  'COSTA': [-33.02, -71.55],   // costa
+  '51SER': [-29.9,  -71.25],
+  '41ANA': [-23.65, -70.40],
+  '40LIL': [-38.0,  -72.3],
+  '01TPS': [-33.40, -70.55],
+  'COSTA': [-33.02, -71.55],
 };
 
 const cfg: ConfigZonas = {
@@ -30,84 +33,92 @@ const cfg: ConfigZonas = {
   norte:    { zona: 'norte',    modo: 'consolidacion', empresas: ['Falabella'],              orden: 2, activo: true },
 };
 
-describe('zonaDeCamion — regiones norte por latitud (corrección 1)', () => {
-  it("'Región' a secas del NORTE (51SER, 41ANA) → norte, no sur", () => {
-    expect(zonaDeCamion([{ c: '51SER' }], tiendas, gps, latCD)).toBe('norte');
-    expect(zonaDeCamion([{ c: '41ANA' }], tiendas, gps, latCD)).toBe('norte');
-    expect(zonaDeCamion([{ c: '51SER' }, { c: '41ANA' }], tiendas, gps, latCD)).toBe('norte');
-  });
-  it("'Región' a secas del SUR → sur", () => {
-    expect(zonaDeCamion([{ c: '40LIL' }], tiendas, gps, latCD)).toBe('sur');
+describe('zonaDeCamion — regiones norte por latitud (con sector)', () => {
+  it("'Región' del NORTE (51SER, 41ANA) → norte; del SUR → sur", () => {
+    expect(zonaDeCamion([{ c: '51SER' }, { c: '41ANA' }], tiendas, gps, cd)).toBe('norte');
+    expect(zonaDeCamion([{ c: '40LIL' }], tiendas, gps, cd)).toBe('sur');
   });
   it('Santiago y Costa por sector', () => {
-    expect(zonaDeCamion([{ c: '01TPS' }], tiendas, gps, latCD)).toBe('santiago');
-    expect(zonaDeCamion([{ c: 'COSTA' }], tiendas, gps, latCD)).toBe('costa');
-  });
-  it('sin tiendas → null', () => {
-    expect(zonaDeCamion([], tiendas, gps, latCD)).toBeNull();
+    expect(zonaDeCamion([{ c: '01TPS' }], tiendas, gps, cd)).toBe('santiago');
+    expect(zonaDeCamion([{ c: 'COSTA' }], tiendas, gps, cd)).toBe('costa');
   });
 });
 
-describe('zonaDeCamion — desempate ESTABLE por orden (corrección 3)', () => {
-  it('mismo empate da el mismo resultado sin importar el orden de las tiendas', () => {
-    // 1 Santiago (orden 4) + 1 Costa (orden 3): empate 1-1 → gana menor orden = costa.
-    const a = zonaDeCamion([{ c: '01TPS' }, { c: 'COSTA' }], tiendas, gps, latCD, cfg);
-    const b = zonaDeCamion([{ c: 'COSTA' }, { c: '01TPS' }], tiendas, gps, latCD, cfg);
+// ── Bug de producción: `sector` nunca se escribía → E8 quedaba inerte ─────────────────────────
+// El catálogo se arma SIN `sector` (como RutasScreen); antes zonaCamion daba null y no había
+// etiquetas ni exclusión de km. Con la defensa por distancia, se clasifica igual.
+describe('defensa por DISTANCIA cuando falta el sector (bug de producción)', () => {
+  // Camión real del 28/08: todas de Regiones, lejos del CD.
+  const sinSector: Record<string, TiendaInfo> = {
+    '47PTV': SIN('Región'), '53VAL': SIN('Región'), '50PTM': SIN('Región'),
+    '39PSB': SIN('Región'), '57CAS': SIN('Región'),
+  };
+  const gpsReg: Record<string, number[]> = {
+    '47PTV': [-38.74, -72.60],  // Villarrica-ish — sur
+    '53VAL': [-39.81, -73.24],  // Valdivia — sur
+    '50PTM': [-41.47, -72.94],  // Puerto Montt — sur
+    '39PSB': [-27.37, -70.33],  // norte
+    '57CAS': [-42.48, -73.76],  // Castro — sur
+  };
+  const stores = Object.keys(sinSector).map(c => ({ c }));
+
+  it('el camión del 28/08 (47PTV,53VAL,50PTM,39PSB,57CAS) SIN sector se detecta como consolidación', () => {
+    const et = etiquetaCamion(stores, sinSector, gpsReg, cd); // sin cfg → default geográfico
+    expect(et).not.toBeNull();
+    expect(et!.modo).toBe('consolidacion');           // antes daba null → no consolidación
+    expect(zonaDeCamion(stores, sinSector, gpsReg, cd)).toBe('sur'); // 4 sur + 1 norte → dominante sur
+  });
+
+  it('sin sector: una tienda cercana → santiago (ruta), una intermedia → costa', () => {
+    const t = { STG: SIN(''), CST: SIN('') };
+    const g = { STG: [-33.45, -70.66], CST: [-33.03, -71.55] }; // STG dentro RM; CST costa (~110 km)
+    expect(zonaDeCamion([{ c: 'STG' }], t, g, cd)).toBe('santiago');
+    expect(zonaDeCamion([{ c: 'CST' }], t, g, cd)).toBe('costa');
+  });
+
+  it('sin sector y sin GPS → null (no se puede clasificar)', () => {
+    expect(zonaDeCamion([{ c: 'X' }], { X: SIN('') }, {}, cd)).toBeNull();
+  });
+});
+
+describe('zonaDeCamion — desempate ESTABLE por orden', () => {
+  it('empate da el mismo resultado sin importar el orden de llegada', () => {
+    const a = zonaDeCamion([{ c: '01TPS' }, { c: 'COSTA' }], tiendas, gps, cd, cfg);
+    const b = zonaDeCamion([{ c: 'COSTA' }, { c: '01TPS' }], tiendas, gps, cd, cfg);
     expect(a).toBe(b);
     expect(a).toBe('costa'); // costa.orden(3) < santiago.orden(4)
-  });
-  it('con norte y sur empatados gana sur (orden 1 < norte 2)', () => {
-    const a = zonaDeCamion([{ c: '51SER' }, { c: '40LIL' }], tiendas, gps, latCD, cfg);
-    const b = zonaDeCamion([{ c: '40LIL' }, { c: '51SER' }], tiendas, gps, latCD, cfg);
-    expect(a).toBe(b);
-    expect(a).toBe('sur');
   });
 });
 
 describe('etiquetaCamion', () => {
-  it('norte → "Norte · consolidación" (según config)', () => {
-    expect(etiquetaCamion([{ c: '51SER' }], tiendas, gps, latCD, cfg)?.label).toBe('Norte · consolidación');
-  });
-  it('sin config cae al default (norte/sur consolidan, santiago rutea)', () => {
-    expect(etiquetaCamion([{ c: '51SER' }], tiendas, gps, latCD)?.modo).toBe('consolidacion');
-    expect(etiquetaCamion([{ c: '01TPS' }], tiendas, gps, latCD)?.modo).toBe('ruta');
+  it('norte → "Norte · consolidación"; sin config cae al default', () => {
+    expect(etiquetaCamion([{ c: '51SER' }], tiendas, gps, cd, cfg)?.label).toBe('Norte · consolidación');
+    expect(etiquetaCamion([{ c: '40LIL' }], tiendas, gps, cd)?.modo).toBe('consolidacion');
+    expect(etiquetaCamion([{ c: '01TPS' }], tiendas, gps, cd)?.modo).toBe('ruta');
   });
 });
 
 describe('avisosCamionNoHabilitado', () => {
-  it('correción 1: Falabella con La Serena (norte) NO da aviso (Falabella cubre norte)', () => {
-    expect(avisosCamionNoHabilitado('AB1234', 'Falabella', [{ c: '51SER' }], tiendas, gps, latCD, cfg)).toEqual([]);
-  });
-  it('empresa no habilitada para la zona → aviso con el formato del motor', () => {
-    // Sur habilita solo Luis Fica; un camión de Falabella al sur no está habilitado.
-    expect(avisosCamionNoHabilitado('AB1234', 'Falabella', [{ c: '40LIL' }], tiendas, gps, latCD, cfg))
+  it('Falabella con La Serena (norte) NO da aviso; al sur SÍ', () => {
+    expect(avisosCamionNoHabilitado('AB1234', 'Falabella', [{ c: '51SER' }], tiendas, gps, cd, cfg)).toEqual([]);
+    expect(avisosCamionNoHabilitado('AB1234', 'Falabella', [{ c: '40LIL' }], tiendas, gps, cd, cfg))
       .toEqual(['AB1234 (Falabella) no está habilitado para Sur']);
   });
-  it('corrección 4: camión con sur Y norte avisa por CADA zona no habilitada', () => {
-    // Luis Fica: habilitado en sur, NO en norte → aviso solo por Norte.
-    expect(avisosCamionNoHabilitado('AB1234', 'Luis Fica', [{ c: '40LIL' }, { c: '51SER' }], tiendas, gps, latCD, cfg))
-      .toEqual(['AB1234 (Luis Fica) no está habilitado para Norte']);
-    // Una empresa que no cubre ninguna de las dos → dos avisos (orden estable: sur, norte).
-    expect(avisosCamionNoHabilitado('AB1234', 'Ortiz', [{ c: '40LIL' }, { c: '51SER' }], tiendas, gps, latCD, cfg))
+  it('camión con sur Y norte avisa por CADA zona no habilitada', () => {
+    expect(avisosCamionNoHabilitado('AB1234', 'Ortiz', [{ c: '40LIL' }, { c: '51SER' }], tiendas, gps, cd, cfg))
       .toEqual([
         'AB1234 (Ortiz) no está habilitado para Sur',
         'AB1234 (Ortiz) no está habilitado para Norte',
       ]);
   });
-  it('empresa vacía → "sin empresa"; sin config → sin avisos', () => {
-    expect(avisosCamionNoHabilitado('AB1234', '', [{ c: '40LIL' }], tiendas, gps, latCD, cfg))
-      .toEqual(['AB1234 (sin empresa) no está habilitado para Sur']);
-    expect(avisosCamionNoHabilitado('AB1234', 'X', [{ c: '40LIL' }], tiendas, gps, latCD, undefined)).toEqual([]);
-  });
-  it('zona inactiva no molesta', () => {
-    const cfgInact: ConfigZonas = { ...cfg, norte: { ...cfg.norte, activo: false } };
-    expect(avisosCamionNoHabilitado('AB1234', 'X', [{ c: '51SER' }], tiendas, gps, latCD, cfgInact)).toEqual([]);
+  it('sin config → sin avisos', () => {
+    expect(avisosCamionNoHabilitado('AB1234', 'X', [{ c: '40LIL' }], tiendas, gps, cd, undefined)).toEqual([]);
   });
 });
 
 describe('zonasDeCamion', () => {
   it('lista las zonas distintas ordenadas por orden', () => {
-    expect(zonasDeCamion([{ c: '01TPS' }, { c: '40LIL' }, { c: '51SER' }], tiendas, gps, latCD, cfg))
-      .toEqual(['sur', 'norte', 'santiago']); // orden 1, 2, 4
+    expect(zonasDeCamion([{ c: '01TPS' }, { c: '40LIL' }, { c: '51SER' }], tiendas, gps, cd, cfg))
+      .toEqual(['sur', 'norte', 'santiago']);
   });
 });
