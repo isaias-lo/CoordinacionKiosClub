@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Package, Truck, Clock, AlertTriangle, Boxes } from 'lucide-react';
+import { RefreshCw, Package, Truck, Clock, AlertTriangle, Boxes, Search } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { norm, todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL, type TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
@@ -9,6 +9,7 @@ import { planificarIncremental, type EsperadoTienda, type EstadoTienda } from '@
 import { unidadesDesdeFilas, ahoraMinutoChile, type FilaPicking } from '@/features/despacho/rutas/utils/tableroVivo';
 import { parseParametros, aOpcionesMotor, PARAMETROS_DEFAULT } from '@/features/despacho/rutas/utils/parametrosMotor';
 import { filasPorTienda, type FilaTiendaConteo } from '@/features/despacho/rutas/utils/conteoFlota';
+import { grupoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 
 const RUTA = '/conteo-flota';
 const POLL_MS = 60_000;
@@ -36,6 +37,31 @@ const COMPLETA_POR_CORTE_META: EstadoMeta = { label: 'Cierre del día (sin confi
 function metaDeFila(f: FilaTiendaConteo): EstadoMeta {
   if (f.estado === 'completa' && f.completaPorCorte) return COMPLETA_POR_CORTE_META;
   return ESTADO_META[f.estado];
+}
+
+// Mismo agrupador que ya usa el filtro RM/Costa/Nacional del Planificador (`grupoTienda`,
+// fuente canónica = campo `region` del catálogo) — evita reinventar la clasificación y
+// queda consistente con el resto de la app. 'fal' es el nombre interno histórico de
+// Regiones (Falabella hacía todo el reparto antes de partir sur/norte); acá se muestra
+// como "Región", que es como lo pidió la persona que usa esta pantalla.
+type ZonaFiltro = 'todas' | 'rm' | 'costa' | 'fal';
+const ZONA_LABEL: Record<'rm' | 'costa' | 'fal', string> = { rm: 'Santiago', costa: 'Costa', fal: 'Región' };
+const ZONA_FILTROS: ZonaFiltro[] = ['todas', 'rm', 'costa', 'fal'];
+
+// Ordena primero lo que más le importa a quien arma rutas: lo que todavía no está
+// confirmado. `completa` genuina (silencio real) queda al final; `completa` solo por la
+// hora de corte pesa igual que "probable", porque en la práctica tiene la misma certeza.
+function urgencia(f: FilaTiendaConteo): number {
+  if (f.estado === 'esperando') return 0;
+  if (f.estado === 'probable') return 1;
+  if (f.estado === 'completa' && f.completaPorCorte) return 1;
+  return 2; // completa genuina
+}
+
+function coincideBusqueda(f: FilaTiendaConteo, nombre: string, q: string): boolean {
+  if (!q) return true;
+  const needle = q.trim().toLowerCase();
+  return f.cod.toLowerCase().includes(needle) || nombre.toLowerCase().includes(needle);
 }
 
 /* ── Carga de datos base (flota + tiendas/gps) — mismo patrón que RutasScreen.tsx ── */
@@ -125,6 +151,8 @@ export default function ConteoFlotaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [ultAct, setUltAct]   = useState<number | null>(null);
+  const [zonaFiltro, setZonaFiltro] = useState<ZonaFiltro>('todas');
+  const [busqueda, setBusqueda]     = useState('');
 
   const cargar = useCallback(async () => {
     setError('');
@@ -176,6 +204,14 @@ export default function ConteoFlotaPage() {
       tiendasPorCompletar: plan.enEspera.length,
       filas,
     };
+  })();
+
+  const filasVisibles = (() => {
+    if (!resumen) return [];
+    return resumen.filas
+      .filter(f => zonaFiltro === 'todas' || grupoTienda(tiendas[f.cod]?.z, tiendas[f.cod]?.region) === zonaFiltro)
+      .filter(f => coincideBusqueda(f, tiendas[f.cod]?.n ?? '', busqueda))
+      .sort((a, b) => urgencia(a) - urgencia(b) || a.cod.localeCompare(b.cod));
   })();
 
   const minsAtras = ultAct ? Math.max(0, Math.round((Date.now() - ultAct) / 60_000)) : null;
@@ -247,15 +283,49 @@ export default function ConteoFlotaPage() {
             {/* Detalle por tienda */}
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>Detalle por tienda</div>
-              <div style={{ fontSize: 11, color: C.faint }}>{resumen.filas.length} tienda{resumen.filas.length !== 1 ? 's' : ''} con carga hoy</div>
+              <div style={{ fontSize: 11, color: C.faint }}>
+                {filasVisibles.length === resumen.filas.length
+                  ? `${resumen.filas.length} tienda${resumen.filas.length !== 1 ? 's' : ''} con carga hoy`
+                  : `${filasVisibles.length} de ${resumen.filas.length} tiendas`}
+              </div>
             </div>
             <div style={{ fontSize: 11, color: C.faint, marginBottom: 12 }}>
-              El estado es calculado por el mismo algoritmo del motor de despacho (volumen histórico + tiempo sin novedad) — no es una confirmación manual de Bodega todavía.
+              Ordenado por urgencia — arriba lo que todavía no está confirmado. El estado es calculado por el mismo algoritmo del motor de despacho (volumen histórico + tiempo sin novedad), no es una confirmación manual de Bodega todavía.
             </div>
 
-            {resumen.filas.length === 0 ? (
+            {/* Buscador + filtro de zona */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 320 }}>
+                <Search size={14} color={C.faint} aria-hidden="true" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={busqueda}
+                  onChange={e => setBusqueda(e.target.value)}
+                  placeholder="Buscar por código o nombre de tienda"
+                  style={{ width: '100%', padding: '8px 10px 8px 30px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.ink, fontSize: 13 }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {ZONA_FILTROS.map(z => {
+                  const activo = zonaFiltro === z;
+                  return (
+                    <button key={z} onClick={() => setZonaFiltro(z)}
+                      style={{
+                        padding: '7px 13px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        border: `1px solid ${activo ? C.navy : C.border}`,
+                        background: activo ? C.navy : C.surface,
+                        color: activo ? '#fff' : C.muted,
+                      }}>
+                      {z === 'todas' ? 'Todas' : ZONA_LABEL[z]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {filasVisibles.length === 0 ? (
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: '40px 20px', textAlign: 'center', color: C.faint, fontSize: 13 }}>
-                Todavía no sale mercadería hoy.
+                {resumen.filas.length === 0 ? 'Todavía no sale mercadería hoy.' : 'Ninguna tienda coincide con el filtro.'}
               </div>
             ) : (
               <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: C.surface }}>
@@ -263,7 +333,7 @@ export default function ConteoFlotaPage() {
                   <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13 }}>
                     <thead>
                       <tr>
-                        {['Código', 'Tienda', 'Pallets', 'Bultos', 'Chocolates', 'Estado'].map(h => (
+                        {['Código', 'Tienda', 'Zona', 'Pallets', 'Bultos', 'Chocolates', 'Estado'].map(h => (
                           <th key={h} style={{ position: 'sticky', top: 0, zIndex: 1, textAlign: h === 'Código' || h === 'Tienda' ? 'left' : 'center', padding: '9px 14px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.navy, background: C.borderSoft, borderBottom: '2px solid rgba(27,42,107,0.18)', whiteSpace: 'nowrap' }}>
                             {h}
                           </th>
@@ -271,16 +341,25 @@ export default function ConteoFlotaPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {resumen.filas.map((f, i) => {
+                      {filasVisibles.map((f, i) => {
                         const meta = metaDeFila(f);
                         const genuinaCompleta = f.estado === 'completa' && !f.completaPorCorte;
                         const zebra = i % 2 ? '#FAFBFC' : C.surface;
+                        const zona = grupoTienda(tiendas[f.cod]?.z, tiendas[f.cod]?.region);
+                        const totalEstimado = f.pallets + f.estimadoAdicional;
                         return (
                           <tr key={f.cod} style={{ background: genuinaCompleta ? meta.bg : zebra, borderLeft: `4px solid ${meta.border}` }}>
                             <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 800, color: C.navy, whiteSpace: 'nowrap' }}>{f.cod}</td>
                             <td style={{ padding: '9px 14px', color: C.ink2, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tiendas[f.cod]?.n ?? '—'}</td>
-                            <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2, whiteSpace: 'nowrap' }}>
-                              <strong>{f.pallets}</strong>{f.estimadoAdicional > 0 && <span style={{ color: C.faint }}> +{f.estimadoAdicional} est.</span>}
+                            <td style={{ padding: '9px 14px', textAlign: 'center', color: C.muted2, fontSize: 12, whiteSpace: 'nowrap' }}>{ZONA_LABEL[zona]}</td>
+                            <td style={{ padding: '9px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              <div style={{ color: C.ink, fontWeight: 800 }}>
+                                {totalEstimado}
+                                {f.estimadoAdicional > 0 && <span style={{ fontWeight: 600, color: C.faint }}> aprox.</span>}
+                              </div>
+                              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 1 }}>
+                                {f.estimadoAdicional > 0 ? `${f.pallets} confirmado + ${f.estimadoAdicional} por venir` : `${f.pallets} confirmado`}
+                              </div>
                             </td>
                             <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2 }}>{f.bultos}</td>
                             <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2 }}>{f.chocolates}</td>
