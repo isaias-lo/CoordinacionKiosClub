@@ -27,13 +27,15 @@ describe('filasPorTienda', () => {
     expect(filas[0].pallets).toBe(1);
   });
 
-  it('estado "completa" cuando ya salió lo esperado y pasó el silencio', () => {
+  it('estado "completa" cuando ya salió lo esperado y pasó el silencio, con el motivo real (no el corte de hora)', () => {
     const unidades = [U('A', 'P', 100)];
     const historial = { A: H(1, 2) };
-    // silencioMin default = 90 → a 100+90=190 ya se puede confirmar completa
-    const filas = filasPorTienda(unidades, historial, 190 + 60);
+    // silencioMin default = 90 → a 100+90=190 ya se puede confirmar completa. 400 sigue < 900 (corte).
+    const filas = filasPorTienda(unidades, historial, 400);
     expect(filas[0].estado).toBe('completa');
     expect(filas[0].estimadoAdicional).toBe(0); // completa ⇒ no se espera más, aunque techoPallets sea mayor
+    expect(filas[0].detalle).toBe('Sin novedad hace 300 min');
+    expect(filas[0].completaPorCorte).toBe(false);
   });
 
   it('estado "esperando" cuando falta carga, con estimado adicional según el techo histórico', () => {
@@ -49,10 +51,12 @@ describe('filasPorTienda', () => {
     expect(filas[0].estado).toBe('esperando');
   });
 
-  it('pasado el corte de cierre, toda tienda con carga queda "completa"', () => {
+  it('pasado el corte de cierre, toda tienda con carga queda "completa" pero marcada como completaPorCorte', () => {
     const filas = filasPorTienda([U('A', 'P', 100)], {}, INCREMENTAL_DEFAULT.corteCierre + 1);
     expect(filas[0].estado).toBe('completa');
     expect(filas[0].estimadoAdicional).toBe(0);
+    expect(filas[0].completaPorCorte).toBe(true);
+    expect(filas[0].detalle).toContain('Corte del día');
   });
 
   it('el estimado adicional nunca es negativo, aunque la tienda siga "esperando"', () => {

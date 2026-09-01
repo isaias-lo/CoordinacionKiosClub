@@ -19,11 +19,24 @@ const C = {
   navy: '#1B2A6B',
 };
 
-const ESTADO_META: Record<EstadoTienda, { label: string; color: string; bg: string; border: string }> = {
-  completa:  { label: 'Completa (estimado)', color: '#16A34A', bg: '#F0FDF4', border: '#16A34A' },
-  probable:  { label: 'Probable completa',   color: '#B45309', bg: '#FFFBEB', border: '#D97706' },
-  esperando: { label: 'Esperando carga',     color: '#DC2626', bg: '#FEF2F2', border: '#DC2626' },
+type EstadoMeta = { label: string; color: string; bg: string; border: string };
+
+const ESTADO_META: Record<EstadoTienda, EstadoMeta> = {
+  completa:  { label: 'Completa',          color: '#16A34A', bg: '#F0FDF4', border: '#16A34A' },
+  probable:  { label: 'Probable completa', color: '#B45309', bg: '#FFFBEB', border: '#D97706' },
+  esperando: { label: 'Esperando carga',   color: '#DC2626', bg: '#FEF2F2', border: '#DC2626' },
 };
+
+// Cuando `completa` llega SOLO por la hora de corte (15:00 por defecto) — no por silencio
+// confirmado tras alcanzar lo esperado — es una señal mucho más débil: Bodega podría seguir
+// cargando esta tienda. Se muestra con el mismo lenguaje visual que "probable" (ámbar), no
+// verde, para no sugerir una certeza que no existe.
+const COMPLETA_POR_CORTE_META: EstadoMeta = { label: 'Cierre del día (sin confirmar)', color: '#B45309', bg: '#FFFBEB', border: '#D97706' };
+
+function metaDeFila(f: FilaTiendaConteo): EstadoMeta {
+  if (f.estado === 'completa' && f.completaPorCorte) return COMPLETA_POR_CORTE_META;
+  return ESTADO_META[f.estado];
+}
 
 /* ── Carga de datos base (flota + tiendas/gps) — mismo patrón que RutasScreen.tsx ── */
 function useFlota() {
@@ -167,11 +180,11 @@ export default function ConteoFlotaPage() {
 
   const minsAtras = ultAct ? Math.max(0, Math.round((Date.now() - ultAct) / 60_000)) : null;
 
-  if (authLoading) return <div style={{ minHeight: '100dvh', background: C.ground }} />;
+  if (authLoading) return <div style={{ position: 'fixed', inset: 0, background: C.ground }} />;
 
   if (!puedeVer) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', background: C.ground }}>
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', background: C.ground }}>
         <div style={{ textAlign: 'center', maxWidth: 320 }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>🔒</div>
           <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginBottom: 6 }}>Acceso restringido</div>
@@ -182,7 +195,7 @@ export default function ConteoFlotaPage() {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: C.ground, fontFamily: 'inherit' }}>
+    <div style={{ position: 'fixed', inset: 0, overflowY: 'auto', background: C.ground, fontFamily: 'inherit' }}>
 
       {/* ── Header ── */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -224,6 +237,9 @@ export default function ConteoFlotaPage() {
               <StatTile icon={Boxes} label="Estimado adicional" value={resumen.estimadoAdicional} accent="#D97706" />
               <StatTile icon={Clock} label="Tiendas por completar" value={resumen.tiendasPorCompletar} accent="#2563EB" />
             </div>
+            <div style={{ fontSize: 12, color: C.muted, background: C.borderSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+              <strong style={{ color: C.ink }}>~{resumen.pallets} pallets estimados</strong> = {resumen.cargados} ya cargados (confirmado, ya está en un camión) + {resumen.estimadoAdicional} estimados (lo que falta según el historial de cada tienda, todavía no llega).
+            </div>
             <div style={{ fontSize: 11, color: C.faint, marginBottom: 20 }}>
               ⚠ Estimación — puede variar hasta el cierre del día · Bultos ya contados (dato real, sin proyectar): <strong style={{ color: C.muted }}>{resumen.bultosCargados}</strong>
             </div>
@@ -256,10 +272,11 @@ export default function ConteoFlotaPage() {
                     </thead>
                     <tbody>
                       {resumen.filas.map((f, i) => {
-                        const meta = ESTADO_META[f.estado];
+                        const meta = metaDeFila(f);
+                        const genuinaCompleta = f.estado === 'completa' && !f.completaPorCorte;
                         const zebra = i % 2 ? '#FAFBFC' : C.surface;
                         return (
-                          <tr key={f.cod} style={{ background: f.estado === 'completa' ? meta.bg : zebra, borderLeft: `4px solid ${meta.border}` }}>
+                          <tr key={f.cod} style={{ background: genuinaCompleta ? meta.bg : zebra, borderLeft: `4px solid ${meta.border}` }}>
                             <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 800, color: C.navy, whiteSpace: 'nowrap' }}>{f.cod}</td>
                             <td style={{ padding: '9px 14px', color: C.ink2, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tiendas[f.cod]?.n ?? '—'}</td>
                             <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2, whiteSpace: 'nowrap' }}>
@@ -268,9 +285,10 @@ export default function ConteoFlotaPage() {
                             <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2 }}>{f.bultos}</td>
                             <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2 }}>{f.chocolates}</td>
                             <td style={{ padding: '9px 14px', textAlign: 'center' }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}55` }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}55`, whiteSpace: 'nowrap' }}>
                                 {meta.label}
                               </span>
+                              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 3, whiteSpace: 'nowrap' }}>{f.detalle}</div>
                             </td>
                           </tr>
                         );
