@@ -1,16 +1,29 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Package, Truck, Clock, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Package, Truck, Clock, AlertTriangle, Boxes } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { norm, todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL, type TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 import type { Vehiculo } from '@/features/despacho/rutas/data/flota';
-import { planificarIncremental, type EsperadoTienda } from '@/features/despacho/rutas/utils/enrutadorIncremental';
+import { planificarIncremental, type EsperadoTienda, type EstadoTienda } from '@/features/despacho/rutas/utils/enrutadorIncremental';
 import { unidadesDesdeFilas, ahoraMinutoChile, type FilaPicking } from '@/features/despacho/rutas/utils/tableroVivo';
 import { parseParametros, aOpcionesMotor, PARAMETROS_DEFAULT } from '@/features/despacho/rutas/utils/parametrosMotor';
+import { filasPorTienda, type FilaTiendaConteo } from '@/features/despacho/rutas/utils/conteoFlota';
 
 const RUTA = '/conteo-flota';
 const POLL_MS = 60_000;
+
+const C = {
+  ground: '#F8FAFC', surface: '#fff', border: '#E2E8F0', borderSoft: '#F1F5F9',
+  ink: '#0F172A', ink2: '#374151', muted: '#475569', muted2: '#64748B', faint: '#94A3B8',
+  navy: '#1B2A6B',
+};
+
+const ESTADO_META: Record<EstadoTienda, { label: string; color: string; bg: string; border: string }> = {
+  completa:  { label: 'Completa (estimado)', color: '#16A34A', bg: '#F0FDF4', border: '#16A34A' },
+  probable:  { label: 'Probable completa',   color: '#B45309', bg: '#FFFBEB', border: '#D97706' },
+  esperando: { label: 'Esperando carga',     color: '#DC2626', bg: '#FEF2F2', border: '#DC2626' },
+};
 
 /* ── Carga de datos base (flota + tiendas/gps) — mismo patrón que RutasScreen.tsx ── */
 function useFlota() {
@@ -64,23 +77,23 @@ function useTiendasYGps() {
   return { tiendas, gps };
 }
 
-/* ── Resumen del plan: solo lo que hace falta para el número grande ── */
 interface Resumen {
-  pallets: number;         // ya cargados + estimado adicional
-  cargados: number;        // ya cargados (real)
-  estimadoAdicional: number; // reservado + techo de tiendas aún sin camión
-  bultosCargados: number;  // real, sin proyectar
+  pallets: number;
+  cargados: number;
+  estimadoAdicional: number;
+  bultosCargados: number;
   tiendasPorCompletar: number;
+  filas: FilaTiendaConteo[];
 }
 
-function StatTile({ icon: Icon, label, value, accent }: { icon: React.ElementType; label: string; value: string | number; accent: string }) {
+function StatTile({ icon: Icon, label, value, accent, big }: { icon: React.ElementType; label: string; value: string | number; accent: string; big?: boolean }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 16, padding: '16px 14px', flex: 1, minWidth: 130 }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: big ? '20px 22px' : '14px 16px', flex: 1, minWidth: big ? 220 : 130, boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        <Icon size={13} color={accent} aria-hidden="true" />
-        <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</span>
+        <Icon size={big ? 16 : 13} color={accent} aria-hidden="true" />
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.muted2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
       </div>
-      <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: big ? 40 : 24, fontWeight: 800, color: C.ink, lineHeight: 1, letterSpacing: big ? -0.5 : 0 }}>{value}</div>
     </div>
   );
 }
@@ -93,7 +106,7 @@ export default function ConteoFlotaPage() {
   const flota = useFlota();
   const { tiendas, gps } = useTiendasYGps();
 
-  const [filas, setFilas]     = useState<FilaPicking[]>([]);
+  const [filasPicking, setFilasPicking] = useState<FilaPicking[]>([]);
   const [historial, setHist]  = useState<Record<string, EsperadoTienda>>({});
   const [params, setParams]   = useState(PARAMETROS_DEFAULT);
   const [loading, setLoading] = useState(true);
@@ -108,7 +121,7 @@ export default function ConteoFlotaPage() {
         fetch(`/api/picking-pallets?date=${encodeURIComponent(fecha)}`).then(r => r.json()),
         fetch(`/api/rutas-historial?fecha=${encodeURIComponent(fecha)}`).then(r => r.json()),
       ]);
-      setFilas((pRes?.data ?? []) as FilaPicking[]);
+      setFilasPicking((pRes?.data ?? []) as FilaPicking[]);
       setHist((hRes?.data ?? {}) as Record<string, EsperadoTienda>);
       setUltAct(Date.now());
     } catch {
@@ -129,16 +142,16 @@ export default function ConteoFlotaPage() {
   }, [puedeVer, cargar]);
 
   const resumen: Resumen | null = (() => {
-    if (!filas.length && !Object.keys(historial).length) return null;
-    const unidades = unidadesDesdeFilas(filas);
+    if (!filasPicking.length && !Object.keys(historial).length) return null;
+    const unidades = unidadesDesdeFilas(filasPicking);
+    const ahora     = ahoraMinutoChile();
     const opciones  = aOpcionesMotor(params);
-    const plan = planificarIncremental(unidades, flota, gps, CD_INICIAL, tiendas, historial, ahoraMinutoChile(), opciones);
+    const plan = planificarIncremental(unidades, flota, gps, CD_INICIAL, tiendas, historial, ahora, opciones);
+    const filas = filasPorTienda(unidades, historial, ahora, opciones);
 
     const cargados          = plan.camiones.reduce((s, k) => s + k.tp, 0);
     const bultosCargados    = plan.camiones.reduce((s, k) => s + k.tb, 0);
     const reservado         = plan.camiones.reduce((s, k) => s + k.reservado, 0);
-    // Tiendas que ni siquiera entraron a un camión: se suma el mismo techo histórico que usaría
-    // el motor si entraran ahora (mismo criterio que planificarIncremental para reservar espacio).
     const techoEnEspera = plan.enEspera.reduce((s, e) => s + (historial[e.cod]?.techoPallets ?? 0), 0);
     const estimadoAdicional = reservado + techoEnEspera;
 
@@ -148,49 +161,55 @@ export default function ConteoFlotaPage() {
       estimadoAdicional,
       bultosCargados,
       tiendasPorCompletar: plan.enEspera.length,
+      filas,
     };
   })();
 
   const minsAtras = ultAct ? Math.max(0, Math.round((Date.now() - ultAct) / 60_000)) : null;
 
-  if (authLoading) return <div style={{ minHeight: '100dvh', background: '#0f172a' }} />;
+  if (authLoading) return <div style={{ minHeight: '100dvh', background: C.ground }} />;
 
   if (!puedeVer) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)' }}>
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', background: C.ground }}>
         <div style={{ textAlign: 'center', maxWidth: 320 }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>🔒</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Acceso restringido</div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>Esta cuenta no tiene acceso al conteo de flota.</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginBottom: 6 }}>Acceso restringido</div>
+          <div style={{ fontSize: 13, color: C.muted2 }}>Esta cuenta no tiene acceso al conteo de flota.</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100dvh', padding: '0 20px 40px', background: 'linear-gradient(160deg, #0f172a 0%, #1a2550 100%)' }}>
+    <div style={{ minHeight: '100dvh', background: C.ground, fontFamily: 'inherit' }}>
 
       {/* ── Header ── */}
-      <div style={{ paddingTop: 28, paddingBottom: 22, textAlign: 'center' }}>
-        <div style={{ fontSize: 30, fontWeight: 900, color: '#C62828', letterSpacing: -1 }}>
-          KIOS<span style={{ fontStyle: 'italic' }}>Club</span>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Truck size={18} color="#2563EB" strokeWidth={1.8} aria-hidden="true" />
         </div>
-        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 4, textTransform: 'uppercase', letterSpacing: 3 }}>
-          Conteo estimado de hoy
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, lineHeight: 1.2 }}>Conteo de Flota</div>
+          <div style={{ fontSize: 12, color: C.faint, marginTop: 1 }}>Estimación del despacho de hoy</div>
+        </div>
+        <button onClick={() => void cargar()}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <RefreshCw size={13} aria-hidden="true" /> Actualizar
+        </button>
+        <div style={{ fontSize: 11, color: C.faint }}>
+          {minsAtras == null ? 'Cargando…' : minsAtras === 0 ? 'Actualizado recién' : `Actualizado hace ${minsAtras} min`}
         </div>
       </div>
 
-      <div style={{ width: '100%', maxWidth: 420, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '20px 24px 40px', maxWidth: 1100, margin: '0 auto' }}>
 
         {loading && !resumen && (
-          <div style={{ textAlign: 'center', paddingTop: 40 }}>
-            <div className="w-8 h-8 border-4 border-white/20 border-t-blue-400 rounded-full animate-spin mx-auto mb-3" />
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Cargando conteo…</p>
-          </div>
+          <div style={{ textAlign: 'center', paddingTop: 60, color: C.faint, fontSize: 14 }}>Cargando conteo…</div>
         )}
 
         {error && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 12, color: '#FCA5A5', fontSize: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, color: '#DC2626', fontSize: 13, marginBottom: 16 }}>
             <AlertTriangle size={14} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0 }} />
             <span>{error}</span>
           </div>
@@ -198,50 +217,75 @@ export default function ConteoFlotaPage() {
 
         {resumen && (
           <>
-            {/* Número grande */}
-            <div style={{ background: 'rgba(255,255,255,0.05)', border: '1.5px solid rgba(255,255,255,0.12)', borderRadius: 24, padding: '30px 24px', textAlign: 'center' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 20, background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.35)', marginBottom: 16 }}>
-                <AlertTriangle size={12} color="#FDBA74" aria-hidden="true" />
-                <span style={{ fontSize: 10, fontWeight: 800, color: '#FDBA74', textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Estimación — puede variar hasta el cierre
-                </span>
-              </div>
-              <div style={{ fontSize: 64, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: -1 }}>
-                ~{resumen.pallets}
-              </div>
-              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 6, fontWeight: 600 }}>
-                pallets estimados hoy
-              </div>
+            {/* Estadísticas */}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+              <StatTile icon={Package} label="Pallets estimados hoy" value={`~${resumen.pallets}`} accent={C.navy} big />
+              <StatTile icon={Truck} label="Ya cargados" value={resumen.cargados} accent="#16A34A" />
+              <StatTile icon={Boxes} label="Estimado adicional" value={resumen.estimadoAdicional} accent="#D97706" />
+              <StatTile icon={Clock} label="Tiendas por completar" value={resumen.tiendasPorCompletar} accent="#2563EB" />
+            </div>
+            <div style={{ fontSize: 11, color: C.faint, marginBottom: 20 }}>
+              ⚠ Estimación — puede variar hasta el cierre del día · Bultos ya contados (dato real, sin proyectar): <strong style={{ color: C.muted }}>{resumen.bultosCargados}</strong>
             </div>
 
-            {/* Stats de contexto */}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <StatTile icon={Package} label="Ya cargados" value={resumen.cargados} accent="#34D399" />
-              <StatTile icon={Truck} label="Estimado adicional" value={resumen.estimadoAdicional} accent="#FDBA74" />
-              <StatTile icon={Clock} label="Tiendas por completar" value={resumen.tiendasPorCompletar} accent="#93C5FD" />
+            {/* Detalle por tienda */}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>Detalle por tienda</div>
+              <div style={{ fontSize: 11, color: C.faint }}>{resumen.filas.length} tienda{resumen.filas.length !== 1 ? 's' : ''} con carga hoy</div>
+            </div>
+            <div style={{ fontSize: 11, color: C.faint, marginBottom: 12 }}>
+              El estado es calculado por el mismo algoritmo del motor de despacho (volumen histórico + tiempo sin novedad) — no es una confirmación manual de Bodega todavía.
             </div>
 
-            {/* Bultos reales, sin proyectar */}
-            <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-              Bultos ya contados: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{resumen.bultosCargados}</strong> (dato real, no estimado)
-            </div>
+            {resumen.filas.length === 0 ? (
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: '40px 20px', textAlign: 'center', color: C.faint, fontSize: 13 }}>
+                Todavía no sale mercadería hoy.
+              </div>
+            ) : (
+              <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: C.surface }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        {['Código', 'Tienda', 'Pallets', 'Bultos', 'Chocolates', 'Estado'].map(h => (
+                          <th key={h} style={{ position: 'sticky', top: 0, zIndex: 1, textAlign: h === 'Código' || h === 'Tienda' ? 'left' : 'center', padding: '9px 14px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.navy, background: C.borderSoft, borderBottom: '2px solid rgba(27,42,107,0.18)', whiteSpace: 'nowrap' }}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resumen.filas.map((f, i) => {
+                        const meta = ESTADO_META[f.estado];
+                        const zebra = i % 2 ? '#FAFBFC' : C.surface;
+                        return (
+                          <tr key={f.cod} style={{ background: f.estado === 'completa' ? meta.bg : zebra, borderLeft: `4px solid ${meta.border}` }}>
+                            <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 800, color: C.navy, whiteSpace: 'nowrap' }}>{f.cod}</td>
+                            <td style={{ padding: '9px 14px', color: C.ink2, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tiendas[f.cod]?.n ?? '—'}</td>
+                            <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2, whiteSpace: 'nowrap' }}>
+                              <strong>{f.pallets}</strong>{f.estimadoAdicional > 0 && <span style={{ color: C.faint }}> +{f.estimadoAdicional} est.</span>}
+                            </td>
+                            <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2 }}>{f.bultos}</td>
+                            <td style={{ padding: '9px 14px', textAlign: 'center', color: C.ink2 }}>{f.chocolates}</td>
+                            <td style={{ padding: '9px 14px', textAlign: 'center' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}55` }}>
+                                {meta.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
 
         {!loading && !resumen && !error && (
-          <div style={{ textAlign: 'center', paddingTop: 20, color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
-            Todavía no sale mercadería hoy.
-          </div>
+          <div style={{ textAlign: 'center', paddingTop: 60, color: C.faint, fontSize: 14 }}>Todavía no sale mercadería hoy.</div>
         )}
-
-        {/* Refresh */}
-        <button onClick={() => void cargar()}
-          style={{ marginTop: 4, padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <RefreshCw size={13} aria-hidden="true" /> Actualizar
-        </button>
-        <div style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
-          {minsAtras == null ? 'Cargando…' : minsAtras === 0 ? 'Actualizado recién' : `Actualizado hace ${minsAtras} min`} · se refresca solo cada minuto
-        </div>
       </div>
     </div>
   );
