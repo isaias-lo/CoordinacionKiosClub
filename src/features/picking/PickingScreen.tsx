@@ -8,6 +8,7 @@ import { useApp } from '@/context/AppContext';
 import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
+import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -107,7 +108,11 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario'>('monitoreo');
+  const [rightTab, setRightTab]   = useState<'monitoreo' | 'congelados' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario'>('monitoreo');
+  // [P6] El monitoreo se separó en dos tabs que comparten la MISMA vista: 'monitoreo' (Seco:
+  // aseo/comida, hogar y chocolates) y 'congelados'. `esTabCongelados` decide qué operaciones
+  // se muestran y de qué calendario salen las tiendas del panel izquierdo.
+  const esTabCongelados = rightTab === 'congelados';
 
   // Resizable left panel
   const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =
@@ -680,6 +685,27 @@ export function PickingScreen() {
     ]);
   }, [nameFor]);
 
+  // [P6] Tiendas del CALENDARIO DE CONGELADOS de hoy. El tab Congelados no puede alimentarse del
+  // calendario seco: una tienda con congelados hoy que no esté en el seco no aparecería en el panel
+  // y su picking quedaría invisible. Se usa DAY_CODES (incluye DOMINGO, que el calendario de
+  // congelados sí contempla) — no `getDia`, que pliega el domingo al lunes.
+  const [calStoresCong, setCalStoresCong] = useState<TodayStore[]>([]);
+  const applyCalendarCong = useCallback((cal: CalRecord) => {
+    const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
+    const day = cal[DAY_CODES[new Date().getDay()]];
+    if (!day) { setCalStoresCong([]); return; }
+    setCalStoresCong([
+      ...(day.fal   ?? []).map(cod => ({ cod, name: nameFor(cod), sources: ['regiones'] as ('rm' | 'regiones')[] })),
+      ...(day.costa ?? []).map(cod => ({ cod, name: nameFor(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+      ...(day.rm    ?? []).map(cod => ({ cod, name: nameFor(cod), sources: ['rm']       as ('rm' | 'regiones')[] })),
+    ]);
+  }, [nameFor]);
+
+  useEffect(() => {
+    fetchCalendarioCongelados().then(applyCalendarCong).catch(() => {});
+    return subscribeToCalendarioCongelados(applyCalendarCong);
+  }, [applyCalendarCong]);
+
   // ── Tiendas de adelanto (extra del día, fuera del calendario de abastecimiento) ──────
   const loadAdelantos = useCallback(async () => {
     setAdelantos(await getTiendasAdelantoHoy());
@@ -695,7 +721,9 @@ export function PickingScreen() {
 
   // todayStores = calendario (con overrides de nombre) + tiendas de adelanto de hoy.
   const todayStores = useMemo<TodayStore[]>(() => {
-    const base = calStores.map(s => ({ ...s, name: tiendaOverrides[s.cod] || getStoreName(s.cod) }));
+    // [P6] En el tab Congelados la lista sale del calendario de CONGELADOS; en el resto, del seco.
+    const fuente = esTabCongelados ? calStoresCong : calStores;
+    const base = fuente.map(s => ({ ...s, name: tiendaOverrides[s.cod] || getStoreName(s.cod) }));
     const present = new Set(base.map(s => s.cod));
     const extra: TodayStore[] = adelantos.map(a => ({
       cod:      a.store_cod,
@@ -713,7 +741,7 @@ export function PickingScreen() {
       }
     }
     return base;
-  }, [calStores, adelantos, tiendaOverrides]);
+  }, [calStores, calStoresCong, esTabCongelados, adelantos, tiendaOverrides]);
 
   // Lookup store_cod → adelanto (para marcar la etiqueta de esa tienda).
   const adelantoByCod = useMemo(() => {
@@ -802,14 +830,22 @@ export function PickingScreen() {
   );
 
   const filteredGroups = useMemo(() => {
-    if (sectionFilter === 'all') return allGroups;
+    // [P6] Cada tab ve solo lo suyo: Congelados muestra únicamente las ops congeladas, y Seco las
+    // excluye. Antes 'Todas' mezclaba ambas y los conteos se cruzaban entre tabs.
+    const base = allGroups
+      .map(g => {
+        const congeladas = new Set(filtrarOpsPorSeccion(g.operations, 'congelados'));
+        return { ...g, operations: g.operations.filter(op => congeladas.has(op) === esTabCongelados) };
+      })
+      .filter(g => g.operations.length > 0);
+    if (esTabCongelados || sectionFilter === 'all') return base;
     // Recorta las operaciones de cada grupo a la sección activa y descarta los grupos sin ops
     // en ella. Antes era un test de inclusión (dejaba ops de otras secciones dentro de un picker
     // mixto → se mostraba/contaba la suma cruzada). Ahora cada sección es independiente.
-    return allGroups
+    return base
       .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
       .filter(g => g.operations.length > 0);
-  }, [allGroups, sectionFilter]);
+  }, [allGroups, sectionFilter, esTabCongelados]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
@@ -1227,7 +1263,8 @@ export function PickingScreen() {
           <div className="flex flex-shrink-0 print:hidden overflow-x-auto"
             style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
             {([
-              { key: 'monitoreo',     label: 'Monitoreo'   },
+              { key: 'monitoreo',     label: 'Seco'        },
+              { key: 'congelados',    label: 'Congelados'  },
               { key: 'actividad',     label: 'Actividad'   },
               { key: 'historial',     label: 'Historial'   },
               { key: 'estadisticas',  label: 'Estadísticas'},
@@ -1289,7 +1326,7 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Monitoreo ── */}
-          {rightTab === 'monitoreo' && (selectedCods.length === 0 ? (
+          {(rightTab === 'monitoreo' || rightTab === 'congelados') && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="mb-4 text-slate-200"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
@@ -1319,7 +1356,10 @@ export function PickingScreen() {
                       { key: 'hogar',       label: 'Hogar' },
                       { key: 'chocolates',  label: 'Chocolates' },
                       { key: 'congelados',  label: 'Congelados' },
-                    ] as { key: SectionFilter; label: string }[]).map(({ key, label }) => (
+            ] as { key: SectionFilter; label: string }[])
+              // [P6] En el tab Congelados no se ofrecen las secciones de seco.
+              .filter(({ key }) => !esTabCongelados || key === 'all')
+              .map(({ key, label }) => (
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
                         style={{
