@@ -1461,7 +1461,14 @@ export default function RutasScreen() {
     // Al cerrar la JORNADA (no en cada camión), lo que quedó SIN asignar a ningún camión pasa a
     // pendiente de 2ª vuelta — así no se pierde, pero sin cortar el flujo de asignación mientras
     // todavía estás cerrando camiones.
-    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones);
+    // [P10] Se pasa además la carga REGISTRADA del día (`despacho_sesion`) como respaldo de `calT`:
+    // una tienda armada y registrada que no esté en el `calT` del momento igual queda pendiente.
+    // Sin esto, 40LIL del 01/09 (3 pallets + 4 chocolates ya registrados, sin patente) desapareció
+    // del backlog y no se podía designar a 2ª vuelta pese a tener toda su data en la BD.
+    const registrado = [...sesionRowsRef.current.entries()].map(([cod, r]) => ({
+      cod, pallets: r.pallets, bultos: r.bultos, contenedores: r.contenedores, chocolates: r.chocolates,
+    }));
+    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones, registrado);
     if (leftover.length) void savePendientesV2(fecha, leftover, asignadas);
     const payload = { closedAt: new Date().toISOString(), by: supervisor || '' };
     setCerrado(true);

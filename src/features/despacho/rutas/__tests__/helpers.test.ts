@@ -212,4 +212,47 @@ describe('poolPendiente', () => {
     const { leftover } = poolPendiente(calT, {});
     expect(leftover).toEqual([{ c: 'A', p: 0, b: 0, ch: 2 }]);
   });
+
+  // [P10] Caso real 40LIL (01/09): tenía 3 pallets + 4 chocolates REGISTRADOS y sin patente, pero
+  // no estaba en el `calT` del momento del cierre → desapareció del backlog de 2ª vuelta.
+  describe('respaldo por carga registrada', () => {
+    const reg = (cod: string, pallets: number, bultos = 0, chocolates = 0, contenedores = 0) =>
+      ({ cod, pallets, bultos, chocolates, contenedores });
+
+    it('una tienda registrada que NO está en calT igual queda pendiente', () => {
+      const { leftover } = poolPendiente({}, {}, [reg('40LIL', 3, 0, 4)]);
+      expect(leftover).toEqual([{ c: '40LIL', p: 3, b: 0, ch: 4 }]);
+    });
+
+    it('si está asignada a un camión NO es pendiente, aunque esté registrada', () => {
+      const { leftover } = poolPendiente({}, { PAT1: [{ c: '40LIL' }] }, [reg('40LIL', 3, 0, 4)]);
+      expect(leftover).toEqual([]);
+    });
+
+    it('calT tiene prioridad: sus conteos (los del tablero) mandan sobre los registrados', () => {
+      const calT = { A: cal(true, 9) };
+      const { leftover } = poolPendiente(calT, {}, [reg('A', 1)]);
+      expect(leftover).toEqual([{ c: 'A', p: 9, b: 0, ch: 0 }]);
+    });
+
+    it('los contenedores registrados ocupan piso (suman a p)', () => {
+      const { leftover } = poolPendiente({}, {}, [reg('CON', 1, 0, 0, 2)]);
+      expect(leftover).toEqual([{ c: 'CON', p: 3, b: 0, ch: 0 }]);
+    });
+
+    it('una tienda registrada sin carga no entra', () => {
+      const { leftover } = poolPendiente({}, {}, [reg('VACIA', 0)]);
+      expect(leftover).toEqual([]);
+    });
+
+    it('une ambas fuentes sin duplicar', () => {
+      const calT = { A: cal(true, 2) };
+      const { leftover } = poolPendiente(calT, {}, [reg('A', 2), reg('B', 1)]);
+      expect(leftover.map(s => s.c).sort()).toEqual(['A', 'B']);
+    });
+
+    it('sin el respaldo (comportamiento previo) la registrada se perdía', () => {
+      expect(poolPendiente({}, {}).leftover).toEqual([]);
+    });
+  });
 });
