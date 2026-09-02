@@ -1010,9 +1010,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const cur = items[cod] || [];
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      // CH lo maneja el rebuild (auto-agregado); aquí sólo P/B/C que llegaron tarde.
       // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
-      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH' && !esCongeladoContenido(s.contenido));
+      // CH: entra SOLO si su item ya existe en el estado (`cur`) — paridad con Nacional. Así un
+      // chocolate agregado por otra persona aparece apenas llega el item, sin salir y volver a la
+      // tienda; y al exigir que el item exista no se inventa una card durante la ventana de sync.
+      const missing = fullSlots.filter(s =>
+        !repIds.has(s.id)
+        && !esCongeladoContenido(s.contenido)
+        && (s.tipo !== 'CH' || cur.some(it => it.pickingSlotId === s.id)));
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const saved = cur.find(it => it.pickingSlotId === s.id);

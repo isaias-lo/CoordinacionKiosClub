@@ -373,9 +373,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const cur = dispatchData[name] || [];
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      // CH lo maneja el rebuild (auto-agregado); congelados (CC/CN) quedan fuera: SECO no
-      // debe generar card fantasma para ellos.
-      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH' && !esCongeladoContenido(s.contenido));
+      // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
+      // CH: entra SOLO si su item ya existe en el estado (`cur`). Así un chocolate agregado por
+      // otra persona aparece apenas llega el item, sin tener que salir y volver a la tienda —
+      // que es el hueco que antes tapaba el ghost `gCH`. Y al exigir que el item exista NO se
+      // inventa una card durante la ventana de sync (el slot llega ~600 ms antes que el estado),
+      // que es justo lo que hacía parpadear los CH.
+      const missing = fullSlots.filter(s =>
+        !repIds.has(s.id)
+        && !esCongeladoContenido(s.contenido)
+        && (s.tipo !== 'CH' || cur.some(it => it.pickingSlotId === s.id)));
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const pkg = PKG_MAP[s.tipo] ?? 'pallet';
@@ -562,6 +569,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           // 3) Chocolate sin guardar → materializar agregado con peso por defecto
           if (!saved && pkg === 'chocolate') {
             const newCh: DispatchItem = {
+              // `id` DETERMINISTA por slot: dos equipos que materializan el mismo chocolate generan
+              // la MISMA llave, así el merge por-ítem lo reconoce como uno solo. Antes el CH salía
+              // sin `id` y el reducer le estampaba uno local por dispositivo (`di-<ts>-<n>`), de modo
+              // que el mismo chocolate viajaba con llaves distintas y `mergeListaPorItem` lo
+              // duplicaba. (RM/Costa ya asignaba id acá — esto empareja el comportamiento.)
+              id: sid ? `ch-slot-${sid}` : `ch-${selectedTienda}-${chCount + 1}-${Date.now()}`,
               orden: `chocolate${++chCount}`, tipo: mapearContenido(s.contenido), pkg: 'chocolate',
               peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
               guia: '', valor: 0, pickingSlotId: sid || undefined,
@@ -627,7 +640,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             rows.push({ id: `c${i}-${Date.now()}`,  pkg: 'contenedor',tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
           if ((preset.chocolates ?? 0) > 0) {
             dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: Array.from({ length: preset.chocolates ?? 0 }, (_, i) => ({
-              orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+              // `id` determinista (mismo en todos los equipos para el mismo preset) y `orden` con el
+              // formato que usa el resto del código. Antes estos CH salían SIN id y SIN pickingSlotId,
+              // así que su llave de merge caía en `orden:CH1` — que además el renumber reescribe como
+              // `chocolate1` — y el mismo chocolate terminaba duplicado entre dispositivos.
+              id: `ch-preset-${selectedTienda}-${i + 1}`,
+              orden: `chocolate${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
               peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
             })) });
           }
@@ -1437,18 +1455,26 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
             const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
             const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
-            const gCH  = Math.max(0, pkS.filter(s => s.tipo === 'CH').length - items.filter(i => i.pkg === 'chocolate').length   - cns.ch);
+            // NO hay ghost de CH (paridad con RM/Costa, que solo calcula gP/gB/gC).
+            //
+            // El ghost de chocolate era una RESTA entre dos fuentes que viajan a distinta velocidad:
+            // los slots de `picking_pallets` (Realtime, ~600 ms) menos los items del estado
+            // sincronizado (debounce 2500 ms + bloqueos del merge). Esa diferencia es positiva por
+            // construcción en CADA alta o baja de un CH, así que aparecía una tarjeta fantasma que
+            // se iba sola cuando llegaba el estado: el "se van y vuelven" que se reportó.
+            // Encima nunca podía absorberse: `unsavedChoc` era estructuralmente 0 porque ningún
+            // camino crea una fila CH con `saved:false` (el rebuild y addFormRow la marcan como
+            // guardada, y el backfill excluía CH). Los CH ahora se muestran solo cuando existen
+            // como item real — una sola fuente de verdad — y el backfill de abajo los materializa.
             // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
             const unsavedPallet = formRows.filter(r => !r.saved && r.pkg === 'pallet').length;
             const unsavedBox    = formRows.filter(r => !r.saved && r.pkg === 'box').length;
             const unsavedCont   = formRows.filter(r => !r.saved && r.pkg === 'contenedor').length;
-            const unsavedChoc   = formRows.filter(r => !r.saved && r.pkg === 'chocolate').length;
             type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
             const ghostCards: GC[] = [
               ...Array.from({ length: Math.max(0, gP  - unsavedPallet) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
               ...Array.from({ length: Math.max(0, gB  - unsavedBox)    }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
               ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
-              ...Array.from({ length: Math.max(0, gCH - unsavedChoc)   }, (_, i) => ({ type: 'ch' as const, border: 'rgba(120,53,15,0.35)',  text: '#92400E', bg: 'rgba(120,53,15,0.03)',   label: 'Choc.',   key: `gCH${i}` })),
             ];
             // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
             // VISTA; el estado formRows queda igual y los handlers operan por row.id.
