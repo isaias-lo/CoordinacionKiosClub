@@ -22,3 +22,66 @@ describe('isRegionesCod', () => {
     expect(solapados).toEqual([]);
   });
 });
+
+// ─── Hidratación desde la BD (60PBL / 38SP2 y toda tienda nueva) ──────────────
+import { registrarTiendasBD, esSectorRegiones, TIENDAS } from '../tiendas';
+
+describe('esSectorRegiones', () => {
+  it('acepta Región Sur/Norte y "Región" a secas, con o sin tilde', () => {
+    for (const s of ['Región Sur', 'Región Norte', 'Región', 'region sur', 'REGIÓN'])
+      expect(esSectorRegiones(s)).toBe(true);
+  });
+  it('rechaza sectores de Santiago/Costa y vacíos', () => {
+    for (const s of ['Corredor Oriente', 'Costa', '', null, undefined])
+      expect(esSectorRegiones(s as string)).toBe(false);
+  });
+});
+
+describe('registrarTiendasBD', () => {
+  const fila = (codigo: string, nombre: string, extra: Record<string, unknown> = {}) =>
+    ({ codigo, nombre, sector_comuna: 'Región Sur', region: 'Araucanía', activo: true, ...extra });
+
+  it('agrega una tienda nueva de Regiones y la vuelve agrupable', () => {
+    expect(isRegionesCod('60PBL')).toBe(false);          // antes del registro
+    const { agregadas } = registrarTiendasBD([fila('60PBL', 'Los Pablos')]);
+    expect(agregadas).toContain('60PBL');
+    expect(isRegionesCod('60PBL')).toBe(true);            // ← el bug de "no se agrupa en Regiones"
+    expect(TIENDAS['Los Pablos']?.cod).toBe('60PBL');     // ← el bug de "no aparece en Bodega"
+  });
+
+  it('es idempotente: llamarla dos veces no duplica', () => {
+    const antes = Object.keys(TIENDAS).length;
+    registrarTiendasBD([fila('60PBL', 'Los Pablos')]);
+    expect(Object.keys(TIENDAS).length).toBe(antes);
+  });
+
+  it('NO pisa una tienda ya curada en SENDU_EXTRAS', () => {
+    const original = TIENDAS['Valdivia'];
+    registrarTiendasBD([fila('53VAL', 'Valdivia', { region: 'OTRA' })]);
+    expect(TIENDAS['Valdivia']).toBe(original);          // intacta
+    expect(TIENDAS['Valdivia'].region_sendu).toBe('Los_Ríos');
+  });
+
+  it('ignora inactivas, sin código/nombre, y las que no son de Regiones', () => {
+    const antes = REGIONES_CODS.size;
+    registrarTiendasBD([
+      fila('90XXX', 'Inactiva',  { activo: false }),
+      fila('91XXX', '',          {}),
+      { codigo: '', nombre: 'Sin código', sector_comuna: 'Región Sur', activo: true },
+      fila('92XXX', 'De Santiago', { sector_comuna: 'Corredor Oriente' }),
+    ]);
+    expect(REGIONES_CODS.size).toBe(antes);
+  });
+
+  it('mapea los datos que la BD sí tiene y reporta la que queda incompleta para Sendu', () => {
+    const { sinDatosSendu } = registrarTiendasBD([
+      fila('93NUE', 'Tienda Nueva', { correos: 'nueva@kiosclub.com', tel_encargado: '999', direccion: 'Av. Siempreviva 742' }),
+    ]);
+    const t = TIENDAS['Tienda Nueva'];
+    expect(t.email).toBe('nueva@kiosclub.com');
+    expect(t.celular).toBe('999');
+    expect(t.calle).toBe('Av. Siempreviva 742');
+    expect(t.rut).toBe('76360868-9');
+    expect(sinDatosSendu).toContain('93NUE');   // le faltan region_sendu/comuna → la UI avisa
+  });
+});
