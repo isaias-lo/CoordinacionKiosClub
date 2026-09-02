@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useLayoutEffect, useState } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
-import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
+import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow } from '../data/tiendas';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
@@ -226,6 +226,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [removeDropActive,  setRemoveDropActive]   = useState(false);
   const [multiDragOver,     setMultiDragOver]      = useState(false);
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
+  // [P7] Versión del catálogo: se incrementa al hidratar tiendas de la BD (registro de módulo, no
+  // reactivo por sí solo). `sinDatosSendu` son las que aparecen pero les falta data de envío.
+  const [catalogoVer,       setCatalogoVer]        = useState(0);
+  const [sinDatosSendu,     setSinDatosSendu]      = useState<string[]>([]);
   const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
@@ -259,6 +263,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   useEffect(() => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
     const todayCode = DAY_CODES[new Date().getDay()];
+
+    // [P7] Hidratar el catálogo con las tiendas de Regiones de la BD (Config. Tiendas). Sin esto,
+    // una tienda nueva quedaba en el calendario pero NO se renderizaba acá (la lista sale de
+    // `TIENDAS`) ni se podía agrupar en Regiones — le pasaba a 60PBL, 38SP2 y a toda tienda futura.
+    fetch('/api/tiendas')
+      .then(r => (r.ok ? r.json() : null))
+      .then((j: { tiendas?: TiendaBDRow[] } | null) => {
+        const { agregadas, sinDatosSendu } = registrarTiendasBD(j?.tiendas ?? []);
+        if (agregadas.length) {
+          setSinDatosSendu(prev => [...new Set([...prev, ...sinDatosSendu])]);
+          setCatalogoVer(v => v + 1);   // el catálogo es un registro de módulo → forzar re-render
+        }
+      })
+      .catch(() => {});
 
     // Initial fetch (checks localStorage cache first, then Sheets)
     getTiendasDelDia('fal')
@@ -683,7 +701,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   }, [selectedTienda]);
 
 
-  const all = Object.values(TIENDAS);
+  // `catalogoVer` entra a propósito en la dependencia: el catálogo se hidrata desde la BD después
+  // del montaje y hay que recalcular la lista cuando eso ocurre.
+  const all = useMemo(() => Object.values(TIENDAS), [catalogoVer]);
   const filtered = all.filter(t => {
     const q = search.toLowerCase();
     return !q || t.name.toLowerCase().includes(q) || t.region?.toLowerCase().includes(q) || t.cod?.toLowerCase().includes(q);
@@ -2019,6 +2039,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             placeholder="Buscar…"
             className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
         </div>
+
+        {/* [P7] Tiendas traídas de la BD que aún no tienen los datos de envío de Sendu (region_sendu,
+            comuna, número). Se muestran igual —antes desaparecían en silencio— pero se avisa para
+            completarlas en el catálogo antes de exportar a Sendu. */}
+        {sinDatosSendu.length > 0 && (
+          <div className="px-2 py-1.5 bg-amber-50 border-b border-amber-200 flex-shrink-0 text-[11.5px] text-amber-800 leading-snug">
+            ⚠ {sinDatosSendu.join(', ')} {sinDatosSendu.length === 1 ? 'viene' : 'vienen'} de Config. Tiendas sin datos completos de envío (Sendu). Se {sinDatosSendu.length === 1 ? 'puede cargar' : 'pueden cargar'} normalmente; revisa sus datos antes de exportar.
+          </div>
+        )}
 
         {/* Toolbar: Multi-PDF — desktop only */}
         <div className="hidden lg:flex px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 gap-1.5">
