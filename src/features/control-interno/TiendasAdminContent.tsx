@@ -144,6 +144,16 @@ export default function TiendasAdminContent({
   const [lonStr,    setLonStr]    = useState('');
   const [saving,    setSaving]    = useState(false);
   const [togglingCod, setTogglingCod] = useState<string | null>(null);
+  // [P3] Diálogo de eliminar: se consulta el USO antes de ofrecer el borrado real.
+  const [borrar, setBorrar] = useState<{
+    tienda: Tienda;
+    cargando: boolean;
+    puedeEliminar?: boolean;
+    enCalendario?: boolean;
+    usos?: Record<string, number>;
+    confirmacion: string;
+    borrando: boolean;
+  } | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
   const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
@@ -246,6 +256,49 @@ export default function TiendasAdminContent({
     } catch {
       setMsgType('err'); setMsg('No se pudo guardar (error de conexión o tiempo de espera). Reintenta.');
     } finally { setSaving(false); }
+  }
+
+  // [P3] Abre el diálogo y consulta si la tienda tiene historial. Una tienda con despachos,
+  // picking o manifiestos NO se borra (dejaría filas huérfanas): se ofrece desactivarla.
+  async function pedirEliminar(t: Tienda) {
+    setBorrar({ tienda: t, cargando: true, confirmacion: '', borrando: false });
+    try {
+      const res = await fetch(`/api/tiendas/uso?codigo=${encodeURIComponent(t.codigo)}`);
+      const j = await res.json() as { puedeEliminar?: boolean; enCalendario?: boolean; usos?: Record<string, number> };
+      setBorrar(prev => prev && prev.tienda.codigo === t.codigo
+        ? { ...prev, cargando: false, puedeEliminar: !!j.puedeEliminar, enCalendario: !!j.enCalendario, usos: j.usos }
+        : prev);
+    } catch {
+      setBorrar(prev => prev ? { ...prev, cargando: false, puedeEliminar: false } : prev);
+    }
+  }
+
+  async function confirmarEliminar() {
+    if (!borrar?.puedeEliminar || borrar.borrando) return;
+    const t = borrar.tienda;
+    setBorrar(prev => prev ? { ...prev, borrando: true } : prev);
+    try {
+      const res = await fetch(`/api/tiendas?codigo=${encodeURIComponent(t.codigo)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({})) as { sheetSynced?: boolean; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setBorrar(null);
+      await load();
+      setMsg(data.sheetSynced === false
+        ? `Tienda ${t.codigo} eliminada, pero no se pudo quitar del Sheet — revísalo a mano.`
+        : `Tienda ${t.codigo} eliminada ✓`);
+      setMsgType(data.sheetSynced === false ? 'err' : 'ok');
+    } catch (e) {
+      setBorrar(prev => prev ? { ...prev, borrando: false } : prev);
+      setMsg(e instanceof Error ? e.message : 'No se pudo eliminar');
+      setMsgType('err');
+    }
+  }
+
+  async function desactivarDesdeDialogo() {
+    if (!borrar) return;
+    const t = borrar.tienda;
+    setBorrar(null);
+    if (t.activo) await handleToggleActivo(t);
   }
 
   async function handleToggleActivo(t: Tienda) {
@@ -579,6 +632,12 @@ export default function TiendasAdminContent({
                             style={{ flex: 1, height: 32, borderRadius: 7, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#2563EB', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                             Editar
                           </button>
+                          {/* [P3] Eliminar de verdad: solo si la tienda no dejó historial (el
+                              diálogo lo consulta). Si tiene uso, ofrece desactivarla. */}
+                          <button onClick={() => pedirEliminar(t)} title={`Eliminar ${t.codigo}`}
+                            style={{ width: 34, height: 32, borderRadius: 7, border: '1px solid #FECACA', background: '#fff', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                            🗑
+                          </button>
                         </div>
                       )}
                     </div>
@@ -698,6 +757,77 @@ export default function TiendasAdminContent({
                 style={{ flex: 2, height: 38, borderRadius: 8, border: 'none', background: '#2563EB', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (!form.codigo || !form.nombre) ? 0.5 : 1 }}>
                 {saving ? 'Guardando…' : modal === 'add' ? 'Crear tienda' : 'Guardar cambios'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* [P3] Diálogo de eliminar tienda. Borrado REAL solo si no tiene historial; si lo tiene,
+          se explica dónde se usa y se ofrece desactivarla (reversible y sin dejar huérfanos). */}
+      {borrar && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+             onClick={() => { if (!borrar.borrando) setBorrar(null); }}>
+          <div onClick={e => e.stopPropagation()}
+               style={{ background: '#fff', borderRadius: 14, padding: '20px 22px', width: '100%', maxWidth: 460, boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800, color: '#0F172A' }}>
+              Eliminar {borrar.tienda.codigo}
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748B' }}>{borrar.tienda.nombre}</p>
+
+            {borrar.cargando ? (
+              <p style={{ fontSize: 13, color: '#64748B' }}>Revisando si tiene historial…</p>
+            ) : borrar.puedeEliminar ? (
+              <>
+                <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, margin: '0 0 12px' }}>
+                  No tiene despachos, picking ni manifiestos, y no está en el calendario. Se puede
+                  eliminar de forma definitiva (también se quita del Google Sheet).
+                </p>
+                <p style={{ fontSize: 12.5, color: '#64748B', margin: '0 0 6px' }}>
+                  Escribí <b style={{ fontFamily: 'monospace', color: '#DC2626' }}>{borrar.tienda.codigo}</b> para confirmar:
+                </p>
+                <input value={borrar.confirmacion} autoFocus
+                  onChange={e => setBorrar(prev => prev ? { ...prev, confirmacion: e.target.value } : prev)}
+                  style={{ width: '100%', height: 36, borderRadius: 8, border: '1px solid #E2E8F0', padding: '0 10px', fontSize: 14, fontFamily: 'monospace', outline: 'none' }} />
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, margin: '0 0 10px' }}>
+                  Esta tienda <b>ya tiene datos asociados</b>, así que no se puede eliminar sin dejar
+                  registros huérfanos. Podés <b>desactivarla</b>: deja de aparecer en la operación y
+                  se puede reactivar cuando quieras.
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+                  {borrar.enCalendario && (
+                    <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: '#FEF3C7', color: '#92400E' }}>en el calendario</span>
+                  )}
+                  {Object.entries(borrar.usos ?? {}).filter(([, n]) => n > 0).map(([k, n]) => (
+                    <span key={k} style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: '#F1F5F9', color: '#475569' }}>
+                      {({ picking: 'picking', despacho_rm: 'despacho RM', despacho_regiones: 'despacho Regiones', manifiestos: 'manifiestos', sesion: 'sesión del día' } as Record<string, string>)[k] ?? k}: {n}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
+              <button onClick={() => setBorrar(null)} disabled={borrar.borrando}
+                style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#fff', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              {!borrar.cargando && !borrar.puedeEliminar && borrar.tienda.activo && (
+                <button onClick={desactivarDesdeDialogo}
+                  style={{ height: 34, padding: '0 14px', borderRadius: 8, border: 0, background: '#D97706', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  Desactivar
+                </button>
+              )}
+              {borrar.puedeEliminar && (
+                <button onClick={confirmarEliminar}
+                  disabled={borrar.borrando || borrar.confirmacion.trim().toUpperCase() !== borrar.tienda.codigo.toUpperCase()}
+                  style={{ height: 34, padding: '0 14px', borderRadius: 8, border: 0, background: '#DC2626', color: '#fff', fontSize: 13, fontWeight: 700,
+                           cursor: 'pointer', opacity: borrar.borrando || borrar.confirmacion.trim().toUpperCase() !== borrar.tienda.codigo.toUpperCase() ? 0.5 : 1 }}>
+                  {borrar.borrando ? 'Eliminando…' : 'Eliminar definitivamente'}
+                </button>
+              )}
             </div>
           </div>
         </div>
