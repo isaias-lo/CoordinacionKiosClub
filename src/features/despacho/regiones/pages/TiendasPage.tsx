@@ -26,6 +26,7 @@ import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
+import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { fechaISOLocal } from '../../shared/fechaLocal';
@@ -841,17 +842,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (pkg === 'chocolate') {
       if (!cod || !selectedTienda) return;
       let slot: PickingSlot | undefined = existingSlot;
-      if (!slot) try {
-        const res = await fetch('/api/picking-pallets/create-bodega', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' }),
-        });
-        slot = (await res.json() as { data?: PickingSlot }).data;
-      } catch { /* sin slot: queda como chocolate sin ID */ }
-      if (slot) {
-        const s = slot;
-        setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s] }));
+      if (!slot) {
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' });
+        slot = res.slot;
+        // No agregar un chocolate "confirmado" sin fila real en picking_pallets — antes esto
+        // fallaba en silencio y quedaba invisible para Seguimiento/Enrutador/Conteo de Flota.
+        if (!slot) { showToast(`⚠ No se pudo agregar el chocolate (${res.error}) — reintenta`, '#D32F2F'); return; }
       }
+      const s = slot;
+      setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s] }));
       const existing = dispatchData[selectedTienda] || [];
       const chc = existing.filter(i => i.pkg === 'chocolate').length + 1 + countOffset;
       const stamp = Date.now();
@@ -894,22 +893,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return;
     }
 
-    try {
-      const res  = await fetch('/api/picking-pallets/create-bodega', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ date, store_cod: cod, tipo: PKG_CODE[pkg], contenido: 'hogar' }),
-      });
-      const json = await res.json() as { data?: PickingSlot };
-      const slot = json.data;
-      if (!slot) return;
-      setPickingSlotsFull(prev => {
-        const next = { ...prev };
-        next[selectedTienda] = [...(next[selectedTienda] ?? []), slot];
-        return next;
-      });
-      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
-    } catch { /* fallback: el row queda sin slot */ }
+    // Solo pre-asigna el # a la card vacía todavía sin confirmar. Si falla, el row queda sin
+    // slot por ahora — a diferencia de Santiago, `saveRow` en Regiones NO reintenta, así que
+    // si el operador confirma esta card sin slot, el pallet queda invisible para Seguimiento/
+    // Enrutador/Conteo de Flota sin aviso. Avisar aquí igual, apenas se sabe que falló.
+    const { slot, error } = await crearSlotBodega({ date, store_cod: cod, tipo: PKG_CODE[pkg], contenido: 'hogar' });
+    if (!slot) { showToast(`⚠ No se pudo numerar este ${pkg} (${error}) — bórralo y agrégalo de nuevo`, '#D32F2F'); return; }
+    setPickingSlotsFull(prev => {
+      const next = { ...prev };
+      next[selectedTienda] = [...(next[selectedTienda] ?? []), slot];
+      return next;
+    });
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
@@ -920,34 +915,31 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const cod  = TIENDAS[selectedTienda]?.cod ?? '';
     const date = fechaISOLocal();
     const baseCount = (dispatchData[selectedTienda] || []).filter(i => i.pkg === 'box').length;
+    let creados = 0;
     for (let k = 0; k < cantidad; k++) {
-      let slot: PickingSlot | undefined;
-      if (cod) try {
-        const res = await fetch('/api/picking-pallets/create-bodega', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date, store_cod: cod, tipo: 'B', contenido: 'hogar' }),
-        });
-        slot = (await res.json() as { data?: PickingSlot }).data;
-      } catch { /* sin slot: queda como bulto sin ID */ }
-      if (slot) { const s = slot; setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s] })); }
+      if (!cod) break;
+      const { slot, error } = await crearSlotBodega({ date, store_cod: cod, tipo: 'B', contenido: 'hogar' });
+      // No agregar un bulto "confirmado" sin fila real en picking_pallets — antes esto fallaba
+      // en silencio y quedaba invisible para Seguimiento/Enrutador/Conteo de Flota.
+      if (!slot) { showToast(`⚠ Se detuvo en ${creados}/${cantidad} — ${error}`, '#D32F2F'); break; }
+      setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
+      creados++;
       const stamp = Date.now();
       const item: DispatchItem = {
         id: crypto.randomUUID(), orden: `bulto${baseCount + 1 + k}`, tipo: src.tipo, pkg: 'box',
         peso: src.peso, alto: src.alto, ancho: src.ancho, largo: src.largo,
-        guia: '', valor: 0, pickingSlotId: slot?.id,
+        guia: '', valor: 0, pickingSlotId: slot.id,
       };
       dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
       setFormRows(prev => [...prev, {
         id: `saved-dup-${stamp}-${k}`, pkg: 'box', tipo: src.tipo,
         peso: String(src.peso), alto: String(src.alto), ancho: String(src.ancho), largo: String(src.largo),
-        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
+        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot.id,
       }]);
-      if (slot?.id) {
-        supabase.from('picking_pallets').update({ peso_kg: src.peso, alto: src.alto, ancho: src.ancho, largo: src.largo })
-          .eq('id', slot.id).then(({ error }) => { if (error) console.error('[duplicarBulto]', error.message); });
-      }
+      supabase.from('picking_pallets').update({ peso_kg: src.peso, alto: src.alto, ancho: src.ancho, largo: src.largo })
+        .eq('id', slot.id).then(({ error }) => { if (error) console.error('[duplicarBulto]', error.message); });
     }
-    showToast(`✓ ${cantidad} bulto${cantidad === 1 ? '' : 's'} duplicado${cantidad === 1 ? '' : 's'}`, '#16A34A');
+    if (creados > 0) showToast(`✓ ${creados} bulto${creados === 1 ? '' : 's'} duplicado${creados === 1 ? '' : 's'}`, '#16A34A');
   };
 
   // Mapea el tipo del slot (P/B/C/CH) al TipoPaquete del formulario
@@ -958,7 +950,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
-  const saveRow = (row: FormRow, sinPesar = false) => {
+  const saveRow = async (row: FormRow, sinPesar = false) => {
     if (!selectedTienda) return;
     const isCont = row.pkg === 'contenedor';
     const isChoc = row.pkg === 'chocolate';
@@ -977,6 +969,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const errores = (isCont || isChoc) ? [] : validarDimensiones(row.pkg, p, a, aw, l);
       if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
     }
+    // A diferencia de Santiago, este flujo no reintentaba crear el slot al confirmar: si
+    // `addFormRow` falló al crearlo (carrera con otra alta concurrente — RC-4), el pallet
+    // quedaba "confirmado" en el resumen local sin fila real en picking_pallets, invisible
+    // para Seguimiento/Enrutador/Conteo de Flota. Último intento acá, igual que Santiago.
+    let slotId = row.pickingSlotId;
+    if (!slotId) {
+      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: TIENDAS[selectedTienda]?.cod ?? '', tipo: pkgCodeNacional(row.pkg), contenido: 'hogar' });
+      if (!slot) { showToast(`⚠ No se pudo guardar (${error}) — reintenta`, '#D32F2F'); return; }
+      slotId = slot.id;
+      setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
+    }
     const currentItems = dispatchData[selectedTienda] || [];
     const pc  = currentItems.filter(i => i.pkg === 'pallet').length + 1;
     const bc  = currentItems.filter(i => i.pkg === 'box').length + 1;
@@ -985,31 +988,28 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const orden = row.pkg === 'pallet' ? `pallet${pc}` : isCont ? `contenedor${cc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[currentItems.length]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
-    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId } });
+    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId } });
     if (hasPdf && pdfInfo) {
-      const newItems = [...currentItems, { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: 0, pickingSlotId: row.pickingSlotId }];
+      const newItems = [...currentItems, { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: 0, pickingSlotId: slotId }];
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const pickingSlot = row.pickingSlotId
-      ? (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === row.pickingSlotId)
-      : null;
-    const savedItem: DispatchItem = { id: crypto.randomUUID(), orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: row.pickingSlotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
+    const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
+    const savedItem: DispatchItem = { id: crypto.randomUUID(), orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${orden} agregado`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
-      tiendaNombre: selectedTienda, label: ordenToLabel(orden), peso: p, alto: a, slotId: row.pickingSlotId });
+      tiendaNombre: selectedTienda, label: ordenToLabel(orden), peso: p, alto: a, slotId });
 
-    // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
-    if (row.pickingSlotId) {
-      const pesoV = sinPesar ? 0 : (Math.round((a * aw * l) / 6000 * 10) / 10 || null);
-      supabase.from('picking_pallets').update({
-        peso_kg: p, alto: a, ancho: aw, largo: l, peso_v: pesoV,
-      }).eq('id', row.pickingSlotId).then(({ error }) => {
-        if (error) console.error('[picking_pallets update]', error.message);
-      });
-    }
+    // Sincronizar dimensiones en picking_pallets — a esta altura slotId siempre existe (si
+    // faltaba, se creó arriba o la función ya retornó).
+    const pesoV = sinPesar ? 0 : (Math.round((a * aw * l) / 6000 * 10) / 10 || null);
+    supabase.from('picking_pallets').update({
+      peso_kg: p, alto: a, ancho: aw, largo: l, peso_v: pesoV,
+    }).eq('id', slotId).then(({ error }) => {
+      if (error) console.error('[picking_pallets update]', error.message);
+    });
   };
 
 
@@ -1065,20 +1065,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const reAgregarItem = async (item: DispatchItem, tienda: string) => {
     const cod = TIENDAS[tienda]?.cod ?? '';
     let slotId: number | undefined;
-    try {
-      const res = await fetch('/api/picking-pallets/create-bodega', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(item.pkg), contenido: 'hogar' }),
-      });
-      const slot = (await res.json() as { data?: PickingSlot }).data;
-      if (slot) { slotId = slot.id; setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] })); }
-    } catch { /* sin slot: se re-agrega igual (sin #) */ }
+    const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(item.pkg), contenido: 'hogar' });
+    if (slot) { slotId = slot.id; setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] })); }
     dispatch({ type: 'ADD_ITEM', tienda, item: { ...item, pickingSlotId: slotId } });
     if (slotId) {
       supabase.from('picking_pallets').update({ peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo })
         .eq('id', slotId).then(({ error }) => { if (error) console.error('[reAgregar picking update]', error.message); });
     }
-    showToast(`↩ ${ordenToLabel(item.orden)} restaurado`, '#16A34A');
+    // Se re-agrega igual sin # cuando falla la creación (mejor que perder la restauración),
+    // pero ahora AVISA — antes fallaba en silencio y el pallet quedaba invisible para
+    // Seguimiento/Enrutador sin que nadie lo notara.
+    if (slotId) showToast(`↩ ${ordenToLabel(item.orden)} restaurado`, '#16A34A');
+    else showToast(`⚠ ${ordenToLabel(item.orden)} restaurado sin # de bodega (${error})`, '#D97706');
   };
 
   // [Revertir unificación] Deshace una unión: re-crea el slot del source, restaura el peso del
@@ -1089,15 +1087,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const { name, itemsAntes, sourceItem, oldSrcSlot, tgtSlot, tgtPeso } = snap;
     const cod = TIENDAS[name]?.cod ?? '';
     let newSrcSlotId: number | undefined;
-    let nuevoSlot: PickingSlot | undefined;
-    try {
-      const res = await fetch('/api/picking-pallets/create-bodega', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' }),
-      });
-      nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
-      if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
-    } catch { /* sin slot: el source queda sin # */ }
+    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' });
+    if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
+    // El source queda sin # si falla — ahora AVISA en vez de fallar en silencio.
+    else showToast(`⚠ Revertido sin # de bodega para el source (${error})`, '#D97706');
     if (tgtSlot) supabase.from('picking_pallets').update({ peso_kg: tgtPeso }).eq('id', tgtSlot).then(({ error }) => { if (error) console.error('[revert union tgt]', error.message); });
     if (newSrcSlotId) supabase.from('picking_pallets').update({ peso_kg: sourceItem.peso, alto: sourceItem.alto, ancho: sourceItem.ancho, largo: sourceItem.largo }).eq('id', newSrcSlotId).then(({ error }) => { if (error) console.error('[revert union src]', error.message); });
     setPickingSlotsFull(prev => {
