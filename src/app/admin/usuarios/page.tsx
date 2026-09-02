@@ -660,6 +660,12 @@ export default function UsuariosPage() {
                 </div>
                 <button onClick={() => { setApproveTarget(u); setApproveRole('despachador'); setBellOpen(false); }}
                   style={{ ...BTN_PRIMARY, padding: '6px 12px', fontSize: 12, background: C.good }}>Aprobar</button>
+                {/* Rechazar también desde la campanita, para no tener que ir al panel. */}
+                <button onClick={() => { setDeleteTarget(u); setBellOpen(false); }}
+                  title={`Rechazar la solicitud de ${u.email}`} aria-label={`Rechazar la solicitud de ${u.email}`}
+                  style={{ ...BTN_SECONDARY, padding: '6px 9px', fontSize: 12, color: C.danger, borderColor: C.dangerBorder, background: C.dangerSoft }}>
+                  <X size={13} />
+                </button>
               </div>
             ))}
           </div>
@@ -669,6 +675,14 @@ export default function UsuariosPage() {
       {/* ── Body ── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
+        {/* Aviso de propagación de permisos. Va FUERA de los tabs a propósito: los permisos se
+            guardan desde el tab ROLES, así que dentro del tab Usuarios nunca se veía. */}
+        {propagacion && (
+          <div style={{ maxWidth: 960, margin: '0 auto 16px', fontSize: 13, color: '#166534', textAlign: 'center', padding: '12px 14px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+            {propagacion}
+          </div>
+        )}
+
         {/* ═══ TAB: USUARIOS ═══ */}
         {activeTab === 'usuarios' && (
           <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -677,9 +691,6 @@ export default function UsuariosPage() {
               <div style={{ fontSize: 13, color: C.danger, textAlign: 'center', padding: '12px 14px', borderRadius: 8, marginBottom: 16, background: C.dangerSoft, border: `1px solid ${C.dangerBorder}` }}>{error}</div>
             )}
 
-            {propagacion && (
-              <div style={{ fontSize: 13, color: '#166534', textAlign: 'center', padding: '12px 14px', borderRadius: 8, marginBottom: 16, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>{propagacion}</div>
-            )}
 
             {!loading && (
               <>
@@ -714,6 +725,14 @@ export default function UsuariosPage() {
                         </div>
                         <button onClick={() => { setApproveTarget(u); setApproveRole('despachador'); }}
                           style={{ ...BTN_PRIMARY, background: C.good, padding: '7px 14px' }}>Aprobar y asignar rol</button>
+                        {/* Rechazar la solicitud: elimina la cuenta pendiente. Hace falta para los
+                            registros con el correo mal escrito, que antes no se podían quitar (solo
+                            se podían aprobar). Reusa el mismo flujo y confirmación que la tabla. */}
+                        <button onClick={() => setDeleteTarget(u)} title={`Rechazar la solicitud de ${u.email}`}
+                          aria-label={`Rechazar la solicitud de ${u.email}`}
+                          style={{ ...BTN_SECONDARY, color: C.danger, borderColor: C.dangerBorder, background: C.dangerSoft, padding: '7px 10px' }}>
+                          <X size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1038,11 +1057,17 @@ export default function UsuariosPage() {
       {deleteTarget && (
         <div style={OVERLAY} onClick={e => { if (e.target === e.currentTarget) setDeleteTarget(null); }}>
           <div style={{ ...CARD, maxWidth: 400 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>Eliminar usuario</span>
-            <div style={{ fontSize: 13, color: C.muted }}>¿Eliminar a <span style={{ fontWeight: 600, color: C.ink }}>{deleteTarget.full_name}</span>? Esta acción no se puede deshacer.</div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>
+              {deleteTarget.role === 'pending' ? 'Rechazar solicitud' : 'Eliminar usuario'}
+            </span>
+            <div style={{ fontSize: 13, color: C.muted }}>
+              {deleteTarget.role === 'pending'
+                ? <>¿Rechazar la solicitud de <span style={{ fontWeight: 600, color: C.ink }}>{deleteTarget.email}</span>? Se elimina la cuenta pendiente; la persona puede volver a registrarse con el correo correcto.</>
+                : <>¿Eliminar a <span style={{ fontWeight: 600, color: C.ink }}>{deleteTarget.full_name}</span>? Esta acción no se puede deshacer.</>}
+            </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setDeleteTarget(null)} disabled={deleting} style={{ ...BTN_SECONDARY, flex: 1, justifyContent: 'center' }}>Cancelar</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ ...BTN_PRIMARY, flex: 1, justifyContent: 'center', background: C.danger, opacity: deleting ? 0.6 : 1 }}>{deleting ? 'Eliminando…' : 'Eliminar'}</button>
+              <button onClick={handleDelete} disabled={deleting} style={{ ...BTN_PRIMARY, flex: 1, justifyContent: 'center', background: C.danger, opacity: deleting ? 0.6 : 1 }}>{deleting ? 'Eliminando…' : deleteTarget.role === 'pending' ? 'Rechazar' : 'Eliminar'}</button>
             </div>
           </div>
         </div>
