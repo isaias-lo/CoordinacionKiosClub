@@ -116,11 +116,39 @@ export function stampFromFecha(fecha: string): string {
 export function poolPendiente(
   calT: Record<string, { on: boolean; p: number; b: number; ch?: number }>,
   asignaciones: Record<string, { c: string }[]>,
+  /**
+   * [P10] Carga REALMENTE registrada para esa fecha (`despacho_sesion`), como respaldo de `calT`.
+   *
+   * Sin esto, una tienda armada y registrada podía desaparecer del backlog de 2ª vuelta: el
+   * leftover salía SOLO de las llaves de `calT` (el pool del calendario), así que si la tienda no
+   * estaba en ese `calT` —porque el día se cerró con el calendario de otra jornada cargado, o
+   * porque su `on` quedó en false— no era pendiente por más carga registrada que tuviera.
+   * Caso real: 40LIL del 01/09 quedó con 3 pallets + 4 chocolates (964 kg) registrados, sin
+   * patente y fuera del backlog: invisible para la operación pese a estar toda la data en la BD.
+   *
+   * Se unen ambas fuentes: manda `calT` cuando la tienda está ahí con carga (tiene los conteos más
+   * frescos del tablero) y entra por `registrado` cuando `calT` no la tiene.
+   */
+  registrado: { cod: string; pallets: number; bultos: number; contenedores?: number; chocolates?: number }[] = [],
 ): { leftover: { c: string; p: number; b: number; ch: number }[]; asignadas: Set<string> } {
   const asignadas = new Set(Object.values(asignaciones).flat().map(s => s.c));
-  const leftover = Object.keys(calT)
-    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
-    .filter(c => !asignadas.has(c))
-    .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
+  const porCod = new Map<string, { c: string; p: number; b: number; ch: number }>();
+
+  for (const c of Object.keys(calT)) {
+    if (!calT[c].on) continue;
+    if (!(calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)) continue;
+    porCod.set(c, { c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 });
+  }
+  for (const r of registrado) {
+    const c = r.cod;
+    if (!c || porCod.has(c)) continue;   // `calT` tiene prioridad: sus conteos son los del tablero
+    // Los contenedores ocupan piso como un pallet (misma regla que el pool del despacho).
+    const p = (r.pallets ?? 0) + (r.contenedores ?? 0);
+    const b = r.bultos ?? 0;
+    const ch = r.chocolates ?? 0;
+    if (p > 0 || b > 0 || ch > 0) porCod.set(c, { c, p, b, ch });
+  }
+
+  const leftover = [...porCod.values()].filter(s => !asignadas.has(s.c));
   return { leftover, asignadas };
 }
