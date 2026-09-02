@@ -320,10 +320,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
+    // [P5] Tiendas que ESTE cliente tiene en pantalla (con o sin carga): acota el borrado de
+    // `despacho_sesion` a su propio universo, para no borrar las cargadas por otra persona.
+    const conocidas: string[] = [];
     Object.entries(dispatchData).forEach(([name, items]) => {
-      if (!items.length) return;
       const tienda = TIENDAS[name];
       if (!tienda) return;
+      conocidas.push(tienda.cod);
+      if (!items.length) return;
       const p  = items.filter(i => i.pkg === 'pallet').length;
       const b  = items.filter(i => i.pkg === 'box').length;
       const c  = items.filter(i => i.pkg === 'contenedor').length;
@@ -331,7 +335,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
-    pushCounts('regiones', counts).catch(() => {});
+    pushCounts('regiones', counts, conocidas).catch(() => {});
   }, [dispatchData]);
 
   /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
@@ -845,12 +849,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     else showToast('No se pudo asignar ningún PDF. Verifica que el nombre inicie con el código (ej: 53VAL-...).', '#D97706');
   };
 
+  // [P5] Claves `tienda:pkg` con una creación de slot en vuelo (anti doble-tap).
+  const addingSlotRef = useRef<Set<string>>(new Set());
+
   /* Multi-form row helpers */
   // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
   // en ese caso NO se crea un slot nuevo, se usa el reclamado.
   // countOffset: al "agregar de a N" (loop), el nº del chocolate se calcula del `dispatchData` del
   // closure (que NO se actualiza dentro del loop) → sin offset los N quedarían con el mismo nº.
-  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
+  const addFormRowInner = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
     const date = fechaISOLocal();
@@ -928,6 +935,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       });
       setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
     } catch { /* fallback: el row queda sin slot */ }
+  };
+
+  // [P5] Guarda anti doble-tap: crear un slot NO es idempotente, así que dos toques seguidos (o un
+  // reintento por red lenta) generaban DOS pallets/chocolates físicos. Se bloquea por
+  // tienda+tipo mientras la creación está en vuelo. El "agregar de a N" no se ve afectado: hace
+  // `await` de cada llamada, así que la guarda ya está liberada en la siguiente vuelta.
+  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
+    const key = `${selectedTienda}:${pkg}`;
+    if (addingSlotRef.current.has(key)) return;
+    addingSlotRef.current.add(key);
+    try { await addFormRowInner(pkg, existingSlot, countOffset); }
+    finally { addingSlotRef.current.delete(key); }
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,

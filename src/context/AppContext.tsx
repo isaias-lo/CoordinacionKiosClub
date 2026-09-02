@@ -7,6 +7,7 @@ import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remot
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
+import { serializarBase } from '@/features/despacho/shared/syncBase';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -198,15 +199,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
   stateRef.current      = state;
+  // [P5] Base del merge / corta-ecos. SIEMPRE con `serializarBase` (misma forma en todos los
+  // puntos): antes cada sitio serializaba una forma distinta del mismo objeto, así que la
+  // comparación no coincidía nunca y cada equipo re-empujaba todo remoto que adoptaba.
   const lastPushedRef   = useRef<string>((() => {
     if (typeof window === 'undefined') return '';
     try {
       const raw = localStorage.getItem(REGIONES_KEY);
       if (!raw) return '';
-      const parsed = JSON.parse(raw);
-      return JSON.stringify({ dispatch: parsed.dispatch || {}, pdfData: parsed.pdfData || {} });
+      return serializarBase(JSON.parse(raw));
     } catch { return ''; }
   })());
+  // Payload COMPLETO del último push (incluye fechaDespacho/registrado): solo para el chequeo de
+  // "¿cambió algo que haya que empujar?". No se usa como base del merge.
+  const lastPushedFullRef = useRef<string>('');
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
@@ -216,6 +222,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const lastServerStampRef     = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
   const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
+  // [P5] Catch-up programado cuando un remoto cae dentro de la ventana de 3 s post-push.
+  const ventanaCatchupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -226,8 +234,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Block if local push is pending (debounce) or in-flight (async upsert).
       // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
       if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
-      // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to overwrite our data
-      if (Date.now() - lastPushCompletedAtRef.current < 3_000) return;
+      // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to overwrite our data.
+      // [P5] Pero NO se descarta: se PROGRAMA un catch-up para cuando la ventana expire. Antes era un
+      // `return` seco y el cambio del compañero se perdía para siempre (el `pendingCatchupRef` de
+      // arriba solo se consume al terminar un push, y acá el push ya terminó). Con varias personas
+      // registrando —cada una empuja cada ~2.5 s— es muy probable que un push ajeno caiga justo en
+      // esta ventana; sin esto, se perdían registros de otros en silencio.
+      const restante = 3_000 - (Date.now() - lastPushCompletedAtRef.current);
+      if (restante > 0) {
+        if (ventanaCatchupRef.current === null) {
+          ventanaCatchupRef.current = setTimeout(() => {
+            ventanaCatchupRef.current = null;
+            catchUpRef.current();
+          }, restante + 50);
+        }
+        return;
+      }
       // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string; pushedAt?: number; registrado?: boolean };
@@ -238,7 +260,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // SERVIDOR (updated_at) para no depender del reloj de cada equipo; sin server-stamp cae al
       // pushedAt del cliente (comportamiento previo). Evita que un push stale pise lo ya guardado.
       if (remotoEsMasViejo(updatedAt, lastServerStampRef.current, remote.pushedAt, lastPushTimestampRef.current)) return;
-      const remoteStr = JSON.stringify(remoteState);
+      // [P5] Corta-ecos con la MISMA serialización que la base (antes se comparaba el remoto crudo
+      // —con sessionDate/pushedAt— contra una base sin esos campos, así que no coincidía nunca y
+      // cada equipo re-empujaba lo que adoptaba: tormenta de escrituras que no converge).
+      const remoteStr = serializarBase(remoteState as { dispatch?: unknown; pdfData?: unknown });
       if (remoteStr === lastPushedRef.current) return; // already in sync
       // Voy a incorporar este remoto → avanzo el reloj de servidor de referencia.
       if (updatedAt != null && updatedAt > lastServerStampRef.current) lastServerStampRef.current = updatedAt;
@@ -270,7 +295,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const localPdf  = stateRef.current.pdfData;
       const mergedPdf: Record<string, PdfData> = mergeEntriesByKey(remotePdf, localPdf, lastPdfData);
 
-      const localStr = JSON.stringify({ dispatch: localDispatch, pdfData: localPdf });
+      // Si lo local no cambió desde el último push, adoptamos el remoto como nueva base (y así no
+      // se re-empuja). Ambos lados con `serializarBase` → la comparación ahora sí puede coincidir.
+      const localStr = serializarBase({ dispatch: localDispatch, pdfData: localPdf });
       if (localStr === lastPushedRef.current) lastPushedRef.current = remoteStr;
 
       // Adoptar "registrado" desde otro equipo (solo si el remoto está registrado; nunca
@@ -316,7 +343,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch {}
     }, 15_000);
 
-    return () => { unsub(); clearInterval(pollId); };
+    return () => {
+      unsub(); clearInterval(pollId);
+      if (ventanaCatchupRef.current) { clearTimeout(ventanaCatchupRef.current); ventanaCatchupRef.current = null; }
+    };
   }, [userId]);
 
   // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
@@ -326,8 +356,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isInitializedRef.current) return;
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado };
+    // [P5] "¿Hay algo que empujar?" mira el payload COMPLETO (incluye fechaDespacho/registrado);
+    // la BASE del merge y del corta-ecos se guarda aparte con `serializarBase`.
     const current = JSON.stringify(payload);
-    if (current === lastPushedRef.current) return;
+    if (current === lastPushedFullRef.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -336,14 +368,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isEmpty = Object.keys(payload.dispatch).length === 0 && Object.keys(payload.pdfData).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
       const prevLastPushed = lastPushedRef.current;
-      lastPushedRef.current = current;
+      const prevLastFull   = lastPushedFullRef.current;
+      lastPushedRef.current     = serializarBase(payload);
+      lastPushedFullRef.current = current;
       isPushingRef.current = true; // block handleRemote during the async upsert
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
       // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
       pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
         .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
-        .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
+        .catch(() => { lastPushedRef.current = prevLastPushed; lastPushedFullRef.current = prevLastFull; }) // reset so dirty check retries correctly
         .finally(() => {
           isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now();
           // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
@@ -379,15 +413,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!isInitializedRef.current) return;
     const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado };
     const current = JSON.stringify(payload);
-    if (current === lastPushedRef.current) return;
+    if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     const prevPushed = lastPushedRef.current;
-    lastPushedRef.current = current;
+    const prevFull   = lastPushedFullRef.current;
+    lastPushedRef.current     = serializarBase(payload);
+    lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
       .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
-      .catch(() => { lastPushedRef.current = prevPushed; })
+      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; })
       .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);

@@ -17,8 +17,20 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Write counts for today to Supabase (upsert) and drop stale rows. Fire-and-forget. */
-export async function pushCounts(fuente: 'regiones' | 'santiago' | 'congelados-regiones' | 'congelados-santiago', counts: CountMap): Promise<void> {
+/**
+ * Write counts for today to Supabase (upsert) and drop stale rows. Fire-and-forget.
+ *
+ * [P5] `conocidas` = códigos que ESTE cliente tiene en pantalla (con o sin carga). El borrado de
+ * filas obsoletas se limita a ese universo. Antes se borraba TODO lo que no estuviera en `counts`,
+ * así que un usuario recién entrado —cuyo estado todavía es parcial— borraba de `despacho_sesion`
+ * las tiendas cargadas por sus compañeros, y el Enrutador/Manual las perdía. Sin `conocidas` no se
+ * borra nada (solo se hace upsert): más vale una fila fantasma que perder carga ajena.
+ */
+export async function pushCounts(
+  fuente: 'regiones' | 'santiago' | 'congelados-regiones' | 'congelados-santiago',
+  counts: CountMap,
+  conocidas?: string[],
+): Promise<void> {
   const entries = Object.entries(counts);
   // Sin tiendas cargadas → no tocar nada. Evita borrar la data del día durante el arranque,
   // cuando dispatchData aún no se hidrató (guarda anti-wipe).
@@ -46,13 +58,17 @@ export async function pushCounts(fuente: 'regiones' | 'santiago' | 'congelados-r
   // Mantener despacho_sesion en sync con la pantalla: borrar las filas de HOY de esta fuente
   // cuyas tiendas ya NO tienen carga (se quitaron o vaciaron). Sin esto, una tienda cargada y
   // luego retirada quedaba como "fantasma" en el Manual/Enrutador (upsert nunca borra).
-  const keep = entries.map(([cod]) => `"${cod}"`).join(',');
+  // El borrado se limita a las tiendas que ESTE cliente conoce (ver `conocidas` arriba).
+  if (!conocidas?.length) return;
+  const conCarga = new Set(entries.map(([cod]) => cod));
+  const vaciadas = [...new Set(conocidas)].filter(cod => cod && !conCarga.has(cod));
+  if (!vaciadas.length) return;
   try {
     await supabase.from('despacho_sesion')
       .delete()
       .eq('fecha', fecha)
       .eq('fuente', fuente)
-      .not('tienda_cod', 'in', `(${keep})`);
+      .in('tienda_cod', vaciadas);
   } catch { /* fire-and-forget: un fallo al limpiar no debe romper el guardado */ }
 }
 

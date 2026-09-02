@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Builder encadenable de Supabase mockeado: captura upsert y la cadena delete().eq().eq().not().
+// Builder encadenable de Supabase mockeado: captura upsert y la cadena delete().eq().eq().in().
 const h = vi.hoisted(() => {
-  const notFn  = vi.fn().mockResolvedValue({ error: null });
-  const eq2    = vi.fn(() => ({ not: notFn }));
+  const inFn   = vi.fn().mockResolvedValue({ error: null });
+  const eq2    = vi.fn(() => ({ in: inFn }));
   const eq1    = vi.fn(() => ({ eq: eq2 }));
   const del    = vi.fn(() => ({ eq: eq1 }));
   const upsert = vi.fn().mockResolvedValue({ error: null });
   const from   = vi.fn(() => ({ upsert, delete: del }));
   const getSession = vi.fn().mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
-  return { notFn, eq2, eq1, del, upsert, from, getSession };
+  return { inFn, eq2, eq1, del, upsert, from, getSession };
 });
 
 vi.mock('@/lib/supabase', () => ({
@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.getSession.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
   h.upsert.mockResolvedValue({ error: null });
-  h.notFn.mockResolvedValue({ error: null });
+  h.inFn.mockResolvedValue({ error: null });
 });
 
 describe('pushCounts', () => {
@@ -38,16 +38,29 @@ describe('pushCounts', () => {
     expect(rows.every(r => r.fuente === 'regiones')).toBe(true);
   });
 
-  it('borra las filas de HOY cuya tienda ya no tiene carga (fantasmas)', async () => {
-    await pushCounts('regiones', {
-      '39PSB': { p: 1, b: 1, c: 0, ch: 0 },
-      '53VAL': { p: 1, b: 0, c: 0, ch: 0 },
-    });
+  it('borra SOLO las tiendas que este cliente conoce y quedaron sin carga', async () => {
+    await pushCounts(
+      'regiones',
+      { '39PSB': { p: 1, b: 1, c: 0, ch: 0 }, '53VAL': { p: 1, b: 0, c: 0, ch: 0 } },
+      ['39PSB', '53VAL', '27MCH'], // 27MCH está en pantalla pero ya sin carga
+    );
     expect(h.del).toHaveBeenCalledTimes(1);
     expect(h.eq1).toHaveBeenCalledWith('fecha', expect.any(String));
     expect(h.eq2).toHaveBeenCalledWith('fuente', 'regiones');
-    // Conserva solo las cargadas → borra el resto (NOT IN).
-    expect(h.notFn).toHaveBeenCalledWith('tienda_cod', 'in', '("39PSB","53VAL")');
+    expect(h.inFn).toHaveBeenCalledWith('tienda_cod', ['27MCH']);
+  });
+
+  // [P5] El bug: un usuario recién entrado (estado parcial) borraba las tiendas de sus compañeros.
+  it('sin `conocidas` NO borra nada — solo upserta', async () => {
+    await pushCounts('regiones', { '39PSB': { p: 1, b: 0, c: 0, ch: 0 } });
+    expect(h.upsert).toHaveBeenCalledTimes(1);
+    expect(h.del).not.toHaveBeenCalled();
+  });
+
+  it('no borra tiendas ajenas: las que no están en `conocidas` quedan intactas', async () => {
+    await pushCounts('regiones', { '39PSB': { p: 1, b: 0, c: 0, ch: 0 } }, ['39PSB']);
+    // 53VAL la cargó otra persona y este cliente ni la vio → no se toca.
+    expect(h.del).not.toHaveBeenCalled();
   });
 
   it('guarda anti-wipe: sin tiendas cargadas NO toca la tabla', async () => {
@@ -65,8 +78,8 @@ describe('pushCounts', () => {
   });
 
   it('separa por fuente: Santiago solo borra filas santiago', async () => {
-    await pushCounts('santiago', { '32BNV': { p: 2, b: 0, c: 0, ch: 0 } });
+    await pushCounts('santiago', { '32BNV': { p: 2, b: 0, c: 0, ch: 0 } }, ['32BNV', '18FLO']);
     expect(h.eq2).toHaveBeenCalledWith('fuente', 'santiago');
-    expect(h.notFn).toHaveBeenCalledWith('tienda_cod', 'in', '("32BNV")');
+    expect(h.inFn).toHaveBeenCalledWith('tienda_cod', ['18FLO']);
   });
 });
