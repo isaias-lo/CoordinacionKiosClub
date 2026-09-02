@@ -125,6 +125,8 @@ export default function UsuariosPage() {
   const [users,        setUsers]        = useState<AppUser[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState('');
+  // [P9] Aviso de propagación tras guardar permisos de un rol (a cuántos usuarios alcanzó).
+  const [propagacion,  setPropagacion]  = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const [bellOpen,     setBellOpen]     = useState(false);
 
@@ -283,10 +285,18 @@ export default function UsuariosPage() {
         headers,
         body: JSON.stringify(body),
       });
-      const data = await res.json() as { error?: string };
+      const data = await res.json() as { error?: string; actualizados?: number; fallidos?: number };
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
       setPendingPerms(prev => { const n = { ...prev }; delete n[role.id]; return n; });
       setPendingSectionPerms(prev => { const n = { ...prev }; delete n[role.id]; return n; });
+      // [P9] El permiso de cada persona es una copia en su token: el servidor la re-estampa y acá
+      // se informa a cuántos alcanzó, más el aviso de que la sesión abierta lo toma al volver a
+      // la pestaña (antes el cambio "no llegaba" y no había ninguna señal de por qué).
+      const n = data.actualizados ?? 0;
+      setPropagacion(n > 0
+        ? `Permisos guardados · ${n} usuario${n === 1 ? '' : 's'} actualizado${n === 1 ? '' : 's'}${data.fallidos ? ` · ${data.fallidos} con error` : ''}. Lo verán al volver a la pestaña o al reingresar.`
+        : 'Permisos guardados · ningún usuario tiene este rol todavía.');
+      setTimeout(() => setPropagacion(''), 8000);
       setRoles(prev => prev.map(r => r.id === role.id ? {
         ...r,
         ...(newPaths ? { allowed_paths: newPaths } : {}),
@@ -665,6 +675,10 @@ export default function UsuariosPage() {
             {loading && <div style={{ textAlign: 'center', color: C.faint, padding: '64px 0', fontSize: 14 }}>Cargando usuarios…</div>}
             {error && (
               <div style={{ fontSize: 13, color: C.danger, textAlign: 'center', padding: '12px 14px', borderRadius: 8, marginBottom: 16, background: C.dangerSoft, border: `1px solid ${C.dangerBorder}` }}>{error}</div>
+            )}
+
+            {propagacion && (
+              <div style={{ fontSize: 13, color: '#166534', textAlign: 'center', padding: '12px 14px', borderRadius: 8, marginBottom: 16, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>{propagacion}</div>
             )}
 
             {!loading && (
