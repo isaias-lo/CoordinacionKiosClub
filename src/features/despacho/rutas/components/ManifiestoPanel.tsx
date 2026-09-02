@@ -340,10 +340,22 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     return s;
   });
 
-  // Rebuild whenever rutas changes (e.g. chofer re-assigned)
+  // Rebuild whenever rutas changes (e.g. chofer re-assigned, o se cierra otro camión y el panel
+  // acumula un manifiesto más). PRESERVA lo ya guardado (`id` + `token_qr`) emparejando por
+  // PATENTE: antes el rebuild hacía `setSaved({})` y volvía a construir desde cero, así que al
+  // cerrar un camión nuevo se borraba el QR de los manifiestos ya guardados. La patente es la
+  // identidad estable del camión (el `codigo_ruta` puede correrse si cambia `offsetSeq`).
   useEffect(() => {
-    setManifiestos(rutas.map((r, i) => fromRuta(r, i, fecha, tiendas, i + offsetSeq)));
-    setSaved({});
+    setManifiestos(prev => {
+      const yaGuardado = new Map(
+        prev.filter(m => m.id != null).map(m => [String(m.patente ?? '').trim().toUpperCase(), m]),
+      );
+      return rutas.map((r, i) => {
+        const nuevo = fromRuta(r, i, fecha, tiendas, i + offsetSeq);
+        const anterior = yaGuardado.get(String(nuevo.patente ?? '').trim().toUpperCase());
+        return anterior ? { ...nuevo, id: anterior.id, token_qr: anterior.token_qr } : nuevo;
+      });
+    });
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
@@ -617,7 +629,9 @@ ${bodies}
           {manifiestos.map((m, idx) => {
             const qrUrl     = m.token_qr ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${m.token_qr}` : '';
             const estadoCol = ESTADO_COLOR[m.estado] ?? '#8E8E93';
-            const isSaved   = saved[idx];
+            // `m.id != null` sobrevive a los rebuilds (se preserva por patente); `saved[idx]` es
+            // solo el eco inmediato del guardado en esta sesión.
+            const isSaved   = saved[idx] || m.id != null;
             const isSaving  = saving[idx];
             const isChecked = selected.has(idx);
 

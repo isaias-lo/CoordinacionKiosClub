@@ -1366,7 +1366,18 @@ export default function RutasScreen() {
     cerradasV1Ref.current = next;
     setCerradasV1(next);
     if (!skipPush) pushCerradasV1(next);
-    setManifiestoV1([ruta]);
+    // ACUMULA los manifiestos del día en vez de reemplazar. Antes era `setManifiestoV1([ruta])`:
+    // al cerrar varios camiones (uno a uno o en masa) solo sobrevivía el ÚLTIMO, y como es
+    // ManifiestoPanel quien persiste a rutas_despacho/ruta_tiendas y genera el token_qr, los
+    // demás camiones quedaban SIN manifiesto guardado y sin QR de fiscalización.
+    // El updater funcional es obligatorio: el cierre en masa hace forEach en un mismo tick de
+    // React, así que con el closure congelado los setState se pisarían igual (mismo motivo por
+    // el que `cerradasV1` usa un ref). Se agrega al FINAL (append) y se deduplica por patente:
+    // el orden de cierre es el que numera las rutas vía `offsetSeq`.
+    setManifiestoV1(prev => [
+      ...(prev ?? []).filter(r => normPatente(r.v.p) !== normPatente(ruta.v.p)),
+      ruta,
+    ]);
 
     // 6) Si con este cierre quedan TODAS las rutas cerradas → completar el día:
     //    postear summary (una vez) y marcar 'rutas_reg' (igual que el registro global).
