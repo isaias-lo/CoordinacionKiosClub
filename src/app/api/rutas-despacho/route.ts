@@ -52,6 +52,39 @@ export async function POST(request: NextRequest) {
   // después). El token es un UUID no adivinable, así que extenderlo es de bajo riesgo.
   const tokenExp = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  // Idempotencia por (fecha, codigo_ruta). El panel ahora acumula los manifiestos del día y
+  // "Guardar (N)" persiste varios de golpe, así que un doble clic o un reintento de red podía
+  // crear filas duplicadas (el insert es plano y no hay unique en la tabla). Si el manifiesto ya
+  // existe se reutiliza — conservando su `token_qr`, para que el QR ya impreso siga sirviendo.
+  const { data: existente } = await supabaseServer()
+    .from('rutas_despacho')
+    .select('*')
+    .eq('fecha', body.fecha)
+    .eq('codigo_ruta', body.codigo_ruta)
+    .maybeSingle();
+
+  if (existente) {
+    // Si quedó a medias (ruta creada pero sin tiendas, p. ej. por un error en el insert de
+    // `ruta_tiendas`), se completan; si ya están, no se toca nada.
+    const { count } = await supabaseServer()
+      .from('ruta_tiendas')
+      .select('id', { count: 'exact', head: true })
+      .eq('ruta_id', existente.id);
+    if (!count && body.tiendas?.length) {
+      await supabaseServer().from('ruta_tiendas').insert(body.tiendas.map(t => ({
+        ruta_id:      existente.id,
+        store_cod:    t.store_cod,
+        nombre:       t.nombre   ?? null,
+        ventana:      t.ventana  ?? null,
+        orden:        t.orden,
+        pallets:      t.pallets,
+        bultos:       t.bultos,
+        contenedores: t.contenedores ?? 0,
+      })));
+    }
+    return NextResponse.json({ data: existente, idempotent: true });
+  }
+
   const { data: ruta, error: rutaErr } = await supabaseServer()
     .from('rutas_despacho')
     .insert({
