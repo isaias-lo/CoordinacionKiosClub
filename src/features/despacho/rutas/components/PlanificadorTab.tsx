@@ -499,7 +499,10 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     : endMode === 'custom' ? (endCoord ? (endAddr || 'Punto de llegada') : 'Ingresar dirección…')
     : `Volver a ${endLabelCorto}`;
 
-  const seg = 'flex-1 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors';
+  // `min-w-0` + `whitespace-nowrap`: el segmentado de LLEGADA tiene 4 opciones y en un panel
+  // angosto recortaba la última ("Dire…"). Con `flex-wrap` en el contenedor pasa a dos filas
+  // en vez de cortarse, y cada botón conserva su texto completo.
+  const seg = 'flex-1 min-w-0 whitespace-nowrap py-1.5 px-1 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors text-center';
   const visibles = routes.filter(r => visibleIds.includes(r.id));
 
   return (
@@ -654,16 +657,20 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         )}
       </div>
 
-      {/* 2 columnas en desktop: (izq) partida + agregar tiendas · (der) paradas/ruta */}
-      <div className="grid gap-4 items-start lg:grid-cols-2">
+      {/* 2 columnas cuando el panel REALMENTE es ancho: (izq) partida + agregar tiendas · (der)
+          paradas/ruta. Antes usaba `lg:grid-cols-2`, un breakpoint de VIEWPORT: en el tab PLAN el
+          mapa se lleva media pantalla, así que el viewport seguía siendo "lg" pero el panel quedaba
+          angosto → dos columnas apretadas y textos cortados ("RUTA 2 · 0 PAR…", "Volver a CD K…").
+          Con auto-fit + minmax el layout responde al ancho del contenedor y se apila solo. */}
+      <div className="grid gap-4 items-start [grid-template-columns:repeat(auto-fit,minmax(340px,1fr))]">
         <div className="flex flex-col gap-4 min-w-0">
 
       {/* Partida + llegada lado a lado en desktop (ahorra alto) */}
-      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3 items-start">
+      <div className="grid gap-x-4 gap-y-3 items-start [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
       {/* Punto de partida (compartido por todas las rutas) */}
       <div className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de partida <span className="normal-case font-semibold text-kmuted/70">· común a todas</span></div>
-        <div className="flex gap-1 bg-kbg rounded-[10px] p-1">
+        <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
           <button onClick={() => setStartMode('cd')}     className={`${seg} ${startMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
           <button onClick={() => setStartMode('tienda')} className={`${seg} ${startMode === 'tienda' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Tienda</button>
           <button onClick={() => setStartMode('custom')} className={`${seg} ${startMode === 'custom' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Dirección</button>
@@ -691,7 +698,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             <div className="text-[11px] text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? '⚠ No se encontró la dirección' : 'Escribí y elegí una sugerencia (o tocá Buscar).'}</div>
           </div>
         )}
-        <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5">
+        <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5 min-w-0">
           <Navigation size={13} className="text-[#D42B2B] flex-shrink-0" /> <span className="font-semibold truncate">{startLabel}</span>
         </div>
       </div>
@@ -699,7 +706,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       {/* Punto de llegada (compartido) — al terminar la ruta */}
       <div className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de llegada <span className="normal-case font-semibold text-kmuted/70">· al terminar</span></div>
-        <div className="flex gap-1 bg-kbg rounded-[10px] p-1">
+        <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
           <button onClick={() => setEndMode('none')}   className={`${seg} ${endMode === 'none' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Ninguno</button>
           <button onClick={() => setEndMode('cd')}     className={`${seg} ${endMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
           <button onClick={() => setEndMode('start')}  className={`${seg} ${endMode === 'start' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Partida</button>
@@ -716,7 +723,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
         )}
         {endMode !== 'none' && (
-          <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5 min-w-0">
             <Flag size={13} className="text-[#0E7C6B] flex-shrink-0" /> <span className="font-semibold truncate">{endLabel}</span>
           </div>
         )}
@@ -796,16 +803,18 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
 
       {/* Paradas de la ruta activa */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">
+        {/* `flex-wrap` + `min-w-0`: con el panel angosto el encabezado se cortaba
+            ("RUTA 2 · 0 PAR…"). Ahora el resumen envuelve y "Limpiar" nunca queda tapado. */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted min-w-0">
             <span style={{ color: activeColor }}>{activeRoute.nombre}</span> · {selected.length} parada{selected.length === 1 ? '' : 's'}{selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}
           </div>
           {selected.length > 0 && (
-            <button onClick={limpiar} className="text-[11px] text-[#D42B2B] font-semibold cursor-pointer flex items-center gap-1"><Trash2 size={11} /> Limpiar</button>
+            <button onClick={limpiar} className="text-[11px] text-[#D42B2B] font-semibold cursor-pointer flex items-center gap-1 flex-shrink-0"><Trash2 size={11} /> Limpiar</button>
           )}
         </div>
         {selected.length > 0 && (
-          <div className="flex gap-1 bg-kbg rounded-[10px] p-1">
+          <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
             <button onClick={() => setOrderMode('cercania')} className={`${seg} flex items-center justify-center gap-1 ${orderMode === 'cercania' ? 'bg-knavy text-white' : 'text-kmuted'}`}><Sparkles size={12} /> Cercanía</button>
             <button onClick={() => setOrderMode('manual')}   className={`${seg} ${orderMode === 'manual' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Manual</button>
           </div>
