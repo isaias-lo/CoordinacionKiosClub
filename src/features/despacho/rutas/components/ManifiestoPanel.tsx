@@ -43,6 +43,10 @@ interface Props {
   /** Offset del consecutivo RUTA (para que al cerrar camiones uno a uno NO se repita -01).
    *  El código de cada ruta = RUTA-DDMMYY-(offsetSeq + posición + 1). Default 0 (impresión batch). */
   offsetSeq?: number;
+  /** [Ver manifiestos del día] Manifiestos YA guardados en `rutas_despacho`. Se emparejan por
+   *  PATENTE para reabrirlos con su código y su QR REALES en vez de regenerarlos — una reimpresión
+   *  con otro QR sería un documento distinto al que ya circuló. */
+  guardados?: { patente?: string | null; codigo_ruta?: string | null; id?: number | null; token_qr?: string | null; estado?: string | null }[];
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -321,7 +325,7 @@ ${body}
 }
 
 /* ── Component ──────────────────────────────────────────── */
-export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose, offsetSeq = 0 }: Props) {
+export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
@@ -350,16 +354,33 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
       const yaGuardado = new Map(
         prev.filter(m => m.id != null).map(m => [String(m.patente ?? '').trim().toUpperCase(), m]),
       );
+      // Manifiestos ya persistidos en la BD (para reabrir/reimprimir con su código y QR reales).
+      const enBD = new Map(
+        (guardados ?? [])
+          .filter(g => g?.patente)
+          .map(g => [String(g.patente).trim().toUpperCase(), g]),
+      );
       return rutas.map((r, i) => {
-        const nuevo = fromRuta(r, i, fecha, tiendas, i + offsetSeq);
-        const anterior = yaGuardado.get(String(nuevo.patente ?? '').trim().toUpperCase());
+        const base = fromRuta(r, i, fecha, tiendas, i + offsetSeq);
+        const pat  = String(base.patente ?? '').trim().toUpperCase();
+        // 1) lo guardado en la BD manda sobre el código regenerado…
+        const g = enBD.get(pat);
+        const nuevo = g
+          ? { ...base,
+              codigo_ruta: g.codigo_ruta ?? base.codigo_ruta,
+              estado:      g.estado ?? base.estado,
+              id:          g.id ?? undefined,
+              token_qr:    g.token_qr ?? undefined }
+          : base;
+        // 2) …y lo guardado en ESTA sesión tiene la última palabra (es lo más reciente).
+        const anterior = yaGuardado.get(pat);
         return anterior ? { ...nuevo, id: anterior.id, token_qr: anterior.token_qr } : nuevo;
       });
     });
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
-  }, [rutas, fecha, tiendas, offsetSeq]);
+  }, [rutas, fecha, tiendas, offsetSeq, guardados]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
   // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).

@@ -768,6 +768,19 @@ export default function RutasScreen() {
     setManualAsignaciones(asig);
   }
 
+  // [Ver manifiestos del día] Reabre el panel con TODOS los manifiestos ya guardados de la fecha,
+  // reconstruidos desde `rutas_despacho` (la fuente persistente). Sirve para reimprimir después de
+  // haber cerrado el panel: `manifiestoV1` es estado de la pantalla y se limpia al cerrarlo, así
+  // que sin esto no había forma de volver a ver/imprimir un manifiesto ya registrado.
+  // No re-guarda nada: el panel recibe los códigos y tokens QR REALES vía `guardados`.
+  function handleVerManifiestosDia() {
+    const asig = reconstruirAsignaciones(manifiestosGuardados);
+    if (!Object.keys(asig).length) return;
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+    const rutas = rutasDesdeAsignaciones(asig, flota, extGps, cdRef.current, extTiendas);
+    if (rutas.length) setManifiestoV1(rutas);
+  }
+
   // ── Debounced push manualAsignaciones → Supabase ─────────────────
   useEffect(() => {
     if (!isManualInitRef.current) return;
@@ -2156,8 +2169,14 @@ export default function RutasScreen() {
             </span>
             <span className="text-[10px] text-emerald-600/70 font-semibold">despacho registrado</span>
             <button
-              onClick={handleCargarManifiestosGuardados}
+              onClick={handleVerManifiestosDia}
               className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-emerald-500 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors active:scale-95 ml-auto"
+            >
+              Ver manifiestos
+            </button>
+            <button
+              onClick={handleCargarManifiestosGuardados}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-emerald-500/50 text-emerald-700/80 hover:bg-emerald-500/10 transition-colors active:scale-95"
             >
               Cargar en el tablero
             </button>
@@ -2461,6 +2480,7 @@ export default function RutasScreen() {
           // Consecutivo global: cada camión cerrado uno a uno toma el siguiente número
           // (antes todos salían -01 porque cada cierre era un lote nuevo con índice 0).
           offsetSeq={Math.max(0, cerradasV1.size - manifiestoV1.length)}
+          guardados={manifiestosGuardados}
         />
       )}
 
