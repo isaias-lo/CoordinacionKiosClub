@@ -182,7 +182,9 @@ describe('todayStr', () => {
 // Snapshot del pool de 2ª vuelta desde el tablero (Fase 3 PR3).
 
 describe('poolPendiente', () => {
-  const cal = (on: boolean, p: number, b = 0, ch = 0) => ({ on, p, b, c: 10, ch });
+  // `c` = CONTENEDORES (no el código). Antes este helper ponía `c: 10` fijo en TODAS las tiendas
+  // y la función lo ignoraba, así que los casos "sin carga" en realidad traían 10 contenedores.
+  const cal = (on: boolean, p: number, b = 0, ch = 0, c = 0) => ({ on, p, b, c, ch });
 
   it('marca como pendiente lo activo con carga que no está en ningún camión', () => {
     const calT = { A: cal(true, 3), B: cal(true, 2), C: cal(true, 1) };
@@ -233,6 +235,18 @@ describe('poolPendiente', () => {
       const calT = { A: cal(true, 9) };
       const { leftover } = poolPendiente(calT, {}, [reg('A', 1)]);
       expect(leftover).toEqual([{ c: 'A', p: 9, b: 0, ch: 0 }]);
+    });
+
+    it('los contenedores DE calT también ocupan piso (misma regla que los registrados)', () => {
+      // Antes la rama de `calT` ignoraba los contenedores mientras la de `registrado` los sumaba:
+      // la misma tienda daba distinto según por dónde entrara.
+      const { leftover } = poolPendiente({ A: cal(true, 1, 0, 0, 2) }, {});
+      expect(leftover).toEqual([{ c: 'A', p: 3, b: 0, ch: 0 }]);
+    });
+
+    it('una tienda de SOLO contenedores en calT queda pendiente', () => {
+      const { leftover } = poolPendiente({ A: cal(true, 0, 0, 0, 2) }, {});
+      expect(leftover).toEqual([{ c: 'A', p: 2, b: 0, ch: 0 }]);
     });
 
     it('los contenedores registrados ocupan piso (suman a p)', () => {

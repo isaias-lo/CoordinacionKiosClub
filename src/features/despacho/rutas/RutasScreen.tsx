@@ -21,6 +21,7 @@ import { grupoArmada } from './utils/flujoArmada';
 import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
+import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
 import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
@@ -59,7 +60,6 @@ function mergeCalT(
   newCal: CalRecord,
   fechaStr: string,
   prevCalT: Record<string, CalData>,
-  activeGrps: Set<string>
 ): Record<string, CalData> {
   const dia = getDia(fechaStr);
   const calDia = (newCal[dia] || newCal.LU || {}) as Record<string, string[]>;
@@ -84,13 +84,18 @@ function mergeCalT(
   });
 
   // Phase 2: append brand-new stores from newCal not previously seen
+  // `on: true` = "está en el pool de hoy". Sin carga todavía no entra a ningún cálculo (todos los
+  // consumidores piden `enElPool`, que exige carga), así que esto no ensancha nada: solo deja de
+  // depender del filtro de grupo, que no tiene por qué decidir qué se despacha.
   newStoreMap.forEach((grp, c) => {
-    next[c] = { on: activeGrps.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
+    next[c] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grp };
   });
 
   // Phase 3: preserve manual / non-empty stores removed from newCal
   Object.keys(prevCalT).forEach(c => {
-    if (!next[c] && (prevCalT[c].g === 'manual' || prevCalT[c].p > 0 || prevCalT[c].b > 0)) {
+    // Antes preguntaba solo por pallets y bultos: una tienda con SOLO chocolates o SOLO
+    // contenedores que salía del calendario a mitad de día se descartaba entera.
+    if (!next[c] && (prevCalT[c].g === 'manual' || tieneCarga(prevCalT[c]))) {
       next[c] = prevCalT[c];
     }
   });
@@ -176,7 +181,6 @@ export default function RutasScreen() {
   });
 
   const [modo,       setModo]       = useState('drag');
-  const [grps,       setGrps]       = useState(new Set(['rm']));
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   const [supervisor, setSupervisor] = useState('');
   const [fecha,      setFecha]      = useState(todayStr);
@@ -273,9 +277,6 @@ export default function RutasScreen() {
   // auto-scroll al arrastrar cerca del borde más confiable que buscarlo por DOM-walk.
   const v2ScrollRef = useRef<HTMLDivElement>(null);
 
-  const grpsRef = useRef(grps);
-  useEffect(() => { grpsRef.current = grps; }, [grps]);
-
   const fechaRef = useRef(fecha);
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
   const tiendasRef = useRef(tiendas);
@@ -325,7 +326,7 @@ export default function RutasScreen() {
         const { cal: newCal } = JSON.parse(e.newValue) as { cal: CalRecord; ts: number };
         setCal(newCal);
         // Merge new calendar into calT, preserving manually-entered p/b counts
-        setCalT(prev => mergeCalT(newCal, fechaRef.current, prev, grpsRef.current));
+        setCalT(prev => mergeCalT(newCal, fechaRef.current, prev));
       } catch {}
     };
     window.addEventListener('storage', handler);
@@ -347,7 +348,7 @@ export default function RutasScreen() {
       writeCalendario(dbCal);   // coherencia del cache in-memory + _calCentral (beneficia otras pestañas)
       setCal(dbCal);
       setCalT(prev => reaplicarCounts(
-        mergeCalT(dbCal, fechaRef.current, prev, grpsRef.current),
+        mergeCalT(dbCal, fechaRef.current, prev),
         sesionRowsRef.current,
         new Set(),
         (cod) => tiendasRef.current[cod]?.region,
@@ -371,7 +372,6 @@ export default function RutasScreen() {
             newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: (t as { ch?: number }).ch ?? 0, g: 'rm' };
           });
           setCalT(newCalT);
-          setGrps(new Set(['rm']));
           localStorage.removeItem('rutasInput');
         }
       }
@@ -402,7 +402,6 @@ export default function RutasScreen() {
               });
               return merged;
             });
-            setGrps(new Set(['rm']));
             localStorage.removeItem('rutasInput');
           }
         }
@@ -921,7 +920,7 @@ export default function RutasScreen() {
     const newCalT: Record<string, CalData> = {};
     ['rm','costa','fal'].forEach(grp => {
       ((calDia as Record<string, string[]>)[grp] || []).forEach(c => {
-        if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
+        if (c && c.length >= 2) newCalT[c] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grp };
       });
     });
     // #4: re-aplicar counts de despacho_sesion ya recibidos. Cubre la carrera "counts llegan
@@ -972,27 +971,17 @@ export default function RutasScreen() {
   // ahora vive en ManualMode, que recibe sortedCalT como prop.
 
   // ── Calendar handlers ─────────────────────────────────────────────
-  function handleToggleGroup(gid: string) {
-    setGrps(prev => {
-      const next = new Set(prev);
-      next.has(gid) ? next.delete(gid) : next.add(gid);
-      setCalT(prevCalT => {
-        const c2 = { ...prevCalT };
-        Object.keys(c2).forEach(c => { if (c2[c].g === gid) c2[c] = { ...c2[c], on: next.has(gid) }; });
-        return c2;
-      });
-      return next;
-    });
-  }
-
-  // Pill de filtro de grupo (Todas/RM/COSTA/REGIONES) — se movió del DespachoHeader (arriba, al
-  // lado de Supervisor) a la fila "Sin asignar" de ManualDispatch. Misma lógica que tenía el
-  // header: activa/filtra el grupo y togglea su visibilidad.
+  // Pill de grupo (Todas/RM/COSTA/REGIONES): es un FILTRO DE VISTA y nada más.
+  //
+  // Antes cada pill tenía dos estados a la vez —"activo" y "seleccionado"— porque además del
+  // filtro (`grupoFiltro`, que solo cambia qué se muestra) mantenía un set de grupos activos y lo
+  // ESTAMPABA en `calT[c].on`. Apagar un grupo no lo escondía: lo sacaba del pool, del motor, del
+  // registro y del backlog de 2ª vuelta, sin ningún aviso ni marca en pantalla. Al cerrar el día,
+  // esas tiendas no llegaban a 2ª vuelta y quedaban sin nadie que las reclamara.
+  //
+  // Filtrar y despachar son cosas distintas: ahora el pill solo enciende o apaga el filtro.
   function handleGroupPill(id: 'all' | 'rm' | 'costa' | 'fal') {
-    if (id === 'all') { setGrupoFiltro('all'); return; }
-    if (!grps.has(id)) { handleToggleGroup(id); setGrupoFiltro(id); }
-    else if (grupoFiltro === id) { handleToggleGroup(id); setGrupoFiltro('all'); }
-    else { setGrupoFiltro(id); }
+    setGrupoFiltro(prev => (id === 'all' || prev === id) ? 'all' : id);
   }
 
 
@@ -1558,7 +1547,7 @@ export default function RutasScreen() {
     // [PASO 2] Pool con los CUATRO tipos: contenedores (calT[c].c) suman a p (ocupan piso como un
     // pallet), chocolates van en ch. El filtro incluye tiendas de solo cont./choc. (antes se perdían).
     const stores: IAStore[] = Object.keys(calT)
-      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].c ?? 0) > 0 || (calT[c].ch ?? 0) > 0))
+      .filter(c => enElPool(calT[c]))
       .map(c => ({ cod: c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
     const trucks: IATruck[] = flota
       .filter(v => v.on && !v.tlbd)
@@ -1685,7 +1674,7 @@ export default function RutasScreen() {
 
   // Dispara la auto-asignación cuando hay pool + camiones activos y el tablero está VACÍO. El
   // debounce deja "asentar" varias activaciones seguidas (asigna con TODOS los camiones activos).
-  const poolSig   = useMemo(() => Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).sort().join(','), [calT]);
+  const poolSig   = useMemo(() => codsEnPool(calT).join(','), [calT]);
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
   const boardEmpty = Object.keys(manualAsignaciones).length === 0;
   useEffect(() => {
@@ -1696,7 +1685,7 @@ export default function RutasScreen() {
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
-    const poolCount = Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).length;
+    const poolCount = codsEnPool(calT).length;
     const asignadas = new Set(Object.values(manualAsignaciones).flat().map(s => s.c));
     const camionesConAsig = Object.values(manualAsignaciones).filter(a => a.length > 0).length;
     return faseEnrutador({ poolCount, asignadasCount: asignadas.size, camionesConAsig, cerradasCount: cerradasV1.size, diaCerrado: cerrado });
@@ -1924,7 +1913,7 @@ export default function RutasScreen() {
             }
           } catch {}
           setCal(newCal);
-          setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
+          setCalT(prev => mergeCalT(newCal, fecha, prev));
         }
       }
       setTiendas(newTiendas); setGps(newGps);
@@ -2349,7 +2338,7 @@ export default function RutasScreen() {
             tiendas={tiendas} gps={gps} cd={cdRef.current}
             manualAsignaciones={manualAsignaciones}
             paradasAdicionales={paradasAdicionales}
-            grupoFiltro={grupoFiltro} grps={grps} onGroupPill={handleGroupPill}
+            grupoFiltro={grupoFiltro} onGroupPill={handleGroupPill}
             camionSeleccionado={camionSeleccionado}
             camionSeleccionadoKm={previewKm}
             onSelectTruck={setCamionSeleccionado}
