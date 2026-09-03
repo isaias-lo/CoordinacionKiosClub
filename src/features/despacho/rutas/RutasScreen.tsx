@@ -22,6 +22,7 @@ import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
+import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
 import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
@@ -1669,19 +1670,50 @@ export default function RutasScreen() {
     setManualAsignaciones(prev => preservarCerradas(asig, prev, cerradasV1));
     setErrors(avisos);
   };
-  const autoAsignarRef = useRef(autoAsignar);
-  autoAsignarRef.current = autoAsignar;
 
-  // Dispara la auto-asignación cuando hay pool + camiones activos y el tablero está VACÍO. El
-  // debounce deja "asentar" varias activaciones seguidas (asigna con TODOS los camiones activos).
+  // "Reasignar todo" REEMPLAZA el tablero: deshace cada movimiento manual del día. Antes esto
+  // pasaba sin preguntar nada (era el mismo botón que hoy completa), así que una hora de trabajo
+  // se podía perder de un clic. Los camiones cerrados igual quedan intactos (preservarCerradas).
+  const reasignarTodo = () => {
+    if (tableroConTrabajo(manualAsignaciones) &&
+        !window.confirm('Reasignar todo rehace el tablero desde cero: se pierden los cambios que hiciste a mano.\n\n¿Seguro? Si solo quieres asignar lo que falta, usa "Asignar".')) return;
+    autoAsignar();
+  };
+  // [P4] Completar el tablero SIN deshacer lo armado a mano.
+  //
+  // La carga no llega toda junta: Bodega registra durante la mañana y el pool crece de a poco. Por
+  // eso "asignar" no puede ser una foto única — pero tampoco puede rehacer el tablero cada vez, o
+  // pisaría el trabajo del coordinador. Acá se rutea SOLO lo pendiente sobre la capacidad que
+  // queda en cada camión (flota sombra), y el resultado se SUMA: nada se mueve de lugar.
+  const completarAsignacion = () => {
+    const pendientes = pendientesDelPool(poolDesdeCalT(calT), manualAsignaciones);
+    if (!pendientes.length) return;
+    const flotaLibre = flotaConCapacidadRestante(flota, manualAsignaciones, p => isCerrada(cerradasV1, p));
+    if (!flotaLibre.length) return;
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+    const { rutas, consolidacion } = enrutarCon(flotaLibre, pendientes, extGps, extTiendas);
+    const propuesta: Record<string, StoreItem[]> = {};
+    for (const r of [...rutas, ...consolidacion])
+      if (r.ts.length) propuesta[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
+    if (!Object.keys(propuesta).length) return;
+    setManualAsignaciones(prev => fusionarAsignaciones(prev, propuesta));
+  };
+  const completarRef = useRef(completarAsignacion);
+  completarRef.current = completarAsignacion;
+
+  // Se dispara cuando cambia el pool o la flota. Antes corría UNA sola vez, con el tablero
+  // "vacío" — y "vacío" se medía contando LLAVES del objeto, no camiones con tiendas. Como el
+  // tablero deja llaves con lista vacía al sacar una tienda, bastaba mover una para que nunca más
+  // volviera a estar vacío: desde ahí ninguna tienda nueva de Bodega se asignaba sola. Y como el
+  // tablero se guarda, el bloqueo sobrevivía a recargar y se propagaba a los otros dispositivos.
+  // Ahora el disparador es "hay pendientes", y como solo AGREGA, correr de más es inofensivo.
   const poolSig   = useMemo(() => codsEnPool(calT).join(','), [calT]);
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
-  const boardEmpty = Object.keys(manualAsignaciones).length === 0;
   useEffect(() => {
-    if (!boardEmpty || !poolSig || !trucksSig) return;
-    const t = setTimeout(() => autoAsignarRef.current(), 1000);
+    if (!poolSig || !trucksSig) return;
+    const t = setTimeout(() => completarRef.current(), 1000);
     return () => clearTimeout(t);
-  }, [boardEmpty, poolSig, trucksSig]);
+  }, [poolSig, trucksSig]);
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
@@ -2355,7 +2387,8 @@ export default function RutasScreen() {
             onAsignaciones={setManualAsignaciones}
             onCalcular={handleCalcular}
             onCalcularManual={handleCalcularManual}
-            onAsignarIA={autoAsignar}
+            onAsignar={completarAsignacion}
+            onReasignarTodo={reasignarTodo}
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
             cerrarSel={cerrarSel}

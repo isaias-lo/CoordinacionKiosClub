@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
+import { Sparkles, Loader2, Truck, Check, RefreshCw } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
@@ -8,6 +8,7 @@ import { tipoTienda } from '../utils/tipoTienda';
 import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
 import { puedeMoverCarga } from '../utils/cierrePorVehiculo';
 import { enElPool } from '../utils/pool';
+import { podarVacias, tableroConTrabajo } from '../utils/asignacionIncremental';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -29,8 +30,10 @@ interface Props {
   /** [2ª VUELTA] Si se provee, cada camión con tiendas muestra "Cerrar camión" (registro por
    *  camión) y se OCULTA el botón batch de calcular. */
   onCerrarCamion?: (patente: string) => void;
-  /** [IA] Si se provee, muestra "Asignar con IA" en el header del pool. */
-  onAsignarIA?: () => void;
+  /** [P4] Asigna lo que falta SIN tocar lo ya armado. Es el botón primario del pool. */
+  onAsignar?: () => void;
+  /** [P4] Rehace el tablero desde cero (destructivo). Secundario, y solo si ya hay trabajo. */
+  onReasignarTodo?: () => void;
   iaLoading?: boolean;
   /** [Fase 2] Si se provee, muestra una tira para activar/desactivar camiones sin ir a FLOTA.
    *  El índice es el de `flota` (mismo que usa FLOTA → Vehículos). */
@@ -108,7 +111,8 @@ export default function ManualDispatch({
   onCalcular,
   onEliminarParada,
   onCerrarCamion,
-  onAsignarIA,
+  onAsignar,
+  onReasignarTodo,
   iaLoading,
   onToggleFlota,
   ordenActivacion,
@@ -164,6 +168,8 @@ export default function ManualDispatch({
   const paradasPool  = paradasConGps.filter(p => !asignadasSet.has(p.id));
   // Filtro de grupo (barra izquierda): solo afecta QUÉ se muestra en el pool, no los conteos.
   const poolMostrado = grupoFiltro === 'all' ? pool : pool.filter(t => calT[t.c]?.g === grupoFiltro);
+  // ¿Hay algo armado? Cuenta CONTENIDO, no llaves: el tablero deja patentes con lista vacía.
+  const hayTrabajo = tableroConTrabajo(asignaciones);
 
   const extGps: Record<string, number[]> = { ...gps };
   paradasConGps.forEach(p => { extGps[p.id] = p.gps; });
@@ -188,6 +194,12 @@ export default function ManualDispatch({
   // y la pantalla diciendo cosas distintas, sin ningún aviso — una tienda agregada no va en el
   // manifiesto (nadie la carga) y una sacada sí (el chofer la busca y no está). Por eso se bloquean
   // las dos direcciones: no se le puede meter carga NI sacársela.
+  // Publica el tablero PODADO. Las patentes con lista vacía no son ruido inocente: el tablero se
+  // guarda en `shared_session_state` y se sincroniza entre dispositivos, y eran justo las que
+  // hacían que "¿el tablero está vacío?" —que contaba llaves— diera false para siempre, dejando
+  // sin asignar todo lo que Bodega registrara después.
+  const emitir = (a: Record<string, StoreTag[]>) => onAsignaciones(podarVacias(a));
+
   const bloqueada = (patente: string) => !puedeMoverCarga(esCerrada ?? (() => false), patente);
   const avisarCerrado = (patente: string) =>
     alert(`🔒 ${patente} ya está cerrado: su manifiesto y su QR están emitidos.\n\nPara cambiar su carga hay que reabrirlo desde el manifiesto.`);
@@ -230,7 +242,7 @@ export default function ManualDispatch({
       const existing = new Set(current.map(s => s.c));
       newAsig[target] = [...current, ...tags.filter(t => !existing.has(t.c))];
     }
-    onAsignaciones(newAsig);
+    emitir(newAsig);
     clearSel();
     setDragging(null);
     setDragOver(null);
@@ -260,7 +272,7 @@ export default function ManualDispatch({
     } else {
       if (from !== 'pool') newAsig[from] = (newAsig[from] || []).filter(s => s.c !== store.c);
     }
-    onAsignaciones(newAsig);
+    emitir(newAsig);
     setDragging(null);
     setDragOver(null);
   }
@@ -403,7 +415,7 @@ export default function ManualDispatch({
     // La X de un chip es otra forma de sacar carga: si el camión ya cerró, la tienda seguiría en el
     // manifiesto impreso aunque desaparezca de la pantalla.
     if (bloqueada(plate)) { avisarCerrado(plate); return; }
-    onAsignaciones({ ...asignaciones, [plate]: (asignaciones[plate] || []).filter(s => s.c !== cod) });
+    emitir({ ...asignaciones, [plate]: (asignaciones[plate] || []).filter(s => s.c !== cod) });
   }
 
   function getMetrics(plate: string, vehicle: Vehiculo) {
@@ -526,18 +538,30 @@ export default function ManualDispatch({
               </div>
             )}
             <div className="flex-1 min-w-[8px]" />
-            {onAsignarIA && pool.length > 0 && (
+            {/* [P4] Dos acciones distintas, antes eran una sola. "Asignar" completa lo que falta y
+                nunca mueve lo ya armado; "Reasignar todo" rehace el tablero y por eso pregunta. */}
+            {onAsignar && pool.length > 0 && (
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignarIA(); }}
+                onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignar(); }}
                 disabled={iaLoading}
                 className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded text-[12px] font-bold text-white transition-all disabled:opacity-90 active:scale-[0.97] ${iaLoading ? 'ai-glow' : ''}`}
                 style={{ background: '#8B5CF6' }}
-                title="Propone la asignación aprendiendo del historial"
+                title="Asigna las tiendas que faltan usando la capacidad que queda. No mueve lo que ya armaste."
               >
                 {iaLoading
                   ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
-                  : <><Sparkles size={14} aria-hidden="true" /> Asignar</>}
+                  : <><Sparkles size={14} aria-hidden="true" /> Asignar {pool.length}</>}
+              </button>
+            )}
+            {onReasignarTodo && hayTrabajo && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onReasignarTodo(); }}
+                className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded text-[12px] font-semibold text-kmuted border border-black/[0.12] bg-white hover:border-black/[0.25] hover:text-ktext transition-all active:scale-[0.97]"
+                title="Rehace el tablero desde cero con el motor. Descarta los cambios hechos a mano."
+              >
+                <RefreshCw size={13} aria-hidden="true" /> Reasignar todo
               </button>
             )}
             <span className={`text-[13px] font-bold ${pool.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
