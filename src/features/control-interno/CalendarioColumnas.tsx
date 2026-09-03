@@ -38,16 +38,20 @@ const GRP_ICON: Record<string, LucideIcon> = {
   rm: Package, costa: Waves, fal: Building2, general: ClipboardList,
 };
 
-const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']); // Antofagasta + La Serena
-const RM_MALLS       = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST','49PTA']);
+// Regiones al norte de Santiago (Antofagasta + La Serena). Sigue escrita a mano: el catálogo no
+// tiene un campo norte/sur, y derivarla por latitud requiere las coordenadas, que esta pantalla no
+// carga. Hoy es correcta, pero una tienda nueva al norte (Copiapó, Iquique) se pintaría "sur" sin
+// avisar — a diferencia de los malls, acá el dato todavía no existe en ningún lado.
+const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']);
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
-type StoreType = 'mall' | 'street' | 'costa' | 'region';
+type StoreType = 'mall' | 'strip' | 'street' | 'costa' | 'region';
 
 // Chip plano compartido (fondo/texto neutros) + acento de color solo en el borde izquierdo —
 // reemplaza los chips pastel con sombra de color por el sistema de diseño enterprise.
 const TYPE_STYLE: Record<StoreType, { accent: string; label: string }> = {
   mall:   { accent: '#D42B2B', label: 'MALL' },  // rojo del logo K (kred)
+  strip:  { accent: '#7C3AED', label: 'STRIP CENTER' },  // mismo violeta que el Planificador
   street: { accent: '#475569', label: 'STREET CENTER' },
   costa:  { accent: '#2563EB', label: 'COSTA' },
   region: { accent: '#D97706', label: 'REGIÓN' },
@@ -124,13 +128,23 @@ export default function CalendarioColumnas({
     return { ...base, ...tiendasDB };
   }, [tiendasDB]);
 
+  // El tipo sale del CATÁLOGO (`tipo`: MALL / STRIPCENTER / …), que ya viene de /api/tiendas.
+  //
+  // Antes se decidía con un regex sobre la dirección —"¿dice 'local'?"— teniendo el dato correcto
+  // cargado al lado, sin usar. Eso pintaba mal 17 tiendas de RM, en las dos direcciones: Alto Las
+  // Condes ("Av. Pdte. Kennedy Lateral 9001") no dice "local" y salía como street, mientras once
+  // strip centers cuyo domicilio termina en "Local 5" salían pintados de mall. La heurística de la
+  // dirección sobrevive dentro de `tipoTienda`, pero solo como último recurso si el catálogo no
+  // trae `tipo`.
   function getTipo(cod: string): StoreType {
     const inf = tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
     if (!inf) return 'street';
     if (inf.z === 'Región') return 'region';
     if (inf.z === 'Costa')  return 'costa';
-    if (inf.d && /local/i.test(inf.d)) return 'mall';
-    return 'street';
+    const k = tipoTienda(inf.tipo, inf.d, inf.z).key;
+    if (k === 'costa')  return 'costa';   // `z` no exacto ("Costa Valparaíso") igual cae acá
+    if (k === 'region') return 'region';
+    return k === 'mall' ? 'mall' : k === 'strip' ? 'strip' : 'street';
   }
 
   function getNombre(cod: string): string {
@@ -378,7 +392,7 @@ export default function CalendarioColumnas({
       return [
         ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as Zone })),
         ...costa.map(c => ({ cod: c, zone: 'costa'                                    as Zone })),
-        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as Zone })),
+        ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as Zone })),
       ];
     });
 
@@ -748,7 +762,7 @@ export default function CalendarioColumnas({
                       const stores: { cod: string; zone: GZone }[] = [
                         ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as GZone })),
                         ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
-                        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as GZone })),
+                        ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as GZone })),
                       ];
                       return (
                         <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid #E2E8F0', background: '#fff', minWidth: 118 }}>

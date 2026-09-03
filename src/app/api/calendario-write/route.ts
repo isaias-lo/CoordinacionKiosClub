@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdmin } from '@/lib/apiAuth';
+import { supabaseServer } from '@/lib/supabaseServer';
+import { esMall } from '@/features/despacho/rutas/utils/tipoTienda';
 import { google } from 'googleapis';
 import type { sheets_v4 } from 'googleapis';
 
@@ -13,8 +15,32 @@ type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }
 type StoreType = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
 type StoreDayEntry = { code: string; type: StoreType };
 
+// Regiones al norte de Santiago (Antofagasta + La Serena). Sigue escrita a mano porque el catálogo
+// no tiene un campo norte/sur; ver la misma nota en CalendarioColumnas.
 const ZONA_NORTE_FAL = new Set(['41ANA', '42ANP', '39PSB', '51SER']);
-const RM_MALLS       = new Set(['16PQA', '20CTC', '29CFL', '52MUT', '19SUB', '45EST', '49PTA']);
+
+/**
+ * Qué tiendas son mall, según el CATÁLOGO (`tipo`), no según una lista escrita a mano.
+ *
+ * La lista que estaba acá tenía 7 códigos y llevaba tiempo desactualizada: le faltaban Alto Las
+ * Condes, Maipú, Buenaventura 1 y 2, El MUT, Subcentro y Plaza Egaña, y en cambio marcaba como
+ * mall a Estoril y Los Toros, que el catálogo tiene como strip center. El color de la hoja
+ * CALENDARIO salía mal en las dos direcciones. Si Supabase no responde, se cae a que ninguna es
+ * mall: mejor sin destacar que destacando lo equivocado.
+ */
+async function cargarMalls(): Promise<Set<string>> {
+  try {
+    const sb = supabaseServer();
+    const { data, error } = await sb.from('tiendas').select('codigo,tipo,direccion,sector_comuna');
+    if (error || !data) return new Set();
+    return new Set(
+      data.filter(t => esMall(t.tipo, t.direccion, t.sector_comuna)).map(t => String(t.codigo)),
+    );
+  } catch (e) {
+    console.error('[calendario-write] catálogo de malls:', e);
+    return new Set();
+  }
+}
 
 const TITLE          = '⚡ CALENDARIO DE DESPACHO — Flota Luis (sale día siguiente del armado) | Falabella (retira mismo día 12:00-14:00) | Sábado → despacha Lunes';
 const RM_LABEL       = 'RM/COSTA';
@@ -126,6 +152,8 @@ export async function POST(request: NextRequest) {
     const sid = sheetMeta?.properties?.sheetId ?? 0;
 
     // ── 1. Build per-day store lists ─────────────────────────────────────────
+    const RM_MALLS = await cargarMalls();
+
     const rmDays: StoreDayEntry[][] = DIAS.map(dia => [
       ...(calendario[dia]?.costa || []).map(c => ({ code: c, type: 'costa' as StoreType })),
       ...(calendario[dia]?.rm    || []).map(c => ({ code: c, type: (RM_MALLS.has(c) ? 'mall' : 'rm') as StoreType })),
