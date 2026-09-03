@@ -1,3 +1,5 @@
+import { enElPool } from './pool';
+
 /** OJO: `c` acá es la cantidad de CONTENEDORES (number), no el código de tienda. */
 interface CalLike { on: boolean; p: number; b: number; c?: number; ch?: number }
 interface RutaLike { ts: { c: string }[] }
@@ -18,7 +20,7 @@ export function tiendasArmadasSinRutear(
 ): string[] {
   const ruteadas = new Set(rutas.flatMap(r => r.ts.map(t => t.c)));
   return Object.keys(calT)
-    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].c ?? 0) > 0 || (calT[c].ch ?? 0) > 0))
+    .filter(c => enElPool(calT[c]))
     .filter(c => !ruteadas.has(c))
     .sort();
 }

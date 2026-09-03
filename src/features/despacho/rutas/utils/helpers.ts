@@ -1,4 +1,5 @@
 import { ALIAS } from '../data/tiendas';
+import { enElPool } from './pool';
 
 export function dkm(a: [number, number] | number[], b: [number, number] | number[]): number {
   const R = 6371;
@@ -114,7 +115,7 @@ export function stampFromFecha(fecha: string): string {
 // (aunque su camión no se haya cerrado), para acumular/corregir en savePendientesV2 sin pisar
 // pendientes previas del día. Una tienda asignada a un camión NO es pendiente aunque no se cierre.
 export function poolPendiente(
-  calT: Record<string, { on: boolean; p: number; b: number; ch?: number }>,
+  calT: Record<string, { on: boolean; p: number; b: number; c?: number; ch?: number }>,
   asignaciones: Record<string, { c: string }[]>,
   /**
    * [P10] Carga REALMENTE registrada para esa fecha (`despacho_sesion`), como respaldo de `calT`.
@@ -135,9 +136,9 @@ export function poolPendiente(
   const porCod = new Map<string, { c: string; p: number; b: number; ch: number }>();
 
   for (const c of Object.keys(calT)) {
-    if (!calT[c].on) continue;
-    if (!(calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)) continue;
-    porCod.set(c, { c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 });
+    if (!enElPool(calT[c])) continue;
+    // Los contenedores ocupan piso como un pallet (misma regla que el pool del despacho).
+    porCod.set(c, { c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0 });
   }
   for (const r of registrado) {
     const c = r.cod;

@@ -7,6 +7,7 @@ import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
 import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
 import { puedeMoverCarga } from '../utils/cierrePorVehiculo';
+import { enElPool } from '../utils/pool';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -44,7 +45,6 @@ interface Props {
    *  muestran en el header del pool (se movieron aquí desde el DespachoHeader). */
   grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
   /** Grupos activos del calendario (para el estado visual de las pills). */
-  grps?: Set<string>;
   /** Click en una pill de grupo (Todas/RM/COSTA/REGIONES) — togglea y filtra. */
   onGroupPill?: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
   /** Camión elegido para previsualizar su ruta en el mapa (antes de "Calcular"). */
@@ -83,7 +83,10 @@ interface DraggingState extends StoreTag { from: string; }
 
 /* ── Pill de filtro de grupo del pool "Sin asignar" (Todas/RM/COSTA/REGIONES) — se movió aquí
    desde el DespachoHeader (barra global, al lado de Supervisor). ── */
-function GroupPill({ label, active, selected, onClick }: { label: string; active: boolean; selected: boolean; onClick: () => void }) {
+// Dos estados, no tres: el pill filtra la vista y nada más. El tercer estado ("apagado", en gris)
+// existía cuando además sacaba tiendas del despacho — y en gris no se distinguía "no estoy
+// mirando este grupo" de "este grupo no va a salir hoy", que era justamente el problema.
+function GroupPill({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -91,9 +94,7 @@ function GroupPill({ label, active, selected, onClick }: { label: string; active
       className={`h-[28px] px-2.5 rounded-[8px] text-[11px] font-bold transition-all border
         ${selected
           ? 'bg-knavy text-white border-knavy'
-          : active
-            ? 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'
-            : 'bg-white border-black/[0.10] text-kmuted/50 hover:border-black/[0.20] hover:text-kmuted'}`}
+          : 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'}`}
     >
       {label}
     </button>
@@ -113,7 +114,6 @@ export default function ManualDispatch({
   ordenActivacion,
   hideCalcular,
   grupoFiltro = 'all',
-  grps,
   onGroupPill,
   camionSeleccionado = null,
   camionSeleccionadoKm = null,
@@ -154,8 +154,8 @@ export default function ManualDispatch({
   }, [dragging, scrollContainerRef]);
 
   const tiendasActivas = Object.keys(calT)
-    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
-    .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
+    .filter(c => enElPool(calT[c]))
+    .map(c => ({ c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0 }));
 
   const paradasConGps = paradas.filter(p => p.gps);
 
@@ -517,10 +517,12 @@ export default function ManualDispatch({
             {/* Filtro de grupo (movido del DespachoHeader): entre el título y "Asignar". */}
             {onGroupPill && (
               <div className="flex items-center gap-1.5 flex-wrap">
-                <GroupPill label="Todas"    active={(grps?.size ?? 0) > 0}  selected={grupoFiltro === 'all'}   onClick={() => onGroupPill('all')} />
-                <GroupPill label="RM"       active={!!grps?.has('rm')}      selected={grupoFiltro === 'rm'}    onClick={() => onGroupPill('rm')} />
-                <GroupPill label="COSTA"    active={!!grps?.has('costa')}   selected={grupoFiltro === 'costa'} onClick={() => onGroupPill('costa')} />
-                <GroupPill label="REGIONES" active={!!grps?.has('fal')}     selected={grupoFiltro === 'fal'}   onClick={() => onGroupPill('fal')} />
+                {/* Un solo estado: el pill filtra la vista. Antes tenía además un "activo" que
+                    sacaba tiendas del despacho — ver handleGroupPill en RutasScreen. */}
+                <GroupPill label="Todas"    selected={grupoFiltro === 'all'}   onClick={() => onGroupPill('all')} />
+                <GroupPill label="RM"       selected={grupoFiltro === 'rm'}    onClick={() => onGroupPill('rm')} />
+                <GroupPill label="COSTA"    selected={grupoFiltro === 'costa'} onClick={() => onGroupPill('costa')} />
+                <GroupPill label="REGIONES" selected={grupoFiltro === 'fal'}   onClick={() => onGroupPill('fal')} />
               </div>
             )}
             <div className="flex-1 min-w-[8px]" />
