@@ -58,7 +58,8 @@ interface Props {
   onAsignaciones: (a: Record<string, StoreAssign[]>) => void;
   onCalcular: () => void;
   onCalcularManual: () => void;
-  onAsignarIA?: () => void;
+  onAsignar?: () => void;
+  onReasignarTodo?: () => void;
   iaLoading?: boolean;
   onCerrarCamion?: (patente: string) => void;
   // [Cerrar en masa] selección de patentes a cerrar de una en el tablero DESPACHO.
@@ -123,7 +124,7 @@ export default function InputSection({
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
-  onCalcular, onCalcularManual, onAsignarIA, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
+  onCalcular, onCalcularManual, onAsignar, onReasignarTodo, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
   cerrarSel, onToggleCerrarSel, onCerrarVarios, esCerrada, zonasCfg,
   onTerminarDia,
   onAbrirTablero,
@@ -344,7 +345,7 @@ export default function InputSection({
                   scrollContainerRef={dragScrollRef}
                   cerrarSel={cerrarSel} onToggleCerrarSel={onToggleCerrarSel} onCerrarVarios={onCerrarVarios} esCerrada={esCerrada}
                   zonasCfg={zonasCfg}
-                  onAsignarIA={onAsignarIA} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular />
+                  onAsignar={onAsignar} onReasignarTodo={onReasignarTodo} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular />
               </div>
             )}
             {modo === 'man' && (
@@ -479,7 +480,7 @@ export default function InputSection({
                 camionSeleccionadoKm={camionSeleccionadoKm}
                 onSelectTruck={onSelectTruck}
                 scrollContainerRef={dragScrollRef}
-                onAsignarIA={onAsignarIA}
+                onAsignar={onAsignar} onReasignarTodo={onReasignarTodo}
                 iaLoading={iaLoading}
                 onToggleFlota={onToggleFlota}
                 ordenActivacion={ordenActivacion}
