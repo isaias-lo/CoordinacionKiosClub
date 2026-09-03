@@ -11,6 +11,7 @@ import {
 } from '../utils/enrutadorIncremental';
 import { enrutarV2, kmRuta, horariosLlegada, aMinutos, OPCIONES_DEFAULT, type OpcionesEnrutador } from '../utils/enrutadorV2';
 import { unidadesDesdeFilas, ahoraMinutoChile, type FilaPicking } from '../utils/tableroVivo';
+import type { ConfigZonas } from '../utils/zonasTransporte';
 import { resumenCoincidencia, type FilaFeedback } from '../utils/coincidenciaAsignacion';
 import {
   parseParametros, serializarParametros, aOpcionesMotor, minutosAHHMM,
@@ -25,6 +26,10 @@ interface Props {
   tiendas: Record<string, TiendaInfo>;
   cd: number[];
   fecha: string; // ISO 'YYYY-MM-DD'
+  /** [E8] Config de zonas de transporte (capa 3). Debe ser la MISMA que usa el motor en el tablero:
+   *  si el vivo ruteara con el default mientras el Enrutador usa la config de Transportistas, la
+   *  vista previa estaría mostrando un reparto que después no ocurre. */
+  zonasCfg?: ConfigZonas;
 }
 
 const ESTADO_STYLE: Record<string, { label: string; cls: string }> = {
@@ -69,7 +74,7 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, fecha }: Props) {
+export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, fecha, zonasCfg }: Props) {
   const [filas, setFilas]       = useState<FilaPicking[]>([]);
   const [historial, setHist]    = useState<Record<string, EsperadoTienda>>({});
   const [params, setParams]     = useState<ParametrosMotor>(PARAMETROS_DEFAULT);
@@ -128,13 +133,13 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
   // pool acumulado real, solo para la lista de tiendas que caen fuera del radio RM).
   const { plan, fueraDeRadio } = useMemo(() => {
     const unidades = unidadesDesdeFilas(filas);
-    const opciones = aOpcionesMotor(params);
+    const opciones = { ...aOpcionesMotor(params), ...(zonasCfg ? { zonas: zonasCfg } : {}) };
     const plan = planificarIncremental(unidades, flota, gps, cd, tiendas, historial, ahora, opciones);
     const pool: StoreItem[] = Object.entries(acumular(unidades))
       .map(([cod, a]) => ({ c: cod, p: a.p + a.c_, b: a.b, ch: a.ch ?? 0 }));
     const fueraDeRadio = pool.length ? enrutarV2(pool, flota, gps, cd, tiendas, opciones).fueraDeRadio : [];
     return { plan, fueraDeRadio };
-  }, [filas, historial, params, ahora, flota, gps, cd, tiendas]);
+  }, [filas, historial, params, ahora, flota, gps, cd, tiendas, zonasCfg]);
 
   const prioridades = useMemo(() => prioridadPicking(plan), [plan]);
   const acuerdo     = useMemo(() => resumenCoincidencia(feedbackRows, fecha), [feedbackRows, fecha]);
