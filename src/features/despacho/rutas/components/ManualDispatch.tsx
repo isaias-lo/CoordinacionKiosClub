@@ -6,6 +6,7 @@ import { dkm, formatCod } from '../utils/helpers';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
 import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
+import { puedeMoverCarga } from '../utils/cierrePorVehiculo';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -182,9 +183,24 @@ export default function ManualDispatch({
   }
   function clearSel() { setSelected(new Set()); }
 
+  // [Camión cerrado = congelado] Un camión cerrado ya emitió su manifiesto y su QR: la carga que
+  // lleva es un hecho registrado, no una propuesta. Mover tiendas después del cierre deja el papel
+  // y la pantalla diciendo cosas distintas, sin ningún aviso — una tienda agregada no va en el
+  // manifiesto (nadie la carga) y una sacada sí (el chofer la busca y no está). Por eso se bloquean
+  // las dos direcciones: no se le puede meter carga NI sacársela.
+  const bloqueada = (patente: string) => !puedeMoverCarga(esCerrada ?? (() => false), patente);
+  const avisarCerrado = (patente: string) =>
+    alert(`🔒 ${patente} ya está cerrado: su manifiesto y su QR están emitidos.\n\nPara cambiar su carga hay que reabrirlo desde el manifiesto.`);
+
   function moveSelectedTo(target: string) {
     const codes = [...selected];
     if (codes.length === 0) return;
+    if (bloqueada(target)) { avisarCerrado(target); return; }
+    // Ninguna de las seleccionadas puede venir de un camión ya cerrado.
+    const origenCerrado = Object.keys(asignaciones).find(
+      plate => bloqueada(plate) && (asignaciones[plate] || []).some(s => codes.includes(s.c)),
+    );
+    if (origenCerrado) { avisarCerrado(origenCerrado); return; }
     const newAsig: Record<string, StoreTag[]> = {};
     Object.keys(asignaciones).forEach(plate => {
       newAsig[plate] = (asignaciones[plate] || []).filter(s => !codes.includes(s.c));
@@ -224,6 +240,9 @@ export default function ManualDispatch({
     // Si arrastras una tienda que está en la selección múltiple, mueve todo el grupo
     if (selected.size > 0 && selected.has(item.c)) { moveSelectedTo(target); return; }
     const { from, ...store } = item;
+    // Ver `bloqueada`: un camión cerrado no admite carga nueva ni suelta la que ya lleva.
+    if (bloqueada(target)) { avisarCerrado(target); setDragging(null); setDragOver(null); return; }
+    if (bloqueada(from))   { avisarCerrado(from);   setDragging(null); setDragOver(null); return; }
     const newAsig = { ...asignaciones };
     if (from !== 'pool') {
       newAsig[from] = (newAsig[from] || []).filter(s => s.c !== store.c);
@@ -249,6 +268,8 @@ export default function ManualDispatch({
   ejecutarDropRef.current = ejecutarDrop;
 
   function handleDragStart(e: React.DragEvent, store: StoreTag, from: string) {
+    // No se arrastra desde un camión cerrado: se corta acá para que ni siquiera arranque el gesto.
+    if (bloqueada(from)) { e.preventDefault(); return; }
     setDragging({ ...store, from });
     e.dataTransfer.effectAllowed = 'move';
   }
@@ -266,6 +287,7 @@ export default function ManualDispatch({
   function handleDragEnd() { setDragging(null); setDragOver(null); }
 
   function handleTouchStart(e: React.TouchEvent, store: StoreTag, from: string) {
+    if (bloqueada(from)) return; // ver handleDragStart: un camión cerrado no suelta carga
     const touch = e.touches[0];
     const el    = e.currentTarget as HTMLElement;
     const rect  = el.getBoundingClientRect();
@@ -311,7 +333,8 @@ export default function ManualDispatch({
       const el = document.elementFromPoint(touch.clientX, touch.clientY);
       if (ghost) ghost.style.pointerEvents = '';
       const zone = el?.closest('[data-dropzone]') as HTMLElement | null;
-      setDragOver(zone ? zone.dataset.dropzone! : null);
+      // Un camión cerrado no se resalta: el drop se va a rechazar, no hay que insinuar lo contrario.
+      setDragOver(zone && !zone.dataset.cerrado ? zone.dataset.dropzone! : null);
 
       const ZONE = 80, SPEED = 7;
       const scroller = scrollerRef.current ?? window;
@@ -377,6 +400,9 @@ export default function ManualDispatch({
   }, []);
 
   function removeStore(plate: string, cod: string) {
+    // La X de un chip es otra forma de sacar carga: si el camión ya cerró, la tienda seguiría en el
+    // manifiesto impreso aunque desaparezca de la pantalla.
+    if (bloqueada(plate)) { avisarCerrado(plate); return; }
     onAsignaciones({ ...asignaciones, [plate]: (asignaciones[plate] || []).filter(s => s.c !== cod) });
   }
 
@@ -604,10 +630,16 @@ export default function ManualDispatch({
           const avisosZona    = avisosCamionNoHabilitado(v.p, v.empresa, stores, tiendas, gps, cd, zonasCfg);
           const esConsolidado = etiquetaZona?.modo === 'consolidacion';
 
+          // Un camión cerrado NO se ilumina como destino (`ejecutarDrop` lo rechaza igual, pero si
+          // se resaltara la pantalla estaría prometiendo un movimiento que no va a ocurrir).
+          // Ojo: conserva su `data-dropzone`. Sin él, el `closest()` del arrastre táctil subiría al
+          // contenedor y resolvería el drop como "pool", sacando la tienda del camión en silencio —
+          // exactamente el daño que se quiere evitar. Mejor que la zona exista y avise.
           return (
             <div
               key={v.p}
               data-dropzone={v.p}
+              data-cerrado={cerrado ? '1' : undefined}
               style={{
                 boxShadow: cerrado
                   ? '0 1px 4px rgba(22,163,74,0.14)'
@@ -628,7 +660,7 @@ export default function ManualDispatch({
                 : isOver || isPreview || selForClose ? 'bg-white border-knavy'
                 : m.overCap ? 'bg-white border-amber-400'
                 : 'bg-white border-black/[0.08]'}`}
-              onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
+              onDragOver={e => { e.preventDefault(); if (!cerrado) setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
               onClick={() => {

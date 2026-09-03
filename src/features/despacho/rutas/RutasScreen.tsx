@@ -35,7 +35,7 @@ import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha } from './utils/segundaVueltaFechas';
-import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
+import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
@@ -1505,11 +1505,22 @@ export default function RutasScreen() {
   // [Enrutador V2] Enruta un pool con el motor geográfico nuevo (o cae a asignar() con el flag
   // apagado). Devuelve { rutas, fueraDeRadio, avisos }. enrutarV2 recibe el pool COMPLETO y hace
   // el triage de radio RM solo — NO hay que filtrarle las tiendas lejanas antes.
-  const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
+  // `zonas` es la capa 3 (quién cubre cada zona, configurable en Config → Transportistas). Hasta
+  // acá se descargaba y solo alimentaba las etiquetas y avisos del tablero: el motor seguía usando
+  // ZONAS_DEFAULT, así que cambiar un transportista en Config no movía ni una tienda. Pasarla acá
+  // es lo que hace que esa pantalla signifique algo. Si no cargó todavía, `undefined` → el default.
+  // `enrutarCon` recibe la flota explícita para poder excluir camiones (p. ej. los ya cerrados);
+  // `enrutar` es el caso normal, con toda la flota.
+  const enrutarCon = (
+    flotaUsada: Vehiculo[], pool: StoreItem[],
+    egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>,
+  ): ResultadoEnrutador =>
     ENRUTADOR_V2
-      ? enrutarV2(pool, flota, egps, cdRef.current, etiendas)
-      : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false),
+      ? enrutarV2(pool, flotaUsada, egps, cdRef.current, etiendas, zonasCfg ? { zonas: zonasCfg } : {})
+      : { rutas: asignar(pool, flotaUsada, egps, cdRef.current, null, null, null, etiendas, false),
           consolidacion: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos: [] };
+  const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
+    enrutarCon(flota, pool, egps, etiendas);
 
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
@@ -1650,17 +1661,23 @@ export default function RutasScreen() {
   // viaje, y mandaba tiendas de Regiones a camiones que nunca las llevan.
   // Medido sobre 49 días reales: 143 km/día y 5,8 camiones con el viejo, contra 117 y 4,3 con este.
   const autoAsignar = () => {
-    const stores = poolDesdeCalT(calT);
+    // [Camión cerrado = congelado] Lo que ya salió en un manifiesto no se vuelve a repartir: sus
+    // tiendas se sacan del pool a rutear y sus camiones, de la flota disponible. Antes esta función
+    // reemplazaba el tablero ENTERO, así que una re-asignación después de cerrar dejaba la pantalla
+    // contradiciendo el manifiesto y el registro ya escritos.
+    const congeladas = codsEnCerradas(manualAsignaciones, cerradasV1);
+    const stores = poolDesdeCalT(calT).filter(t => !congeladas.has(t.c));
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
-    if (!flota.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
+    const flotaLibre = flota.filter(v => !isCerrada(cerradasV1, v.p));
+    if (!flotaLibre.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
-    const { rutas, consolidacion, avisos } = enrutar(stores, extGps, extTiendas);
+    const { rutas, consolidacion, avisos } = enrutarCon(flotaLibre, stores, extGps, extTiendas);
     const asig: Record<string, StoreItem[]> = {};
     // Las de consolidación también van al tablero: son camiones con transportista asignado, aunque
     // no lleven ruta calculada. Si no se agregaran, las tiendas de Regiones quedarían sin camión.
     for (const r of [...rutas, ...consolidacion])
       if (r.ts.length) asig[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
-    setManualAsignaciones(asig);
+    setManualAsignaciones(prev => preservarCerradas(asig, prev, cerradasV1));
     setErrors(avisos);
   };
   const autoAsignarRef = useRef(autoAsignar);
@@ -1794,7 +1811,10 @@ export default function RutasScreen() {
 
   // ── Clean ─────────────────────────────────────────────────────────
   function handleLimpiar() {
-    setResults(null); setErrors([]); setManualText(''); setManualAsignaciones({});
+    // Limpiar vacía el tablero, pero un camión cerrado ya tiene manifiesto, QR y registro escritos:
+    // borrarlo de la pantalla no lo des-registra, solo esconde lo que de verdad va a salir.
+    setResults(null); setErrors([]); setManualText('');
+    setManualAsignaciones(prev => preservarCerradas({}, prev, cerradasV1));
     setComparisonData(null); setParadasAdicionales([]); kmTotalRealRef.current = null;
     setKmPorRuta({}); setLegDataPorRuta({});
     setCamionSeleccionado(null);
@@ -2510,6 +2530,7 @@ export default function RutasScreen() {
         tiendas={tiendas}
         cd={cdRef.current}
         fecha={fecha}
+        zonasCfg={zonasCfg}
       />
 
       <ParadasAdicionales

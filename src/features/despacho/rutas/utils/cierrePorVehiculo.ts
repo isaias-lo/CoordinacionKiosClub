@@ -56,6 +56,62 @@ export function isCerrada(cerradas: Set<string>, p: string): boolean {
   return cerradas.has(normPatente(p));
 }
 
+// ── Un camión cerrado está CONGELADO ──────────────────────────────────────────
+//
+// Cerrar un camión no es un estado visual: emite el manifiesto, genera el QR y escribe el registro.
+// Desde ese momento la carga del camión es un HECHO, y el tablero es solo su reflejo. Si el tablero
+// se mueve después del cierre, los dos dejan de coincidir: una tienda agregada a un camión cerrado
+// queda en pantalla pero NO en el manifiesto (nadie la carga), y una tienda sacada sigue en el
+// manifiesto (el chofer la busca y no está). Ninguna de las dos cosas avisa.
+//
+// Por eso todo lo que reescriba el tablero pasa por acá.
+
+/**
+ * ¿Se puede mover carga a/desde esta patente? `false` si ya está cerrada.
+ * Recibe el predicado (no el set) porque el tablero ya trabaja con `esCerrada`, y así la regla
+ * vive en un solo lugar en vez de duplicarse dentro del componente.
+ */
+export function puedeMoverCarga(esCerrada: (p: string) => boolean, p: string): boolean {
+  return p === 'pool' || !esCerrada(p);
+}
+
+/** Códigos de tienda que ya viajan en un camión cerrado — no se re-rutean ni se re-asignan. */
+export function codsEnCerradas<T extends { c: string }>(
+  asignaciones: Record<string, T[]>,
+  cerradas: Set<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [patente, tiendas] of Object.entries(asignaciones)) {
+    if (!isCerrada(cerradas, patente)) continue;
+    for (const t of tiendas ?? []) if (t?.c) out.add(t.c);
+  }
+  return out;
+}
+
+/**
+ * Fusiona un tablero nuevo sobre el actual PRESERVANDO los camiones cerrados.
+ *
+ * Lo usan "Reasignar todo" y "Limpiar": el resultado del motor (o el vacío) no puede pisar lo que
+ * ya salió en un manifiesto. Los camiones cerrados conservan exactamente su carga; el resto se
+ * reemplaza por `nuevas`. Si el motor propuso tiendas para una patente cerrada, se descartan (esa
+ * patente ya no admite carga) y el llamador las verá como pendientes.
+ */
+export function preservarCerradas<T>(
+  nuevas: Record<string, T[]>,
+  actuales: Record<string, T[]>,
+  cerradas: Set<string>,
+): Record<string, T[]> {
+  const out: Record<string, T[]> = {};
+  for (const [patente, tiendas] of Object.entries(nuevas)) {
+    if (isCerrada(cerradas, patente)) continue; // la cerrada manda; lo propuesto se descarta
+    out[patente] = tiendas;
+  }
+  for (const [patente, tiendas] of Object.entries(actuales)) {
+    if (isCerrada(cerradas, patente)) out[patente] = tiendas;
+  }
+  return out;
+}
+
 export interface RutaLike { v: { p: string }; ts: unknown[] }
 
 /**
