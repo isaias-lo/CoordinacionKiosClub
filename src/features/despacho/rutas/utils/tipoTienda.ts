@@ -41,6 +41,19 @@ export function tipoTienda(raw?: string | null, direccion?: string | null, zona?
   return { key: 'otro', label: t, color: TIPOS.otro.color };
 }
 
+/**
+ * ¿Es un mall? Fuente única para el color del calendario y de la hoja CALENDARIO.
+ *
+ * Antes cada pantalla decidía esto por su cuenta: el calendario miraba si la dirección contenía
+ * "local" y la hoja usaba una lista de 7 códigos escrita a mano. Las dos se equivocaban, y en las
+ * dos direcciones: Alto Las Condes ("Av. Pdte. Kennedy Lateral 9001") no dice "local" y salía como
+ * street, mientras once strip centers cuyo domicilio termina en "Local 5" salían pintados de mall.
+ * El catálogo ya trae `tipo` ('MALL' / 'STRIPCENTER' / …) — el dato existía y no se usaba.
+ */
+export function esMall(tipoRaw?: string | null, direccion?: string | null, zona?: string | null): boolean {
+  return tipoTienda(tipoRaw, direccion, zona).key === 'mall';
+}
+
 /** Grupo de la tienda para el filtro del Planificador: Costa / Nacional(fal/regiones) / RM.
  *  Fuente canónica = el campo `region` del catálogo (RM, Valparaíso, Antofagasta, Biobío, …):
  *  Valparaíso ⇒ Costa; RM/Metropolitana ⇒ RM; cualquier OTRA región ⇒ Nacional. Sin `region`,
