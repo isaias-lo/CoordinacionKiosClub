@@ -12,8 +12,9 @@ import {
 import {
   fetchCalendarioCongelados, saveCalendarioCongelados, subscribeToCalendarioCongelados,
 } from '@/lib/calendarioCongeladosSync';
-import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { TIENDAS_INICIAL, GPS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
+import { esRegionNorte } from '@/lib/sectores';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 import {
   Package, Waves, Building2, ClipboardList,
@@ -38,11 +39,9 @@ const GRP_ICON: Record<string, LucideIcon> = {
   rm: Package, costa: Waves, fal: Building2, general: ClipboardList,
 };
 
-// Regiones al norte de Santiago (Antofagasta + La Serena). Sigue escrita a mano: el catálogo no
-// tiene un campo norte/sur, y derivarla por latitud requiere las coordenadas, que esta pantalla no
-// carga. Hoy es correcta, pero una tienda nueva al norte (Copiapó, Iquique) se pintaría "sur" sin
-// avisar — a diferencia de los malls, acá el dato todavía no existe en ningún lado.
-const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']);
+
+/** Ficha mínima que el calendario necesita de cada tienda. `lat` es para separar norte de sur. */
+type TiendaCal = { n: string; z: string; d: string; tipo: string; lat: number | null };
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 type StoreType = 'mall' | 'strip' | 'street' | 'costa' | 'region';
@@ -91,7 +90,7 @@ export default function CalendarioColumnas({
 
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
   const pendingResolveRef = useRef<string[]>([]);
-  const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string; tipo: string }>>({});
+  const [tiendasDB, setTiendasDB] = useState<Record<string, TiendaCal>>({});
   const firstDayBtnRef = useRef<HTMLButtonElement>(null);
 
   // Modal de días: cierre con Escape + foco inicial en el primer día (accesibilidad).
@@ -108,11 +107,11 @@ export default function CalendarioColumnas({
   useEffect(() => {
     fetch('/api/tiendas')
       .then(r => r.json())
-      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; tipo?: string; activo?: boolean }> }) => {
-        const db: Record<string, { n: string; z: string; d: string; tipo: string }> = {};
+      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; tipo?: string; lat?: number | null; activo?: boolean }> }) => {
+        const db: Record<string, TiendaCal> = {};
         for (const t of (json.tiendas ?? [])) {
           if (t.activo === false) continue;
-          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '', tipo: t.tipo ?? '' };
+          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '', tipo: t.tipo ?? '', lat: t.lat ?? null };
         }
         setTiendasDB(db);
       })
@@ -120,10 +119,10 @@ export default function CalendarioColumnas({
   }, []);
 
   // Merged lookup: TIENDAS_INICIAL as base, overridden by active DB stores
-  const tiendasAll = useMemo<Record<string, { n: string; z: string; d: string; tipo: string }>>(() => {
-    const base: Record<string, { n: string; z: string; d: string; tipo: string }> = {};
+  const tiendasAll = useMemo<Record<string, TiendaCal>>(() => {
+    const base: Record<string, TiendaCal> = {};
     for (const [k, v] of Object.entries(TIENDAS_INICIAL)) {
-      base[k] = { n: v.n, z: v.z, d: v.d ?? '', tipo: v.tipo ?? '' };
+      base[k] = { n: v.n, z: v.z, d: v.d ?? '', tipo: v.tipo ?? '', lat: GPS_INICIAL[k]?.[0] ?? null };
     }
     return { ...base, ...tiendasDB };
   }, [tiendasDB]);
@@ -145,6 +144,15 @@ export default function CalendarioColumnas({
     if (k === 'costa')  return 'costa';   // `z` no exacto ("Costa Valparaíso") igual cae acá
     if (k === 'region') return 'region';
     return k === 'mall' ? 'mall' : k === 'strip' ? 'strip' : 'street';
+  }
+
+  // ¿Consolida al norte? Sale del sector del catálogo, con la latitud de desempate para las fichas
+  // que dicen 'Región' a secas — la MISMA regla que usa el motor (`zonaDeSectorOGeo`). Antes era
+  // una lista de cuatro códigos escrita a mano: correcta, pero incapaz de enterarse de una tienda
+  // nueva en Copiapó o Iquique, que se habría impreso en el camión equivocado sin avisar.
+  function esNorte(cod: string): boolean {
+    const inf = tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
+    return esRegionNorte(inf?.z, inf?.lat);
   }
 
   function getNombre(cod: string): string {
@@ -390,7 +398,7 @@ export default function CalendarioColumnas({
       const costa = local![dia]?.costa || [];
       const fal   = local![dia]?.fal   || [];
       return [
-        ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as Zone })),
+        ...fal.map(c   => ({ cod: c, zone: (esNorte(c) ? 'norte' : 'sur') as Zone })),
         ...costa.map(c => ({ cod: c, zone: 'costa'                                    as Zone })),
         ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as Zone })),
       ];
@@ -760,7 +768,7 @@ export default function CalendarioColumnas({
                       const costa = local![dia]?.costa || [];
                       const fal   = local![dia]?.fal   || [];
                       const stores: { cod: string; zone: GZone }[] = [
-                        ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as GZone })),
+                        ...fal.map(c   => ({ cod: c, zone: (esNorte(c) ? 'norte' : 'sur') as GZone })),
                         ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
                         ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as GZone })),
                       ];
