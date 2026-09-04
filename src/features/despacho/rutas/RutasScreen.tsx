@@ -22,6 +22,7 @@ import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
+import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/resumenCierre';
 import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
 import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
 import { ordenarCalT } from './utils/ordenarCalT';
@@ -236,6 +237,10 @@ export default function RutasScreen() {
   const [historialStatus, setHistorialStatus] = useState('idle');
   const [flotaStatus, setFlotaStatus]     = useState('idle');
   const [historialMsg,  setHistorialMsg]  = useState('');
+  // [Fase 1] Resumen de lo que se acaba de cerrar. Estado y banner propios: `historialMsg` se
+  // renderiza dentro de ResultsSection, que solo se monta si hay resultados calculados — en el
+  // flujo del tablero no los hay, así que ahí el mensaje sería invisible.
+  const [cierreResumen, setCierreResumen] = useState<(ResumenCierre & { error?: string }) | null>(null);
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
   // [E4·4b] Clusters históricos ("líneas" del coordinador) para la auto-asignación instantánea.
@@ -1506,12 +1511,37 @@ export default function RutasScreen() {
     }));
     const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones, registrado);
     if (leftover.length) void savePendientesV2(fecha, leftover, asignadas);
+    // [Fase 1] Cerrar el día es la acción MÁS irreversible del Enrutador —emite manifiestos, genera
+    // los QR y escribe el registro— y no devolvía nada: la pantalla volvía al tablero igual que
+    // antes. El 03/09 cuatro tiendas quedaron en el manifiesto y fuera del registro, y se descubrió
+    // al día siguiente. Con el resumen se ve en el momento, con los camiones todavía en el patio.
+    const resumen = resumenCierre(
+      fecha,
+      codsEnPool(calT),
+      manualAsignaciones,
+      registrado.map(r => r.cod),
+    );
+
     const payload = { closedAt: new Date().toISOString(), by: supervisor || '' };
-    setCerrado(true);
     supabase
       .from('shared_session_state')
       .upsert({ fecha, fuente: 'cierre', state: payload }, { onConflict: 'fecha,fuente' })
-      .then(({ error }) => { if (error) console.error('[cierre-jornada]', error.message); });
+      .then(({ error }) => {
+        if (error) {
+          // Antes se marcaba cerrado ANTES de guardar y el error solo iba a consola: la pantalla
+          // decía que el día cerró aunque la escritura nunca llegara.
+          console.error('[cierre-jornada]', error.message);
+          setCierreResumen({ ...resumen, error: 'No se pudo cerrar el día: la marca de cierre no llegó a guardarse. Revisa tu conexión y vuelve a intentar.' });
+          return;
+        }
+        setCerrado(true);
+        setCierreResumen(resumen);
+        // El registro del día vive en la HOJA; la copia de Supabase que alimenta el panel Estado y
+        // la recepción en tienda solo se refresca cuando alguien corre el sync. Encadenarlo acá
+        // —el mismo patrón que ya usa Bodega al terminar— evita que esas pantallas muestren menos
+        // de lo que realmente salió. `keepalive` para que sobreviva si se cierra la pestaña.
+        fetch('/api/sync-despacho', { method: 'POST', keepalive: true }).catch(() => {});
+      });
   }
 
   // ── Extra stops helpers ───────────────────────────────────────────
@@ -2242,6 +2272,30 @@ export default function RutasScreen() {
             className="flex items-center gap-2 px-3 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-700 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
           >
             📦 Tiendas pendientes de ayer ({pendientes.stores.length})
+          </button>
+        </div>
+      )}
+
+      {/* [Fase 1] Qué quedó cerrado. Cerrar el día es lo más irreversible del Enrutador y no
+          devolvía nada: la pantalla volvía al tablero igual que antes, así que una falla parcial
+          se descubría al día siguiente en vez de con los camiones todavía en el patio. */}
+      {cierreResumen && (
+        <div className={`flex-shrink-0 px-4 py-2 border-b flex items-start gap-2 flex-wrap ${
+          cierreResumen.error       ? 'bg-red-50 border-red-200'
+          : cierreResumen.hayAvisos ? 'bg-amber-50 border-amber-200'
+          : 'bg-emerald-50 border-emerald-200'}`}>
+          <span className={`text-[11px] font-bold ${
+            cierreResumen.error       ? 'text-red-700'
+            : cierreResumen.hayAvisos ? 'text-amber-800'
+            : 'text-emerald-700'}`}>
+            {cierreResumen.error ?? textoResumenCierre(cierreResumen)}
+          </span>
+          <button
+            onClick={() => setCierreResumen(null)}
+            aria-label="Cerrar aviso"
+            className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-[6px] border border-black/[0.15] text-kmuted hover:text-ktext hover:border-black/[0.3] transition-colors"
+          >
+            ✕
           </button>
         </div>
       )}
