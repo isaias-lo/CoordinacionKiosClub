@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SECTORES, zonaDeSector, zonaDeSectorOGeo, esSectorCanonico, opcionesSector } from '../sectores';
+import { SECTORES, zonaDeSector, zonaDeSectorOGeo, esSectorCanonico, opcionesSector, esRegionNorte } from '../sectores';
 
 describe('zonaDeSector', () => {
   it('mapea los sectores canónicos a su zona', () => {
@@ -96,5 +96,59 @@ describe('opcionesSector', () => {
   });
   it('el valor conservado muestra a qué zona rutea', () => {
     expect(opcionesSector('Las Condes').at(-1)!.detalle).toContain('santiago');
+  });
+});
+
+// ── esRegionNorte — reemplaza la lista de 4 códigos del calendario ──────────
+// Datos reales del catálogo. Hoy el resultado es idéntico a la lista que había escrita a mano;
+// la diferencia es que ahora una tienda nueva al norte se clasifica sola.
+describe('esRegionNorte', () => {
+  const NORTE: [string, string, string, number][] = [
+    ['42ANP', 'Antofagasta La Portada',       'Región', -23.566],
+    ['41ANA', 'Antofagasta Angamos',          'Región', -23.668],
+    ['39PSB', 'Paseo Balmaceda (La Serena 1)','Región', -29.925],
+    ['51SER', 'Serena 2',                     'Región', -29.935],
+  ];
+  const SUR: [string, string, string, number][] = [
+    ['27MCH', 'Machalí',    'Región',     -34.177],
+    ['31TLC', 'Talca',      'Región',     -35.432],
+    ['60PBL', 'Los Pablos', 'Región Sur', -38.748],
+    ['57CAS', 'Castro',     'Región',     -42.480],
+  ];
+
+  it.each(NORTE)('%s %s → norte', (_c, _n, sector, lat) => {
+    expect(esRegionNorte(sector, lat)).toBe(true);
+  });
+  it.each(SUR)('%s %s → sur', (_c, _n, sector, lat) => {
+    expect(esRegionNorte(sector, lat)).toBe(false);
+  });
+
+  it('da EXACTAMENTE la lista que estaba escrita a mano (sin cambio de comportamiento hoy)', () => {
+    const LISTA_VIEJA = new Set(['41ANA', '42ANP', '39PSB', '51SER']);
+    for (const [cod, , sector, lat] of [...NORTE, ...SUR]) {
+      expect(esRegionNorte(sector, lat)).toBe(LISTA_VIEJA.has(cod));
+    }
+  });
+
+  // Lo que la lista vieja no podía hacer: enterarse.
+  it('una tienda NUEVA al norte se clasifica sola (Copiapó, Iquique)', () => {
+    expect(esRegionNorte('Región', -27.366)).toBe(true);  // Copiapó
+    expect(esRegionNorte('Región', -20.213)).toBe(true);  // Iquique
+  });
+
+  it('el sector explícito manda sobre la latitud', () => {
+    expect(esRegionNorte('Región Norte', -42.480)).toBe(true);
+    expect(esRegionNorte('Región Sur',   -23.566)).toBe(false);
+  });
+
+  it('sin latitud cae a sur (lo más común) y no revienta', () => {
+    expect(esRegionNorte('Región', null)).toBe(false);
+    expect(esRegionNorte('Región', undefined)).toBe(false);
+  });
+
+  it('lo que no es Regiones nunca es norte', () => {
+    expect(esRegionNorte('Corredor Oriente', -33.38)).toBe(false);
+    expect(esRegionNorte('Costa', -32.95)).toBe(false);
+    expect(esRegionNorte('', null)).toBe(false);
   });
 });
