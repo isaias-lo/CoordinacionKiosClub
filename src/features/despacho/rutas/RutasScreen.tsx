@@ -2637,6 +2637,7 @@ export default function RutasScreen() {
             manualAsignaciones={manualAsignaciones}
             paradasAdicionales={paradasAdicionales}
             pool={pool} onPool={setPool}
+            fecha={fecha} userId={userId}
             todaLaFlota={todaLaFlota} onTodaLaFlota={setTodaLaFlota}
             camionSeleccionado={camionSeleccionado}
             camionSeleccionadoKm={previewKm}

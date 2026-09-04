@@ -16,6 +16,8 @@ import {
 import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 import AddressAutocomplete from './AddressAutocomplete';
+import { fetchSessionState, subscribeToSessionState, pushSessionStateResult } from '@/lib/userSessionState';
+import { mergeRutasPlan, conAlMenosUna, type RutaPlan } from '../utils/planSync';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados } from '@/lib/calendarioCongeladosSync';
 
@@ -38,6 +40,10 @@ const diaHoy = () => ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'][new Date().getDa
 interface Props {
   gps: Record<string, number[]>;
   tiendas: Record<string, TiendaInfo>;
+  /** [Fase 3] Día que se está planificando. El plan se guarda por fecha, como el resto del
+   *  Enrutador, y así deja de vivir solo en el navegador de quien lo armó. */
+  fecha?: string;
+  userId?: string;
   /** Reporta TODAS las rutas (visibles con paradas; ocultas vacías, para conservar el color por
    *  índice) + el punto de partida compartido, para dibujarlas en el MapSection fijo. `ext` lleva
    *  las paradas por DIRECCIÓN (coords + nombre) de todas las rutas visibles. */
@@ -123,7 +129,7 @@ function loadPlan(): PlanPersist {
   };
 }
 
-export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute }: Props) {
+export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute, fecha, userId }: Props) {
   // Punto de partida — COMPARTIDO por todas las rutas (el mapa dibuja todas desde un mismo origen).
   const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode);
   const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda);
@@ -158,17 +164,78 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [calAviso,    setCalAviso]    = useState('');
   // Places no disponible (key sin Places API / sin billing) → se avisa y se usa el fallback (Buscar/Enter).
   const [placesOff,   setPlacesOff]   = useState(false);
+  // [Fase 3] Resguardos del sync, iguales a los del tablero: no escribir una fecha que no se leyó,
+  // y fusionar por ruta con el plan tal como estaba en el último sync.
+  const fechaCargadaRef  = useRef<string | null>(null);
+  const baseRutasRef     = useRef<PlanRoute[]>([]);
+  const lastPushedPlanRef = useRef<string>('');
   const [calOpen,     setCalOpen]     = useState(true); // panel "Armar desde el calendario" colapsable
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
 
+  const plan = useMemo(() => ({ startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId }),
+    [startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId]);
+
   // Persistir el plan → se conserva al cambiar de tab (desmontaje) y al recargar.
   useEffect(() => {
-    try {
-      localStorage.setItem(PLAN_STATE_KEY, JSON.stringify({ startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId }));
-    } catch { /* noop */ }
-  }, [startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId]);
+    try { localStorage.setItem(PLAN_STATE_KEY, JSON.stringify(plan)); } catch { /* noop */ }
+  }, [plan]);
+
+  // ── [Fase 3] El plan deja de vivir solo en este navegador ────────────────────
+  // Hasta acá el Planificador era `localStorage` y nada más: una ruta armada en el celular no
+  // existía en el computador. No era un sync roto, era una función que faltaba.
+  //
+  // Se guarda por fecha, como el resto del Enrutador, con los mismos resguardos del tablero: no se
+  // escribe una fecha que no se leyó, y lo remoto se FUSIONA por ruta en vez de reemplazar el plan
+  // entero — si no, dos personas armando rutas distintas se borrarían entre sí.
+  useEffect(() => {
+    if (!fecha) return;
+    fechaCargadaRef.current = null;
+    fetchSessionState('planificador', fecha).then(remote => {
+      if (remote && typeof remote === 'object') {
+        const p = remote as Partial<PlanPersist>;
+        if (Array.isArray(p.routes) && p.routes.length) {
+          setRoutes(p.routes);
+          setVisibleIds(p.visibleIds?.length ? p.visibleIds : [p.routes[0].id]);
+          setEditId(p.editId ?? p.routes[0].id);
+          baseRutasRef.current = p.routes;
+        }
+      }
+      fechaCargadaRef.current = fecha;
+    }).catch(() => { /* sin remoto: se sigue con lo local */ fechaCargadaRef.current = fecha; });
+
+    return subscribeToSessionState('planificador', userId ?? '', (state) => {
+      if (!state || typeof state !== 'object') return;
+      const p = state as Partial<PlanPersist>;
+      if (!Array.isArray(p.routes)) return;
+      setRoutes(prev => {
+        const fusion = mergeRutasPlan(p.routes as unknown as RutaPlan[], prev as unknown as RutaPlan[], baseRutasRef.current as unknown as RutaPlan[]);
+        const next = conAlMenosUna(fusion, prev[0] as unknown as RutaPlan) as unknown as PlanRoute[];
+        baseRutasRef.current = next;
+        return next;
+      });
+    }, undefined, fecha);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, userId]);
+
+  useEffect(() => {
+    if (!fecha || fechaCargadaRef.current !== fecha) return;
+    const json = JSON.stringify(plan);
+    if (json === lastPushedPlanRef.current) return;
+    const t = setTimeout(() => {
+      const previo = lastPushedPlanRef.current;
+      lastPushedPlanRef.current = json;
+      pushSessionStateResult('planificador', plan, userId, fecha)
+        .then(({ ok }) => {
+          if (ok) { baseRutasRef.current = routes; return; }
+          if (lastPushedPlanRef.current === json) lastPushedPlanRef.current = previo;
+        })
+        .catch(() => { if (lastPushedPlanRef.current === json) lastPushedPlanRef.current = previo; });
+    }, 800);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, fecha, userId]);
 
   // ── Ruta activa (la que se edita) + setters ligados a ella ────────────────────
   const activeIdx   = Math.max(0, routes.findIndex(r => r.id === editId));

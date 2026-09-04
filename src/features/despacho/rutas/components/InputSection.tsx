@@ -43,6 +43,9 @@ interface Props {
   // (ManualDispatch). [Pools] `pool` = Regiones o RM/Costa; `zonasCfg` decide qué camiones ofrece.
   pool: PoolScope;
   onPool: (p: PoolScope) => void;
+  /** [Fase 3] Para que el Planificador guarde su plan por fecha y se vea en otros dispositivos. */
+  fecha?: string;
+  userId?: string;
   todaLaFlota?: boolean;
   onTodaLaFlota?: (v: boolean) => void;
   // Camión elegido en el tablero DESPACHO para previsualizar su ruta en el mapa.
@@ -122,7 +125,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 export default function InputSection({
   flota, flotaStatus, modo, fase, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
-  paradasAdicionales, pool, onPool, todaLaFlota, onTodaLaFlota,
+  paradasAdicionales, pool, onPool, todaLaFlota, onTodaLaFlota, fecha, userId,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
@@ -320,7 +323,7 @@ export default function InputSection({
         ) : modo === 'cal' ? (
           calTabContent
         ) : modo === 'plan' ? (
-          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} /></div>
+          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} /></div>
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
@@ -441,7 +444,7 @@ export default function InputSection({
         calTabContent
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
-          <PlanificadorTab gps={gps} tiendas={tiendas} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} />
+          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} />
         </div>
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
