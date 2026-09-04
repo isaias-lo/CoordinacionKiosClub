@@ -255,7 +255,15 @@ export default function RutasScreen() {
   // (v1 efímero: la asignación de congelados a camiones todavía no genera manifiesto; ese es
   // el follow-up 7b-iii). NO comparte estado con el pool seco (calT/manualAsignaciones).
   const [calTCong,         setCalTCong]         = useState<Record<string, CalData>>({});
+  // [Fase 3] El tablero de CONGELADOS ahora se guarda y se sincroniza igual que el seco. Antes era
+  // `useState` a secas: las cantidades sí llegaban a la base, pero A QUÉ CAMIÓN va cada tienda se
+  // perdía al recargar la página — no digamos entre dispositivos. El propio comentario de arriba lo
+  // admitía ("es local, v1 efímero"). Usa la misma fuente por fecha y el mismo merge por tienda.
   const [asignacionesCong, setAsignacionesCong] = useState<Record<string, StoreItem[]>>({});
+  const baseCongRef       = useRef<TableroPorTienda>({});
+  const lastPushedCongRef = useRef<string>('');
+  const isCongInitRef     = useRef(false);
+  const debounceCongRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device). Se usan
   // para un banner "ya hay manifiestos guardados" y para reconstruir el tablero si hiciera falta
   // (p. ej. al abrir desde otro dispositivo y ver el lienzo vacío). No pisa el flujo de armado.
@@ -799,6 +807,56 @@ export default function RutasScreen() {
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  // ── [Fase 3] Congelados: cargar, suscribir y guardar ──────────────────────
+  // Mismo contrato que el tablero seco (fase 0 + fase 2): no se escribe una fecha que no se leyó,
+  // solo se marca guardado cuando la base confirma, y lo remoto se FUSIONA por tienda.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    isCongInitRef.current = false;
+
+    fetchSessionState('rutas_congelados', fecha).then(remote => {
+      const obj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
+      setAsignacionesCong(obj);
+      lastPushedCongRef.current = JSON.stringify(obj);
+      baseCongRef.current = porTienda(obj);
+      isCongInitRef.current = true;
+    }).catch(() => { setAsignacionesCong({}); baseCongRef.current = {}; });
+
+    return subscribeToSessionState('rutas_congelados', userId ?? '', (state) => {
+      if (!state || typeof state !== 'object') return;
+      if (JSON.stringify(state) === lastPushedCongRef.current) return;
+      const remoto = porTienda(state as Record<string, StoreItem[]>);
+      setAsignacionesCong(prev => {
+        const fusion = mergeTablero(remoto, porTienda(prev), baseCongRef.current);
+        const merged = porCamion(fusion, patentesDelTablero(prev, state as Record<string, StoreItem[]>));
+        baseCongRef.current = fusion;
+        lastPushedCongRef.current = JSON.stringify(merged);
+        return merged;
+      });
+    }, undefined, fecha);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, userId]);
+
+  useEffect(() => {
+    if (!isCongInitRef.current) return;
+    if (fechaCargadaRef.current !== fecha) return;
+    const json = JSON.stringify(asignacionesCong);
+    if (json === lastPushedCongRef.current) return;
+    if (debounceCongRef.current) clearTimeout(debounceCongRef.current);
+    debounceCongRef.current = setTimeout(() => {
+      const previo = lastPushedCongRef.current;
+      lastPushedCongRef.current = json;
+      pushSessionStateResult('rutas_congelados', asignacionesCong, userId, fecha)
+        .then(({ ok }) => {
+          if (ok) { baseCongRef.current = porTienda(asignacionesCong); return; }
+          if (lastPushedCongRef.current === json) lastPushedCongRef.current = previo;
+          setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
+        })
+        .catch(() => { if (lastPushedCongRef.current === json) lastPushedCongRef.current = previo; });
+    }, 800);
+    return () => { if (debounceCongRef.current) clearTimeout(debounceCongRef.current); };
+  }, [asignacionesCong, userId, fecha]);
 
   // [Fase 2] Ponerse al día al volver al dispositivo.
   //
