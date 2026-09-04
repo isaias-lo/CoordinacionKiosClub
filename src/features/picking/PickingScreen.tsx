@@ -535,15 +535,26 @@ export function PickingScreen() {
     const stateKey = `${cod}__${nombre.toLowerCase()}`;
     // Misma sección/contenido que ya deriva el stepper real (onTipoPalletsChange) a partir del
     // filtro activo — acá no hay categorías de Odoo de las que derivarlo, así que se elige a
-    // mano: 'all' ("Todas") ⇒ sin sección (mixto), o una de las 4 secciones reales.
+    // mano: 'all' ("Todas") ⇒ sin sección (mixto — 'todas' significa "sin sección específica",
+    // NO "una operación por cada sección"), o una de las 4 secciones reales.
+    // BUG 7 corregido: antes 'all' caía en contenido='hogar' por defecto, así que
+    // seccionDeSlot (sin `section`, cae al contenido) lo clasificaba como Hogar en vez de
+    // dejarlo sin clasificar — 'mixto' no matchea ninguna sección en seccionDeContenido.
     const seccion: Seccion | null = manualSeccion === 'all' ? null : (manualSeccion as Seccion);
     const contenido = manualSeccion === 'chocolates' ? 'chocolate'
       : manualSeccion === 'congelados' ? 'congelados'
+      : manualSeccion === 'all' ? 'mixto'
       : 'hogar';
     void addPalletSlot(stateKey, cod, nombre, 'P', contenido, '', seccion);
+    // BUG 1/2 corregido: sin esto, el campo "Nombre del picker" del card recién creado
+    // aparecía vacío (solo el placeholder mostraba el nombre) y la advertencia de fallback
+    // salía de entrada aunque el encargado ya tuviera nombre real. Al sembrar el nombre acá
+    // queda guardado desde el principio, igual que si alguien lo hubiera escrito a mano.
+    setPickerDisplayNames(prev => ({ ...prev, [stateKey]: nombre }));
+    upsertSessionState(stateKey, nombre, 'P');
     setManualName('');
     setAddingManualCod(null);
-  }, [manualName, manualSeccion, addPalletSlot]);
+  }, [manualName, manualSeccion, addPalletSlot, upsertSessionState]);
 
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
@@ -795,7 +806,18 @@ export function PickingScreen() {
       for (const slot of palletSlots) {
         if (slot.store_cod !== cod || !slot.state_key.startsWith(prefix)) continue;
         const normalized = slot.state_key.slice(prefix.length);
-        if (!map[normalized]) map[normalized] = { displayKey: slot.picker_label || normalized, ops: [] };
+        if (!map[normalized]) {
+          // `key` (el badge/placeholder) tiene que quedar CONGELADO desde la creación — ni
+          // `slot.picker_label` ni `pickerDisplayNames` sirven de fuente acá porque los edita
+          // en vivo, carácter a carácter, el campo "Nombre del picker" (onNameChange/
+          // renamePickerSlots): usarlos hacía que el badge (y su placeholder) fueran mostrando
+          // "a", "ma", "mar"… mientras alguien escribía, y que si borraba el campo el badge se
+          // quedara pegado en lo último tipeado en vez de volver al nombre real. Se deriva del
+          // propio `state_key` (inmutable) — mismo criterio que un `group.key` de Odoo, que
+          // tampoco cambia si se edita el nombre mostrado.
+          const nombreEstable = normalized.replace(/\b\p{L}/gu, c => c.toUpperCase());
+          map[normalized] = { displayKey: nombreEstable, ops: [] };
+        }
       }
       for (const [normKey, { displayKey, ops: gOps }] of Object.entries(map).sort(([a], [b]) => a.localeCompare(b))) {
         result.push({ key: displayKey, storeCod: cod, stateKey: `${cod}__${normKey}`, operations: gOps });
