@@ -639,6 +639,14 @@ export function PickingScreen() {
     return match ? (canonicalNames[match] ?? '') : '';
   }, [canonicalNames]);
 
+  // Nombres ya conocidos (built-in de Picking + agregados en Config) para sugerir al crear un
+  // encargado manual — el datalist permite elegir uno existente O escribir uno nuevo con el
+  // mismo campo, sin un selector aparte.
+  const nombresConocidos = useMemo(
+    () => buildPickerKeyList(canonicalNames).map(k => getCanonicalName(k) || k),
+    [canonicalNames, getCanonicalName],
+  );
+
   // Persistir nombres en localStorage (cross-session), delimitado por fecha — ver
   // parseSavedNames/serializeSavedNames. Evita que nombres de ayer (misma state_key,
   // ya que los responsables de Odoo son slots fijos que se repiten cada día) reaparezcan hoy.
@@ -841,10 +849,19 @@ export function PickingScreen() {
     // Recorta las operaciones de cada grupo a la sección activa y descarta los grupos sin ops
     // en ella. Antes era un test de inclusión (dejaba ops de otras secciones dentro de un picker
     // mixto → se mostraba/contaba la suma cruzada). Ahora cada sección es independiente.
+    //
+    // Modo manual: un grupo creado a mano nunca tiene "operations" de Odoo que filtrar (siempre
+    // `[]`), así que con el filtro de `operations.length > 0` de abajo desaparecía por completo
+    // fuera de "Todas" — sin importar la sección real (`slot.section`) con la que se creó. Si no
+    // hay operaciones, se decide por los pallets reales de picking_pallets en vez de descartarlo.
     return allGroups
       .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
-      .filter(g => g.operations.length > 0);
-  }, [allGroups, sectionFilter]);
+      .filter(g => {
+        if (g.operations.length > 0) return true;
+        const slots = slotsByStateKey[g.stateKey] ?? [];
+        return slots.length > 0 && slots.some(s => seccionDeSlot(s) === sectionFilter);
+      });
+  }, [allGroups, sectionFilter, slotsByStateKey]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
@@ -1409,6 +1426,11 @@ export function PickingScreen() {
                 </button>
               </div>
 
+              {/* Sugerencias del datalist "Encargado manual" — una sola vez, no por tienda */}
+              <datalist id="picking-nombres-conocidos">
+                {nombresConocidos.map(n => <option key={n} value={n} />)}
+              </datalist>
+
               {selectedCods.map(cod => {
                 const storeGroups = groupedByStore[cod] ?? [];
                 const isLoading   = loadingCods.includes(cod);
@@ -1490,10 +1512,11 @@ export function PickingScreen() {
                         <input
                           type="text"
                           autoFocus
+                          list="picking-nombres-conocidos"
                           value={manualName}
                           onChange={e => setManualName(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
-                          placeholder="Nombre del encargado"
+                          placeholder="Nombre del encargado (elige uno o escribe uno nuevo)"
                           className="flex-1 text-[13px] px-3 py-1.5 rounded border"
                           style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
                         />
