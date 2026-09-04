@@ -14,7 +14,17 @@ function todayISO(): string {
  * fila por (fecha, fuente). `fecha` permite operar sobre un día pasado (p. ej. registrar en el
  * Enrutador una fecha que quedó sin registrar).
  */
-export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<number | null> {
+/** Resultado de un guardado. `ok:false` = NO llegó a la base y hay que reintentar. */
+export interface PushResult { ok: boolean; updatedAt: number | null }
+
+/**
+ * Igual que `pushSessionState`, pero dice si el guardado llegó.
+ *
+ * `pushSessionState` devuelve `null` tanto cuando falla como cuando la fila no trae `updated_at`,
+ * así que quien lo llama no puede distinguir «falló» de «se guardó sin marca de tiempo». Esa
+ * ambigüedad es la que dejaba dar por guardado lo que nunca se escribió.
+ */
+export async function pushSessionStateResult(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<PushResult> {
   const payload: Record<string, unknown> = {
     fecha,
     fuente,
@@ -29,10 +39,16 @@ export async function pushSessionState(fuente: Fuente, state: unknown, userId?: 
     .select('updated_at')
     .maybeSingle();
 
-  if (error) { console.error('[sync:push]', fuente, error.message, error.details); return null; }
+  if (error) { console.error('[sync:push]', fuente, error.message, error.details); return { ok: false, updatedAt: null }; }
+  return { ok: true, updatedAt: data?.updated_at ? new Date(data.updated_at as string).getTime() : null };
+}
+
+export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<number | null> {
+  const { ok, updatedAt } = await pushSessionStateResult(fuente, state, userId, fecha);
+  if (!ok) return null;
   // [C3/RC-6] Devolvemos el `updated_at` que quedó en la fila para poder ordenar los sync por reloj
   // del SERVIDOR (autoritativo cuando el trigger está aplicado) en vez del reloj de cada equipo.
-  return data?.updated_at ? new Date(data.updated_at as string).getTime() : null;
+  return updatedAt;
 }
 
 export interface SessionStateMeta { state: unknown; updatedAt: number | null }
