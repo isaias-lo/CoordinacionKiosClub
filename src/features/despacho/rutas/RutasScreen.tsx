@@ -38,7 +38,7 @@ import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, t
 import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha } from './utils/segundaVueltaFechas';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
-import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
+import { pushSessionState, pushSessionStateResult, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
 import { fetchCalendarioSupa, subscribeToCalendarioSupa } from '../../../lib/calendarioSync';
 import { writeCalendario } from '../utils/useCalendario';
@@ -53,6 +53,9 @@ type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }
 // km que el armado manual, 31% menos que asignar(), cero llegadas fuera de ventana); en false cae a
 // asignar() sin revertir el commit. asignar()/asignarPorClusters quedan como respaldo.
 const ENRUTADOR_V2 = true;
+
+/** [Fase 0] Se muestra cuando el tablero no llegó a guardarse: la pantalla dejaría de reflejar la base. */
+const AVISO_NO_GUARDADO = 'No se pudo guardar el tablero. Lo que ves puede no estar en la base — revisa tu conexión y vuelve a mover algo para reintentar.';
 
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
 
@@ -277,6 +280,12 @@ export default function RutasScreen() {
   // auto-scroll al arrastrar cerca del borde más confiable que buscarlo por DOM-walk.
   const v2ScrollRef = useRef<HTMLDivElement>(null);
 
+  // [Fase 0] Última fecha cuyo tablero se leyó CON ÉXITO. El guardado solo escribe si coincide con
+  // la que está en pantalla: así es imposible escribir un día que no se cargó.
+  const fechaCargadaRef = useRef<string | null>(null);
+  /** [Fase 0] Fecha para la que se construyó el pool actual, para rehacerlo al cambiar de día. */
+  const calTFechaRef = useRef<string | null>(null);
+
   const fechaRef = useRef(fecha);
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
   const tiendasRef = useRef(tiendas);
@@ -492,6 +501,10 @@ export default function RutasScreen() {
       // counts de la bodega Congelados inflaban el pool seco (una tienda congelada aparecía
       // como si fuera despacho seco).
       if ((row.fuente ?? '').startsWith('congelados')) return;
+      // [Fase 0] Esta suscripción es del día de HOY (`today`, fijo al montar). Si se está mirando
+      // otro día, sus conteos no pueden entrar al pool: esa mezcla es la que terminaba guardándose
+      // bajo la fecha abierta. Se siguen recordando en `sesionRowsRef` para cuando se vuelva a hoy.
+      if (fechaRef.current !== today) { sesionRowsRef.current.set(norm(row.tienda_cod), row); return; }
       const c = norm(row.tienda_cod);
       sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
@@ -725,12 +738,21 @@ export default function RutasScreen() {
     if (typeof window === 'undefined') return;
     isManualInitRef.current = false;
 
+    // [Fase 0] Se anota QUÉ fecha quedó realmente cargada. Si la lectura falla NO se habilita el
+    // guardado y el tablero se vacía: antes se marcaba como listo igual, así que el tablero del día
+    // anterior seguía en pantalla y el primer cambio de conteos lo escribía bajo la fecha nueva.
+    // Fue el mecanismo exacto por el que el 03/09 se sobrescribió el tablero del 30/08.
     fetchSessionState('rutas', fecha).then(remote => {
       const remoteObj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
       setManualAsignaciones(remoteObj);
       lastPushedManualRef.current = JSON.stringify(remoteObj);
+      fechaCargadaRef.current = fecha;
       isManualInitRef.current = true;
-    }).catch(() => { isManualInitRef.current = true; });
+    }).catch(() => {
+      setManualAsignaciones({});
+      fechaCargadaRef.current = null;
+      setErrors(prev => [...prev, 'No se pudo cargar el tablero de esta fecha. Recarga la página: por seguridad no se va a guardar nada hasta entonces.']);
+    });
 
     const unsub = subscribeToSessionState('rutas', userId ?? '', (state) => {
       if (!state || typeof state !== 'object') return;
@@ -783,12 +805,26 @@ export default function RutasScreen() {
   // ── Debounced push manualAsignaciones → Supabase ─────────────────
   useEffect(() => {
     if (!isManualInitRef.current) return;
+    // [Fase 0] Nunca escribir una fecha que no se leyó. Sin este guard, el tablero de un día podía
+    // terminar guardado bajo otro — y como nadie había leído ese otro día, se perdía lo que tenía.
+    if (fechaCargadaRef.current !== fecha) return;
     const json = JSON.stringify(manualAsignaciones);
     if (json === lastPushedManualRef.current) return;
     if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
     debounceManualRef.current = setTimeout(() => {
+      // Se marca ANTES solo para no re-disparar mientras el guardado vuela; si no llega, se revierte
+      // y el próximo cambio lo reintenta. Antes se marcaba y el error se tragaba: un guardado
+      // fallido quedaba dado por bueno para siempre y la pantalla mostraba lo que la base no tenía.
+      const previo = lastPushedManualRef.current;
       lastPushedManualRef.current = json;
-      pushSessionState('rutas', manualAsignaciones, userId, fecha).catch(() => {});
+      const fechaDelPush = fecha;
+      pushSessionStateResult('rutas', manualAsignaciones, userId, fechaDelPush)
+        .then(({ ok }) => {
+          if (ok) return;
+          if (lastPushedManualRef.current === json) lastPushedManualRef.current = previo;
+          setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
+        })
+        .catch(() => { if (lastPushedManualRef.current === json) lastPushedManualRef.current = previo; });
     }, 800);
     return () => {
       if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
@@ -912,9 +948,14 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualText, modo]);
 
-  // ── Init calT from calendar when empty ───────────────────────────
+  // ── Init calT desde el calendario ────────────────────────────────
+  // [Fase 0] Se reconstruye también al CAMBIAR DE FECHA. Antes solo corría con el pool vacío, así
+  // que al abrir un día pasado el pool de hoy sobrevivía y se mezclaba con el del día abierto —
+  // y de ahí salía escrito bajo la fecha equivocada.
   useEffect(() => {
-    if (Object.keys(calT).length > 0) return;
+    const cambioDeFecha = calTFechaRef.current !== null && calTFechaRef.current !== fecha;
+    if (Object.keys(calT).length > 0 && !cambioDeFecha) return;
+    calTFechaRef.current = fecha;
     const dia    = getDia(fecha);
     const calDia = cal[dia] || cal.LU || {};
     const newCalT: Record<string, CalData> = {};
