@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import InputSection   from './components/InputSection';
 import DespachoHeader from './components/DespachoHeader';
@@ -23,6 +23,8 @@ import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/recons
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
 import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/resumenCierre';
+import { porTienda, porCamion, mergeTablero, patentesDelTablero, type TableroPorTienda } from './utils/tableroSync';
+import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
 import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
 import { ordenarCalT } from './utils/ordenarCalT';
@@ -295,6 +297,8 @@ export default function RutasScreen() {
   const fechaCargadaRef = useRef<string | null>(null);
   /** [Fase 0] Fecha para la que se construyó el pool actual, para rehacerlo al cambiar de día. */
   const calTFechaRef = useRef<string | null>(null);
+  /** [Fase 2] Base del merge de tres vías: el tablero tal como estaba en el último sync. */
+  const baseManualRef = useRef<TableroPorTienda>({});
 
   const fechaRef = useRef(fecha);
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
@@ -756,25 +760,75 @@ export default function RutasScreen() {
       const remoteObj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
       setManualAsignaciones(remoteObj);
       lastPushedManualRef.current = JSON.stringify(remoteObj);
+      baseManualRef.current = porTienda(remoteObj);   // base del merge de tres vías
       fechaCargadaRef.current = fecha;
       isManualInitRef.current = true;
     }).catch(() => {
       setManualAsignaciones({});
+      baseManualRef.current = {};
       fechaCargadaRef.current = null;
       setErrors(prev => [...prev, 'No se pudo cargar el tablero de esta fecha. Recarga la página: por seguridad no se va a guardar nada hasta entonces.']);
     });
 
+    // [Fase 2] Lo remoto se FUSIONA, no reemplaza. Antes se adoptaba el tablero del otro equipo tal
+    // cual: con dos personas trabajando a la vez, la última en escribir borraba todo el trabajo de
+    // la otra sin aviso. Ahora se hace un merge de tres vías POR TIENDA —el mismo patrón que Bodega
+    // usa por ítem— con `baseManualRef` como base. Si un equipo asigna 40LIL y el otro 26ALC,
+    // quedan las dos.
     const unsub = subscribeToSessionState('rutas', userId ?? '', (state) => {
       if (!state || typeof state !== 'object') return;
       const remoteJson = JSON.stringify(state);
       if (remoteJson === lastPushedManualRef.current) return;
-      lastPushedManualRef.current = remoteJson;
-      setManualAsignaciones(state as Record<string, StoreItem[]>);
+      const remoto = porTienda(state as Record<string, StoreItem[]>);
+      setManualAsignaciones(prev => {
+        const fusion = mergeTablero(
+          remoto,
+          porTienda(prev),
+          baseManualRef.current,
+          // Un camión cerrado ya emitió manifiesto y QR: su carga no la mueve nadie, ni remoto.
+          cod => { const p = porTienda(prev)[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); },
+        );
+        const vivas = patentesDelTablero(prev, state as Record<string, StoreItem[]>);
+        const merged = porCamion(fusion, vivas);
+        baseManualRef.current = fusion;
+        lastPushedManualRef.current = JSON.stringify(merged);
+        return merged;
+      });
     }, undefined, fecha);
 
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  // [Fase 2] Ponerse al día al volver al dispositivo.
+  //
+  // Hasta acá el Enrutador dependía SOLO del WebSocket: si el móvil se bloquea o se pierde la red,
+  // el socket muere y el tablero queda congelado sin que nada lo indique. Bodega ya tenía este
+  // catch-up (`useVisibilityRefetch`) y el hook incluso menciona el caso móvil↔desktop — el
+  // Enrutador simplemente no lo usaba.
+  //
+  // Al volver el foco se relee el tablero y se FUSIONA con lo que haya local, para no pisar lo que
+  // se movió mientras tanto.
+  const releerTablero = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (fechaCargadaRef.current !== fechaRef.current) return;   // fase 0: no tocar otra fecha
+    fetchSessionState('rutas', fechaRef.current).then(remote => {
+      if (!remote || typeof remote !== 'object') return;
+      const remoto = porTienda(remote as Record<string, StoreItem[]>);
+      setManualAsignaciones(prev => {
+        const previo = porTienda(prev);
+        const fusion = mergeTablero(remoto, previo, baseManualRef.current,
+          cod => { const p = previo[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); });
+        const merged = porCamion(fusion, patentesDelTablero(prev, remote as Record<string, StoreItem[]>));
+        const json = JSON.stringify(merged);
+        if (json === JSON.stringify(prev)) return prev;   // nada cambió: no re-render ni re-push
+        baseManualRef.current = fusion;
+        lastPushedManualRef.current = json;
+        return merged;
+      });
+    }).catch(() => {});
+  }, []);
+  useVisibilityRefetch(releerTablero);
 
   // ── Manifiestos ya guardados para la fecha (persistente, cross-device) ──────
   // Independiente del lienzo efímero: si abres el Enrutador desde otro equipo y el tablero se ve
@@ -830,7 +884,7 @@ export default function RutasScreen() {
       const fechaDelPush = fecha;
       pushSessionStateResult('rutas', manualAsignaciones, userId, fechaDelPush)
         .then(({ ok }) => {
-          if (ok) return;
+          if (ok) { baseManualRef.current = porTienda(manualAsignaciones); return; }
           if (lastPushedManualRef.current === json) lastPushedManualRef.current = previo;
           setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
         })
