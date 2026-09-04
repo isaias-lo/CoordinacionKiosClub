@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { PickingOperation } from '../picking-types';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { isAbastecimientoOp, parseOrigin, resolveStoreCode } from '../picking-utils';
+import { useOdooActivo } from '@/hooks/useOdooActivo';
 
 interface UsePickingOdooParams {
   selectedCods:   string[];
@@ -12,6 +13,7 @@ interface UsePickingOdooParams {
 
 interface UsePickingOdooResult {
   hasOdoo:            boolean;
+  odooDesactivado:    boolean; // true si lo apagó el administrador (vs. nunca configurado)
   opsMap:             Record<string, PickingOperation[]>;
   loadingCods:        string[];
   errorCods:          string[];
@@ -25,7 +27,10 @@ interface UsePickingOdooResult {
 }
 
 export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingOdooParams): UsePickingOdooResult {
-  const hasOdoo = !!process.env.NEXT_PUBLIC_ODOO_URL;
+  const odooActivo = useOdooActivo(); // interruptor del administrador (/admin/sistema)
+  const odooConfigurado = !!process.env.NEXT_PUBLIC_ODOO_URL;
+  const hasOdoo = odooConfigurado && odooActivo;
+  const odooDesactivado = odooConfigurado && !odooActivo;
 
   const [opsMap,       setOpsMap]       = useState<Record<string, PickingOperation[]>>(initialOpsMap);
   const [loadingCods,  setLoadingCods]  = useState<string[]>([]);
@@ -193,7 +198,7 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
   }, [selectedCods, fetchBatchOps]);
 
   return {
-    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
+    hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
     fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
   };
 }

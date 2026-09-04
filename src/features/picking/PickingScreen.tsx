@@ -138,7 +138,7 @@ export function PickingScreen() {
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
 
   const {
-    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
+    hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
     fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
   } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
@@ -1299,7 +1299,9 @@ export function PickingScreen() {
                 </div>
                 {!hasOdoo && (
                   <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-xl px-4 py-3 text-[14px] text-red text-left inline-block">
-                    <span className="font-bold">Odoo no configurado.</span>
+                    <span className="font-bold">
+                      {odooDesactivado ? 'Odoo desactivado por el administrador.' : 'Odoo no configurado.'}
+                    </span>
                   </div>
                 )}
               </div>
