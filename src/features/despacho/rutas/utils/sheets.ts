@@ -1,4 +1,5 @@
 import { norm } from './helpers';
+import { grupoTienda } from './tipoTienda';
 import { dkm } from './helpers';
 import { stampFromFecha } from './helpers';
 import type { Vehiculo } from '../data/flota';
@@ -188,7 +189,23 @@ export function parseFSheetAuth(values: string[][], flota: Vehiculo[]) {
   }
 }
 
-export function parseCalendarioAuth(values: string[][]): Record<string, {rm:string[];costa:string[];fal:string[]}> | null {
+/**
+ * Lee la hoja CALENDARIO y reparte cada tienda en su grupo (RM / Costa / Regiones).
+ *
+ * `tiendas` es el CATÁLOGO, y es de dónde sale el grupo. Antes se decidía con dos listas de códigos
+ * escritas acá mismo, y a la de Regiones le faltaban dos tiendas: 57CAS (Castro, a 1.045 km) y
+ * 60PBL (Los Pablos). El `else` las mandaba a RM, así que al tocar "Refrescar datos" quedaban
+ * clasificadas como Santiago: se ordenaban entre las tiendas de la capital en el pool y —peor— el
+ * registro las escribía en `despacho_rm` en vez de `despacho_regiones`.
+ *
+ * La misma pantalla del calendario ya había abandonado estas listas por esto mismo ("no se
+ * actualizan al agregar nuevas tiendas"); acá había quedado la otra copia. Sin catálogo se cae a
+ * las listas, que se conservan solo como último recurso.
+ */
+export function parseCalendarioAuth(
+  values: string[][],
+  tiendas?: Record<string, { sector?: string; z?: string; region?: string }>,
+): Record<string, {rm:string[];costa:string[];fal:string[]}> | null {
   if (!values || values.length === 0) return null;
   
   const cal: Record<string, {rm:string[];costa:string[];fal:string[]}> = {};
@@ -206,9 +223,18 @@ export function parseCalendarioAuth(values: string[][]): Record<string, {rm:stri
   
   if (headerRow < 0) return null;
   
-  // Códigos numéricos de Costa y Falcón/Región
+  // Respaldo para códigos que no estén en el catálogo. NO se actualizan solas: a FAL_CODES ya le
+  // faltaban 57CAS y 60PBL. Por eso el catálogo manda y esto queda de último recurso.
   const COSTA_CODES = new Set(['37VIÑ','08RNC','33CON','43CUR','54MPQ']);
   const FAL_CODES   = new Set(['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP','31TLC','36CHL','24SPP','38SP2','76PAN','51SER','27MCH']);
+
+  const grupoDe = (cod: string): 'rm' | 'costa' | 'fal' => {
+    const inf = tiendas?.[cod];
+    if (inf) return grupoTienda(inf.sector ?? inf.z, inf.region);
+    if (COSTA_CODES.has(cod)) return 'costa';
+    if (FAL_CODES.has(cod))   return 'fal';
+    return 'rm';
+  };
 
   // Columnas: 0=GRUPO, 1=TIPO, 2=LUNES, 3=MARTES, 4=MIÉRCOLES, 5=JUEVES, 6=VIERNES, 7=SÁBADO
   const diaCols: Record<number, string> = { 2: 'LU', 3: 'MA', 4: 'MI', 5: 'JU', 6: 'VI', 7: 'SA' };
@@ -239,15 +265,7 @@ export function parseCalendarioAuth(values: string[][]): Record<string, {rm:stri
         .map(t => norm(t.trim()))
         .filter(t => t && /^[0-9]{0,2}[A-ZÑ]{2,4}[0-9]?$/.test(t));
 
-      partes.forEach(t => {
-        if (COSTA_CODES.has(t)) {
-          cal[diaKey].costa.push(t);
-        } else if (FAL_CODES.has(t)) {
-          cal[diaKey].fal.push(t);
-        } else {
-          cal[diaKey].rm.push(t);
-        }
-      });
+      partes.forEach(t => { cal[diaKey][grupoDe(t)].push(t); });
     }
   }
   

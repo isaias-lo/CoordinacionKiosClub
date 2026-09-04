@@ -1927,7 +1927,8 @@ export default function RutasScreen() {
       if (t1?.values) parseTSheetAuth(t1.values, newTiendas, newGps);
       if (t2?.values) parseFSheetAuth(t2.values, newFlota);
       if (t3?.values) {
-        const sheetsCal = parseCalendarioAuth(t3.values);
+        // El catálogo (recién actualizado por parseTSheetAuth) decide el grupo de cada tienda.
+        const sheetsCal = parseCalendarioAuth(t3.values, newTiendas);
         if (sheetsCal) {
           // Re-order Sheets data to match the Calendario de Abastecimiento order from localStorage
           let newCal = sheetsCal;
