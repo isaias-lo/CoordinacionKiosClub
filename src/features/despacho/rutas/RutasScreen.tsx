@@ -22,6 +22,8 @@ import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
+import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
+import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
 import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
@@ -198,7 +200,10 @@ export default function RutasScreen() {
   // Filtro de grupo (RM/COSTA/REGIONES) de DespachoHeader — antes vivía dentro de
   // InputSection (sidebarFilter); ahora la barra global lo controla y el board DESPACHO
   // (ManualDispatch, vía InputSection) solo lo consume para filtrar el pool "Sin asignar".
-  const [grupoFiltro, setGrupoFiltro]   = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
+  // [Pools] Pool activo del tablero. Regiones y RM/Costa se arman en momentos distintos del día.
+  const [pool, setPool] = useState<PoolScope>('rm-costa');
+  // Escape hatch: mostrar camiones de transportistas no habilitadas para el pool (casos puntuales).
+  const [todaLaFlota, setTodaLaFlota] = useState(false);
   // Camión elegido en el tablero DESPACHO (click en la tarjeta) para previsualizar su ruta
   // en el mapa ANTES de calcular — se limpia al cambiar de tab o al limpiar el tablero.
   const [camionSeleccionado, setCamionSeleccionado] = useState<string | null>(null);
@@ -1012,18 +1017,6 @@ export default function RutasScreen() {
   // ahora vive en ManualMode, que recibe sortedCalT como prop.
 
   // ── Calendar handlers ─────────────────────────────────────────────
-  // Pill de grupo (Todas/RM/COSTA/REGIONES): es un FILTRO DE VISTA y nada más.
-  //
-  // Antes cada pill tenía dos estados a la vez —"activo" y "seleccionado"— porque además del
-  // filtro (`grupoFiltro`, que solo cambia qué se muestra) mantenía un set de grupos activos y lo
-  // ESTAMPABA en `calT[c].on`. Apagar un grupo no lo escondía: lo sacaba del pool, del motor, del
-  // registro y del backlog de 2ª vuelta, sin ningún aviso ni marca en pantalla. Al cerrar el día,
-  // esas tiendas no llegaban a 2ª vuelta y quedaban sin nadie que las reclamara.
-  //
-  // Filtrar y despachar son cosas distintas: ahora el pill solo enciende o apaga el filtro.
-  function handleGroupPill(id: 'all' | 'rm' | 'costa' | 'fal') {
-    setGrupoFiltro(prev => (id === 'all' || prev === id) ? 'all' : id);
-  }
 
 
   // Los conteos del Enrutador son SOLO-LECTURA (se definen en Bodega) — no hay edición manual.
@@ -1710,19 +1703,66 @@ export default function RutasScreen() {
     setManualAsignaciones(prev => preservarCerradas(asig, prev, cerradasV1));
     setErrors(avisos);
   };
-  const autoAsignarRef = useRef(autoAsignar);
-  autoAsignarRef.current = autoAsignar;
 
-  // Dispara la auto-asignación cuando hay pool + camiones activos y el tablero está VACÍO. El
-  // debounce deja "asentar" varias activaciones seguidas (asigna con TODOS los camiones activos).
+  // "Reasignar todo" REEMPLAZA el tablero: deshace cada movimiento manual del día. Antes esto
+  // pasaba sin preguntar nada (era el mismo botón que hoy completa), así que una hora de trabajo
+  // se podía perder de un clic. Los camiones cerrados igual quedan intactos (preservarCerradas).
+  const reasignarTodo = () => {
+    if (tableroConTrabajo(manualAsignaciones) &&
+        !window.confirm('Reasignar todo rehace el tablero desde cero: se pierden los cambios que hiciste a mano.\n\n¿Seguro? Si solo quieres asignar lo que falta, usa "Asignar".')) return;
+    autoAsignar();
+  };
+  // [P4] Completar el tablero SIN deshacer lo armado a mano.
+  //
+  // La carga no llega toda junta: Bodega registra durante la mañana y el pool crece de a poco. Por
+  // eso "asignar" no puede ser una foto única — pero tampoco puede rehacer el tablero cada vez, o
+  // pisaría el trabajo del coordinador. Acá se rutea SOLO lo pendiente sobre la capacidad que
+  // queda en cada camión (flota sombra), y el resultado se SUMA: nada se mueve de lugar.
+  const completarAsignacion = (scopes: PoolScope[] = [pool]) => {
+    const todo = poolDesdeCalT(calT);
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+    // Los pools se recorren contra un tablero que se va ACUMULANDO, no contra el del render. Si se
+    // llamara una vez por pool con `setManualAsignaciones` en medio, la segunda pasada leería el
+    // tablero viejo y un camión que sirve a los dos pools —posible cuando una empresa cubre ambas
+    // zonas— se sobrecargaría sin que nada avisara.
+    let acumulado = manualAsignaciones;
+    for (const scope of scopes) {
+      // Solo lo pendiente DE ESTE POOL, sobre los camiones que este pool ofrece. Sin esto,
+      // completar Regiones repartiría también las tiendas de RM que todavía se están armando.
+      const pendientes = pendientesDelPool(todo, acumulado).filter(t => enPool(calT[t.c]?.g, scope));
+      if (!pendientes.length) continue;
+      const habilitados = todaLaFlota ? flota : flotaDePool(flota, scope, zonasCfg);
+      const flotaLibre = flotaConCapacidadRestante(habilitados, acumulado, p => isCerrada(cerradasV1, p));
+      if (!flotaLibre.length) continue;
+      const { rutas, consolidacion } = enrutarCon(flotaLibre, pendientes, extGps, extTiendas);
+      const propuesta: Record<string, StoreItem[]> = {};
+      for (const r of [...rutas, ...consolidacion])
+        if (r.ts.length) propuesta[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
+      if (Object.keys(propuesta).length) acumulado = fusionarAsignaciones(acumulado, propuesta);
+    }
+    if (acumulado === manualAsignaciones) return;
+    setManualAsignaciones(prev =>
+      prev === manualAsignaciones ? acumulado : fusionarAsignaciones(prev, acumulado));
+  };
+  const completarRef = useRef(completarAsignacion);
+  completarRef.current = completarAsignacion;
+
+  // Se dispara cuando cambia el pool o la flota. Antes corría UNA sola vez, con el tablero
+  // "vacío" — y "vacío" se medía contando LLAVES del objeto, no camiones con tiendas. Como el
+  // tablero deja llaves con lista vacía al sacar una tienda, bastaba mover una para que nunca más
+  // volviera a estar vacío: desde ahí ninguna tienda nueva de Bodega se asignaba sola. Y como el
+  // tablero se guarda, el bloqueo sobrevivía a recargar y se propagaba a los otros dispositivos.
+  // Ahora el disparador es "hay pendientes", y como solo AGREGA, correr de más es inofensivo.
   const poolSig   = useMemo(() => codsEnPool(calT).join(','), [calT]);
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
-  const boardEmpty = Object.keys(manualAsignaciones).length === 0;
   useEffect(() => {
-    if (!boardEmpty || !poolSig || !trucksSig) return;
-    const t = setTimeout(() => autoAsignarRef.current(), 1000);
+    if (!poolSig || !trucksSig) return;
+    // Los DOS pools, no solo el que se está mirando: las tiendas que Bodega registra para Regiones
+    // tienen que asignarse solas aunque el coordinador esté trabajando RM en ese momento. El
+    // `scope` es para las acciones que se piden a mano; esto corre en segundo plano y solo agrega.
+    const t = setTimeout(() => completarRef.current(['rm-costa', 'regiones']), 1000);
     return () => clearTimeout(t);
-  }, [boardEmpty, poolSig, trucksSig]);
+  }, [poolSig, trucksSig]);
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
@@ -2380,7 +2420,8 @@ export default function RutasScreen() {
             tiendas={tiendas} gps={gps} cd={cdRef.current}
             manualAsignaciones={manualAsignaciones}
             paradasAdicionales={paradasAdicionales}
-            grupoFiltro={grupoFiltro} onGroupPill={handleGroupPill}
+            pool={pool} onPool={setPool}
+            todaLaFlota={todaLaFlota} onTodaLaFlota={setTodaLaFlota}
             camionSeleccionado={camionSeleccionado}
             camionSeleccionadoKm={previewKm}
             onSelectTruck={setCamionSeleccionado}
@@ -2397,7 +2438,8 @@ export default function RutasScreen() {
             onAsignaciones={setManualAsignaciones}
             onCalcular={handleCalcular}
             onCalcularManual={handleCalcularManual}
-            onAsignarIA={autoAsignar}
+            onAsignar={() => completarAsignacion([pool])}
+            onReasignarTodo={reasignarTodo}
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
             cerrarSel={cerrarSel}
