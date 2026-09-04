@@ -31,6 +31,7 @@ import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
+import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -1142,14 +1143,17 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     let nuevoSlot: PickingSlot | undefined;
     if (!slotId) {
       const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
-      try {
-        const resSlot = await fetch('/api/picking-pallets/create-bodega', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: (row.contenido || 'hogar').toLowerCase() }),
-        });
-        nuevoSlot = (await resSlot.json() as { data?: PickingSlot }).data;
-        if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot!] })); }
-      } catch { /* sin slot: queda sin # (fallback), no bloquea el guardado */ }
+      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: row.contenido });
+      // No seguir sin fila real en picking_pallets: antes esto se tragaba en silencio y el
+      // pallet quedaba "confirmado" en el resumen de Bodega pero invisible para Seguimiento/
+      // Enrutador/Conteo de Flota (RC-4 — colisión de altas concurrentes). Mejor bloquear el
+      // guardado con un aviso claro que dejar un pallet fantasma sin que nadie se entere.
+      if (!slot) {
+        showToast(`⚠ No se pudo guardar (${error}) — reintenta`, '#D32F2F');
+        return;
+      }
+      nuevoSlot = slot; slotId = slot.id;
+      setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
     }
 
     const existing = items[cod] || [];
@@ -1240,21 +1244,18 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const reAgregarItem = async (item: SantiagoItem) => {
     const cod = item.tiendaCod;
     let slotId: number | undefined;
-    let nuevoSlot: PickingSlot | undefined;
-    try {
-      const res = await fetch('/api/picking-pallets/create-bodega', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(item.tipo), contenido: (item.contenido || 'hogar').toLowerCase() }),
-      });
-      nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
-      if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot!] })); }
-    } catch { /* sin slot: se re-agrega igual (sin #) */ }
+    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(item.tipo), contenido: item.contenido });
+    if (nuevoSlot) { slotId = nuevoSlot.id; setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot] })); }
     dispatch({ type: 'ADD_ITEM', item: { ...item, id: `${cod}-${Date.now()}`, pickingSlotId: slotId } });
     if (slotId) {
       supabase.from('picking_pallets').update({ peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo })
         .eq('id', slotId).then(({ error }) => { if (error) console.error('[reAgregar picking update]', error.message); });
     }
-    showToast(`↩ ${item.orden} restaurado`, '#16A34A');
+    // Se re-agrega igual sin # cuando falla la creación (mejor que perder la restauración),
+    // pero ahora AVISA — antes fallaba en silencio y el pallet quedaba invisible para
+    // Seguimiento/Enrutador sin que nadie lo notara.
+    if (slotId) showToast(`↩ ${item.orden} restaurado`, '#16A34A');
+    else showToast(`⚠ ${item.orden} restaurado sin # de bodega (${error})`, '#D97706');
   };
 
   // [Revertir unificación] Deshace una unión P3→P1: re-crea el slot del source (se borró en la
@@ -1264,15 +1265,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const revertirUnificacion = async (snap: UnionSnap) => {
     const { cod, itemsAntes, sourceItem, oldSrcSlot, tgtSlot, tgtPeso } = snap;
     let newSrcSlotId: number | undefined;
-    let nuevoSlot: PickingSlot | undefined;
-    try {
-      const res = await fetch('/api/picking-pallets/create-bodega', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(sourceItem.tipo), contenido: (sourceItem.contenido || 'hogar').toLowerCase() }),
-      });
-      nuevoSlot = (await res.json() as { data?: PickingSlot }).data;
-      if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
-    } catch { /* sin slot: el source queda sin # */ }
+    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(sourceItem.tipo), contenido: sourceItem.contenido });
+    if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
+    // El source queda sin # si falla — ahora AVISA en vez de fallar en silencio.
+    else showToast(`⚠ Revertido sin # de bodega para el source (${error})`, '#D97706');
     // Restaurar peso del slot target (se le sumó el del source) + dims del source re-creado.
     if (tgtSlot) supabase.from('picking_pallets').update({ peso_kg: tgtPeso }).eq('id', tgtSlot).then(({ error }) => { if (error) console.error('[revert union tgt]', error.message); });
     if (newSrcSlotId) supabase.from('picking_pallets').update({ peso_kg: sourceItem.peso, alto: sourceItem.alto, ancho: sourceItem.ancho, largo: sourceItem.largo }).eq('id', newSrcSlotId).then(({ error }) => { if (error) console.error('[revert union src]', error.message); });
@@ -1543,16 +1539,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       if (!cod || !regimen) { showToast('Selecciona régimen', '#D97706'); return; }
       // Crear el ID de bodega (canonical_id + seq) y vincularlo — o usar el preexistente
       let slot: PickingSlot | undefined = existingSlot;
-      if (!slot) try {
-        const res = await fetch('/api/picking-pallets/create-bodega', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' }),
-        });
-        slot = (await res.json() as { data?: PickingSlot }).data;
-      } catch { /* sin slot: queda como chocolate sin ID */ }
-      if (slot) {
-        setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
+      if (!slot) {
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' });
+        slot = res.slot;
+        // No agregar un chocolate "confirmado" sin fila real en picking_pallets — antes esto
+        // fallaba en silencio y quedaba invisible para Seguimiento/Enrutador/Conteo de Flota.
+        if (!slot) { showToast(`⚠ No se pudo agregar el chocolate (${res.error}) — reintenta`, '#D32F2F'); return; }
       }
+      setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
       const existing = items[cod] || [];
       const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1 + countOffset;
       const stamp = Date.now();
@@ -1590,24 +1584,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return;
     }
 
-    try {
-      const res  = await fetch('/api/picking-pallets/create-bodega', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ date, store_cod: cod, tipo: TIPO_CODE[t], contenido: 'hogar' }),
-      });
-      const json = await res.json() as { data?: PickingSlot };
-      const slot = json.data;
-      if (!slot) return;
-      // Reflejar el slot nuevo en pickingSlotsFull (consistencia al re-renderizar)
-      setPickingSlotsFull(prev => {
-        const next = { ...prev };
-        next[cod] = [...(next[cod] ?? []), slot];
-        return next;
-      });
-      // Vincular el slot al form row recién creado
-      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
-    } catch { /* fallback: el row queda sin slot */ }
+    // Solo pre-asigna el # a la card vacía todavía sin confirmar — si falla, el row queda sin
+    // slot por ahora y `saveRow` (el confirm real, al hacer clic en "Agregar") lo reintenta y
+    // ahí sí bloquea/avisa si vuelve a fallar. No hace falta avisar dos veces por lo mismo.
+    const { slot } = await crearSlotBodega({ date, store_cod: cod, tipo: TIPO_CODE[t], contenido: 'hogar' });
+    if (!slot) return;
+    setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
   };
 
   // [P5] Guarda anti doble-tap (paridad con Nacional): crear un slot NO es idempotente, así que dos
@@ -1630,16 +1613,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const cod  = currentTienda.cod;
     const date = fechaISOLocal();
     const baseCount = (items[cod] || []).filter(i => i.tipo === 'Bulto').length; // # antes de duplicar (sin lecturas stale)
+    let creados = 0;
     for (let k = 0; k < cantidad; k++) {
-      let slot: PickingSlot | undefined;
-      try {
-        const res = await fetch('/api/picking-pallets/create-bodega', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date, store_cod: cod, tipo: 'B', contenido: 'hogar' }),
-        });
-        slot = (await res.json() as { data?: PickingSlot }).data;
-      } catch { /* sin slot: queda como bulto sin ID */ }
-      if (slot) setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
+      const { slot, error } = await crearSlotBodega({ date, store_cod: cod, tipo: 'B', contenido: 'hogar' });
+      // No agregar un bulto "confirmado" sin fila real en picking_pallets — antes esto fallaba
+      // en silencio y quedaba invisible para Seguimiento/Enrutador/Conteo de Flota.
+      if (!slot) { showToast(`⚠ Se detuvo en ${creados}/${cantidad} — ${error}`, '#D32F2F'); break; }
+      setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
+      creados++;
       const stamp = Date.now();
       const item: SantiagoItem = {
         id: `${cod}-dup-${stamp}-${k}`, tiendaCod: cod, tipo: 'Bulto', contenido: src.contenido,
@@ -1658,7 +1639,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           .eq('id', slot.id).then(({ error }) => { if (error) console.error('[duplicarBulto]', error.message); });
       }
     }
-    showToast(`✓ ${cantidad} bulto${cantidad === 1 ? '' : 's'} duplicado${cantidad === 1 ? '' : 's'}`, '#16A34A');
+    if (creados > 0) showToast(`✓ ${creados} bulto${creados === 1 ? '' : 's'} duplicado${creados === 1 ? '' : 's'}`, '#16A34A');
   };
 
   // Mapea el tipo del slot (P/B/C/CH) al TipoCargamento del formulario

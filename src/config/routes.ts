@@ -68,6 +68,11 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       // gestión vive en el Enrutador → tab FLOTA → Gestionar. La ruta sigue activa.
       // '/tiendas' (Recepción del conductor) se accede desde Panel Conductor;
       // se quitó del sidebar para evitar duplicado. La ruta sigue activa.
+      // Pantalla de solo lectura para una persona de flota externa (conteo estimado
+      // de pallets/bultos/chocolates del día). `hidden`: registrada para permisos
+      // (aparece en el checklist y puede asignarse como home) pero fuera del sidebar
+      // normal — esta persona entra directo a ella, no navega el resto de la app.
+      { path: '/conteo-flota',           label: 'Conteo de Flota', hidden: true },
     ],
   },
   {
@@ -117,6 +122,7 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
 
   { value: '/tiendas',         label: 'Conductores'      },
   { value: '/picking',         label: 'Abastecimiento'    },
+  { value: '/conteo-flota',    label: 'Conteo de Flota'  },
   { value: '/perfil',          label: 'Perfil'           },
 ];
 
