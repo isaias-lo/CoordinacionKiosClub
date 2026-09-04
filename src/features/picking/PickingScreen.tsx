@@ -140,6 +140,13 @@ export function PickingScreen() {
   const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
   const [manualName, setManualName]           = useState('');
   const [manualSeccion, setManualSeccion]     = useState<SectionFilter>('all');
+  // Bug 5 reportado: el botón de imprimir toda una tienda disparaba la impresión de una al
+  // toque, sin confirmar — un click accidental imprimía una etiqueta real de más. Armar/
+  // confirmar: el primer click solo "arma" el botón (2.5 s); el segundo click, dentro de esa
+  // ventana, imprime. Un click suelto sin seguimiento no hace nada.
+  const [armedPrintCod, setArmedPrintCod] = useState<string | null>(null);
+  const armedPrintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current); }, []);
 
   const {
     hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
@@ -1518,11 +1525,19 @@ export function PickingScreen() {
                         {(() => {
                           const storeLabels = printableLabels.filter(l => l.storeCod === cod);
                           if (!storeLabels.length) return null;
+                          const armado = armedPrintCod === cod;
                           return (
-                            <button onClick={() => printStoreLabels(cod)}
+                            <button onClick={() => {
+                              if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current);
+                              if (armado) { setArmedPrintCod(null); printStoreLabels(cod); return; }
+                              setArmedPrintCod(cod);
+                              armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
+                            }}
                               className="text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-                              style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                              <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                              style={armado
+                                ? { background: '#D97706', color: '#fff', border: '1px solid #D97706' }
+                                : { background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
+                              <Printer size={13} /> {armado ? '¿Confirmar?' : `${cod} · ${storeLabels.length} etiqueta${storeLabels.length !== 1 ? 's' : ''}`}
                             </button>
                           );
                         })()}
