@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
-import { pushCounts, type CountMap } from '@/lib/despachoSesion';
+import { pushCounts, fetchCounts, subscribeToSesion, type CountMap } from '@/lib/despachoSesion';
+import { registradasDesdeSesion } from '../utils/registradasCongelados';
 import { tiendasCongeladosDelDia, cajasCongeladosPorTienda, type ConteoCajas } from '../utils/congeladosData';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { useOdooProgress } from '../../shared/useOdooProgress';
@@ -39,14 +40,6 @@ function nombreDeTienda(cod: string, zona: ZonaCongelados): string {
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function loadRegistradas(key: string): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch { return new Set(); }
 }
 
 interface Props {
@@ -162,20 +155,31 @@ export function CongeladosPage({ zona }: Props) {
   const [slotsPorTienda, setSlotsPorTienda] = useState<Record<string, PickingSlotCongelado[]>>({});
   const [slotsLoaded, setSlotsLoaded] = useState(false);
   const odooProgress = useOdooProgress();
-
-  const registradasKey = `congelados_registradas_${zona}_${todayISO()}`;
   const [selected, setSelected] = useState<string | null>(null);
   const [ajuste, setAjuste] = useState<Record<string, { cc: number; cn: number }>>({});
-  const [registradas, setRegistradas] = useState<Set<string>>(() => loadRegistradas(registradasKey));
+  // [Fase 3] Ya NO sale de localStorage. La marca era por dispositivo: alguien registraba desde el
+  // computador y en la tablet del andén esas tiendas seguían apareciendo sin registrar, así que dos
+  // personas podían registrar la misma tienda dos veces. El hecho ya está en `despacho_sesion` —
+  // se deriva de ahí en vez de guardar otra copia que se desincronice.
+  const [registradas, setRegistradas] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
 
   // Si cambia la zona (o cruza medianoche mientras la pantalla queda montada), recarga el set
   // de registradas desde la clave de localStorage correcta.
+  // Se lee de la base al abrir y se mantiene al día con los cambios de los otros dispositivos.
   useEffect(() => {
-    setRegistradas(loadRegistradas(registradasKey));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registradasKey]);
+    let vivo = true;
+    const hoy = todayISO();
+    const releer = () => {
+      fetchCounts(hoy)
+        .then(filas => { if (vivo) setRegistradas(registradasDesdeSesion(filas, zona)); })
+        .catch(() => {});
+    };
+    releer();
+    const unsub = subscribeToSesion(hoy, () => releer());
+    return () => { vivo = false; unsub(); };
+  }, [zona]);
 
   useEffect(() => {
     if (!toast) return;
@@ -312,12 +316,8 @@ export function CongeladosPage({ zona }: Props) {
       }
       await pushCounts(zona === 'nacional' ? 'congelados-regiones' : 'congelados-santiago', countsMap);
 
-      setRegistradas(prev => {
-        const next = new Set(prev);
-        next.add(cod);
-        try { localStorage.setItem(registradasKey, JSON.stringify([...next])); } catch { /* best-effort */ }
-        return next;
-      });
+      // Optimista: se ve al instante. La base es la que manda y la corrige en el próximo evento.
+      setRegistradas(prev => new Set(prev).add(cod));
       showToast('✓ Registrado', '#16A34A');
       setSelected(null);
     } catch (err) {

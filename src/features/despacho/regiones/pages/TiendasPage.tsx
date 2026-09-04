@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useLayoutEffect, useState } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
-import { TIENDAS, getTodayCods, validarDimensiones } from '../data/tiendas';
+import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow } from '../data/tiendas';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
@@ -230,6 +230,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [removeDropActive,  setRemoveDropActive]   = useState(false);
   const [multiDragOver,     setMultiDragOver]      = useState(false);
   const [presets,           setPresets]            = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
+  // [P7] Versión del catálogo: se incrementa al hidratar tiendas de la BD (registro de módulo, no
+  // reactivo por sí solo). `sinDatosSendu` son las que aparecen pero les falta data de envío.
+  const [catalogoVer,       setCatalogoVer]        = useState(0);
+  const [sinDatosSendu,     setSinDatosSendu]      = useState<string[]>([]);
   const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
@@ -263,6 +267,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   useEffect(() => {
     const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
     const todayCode = DAY_CODES[new Date().getDay()];
+
+    // [P7] Hidratar el catálogo con las tiendas de Regiones de la BD (Config. Tiendas). Sin esto,
+    // una tienda nueva quedaba en el calendario pero NO se renderizaba acá (la lista sale de
+    // `TIENDAS`) ni se podía agrupar en Regiones — le pasaba a 60PBL, 38SP2 y a toda tienda futura.
+    fetch('/api/tiendas')
+      .then(r => (r.ok ? r.json() : null))
+      .then((j: { tiendas?: TiendaBDRow[] } | null) => {
+        const { agregadas, sinDatosSendu } = registrarTiendasBD(j?.tiendas ?? []);
+        if (agregadas.length) {
+          setSinDatosSendu(prev => [...new Set([...prev, ...sinDatosSendu])]);
+          setCatalogoVer(v => v + 1);   // el catálogo es un registro de módulo → forzar re-render
+        }
+      })
+      .catch(() => {});
 
     // Initial fetch (checks localStorage cache first, then Sheets)
     getTiendasDelDia('fal')
@@ -324,10 +342,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
+    // [P5] Tiendas que ESTE cliente tiene en pantalla (con o sin carga): acota el borrado de
+    // `despacho_sesion` a su propio universo, para no borrar las cargadas por otra persona.
+    const conocidas: string[] = [];
     Object.entries(dispatchData).forEach(([name, items]) => {
-      if (!items.length) return;
       const tienda = TIENDAS[name];
       if (!tienda) return;
+      conocidas.push(tienda.cod);
+      if (!items.length) return;
       const p  = items.filter(i => i.pkg === 'pallet').length;
       const b  = items.filter(i => i.pkg === 'box').length;
       const c  = items.filter(i => i.pkg === 'contenedor').length;
@@ -335,7 +357,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
-    pushCounts('regiones', counts).catch(() => {});
+    pushCounts('regiones', counts, conocidas).catch(() => {});
   }, [dispatchData]);
 
   /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
@@ -377,9 +399,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const cur = dispatchData[name] || [];
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      // CH lo maneja el rebuild (auto-agregado); congelados (CC/CN) quedan fuera: SECO no
-      // debe generar card fantasma para ellos.
-      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH' && !esCongeladoContenido(s.contenido));
+      // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
+      // CH: entra SOLO si su item ya existe en el estado (`cur`). Así un chocolate agregado por
+      // otra persona aparece apenas llega el item, sin tener que salir y volver a la tienda —
+      // que es el hueco que antes tapaba el ghost `gCH`. Y al exigir que el item exista NO se
+      // inventa una card durante la ventana de sync (el slot llega ~600 ms antes que el estado),
+      // que es justo lo que hacía parpadear los CH.
+      const missing = fullSlots.filter(s =>
+        !repIds.has(s.id)
+        && !esCongeladoContenido(s.contenido)
+        && (s.tipo !== 'CH' || cur.some(it => it.pickingSlotId === s.id)));
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const pkg = PKG_MAP[s.tipo] ?? 'pallet';
@@ -566,6 +595,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           // 3) Chocolate sin guardar → materializar agregado con peso por defecto
           if (!saved && pkg === 'chocolate') {
             const newCh: DispatchItem = {
+              // `id` DETERMINISTA por slot: dos equipos que materializan el mismo chocolate generan
+              // la MISMA llave, así el merge por-ítem lo reconoce como uno solo. Antes el CH salía
+              // sin `id` y el reducer le estampaba uno local por dispositivo (`di-<ts>-<n>`), de modo
+              // que el mismo chocolate viajaba con llaves distintas y `mergeListaPorItem` lo
+              // duplicaba. (RM/Costa ya asignaba id acá — esto empareja el comportamiento.)
+              id: sid ? `ch-slot-${sid}` : `ch-${selectedTienda}-${chCount + 1}-${Date.now()}`,
               orden: `chocolate${++chCount}`, tipo: mapearContenido(s.contenido), pkg: 'chocolate',
               peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
               guia: '', valor: 0, pickingSlotId: sid || undefined,
@@ -631,7 +666,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             rows.push({ id: `c${i}-${Date.now()}`,  pkg: 'contenedor',tipo: 'hogar', peso: '', alto: '', ancho: '',    largo: '',    guia: '', valor: '' });
           if ((preset.chocolates ?? 0) > 0) {
             dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: Array.from({ length: preset.chocolates ?? 0 }, (_, i) => ({
-              orden: `CH${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+              // `id` determinista (mismo en todos los equipos para el mismo preset) y `orden` con el
+              // formato que usa el resto del código. Antes estos CH salían SIN id y SIN pickingSlotId,
+              // así que su llave de merge caía en `orden:CH1` — que además el renumber reescribe como
+              // `chocolate1` — y el mismo chocolate terminaba duplicado entre dispositivos.
+              id: `ch-preset-${selectedTienda}-${i + 1}`,
+              orden: `chocolate${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
               peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
             })) });
           }
@@ -665,7 +705,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   }, [selectedTienda]);
 
 
-  const all = Object.values(TIENDAS);
+  // `catalogoVer` entra a propósito en la dependencia: el catálogo se hidrata desde la BD después
+  // del montaje y hay que recalcular la lista cuando eso ocurre.
+  const all = useMemo(() => Object.values(TIENDAS), [catalogoVer]);
   const filtered = all.filter(t => {
     const q = search.toLowerCase();
     return !q || t.name.toLowerCase().includes(q) || t.region?.toLowerCase().includes(q) || t.cod?.toLowerCase().includes(q);
@@ -831,12 +873,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     else showToast('No se pudo asignar ningún PDF. Verifica que el nombre inicie con el código (ej: 53VAL-...).', '#D97706');
   };
 
+  // [P5] Claves `tienda:pkg` con una creación de slot en vuelo (anti doble-tap).
+  const addingSlotRef = useRef<Set<string>>(new Set());
+
   /* Multi-form row helpers */
   // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
   // en ese caso NO se crea un slot nuevo, se usa el reclamado.
   // countOffset: al "agregar de a N" (loop), el nº del chocolate se calcula del `dispatchData` del
   // closure (que NO se actualiza dentro del loop) → sin offset los N quedarían con el mismo nº.
-  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
+  const addFormRowInner = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
     const date = fechaISOLocal();
@@ -908,6 +953,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return next;
     });
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+  };
+
+  // [P5] Guarda anti doble-tap: crear un slot NO es idempotente, así que dos toques seguidos (o un
+  // reintento por red lenta) generaban DOS pallets/chocolates físicos. Se bloquea por
+  // tienda+tipo mientras la creación está en vuelo. El "agregar de a N" no se ve afectado: hace
+  // `await` de cada llamada, así que la guarda ya está liberada en la siguiente vuelta.
+  const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
+    const key = `${selectedTienda}:${pkg}`;
+    if (addingSlotRef.current.has(key)) return;
+    addingSlotRef.current.add(key);
+    try { await addFormRowInner(pkg, existingSlot, countOffset); }
+    finally { addingSlotRef.current.delete(key); }
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
@@ -1440,18 +1497,26 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
             const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
             const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
-            const gCH  = Math.max(0, pkS.filter(s => s.tipo === 'CH').length - items.filter(i => i.pkg === 'chocolate').length   - cns.ch);
+            // NO hay ghost de CH (paridad con RM/Costa, que solo calcula gP/gB/gC).
+            //
+            // El ghost de chocolate era una RESTA entre dos fuentes que viajan a distinta velocidad:
+            // los slots de `picking_pallets` (Realtime, ~600 ms) menos los items del estado
+            // sincronizado (debounce 2500 ms + bloqueos del merge). Esa diferencia es positiva por
+            // construcción en CADA alta o baja de un CH, así que aparecía una tarjeta fantasma que
+            // se iba sola cuando llegaba el estado: el "se van y vuelven" que se reportó.
+            // Encima nunca podía absorberse: `unsavedChoc` era estructuralmente 0 porque ningún
+            // camino crea una fila CH con `saved:false` (el rebuild y addFormRow la marcan como
+            // guardada, y el backfill excluía CH). Los CH ahora se muestran solo cuando existen
+            // como item real — una sola fuente de verdad — y el backfill de abajo los materializa.
             // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
             const unsavedPallet = formRows.filter(r => !r.saved && r.pkg === 'pallet').length;
             const unsavedBox    = formRows.filter(r => !r.saved && r.pkg === 'box').length;
             const unsavedCont   = formRows.filter(r => !r.saved && r.pkg === 'contenedor').length;
-            const unsavedChoc   = formRows.filter(r => !r.saved && r.pkg === 'chocolate').length;
             type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
             const ghostCards: GC[] = [
               ...Array.from({ length: Math.max(0, gP  - unsavedPallet) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
               ...Array.from({ length: Math.max(0, gB  - unsavedBox)    }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
               ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
-              ...Array.from({ length: Math.max(0, gCH - unsavedChoc)   }, (_, i) => ({ type: 'ch' as const, border: 'rgba(120,53,15,0.35)',  text: '#92400E', bg: 'rgba(120,53,15,0.03)',   label: 'Choc.',   key: `gCH${i}` })),
             ];
             // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
             // VISTA; el estado formRows queda igual y los handlers operan por row.id.
@@ -1977,6 +2042,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             placeholder="Buscar…"
             className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
         </div>
+
+        {/* [P7] Tiendas traídas de la BD que aún no tienen los datos de envío de Sendu (region_sendu,
+            comuna, número). Se muestran igual —antes desaparecían en silencio— pero se avisa para
+            completarlas en el catálogo antes de exportar a Sendu. */}
+        {sinDatosSendu.length > 0 && (
+          <div className="px-2 py-1.5 bg-amber-50 border-b border-amber-200 flex-shrink-0 text-[11.5px] text-amber-800 leading-snug">
+            ⚠ {sinDatosSendu.join(', ')} {sinDatosSendu.length === 1 ? 'viene' : 'vienen'} de Config. Tiendas sin datos completos de envío (Sendu). Se {sinDatosSendu.length === 1 ? 'puede cargar' : 'pueden cargar'} normalmente; revisa sus datos antes de exportar.
+          </div>
+        )}
 
         {/* Toolbar: Multi-PDF — desktop only */}
         <div className="hidden lg:flex px-2 py-1.5 bg-bg border-b border-border flex-shrink-0 gap-1.5">

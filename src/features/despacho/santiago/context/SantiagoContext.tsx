@@ -9,6 +9,7 @@ import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remot
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { stableItemKey } from '../../shared/formRowsReconcile';
+import { serializarBaseSantiago } from '../../shared/syncBase';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -147,7 +148,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
   stateRef.current      = state;
-  const lastPushedRef   = useRef<string>('');
+  const lastPushedRef   = useRef<string>('');       // [P5] BASE canónica (serializarBaseSantiago)
+  const lastPushedFullRef = useRef<string>('');     // [P5] payload completo: solo para "¿hay que empujar?"
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
   const isInitializedRef = useRef(false);
@@ -183,14 +185,14 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       if (remotoEsMasViejo(updatedAt, lastServerStampRef.current, rawPushedAt, lastPushTimestampRef.current)) return;
 
       const remote = normalize(remoteState as SyncableState);
-      const remoteStr = JSON.stringify({ step: remote.step, regimen: remote.regimen, items: remote.items });
+      // [P5] Base canónica: antes acá se serializaban 3 claves y en el push 5, así que `isDirty`
+      // daba SIEMPRE true y el corta-ecos no cortaba nunca → cada equipo re-empujaba lo adoptado.
+      const remoteStr = serializarBaseSantiago(remote);
       if (remoteStr === lastPushedRef.current) return; // already in sync
       // Voy a incorporar este remoto → avanzo el reloj de servidor de referencia.
       if (updatedAt != null && updatedAt > lastServerStampRef.current) lastServerStampRef.current = updatedAt;
 
-      const localStr = JSON.stringify({
-        step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
-      });
+      const localStr = serializarBaseSantiago(stateRef.current);
       const isDirty = localStr !== lastPushedRef.current;
 
       if (isDirty && remote.items) {
@@ -221,7 +223,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         const remoteSessionDate = (m.state as { sessionDate?: string }).sessionDate;
         if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
         const s = normalize(m.state as SyncableState);
-        lastPushedRef.current = JSON.stringify({ step: s.step, regimen: s.regimen, items: s.items });
+        lastPushedRef.current = serializarBaseSantiago(s);
         if (m.updatedAt != null) lastServerStampRef.current = m.updatedAt; // [C3/RC-6] base del reloj de servidor
         dispatch({ type: 'LOAD_STATE', payload: s });
       })
@@ -262,8 +264,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       step: state.step, regimen: state.regimen, items: state.items,
       fechaDespacho: state.fechaDespacho, registrado: state.registrado,
     };
+    // [P5] El chequeo de cambios mira el payload COMPLETO; la base del merge/corta-ecos va aparte.
     const current = JSON.stringify(payload);
-    if (current === lastPushedRef.current) return;
+    if (current === lastPushedFullRef.current) return;
 
     const doPush = () => {
       debounceRef.current = null;
@@ -271,13 +274,15 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       const isEmpty = Object.keys(payload.items).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
       const prevLastPushed = lastPushedRef.current;
-      lastPushedRef.current = current;
+      const prevLastFull   = lastPushedFullRef.current;
+      lastPushedRef.current     = serializarBaseSantiago(payload);
+      lastPushedFullRef.current = current;
       isPushingRef.current = true;
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
       pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
         .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
-        .catch(() => { lastPushedRef.current = prevLastPushed; }) // reset so dirty check retries correctly
+        .catch(() => { lastPushedRef.current = prevLastPushed; lastPushedFullRef.current = prevLastFull; }) // reset so dirty check retries correctly
         .finally(() => {
           isPushingRef.current = false;
           // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
@@ -312,15 +317,17 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado,
     };
     const current = JSON.stringify(payload);
-    if (current === lastPushedRef.current) return;
+    if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     const prevPushed = lastPushedRef.current;
-    lastPushedRef.current = current;
+    const prevFull   = lastPushedFullRef.current;
+    lastPushedRef.current     = serializarBaseSantiago(payload);
+    lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
       .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
-      .catch(() => { lastPushedRef.current = prevPushed; });
+      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
 

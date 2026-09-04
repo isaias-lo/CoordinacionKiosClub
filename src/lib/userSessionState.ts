@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 
 // 'rutas_reg' = marca de "este día ya se registró en el Enrutador" (para avisar de días sin registrar).
 // 'rutas_cerradas' = set de patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), por fecha.
-type Fuente = 'regiones' | 'santiago' | 'guides' | 'rutas' | 'rutas_v2' | 'segunda_vuelta' | 'rutas_reg' | 'rutas_cerradas' | 'congelados-santiago' | 'congelados-regiones';
+type Fuente = 'regiones' | 'santiago' | 'guides' | 'rutas' | 'rutas_v2' | 'segunda_vuelta' | 'rutas_reg' | 'rutas_cerradas' | 'congelados-santiago' | 'congelados-regiones' | 'rutas_congelados';
 
 function todayISO(): string {
   const d = new Date();
@@ -14,7 +14,17 @@ function todayISO(): string {
  * fila por (fecha, fuente). `fecha` permite operar sobre un día pasado (p. ej. registrar en el
  * Enrutador una fecha que quedó sin registrar).
  */
-export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<number | null> {
+/** Resultado de un guardado. `ok:false` = NO llegó a la base y hay que reintentar. */
+export interface PushResult { ok: boolean; updatedAt: number | null }
+
+/**
+ * Igual que `pushSessionState`, pero dice si el guardado llegó.
+ *
+ * `pushSessionState` devuelve `null` tanto cuando falla como cuando la fila no trae `updated_at`,
+ * así que quien lo llama no puede distinguir «falló» de «se guardó sin marca de tiempo». Esa
+ * ambigüedad es la que dejaba dar por guardado lo que nunca se escribió.
+ */
+export async function pushSessionStateResult(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<PushResult> {
   const payload: Record<string, unknown> = {
     fecha,
     fuente,
@@ -29,10 +39,16 @@ export async function pushSessionState(fuente: Fuente, state: unknown, userId?: 
     .select('updated_at')
     .maybeSingle();
 
-  if (error) { console.error('[sync:push]', fuente, error.message, error.details); return null; }
+  if (error) { console.error('[sync:push]', fuente, error.message, error.details); return { ok: false, updatedAt: null }; }
+  return { ok: true, updatedAt: data?.updated_at ? new Date(data.updated_at as string).getTime() : null };
+}
+
+export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<number | null> {
+  const { ok, updatedAt } = await pushSessionStateResult(fuente, state, userId, fecha);
+  if (!ok) return null;
   // [C3/RC-6] Devolvemos el `updated_at` que quedó en la fila para poder ordenar los sync por reloj
   // del SERVIDOR (autoritativo cuando el trigger está aplicado) en vez del reloj de cada equipo.
-  return data?.updated_at ? new Date(data.updated_at as string).getTime() : null;
+  return updatedAt;
 }
 
 export interface SessionStateMeta { state: unknown; updatedAt: number | null }
@@ -93,7 +109,11 @@ export async function fetchUnregisteredRutasDays(sinceDays = 10): Promise<string
   const { data, error } = await supabase
     .from('shared_session_state')
     .select('fecha, fuente, state')
-    .in('fuente', ['rutas', 'rutas_reg'])
+    // [Fase 1] También 'cierre' y 'rutas_cerradas'. El aviso preguntaba solo por 'rutas_reg', un
+    // marcador que en el flujo real NADIE escribe: lo ponen el registro global (que exige haber
+    // pasado por "Calcular") y la ✕ manual. Por eso volvía todos los días aunque el día estuviera
+    // cerrado y registrado — comprobado en la base: 20 filas seguidas de descarte a mano.
+    .in('fuente', ['rutas', 'rutas_reg', 'cierre', 'rutas_cerradas'])
     .gte('fecha', sinceISO)
     .lt('fecha', today); // solo días pasados
 
@@ -109,20 +129,47 @@ export interface SessionStateRow { fecha: string; fuente: string; state: unknown
  */
 export function computeUnregisteredDays(rows: SessionStateRow[]): string[] {
   const asignByDate = new Map<string, unknown>();
-  const registered  = new Set<string>();
+  const cerradasPorDia = new Map<string, Set<string>>();
+  const atendido = new Set<string>();
   for (const r of rows) {
-    if (r.fuente === 'rutas_reg') registered.add(r.fecha);
+    // Tres señales de que el día YA se atendió, no una:
+    //   rutas_reg → se registró de forma global, o se descartó con la ✕
+    //   cierre    → se pulsó "Terminar día" (lo que la gente realmente hace)
+    if (r.fuente === 'rutas_reg' || r.fuente === 'cierre') atendido.add(r.fecha);
     else if (r.fuente === 'rutas') asignByDate.set(r.fecha, r.state);
+    else if (r.fuente === 'rutas_cerradas') cerradasPorDia.set(r.fecha, parsePatentes(r.state));
   }
-  const hasAssignments = (state: unknown) =>
-    !!state && typeof state === 'object' &&
-    Object.values(state as Record<string, unknown>).some(v => Array.isArray(v) && v.length > 0);
+  const camionesConTiendas = (state: unknown): string[] =>
+    (!!state && typeof state === 'object')
+      ? Object.entries(state as Record<string, unknown>)
+          .filter(([, v]) => Array.isArray(v) && v.length > 0)
+          .map(([patente]) => patente.trim().toUpperCase())
+      : [];
 
   const result: string[] = [];
   for (const [fecha, state] of asignByDate) {
-    if (!registered.has(fecha) && hasAssignments(state)) result.push(fecha);
+    if (atendido.has(fecha)) continue;
+    const camiones = camionesConTiendas(state);
+    if (!camiones.length) continue;
+    // Tercera señal: si TODOS los camiones con carga se cerraron uno por uno, el día está hecho
+    // aunque nunca se haya pulsado "Terminar día".
+    const cerradas = cerradasPorDia.get(fecha);
+    if (cerradas && camiones.every(p => cerradas.has(p))) continue;
+    result.push(fecha);
   }
   return result.sort().reverse(); // más reciente primero
+}
+
+/** Patentes de la fuente 'rutas_cerradas', normalizadas. Tolera `{patentes:[…]}` o un array plano. */
+function parsePatentes(state: unknown): Set<string> {
+  const out = new Set<string>();
+  const lista = Array.isArray(state)
+    ? state
+    : (state && typeof state === 'object' && Array.isArray((state as { patentes?: unknown }).patentes))
+      ? (state as { patentes: unknown[] }).patentes
+      : [];
+  for (const x of lista) if (typeof x === 'string' && x.trim()) out.add(x.trim().toUpperCase());
+  return out;
 }
 
 export interface PendienteV2 { c: string; p: number; b: number; ch: number; fechaOrigen: string }

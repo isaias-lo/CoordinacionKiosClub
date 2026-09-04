@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Menu, X, RefreshCw } from 'lucide-react';
 import { getDia, todayStr } from '../utils/helpers';
 import { useIsMobile } from '../utils/useIsMobile';
+import { enElPool } from '../utils/pool';
 
 interface CalData { on: boolean; p: number; b: number; }
 
@@ -106,7 +107,7 @@ export default function DespachoHeader({
   const dia         = getDia(fecha);
   const hoy         = todayStr();
   const totalStores = Object.keys(calT).length;
-  const activeCount = Object.values(calT).filter(d => d.on && (d.p > 0 || d.b > 0)).length;
+  const activeCount = Object.values(calT).filter(enElPool).length;
   const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);

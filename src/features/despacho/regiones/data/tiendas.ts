@@ -3,13 +3,17 @@ import { MAX_ALTO_CM } from '../../shared/palletLimits';
 
 // ─── Fuente única de datos para tiendas de Región ────────────────────────────
 //
-// Para agregar una tienda de Región:
-//   1. Agregar entrada en TIENDAS_INICIAL (src/features/despacho/rutas/data/tiendas.ts)
-//      → routing, calendario, picking, etiquetas
-//   2. Agregar entrada aquí en SENDU_EXTRAS (keyed por cod)
-//      → export Sendu, guías de despacho, Google Sheets
+// Una tienda de Región creada en Config. Tiendas YA aparece sola en Bodega: `registrarTiendasBD`
+// (más abajo) hidrata este catálogo con las filas activas de la BD. SENDU_EXTRAS queda como la
+// fuente de los datos de ENVÍO que la BD no guarda (nombre_dest, rut, region_sendu, calle/numero,
+// comuna), y siempre tiene prioridad sobre la BD para las tiendas que ya están acá.
 //
-// TIENDAS, REGIONES_CODS e isRegionesCod se derivan automáticamente de SENDU_EXTRAS.
+// Antes este archivo era la ÚNICA fuente y había que editarlo a mano + desplegar: por eso 60PBL y
+// 38SP2 estaban en el calendario de Regiones pero no aparecían en Bodega ni se podían agrupar
+// (`isRegionesCod` también se deriva de acá). Le pasaba a toda tienda nueva.
+//
+// Para que una tienda de Región quede COMPLETA para Sendu, igual conviene agregarla a SENDU_EXTRAS
+// (la UI avisa cuáles están incompletas en vez de hacerlas desaparecer en silencio).
 
 type SenduExtra = {
   name: string;         // nombre display (clave del Record TIENDAS)
@@ -60,6 +64,70 @@ export const REGIONES_CODS = new Set(Object.keys(SENDU_EXTRAS));
 
 /** True si el código pertenece a una tienda de Regiones. */
 export const isRegionesCod = (cod: string): boolean => REGIONES_CODS.has(cod);
+
+// ─── Hidratación desde la BD (tabla `tiendas` de Config. Tiendas) ────────────
+// RUT del emisor: es el mismo para todas las tiendas del catálogo.
+const RUT_KIOS = '76360868-9';
+
+/** Fila de la tabla `tiendas` (solo los campos que necesita Bodega). */
+export interface TiendaBDRow {
+  codigo: string;
+  nombre: string;
+  region?: string | null;
+  sector_comuna?: string | null;
+  direccion?: string | null;
+  correos?: string | null;
+  tel_encargado?: string | null;
+  activo?: boolean | null;
+}
+
+/** ¿El sector la ubica en Regiones? Acepta 'Región Sur', 'Región Norte' y 'Región' a secas. */
+export function esSectorRegiones(sector?: string | null): boolean {
+  return String(sector ?? '')
+    .trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // 'región' → 'region'
+    .startsWith('regi');
+}
+
+/**
+ * Une al catálogo las tiendas de Regiones ACTIVAS de la BD que aún no estén acá.
+ * Idempotente (se puede llamar en cada carga). SENDU_EXTRAS tiene prioridad: una tienda ya
+ * presente NO se pisa, porque su data de envío está curada a mano.
+ *
+ * Devuelve `agregadas` (cods nuevos) y `sinDatosSendu` (los que quedaron sin los campos de envío
+ * que la BD no guarda — region_sendu, comuna, número de calle — para que la UI lo advierta).
+ */
+export function registrarTiendasBD(rows: TiendaBDRow[]): { agregadas: string[]; sinDatosSendu: string[] } {
+  const agregadas: string[] = [];
+  const sinDatosSendu: string[] = [];
+  for (const r of rows ?? []) {
+    const cod    = String(r?.codigo ?? '').trim().toUpperCase();
+    const nombre = String(r?.nombre ?? '').trim();
+    if (!cod || !nombre) continue;
+    if (r.activo === false) continue;
+    if (!esSectorRegiones(r.sector_comuna)) continue;
+    if (REGIONES_CODS.has(cod)) continue;   // ya está en el catálogo curado → no se pisa
+
+    TIENDAS[nombre] = {
+      cod, name: nombre,
+      region:      String(r.region ?? '').trim().toUpperCase(),
+      nombre_dest: nombre,
+      email:       String(r.correos ?? '').trim(),
+      celular:     String(r.tel_encargado ?? '').trim(),
+      rut:         RUT_KIOS,
+      region_sendu: '',                                  // la BD no lo guarda
+      comuna:       '',                                  // la BD no lo guarda
+      calle:        String(r.direccion ?? '').trim(),    // dirección completa
+      numero:       '',
+      complemento:  '',
+      str_val:      nombre,
+    };
+    REGIONES_CODS.add(cod);
+    agregadas.push(cod);
+    sinDatosSendu.push(cod);
+  }
+  return { agregadas, sinDatosSendu };
+}
 
 export const CALENDARIO: Record<number, string[]> = {
   1: ['46TRE','28TEM','75PUC','53VAL','47PTV','50PTM','39PSB','41ANA','42ANP'],

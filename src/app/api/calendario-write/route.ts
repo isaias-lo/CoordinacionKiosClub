@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdmin } from '@/lib/apiAuth';
+import { supabaseServer } from '@/lib/supabaseServer';
+import { esMall } from '@/features/despacho/rutas/utils/tipoTienda';
+import { esRegionNorte } from '@/lib/sectores';
 import { google } from 'googleapis';
 import type { sheets_v4 } from 'googleapis';
 
@@ -13,8 +16,40 @@ type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }
 type StoreType = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
 type StoreDayEntry = { code: string; type: StoreType };
 
-const ZONA_NORTE_FAL = new Set(['41ANA', '42ANP', '39PSB', '51SER']);
-const RM_MALLS       = new Set(['16PQA', '20CTC', '29CFL', '52MUT', '19SUB', '45EST', '49PTA']);
+/**
+ * Qué tiendas son mall y cuáles consolidan al norte, según el CATÁLOGO — no según listas escritas
+ * a mano.
+ *
+ * MALLS: la lista que estaba acá tenía 7 códigos y llevaba tiempo desactualizada. Le faltaban Alto
+ * Las Condes, Maipú, Buenaventura 1 y 2, El MUT, Subcentro y Plaza Egaña, y en cambio marcaba como
+ * mall a Estoril y Los Toros, que el catálogo tiene como strip center.
+ *
+ * NORTE: eran cuatro códigos, hoy correctos, pero sin forma de enterarse — una tienda nueva en
+ * Copiapó o Iquique se habría impreso en el camión equivocado sin que nada avisara. Ahora sale del
+ * sector con la latitud de desempate, la misma regla del motor.
+ *
+ * Si Supabase no responde se devuelven sets vacíos: ninguna se marca. Mejor sin destacar que
+ * destacando lo equivocado, y la hoja igual se escribe.
+ */
+async function cargarZonas(): Promise<{ malls: Set<string>; norte: Set<string> }> {
+  const vacio = { malls: new Set<string>(), norte: new Set<string>() };
+  try {
+    const sb = supabaseServer();
+    const { data, error } = await sb.from('tiendas').select('codigo,tipo,direccion,sector_comuna,lat');
+    if (error || !data) return vacio;
+    const malls = new Set<string>();
+    const norte = new Set<string>();
+    for (const t of data) {
+      const cod = String(t.codigo);
+      if (esMall(t.tipo, t.direccion, t.sector_comuna)) malls.add(cod);
+      if (esRegionNorte(t.sector_comuna, t.lat))        norte.add(cod);
+    }
+    return { malls, norte };
+  } catch (e) {
+    console.error('[calendario-write] catálogo de zonas:', e);
+    return vacio;
+  }
+}
 
 const TITLE          = '⚡ CALENDARIO DE DESPACHO — Flota Luis (sale día siguiente del armado) | Falabella (retira mismo día 12:00-14:00) | Sábado → despacha Lunes';
 const RM_LABEL       = 'RM/COSTA';
@@ -126,6 +161,8 @@ export async function POST(request: NextRequest) {
     const sid = sheetMeta?.properties?.sheetId ?? 0;
 
     // ── 1. Build per-day store lists ─────────────────────────────────────────
+    const { malls: RM_MALLS, norte: ZONA_NORTE_FAL } = await cargarZonas();
+
     const rmDays: StoreDayEntry[][] = DIAS.map(dia => [
       ...(calendario[dia]?.costa || []).map(c => ({ code: c, type: 'costa' as StoreType })),
       ...(calendario[dia]?.rm    || []).map(c => ({ code: c, type: (RM_MALLS.has(c) ? 'mall' : 'rm') as StoreType })),

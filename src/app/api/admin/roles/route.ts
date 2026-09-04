@@ -60,7 +60,54 @@ export async function PATCH(request: NextRequest) {
   const sb = adminSb();
   const { error } = await sb.from('roles').update(updates).eq('id', body.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+
+  // [P9] PROPAGAR el cambio a quienes YA tienen el rol.
+  //
+  // El permiso efectivo de cada persona no se lee de la tabla `roles`: se guarda como una COPIA en
+  // su `user_metadata` (y de ahí lo toma el JWT que lee AuthProvider). Esa copia se estampaba solo
+  // al crear el usuario o al cambiarle el rol, así que editar el rol actualizaba la tabla pero
+  // dejaba a todos sus usuarios con el permiso VIEJO — el síntoma reportado: "cambié el rol y no
+  // ven lo que les di acceso". Acá se re-estampa a cada uno.
+  let actualizados = 0;
+  const fallidos: string[] = [];
+  if (updates.allowed_paths !== undefined || updates.home_path !== undefined || updates.permissions !== undefined) {
+    try {
+      // Config vigente del rol (lo recién guardado + lo que no se tocó).
+      const { data: rol } = await sb
+        .from('roles').select('allowed_paths,home_path,permissions').eq('id', body.id).single();
+
+      const conElRol: { id: string; meta: Record<string, unknown> }[] = [];
+      // listUsers pagina; se recorre hasta agotar (no hay filtro por metadata en la API admin).
+      for (let page = 1; page <= 20; page++) {
+        const { data, error: listErr } = await sb.auth.admin.listUsers({ page, perPage: 200 });
+        if (listErr || !data?.users?.length) break;
+        for (const u of data.users) {
+          if ((u.user_metadata?.role as string) === body.id) {
+            conElRol.push({ id: u.id, meta: { ...(u.user_metadata ?? {}) } });
+          }
+        }
+        if (data.users.length < 200) break;
+      }
+
+      for (const u of conElRol) {
+        const meta = { ...u.meta };
+        if (updates.allowed_paths !== undefined)
+          meta.allowed_paths = Array.isArray(rol?.allowed_paths) ? rol.allowed_paths : [];
+        if (updates.home_path !== undefined) meta.home_path = rol?.home_path ?? '/perfil';
+        if (updates.permissions !== undefined && rol?.permissions !== undefined)
+          meta.permissions = rol.permissions;
+        const { error: upErr } = await sb.auth.admin.updateUserById(u.id, { user_metadata: meta });
+        if (upErr) { fallidos.push(u.id); console.error('[roles PATCH] re-estampar', u.id, upErr.message); }
+        else actualizados++;
+      }
+    } catch (e) {
+      console.error('[roles PATCH] propagación', e);
+    }
+  }
+
+  // `actualizados` permite avisar en el panel a cuánta gente alcanzó el cambio. Ojo: la sesión ya
+  // abierta sigue con el JWT viejo hasta que se refresque (el cliente lo hace al volver el foco).
+  return NextResponse.json({ ok: true, actualizados, fallidos: fallidos.length });
 }
 
 export async function DELETE(request: NextRequest) {

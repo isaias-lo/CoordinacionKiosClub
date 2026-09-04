@@ -71,7 +71,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // [P9] Refrescar la sesión al volver a la pestaña.
+    //
+    // Los permisos se leen del JWT (`user_metadata`), que es una FOTO tomada al iniciar sesión.
+    // Si un admin cambia los permisos del rol, el servidor ya re-estampa el metadata (ver PATCH
+    // /api/admin/roles), pero la sesión abierta sigue con el token viejo y la persona no ve el
+    // acceso nuevo hasta cerrar y volver a entrar. `refreshSession` trae el metadata actualizado
+    // y dispara `onAuthStateChange`, que recalcula el perfil. Se hace al recuperar el foco para no
+    // pedir un token nuevo cada pocos minutos sin motivo.
+    const alVolver = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase.auth.refreshSession().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', alVolver);
+
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('focus', alVolver);
+    };
   }, []);
 
   const signOut = async () => {

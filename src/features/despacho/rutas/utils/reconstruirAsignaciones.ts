@@ -2,6 +2,12 @@ import type { StoreItem } from './routing';
 
 export interface ManifiestoGuardado {
   patente?: string | null;
+  // [Ver manifiestos del día] El GET de /api/rutas-despacho devuelve `*`, así que estos vienen
+  // incluidos: permiten reabrir un manifiesto con su código y QR REALES (no regenerados).
+  id?: number | null;
+  codigo_ruta?: string | null;
+  token_qr?: string | null;
+  estado?: string | null;
   ruta_tiendas?: { store_cod: string; pallets?: number | null; bultos?: number | null; contenedores?: number | null }[] | null;
 }
 

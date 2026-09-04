@@ -1,11 +1,15 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Loader2, Truck, Check } from 'lucide-react';
+import { Sparkles, Loader2, Truck, Check, RefreshCw } from 'lucide-react';
 import { nn } from '../utils/routing';
 import { dkm, formatCod } from '../utils/helpers';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
 import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
+import { puedeMoverCarga } from '../utils/cierrePorVehiculo';
+import { enPool, flotaDePool, camionesExtra, grupoIndefinido, POOLS, type PoolScope } from '../utils/poolsSeparados';
+import { enElPool } from '../utils/pool';
+import { podarVacias, tableroConTrabajo } from '../utils/asignacionIncremental';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
@@ -27,8 +31,10 @@ interface Props {
   /** [2ª VUELTA] Si se provee, cada camión con tiendas muestra "Cerrar camión" (registro por
    *  camión) y se OCULTA el botón batch de calcular. */
   onCerrarCamion?: (patente: string) => void;
-  /** [IA] Si se provee, muestra "Asignar con IA" en el header del pool. */
-  onAsignarIA?: () => void;
+  /** [P4] Asigna lo que falta SIN tocar lo ya armado. Es el botón primario del pool. */
+  onAsignar?: () => void;
+  /** [P4] Rehace el tablero desde cero (destructivo). Secundario, y solo si ya hay trabajo. */
+  onReasignarTodo?: () => void;
   iaLoading?: boolean;
   /** [Fase 2] Si se provee, muestra una tira para activar/desactivar camiones sin ir a FLOTA.
    *  El índice es el de `flota` (mismo que usa FLOTA → Vehículos). */
@@ -41,11 +47,14 @@ interface Props {
   /** [Reestructura] Filtro de grupo: filtra qué tiendas se ven en el pool "Sin asignar"
    *  (RM/Costa/Regiones). No cambia las asignaciones ni los conteos totales. Sus pills se
    *  muestran en el header del pool (se movieron aquí desde el DespachoHeader). */
-  grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
+  /** [Pools] Pool activo. Regiones y RM/Costa se arman en momentos distintos del día. */
+  pool?: PoolScope;
+  onPool?: (p: PoolScope) => void;
+  /** [Pools] Si el coordinador pidió ver toda la flota, no solo la habilitada para el pool. */
+  todaLaFlota?: boolean;
+  onTodaLaFlota?: (v: boolean) => void;
   /** Grupos activos del calendario (para el estado visual de las pills). */
-  grps?: Set<string>;
   /** Click en una pill de grupo (Todas/RM/COSTA/REGIONES) — togglea y filtra. */
-  onGroupPill?: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
   /** Camión elegido para previsualizar su ruta en el mapa (antes de "Calcular"). */
   camionSeleccionado?: string | null;
   /** Km real (Google Directions) de esa preview, cuando el mapa ya la resolvió. */
@@ -82,7 +91,10 @@ interface DraggingState extends StoreTag { from: string; }
 
 /* ── Pill de filtro de grupo del pool "Sin asignar" (Todas/RM/COSTA/REGIONES) — se movió aquí
    desde el DespachoHeader (barra global, al lado de Supervisor). ── */
-function GroupPill({ label, active, selected, onClick }: { label: string; active: boolean; selected: boolean; onClick: () => void }) {
+// Dos estados, no tres: el pill filtra la vista y nada más. El tercer estado ("apagado", en gris)
+// existía cuando además sacaba tiendas del despacho — y en gris no se distinguía "no estoy
+// mirando este grupo" de "este grupo no va a salir hoy", que era justamente el problema.
+function GroupPill({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -90,9 +102,7 @@ function GroupPill({ label, active, selected, onClick }: { label: string; active
       className={`h-[28px] px-2.5 rounded-[8px] text-[11px] font-bold transition-all border
         ${selected
           ? 'bg-knavy text-white border-knavy'
-          : active
-            ? 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'
-            : 'bg-white border-black/[0.10] text-kmuted/50 hover:border-black/[0.20] hover:text-kmuted'}`}
+          : 'bg-white border-knavy/40 text-knavy/70 hover:border-knavy hover:text-knavy'}`}
     >
       {label}
     </button>
@@ -106,14 +116,16 @@ export default function ManualDispatch({
   onCalcular,
   onEliminarParada,
   onCerrarCamion,
-  onAsignarIA,
+  onAsignar,
+  onReasignarTodo,
   iaLoading,
   onToggleFlota,
   ordenActivacion,
   hideCalcular,
-  grupoFiltro = 'all',
-  grps,
-  onGroupPill,
+  pool: poolScope = 'rm-costa',
+  onPool,
+  todaLaFlota = false,
+  onTodaLaFlota,
   camionSeleccionado = null,
   camionSeleccionadoKm = null,
   onSelectTruck,
@@ -153,16 +165,19 @@ export default function ManualDispatch({
   }, [dragging, scrollContainerRef]);
 
   const tiendasActivas = Object.keys(calT)
-    .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0))
-    .map(c => ({ c, p: calT[c].p, b: calT[c].b, ch: calT[c].ch ?? 0 }));
+    .filter(c => enElPool(calT[c]))
+    .map(c => ({ c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0 }));
 
   const paradasConGps = paradas.filter(p => p.gps);
 
   const asignadasSet = new Set(Object.values(asignaciones).flat().map(s => s.c));
   const pool         = tiendasActivas.filter(t => !asignadasSet.has(t.c));
   const paradasPool  = paradasConGps.filter(p => !asignadasSet.has(p.id));
-  // Filtro de grupo (barra izquierda): solo afecta QUÉ se muestra en el pool, no los conteos.
-  const poolMostrado = grupoFiltro === 'all' ? pool : pool.filter(t => calT[t.c]?.g === grupoFiltro);
+  // [Pools] Solo se muestran las tiendas del pool activo. Es un filtro de VISTA: los conteos, la
+  // capacidad y el registro siguen viendo el día completo.
+  const poolMostrado = pool.filter(t => enPool(calT[t.c]?.g, poolScope));
+  // ¿Hay algo armado? Cuenta CONTENIDO, no llaves: el tablero deja patentes con lista vacía.
+  const hayTrabajo = tableroConTrabajo(asignaciones);
 
   const extGps: Record<string, number[]> = { ...gps };
   paradasConGps.forEach(p => { extGps[p.id] = p.gps; });
@@ -170,7 +185,14 @@ export default function ManualDispatch({
   // [F2] Orden por recencia de activación: el último camión marcado va primero (izq→der).
   const ordAct = ordenActivacion ?? {};
   const porRecencia = (a: Vehiculo, b: Vehiculo) => (ordAct[b.p] ?? 0) - (ordAct[a.p] ?? 0);
-  const flotaDisp = flota.filter(v => v.on).sort(porRecencia);
+  // [Pools] Cada pool ofrece los camiones de las empresas habilitadas para sus zonas (Config →
+  // Transportistas). Se suman los que ya llevan carga aunque no correspondan: o se tomaron como
+  // excepción, o cambió la config con el día armado — esconderlos dejaría carga fuera de la vista.
+  const activos    = flota.filter(v => v.on);
+  const ofrecidos  = todaLaFlota ? activos : flotaDePool(activos, poolScope, zonasCfg);
+  const extra      = todaLaFlota ? [] : camionesExtra(activos, ofrecidos, asignaciones);
+  const flotaDisp  = [...ofrecidos, ...extra].sort(porRecencia);
+  const ocultos    = activos.length - flotaDisp.length;
 
   // P10b: mover todas las tiendas seleccionadas a una patente (o de vuelta al pool) de una vez
   function toggleSelect(code: string) {
@@ -182,9 +204,30 @@ export default function ManualDispatch({
   }
   function clearSel() { setSelected(new Set()); }
 
+  // [Camión cerrado = congelado] Un camión cerrado ya emitió su manifiesto y su QR: la carga que
+  // lleva es un hecho registrado, no una propuesta. Mover tiendas después del cierre deja el papel
+  // y la pantalla diciendo cosas distintas, sin ningún aviso — una tienda agregada no va en el
+  // manifiesto (nadie la carga) y una sacada sí (el chofer la busca y no está). Por eso se bloquean
+  // las dos direcciones: no se le puede meter carga NI sacársela.
+  // Publica el tablero PODADO. Las patentes con lista vacía no son ruido inocente: el tablero se
+  // guarda en `shared_session_state` y se sincroniza entre dispositivos, y eran justo las que
+  // hacían que "¿el tablero está vacío?" —que contaba llaves— diera false para siempre, dejando
+  // sin asignar todo lo que Bodega registrara después.
+  const emitir = (a: Record<string, StoreTag[]>) => onAsignaciones(podarVacias(a));
+
+  const bloqueada = (patente: string) => !puedeMoverCarga(esCerrada ?? (() => false), patente);
+  const avisarCerrado = (patente: string) =>
+    alert(`🔒 ${patente} ya está cerrado: su manifiesto y su QR están emitidos.\n\nPara cambiar su carga hay que reabrirlo desde el manifiesto.`);
+
   function moveSelectedTo(target: string) {
     const codes = [...selected];
     if (codes.length === 0) return;
+    if (bloqueada(target)) { avisarCerrado(target); return; }
+    // Ninguna de las seleccionadas puede venir de un camión ya cerrado.
+    const origenCerrado = Object.keys(asignaciones).find(
+      plate => bloqueada(plate) && (asignaciones[plate] || []).some(s => codes.includes(s.c)),
+    );
+    if (origenCerrado) { avisarCerrado(origenCerrado); return; }
     const newAsig: Record<string, StoreTag[]> = {};
     Object.keys(asignaciones).forEach(plate => {
       newAsig[plate] = (asignaciones[plate] || []).filter(s => !codes.includes(s.c));
@@ -214,7 +257,7 @@ export default function ManualDispatch({
       const existing = new Set(current.map(s => s.c));
       newAsig[target] = [...current, ...tags.filter(t => !existing.has(t.c))];
     }
-    onAsignaciones(newAsig);
+    emitir(newAsig);
     clearSel();
     setDragging(null);
     setDragOver(null);
@@ -224,6 +267,9 @@ export default function ManualDispatch({
     // Si arrastras una tienda que está en la selección múltiple, mueve todo el grupo
     if (selected.size > 0 && selected.has(item.c)) { moveSelectedTo(target); return; }
     const { from, ...store } = item;
+    // Ver `bloqueada`: un camión cerrado no admite carga nueva ni suelta la que ya lleva.
+    if (bloqueada(target)) { avisarCerrado(target); setDragging(null); setDragOver(null); return; }
+    if (bloqueada(from))   { avisarCerrado(from);   setDragging(null); setDragOver(null); return; }
     const newAsig = { ...asignaciones };
     if (from !== 'pool') {
       newAsig[from] = (newAsig[from] || []).filter(s => s.c !== store.c);
@@ -241,7 +287,7 @@ export default function ManualDispatch({
     } else {
       if (from !== 'pool') newAsig[from] = (newAsig[from] || []).filter(s => s.c !== store.c);
     }
-    onAsignaciones(newAsig);
+    emitir(newAsig);
     setDragging(null);
     setDragOver(null);
   }
@@ -249,6 +295,8 @@ export default function ManualDispatch({
   ejecutarDropRef.current = ejecutarDrop;
 
   function handleDragStart(e: React.DragEvent, store: StoreTag, from: string) {
+    // No se arrastra desde un camión cerrado: se corta acá para que ni siquiera arranque el gesto.
+    if (bloqueada(from)) { e.preventDefault(); return; }
     setDragging({ ...store, from });
     e.dataTransfer.effectAllowed = 'move';
   }
@@ -266,6 +314,7 @@ export default function ManualDispatch({
   function handleDragEnd() { setDragging(null); setDragOver(null); }
 
   function handleTouchStart(e: React.TouchEvent, store: StoreTag, from: string) {
+    if (bloqueada(from)) return; // ver handleDragStart: un camión cerrado no suelta carga
     const touch = e.touches[0];
     const el    = e.currentTarget as HTMLElement;
     const rect  = el.getBoundingClientRect();
@@ -311,7 +360,8 @@ export default function ManualDispatch({
       const el = document.elementFromPoint(touch.clientX, touch.clientY);
       if (ghost) ghost.style.pointerEvents = '';
       const zone = el?.closest('[data-dropzone]') as HTMLElement | null;
-      setDragOver(zone ? zone.dataset.dropzone! : null);
+      // Un camión cerrado no se resalta: el drop se va a rechazar, no hay que insinuar lo contrario.
+      setDragOver(zone && !zone.dataset.cerrado ? zone.dataset.dropzone! : null);
 
       const ZONE = 80, SPEED = 7;
       const scroller = scrollerRef.current ?? window;
@@ -377,7 +427,10 @@ export default function ManualDispatch({
   }, []);
 
   function removeStore(plate: string, cod: string) {
-    onAsignaciones({ ...asignaciones, [plate]: (asignaciones[plate] || []).filter(s => s.c !== cod) });
+    // La X de un chip es otra forma de sacar carga: si el camión ya cerró, la tienda seguiría en el
+    // manifiesto impreso aunque desaparezca de la pantalla.
+    if (bloqueada(plate)) { avisarCerrado(plate); return; }
+    emitir({ ...asignaciones, [plate]: (asignaciones[plate] || []).filter(s => s.c !== cod) });
   }
 
   function getMetrics(plate: string, vehicle: Vehiculo) {
@@ -488,32 +541,63 @@ export default function ManualDispatch({
               <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
               {dragging && <span className="ml-2 text-[12px] text-knavy font-semibold animate-pulse">← Suelta aquí</span>}
             </div>
-            {/* Filtro de grupo (movido del DespachoHeader): entre el título y "Asignar". */}
-            {onGroupPill && (
+            {/* [Pools] Regiones y RM/Costa se arman en momentos distintos del día y las llevan
+                empresas distintas. Cada pool muestra sus tiendas y los camiones habilitados para
+                sus zonas; los botones de conjunto actúan solo sobre el pool activo. */}
+            {onPool && (
               <div className="flex items-center gap-1.5 flex-wrap">
-                <GroupPill label="Todas"    active={(grps?.size ?? 0) > 0}  selected={grupoFiltro === 'all'}   onClick={() => onGroupPill('all')} />
-                <GroupPill label="RM"       active={!!grps?.has('rm')}      selected={grupoFiltro === 'rm'}    onClick={() => onGroupPill('rm')} />
-                <GroupPill label="COSTA"    active={!!grps?.has('costa')}   selected={grupoFiltro === 'costa'} onClick={() => onGroupPill('costa')} />
-                <GroupPill label="REGIONES" active={!!grps?.has('fal')}     selected={grupoFiltro === 'fal'}   onClick={() => onGroupPill('fal')} />
+                {POOLS.map(({ id, label }) => {
+                  const n = pool.filter(t => enPool(calT[t.c]?.g, id)).length;
+                  return (
+                    <GroupPill
+                      key={id}
+                      label={n > 0 ? `${label} · ${n}` : label}
+                      selected={poolScope === id}
+                      onClick={() => onPool(id)}
+                    />
+                  );
+                })}
               </div>
             )}
             <div className="flex-1 min-w-[8px]" />
-            {onAsignarIA && pool.length > 0 && (
+            {/* [P4] Dos acciones distintas, antes eran una sola. "Asignar" completa lo que falta y
+                nunca mueve lo ya armado; "Reasignar todo" rehace el tablero y por eso pregunta. */}
+            {onAsignar && poolMostrado.length > 0 && (
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignarIA(); }}
+                onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignar(); }}
                 disabled={iaLoading}
                 className={`inline-flex items-center gap-1.5 h-[30px] px-3 rounded text-[12px] font-bold text-white transition-all disabled:opacity-90 active:scale-[0.97] ${iaLoading ? 'ai-glow' : ''}`}
                 style={{ background: '#8B5CF6' }}
-                title="Propone la asignación aprendiendo del historial"
+                title="Asigna las tiendas que faltan usando la capacidad que queda. No mueve lo que ya armaste."
               >
                 {iaLoading
                   ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
-                  : <><Sparkles size={14} aria-hidden="true" /> Asignar</>}
+                  : <><Sparkles size={14} aria-hidden="true" /> Asignar {poolMostrado.length}</>}
               </button>
             )}
-            <span className={`text-[13px] font-bold ${pool.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
-              {pool.length > 0 ? `${pool.length} restantes` : '✓ Todas asignadas'}
+            {onReasignarTodo && hayTrabajo && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onReasignarTodo(); }}
+                className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded text-[12px] font-semibold text-kmuted border border-black/[0.12] bg-white hover:border-black/[0.25] hover:text-ktext transition-all active:scale-[0.97]"
+                title="Rehace el tablero desde cero con el motor. Descarta los cambios hechos a mano."
+              >
+                <RefreshCw size={13} aria-hidden="true" /> Reasignar todo
+              </button>
+            )}
+            {onTodaLaFlota && (ocultos > 0 || todaLaFlota) && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onTodaLaFlota(!todaLaFlota); }}
+                className="h-[28px] px-2.5 rounded-[8px] text-[11px] font-semibold border border-black/[0.12] bg-white text-kmuted hover:border-black/[0.25] hover:text-ktext transition-all"
+                title="Config → Transportistas define qué empresas cubren cada zona. Esto muestra el resto, para tomar un camión de otra transportista como excepción."
+              >
+                {todaLaFlota ? 'Ver solo los habilitados' : `+ Camión de otra empresa (${ocultos})`}
+              </button>
+            )}
+            <span className={`text-[13px] font-bold ${poolMostrado.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+              {poolMostrado.length > 0 ? `${poolMostrado.length} restantes` : '✓ Todas asignadas'}
             </span>
           </div>
           {hasSelection && (
@@ -543,9 +627,19 @@ export default function ManualDispatch({
                     onRemove={null}
                   />
                 ))}
-                {poolMostrado.length === 0 && grupoFiltro !== 'all' && pool.length > 0 && (
+                {(() => {
+                  // Una tienda sin grupo se muestra en RM/Costa porque es donde el registro la va
+                  // a escribir. Se avisa para que nadie la dé por sentada en Regiones.
+                  const n = poolMostrado.filter(t => grupoIndefinido(calT[t.c]?.g)).length;
+                  return n > 0 ? (
+                    <div className="w-full text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-[8px] px-2 py-1 font-medium">
+                      {n} tienda{n > 1 ? 's' : ''} sin grupo definido · se muestra{n > 1 ? 'n' : ''} acá porque es donde se registra{n > 1 ? 'n' : ''}
+                    </div>
+                  ) : null;
+                })()}
+                {poolMostrado.length === 0 && pool.length > 0 && (
                   <div className="self-center text-[12px] text-kmuted font-medium">
-                    Sin tiendas de este grupo por asignar · {pool.length} en otros grupos
+                    Todo asignado en este pool · {pool.length} pendiente{pool.length > 1 ? 's' : ''} en el otro
                   </div>
                 )}
                 {paradasPool.map(p => (
@@ -604,10 +698,16 @@ export default function ManualDispatch({
           const avisosZona    = avisosCamionNoHabilitado(v.p, v.empresa, stores, tiendas, gps, cd, zonasCfg);
           const esConsolidado = etiquetaZona?.modo === 'consolidacion';
 
+          // Un camión cerrado NO se ilumina como destino (`ejecutarDrop` lo rechaza igual, pero si
+          // se resaltara la pantalla estaría prometiendo un movimiento que no va a ocurrir).
+          // Ojo: conserva su `data-dropzone`. Sin él, el `closest()` del arrastre táctil subiría al
+          // contenedor y resolvería el drop como "pool", sacando la tienda del camión en silencio —
+          // exactamente el daño que se quiere evitar. Mejor que la zona exista y avise.
           return (
             <div
               key={v.p}
               data-dropzone={v.p}
+              data-cerrado={cerrado ? '1' : undefined}
               style={{
                 boxShadow: cerrado
                   ? '0 1px 4px rgba(22,163,74,0.14)'
@@ -628,7 +728,7 @@ export default function ManualDispatch({
                 : isOver || isPreview || selForClose ? 'bg-white border-knavy'
                 : m.overCap ? 'bg-white border-amber-400'
                 : 'bg-white border-black/[0.08]'}`}
-              onDragOver={e => { e.preventDefault(); setDragOver(v.p); }}
+              onDragOver={e => { e.preventDefault(); if (!cerrado) setDragOver(v.p); }}
               onDrop={e => handleDrop(e, v.p)}
               onDragLeave={handleDragLeave}
               onClick={() => {

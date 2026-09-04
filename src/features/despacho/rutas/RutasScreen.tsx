@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import InputSection   from './components/InputSection';
 import DespachoHeader from './components/DespachoHeader';
@@ -21,6 +21,12 @@ import { grupoArmada } from './utils/flujoArmada';
 import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
+import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
+import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/resumenCierre';
+import { porTienda, porCamion, mergeTablero, patentesDelTablero, type TableroPorTienda } from './utils/tableroSync';
+import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
+import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
+import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
 import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
 import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
@@ -35,9 +41,9 @@ import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha } from './utils/segundaVueltaFechas';
-import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente } from './utils/cierrePorVehiculo';
+import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
-import { pushSessionState, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
+import { pushSessionState, pushSessionStateResult, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
 import { fetchCalendarioSupa, subscribeToCalendarioSupa } from '../../../lib/calendarioSync';
 import { writeCalendario } from '../utils/useCalendario';
@@ -53,13 +59,15 @@ type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }
 // asignar() sin revertir el commit. asignar()/asignarPorClusters quedan como respaldo.
 const ENRUTADOR_V2 = true;
 
+/** [Fase 0] Se muestra cuando el tablero no llegó a guardarse: la pantalla dejaría de reflejar la base. */
+const AVISO_NO_GUARDADO = 'No se pudo guardar el tablero. Lo que ves puede no estar en la base — revisa tu conexión y vuelve a mover algo para reintentar.';
+
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
 
 function mergeCalT(
   newCal: CalRecord,
   fechaStr: string,
   prevCalT: Record<string, CalData>,
-  activeGrps: Set<string>
 ): Record<string, CalData> {
   const dia = getDia(fechaStr);
   const calDia = (newCal[dia] || newCal.LU || {}) as Record<string, string[]>;
@@ -84,13 +92,18 @@ function mergeCalT(
   });
 
   // Phase 2: append brand-new stores from newCal not previously seen
+  // `on: true` = "está en el pool de hoy". Sin carga todavía no entra a ningún cálculo (todos los
+  // consumidores piden `enElPool`, que exige carga), así que esto no ensancha nada: solo deja de
+  // depender del filtro de grupo, que no tiene por qué decidir qué se despacha.
   newStoreMap.forEach((grp, c) => {
-    next[c] = { on: activeGrps.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
+    next[c] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grp };
   });
 
   // Phase 3: preserve manual / non-empty stores removed from newCal
   Object.keys(prevCalT).forEach(c => {
-    if (!next[c] && (prevCalT[c].g === 'manual' || prevCalT[c].p > 0 || prevCalT[c].b > 0)) {
+    // Antes preguntaba solo por pallets y bultos: una tienda con SOLO chocolates o SOLO
+    // contenedores que salía del calendario a mitad de día se descartaba entera.
+    if (!next[c] && (prevCalT[c].g === 'manual' || tieneCarga(prevCalT[c]))) {
       next[c] = prevCalT[c];
     }
   });
@@ -176,7 +189,6 @@ export default function RutasScreen() {
   });
 
   const [modo,       setModo]       = useState('drag');
-  const [grps,       setGrps]       = useState(new Set(['rm']));
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   const [supervisor, setSupervisor] = useState('');
   const [fecha,      setFecha]      = useState(todayStr);
@@ -191,7 +203,10 @@ export default function RutasScreen() {
   // Filtro de grupo (RM/COSTA/REGIONES) de DespachoHeader — antes vivía dentro de
   // InputSection (sidebarFilter); ahora la barra global lo controla y el board DESPACHO
   // (ManualDispatch, vía InputSection) solo lo consume para filtrar el pool "Sin asignar".
-  const [grupoFiltro, setGrupoFiltro]   = useState<'all' | 'rm' | 'costa' | 'fal'>('all');
+  // [Pools] Pool activo del tablero. Regiones y RM/Costa se arman en momentos distintos del día.
+  const [pool, setPool] = useState<PoolScope>('rm-costa');
+  // Escape hatch: mostrar camiones de transportistas no habilitadas para el pool (casos puntuales).
+  const [todaLaFlota, setTodaLaFlota] = useState(false);
   // Camión elegido en el tablero DESPACHO (click en la tarjeta) para previsualizar su ruta
   // en el mapa ANTES de calcular — se limpia al cambiar de tab o al limpiar el tablero.
   const [camionSeleccionado, setCamionSeleccionado] = useState<string | null>(null);
@@ -224,6 +239,10 @@ export default function RutasScreen() {
   const [historialStatus, setHistorialStatus] = useState('idle');
   const [flotaStatus, setFlotaStatus]     = useState('idle');
   const [historialMsg,  setHistorialMsg]  = useState('');
+  // [Fase 1] Resumen de lo que se acaba de cerrar. Estado y banner propios: `historialMsg` se
+  // renderiza dentro de ResultsSection, que solo se monta si hay resultados calculados — en el
+  // flujo del tablero no los hay, así que ahí el mensaje sería invisible.
+  const [cierreResumen, setCierreResumen] = useState<(ResumenCierre & { error?: string }) | null>(null);
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
   // [E4·4b] Clusters históricos ("líneas" del coordinador) para la auto-asignación instantánea.
@@ -236,7 +255,15 @@ export default function RutasScreen() {
   // (v1 efímero: la asignación de congelados a camiones todavía no genera manifiesto; ese es
   // el follow-up 7b-iii). NO comparte estado con el pool seco (calT/manualAsignaciones).
   const [calTCong,         setCalTCong]         = useState<Record<string, CalData>>({});
+  // [Fase 3] El tablero de CONGELADOS ahora se guarda y se sincroniza igual que el seco. Antes era
+  // `useState` a secas: las cantidades sí llegaban a la base, pero A QUÉ CAMIÓN va cada tienda se
+  // perdía al recargar la página — no digamos entre dispositivos. El propio comentario de arriba lo
+  // admitía ("es local, v1 efímero"). Usa la misma fuente por fecha y el mismo merge por tienda.
   const [asignacionesCong, setAsignacionesCong] = useState<Record<string, StoreItem[]>>({});
+  const baseCongRef       = useRef<TableroPorTienda>({});
+  const lastPushedCongRef = useRef<string>('');
+  const isCongInitRef     = useRef(false);
+  const debounceCongRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device). Se usan
   // para un banner "ya hay manifiestos guardados" y para reconstruir el tablero si hiciera falta
   // (p. ej. al abrir desde otro dispositivo y ver el lienzo vacío). No pisa el flujo de armado.
@@ -273,8 +300,13 @@ export default function RutasScreen() {
   // auto-scroll al arrastrar cerca del borde más confiable que buscarlo por DOM-walk.
   const v2ScrollRef = useRef<HTMLDivElement>(null);
 
-  const grpsRef = useRef(grps);
-  useEffect(() => { grpsRef.current = grps; }, [grps]);
+  // [Fase 0] Última fecha cuyo tablero se leyó CON ÉXITO. El guardado solo escribe si coincide con
+  // la que está en pantalla: así es imposible escribir un día que no se cargó.
+  const fechaCargadaRef = useRef<string | null>(null);
+  /** [Fase 0] Fecha para la que se construyó el pool actual, para rehacerlo al cambiar de día. */
+  const calTFechaRef = useRef<string | null>(null);
+  /** [Fase 2] Base del merge de tres vías: el tablero tal como estaba en el último sync. */
+  const baseManualRef = useRef<TableroPorTienda>({});
 
   const fechaRef = useRef(fecha);
   useEffect(() => { fechaRef.current = fecha; }, [fecha]);
@@ -325,7 +357,7 @@ export default function RutasScreen() {
         const { cal: newCal } = JSON.parse(e.newValue) as { cal: CalRecord; ts: number };
         setCal(newCal);
         // Merge new calendar into calT, preserving manually-entered p/b counts
-        setCalT(prev => mergeCalT(newCal, fechaRef.current, prev, grpsRef.current));
+        setCalT(prev => mergeCalT(newCal, fechaRef.current, prev));
       } catch {}
     };
     window.addEventListener('storage', handler);
@@ -347,7 +379,7 @@ export default function RutasScreen() {
       writeCalendario(dbCal);   // coherencia del cache in-memory + _calCentral (beneficia otras pestañas)
       setCal(dbCal);
       setCalT(prev => reaplicarCounts(
-        mergeCalT(dbCal, fechaRef.current, prev, grpsRef.current),
+        mergeCalT(dbCal, fechaRef.current, prev),
         sesionRowsRef.current,
         new Set(),
         (cod) => tiendasRef.current[cod]?.region,
@@ -371,7 +403,6 @@ export default function RutasScreen() {
             newCalT[norm(t.c)] = { on: true, p: t.p, b: t.b, c: 0, ch: (t as { ch?: number }).ch ?? 0, g: 'rm' };
           });
           setCalT(newCalT);
-          setGrps(new Set(['rm']));
           localStorage.removeItem('rutasInput');
         }
       }
@@ -402,7 +433,6 @@ export default function RutasScreen() {
               });
               return merged;
             });
-            setGrps(new Set(['rm']));
             localStorage.removeItem('rutasInput');
           }
         }
@@ -493,6 +523,10 @@ export default function RutasScreen() {
       // counts de la bodega Congelados inflaban el pool seco (una tienda congelada aparecía
       // como si fuera despacho seco).
       if ((row.fuente ?? '').startsWith('congelados')) return;
+      // [Fase 0] Esta suscripción es del día de HOY (`today`, fijo al montar). Si se está mirando
+      // otro día, sus conteos no pueden entrar al pool: esa mezcla es la que terminaba guardándose
+      // bajo la fecha abierta. Se siguen recordando en `sesionRowsRef` para cuando se vuelva a hoy.
+      if (fechaRef.current !== today) { sesionRowsRef.current.set(norm(row.tienda_cod), row); return; }
       const c = norm(row.tienda_cod);
       sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
@@ -726,24 +760,133 @@ export default function RutasScreen() {
     if (typeof window === 'undefined') return;
     isManualInitRef.current = false;
 
+    // [Fase 0] Se anota QUÉ fecha quedó realmente cargada. Si la lectura falla NO se habilita el
+    // guardado y el tablero se vacía: antes se marcaba como listo igual, así que el tablero del día
+    // anterior seguía en pantalla y el primer cambio de conteos lo escribía bajo la fecha nueva.
+    // Fue el mecanismo exacto por el que el 03/09 se sobrescribió el tablero del 30/08.
     fetchSessionState('rutas', fecha).then(remote => {
       const remoteObj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
       setManualAsignaciones(remoteObj);
       lastPushedManualRef.current = JSON.stringify(remoteObj);
+      baseManualRef.current = porTienda(remoteObj);   // base del merge de tres vías
+      fechaCargadaRef.current = fecha;
       isManualInitRef.current = true;
-    }).catch(() => { isManualInitRef.current = true; });
+    }).catch(() => {
+      setManualAsignaciones({});
+      baseManualRef.current = {};
+      fechaCargadaRef.current = null;
+      setErrors(prev => [...prev, 'No se pudo cargar el tablero de esta fecha. Recarga la página: por seguridad no se va a guardar nada hasta entonces.']);
+    });
 
+    // [Fase 2] Lo remoto se FUSIONA, no reemplaza. Antes se adoptaba el tablero del otro equipo tal
+    // cual: con dos personas trabajando a la vez, la última en escribir borraba todo el trabajo de
+    // la otra sin aviso. Ahora se hace un merge de tres vías POR TIENDA —el mismo patrón que Bodega
+    // usa por ítem— con `baseManualRef` como base. Si un equipo asigna 40LIL y el otro 26ALC,
+    // quedan las dos.
     const unsub = subscribeToSessionState('rutas', userId ?? '', (state) => {
       if (!state || typeof state !== 'object') return;
       const remoteJson = JSON.stringify(state);
       if (remoteJson === lastPushedManualRef.current) return;
-      lastPushedManualRef.current = remoteJson;
-      setManualAsignaciones(state as Record<string, StoreItem[]>);
+      const remoto = porTienda(state as Record<string, StoreItem[]>);
+      setManualAsignaciones(prev => {
+        const fusion = mergeTablero(
+          remoto,
+          porTienda(prev),
+          baseManualRef.current,
+          // Un camión cerrado ya emitió manifiesto y QR: su carga no la mueve nadie, ni remoto.
+          cod => { const p = porTienda(prev)[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); },
+        );
+        const vivas = patentesDelTablero(prev, state as Record<string, StoreItem[]>);
+        const merged = porCamion(fusion, vivas);
+        baseManualRef.current = fusion;
+        lastPushedManualRef.current = JSON.stringify(merged);
+        return merged;
+      });
     }, undefined, fecha);
 
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  // ── [Fase 3] Congelados: cargar, suscribir y guardar ──────────────────────
+  // Mismo contrato que el tablero seco (fase 0 + fase 2): no se escribe una fecha que no se leyó,
+  // solo se marca guardado cuando la base confirma, y lo remoto se FUSIONA por tienda.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    isCongInitRef.current = false;
+
+    fetchSessionState('rutas_congelados', fecha).then(remote => {
+      const obj = (remote && typeof remote === 'object') ? remote as Record<string, StoreItem[]> : {};
+      setAsignacionesCong(obj);
+      lastPushedCongRef.current = JSON.stringify(obj);
+      baseCongRef.current = porTienda(obj);
+      isCongInitRef.current = true;
+    }).catch(() => { setAsignacionesCong({}); baseCongRef.current = {}; });
+
+    return subscribeToSessionState('rutas_congelados', userId ?? '', (state) => {
+      if (!state || typeof state !== 'object') return;
+      if (JSON.stringify(state) === lastPushedCongRef.current) return;
+      const remoto = porTienda(state as Record<string, StoreItem[]>);
+      setAsignacionesCong(prev => {
+        const fusion = mergeTablero(remoto, porTienda(prev), baseCongRef.current);
+        const merged = porCamion(fusion, patentesDelTablero(prev, state as Record<string, StoreItem[]>));
+        baseCongRef.current = fusion;
+        lastPushedCongRef.current = JSON.stringify(merged);
+        return merged;
+      });
+    }, undefined, fecha);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, userId]);
+
+  useEffect(() => {
+    if (!isCongInitRef.current) return;
+    if (fechaCargadaRef.current !== fecha) return;
+    const json = JSON.stringify(asignacionesCong);
+    if (json === lastPushedCongRef.current) return;
+    if (debounceCongRef.current) clearTimeout(debounceCongRef.current);
+    debounceCongRef.current = setTimeout(() => {
+      const previo = lastPushedCongRef.current;
+      lastPushedCongRef.current = json;
+      pushSessionStateResult('rutas_congelados', asignacionesCong, userId, fecha)
+        .then(({ ok }) => {
+          if (ok) { baseCongRef.current = porTienda(asignacionesCong); return; }
+          if (lastPushedCongRef.current === json) lastPushedCongRef.current = previo;
+          setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
+        })
+        .catch(() => { if (lastPushedCongRef.current === json) lastPushedCongRef.current = previo; });
+    }, 800);
+    return () => { if (debounceCongRef.current) clearTimeout(debounceCongRef.current); };
+  }, [asignacionesCong, userId, fecha]);
+
+  // [Fase 2] Ponerse al día al volver al dispositivo.
+  //
+  // Hasta acá el Enrutador dependía SOLO del WebSocket: si el móvil se bloquea o se pierde la red,
+  // el socket muere y el tablero queda congelado sin que nada lo indique. Bodega ya tenía este
+  // catch-up (`useVisibilityRefetch`) y el hook incluso menciona el caso móvil↔desktop — el
+  // Enrutador simplemente no lo usaba.
+  //
+  // Al volver el foco se relee el tablero y se FUSIONA con lo que haya local, para no pisar lo que
+  // se movió mientras tanto.
+  const releerTablero = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (fechaCargadaRef.current !== fechaRef.current) return;   // fase 0: no tocar otra fecha
+    fetchSessionState('rutas', fechaRef.current).then(remote => {
+      if (!remote || typeof remote !== 'object') return;
+      const remoto = porTienda(remote as Record<string, StoreItem[]>);
+      setManualAsignaciones(prev => {
+        const previo = porTienda(prev);
+        const fusion = mergeTablero(remoto, previo, baseManualRef.current,
+          cod => { const p = previo[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); });
+        const merged = porCamion(fusion, patentesDelTablero(prev, remote as Record<string, StoreItem[]>));
+        const json = JSON.stringify(merged);
+        if (json === JSON.stringify(prev)) return prev;   // nada cambió: no re-render ni re-push
+        baseManualRef.current = fusion;
+        lastPushedManualRef.current = json;
+        return merged;
+      });
+    }).catch(() => {});
+  }, []);
+  useVisibilityRefetch(releerTablero);
 
   // ── Manifiestos ya guardados para la fecha (persistente, cross-device) ──────
   // Independiente del lienzo efímero: si abres el Enrutador desde otro equipo y el tablero se ve
@@ -768,15 +911,42 @@ export default function RutasScreen() {
     setManualAsignaciones(asig);
   }
 
+  // [Ver manifiestos del día] Reabre el panel con TODOS los manifiestos ya guardados de la fecha,
+  // reconstruidos desde `rutas_despacho` (la fuente persistente). Sirve para reimprimir después de
+  // haber cerrado el panel: `manifiestoV1` es estado de la pantalla y se limpia al cerrarlo, así
+  // que sin esto no había forma de volver a ver/imprimir un manifiesto ya registrado.
+  // No re-guarda nada: el panel recibe los códigos y tokens QR REALES vía `guardados`.
+  function handleVerManifiestosDia() {
+    const asig = reconstruirAsignaciones(manifiestosGuardados);
+    if (!Object.keys(asig).length) return;
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+    const rutas = rutasDesdeAsignaciones(asig, flota, extGps, cdRef.current, extTiendas);
+    if (rutas.length) setManifiestoV1(rutas);
+  }
+
   // ── Debounced push manualAsignaciones → Supabase ─────────────────
   useEffect(() => {
     if (!isManualInitRef.current) return;
+    // [Fase 0] Nunca escribir una fecha que no se leyó. Sin este guard, el tablero de un día podía
+    // terminar guardado bajo otro — y como nadie había leído ese otro día, se perdía lo que tenía.
+    if (fechaCargadaRef.current !== fecha) return;
     const json = JSON.stringify(manualAsignaciones);
     if (json === lastPushedManualRef.current) return;
     if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
     debounceManualRef.current = setTimeout(() => {
+      // Se marca ANTES solo para no re-disparar mientras el guardado vuela; si no llega, se revierte
+      // y el próximo cambio lo reintenta. Antes se marcaba y el error se tragaba: un guardado
+      // fallido quedaba dado por bueno para siempre y la pantalla mostraba lo que la base no tenía.
+      const previo = lastPushedManualRef.current;
       lastPushedManualRef.current = json;
-      pushSessionState('rutas', manualAsignaciones, userId, fecha).catch(() => {});
+      const fechaDelPush = fecha;
+      pushSessionStateResult('rutas', manualAsignaciones, userId, fechaDelPush)
+        .then(({ ok }) => {
+          if (ok) { baseManualRef.current = porTienda(manualAsignaciones); return; }
+          if (lastPushedManualRef.current === json) lastPushedManualRef.current = previo;
+          setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
+        })
+        .catch(() => { if (lastPushedManualRef.current === json) lastPushedManualRef.current = previo; });
     }, 800);
     return () => {
       if (debounceManualRef.current) clearTimeout(debounceManualRef.current);
@@ -900,15 +1070,20 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualText, modo]);
 
-  // ── Init calT from calendar when empty ───────────────────────────
+  // ── Init calT desde el calendario ────────────────────────────────
+  // [Fase 0] Se reconstruye también al CAMBIAR DE FECHA. Antes solo corría con el pool vacío, así
+  // que al abrir un día pasado el pool de hoy sobrevivía y se mezclaba con el del día abierto —
+  // y de ahí salía escrito bajo la fecha equivocada.
   useEffect(() => {
-    if (Object.keys(calT).length > 0) return;
+    const cambioDeFecha = calTFechaRef.current !== null && calTFechaRef.current !== fecha;
+    if (Object.keys(calT).length > 0 && !cambioDeFecha) return;
+    calTFechaRef.current = fecha;
     const dia    = getDia(fecha);
     const calDia = cal[dia] || cal.LU || {};
     const newCalT: Record<string, CalData> = {};
     ['rm','costa','fal'].forEach(grp => {
       ((calDia as Record<string, string[]>)[grp] || []).forEach(c => {
-        if (c && c.length >= 2) newCalT[c] = { on: grpsRef.current.has(grp), p: 0, b: 0, c: 0, ch: 0, g: grp };
+        if (c && c.length >= 2) newCalT[c] = { on: true, p: 0, b: 0, c: 0, ch: 0, g: grp };
       });
     });
     // #4: re-aplicar counts de despacho_sesion ya recibidos. Cubre la carrera "counts llegan
@@ -959,28 +1134,6 @@ export default function RutasScreen() {
   // ahora vive en ManualMode, que recibe sortedCalT como prop.
 
   // ── Calendar handlers ─────────────────────────────────────────────
-  function handleToggleGroup(gid: string) {
-    setGrps(prev => {
-      const next = new Set(prev);
-      next.has(gid) ? next.delete(gid) : next.add(gid);
-      setCalT(prevCalT => {
-        const c2 = { ...prevCalT };
-        Object.keys(c2).forEach(c => { if (c2[c].g === gid) c2[c] = { ...c2[c], on: next.has(gid) }; });
-        return c2;
-      });
-      return next;
-    });
-  }
-
-  // Pill de filtro de grupo (Todas/RM/COSTA/REGIONES) — se movió del DespachoHeader (arriba, al
-  // lado de Supervisor) a la fila "Sin asignar" de ManualDispatch. Misma lógica que tenía el
-  // header: activa/filtra el grupo y togglea su visibilidad.
-  function handleGroupPill(id: 'all' | 'rm' | 'costa' | 'fal') {
-    if (id === 'all') { setGrupoFiltro('all'); return; }
-    if (!grps.has(id)) { handleToggleGroup(id); setGrupoFiltro(id); }
-    else if (grupoFiltro === id) { handleToggleGroup(id); setGrupoFiltro('all'); }
-    else { setGrupoFiltro(id); }
-  }
 
 
   // Los conteos del Enrutador son SOLO-LECTURA (se definen en Bodega) — no hay edición manual.
@@ -1366,7 +1519,18 @@ export default function RutasScreen() {
     cerradasV1Ref.current = next;
     setCerradasV1(next);
     if (!skipPush) pushCerradasV1(next);
-    setManifiestoV1([ruta]);
+    // ACUMULA los manifiestos del día en vez de reemplazar. Antes era `setManifiestoV1([ruta])`:
+    // al cerrar varios camiones (uno a uno o en masa) solo sobrevivía el ÚLTIMO, y como es
+    // ManifiestoPanel quien persiste a rutas_despacho/ruta_tiendas y genera el token_qr, los
+    // demás camiones quedaban SIN manifiesto guardado y sin QR de fiscalización.
+    // El updater funcional es obligatorio: el cierre en masa hace forEach en un mismo tick de
+    // React, así que con el closure congelado los setState se pisarían igual (mismo motivo por
+    // el que `cerradasV1` usa un ref). Se agrega al FINAL (append) y se deduplica por patente:
+    // el orden de cierre es el que numera las rutas vía `offsetSeq`.
+    setManifiestoV1(prev => [
+      ...(prev ?? []).filter(r => normPatente(r.v.p) !== normPatente(ruta.v.p)),
+      ruta,
+    ]);
 
     // 6) Si con este cierre quedan TODAS las rutas cerradas → completar el día:
     //    postear summary (una vez) y marcar 'rutas_reg' (igual que el registro global).
@@ -1450,14 +1614,46 @@ export default function RutasScreen() {
     // Al cerrar la JORNADA (no en cada camión), lo que quedó SIN asignar a ningún camión pasa a
     // pendiente de 2ª vuelta — así no se pierde, pero sin cortar el flujo de asignación mientras
     // todavía estás cerrando camiones.
-    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones);
+    // [P10] Se pasa además la carga REGISTRADA del día (`despacho_sesion`) como respaldo de `calT`:
+    // una tienda armada y registrada que no esté en el `calT` del momento igual queda pendiente.
+    // Sin esto, 40LIL del 01/09 (3 pallets + 4 chocolates ya registrados, sin patente) desapareció
+    // del backlog y no se podía designar a 2ª vuelta pese a tener toda su data en la BD.
+    const registrado = [...sesionRowsRef.current.entries()].map(([cod, r]) => ({
+      cod, pallets: r.pallets, bultos: r.bultos, contenedores: r.contenedores, chocolates: r.chocolates,
+    }));
+    const { leftover, asignadas } = poolPendiente(calT, manualAsignaciones, registrado);
     if (leftover.length) void savePendientesV2(fecha, leftover, asignadas);
+    // [Fase 1] Cerrar el día es la acción MÁS irreversible del Enrutador —emite manifiestos, genera
+    // los QR y escribe el registro— y no devolvía nada: la pantalla volvía al tablero igual que
+    // antes. El 03/09 cuatro tiendas quedaron en el manifiesto y fuera del registro, y se descubrió
+    // al día siguiente. Con el resumen se ve en el momento, con los camiones todavía en el patio.
+    const resumen = resumenCierre(
+      fecha,
+      codsEnPool(calT),
+      manualAsignaciones,
+      registrado.map(r => r.cod),
+    );
+
     const payload = { closedAt: new Date().toISOString(), by: supervisor || '' };
-    setCerrado(true);
     supabase
       .from('shared_session_state')
       .upsert({ fecha, fuente: 'cierre', state: payload }, { onConflict: 'fecha,fuente' })
-      .then(({ error }) => { if (error) console.error('[cierre-jornada]', error.message); });
+      .then(({ error }) => {
+        if (error) {
+          // Antes se marcaba cerrado ANTES de guardar y el error solo iba a consola: la pantalla
+          // decía que el día cerró aunque la escritura nunca llegara.
+          console.error('[cierre-jornada]', error.message);
+          setCierreResumen({ ...resumen, error: 'No se pudo cerrar el día: la marca de cierre no llegó a guardarse. Revisa tu conexión y vuelve a intentar.' });
+          return;
+        }
+        setCerrado(true);
+        setCierreResumen(resumen);
+        // El registro del día vive en la HOJA; la copia de Supabase que alimenta el panel Estado y
+        // la recepción en tienda solo se refresca cuando alguien corre el sync. Encadenarlo acá
+        // —el mismo patrón que ya usa Bodega al terminar— evita que esas pantallas muestren menos
+        // de lo que realmente salió. `keepalive` para que sobreviva si se cierra la pestaña.
+        fetch('/api/sync-despacho', { method: 'POST', keepalive: true }).catch(() => {});
+      });
   }
 
   // ── Extra stops helpers ───────────────────────────────────────────
@@ -1474,11 +1670,22 @@ export default function RutasScreen() {
   // [Enrutador V2] Enruta un pool con el motor geográfico nuevo (o cae a asignar() con el flag
   // apagado). Devuelve { rutas, fueraDeRadio, avisos }. enrutarV2 recibe el pool COMPLETO y hace
   // el triage de radio RM solo — NO hay que filtrarle las tiendas lejanas antes.
-  const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
+  // `zonas` es la capa 3 (quién cubre cada zona, configurable en Config → Transportistas). Hasta
+  // acá se descargaba y solo alimentaba las etiquetas y avisos del tablero: el motor seguía usando
+  // ZONAS_DEFAULT, así que cambiar un transportista en Config no movía ni una tienda. Pasarla acá
+  // es lo que hace que esa pantalla signifique algo. Si no cargó todavía, `undefined` → el default.
+  // `enrutarCon` recibe la flota explícita para poder excluir camiones (p. ej. los ya cerrados);
+  // `enrutar` es el caso normal, con toda la flota.
+  const enrutarCon = (
+    flotaUsada: Vehiculo[], pool: StoreItem[],
+    egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>,
+  ): ResultadoEnrutador =>
     ENRUTADOR_V2
-      ? enrutarV2(pool, flota, egps, cdRef.current, etiendas)
-      : { rutas: asignar(pool, flota, egps, cdRef.current, null, null, null, etiendas, false),
+      ? enrutarV2(pool, flotaUsada, egps, cdRef.current, etiendas, zonasCfg ? { zonas: zonasCfg } : {})
+      : { rutas: asignar(pool, flotaUsada, egps, cdRef.current, null, null, null, etiendas, false),
           consolidacion: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos: [] };
+  const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
+    enrutarCon(flota, pool, egps, etiendas);
 
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
@@ -1516,7 +1723,7 @@ export default function RutasScreen() {
     // [PASO 2] Pool con los CUATRO tipos: contenedores (calT[c].c) suman a p (ocupan piso como un
     // pallet), chocolates van en ch. El filtro incluye tiendas de solo cont./choc. (antes se perdían).
     const stores: IAStore[] = Object.keys(calT)
-      .filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].c ?? 0) > 0 || (calT[c].ch ?? 0) > 0))
+      .filter(c => enElPool(calT[c]))
       .map(c => ({ cod: c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
     const trucks: IATruck[] = flota
       .filter(v => v.on && !v.tlbd)
@@ -1619,36 +1826,89 @@ export default function RutasScreen() {
   // viaje, y mandaba tiendas de Regiones a camiones que nunca las llevan.
   // Medido sobre 49 días reales: 143 km/día y 5,8 camiones con el viejo, contra 117 y 4,3 con este.
   const autoAsignar = () => {
-    const stores = poolDesdeCalT(calT);
+    // [Camión cerrado = congelado] Lo que ya salió en un manifiesto no se vuelve a repartir: sus
+    // tiendas se sacan del pool a rutear y sus camiones, de la flota disponible. Antes esta función
+    // reemplazaba el tablero ENTERO, así que una re-asignación después de cerrar dejaba la pantalla
+    // contradiciendo el manifiesto y el registro ya escritos.
+    const congeladas = codsEnCerradas(manualAsignaciones, cerradasV1);
+    const stores = poolDesdeCalT(calT).filter(t => !congeladas.has(t.c));
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
-    if (!flota.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
+    const flotaLibre = flota.filter(v => !isCerrada(cerradasV1, v.p));
+    if (!flotaLibre.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
-    const { rutas, consolidacion, avisos } = enrutar(stores, extGps, extTiendas);
+    const { rutas, consolidacion, avisos } = enrutarCon(flotaLibre, stores, extGps, extTiendas);
     const asig: Record<string, StoreItem[]> = {};
     // Las de consolidación también van al tablero: son camiones con transportista asignado, aunque
     // no lleven ruta calculada. Si no se agregaran, las tiendas de Regiones quedarían sin camión.
     for (const r of [...rutas, ...consolidacion])
       if (r.ts.length) asig[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
-    setManualAsignaciones(asig);
+    setManualAsignaciones(prev => preservarCerradas(asig, prev, cerradasV1));
     setErrors(avisos);
   };
-  const autoAsignarRef = useRef(autoAsignar);
-  autoAsignarRef.current = autoAsignar;
 
-  // Dispara la auto-asignación cuando hay pool + camiones activos y el tablero está VACÍO. El
-  // debounce deja "asentar" varias activaciones seguidas (asigna con TODOS los camiones activos).
-  const poolSig   = useMemo(() => Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).sort().join(','), [calT]);
+  // "Reasignar todo" REEMPLAZA el tablero: deshace cada movimiento manual del día. Antes esto
+  // pasaba sin preguntar nada (era el mismo botón que hoy completa), así que una hora de trabajo
+  // se podía perder de un clic. Los camiones cerrados igual quedan intactos (preservarCerradas).
+  const reasignarTodo = () => {
+    if (tableroConTrabajo(manualAsignaciones) &&
+        !window.confirm('Reasignar todo rehace el tablero desde cero: se pierden los cambios que hiciste a mano.\n\n¿Seguro? Si solo quieres asignar lo que falta, usa "Asignar".')) return;
+    autoAsignar();
+  };
+  // [P4] Completar el tablero SIN deshacer lo armado a mano.
+  //
+  // La carga no llega toda junta: Bodega registra durante la mañana y el pool crece de a poco. Por
+  // eso "asignar" no puede ser una foto única — pero tampoco puede rehacer el tablero cada vez, o
+  // pisaría el trabajo del coordinador. Acá se rutea SOLO lo pendiente sobre la capacidad que
+  // queda en cada camión (flota sombra), y el resultado se SUMA: nada se mueve de lugar.
+  const completarAsignacion = (scopes: PoolScope[] = [pool]) => {
+    const todo = poolDesdeCalT(calT);
+    const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
+    // Los pools se recorren contra un tablero que se va ACUMULANDO, no contra el del render. Si se
+    // llamara una vez por pool con `setManualAsignaciones` en medio, la segunda pasada leería el
+    // tablero viejo y un camión que sirve a los dos pools —posible cuando una empresa cubre ambas
+    // zonas— se sobrecargaría sin que nada avisara.
+    let acumulado = manualAsignaciones;
+    for (const scope of scopes) {
+      // Solo lo pendiente DE ESTE POOL, sobre los camiones que este pool ofrece. Sin esto,
+      // completar Regiones repartiría también las tiendas de RM que todavía se están armando.
+      const pendientes = pendientesDelPool(todo, acumulado).filter(t => enPool(calT[t.c]?.g, scope));
+      if (!pendientes.length) continue;
+      const habilitados = todaLaFlota ? flota : flotaDePool(flota, scope, zonasCfg);
+      const flotaLibre = flotaConCapacidadRestante(habilitados, acumulado, p => isCerrada(cerradasV1, p));
+      if (!flotaLibre.length) continue;
+      const { rutas, consolidacion } = enrutarCon(flotaLibre, pendientes, extGps, extTiendas);
+      const propuesta: Record<string, StoreItem[]> = {};
+      for (const r of [...rutas, ...consolidacion])
+        if (r.ts.length) propuesta[r.v.p] = r.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
+      if (Object.keys(propuesta).length) acumulado = fusionarAsignaciones(acumulado, propuesta);
+    }
+    if (acumulado === manualAsignaciones) return;
+    setManualAsignaciones(prev =>
+      prev === manualAsignaciones ? acumulado : fusionarAsignaciones(prev, acumulado));
+  };
+  const completarRef = useRef(completarAsignacion);
+  completarRef.current = completarAsignacion;
+
+  // Se dispara cuando cambia el pool o la flota. Antes corría UNA sola vez, con el tablero
+  // "vacío" — y "vacío" se medía contando LLAVES del objeto, no camiones con tiendas. Como el
+  // tablero deja llaves con lista vacía al sacar una tienda, bastaba mover una para que nunca más
+  // volviera a estar vacío: desde ahí ninguna tienda nueva de Bodega se asignaba sola. Y como el
+  // tablero se guarda, el bloqueo sobrevivía a recargar y se propagaba a los otros dispositivos.
+  // Ahora el disparador es "hay pendientes", y como solo AGREGA, correr de más es inofensivo.
+  const poolSig   = useMemo(() => codsEnPool(calT).join(','), [calT]);
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
-  const boardEmpty = Object.keys(manualAsignaciones).length === 0;
   useEffect(() => {
-    if (!boardEmpty || !poolSig || !trucksSig) return;
-    const t = setTimeout(() => autoAsignarRef.current(), 1000);
+    if (!poolSig || !trucksSig) return;
+    // Los DOS pools, no solo el que se está mirando: las tiendas que Bodega registra para Regiones
+    // tienen que asignarse solas aunque el coordinador esté trabajando RM en ese momento. El
+    // `scope` es para las acciones que se piden a mano; esto corre en segundo plano y solo agrega.
+    const t = setTimeout(() => completarRef.current(['rm-costa', 'regiones']), 1000);
     return () => clearTimeout(t);
-  }, [boardEmpty, poolSig, trucksSig]);
+  }, [poolSig, trucksSig]);
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
-    const poolCount = Object.keys(calT).filter(c => calT[c].on && (calT[c].p > 0 || calT[c].b > 0 || (calT[c].ch ?? 0) > 0)).length;
+    const poolCount = codsEnPool(calT).length;
     const asignadas = new Set(Object.values(manualAsignaciones).flat().map(s => s.c));
     const camionesConAsig = Object.values(manualAsignaciones).filter(a => a.length > 0).length;
     return faseEnrutador({ poolCount, asignadasCount: asignadas.size, camionesConAsig, cerradasCount: cerradasV1.size, diaCerrado: cerrado });
@@ -1763,7 +2023,10 @@ export default function RutasScreen() {
 
   // ── Clean ─────────────────────────────────────────────────────────
   function handleLimpiar() {
-    setResults(null); setErrors([]); setManualText(''); setManualAsignaciones({});
+    // Limpiar vacía el tablero, pero un camión cerrado ya tiene manifiesto, QR y registro escritos:
+    // borrarlo de la pantalla no lo des-registra, solo esconde lo que de verdad va a salir.
+    setResults(null); setErrors([]); setManualText('');
+    setManualAsignaciones(prev => preservarCerradas({}, prev, cerradasV1));
     setComparisonData(null); setParadasAdicionales([]); kmTotalRealRef.current = null;
     setKmPorRuta({}); setLegDataPorRuta({});
     setCamionSeleccionado(null);
@@ -1846,7 +2109,8 @@ export default function RutasScreen() {
       if (t1?.values) parseTSheetAuth(t1.values, newTiendas, newGps);
       if (t2?.values) parseFSheetAuth(t2.values, newFlota);
       if (t3?.values) {
-        const sheetsCal = parseCalendarioAuth(t3.values);
+        // El catálogo (recién actualizado por parseTSheetAuth) decide el grupo de cada tienda.
+        const sheetsCal = parseCalendarioAuth(t3.values, newTiendas);
         if (sheetsCal) {
           // Re-order Sheets data to match the Calendario de Abastecimiento order from localStorage
           let newCal = sheetsCal;
@@ -1873,7 +2137,7 @@ export default function RutasScreen() {
             }
           } catch {}
           setCal(newCal);
-          setCalT(prev => mergeCalT(newCal, fecha, prev, grpsRef.current));
+          setCalT(prev => mergeCalT(newCal, fecha, prev));
         }
       }
       setTiendas(newTiendas); setGps(newGps);
@@ -2124,6 +2388,30 @@ export default function RutasScreen() {
         </div>
       )}
 
+      {/* [Fase 1] Qué quedó cerrado. Cerrar el día es lo más irreversible del Enrutador y no
+          devolvía nada: la pantalla volvía al tablero igual que antes, así que una falla parcial
+          se descubría al día siguiente en vez de con los camiones todavía en el patio. */}
+      {cierreResumen && (
+        <div className={`flex-shrink-0 px-4 py-2 border-b flex items-start gap-2 flex-wrap ${
+          cierreResumen.error       ? 'bg-red-50 border-red-200'
+          : cierreResumen.hayAvisos ? 'bg-amber-50 border-amber-200'
+          : 'bg-emerald-50 border-emerald-200'}`}>
+          <span className={`text-[11px] font-bold ${
+            cierreResumen.error       ? 'text-red-700'
+            : cierreResumen.hayAvisos ? 'text-amber-800'
+            : 'text-emerald-700'}`}>
+            {cierreResumen.error ?? textoResumenCierre(cierreResumen)}
+          </span>
+          <button
+            onClick={() => setCierreResumen(null)}
+            aria-label="Cerrar aviso"
+            className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-[6px] border border-black/[0.15] text-kmuted hover:text-ktext hover:border-black/[0.3] transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Banner: manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device).
           Evita el susto de "0 asignadas" al abrir desde otro equipo con el lienzo vacío. */}
       {manifiestosGuardados.length > 0 && (() => {
@@ -2138,8 +2426,14 @@ export default function RutasScreen() {
             </span>
             <span className="text-[10px] text-emerald-600/70 font-semibold">despacho registrado</span>
             <button
-              onClick={handleCargarManifiestosGuardados}
+              onClick={handleVerManifiestosDia}
               className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-emerald-500 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors active:scale-95 ml-auto"
+            >
+              Ver manifiestos
+            </button>
+            <button
+              onClick={handleCargarManifiestosGuardados}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-emerald-500/50 text-emerald-700/80 hover:bg-emerald-500/10 transition-colors active:scale-95"
             >
               Cargar en el tablero
             </button>
@@ -2292,7 +2586,8 @@ export default function RutasScreen() {
             tiendas={tiendas} gps={gps} cd={cdRef.current}
             manualAsignaciones={manualAsignaciones}
             paradasAdicionales={paradasAdicionales}
-            grupoFiltro={grupoFiltro} grps={grps} onGroupPill={handleGroupPill}
+            pool={pool} onPool={setPool}
+            todaLaFlota={todaLaFlota} onTodaLaFlota={setTodaLaFlota}
             camionSeleccionado={camionSeleccionado}
             camionSeleccionadoKm={previewKm}
             onSelectTruck={setCamionSeleccionado}
@@ -2309,7 +2604,8 @@ export default function RutasScreen() {
             onAsignaciones={setManualAsignaciones}
             onCalcular={handleCalcular}
             onCalcularManual={handleCalcularManual}
-            onAsignarIA={autoAsignar}
+            onAsignar={() => completarAsignacion([pool])}
+            onReasignarTodo={reasignarTodo}
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
             cerrarSel={cerrarSel}
@@ -2443,6 +2739,7 @@ export default function RutasScreen() {
           // Consecutivo global: cada camión cerrado uno a uno toma el siguiente número
           // (antes todos salían -01 porque cada cierre era un lote nuevo con índice 0).
           offsetSeq={Math.max(0, cerradasV1.size - manifiestoV1.length)}
+          guardados={manifiestosGuardados}
         />
       )}
 
@@ -2472,6 +2769,7 @@ export default function RutasScreen() {
         tiendas={tiendas}
         cd={cdRef.current}
         fecha={fecha}
+        zonasCfg={zonasCfg}
       />
 
       <ParadasAdicionales

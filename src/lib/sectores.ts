@@ -20,6 +20,14 @@
  */
 export type ZonaRuteo = 'santiago' | 'costa' | 'sur' | 'norte';
 
+/**
+ * Latitud del CD. Es el corte que separa norte de sur cuando el sector dice 'Región' a secas.
+ *
+ * Vivía como número suelto dentro del motor. Ahora está acá, junto a la regla que lo usa, para que
+ * el calendario y el motor no puedan quedar partiendo el mapa por lugares distintos.
+ */
+export const LAT_CD_DEFAULT = -33.412581;
+
 export interface SectorOpcion {
   valor: string;
   zona: ZonaRuteo;
@@ -78,7 +86,7 @@ export function zonaDeSector(sector: string | null | undefined): ZonaRuteo | nul
 export function zonaDeSectorOGeo(
   sector: string | null | undefined,
   lat: number | null | undefined,
-  latCD: number,
+  latCD: number = LAT_CD_DEFAULT,
 ): ZonaRuteo | null {
   const porSector = zonaDeSector(sector);
   if (porSector) return porSector;
@@ -105,4 +113,22 @@ export function opcionesSector(actual: string | null | undefined): SectorOpcion[
   if (!s || esSectorCanonico(s)) return SECTORES;
   const zona = zonaDeSector(s) ?? 'santiago';
   return [...SECTORES, { valor: s, zona, detalle: `valor actual · rutea como ${zona}` }];
+}
+
+/**
+ * ¿Es una tienda de Regiones que consolida al NORTE? (Antofagasta ×2, La Serena ×2 hoy.)
+ *
+ * Reemplaza la lista de cuatro códigos que estaba escrita a mano en el calendario y en la ruta que
+ * escribe la hoja. Esa lista era correcta, pero no tenía forma de enterarse: una tienda nueva en
+ * Copiapó o Iquique se habría pintado "sur" sin que nada avisara, y habría salido en el camión
+ * equivocado del papel que usa la operación.
+ *
+ * Devuelve `false` para lo que no es Regiones, así se puede llamar sobre cualquier código.
+ */
+export function esRegionNorte(
+  sector: string | null | undefined,
+  lat: number | null | undefined,
+  latCD: number = LAT_CD_DEFAULT,
+): boolean {
+  return zonaDeSectorOGeo(sector, lat, latCD) === 'norte';
 }

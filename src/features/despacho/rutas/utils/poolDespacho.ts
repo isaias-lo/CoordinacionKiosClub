@@ -1,4 +1,5 @@
 import type { StoreItem } from './routing';
+import { enElPool } from './pool';
 
 /** Fila del calendario activo por tienda. OJO: acá `c` es la cantidad de CONTENEDORES (number),
  *  distinto del `c` de StoreItem, que es el CÓDIGO de tienda (string). */
@@ -19,10 +20,7 @@ export interface CalTData { on: boolean; p: number; b: number; c: number; ch: nu
  */
 export function poolDesdeCalT(calT: Record<string, CalTData>): StoreItem[] {
   return Object.keys(calT)
-    .filter(cod => {
-      const d = calT[cod];
-      return d.on && (d.p > 0 || d.b > 0 || (d.c ?? 0) > 0 || (d.ch ?? 0) > 0);
-    })
+    .filter(cod => enElPool(calT[cod]))
     .map(cod => {
       const d = calT[cod];
       return { c: cod, p: d.p + (d.c ?? 0), b: d.b, ch: d.ch ?? 0 };

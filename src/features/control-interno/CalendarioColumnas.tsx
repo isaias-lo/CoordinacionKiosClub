@@ -12,8 +12,9 @@ import {
 import {
   fetchCalendarioCongelados, saveCalendarioCongelados, subscribeToCalendarioCongelados,
 } from '@/lib/calendarioCongeladosSync';
-import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
+import { TIENDAS_INICIAL, GPS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
+import { esRegionNorte } from '@/lib/sectores';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 import {
   Package, Waves, Building2, ClipboardList,
@@ -38,16 +39,18 @@ const GRP_ICON: Record<string, LucideIcon> = {
   rm: Package, costa: Waves, fal: Building2, general: ClipboardList,
 };
 
-const ZONA_NORTE_FAL = new Set(['41ANA','42ANP','39PSB','51SER']); // Antofagasta + La Serena
-const RM_MALLS       = new Set(['16PQA','20CTC','29CFL','52MUT','19SUB','45EST','49PTA']);
+
+/** Ficha mínima que el calendario necesita de cada tienda. `lat` es para separar norte de sur. */
+type TiendaCal = { n: string; z: string; d: string; tipo: string; lat: number | null };
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
-type StoreType = 'mall' | 'street' | 'costa' | 'region';
+type StoreType = 'mall' | 'strip' | 'street' | 'costa' | 'region';
 
 // Chip plano compartido (fondo/texto neutros) + acento de color solo en el borde izquierdo —
 // reemplaza los chips pastel con sombra de color por el sistema de diseño enterprise.
 const TYPE_STYLE: Record<StoreType, { accent: string; label: string }> = {
   mall:   { accent: '#D42B2B', label: 'MALL' },  // rojo del logo K (kred)
+  strip:  { accent: '#7C3AED', label: 'STRIP CENTER' },  // mismo violeta que el Planificador
   street: { accent: '#475569', label: 'STREET CENTER' },
   costa:  { accent: '#2563EB', label: 'COSTA' },
   region: { accent: '#D97706', label: 'REGIÓN' },
@@ -87,7 +90,7 @@ export default function CalendarioColumnas({
 
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
   const pendingResolveRef = useRef<string[]>([]);
-  const [tiendasDB, setTiendasDB] = useState<Record<string, { n: string; z: string; d: string; tipo: string }>>({});
+  const [tiendasDB, setTiendasDB] = useState<Record<string, TiendaCal>>({});
   const firstDayBtnRef = useRef<HTMLButtonElement>(null);
 
   // Modal de días: cierre con Escape + foco inicial en el primer día (accesibilidad).
@@ -104,11 +107,11 @@ export default function CalendarioColumnas({
   useEffect(() => {
     fetch('/api/tiendas')
       .then(r => r.json())
-      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; tipo?: string; activo?: boolean }> }) => {
-        const db: Record<string, { n: string; z: string; d: string; tipo: string }> = {};
+      .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; tipo?: string; lat?: number | null; activo?: boolean }> }) => {
+        const db: Record<string, TiendaCal> = {};
         for (const t of (json.tiendas ?? [])) {
           if (t.activo === false) continue;
-          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '', tipo: t.tipo ?? '' };
+          db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '', tipo: t.tipo ?? '', lat: t.lat ?? null };
         }
         setTiendasDB(db);
       })
@@ -116,21 +119,40 @@ export default function CalendarioColumnas({
   }, []);
 
   // Merged lookup: TIENDAS_INICIAL as base, overridden by active DB stores
-  const tiendasAll = useMemo<Record<string, { n: string; z: string; d: string; tipo: string }>>(() => {
-    const base: Record<string, { n: string; z: string; d: string; tipo: string }> = {};
+  const tiendasAll = useMemo<Record<string, TiendaCal>>(() => {
+    const base: Record<string, TiendaCal> = {};
     for (const [k, v] of Object.entries(TIENDAS_INICIAL)) {
-      base[k] = { n: v.n, z: v.z, d: v.d ?? '', tipo: v.tipo ?? '' };
+      base[k] = { n: v.n, z: v.z, d: v.d ?? '', tipo: v.tipo ?? '', lat: GPS_INICIAL[k]?.[0] ?? null };
     }
     return { ...base, ...tiendasDB };
   }, [tiendasDB]);
 
+  // El tipo sale del CATÁLOGO (`tipo`: MALL / STRIPCENTER / …), que ya viene de /api/tiendas.
+  //
+  // Antes se decidía con un regex sobre la dirección —"¿dice 'local'?"— teniendo el dato correcto
+  // cargado al lado, sin usar. Eso pintaba mal 17 tiendas de RM, en las dos direcciones: Alto Las
+  // Condes ("Av. Pdte. Kennedy Lateral 9001") no dice "local" y salía como street, mientras once
+  // strip centers cuyo domicilio termina en "Local 5" salían pintados de mall. La heurística de la
+  // dirección sobrevive dentro de `tipoTienda`, pero solo como último recurso si el catálogo no
+  // trae `tipo`.
   function getTipo(cod: string): StoreType {
     const inf = tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
     if (!inf) return 'street';
     if (inf.z === 'Región') return 'region';
     if (inf.z === 'Costa')  return 'costa';
-    if (inf.d && /local/i.test(inf.d)) return 'mall';
-    return 'street';
+    const k = tipoTienda(inf.tipo, inf.d, inf.z).key;
+    if (k === 'costa')  return 'costa';   // `z` no exacto ("Costa Valparaíso") igual cae acá
+    if (k === 'region') return 'region';
+    return k === 'mall' ? 'mall' : k === 'strip' ? 'strip' : 'street';
+  }
+
+  // ¿Consolida al norte? Sale del sector del catálogo, con la latitud de desempate para las fichas
+  // que dicen 'Región' a secas — la MISMA regla que usa el motor (`zonaDeSectorOGeo`). Antes era
+  // una lista de cuatro códigos escrita a mano: correcta, pero incapaz de enterarse de una tienda
+  // nueva en Copiapó o Iquique, que se habría impreso en el camión equivocado sin avisar.
+  function esNorte(cod: string): boolean {
+    const inf = tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
+    return esRegionNorte(inf?.z, inf?.lat);
   }
 
   function getNombre(cod: string): string {
@@ -376,9 +398,9 @@ export default function CalendarioColumnas({
       const costa = local![dia]?.costa || [];
       const fal   = local![dia]?.fal   || [];
       return [
-        ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as Zone })),
+        ...fal.map(c   => ({ cod: c, zone: (esNorte(c) ? 'norte' : 'sur') as Zone })),
         ...costa.map(c => ({ cod: c, zone: 'costa'                                    as Zone })),
-        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as Zone })),
+        ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as Zone })),
       ];
     });
 
@@ -746,9 +768,9 @@ export default function CalendarioColumnas({
                       const costa = local![dia]?.costa || [];
                       const fal   = local![dia]?.fal   || [];
                       const stores: { cod: string; zone: GZone }[] = [
-                        ...fal.map(c   => ({ cod: c, zone: (ZONA_NORTE_FAL.has(c) ? 'norte' : 'sur') as GZone })),
+                        ...fal.map(c   => ({ cod: c, zone: (esNorte(c) ? 'norte' : 'sur') as GZone })),
                         ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
-                        ...rm.map(c    => ({ cod: c, zone: (RM_MALLS.has(c) ? 'mall' : 'rm')         as GZone })),
+                        ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as GZone })),
                       ];
                       return (
                         <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid #E2E8F0', background: '#fff', minWidth: 118 }}>

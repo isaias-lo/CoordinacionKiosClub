@@ -584,6 +584,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
+    // [P5] Tiendas que ESTE cliente tiene en pantalla: acota el borrado de `despacho_sesion` a su
+    // propio universo, para no borrar las cargadas por otra persona (ver pushCounts).
+    const conocidas = Object.keys(items);
     Object.entries(items).forEach(([cod, list]) => {
       const p  = list.filter(i => i.tipo === 'Pallet').length;
       const b  = list.filter(i => i.tipo === 'Bulto').length;
@@ -594,7 +597,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     localStorage.setItem('santiagoCounts', JSON.stringify({ date: todayKey, counts }));
-    pushCounts('santiago', counts).catch(() => {});
+    pushCounts('santiago', counts, conocidas).catch(() => {});
   }, [items]);
 
   // Read despachoCounts → sync from Despacho
@@ -1020,9 +1023,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const cur = items[cod] || [];
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      // CH lo maneja el rebuild (auto-agregado); aquí sólo P/B/C que llegaron tarde.
       // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
-      const missing = fullSlots.filter(s => !repIds.has(s.id) && s.tipo !== 'CH' && !esCongeladoContenido(s.contenido));
+      // CH: entra SOLO si su item ya existe en el estado (`cur`) — paridad con Nacional. Así un
+      // chocolate agregado por otra persona aparece apenas llega el item, sin salir y volver a la
+      // tienda; y al exigir que el item exista no se inventa una card durante la ventana de sync.
+      const missing = fullSlots.filter(s =>
+        !repIds.has(s.id)
+        && !esCongeladoContenido(s.contenido)
+        && (s.tipo !== 'CH' || cur.some(it => it.pickingSlotId === s.id)));
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const saved = cur.find(it => it.pickingSlotId === s.id);
@@ -1530,7 +1538,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // countOffset: al "agregar de a N" (loop), el número del chocolate se calcula del `items` del
   // closure (que NO se actualiza dentro del loop) → sin offset, los N quedarían con el mismo CH#.
   // El offset (índice de la iteración) los numera CH{base+1}..CH{base+N} y hace únicos los ids.
-  const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
+  const addFormRowInner = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = currentTienda?.cod;
     const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
     const date = fechaISOLocal();
@@ -1592,6 +1600,18 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (!slot) return;
     setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+  };
+
+  // [P5] Guarda anti doble-tap (paridad con Nacional): crear un slot NO es idempotente, así que dos
+  // toques seguidos generaban DOS pallets/chocolates físicos. Se bloquea por tienda+tipo mientras la
+  // creación está en vuelo; el "agregar de a N" hace `await` de cada llamada y no se ve afectado.
+  const addingSlotRef = useRef<Set<string>>(new Set());
+  const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
+    const key = `${currentTienda?.cod ?? ''}:${t}`;
+    if (addingSlotRef.current.has(key)) return;
+    addingSlotRef.current.add(key);
+    try { await addFormRowInner(t, existingSlot, countOffset); }
+    finally { addingSlotRef.current.delete(key); }
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
