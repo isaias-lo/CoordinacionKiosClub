@@ -60,6 +60,8 @@ type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }
 const ENRUTADOR_V2 = true;
 
 /** [Fase 0] Se muestra cuando el tablero no llegó a guardarse: la pantalla dejaría de reflejar la base. */
+/** [Revisión fase 3] El cierre de un camión no llegó a los demás equipos: pueden moverle carga. */
+const AVISO_CIERRE_NO_SINCRONIZADO = 'El cierre del camión no se sincronizó. Otros dispositivos pueden no verlo como cerrado — revisa tu conexión.';
 const AVISO_NO_GUARDADO = 'No se pudo guardar el tablero. Lo que ves puede no estar en la base — revisa tu conexión y vuelve a mover algo para reintentar.';
 
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
@@ -261,6 +263,9 @@ export default function RutasScreen() {
   // admitía ("es local, v1 efímero"). Usa la misma fuente por fecha y el mismo merge por tienda.
   const [asignacionesCong, setAsignacionesCong] = useState<Record<string, StoreItem[]>>({});
   const baseCongRef       = useRef<TableroPorTienda>({});
+  /** Fecha cuyo tablero de CONGELADOS se cargó con éxito. Propia: si la comparara con la del
+   *  tablero seco, un fallo al cargar el seco dejaría a congelados sin poder guardarse. */
+  const fechaCargadaCongRef = useRef<string | null>(null);
   const lastPushedCongRef = useRef<string>('');
   const isCongInitRef     = useRef(false);
   const debounceCongRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -789,12 +794,15 @@ export default function RutasScreen() {
       if (remoteJson === lastPushedManualRef.current) return;
       const remoto = porTienda(state as Record<string, StoreItem[]>);
       setManualAsignaciones(prev => {
+        // `previo` se calcula UNA vez: `mergeTablero` llama a `protegida` por cada tienda, y
+        // recalcularlo dentro recorría el tablero entero en cada llamada.
+        const previo = porTienda(prev);
         const fusion = mergeTablero(
           remoto,
-          porTienda(prev),
+          previo,
           baseManualRef.current,
           // Un camión cerrado ya emitió manifiesto y QR: su carga no la mueve nadie, ni remoto.
-          cod => { const p = porTienda(prev)[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); },
+          cod => { const p = previo[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); },
         );
         const vivas = patentesDelTablero(prev, state as Record<string, StoreItem[]>);
         const merged = porCamion(fusion, vivas);
@@ -820,8 +828,13 @@ export default function RutasScreen() {
       setAsignacionesCong(obj);
       lastPushedCongRef.current = JSON.stringify(obj);
       baseCongRef.current = porTienda(obj);
+      fechaCargadaCongRef.current = fecha;
       isCongInitRef.current = true;
-    }).catch(() => { setAsignacionesCong({}); baseCongRef.current = {}; });
+    }).catch(() => {
+      setAsignacionesCong({});
+      baseCongRef.current = {};
+      fechaCargadaCongRef.current = null;
+    });
 
     return subscribeToSessionState('rutas_congelados', userId ?? '', (state) => {
       if (!state || typeof state !== 'object') return;
@@ -840,7 +853,7 @@ export default function RutasScreen() {
 
   useEffect(() => {
     if (!isCongInitRef.current) return;
-    if (fechaCargadaRef.current !== fecha) return;
+    if (fechaCargadaCongRef.current !== fecha) return;
     const json = JSON.stringify(asignacionesCong);
     if (json === lastPushedCongRef.current) return;
     if (debounceCongRef.current) clearTimeout(debounceCongRef.current);
@@ -849,7 +862,11 @@ export default function RutasScreen() {
       lastPushedCongRef.current = json;
       pushSessionStateResult('rutas_congelados', asignacionesCong, userId, fecha)
         .then(({ ok }) => {
-          if (ok) { baseCongRef.current = porTienda(asignacionesCong); return; }
+          if (ok) {
+            baseCongRef.current = porTienda(asignacionesCong);
+            setErrors(prev => prev.filter(e => e !== AVISO_NO_GUARDADO));
+            return;
+          }
           if (lastPushedCongRef.current === json) lastPushedCongRef.current = previo;
           setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
         })
@@ -886,7 +903,27 @@ export default function RutasScreen() {
       });
     }).catch(() => {});
   }, []);
-  useVisibilityRefetch(releerTablero);
+  // Congelados tenía el mismo problema que el seco: dependía solo del WebSocket, así que un móvil
+  // bloqueado se quedaba con el tablero congelado sin que nada lo indicara.
+  const releerCongelados = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (fechaCargadaCongRef.current !== fechaRef.current) return;
+    fetchSessionState('rutas_congelados', fechaRef.current).then(remote => {
+      if (!remote || typeof remote !== 'object') return;
+      const remoto = porTienda(remote as Record<string, StoreItem[]>);
+      setAsignacionesCong(prev => {
+        const fusion = mergeTablero(remoto, porTienda(prev), baseCongRef.current);
+        const merged = porCamion(fusion, patentesDelTablero(prev, remote as Record<string, StoreItem[]>));
+        const json = JSON.stringify(merged);
+        if (json === JSON.stringify(prev)) return prev;
+        baseCongRef.current = fusion;
+        lastPushedCongRef.current = json;
+        return merged;
+      });
+    }).catch(() => {});
+  }, []);
+
+  useVisibilityRefetch(useCallback(() => { releerTablero(); releerCongelados(); }, [releerTablero, releerCongelados]));
 
   // ── Manifiestos ya guardados para la fecha (persistente, cross-device) ──────
   // Independiente del lienzo efímero: si abres el Enrutador desde otro equipo y el tablero se ve
@@ -942,7 +979,13 @@ export default function RutasScreen() {
       const fechaDelPush = fecha;
       pushSessionStateResult('rutas', manualAsignaciones, userId, fechaDelPush)
         .then(({ ok }) => {
-          if (ok) { baseManualRef.current = porTienda(manualAsignaciones); return; }
+          if (ok) {
+            baseManualRef.current = porTienda(manualAsignaciones);
+            // El aviso se retira al primer guardado bueno: si quedara pegado, dejaría de significar
+            // algo y la próxima vez que importe nadie lo va a mirar.
+            setErrors(prev => prev.filter(e => e !== AVISO_NO_GUARDADO));
+            return;
+          }
           if (lastPushedManualRef.current === json) lastPushedManualRef.current = previo;
           setErrors(prev => prev.includes(AVISO_NO_GUARDADO) ? prev : [...prev, AVISO_NO_GUARDADO]);
         })
@@ -1035,7 +1078,14 @@ export default function RutasScreen() {
     const json = JSON.stringify([...next].sort());
     if (json === lastPushedCerradasRef.current) return;
     lastPushedCerradasRef.current = json;
-    void pushSessionState('rutas_cerradas', serializeCerradas(next), userId, fecha).catch(() => {});
+    // Que esto falle en silencio es peligroso: los otros dispositivos no se enteran de que el
+    // camión se cerró y le pueden mover carga, con el manifiesto ya emitido.
+    void pushSessionStateResult('rutas_cerradas', serializeCerradas(next), userId, fecha)
+      .then(({ ok }) => {
+        if (ok) return;
+        setErrors(prev => prev.includes(AVISO_CIERRE_NO_SINCRONIZADO) ? prev : [...prev, AVISO_CIERRE_NO_SINCRONIZADO]);
+      })
+      .catch(() => {});
   };
 
   // ── Días pasados con asignaciones sin registrar (aviso de recuperación) ──
