@@ -7,10 +7,13 @@ const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const date = request.nextUrl.searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabaseServer()
+  const tipo = request.nextUrl.searchParams.get('tipo'); // opcional: filtrar server-side por tipo
+  let query = supabaseServer()
     .from('picking_session_state')
     .select('state_key, picker_label, tipo')
     .eq('date', date);
+  if (tipo) query = query.eq('tipo', tipo);
+  const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
 }

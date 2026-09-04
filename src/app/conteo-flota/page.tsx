@@ -10,6 +10,7 @@ import { unidadesDesdeFilas, ahoraMinutoChile, type FilaPicking } from '@/featur
 import { parseParametros, aOpcionesMotor, PARAMETROS_DEFAULT } from '@/features/despacho/rutas/utils/parametrosMotor';
 import { filasPorTienda, type FilaTiendaConteo } from '@/features/despacho/rutas/utils/conteoFlota';
 import { grupoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
+import { useTiendaTerminada } from '@/features/despacho/shared/useTiendaTerminada';
 
 const RUTA = '/conteo-flota';
 const POLL_MS = 60_000;
@@ -34,7 +35,12 @@ const ESTADO_META: Record<EstadoTienda, EstadoMeta> = {
 // verde, para no sugerir una certeza que no existe.
 const COMPLETA_POR_CORTE_META: EstadoMeta = { label: 'Cierre del día (sin confirmar)', color: '#B45309', bg: '#FFFBEB', border: '#D97706' };
 
-function metaDeFila(f: FilaTiendaConteo): EstadoMeta {
+// "Tienda Terminada" (marcada a mano en Bodega) es una CONFIRMACIÓN HUMANA — pesa más que
+// cualquier estado algorítmico, así que siempre gana en el badge/borde de la fila.
+const TERMINADA_META: EstadoMeta = { label: '✓ Lista para despachar', color: '#15803D', bg: '#DCFCE7', border: '#15803D' };
+
+function metaDeFila(f: FilaTiendaConteo, terminada: boolean): EstadoMeta {
+  if (terminada) return TERMINADA_META;
   if (f.estado === 'completa' && f.completaPorCorte) return COMPLETA_POR_CORTE_META;
   return ESTADO_META[f.estado];
 }
@@ -49,9 +55,10 @@ const ZONA_LABEL: Record<'rm' | 'costa' | 'fal', string> = { rm: 'Santiago', cos
 const ZONA_FILTROS: ZonaFiltro[] = ['todas', 'rm', 'costa', 'fal'];
 
 // Ordena primero lo que más le importa a quien arma rutas: lo que todavía no está
-// confirmado. `completa` genuina (silencio real) queda al final; `completa` solo por la
-// hora de corte pesa igual que "probable", porque en la práctica tiene la misma certeza.
-function urgencia(f: FilaTiendaConteo): number {
+// confirmado. `completa` genuina (silencio real) va después; "Tienda Terminada" (confirmación
+// humana) es lo más seguro de todo, así que queda siempre al final.
+function urgencia(f: FilaTiendaConteo, terminada: boolean): number {
+  if (terminada) return 3;
   if (f.estado === 'esperando') return 0;
   if (f.estado === 'probable') return 1;
   if (f.estado === 'completa' && f.completaPorCorte) return 1;
@@ -144,6 +151,7 @@ export default function ConteoFlotaPage() {
 
   const flota = useFlota();
   const { tiendas, gps } = useTiendasYGps();
+  const { terminadas } = useTiendaTerminada();
 
   const [filasPicking, setFilasPicking] = useState<FilaPicking[]>([]);
   const [historial, setHist]  = useState<Record<string, EsperadoTienda>>({});
@@ -211,7 +219,9 @@ export default function ConteoFlotaPage() {
     return resumen.filas
       .filter(f => zonaFiltro === 'todas' || grupoTienda(tiendas[f.cod]?.z, tiendas[f.cod]?.region) === zonaFiltro)
       .filter(f => coincideBusqueda(f, tiendas[f.cod]?.n ?? '', busqueda))
-      .sort((a, b) => urgencia(a) - urgencia(b) || a.cod.localeCompare(b.cod));
+      .sort((a, b) =>
+        urgencia(a, terminadas.get(a.cod)?.terminada === true) - urgencia(b, terminadas.get(b.cod)?.terminada === true)
+        || a.cod.localeCompare(b.cod));
   })();
 
   const minsAtras = ultAct ? Math.max(0, Math.round((Date.now() - ultAct) / 60_000)) : null;
@@ -290,7 +300,7 @@ export default function ConteoFlotaPage() {
               </div>
             </div>
             <div style={{ fontSize: 11, color: C.faint, marginBottom: 12 }}>
-              Ordenado por urgencia — arriba lo que todavía no está confirmado. El estado es calculado por el mismo algoritmo del motor de despacho (volumen histórico + tiempo sin novedad), no es una confirmación manual de Bodega todavía.
+              Ordenado por urgencia — arriba lo que todavía no está confirmado. &ldquo;✓ Lista para despachar&rdquo; es una confirmación manual de Bodega (botón Tienda Terminada); el resto del estado es estimado por el mismo algoritmo del motor de despacho (volumen histórico + tiempo sin novedad).
             </div>
 
             {/* Buscador + filtro de zona */}
@@ -342,11 +352,14 @@ export default function ConteoFlotaPage() {
                     </thead>
                     <tbody>
                       {filasVisibles.map((f, i) => {
-                        const meta = metaDeFila(f);
-                        const genuinaCompleta = f.estado === 'completa' && !f.completaPorCorte;
+                        const info = terminadas.get(f.cod);
+                        const terminada = info?.terminada === true;
+                        const meta = metaDeFila(f, terminada);
+                        const genuinaCompleta = terminada || (f.estado === 'completa' && !f.completaPorCorte);
                         const zebra = i % 2 ? '#FAFBFC' : C.surface;
                         const zona = grupoTienda(tiendas[f.cod]?.z, tiendas[f.cod]?.region);
                         const totalEstimado = f.pallets + f.estimadoAdicional;
+                        const detalle = terminada ? (info?.por ? `Confirmado por ${info.por}` : 'Confirmado por Bodega') : f.detalle;
                         return (
                           <tr key={f.cod} style={{ background: genuinaCompleta ? meta.bg : zebra, borderLeft: `4px solid ${meta.border}` }}>
                             <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 800, color: C.navy, whiteSpace: 'nowrap' }}>{f.cod}</td>
@@ -367,7 +380,7 @@ export default function ConteoFlotaPage() {
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}55`, whiteSpace: 'nowrap' }}>
                                 {meta.label}
                               </span>
-                              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 3, whiteSpace: 'nowrap' }}>{f.detalle}</div>
+                              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 3, whiteSpace: 'nowrap' }}>{detalle}</div>
                             </td>
                           </tr>
                         );
