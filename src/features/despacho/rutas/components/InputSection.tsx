@@ -4,6 +4,7 @@ import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
+import type { PoolScope } from '../utils/poolsSeparados';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import { FaseEnrutador } from './FaseEnrutador';
 import type { FaseInfo } from '../utils/faseEnrutador';
@@ -39,9 +40,11 @@ interface Props {
   manualAsignaciones: Record<string, StoreAssign[]>;
   paradasAdicionales: Parada[];
   // Filtro de grupo (RM/COSTA/REGIONES) — sus pills viven en la fila "Sin asignar" del board
-  // (ManualDispatch). `grps` = grupos activos del calendario; `onGroupPill` togglea/filtra.
-  grupoFiltro: 'all' | 'rm' | 'costa' | 'fal';
-  onGroupPill: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
+  // (ManualDispatch). [Pools] `pool` = Regiones o RM/Costa; `zonasCfg` decide qué camiones ofrece.
+  pool: PoolScope;
+  onPool: (p: PoolScope) => void;
+  todaLaFlota?: boolean;
+  onTodaLaFlota?: (v: boolean) => void;
   // Camión elegido en el tablero DESPACHO para previsualizar su ruta en el mapa.
   camionSeleccionado: string | null;
   camionSeleccionadoKm?: number | null;
@@ -119,7 +122,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 export default function InputSection({
   flota, flotaStatus, modo, fase, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   tiendas, gps, cd, manualAsignaciones,
-  paradasAdicionales, grupoFiltro, onGroupPill,
+  paradasAdicionales, pool, onPool, todaLaFlota, onTodaLaFlota,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
@@ -324,7 +327,7 @@ export default function InputSection({
               <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 onCalcular={() => {}} hideCalcular
-                grupoFiltro={grupoFiltro} onGroupPill={onGroupPill}
+                pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
                 camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                 scrollContainerRef={dragScrollRef}
                 onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} />
@@ -340,7 +343,7 @@ export default function InputSection({
                 <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
-                  grupoFiltro={grupoFiltro} onGroupPill={onGroupPill}
+                pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
                   camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                   scrollContainerRef={dragScrollRef}
                   cerrarSel={cerrarSel} onToggleCerrarSel={onToggleCerrarSel} onCerrarVarios={onCerrarVarios} esCerrada={esCerrada}
@@ -446,7 +449,7 @@ export default function InputSection({
             <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
               onCalcular={() => {}} hideCalcular
-              grupoFiltro={grupoFiltro} onGroupPill={onGroupPill}
+                pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
               camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
               scrollContainerRef={dragScrollRef}
               onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} />
@@ -474,8 +477,7 @@ export default function InputSection({
                 onAsignaciones={onAsignaciones}
                 onCalcular={onCalcularManual}
                 onEliminarParada={onEliminarParada}
-                grupoFiltro={grupoFiltro}
-                onGroupPill={onGroupPill}
+                pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
                 camionSeleccionado={camionSeleccionado}
                 camionSeleccionadoKm={camionSeleccionadoKm}
                 onSelectTruck={onSelectTruck}
