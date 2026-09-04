@@ -919,18 +919,14 @@ export function PickingScreen() {
     // `[]`), así que con el filtro de `operations.length > 0` de abajo desaparecía por completo
     // fuera de "Todas" — sin importar la sección real (`slot.section`) con la que se creó. Si no
     // hay operaciones, se decide por los pallets reales de picking_pallets en vez de descartarlo.
-    return allGroups
+    return base
       .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
       .filter(g => {
         if (g.operations.length > 0) return true;
         const slots = slotsByStateKey[g.stateKey] ?? [];
         return slots.length > 0 && slots.some(s => seccionDeSlot(s) === sectionFilter);
       });
-  }, [allGroups, sectionFilter, slotsByStateKey]);
-    return base
-      .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
-      .filter(g => g.operations.length > 0);
-  }, [allGroups, sectionFilter, esTabCongelados]);
+  }, [allGroups, sectionFilter, esTabCongelados, slotsByStateKey]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
