@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
+import { Printer, Bell, AlertTriangle, RefreshCw, Package, UserPlus } from 'lucide-react';
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
@@ -136,6 +136,9 @@ export function PickingScreen() {
   const session = useMemo(() => loadSession(), []);
 
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
+  // Modo manual: tienda con el campo "+ Encargado manual" abierto + lo que se está escribiendo.
+  const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
+  const [manualName, setManualName]           = useState('');
 
   const {
     hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
@@ -521,6 +524,19 @@ export function PickingScreen() {
     }
   }, [pickingFetch, showToast, loadEventos]);
 
+  // Modo manual: crea el PRIMER pallet (tipo P) de un encargado escrito a mano — mismo
+  // addPalletSlot que ya usa el stepper +/-, así que no hace falta nada nuevo del lado del
+  // servidor. En cuanto exista esta fila, `allGroups` levanta la tarjeta sola (ver arriba) y
+  // de ahí en más el supervisor ajusta P/B/C/CH con el stepper normal de la card.
+  const crearEncargadoManual = useCallback((cod: string) => {
+    const nombre = manualName.trim();
+    if (!nombre) return;
+    const stateKey = `${cod}__${nombre.toLowerCase()}`;
+    void addPalletSlot(stateKey, cod, nombre, 'P');
+    setManualName('');
+    setAddingManualCod(null);
+  }, [manualName, addPalletSlot]);
+
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string, section: Seccion | null = null) => {
@@ -754,12 +770,23 @@ export function PickingScreen() {
         if (!map[normalized]) map[normalized] = { displayKey: raw, ops: [] };
         map[normalized].ops.push(op);
       }
+      // Modo manual (Odoo apagado, o un encargado fuera de Odoo): sin operación de Odoo detrás,
+      // pero SÍ con pallets reales en picking_pallets — `addPalletSlot` (más abajo) ya es 100%
+      // manual, así que basta con levantar la tarjeta desde los pallets ya guardados en vez de
+      // desde `opsMap`. Sin tabla ni endpoint nuevo: `palletSlots` ya excluye lo creado en
+      // Bodega (ver loadPalletSlots), así que todo lo que llega acá es de Picking.
+      const prefix = `${cod}__`;
+      for (const slot of palletSlots) {
+        if (slot.store_cod !== cod || !slot.state_key.startsWith(prefix)) continue;
+        const normalized = slot.state_key.slice(prefix.length);
+        if (!map[normalized]) map[normalized] = { displayKey: slot.picker_label || normalized, ops: [] };
+      }
       for (const [normKey, { displayKey, ops: gOps }] of Object.entries(map).sort(([a], [b]) => a.localeCompare(b))) {
         result.push({ key: displayKey, storeCod: cod, stateKey: `${cod}__${normKey}`, operations: gOps });
       }
     }
     return result;
-  }, [selectedCods, opsMap]);
+  }, [selectedCods, opsMap, palletSlots]);
 
   // NOTA: el progreso de Odoo para el semáforo de Bodega lo calcula ahora UNA sola fuente
   // —el refresco batch del servidor en GET /api/picking-store-progress, que atribuye los
@@ -1422,6 +1449,11 @@ export function PickingScreen() {
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
+                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); }}
+                          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5"
+                          style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
+                          <UserPlus size={13} /> Encargado manual
+                        </button>
                         {ops.length > 0 && (
                           <button onClick={() => void refreshAllOps(ops, cod)}
                             disabled={refreshingStoreCod === cod}
@@ -1444,6 +1476,31 @@ export function PickingScreen() {
                         })()}
                       </div>
                     </div>
+
+                    {addingManualCod === cod && (
+                      <div className="px-3 py-2.5 flex items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
+                        <input
+                          type="text"
+                          autoFocus
+                          value={manualName}
+                          onChange={e => setManualName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
+                          placeholder="Nombre del encargado"
+                          className="flex-1 text-[13px] px-3 py-1.5 rounded border"
+                          style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
+                        />
+                        <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
+                          className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
+                          style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
+                          Agregar
+                        </button>
+                        <button onClick={() => setAddingManualCod(null)}
+                          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all"
+                          style={{ color: '#64748B', background: 'transparent', border: 'none' }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
 
                     <div className="px-3 pt-3 pb-4">
                     {/* Sin asignar warning */}

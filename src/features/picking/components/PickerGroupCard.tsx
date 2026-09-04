@@ -54,7 +54,10 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
   lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
 }: Props) {
-  const allDone       = group.operations.every(o => o.state === 'done');
+  // Un grupo manual (sin operaciones de Odoo detrás — ver "modo manual" en PickingScreen)
+  // no debe aparentar estar "Realizado": `.every()` sobre un arreglo vacío da `true` por
+  // vacuidad, y sin este guard mostraba el badge verde de Odoo sin que Odoo confirmara nada.
+  const allDone       = group.operations.length > 0 && group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
   const refs          = group.operations.map(o => o.name).join('+');
   const cats          = allCategories.join(',');
