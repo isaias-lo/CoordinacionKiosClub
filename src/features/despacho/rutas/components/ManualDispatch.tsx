@@ -7,6 +7,7 @@ import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
 import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
 import { puedeMoverCarga } from '../utils/cierrePorVehiculo';
+import { enPool, flotaDePool, camionesExtra, grupoIndefinido, POOLS, type PoolScope } from '../utils/poolsSeparados';
 import { enElPool } from '../utils/pool';
 import { podarVacias, tableroConTrabajo } from '../utils/asignacionIncremental';
 import type { ConfigZonas } from '../utils/zonasTransporte';
@@ -46,10 +47,14 @@ interface Props {
   /** [Reestructura] Filtro de grupo: filtra qué tiendas se ven en el pool "Sin asignar"
    *  (RM/Costa/Regiones). No cambia las asignaciones ni los conteos totales. Sus pills se
    *  muestran en el header del pool (se movieron aquí desde el DespachoHeader). */
-  grupoFiltro?: 'all' | 'rm' | 'costa' | 'fal';
+  /** [Pools] Pool activo. Regiones y RM/Costa se arman en momentos distintos del día. */
+  pool?: PoolScope;
+  onPool?: (p: PoolScope) => void;
+  /** [Pools] Si el coordinador pidió ver toda la flota, no solo la habilitada para el pool. */
+  todaLaFlota?: boolean;
+  onTodaLaFlota?: (v: boolean) => void;
   /** Grupos activos del calendario (para el estado visual de las pills). */
   /** Click en una pill de grupo (Todas/RM/COSTA/REGIONES) — togglea y filtra. */
-  onGroupPill?: (id: 'all' | 'rm' | 'costa' | 'fal') => void;
   /** Camión elegido para previsualizar su ruta en el mapa (antes de "Calcular"). */
   camionSeleccionado?: string | null;
   /** Km real (Google Directions) de esa preview, cuando el mapa ya la resolvió. */
@@ -117,8 +122,10 @@ export default function ManualDispatch({
   onToggleFlota,
   ordenActivacion,
   hideCalcular,
-  grupoFiltro = 'all',
-  onGroupPill,
+  pool: poolScope = 'rm-costa',
+  onPool,
+  todaLaFlota = false,
+  onTodaLaFlota,
   camionSeleccionado = null,
   camionSeleccionadoKm = null,
   onSelectTruck,
@@ -166,8 +173,9 @@ export default function ManualDispatch({
   const asignadasSet = new Set(Object.values(asignaciones).flat().map(s => s.c));
   const pool         = tiendasActivas.filter(t => !asignadasSet.has(t.c));
   const paradasPool  = paradasConGps.filter(p => !asignadasSet.has(p.id));
-  // Filtro de grupo (barra izquierda): solo afecta QUÉ se muestra en el pool, no los conteos.
-  const poolMostrado = grupoFiltro === 'all' ? pool : pool.filter(t => calT[t.c]?.g === grupoFiltro);
+  // [Pools] Solo se muestran las tiendas del pool activo. Es un filtro de VISTA: los conteos, la
+  // capacidad y el registro siguen viendo el día completo.
+  const poolMostrado = pool.filter(t => enPool(calT[t.c]?.g, poolScope));
   // ¿Hay algo armado? Cuenta CONTENIDO, no llaves: el tablero deja patentes con lista vacía.
   const hayTrabajo = tableroConTrabajo(asignaciones);
 
@@ -177,7 +185,14 @@ export default function ManualDispatch({
   // [F2] Orden por recencia de activación: el último camión marcado va primero (izq→der).
   const ordAct = ordenActivacion ?? {};
   const porRecencia = (a: Vehiculo, b: Vehiculo) => (ordAct[b.p] ?? 0) - (ordAct[a.p] ?? 0);
-  const flotaDisp = flota.filter(v => v.on).sort(porRecencia);
+  // [Pools] Cada pool ofrece los camiones de las empresas habilitadas para sus zonas (Config →
+  // Transportistas). Se suman los que ya llevan carga aunque no correspondan: o se tomaron como
+  // excepción, o cambió la config con el día armado — esconderlos dejaría carga fuera de la vista.
+  const activos    = flota.filter(v => v.on);
+  const ofrecidos  = todaLaFlota ? activos : flotaDePool(activos, poolScope, zonasCfg);
+  const extra      = todaLaFlota ? [] : camionesExtra(activos, ofrecidos, asignaciones);
+  const flotaDisp  = [...ofrecidos, ...extra].sort(porRecencia);
+  const ocultos    = activos.length - flotaDisp.length;
 
   // P10b: mover todas las tiendas seleccionadas a una patente (o de vuelta al pool) de una vez
   function toggleSelect(code: string) {
@@ -526,21 +541,28 @@ export default function ManualDispatch({
               <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
               {dragging && <span className="ml-2 text-[12px] text-knavy font-semibold animate-pulse">← Suelta aquí</span>}
             </div>
-            {/* Filtro de grupo (movido del DespachoHeader): entre el título y "Asignar". */}
-            {onGroupPill && (
+            {/* [Pools] Regiones y RM/Costa se arman en momentos distintos del día y las llevan
+                empresas distintas. Cada pool muestra sus tiendas y los camiones habilitados para
+                sus zonas; los botones de conjunto actúan solo sobre el pool activo. */}
+            {onPool && (
               <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Un solo estado: el pill filtra la vista. Antes tenía además un "activo" que
-                    sacaba tiendas del despacho — ver handleGroupPill en RutasScreen. */}
-                <GroupPill label="Todas"    selected={grupoFiltro === 'all'}   onClick={() => onGroupPill('all')} />
-                <GroupPill label="RM"       selected={grupoFiltro === 'rm'}    onClick={() => onGroupPill('rm')} />
-                <GroupPill label="COSTA"    selected={grupoFiltro === 'costa'} onClick={() => onGroupPill('costa')} />
-                <GroupPill label="REGIONES" selected={grupoFiltro === 'fal'}   onClick={() => onGroupPill('fal')} />
+                {POOLS.map(({ id, label }) => {
+                  const n = pool.filter(t => enPool(calT[t.c]?.g, id)).length;
+                  return (
+                    <GroupPill
+                      key={id}
+                      label={n > 0 ? `${label} · ${n}` : label}
+                      selected={poolScope === id}
+                      onClick={() => onPool(id)}
+                    />
+                  );
+                })}
               </div>
             )}
             <div className="flex-1 min-w-[8px]" />
             {/* [P4] Dos acciones distintas, antes eran una sola. "Asignar" completa lo que falta y
                 nunca mueve lo ya armado; "Reasignar todo" rehace el tablero y por eso pregunta. */}
-            {onAsignar && pool.length > 0 && (
+            {onAsignar && poolMostrado.length > 0 && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignar(); }}
@@ -551,7 +573,7 @@ export default function ManualDispatch({
               >
                 {iaLoading
                   ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
-                  : <><Sparkles size={14} aria-hidden="true" /> Asignar {pool.length}</>}
+                  : <><Sparkles size={14} aria-hidden="true" /> Asignar {poolMostrado.length}</>}
               </button>
             )}
             {onReasignarTodo && hayTrabajo && (
@@ -564,8 +586,18 @@ export default function ManualDispatch({
                 <RefreshCw size={13} aria-hidden="true" /> Reasignar todo
               </button>
             )}
-            <span className={`text-[13px] font-bold ${pool.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
-              {pool.length > 0 ? `${pool.length} restantes` : '✓ Todas asignadas'}
+            {onTodaLaFlota && (ocultos > 0 || todaLaFlota) && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onTodaLaFlota(!todaLaFlota); }}
+                className="h-[28px] px-2.5 rounded-[8px] text-[11px] font-semibold border border-black/[0.12] bg-white text-kmuted hover:border-black/[0.25] hover:text-ktext transition-all"
+                title="Config → Transportistas define qué empresas cubren cada zona. Esto muestra el resto, para tomar un camión de otra transportista como excepción."
+              >
+                {todaLaFlota ? 'Ver solo los habilitados' : `+ Camión de otra empresa (${ocultos})`}
+              </button>
+            )}
+            <span className={`text-[13px] font-bold ${poolMostrado.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+              {poolMostrado.length > 0 ? `${poolMostrado.length} restantes` : '✓ Todas asignadas'}
             </span>
           </div>
           {hasSelection && (
@@ -595,9 +627,19 @@ export default function ManualDispatch({
                     onRemove={null}
                   />
                 ))}
-                {poolMostrado.length === 0 && grupoFiltro !== 'all' && pool.length > 0 && (
+                {(() => {
+                  // Una tienda sin grupo se muestra en RM/Costa porque es donde el registro la va
+                  // a escribir. Se avisa para que nadie la dé por sentada en Regiones.
+                  const n = poolMostrado.filter(t => grupoIndefinido(calT[t.c]?.g)).length;
+                  return n > 0 ? (
+                    <div className="w-full text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-[8px] px-2 py-1 font-medium">
+                      {n} tienda{n > 1 ? 's' : ''} sin grupo definido · se muestra{n > 1 ? 'n' : ''} acá porque es donde se registra{n > 1 ? 'n' : ''}
+                    </div>
+                  ) : null;
+                })()}
+                {poolMostrado.length === 0 && pool.length > 0 && (
                   <div className="self-center text-[12px] text-kmuted font-medium">
-                    Sin tiendas de este grupo por asignar · {pool.length} en otros grupos
+                    Todo asignado en este pool · {pool.length} pendiente{pool.length > 1 ? 's' : ''} en el otro
                   </div>
                 )}
                 {paradasPool.map(p => (
