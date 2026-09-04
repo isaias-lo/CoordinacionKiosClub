@@ -109,7 +109,11 @@ export async function fetchUnregisteredRutasDays(sinceDays = 10): Promise<string
   const { data, error } = await supabase
     .from('shared_session_state')
     .select('fecha, fuente, state')
-    .in('fuente', ['rutas', 'rutas_reg'])
+    // [Fase 1] También 'cierre' y 'rutas_cerradas'. El aviso preguntaba solo por 'rutas_reg', un
+    // marcador que en el flujo real NADIE escribe: lo ponen el registro global (que exige haber
+    // pasado por "Calcular") y la ✕ manual. Por eso volvía todos los días aunque el día estuviera
+    // cerrado y registrado — comprobado en la base: 20 filas seguidas de descarte a mano.
+    .in('fuente', ['rutas', 'rutas_reg', 'cierre', 'rutas_cerradas'])
     .gte('fecha', sinceISO)
     .lt('fecha', today); // solo días pasados
 
@@ -125,20 +129,47 @@ export interface SessionStateRow { fecha: string; fuente: string; state: unknown
  */
 export function computeUnregisteredDays(rows: SessionStateRow[]): string[] {
   const asignByDate = new Map<string, unknown>();
-  const registered  = new Set<string>();
+  const cerradasPorDia = new Map<string, Set<string>>();
+  const atendido = new Set<string>();
   for (const r of rows) {
-    if (r.fuente === 'rutas_reg') registered.add(r.fecha);
+    // Tres señales de que el día YA se atendió, no una:
+    //   rutas_reg → se registró de forma global, o se descartó con la ✕
+    //   cierre    → se pulsó "Terminar día" (lo que la gente realmente hace)
+    if (r.fuente === 'rutas_reg' || r.fuente === 'cierre') atendido.add(r.fecha);
     else if (r.fuente === 'rutas') asignByDate.set(r.fecha, r.state);
+    else if (r.fuente === 'rutas_cerradas') cerradasPorDia.set(r.fecha, parsePatentes(r.state));
   }
-  const hasAssignments = (state: unknown) =>
-    !!state && typeof state === 'object' &&
-    Object.values(state as Record<string, unknown>).some(v => Array.isArray(v) && v.length > 0);
+  const camionesConTiendas = (state: unknown): string[] =>
+    (!!state && typeof state === 'object')
+      ? Object.entries(state as Record<string, unknown>)
+          .filter(([, v]) => Array.isArray(v) && v.length > 0)
+          .map(([patente]) => patente.trim().toUpperCase())
+      : [];
 
   const result: string[] = [];
   for (const [fecha, state] of asignByDate) {
-    if (!registered.has(fecha) && hasAssignments(state)) result.push(fecha);
+    if (atendido.has(fecha)) continue;
+    const camiones = camionesConTiendas(state);
+    if (!camiones.length) continue;
+    // Tercera señal: si TODOS los camiones con carga se cerraron uno por uno, el día está hecho
+    // aunque nunca se haya pulsado "Terminar día".
+    const cerradas = cerradasPorDia.get(fecha);
+    if (cerradas && camiones.every(p => cerradas.has(p))) continue;
+    result.push(fecha);
   }
   return result.sort().reverse(); // más reciente primero
+}
+
+/** Patentes de la fuente 'rutas_cerradas', normalizadas. Tolera `{patentes:[…]}` o un array plano. */
+function parsePatentes(state: unknown): Set<string> {
+  const out = new Set<string>();
+  const lista = Array.isArray(state)
+    ? state
+    : (state && typeof state === 'object' && Array.isArray((state as { patentes?: unknown }).patentes))
+      ? (state as { patentes: unknown[] }).patentes
+      : [];
+  for (const x of lista) if (typeof x === 'string' && x.trim()) out.add(x.trim().toUpperCase());
+  return out;
 }
 
 export interface PendienteV2 { c: string; p: number; b: number; ch: number; fechaOrigen: string }
