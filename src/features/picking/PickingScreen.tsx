@@ -904,33 +904,32 @@ export function PickingScreen() {
   const filteredGroups = useMemo(() => {
     // [P6] Cada tab ve solo lo suyo: Congelados muestra únicamente las ops congeladas, y Seco las
     // excluye. Antes 'Todas' mezclaba ambas y los conteos se cruzaban entre tabs.
+    //
+    // Modo manual: un grupo creado a mano nunca tiene "operations" de Odoo (siempre `[]`), así que
+    // un filtro de `operations.length > 0` lo hacía desaparecer. Cuando no hay operaciones se
+    // decide por sus pallets reales de picking_pallets, tanto para el tab como para la sección.
     const base = allGroups
       .map(g => {
         const congeladas = new Set(filtrarOpsPorSeccion(g.operations, 'congelados'));
         return { ...g, operations: g.operations.filter(op => congeladas.has(op) === esTabCongelados) };
       })
-      .filter(g => g.operations.length > 0);
+      .filter(g => {
+        if (g.operations.length > 0) return true;
+        const slots = slotsByStateKey[g.stateKey] ?? [];
+        return slots.some(s => (seccionDeSlot(s) === 'congelados') === esTabCongelados);
+      });
     if (esTabCongelados || sectionFilter === 'all') return base;
     // Recorta las operaciones de cada grupo a la sección activa y descarta los grupos sin ops
     // en ella. Antes era un test de inclusión (dejaba ops de otras secciones dentro de un picker
     // mixto → se mostraba/contaba la suma cruzada). Ahora cada sección es independiente.
-    //
-    // Modo manual: un grupo creado a mano nunca tiene "operations" de Odoo que filtrar (siempre
-    // `[]`), así que con el filtro de `operations.length > 0` de abajo desaparecía por completo
-    // fuera de "Todas" — sin importar la sección real (`slot.section`) con la que se creó. Si no
-    // hay operaciones, se decide por los pallets reales de picking_pallets en vez de descartarlo.
-    return allGroups
+    return base
       .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
       .filter(g => {
         if (g.operations.length > 0) return true;
         const slots = slotsByStateKey[g.stateKey] ?? [];
         return slots.length > 0 && slots.some(s => seccionDeSlot(s) === sectionFilter);
       });
-  }, [allGroups, sectionFilter, slotsByStateKey]);
-    return base
-      .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
-      .filter(g => g.operations.length > 0);
-  }, [allGroups, sectionFilter, esTabCongelados]);
+  }, [allGroups, sectionFilter, esTabCongelados, slotsByStateKey]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
