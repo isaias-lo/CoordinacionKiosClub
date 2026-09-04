@@ -168,10 +168,14 @@ export const CreatePickingPalletSchema = z.object({
   state_key:    z.string().min(1).max(50),
   picker_label: z.string().min(1).max(100),
   tipo:         z.enum(['P', 'B', 'C', 'CH', 'CC', 'CN', 'otro']),
-  contenido:    z.string().max(50).optional(),
-  section:      z.string().max(30).optional(), // sección de Picking (aseo-comida/hogar/…); null/omitida = sin clasificar
-  refs:         z.string().max(500).optional(),
-  actor_name:   z.string().max(100).optional(),
+  // .nullish() (no solo .optional()): el caller (addPalletSlot en PickingScreen) manda
+  // explícitamente `null` para varios de estos campos —p. ej. `section: null` cuando el
+  // grupo es mixto/"Todas" (ver seccionSlot)— y .optional() por sí solo rechaza `null`
+  // (solo acepta el campo AUSENTE), así que ese caso ya fallaba con 400 antes de este fix.
+  contenido:    z.string().max(50).nullish(),
+  section:      z.string().max(30).nullish(), // sección de Picking (aseo-comida/hogar/…); null/omitida = sin clasificar
+  refs:         z.string().max(500).nullish(),
+  actor_name:   z.string().max(100).nullish(),
   client_op_id: z.string().uuid().optional(), // idempotencia: mismo id ⇒ no duplica
 });
 

@@ -79,6 +79,16 @@ describe('CreatePickingPalletSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts explicit null for contenido/section/refs/actor_name (no solo ausentes)', () => {
+    // El caller real (addPalletSlot en PickingScreen) manda `section: null` cuando el grupo
+    // es mixto ("Todas") — .optional() por sí solo rechaza null (solo tolera el campo
+    // ausente), así que esto daba 400 antes de este fix.
+    const result = CreatePickingPalletSchema.safeParse({
+      ...valid, contenido: null, section: null, refs: null, actor_name: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects contenido longer than 50 chars', () => {
     const result = CreatePickingPalletSchema.safeParse({
       ...valid,

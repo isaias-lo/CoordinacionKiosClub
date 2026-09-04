@@ -139,6 +139,7 @@ export function PickingScreen() {
   // Modo manual: tienda con el campo "+ Encargado manual" abierto + lo que se está escribiendo.
   const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
   const [manualName, setManualName]           = useState('');
+  const [manualSeccion, setManualSeccion]     = useState<SectionFilter>('all');
 
   const {
     hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
@@ -532,10 +533,17 @@ export function PickingScreen() {
     const nombre = manualName.trim();
     if (!nombre) return;
     const stateKey = `${cod}__${nombre.toLowerCase()}`;
-    void addPalletSlot(stateKey, cod, nombre, 'P');
+    // Misma sección/contenido que ya deriva el stepper real (onTipoPalletsChange) a partir del
+    // filtro activo — acá no hay categorías de Odoo de las que derivarlo, así que se elige a
+    // mano: 'all' ("Todas") ⇒ sin sección (mixto), o una de las 4 secciones reales.
+    const seccion: Seccion | null = manualSeccion === 'all' ? null : (manualSeccion as Seccion);
+    const contenido = manualSeccion === 'chocolates' ? 'chocolate'
+      : manualSeccion === 'congelados' ? 'congelados'
+      : 'hogar';
+    void addPalletSlot(stateKey, cod, nombre, 'P', contenido, '', seccion);
     setManualName('');
     setAddingManualCod(null);
-  }, [manualName, addPalletSlot]);
+  }, [manualName, manualSeccion, addPalletSlot]);
 
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
@@ -1449,7 +1457,7 @@ export function PickingScreen() {
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
-                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); }}
+                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualSeccion(sectionFilter); }}
                           className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5"
                           style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
                           <UserPlus size={13} /> Encargado manual
@@ -1489,6 +1497,17 @@ export function PickingScreen() {
                           className="flex-1 text-[13px] px-3 py-1.5 rounded border"
                           style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
                         />
+                        <select
+                          value={manualSeccion}
+                          onChange={e => setManualSeccion(e.target.value as SectionFilter)}
+                          className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
+                          style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
+                          <option value="all">Todas</option>
+                          <option value="aseo-comida">Aseo y Comida</option>
+                          <option value="hogar">Hogar</option>
+                          <option value="chocolates">Chocolates</option>
+                          <option value="congelados">Congelados</option>
+                        </select>
                         <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
                           className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
                           style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
