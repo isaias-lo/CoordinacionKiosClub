@@ -32,6 +32,8 @@ import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
+import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
+import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -240,42 +242,48 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
+  terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
 }) {
   return (
-    <div className="bg-navy px-3 py-3 flex items-center gap-2 flex-shrink-0 touch-none select-none"
+    <div className="bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 touch-none select-none"
       onTouchStart={swipe?.start}
       onTouchMove={swipe?.move}
       onTouchEnd={swipe?.end}>
-      <button onClick={onBack}
-        className="flex items-center justify-center w-8 h-8 text-white/70 text-[20px] cursor-pointer border-none bg-white/10 rounded-full flex-shrink-0 active:bg-white/20 touch-auto">
-        ←
-      </button>
-      <div className="flex-1 min-w-0">
-        <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
-        <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
-      </div>
-      <div className="flex gap-3 flex-shrink-0">
-        <div className="text-center">
-          <div className="font-barlow-condensed text-[22px] font-extrabold text-[#93C5FD] leading-none">{pallets}</div>
-          <div className="text-[9px] text-white/50 uppercase tracking-widest">P</div>
+      <div className="flex items-center gap-2">
+        <button onClick={onBack}
+          className="flex items-center justify-center w-8 h-8 text-white/70 text-[20px] cursor-pointer border-none bg-white/10 rounded-full flex-shrink-0 active:bg-white/20 touch-auto">
+          ←
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
+          <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
         </div>
-        <div className="text-center">
-          <div className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{bultos}</div>
-          <div className="text-[9px] text-white/50 uppercase tracking-widest">B</div>
-        </div>
-        <div className="text-center">
-          <div className="font-barlow-condensed text-[22px] font-extrabold text-[#E9A178] leading-none">{chocolates}</div>
-          <div className="text-[9px] text-white/50 uppercase tracking-widest">CH</div>
-        </div>
-        {contenedores > 0 && (
+        <div className="flex gap-3 flex-shrink-0">
           <div className="text-center">
-            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#C4A3E8] leading-none">{contenedores}</div>
-            <div className="text-[9px] text-white/50 uppercase tracking-widest">C</div>
+            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#93C5FD] leading-none">{pallets}</div>
+            <div className="text-[9px] text-white/50 uppercase tracking-widest">P</div>
           </div>
-        )}
+          <div className="text-center">
+            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{bultos}</div>
+            <div className="text-[9px] text-white/50 uppercase tracking-widest">B</div>
+          </div>
+          <div className="text-center">
+            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#E9A178] leading-none">{chocolates}</div>
+            <div className="text-[9px] text-white/50 uppercase tracking-widest">CH</div>
+          </div>
+          {contenedores > 0 && (
+            <div className="text-center">
+              <div className="font-barlow-condensed text-[22px] font-extrabold text-[#C4A3E8] leading-none">{contenedores}</div>
+              <div className="text-[9px] text-white/50 uppercase tracking-widest">C</div>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex justify-end touch-auto">
+        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} />
       </div>
     </div>
   );
@@ -302,6 +310,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
+  const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
 
   /* Mobile view */
@@ -2169,7 +2178,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} />
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {

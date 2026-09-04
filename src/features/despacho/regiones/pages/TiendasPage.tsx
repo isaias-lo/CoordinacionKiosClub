@@ -27,6 +27,8 @@ import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
+import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
+import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { fechaISOLocal } from '../../shared/fechaLocal';
@@ -217,6 +219,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
+  const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
@@ -1419,30 +1422,37 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     /* Shared header */
     const header = (
-      <div className={`bg-navy px-3 py-3 flex items-center justify-between flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
+      <div className={`bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
         onTouchStart={isMobile ? onSheetDragStart : undefined}
         onTouchMove={isMobile ? onSheetDragMove : undefined}
         onTouchEnd={isMobile ? onSheetDragEnd : undefined}>
-        <div className="flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
-          <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
-        </div>
-        <div className="flex gap-2.5 ml-2 flex-shrink-0">
-          <div className="text-center">
-            <div className="font-barlow-condensed text-[26px] font-extrabold text-[#93C5FD] leading-none">{items.filter(i => i.pkg === 'pallet').length}</div>
-            <div className="text-[10px] text-white/50 uppercase tracking-widest">P</div>
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
+            <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
           </div>
-          <div className="text-center">
-            <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{items.filter(i => i.pkg === 'box').length}</div>
-            <div className="text-[10px] text-white/50 uppercase tracking-widest">B</div>
-          </div>
-          {items.filter(i => i.pkg === 'chocolate').length > 0 && (
+          <div className="flex gap-2.5 ml-2 flex-shrink-0">
             <div className="text-center">
-              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{items.filter(i => i.pkg === 'chocolate').length}</div>
-              <div className="text-[10px] text-white/50 uppercase tracking-widest">CH</div>
+              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#93C5FD] leading-none">{items.filter(i => i.pkg === 'pallet').length}</div>
+              <div className="text-[10px] text-white/50 uppercase tracking-widest">P</div>
             </div>
-          )}
+            <div className="text-center">
+              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{items.filter(i => i.pkg === 'box').length}</div>
+              <div className="text-[10px] text-white/50 uppercase tracking-widest">B</div>
+            </div>
+            {items.filter(i => i.pkg === 'chocolate').length > 0 && (
+              <div className="text-center">
+                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{items.filter(i => i.pkg === 'chocolate').length}</div>
+                <div className="text-[10px] text-white/50 uppercase tracking-widest">CH</div>
+              </div>
+            )}
+          </div>
         </div>
+        {tienda?.cod && (
+          <div className="flex justify-end touch-auto">
+            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} />
+          </div>
+        )}
       </div>
     );
 

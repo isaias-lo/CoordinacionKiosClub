@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { Printer, Bell, AlertTriangle, RefreshCw, Package } from 'lucide-react';
+import { Printer, Bell, AlertTriangle, RefreshCw, Package, UserPlus } from 'lucide-react';
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
@@ -141,9 +141,20 @@ export function PickingScreen() {
   const session = useMemo(() => loadSession(), []);
 
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
+  // Modo manual: tienda con el campo "+ Encargado manual" abierto + lo que se está escribiendo.
+  const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
+  const [manualName, setManualName]           = useState('');
+  const [manualSeccion, setManualSeccion]     = useState<SectionFilter>('all');
+  // Bug 5 reportado: el botón de imprimir toda una tienda disparaba la impresión de una al
+  // toque, sin confirmar — un click accidental imprimía una etiqueta real de más. Armar/
+  // confirmar: el primer click solo "arma" el botón (2.5 s); el segundo click, dentro de esa
+  // ventana, imprime. Un click suelto sin seguimiento no hace nada.
+  const [armedPrintCod, setArmedPrintCod] = useState<string | null>(null);
+  const armedPrintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current); }, []);
 
   const {
-    hasOdoo, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
+    hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
     fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
   } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
@@ -526,6 +537,37 @@ export function PickingScreen() {
     }
   }, [pickingFetch, showToast, loadEventos]);
 
+  // Modo manual: crea el PRIMER pallet (tipo P) de un encargado escrito a mano — mismo
+  // addPalletSlot que ya usa el stepper +/-, así que no hace falta nada nuevo del lado del
+  // servidor. En cuanto exista esta fila, `allGroups` levanta la tarjeta sola (ver arriba) y
+  // de ahí en más el supervisor ajusta P/B/C/CH con el stepper normal de la card.
+  const crearEncargadoManual = useCallback((cod: string) => {
+    const nombre = manualName.trim();
+    if (!nombre) return;
+    const stateKey = `${cod}__${nombre.toLowerCase()}`;
+    // Misma sección/contenido que ya deriva el stepper real (onTipoPalletsChange) a partir del
+    // filtro activo — acá no hay categorías de Odoo de las que derivarlo, así que se elige a
+    // mano: 'all' ("Todas") ⇒ sin sección (mixto — 'todas' significa "sin sección específica",
+    // NO "una operación por cada sección"), o una de las 4 secciones reales.
+    // BUG 7 corregido: antes 'all' caía en contenido='hogar' por defecto, así que
+    // seccionDeSlot (sin `section`, cae al contenido) lo clasificaba como Hogar en vez de
+    // dejarlo sin clasificar — 'mixto' no matchea ninguna sección en seccionDeContenido.
+    const seccion: Seccion | null = manualSeccion === 'all' ? null : (manualSeccion as Seccion);
+    const contenido = manualSeccion === 'chocolates' ? 'chocolate'
+      : manualSeccion === 'congelados' ? 'congelados'
+      : manualSeccion === 'all' ? 'mixto'
+      : 'hogar';
+    void addPalletSlot(stateKey, cod, nombre, 'P', contenido, '', seccion);
+    // BUG 1/2 corregido: sin esto, el campo "Nombre del picker" del card recién creado
+    // aparecía vacío (solo el placeholder mostraba el nombre) y la advertencia de fallback
+    // salía de entrada aunque el encargado ya tuviera nombre real. Al sembrar el nombre acá
+    // queda guardado desde el principio, igual que si alguien lo hubiera escrito a mano.
+    setPickerDisplayNames(prev => ({ ...prev, [stateKey]: nombre }));
+    upsertSessionState(stateKey, nombre, 'P');
+    setManualName('');
+    setAddingManualCod(null);
+  }, [manualName, manualSeccion, addPalletSlot, upsertSessionState]);
+
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string, section: Seccion | null = null) => {
@@ -619,6 +661,14 @@ export function PickingScreen() {
     const match = buildPickerKeyList(canonicalNames).find(k => k.toLowerCase().trim() === lower);
     return match ? (canonicalNames[match] ?? '') : '';
   }, [canonicalNames]);
+
+  // Nombres ya conocidos (built-in de Picking + agregados en Config) para sugerir al crear un
+  // encargado manual — el datalist permite elegir uno existente O escribir uno nuevo con el
+  // mismo campo, sin un selector aparte.
+  const nombresConocidos = useMemo(
+    () => buildPickerKeyList(canonicalNames).map(k => getCanonicalName(k) || k),
+    [canonicalNames, getCanonicalName],
+  );
 
   // Persistir nombres en localStorage (cross-session), delimitado por fecha — ver
   // parseSavedNames/serializeSavedNames. Evita que nombres de ayer (misma state_key,
@@ -782,12 +832,34 @@ export function PickingScreen() {
         if (!map[normalized]) map[normalized] = { displayKey: raw, ops: [] };
         map[normalized].ops.push(op);
       }
+      // Modo manual (Odoo apagado, o un encargado fuera de Odoo): sin operación de Odoo detrás,
+      // pero SÍ con pallets reales en picking_pallets — `addPalletSlot` (más abajo) ya es 100%
+      // manual, así que basta con levantar la tarjeta desde los pallets ya guardados en vez de
+      // desde `opsMap`. Sin tabla ni endpoint nuevo: `palletSlots` ya excluye lo creado en
+      // Bodega (ver loadPalletSlots), así que todo lo que llega acá es de Picking.
+      const prefix = `${cod}__`;
+      for (const slot of palletSlots) {
+        if (slot.store_cod !== cod || !slot.state_key.startsWith(prefix)) continue;
+        const normalized = slot.state_key.slice(prefix.length);
+        if (!map[normalized]) {
+          // `key` (el badge/placeholder) tiene que quedar CONGELADO desde la creación — ni
+          // `slot.picker_label` ni `pickerDisplayNames` sirven de fuente acá porque los edita
+          // en vivo, carácter a carácter, el campo "Nombre del picker" (onNameChange/
+          // renamePickerSlots): usarlos hacía que el badge (y su placeholder) fueran mostrando
+          // "a", "ma", "mar"… mientras alguien escribía, y que si borraba el campo el badge se
+          // quedara pegado en lo último tipeado en vez de volver al nombre real. Se deriva del
+          // propio `state_key` (inmutable) — mismo criterio que un `group.key` de Odoo, que
+          // tampoco cambia si se edita el nombre mostrado.
+          const nombreEstable = normalized.replace(/\b\p{L}/gu, c => c.toUpperCase());
+          map[normalized] = { displayKey: nombreEstable, ops: [] };
+        }
+      }
       for (const [normKey, { displayKey, ops: gOps }] of Object.entries(map).sort(([a], [b]) => a.localeCompare(b))) {
         result.push({ key: displayKey, storeCod: cod, stateKey: `${cod}__${normKey}`, operations: gOps });
       }
     }
     return result;
-  }, [selectedCods, opsMap]);
+  }, [selectedCods, opsMap, palletSlots]);
 
   // NOTA: el progreso de Odoo para el semáforo de Bodega lo calcula ahora UNA sola fuente
   // —el refresco batch del servidor en GET /api/picking-store-progress, que atribuye los
@@ -842,6 +914,19 @@ export function PickingScreen() {
     // Recorta las operaciones de cada grupo a la sección activa y descarta los grupos sin ops
     // en ella. Antes era un test de inclusión (dejaba ops de otras secciones dentro de un picker
     // mixto → se mostraba/contaba la suma cruzada). Ahora cada sección es independiente.
+    //
+    // Modo manual: un grupo creado a mano nunca tiene "operations" de Odoo que filtrar (siempre
+    // `[]`), así que con el filtro de `operations.length > 0` de abajo desaparecía por completo
+    // fuera de "Todas" — sin importar la sección real (`slot.section`) con la que se creó. Si no
+    // hay operaciones, se decide por los pallets reales de picking_pallets en vez de descartarlo.
+    return allGroups
+      .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
+      .filter(g => {
+        if (g.operations.length > 0) return true;
+        const slots = slotsByStateKey[g.stateKey] ?? [];
+        return slots.length > 0 && slots.some(s => seccionDeSlot(s) === sectionFilter);
+      });
+  }, [allGroups, sectionFilter, slotsByStateKey]);
     return base
       .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
       .filter(g => g.operations.length > 0);
@@ -1336,7 +1421,9 @@ export function PickingScreen() {
                 </div>
                 {!hasOdoo && (
                   <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-xl px-4 py-3 text-[14px] text-red text-left inline-block">
-                    <span className="font-bold">Odoo no configurado.</span>
+                    <span className="font-bold">
+                      {odooDesactivado ? 'Odoo desactivado por el administrador.' : 'Odoo no configurado.'}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1412,6 +1499,11 @@ export function PickingScreen() {
                 </button>
               </div>
 
+              {/* Sugerencias del datalist "Encargado manual" — una sola vez, no por tienda */}
+              <datalist id="picking-nombres-conocidos">
+                {nombresConocidos.map(n => <option key={n} value={n} />)}
+              </datalist>
+
               {selectedCods.map(cod => {
                 const storeGroups = groupedByStore[cod] ?? [];
                 const isLoading   = loadingCods.includes(cod);
@@ -1460,6 +1552,11 @@ export function PickingScreen() {
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
+                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualSeccion(sectionFilter); }}
+                          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5"
+                          style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
+                          <UserPlus size={13} /> Encargado manual
+                        </button>
                         {ops.length > 0 && (
                           <button onClick={() => void refreshAllOps(ops, cod)}
                             disabled={refreshingStoreCod === cod}
@@ -1472,16 +1569,61 @@ export function PickingScreen() {
                         {(() => {
                           const storeLabels = printableLabels.filter(l => l.storeCod === cod);
                           if (!storeLabels.length) return null;
+                          const armado = armedPrintCod === cod;
                           return (
-                            <button onClick={() => printStoreLabels(cod)}
+                            <button onClick={() => {
+                              if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current);
+                              if (armado) { setArmedPrintCod(null); printStoreLabels(cod); return; }
+                              setArmedPrintCod(cod);
+                              armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
+                            }}
                               className="text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-                              style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                              <Printer size={13} /> {cod} · {storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}
+                              style={armado
+                                ? { background: '#D97706', color: '#fff', border: '1px solid #D97706' }
+                                : { background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
+                              <Printer size={13} /> {armado ? '¿Confirmar?' : `${cod} · ${storeLabels.length} etiqueta${storeLabels.length !== 1 ? 's' : ''}`}
                             </button>
                           );
                         })()}
                       </div>
                     </div>
+
+                    {addingManualCod === cod && (
+                      <div className="px-3 py-2.5 flex items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
+                        <input
+                          type="text"
+                          autoFocus
+                          list="picking-nombres-conocidos"
+                          value={manualName}
+                          onChange={e => setManualName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
+                          placeholder="Nombre del encargado (elige uno o escribe uno nuevo)"
+                          className="flex-1 text-[13px] px-3 py-1.5 rounded border"
+                          style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
+                        />
+                        <select
+                          value={manualSeccion}
+                          onChange={e => setManualSeccion(e.target.value as SectionFilter)}
+                          className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
+                          style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
+                          <option value="all">Todas</option>
+                          <option value="aseo-comida">Aseo y Comida</option>
+                          <option value="hogar">Hogar</option>
+                          <option value="chocolates">Chocolates</option>
+                          <option value="congelados">Congelados</option>
+                        </select>
+                        <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
+                          className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
+                          style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
+                          Agregar
+                        </button>
+                        <button onClick={() => setAddingManualCod(null)}
+                          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all"
+                          style={{ color: '#64748B', background: 'transparent', border: 'none' }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
 
                     <div className="px-3 pt-3 pb-4">
                     {/* Sin asignar warning */}

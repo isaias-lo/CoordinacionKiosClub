@@ -54,7 +54,17 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
   lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
 }: Props) {
-  const allDone       = group.operations.every(o => o.state === 'done');
+  // Dos cosas DISTINTAS que antes vivían en una sola variable (`allDone`):
+  //  - odooConfirmado: para el badge verde "Realizado" — un grupo manual (sin operaciones de
+  //    Odoo detrás) NO debe aparentar que Odoo confirmó algo. `.every()` sobre un arreglo vacío
+  //    da `true` por vacuidad, así que hace falta el guard `length > 0`.
+  //  - sinBloqueoOdoo: para decidir si se muestra la lista de "operaciones pendientes" o ya se
+  //    puede imprimir. Un grupo manual NUNCA tiene operaciones de Odoo que esperar — con el
+  //    mismo guard de arriba quedaba bloqueado imprimiendo PARA SIEMPRE (nunca llega a "todas
+  //    hechas" porque no hay ninguna). Acá sí corresponde el criterio vacuo: sin operaciones de
+  //    Odoo = nada que esperar de Odoo = no bloqueado.
+  const odooConfirmado  = group.operations.length > 0 && group.operations.every(o => o.state === 'done');
+  const sinBloqueoOdoo  = group.operations.length === 0 || group.operations.every(o => o.state === 'done');
   const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
   const refs          = group.operations.map(o => o.name).join('+');
   const cats          = allCategories.join(',');
@@ -79,7 +89,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     setSelectedIndices(new Set());
   };
 
-  const borderColor = allDone || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';
+  const borderColor = odooConfirmado || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';
   const shadow      = '0 1px 3px rgba(0,0,0,0.06)';
 
   return (
@@ -104,7 +114,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
             style={{ background: 'rgba(0,0,0,0.04)', color: '#64748B' }}>{c}</span>
         ))}
         <span className="text-[11px] text-slate-400 shrink-0">{group.operations.length} op.</span>
-        {(allDone || isPrinted) && (
+        {(odooConfirmado || isPrinted) && (
           <span className="text-[11px] font-medium shrink-0 px-2 py-0.5 rounded"
             style={{ background: '#DCFCE7', color: '#16A34A' }}>
             {isPrinted ? 'Impreso' : 'Realizado'}
@@ -116,7 +126,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
       <div className={stickerBelow ? 'flex flex-col' : 'flex flex-col lg:flex-row'}>
 
         {/* LEFT: Form */}
-        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} p-4 border-border print:hidden space-y-4`}>
+        <div className={`${stickerBelow ? 'w-full border-b' : 'lg:w-[45%] border-b lg:border-b-0 lg:border-r'} min-w-0 p-4 border-border print:hidden space-y-4`}>
 
           {/* Operaciones */}
           <div className={group.operations.length > 1 ? 'flex flex-wrap gap-2' : ''}>
@@ -220,8 +230,11 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                     <div className="flex items-center gap-1 w-full justify-center">
                       <button
                         onClick={() => {
-                          if (isPrinted && count > 0) {
-                            // Si ya fue impreso, pedir confirmación antes de decrementar
+                          // Confirmar antes de decrementar si ya se imprimió, O si este es el
+                          // último de su tipo — bajar de 1 a 0 sin avisar borraba la operación
+                          // completa (si era el único tipo con unidades) de un solo click sin
+                          // vuelta atrás.
+                          if (count > 0 && (isPrinted || count === 1)) {
                             setPendingDecrementTipo(tipo);
                           } else {
                             onTipoPalletsChange(tipo, Math.max(0, count - 1));
@@ -240,13 +253,13 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
               })}
             </div>
 
-            {/* Confirm inline — aparece cuando se intenta decrementar un pallet ya impreso */}
+            {/* Confirm inline — decrementar un pallet ya impreso, o el último de su tipo */}
             {pendingDecrementTipo && (
               <div className="mt-3 rounded px-3 py-2.5 flex items-center gap-3"
                 style={{ background: '#FFF1F2', border: '1px solid rgba(220,38,38,0.3)' }}>
                 <AlertTriangle size={14} style={{ color: '#DC2626', flexShrink: 0 }} />
                 <div className="flex-1 text-[12px]" style={{ color: '#991B1B' }}>
-                  Este pallet ya fue impreso. ¿Eliminar igual?
+                  {isPrinted ? 'Este pallet ya fue impreso. ¿Eliminar igual?' : 'Es el último de este tipo — se elimina por completo. ¿Eliminar igual?'}
                 </div>
                 <button onClick={() => setPendingDecrementTipo(null)}
                   className="text-[12px] font-medium px-2.5 py-1 rounded border cursor-pointer"
@@ -280,7 +293,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
         {/* RIGHT / BOTTOM */}
         <div className={`${stickerBelow ? 'w-full border-t border-border' : 'lg:w-[55%]'} p-4 bg-[#FAFAFA]`}>
-          {!allDone ? (
+          {!sinBloqueoOdoo ? (
             <div className="h-full min-h-[180px] flex flex-col gap-3">
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle size={13} className="text-slate-400 shrink-0" />

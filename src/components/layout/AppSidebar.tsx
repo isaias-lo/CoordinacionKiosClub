@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Truck, ClipboardCheck, PackageCheck, Shield,
   Map, MapPin, Activity, Navigation as NavIcon,
   Warehouse, Monitor, Store, FileText, AlertTriangle,
-  CheckSquare, Settings2, ChevronDown, ChevronLeft, ChevronRight,
+  CheckSquare, Settings2, Power, ChevronDown, ChevronLeft, ChevronRight,
   LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun, Snowflake,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -36,6 +36,7 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/admin/tiendas':           Settings2,
   '/despacho/config-tiendas': Settings2,
   '/admin/usuarios':          Users,
+  '/admin/sistema':           Power,
 
   '/auditoria':               ClipboardCheck,
   '/auditoria-admin':         ClipboardCheck,
@@ -341,6 +342,7 @@ export function AppSidebar() {
             collapsed={effectiveCollapsed}
             routes={[
               { path: '/admin/usuarios', label: 'Usuarios' },
+              { path: '/admin/sistema', label: 'Sistema' },
             ]}
           />
         )}

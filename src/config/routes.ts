@@ -102,7 +102,7 @@ const EXTRA_REAL_PATHS: string[] = [
   '/historial', '/recepcion', '/despacho-hub', '/despacho/conteo',
   '/despacho/santiago/rutas', '/despacho/config-tiendas',
   '/despacho/actividad', // tab Actividad de bodega; acceso vía prefijo de /despacho
-  '/admin/usuarios', '/admin/calendario',
+  '/admin/usuarios', '/admin/calendario', '/admin/sistema',
   '/control-interno', // placeholder, no acceso directo desde sidebar
 ];
 

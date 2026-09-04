@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
+import { supabaseServer } from '@/lib/supabaseServer';
 
 // Credentials are read from server-side env vars only — never from the request body.
 // Prefer ODOO_* (no NEXT_PUBLIC_) so the API key is not compiled into the browser bundle.
@@ -18,6 +19,33 @@ const UID_TTL_MS = 24 * 60 * 60 * 1000;
 // picking_type_ids para "Despacho Tiendas" — datos estáticos, se cachean por fecha.
 let _pickingTypeIds: number[] = [];
 let _pickingTypeDateKey = '';
+
+// ── Interruptor "Odoo activo" (control_despacho.odoo_activo) ──────────────────
+// Único punto de salida hacia Odoo en toda la app (los otros 8 llamadores le pegan a este
+// proxy) — apagarlo acá corta TODO el tráfico, no solo lo esconde en una pantalla. Cache de
+// 10s en memoria: evita una consulta a Supabase en cada request sin retrasar la reacción al
+// toggle del admin más de lo que ya tarda el poll/realtime del propio panel.
+let _odooActivoCache: boolean | null = null;
+let _odooActivoExpiry = 0;
+const ODOO_ACTIVO_TTL_MS = 10_000;
+
+async function isOdooActivo(): Promise<boolean> {
+  if (_odooActivoCache !== null && Date.now() < _odooActivoExpiry) return _odooActivoCache;
+  try {
+    const { data } = await supabaseServer()
+      .from('config_despacho')
+      .select('valor')
+      .eq('clave', 'odoo_activo')
+      .maybeSingle();
+    // Sin fila todavía (nunca se tocó el panel) ⇒ activo por defecto, comportamiento actual.
+    const activo = data?.valor !== 'false';
+    _odooActivoCache = activo;
+    _odooActivoExpiry = Date.now() + ODOO_ACTIVO_TTL_MS;
+    return activo;
+  } catch {
+    return true; // si falla la consulta del flag, no bloquear Odoo por un error ajeno
+  }
+}
 
 // URL de Odoo con https:// ya prefijado — computado una sola vez al iniciar el módulo.
 const SRV_URL_PROCESSED = (() => {
@@ -236,6 +264,12 @@ async function getDayPickings(todayStr: string, includeDoneToday: boolean): Prom
 export async function POST(req: NextRequest) {
   if (!checkRateLimit(`odoo:${getClientIp(req)}`, { max: 30, windowMs: 60_000 }))
     return tooManyRequests();
+
+  // Interruptor del administrador — corta acá para no generar NINGÚN request hacia Odoo,
+  // sea cual sea el módulo que llama (Picking, Auditoría, Control Cruce, semáforo de Bodega).
+  if (!(await isOdooActivo())) {
+    return NextResponse.json({ error: 'Odoo está desactivado por el administrador', disabled: true });
+  }
 
   try {
     const body = (await req.json()) as {
