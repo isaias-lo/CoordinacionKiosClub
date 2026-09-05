@@ -111,3 +111,56 @@ export function patentesDelTablero(...tableros: TableroPorCamion[]): string[] {
   for (const t of tableros) for (const p of Object.keys(t ?? {})) out.add(p);
   return [...out];
 }
+
+/** Lo que hay que hacer con un tablero remoto recién llegado. */
+export interface ResultadoSync {
+  /** El tablero que va a la pantalla. */
+  merged: TableroPorCamion;
+  /** La base para el PRÓXIMO merge: lo que el servidor tiene, que es `remoto`. */
+  base: TableroPorTienda;
+  /** `true` si el merge conservó algo local que el servidor todavía NO tiene. */
+  debePushear: boolean;
+}
+
+/**
+ * Aplica un tablero remoto sobre el local y dice qué queda pendiente de guardar.
+ *
+ * Existe porque esto vivía suelto dentro de `RutasScreen`, repetido en cuatro lugares, y ahí se
+ * coló el bug del 04/09: el resultado del merge se marcaba como "ya guardado" sin haberse
+ * guardado, así que el movimiento manual nunca llegaba al servidor y el siguiente evento remoto
+ * lo revertía. El coordinador movía una tienda y volvía sola a la patente del sistema.
+ *
+ * Dos reglas, y las dos importan:
+ *
+ *   · La base del próximo merge es `remoto`, NO el resultado. La base de un merge de tres vías
+ *     es lo que el otro lado tiene; si se pone el resultado, el merge siguiente concluye "esta
+ *     tienda no la toqué" sobre un cambio que sí se hizo, y la adopta de vuelta.
+ *
+ *   · Si el merge conservó algo local, hay que ESCRIBIRLO. `debePushear` lo dice, para que quien
+ *     llama no marque como guardado lo que todavía no salió.
+ */
+export function aplicarRemoto(
+  remoto: TableroPorCamion,
+  local: TableroPorCamion,
+  base: TableroPorTienda,
+  protegida: (cod: string) => boolean = () => false,
+): ResultadoSync {
+  const remotoPorTienda = porTienda(remoto);
+  const fusion = mergeTablero(remotoPorTienda, porTienda(local), base, protegida);
+  const merged = porCamion(fusion, patentesDelTablero(local, remoto));
+  return {
+    merged,
+    base: remotoPorTienda,
+    // Si lo fusionado es igual a lo remoto, el servidor ya lo tiene y escribirlo sería ruido.
+    // Se compara por UBICACIÓN, no por JSON: el orden de las patentes y de las tiendas dentro de
+    // cada una no significa nada, y compararlo como texto pediría guardar en cada evento.
+    debePushear: !mismoTablero(fusion, remotoPorTienda),
+  };
+}
+
+/** ¿Los dos tableros ponen cada tienda en el mismo camión con la misma carga? */
+function mismoTablero(a: TableroPorTienda, b: TableroPorTienda): boolean {
+  const cods = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const c of cods) if (!mismaUbicacion(a[c], b[c])) return false;
+  return true;
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  porTienda, porCamion, mergeTablero, patentesDelTablero,
+  porTienda, porCamion, mergeTablero, patentesDelTablero, aplicarRemoto,
   type TableroPorTienda, type TableroPorCamion,
 } from '../tableroSync';
 
@@ -120,5 +120,59 @@ describe('patentesDelTablero', () => {
   });
   it('tolera tableros vacíos', () => {
     expect(patentesDelTablero({}, {})).toEqual([]);
+  });
+});
+
+// ─── aplicarRemoto: el bug del 04/09 ──────────────────────────────────────────
+// El coordinador movía una tienda y volvía sola a la patente del sistema. La causa no era el
+// merge —que la conservaba bien— sino que el resultado se marcaba como guardado sin guardarse:
+// el servidor nunca se enteraba, y el siguiente evento remoto la revertía.
+describe('aplicarRemoto', () => {
+  // 23PEÑ: el sistema la puso en RGZJ70; el coordinador la movió a TYKK42.
+  const SERVIDOR = { RGZJ70: [{ c: '23PEÑ', p: 2, b: 2, ch: 0 }], TYKK42: [] };
+  const MOVIDA   = { RGZJ70: [], TYKK42: [{ c: '23PEÑ', p: 2, b: 2, ch: 0 }] };
+
+  it('conserva el movimiento manual y avisa que hay que guardarlo', () => {
+    const r = aplicarRemoto(SERVIDOR, MOVIDA, porTienda(SERVIDOR));
+    expect(porTienda(r.merged)['23PEÑ'].patente).toBe('TYKK42');
+    expect(r.debePushear).toBe(true);        // ← lo que faltaba: el servidor no lo tiene
+  });
+
+  it('la base pasa a ser lo REMOTO, no el resultado del merge', () => {
+    const r = aplicarRemoto(SERVIDOR, MOVIDA, porTienda(SERVIDOR));
+    expect(r.base['23PEÑ'].patente).toBe('RGZJ70');   // lo que el servidor tiene de verdad
+  });
+
+  // La regresión: encadenar dos eventos remotos con el servidor sin actualizar.
+  it('un segundo evento remoto NO devuelve la tienda a la patente del sistema', () => {
+    const uno = aplicarRemoto(SERVIDOR, MOVIDA, porTienda(SERVIDOR));
+    const dos = aplicarRemoto(SERVIDOR, uno.merged, uno.base);
+    expect(porTienda(dos.merged)['23PEÑ'].patente).toBe('TYKK42');   // antes volvía a RGZJ70
+    expect(dos.debePushear).toBe(true);
+  });
+
+  it('sin cambios locales no pide guardar: el servidor ya lo tiene', () => {
+    const r = aplicarRemoto(SERVIDOR, SERVIDOR, porTienda(SERVIDOR));
+    expect(r.debePushear).toBe(false);
+  });
+
+  // El orden de patentes y de tiendas no significa nada: compararlo como texto pediría
+  // guardar en cada evento aunque no hubiera cambiado nada.
+  it('el orden distinto no cuenta como cambio', () => {
+    const otroOrden = { TYKK42: [], RGZJ70: [{ c: '23PEÑ', p: 2, b: 2, ch: 0 }] };
+    expect(aplicarRemoto(SERVIDOR, otroOrden, porTienda(SERVIDOR)).debePushear).toBe(false);
+  });
+
+  it('adopta lo que movió el otro equipo y no pide guardar por eso', () => {
+    const remoto = { RGZJ70: [], TYKK42: [{ c: '23PEÑ', p: 2, b: 2, ch: 0 }] };
+    const r = aplicarRemoto(remoto, SERVIDOR, porTienda(SERVIDOR));
+    expect(porTienda(r.merged)['23PEÑ'].patente).toBe('TYKK42');
+    expect(r.debePushear).toBe(false);
+  });
+
+  it('un camión cerrado no lo mueve ni lo remoto', () => {
+    const remoto = { RGZJ70: [{ c: '23PEÑ', p: 2, b: 2, ch: 0 }] };
+    const r = aplicarRemoto(remoto, MOVIDA, porTienda(remoto), cod => cod === '23PEÑ');
+    expect(porTienda(r.merged)['23PEÑ'].patente).toBe('TYKK42');
   });
 });

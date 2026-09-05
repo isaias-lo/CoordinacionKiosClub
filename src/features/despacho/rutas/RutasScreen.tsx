@@ -25,7 +25,7 @@ import { esFantasmaCalT } from './utils/calTFantasma';
 import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
 import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/resumenCierre';
 import { preflightCierre, type Preflight } from './utils/preflightCierre';
-import { porTienda, porCamion, mergeTablero, patentesDelTablero, type TableroPorTienda } from './utils/tableroSync';
+import { porTienda, aplicarRemoto, type TableroPorTienda } from './utils/tableroSync';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
 import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
@@ -798,22 +798,22 @@ export default function RutasScreen() {
       if (!state || typeof state !== 'object') return;
       const remoteJson = JSON.stringify(state);
       if (remoteJson === lastPushedManualRef.current) return;
-      const remoto = porTienda(state as Record<string, StoreItem[]>);
       setManualAsignaciones(prev => {
         // `previo` se calcula UNA vez: `mergeTablero` llama a `protegida` por cada tienda, y
         // recalcularlo dentro recorría el tablero entero en cada llamada.
         const previo = porTienda(prev);
-        const fusion = mergeTablero(
-          remoto,
-          previo,
+        const { merged, base, debePushear } = aplicarRemoto(
+          state as Record<string, StoreItem[]>,
+          prev,
           baseManualRef.current,
           // Un camión cerrado ya emitió manifiesto y QR: su carga no la mueve nadie, ni remoto.
           cod => { const p = previo[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); },
         );
-        const vivas = patentesDelTablero(prev, state as Record<string, StoreItem[]>);
-        const merged = porCamion(fusion, vivas);
-        baseManualRef.current = fusion;
-        lastPushedManualRef.current = JSON.stringify(merged);
+        baseManualRef.current = base;
+        // Solo se marca como guardado si el servidor YA lo tiene. Antes se marcaba siempre, así
+        // que un movimiento manual conservado por el merge nunca se escribía y el siguiente
+        // evento remoto lo revertía: es el bug del 04/09 (una tienda volvía sola a su patente).
+        if (!debePushear) lastPushedManualRef.current = JSON.stringify(merged);
         return merged;
       });
     }, undefined, fecha);
@@ -845,12 +845,10 @@ export default function RutasScreen() {
     return subscribeToSessionState('rutas_congelados', userId ?? '', (state) => {
       if (!state || typeof state !== 'object') return;
       if (JSON.stringify(state) === lastPushedCongRef.current) return;
-      const remoto = porTienda(state as Record<string, StoreItem[]>);
       setAsignacionesCong(prev => {
-        const fusion = mergeTablero(remoto, porTienda(prev), baseCongRef.current);
-        const merged = porCamion(fusion, patentesDelTablero(prev, state as Record<string, StoreItem[]>));
-        baseCongRef.current = fusion;
-        lastPushedCongRef.current = JSON.stringify(merged);
+        const { merged, base, debePushear } = aplicarRemoto(state as Record<string, StoreItem[]>, prev, baseCongRef.current);
+        baseCongRef.current = base;
+        if (!debePushear) lastPushedCongRef.current = JSON.stringify(merged);
         return merged;
       });
     }, undefined, fecha);
@@ -895,16 +893,17 @@ export default function RutasScreen() {
     if (fechaCargadaRef.current !== fechaRef.current) return;   // fase 0: no tocar otra fecha
     fetchSessionState('rutas', fechaRef.current).then(remote => {
       if (!remote || typeof remote !== 'object') return;
-      const remoto = porTienda(remote as Record<string, StoreItem[]>);
       setManualAsignaciones(prev => {
         const previo = porTienda(prev);
-        const fusion = mergeTablero(remoto, previo, baseManualRef.current,
+        const { merged, base, debePushear } = aplicarRemoto(
+          remote as Record<string, StoreItem[]>, prev, baseManualRef.current,
           cod => { const p = previo[cod]?.patente; return !!p && isCerrada(cerradasV1Ref.current, p); });
-        const merged = porCamion(fusion, patentesDelTablero(prev, remote as Record<string, StoreItem[]>));
+        // La base se actualiza SIEMPRE, aunque la pantalla no cambie: es lo que el servidor tiene,
+        // y dejarla vieja haría que el próximo merge decidiera sobre información caducada.
+        baseManualRef.current = base;
+        if (!debePushear) lastPushedManualRef.current = JSON.stringify(merged);
         const json = JSON.stringify(merged);
-        if (json === JSON.stringify(prev)) return prev;   // nada cambió: no re-render ni re-push
-        baseManualRef.current = fusion;
-        lastPushedManualRef.current = json;
+        if (json === JSON.stringify(prev)) return prev;   // nada cambió: no re-render
         return merged;
       });
     }).catch(() => {});
@@ -916,14 +915,12 @@ export default function RutasScreen() {
     if (fechaCargadaCongRef.current !== fechaRef.current) return;
     fetchSessionState('rutas_congelados', fechaRef.current).then(remote => {
       if (!remote || typeof remote !== 'object') return;
-      const remoto = porTienda(remote as Record<string, StoreItem[]>);
       setAsignacionesCong(prev => {
-        const fusion = mergeTablero(remoto, porTienda(prev), baseCongRef.current);
-        const merged = porCamion(fusion, patentesDelTablero(prev, remote as Record<string, StoreItem[]>));
+        const { merged, base, debePushear } = aplicarRemoto(remote as Record<string, StoreItem[]>, prev, baseCongRef.current);
+        baseCongRef.current = base;
+        if (!debePushear) lastPushedCongRef.current = JSON.stringify(merged);
         const json = JSON.stringify(merged);
         if (json === JSON.stringify(prev)) return prev;
-        baseCongRef.current = fusion;
-        lastPushedCongRef.current = json;
         return merged;
       });
     }).catch(() => {});
