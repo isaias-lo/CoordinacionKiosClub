@@ -16,7 +16,7 @@ interface Props {
 
 // Que nadie lleve una tienda, o que un camión haya salido sin papeles, no es lo mismo que
 // que salga sin dimensiones: lo primero se arregla hoy, lo segundo se completa después.
-const GRAVE: TipoHallazgo[] = ['sin-camion', 'cerrado-sin-manifiesto'];
+const GRAVE: TipoHallazgo[] = ['sin-camion', 'en-camion-apagado', 'cerrado-sin-manifiesto'];
 
 export default function PreflightCierrePanel({ isOpen, preflight, supervisor, onRevisar, onConfirmar }: Props) {
   useEffect(() => {

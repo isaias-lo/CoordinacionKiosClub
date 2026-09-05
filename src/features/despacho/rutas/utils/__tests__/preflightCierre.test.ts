@@ -186,3 +186,58 @@ describe('textoPreflight', () => {
     expect(textoPreflight(r)).toBe('2 manifiestos · 2 tiendas');
   });
 });
+
+// ─── Tiendas en un camión apagado ─────────────────────────────────────────────
+// Apagar un camión en la flota NO saca sus tiendas del tablero: la columna deja de
+// dibujarse y `rutasDesdeAsignaciones` filtra por `v.on`, así que esa carga no genera
+// manifiesto y no sale. Pero el tablero la sigue dando por asignada, así que ni siquiera
+// aparecía como "sin camión". Se perdía en silencio.
+describe('preflightCierre · camión apagado', () => {
+  const t = (c: string, p = 1) => ({ c, p });
+
+  it('encuentra las tiendas que quedaron en un camión apagado', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['A', 'ABC'],
+      asignaciones: { 'AA-11': [t('A')], TJLW65: [t('ABC')] },
+      conDatosDeBodega: ['A', 'ABC'],
+      patentesActivas: ['AA-11'],
+    });
+    const h = r.hallazgos.find(x => x.tipo === 'en-camion-apagado');
+    expect(h?.items).toEqual(['ABC (TJLW65)']);
+  });
+
+  // Sin la lista de activas no se puede afirmar nada: callar es mejor que inventar.
+  it('sin saber qué camiones están activos, no inventa el chequeo', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['ABC'],
+      asignaciones: { TJLW65: [t('ABC')] },
+      conDatosDeBodega: ['ABC'],
+    });
+    expect(r.hallazgos.find(x => x.tipo === 'en-camion-apagado')).toBeUndefined();
+  });
+
+  it('con todos los camiones activos no reporta nada', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['A'],
+      asignaciones: { 'AA-11': [t('A')] },
+      conDatosDeBodega: ['A'],
+      patentesActivas: ['AA-11'],
+    });
+    expect(r.hallazgos).toEqual([]);
+  });
+
+  // Es tan grave como una tienda sin camión: en los dos casos nadie la lleva.
+  it('va entre lo más grave, no al final', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['HUERFANA', 'ABC'],
+      asignaciones: { TJLW65: [t('ABC')] },
+      conDatosDeBodega: ['ABC'],
+      patentesActivas: [],
+    });
+    expect(r.hallazgos.map(h => h.tipo)).toEqual(['sin-camion', 'en-camion-apagado']);
+  });
+});

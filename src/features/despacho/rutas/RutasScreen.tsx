@@ -752,9 +752,13 @@ export default function RutasScreen() {
       Object.keys(next).forEach(plate => {
         next[plate] = next[plate].map(s => {
           const updated = calT[s.c];
-          if (updated && (updated.p !== s.p || updated.b !== s.b)) {
+          // `ch` (contenedores/chocolates) quedaba fuera: si Bodega los cambiaba en una tienda ya
+          // asignada, el tablero seguía mostrando el número viejo y el conteo de bultos del camión
+          // salía corto. Entra en la misma comparación que p y b.
+          const ch = updated?.ch ?? 0;
+          if (updated && (updated.p !== s.p || updated.b !== s.b || ch !== (s.ch ?? 0))) {
             changed = true;
-            return { ...s, p: updated.p, b: updated.b };
+            return { ...s, p: updated.p, b: updated.b, ch };
           }
           return s;
         });
@@ -1665,6 +1669,9 @@ export default function RutasScreen() {
       capacidades: Object.fromEntries(flota.map(v => [v.p, v.c])),
       cerradas: cerradasV1Ref.current,
       manifiestos: manifiestosGuardados,
+      // Apagar un camión no saca sus tiendas del tablero, pero sí impide que emita manifiesto:
+      // esa carga no sale y hasta acá nada lo decía.
+      patentesActivas: flota.filter(v => v.on).map(v => v.p),
     }));
   }
 
