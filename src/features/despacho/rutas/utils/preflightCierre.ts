@@ -95,11 +95,16 @@ export function preflightCierre(entrada: EntradaPreflight): Preflight {
   // el tablero las da por asignadas: es la peor combinación, porque nada lo delata.
   if (patentesActivas) {
     const activas = new Set([...patentesActivas].map(normPatente).filter(Boolean));
+    // Un camión CERRADO ya emitió su manifiesto: esa carga salió, aunque después lo apaguen en la
+    // flota (que es lo normal cuando el camión ya se fue). Marcarla sería un falso positivo, y un
+    // aviso que se equivoca enseña a ignorar los que no.
+    const yaCerradas = new Set([...cerradas].map(normPatente).filter(Boolean));
     const varadas: string[] = [];
     for (const [patente, tiendas] of Object.entries(asignaciones)) {
       const lista = (tiendas ?? []).filter(t => t?.c);
       if (!lista.length) continue;
-      if (activas.has(normPatente(patente))) continue;
+      const pat = normPatente(patente);
+      if (activas.has(pat) || yaCerradas.has(pat)) continue;
       for (const t of lista) varadas.push(`${t.c} (${patente})`);
     }
     if (varadas.length) {

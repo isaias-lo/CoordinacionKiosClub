@@ -96,3 +96,24 @@ export function podarVacias<T>(asignaciones: Record<string, T[]>): Record<string
 export function tableroConTrabajo<T>(asignaciones: Record<string, T[]>): boolean {
   return Object.values(asignaciones).some(a => (a?.length ?? 0) > 0);
 }
+
+/**
+ * Saca del tablero las tiendas de un camión y las devuelve a "sin asignar".
+ *
+ * Apagar un camión no las sacaba: la columna dejaba de dibujarse, el camión no emitía manifiesto
+ * (`rutasDesdeAsignaciones` filtra por `v.on`) y esa carga no salía — pero el tablero la seguía
+ * dando por asignada, así que tampoco entraba al pool ni a la 2ª vuelta. Quedaba en tierra sin
+ * que nada lo dijera.
+ *
+ * La patente se CONSERVA con lista vacía, no se borra: es el mismo contrato que `porCamion`
+ * —un camión sin tiendas sigue en el tablero— y evita que al volver a encenderlo parezca otro.
+ */
+export function liberarCamion<T extends { c: string }>(
+  asignaciones: Record<string, T[]>,
+  patente: string,
+): { asignaciones: Record<string, T[]>; liberadas: T[] } {
+  const actuales = asignaciones?.[patente] ?? [];
+  const liberadas = actuales.filter(t => t?.c);
+  if (!liberadas.length) return { asignaciones, liberadas: [] };
+  return { asignaciones: { ...asignaciones, [patente]: [] }, liberadas };
+}

@@ -27,7 +27,7 @@ import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/r
 import { preflightCierre, type Preflight } from './utils/preflightCierre';
 import { porTienda, aplicarRemoto, type TableroPorTienda } from './utils/tableroSync';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
-import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
+import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo, liberarCamion } from './utils/asignacionIncremental';
 import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
 import { ordenarCalT } from './utils/ordenarCalT';
 import { tiendasArmadasSinRutear } from './utils/tiendasSinRutear';
@@ -1200,6 +1200,27 @@ export default function RutasScreen() {
     const v = flota[idx];
     if (!v) return;
     const newOn = !v.on;
+
+    // Apagar un camión CARGADO dejaba sus tiendas en tierra: la columna deja de dibujarse, el
+    // camión no emite manifiesto (`rutasDesdeAsignaciones` filtra por `v.on`) y esa carga no sale
+    // — pero el tablero la seguía dando por asignada, así que tampoco volvía al pool.
+    //
+    // No se bloquea el apagado: un camión se puede romper a las 7 y hay que poder sacarlo YA.
+    // Se dice qué cuesta, y las tiendas vuelven a quedar sin asignar (donde el auto-asignar las
+    // reparte entre los camiones encendidos). Un camión ya cerrado no entra: su manifiesto salió.
+    if (!newOn && !isCerrada(cerradasV1, v.p)) {
+      const enElCamion = manualAsignaciones[v.p]?.filter(t => t?.c) ?? [];
+      if (enElCamion.length) {
+        const detalle = enElCamion.map(t => `${t.c} (${t.p}P)`).join(', ');
+        const cuantas = enElCamion.length === 1 ? '1 tienda asignada' : `${enElCamion.length} tiendas asignadas`;
+        if (!window.confirm(
+          `${v.p} tiene ${cuantas}:\n\n${detalle}\n\n` +
+          'Si lo apagas, esa carga NO sale hoy. Vuelve a quedar sin asignar para que la repartas ' +
+          'entre los camiones encendidos.\n\n¿Apagar y liberar esas tiendas?')) return;
+        setManualAsignaciones(prev => liberarCamion(prev, v.p).asignaciones);
+      }
+    }
+
     setFlota(prev => prev.map((x, i) => i === idx ? { ...x, on: newOn } : x));
     // [F2] Al activar, registrar el momento → los camiones se ordenan por recencia (último primero).
     if (newOn) setFlotaActivadaEn(prev => ({ ...prev, [v.p]: Date.now() }));

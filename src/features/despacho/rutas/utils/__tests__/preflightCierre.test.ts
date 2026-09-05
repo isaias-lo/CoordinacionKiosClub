@@ -218,6 +218,21 @@ describe('preflightCierre · camión apagado', () => {
     expect(r.hallazgos.find(x => x.tipo === 'en-camion-apagado')).toBeUndefined();
   });
 
+  // Cerrar el camión y despues apagarlo en la flota es el flujo normal cuando ya se fue:
+  // su manifiesto YA salió, así que marcarlo sería un falso positivo.
+  it('un camión CERRADO y apagado no se reporta: su manifiesto ya salió', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['ABC'],
+      asignaciones: { TJLW65: [t('ABC')] },
+      conDatosDeBodega: ['ABC'],
+      patentesActivas: [],
+      cerradas: ['TJLW65'],
+      manifiestos: [{ patente: 'TJLW65' }],
+    });
+    expect(r.hallazgos).toEqual([]);
+  });
+
   it('con todos los camiones activos no reporta nada', () => {
     const r = preflightCierre({
       fecha: '2026-09-05',

@@ -6,6 +6,7 @@ import {
   fusionarAsignaciones,
   podarVacias,
   tableroConTrabajo,
+  liberarCamion,
 } from '../asignacionIncremental';
 import type { Vehiculo } from '../../data/flota';
 
@@ -122,5 +123,35 @@ describe('podarVacias / tableroConTrabajo', () => {
     expect(Object.keys({ 'AB-1': [], 'CD-2': [] }).length).toBe(2); // lo que se contaba antes
     expect(tableroConTrabajo({ 'AB-1': [t('40LIL')] })).toBe(true);
     expect(tableroConTrabajo({})).toBe(false);
+  });
+});
+
+describe('liberarCamion', () => {
+  const t = (c: string, p = 1) => ({ c, p });
+
+  it('devuelve las tiendas del camión y las saca del tablero', () => {
+    const { asignaciones, liberadas } = liberarCamion(
+      { TJLW65: [t('23ABC', 2)], 'AA-11': [t('A')] }, 'TJLW65');
+    expect(liberadas.map(x => x.c)).toEqual(['23ABC']);
+    expect(asignaciones.TJLW65).toEqual([]);
+    expect(asignaciones['AA-11']).toHaveLength(1);   // los demás no se tocan
+  });
+
+  // La patente se conserva vacía: un camión sin tiendas sigue en el tablero (igual que porCamion).
+  it('conserva la patente con lista vacía, no la borra', () => {
+    const { asignaciones } = liberarCamion({ TJLW65: [t('23ABC')] }, 'TJLW65');
+    expect(Object.keys(asignaciones)).toContain('TJLW65');
+  });
+
+  it('un camión vacío no cambia nada: devuelve el mismo objeto', () => {
+    const antes = { TJLW65: [], 'AA-11': [t('A')] };
+    const { asignaciones, liberadas } = liberarCamion(antes, 'TJLW65');
+    expect(liberadas).toEqual([]);
+    expect(asignaciones).toBe(antes);
+  });
+
+  it('una patente que no está en el tablero no rompe', () => {
+    const antes = { 'AA-11': [t('A')] };
+    expect(liberarCamion(antes, 'NO-EXISTE').asignaciones).toBe(antes);
   });
 });
