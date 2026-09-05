@@ -80,6 +80,13 @@ export const CreateTiendaSchema = z.object({
   tel_supervisor:  z.string().max(30).optional(),
   transportista:   z.string().max(100).optional(),
   recepcion_pallet: z.string().max(30).optional(), // 'consolidado' | 'desconsolidado' | ''
+  // [Fase 4] Datos de envío de Sendu. Sin validarlos acá, la ruta los descartaba en silencio y el
+  // formulario habría parecido guardar sin guardar nada.
+  region_sendu:    z.string().max(60).optional(),
+  comuna:          z.string().max(100).optional(),
+  calle:           z.string().max(200).optional(),
+  numero:          z.string().max(20).optional(),
+  complemento:     z.string().max(100).optional(),
   activo:          z.boolean().optional(),
 });
 

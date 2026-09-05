@@ -74,7 +74,7 @@ describe('registrarTiendasBD', () => {
   });
 
   it('mapea los datos que la BD sí tiene y reporta la que queda incompleta para Sendu', () => {
-    const { sinDatosSendu } = registrarTiendasBD([
+    const { incompletas } = registrarTiendasBD([
       fila('93NUE', 'Tienda Nueva', { correos: 'nueva@kiosclub.com', tel_encargado: '999', direccion: 'Av. Siempreviva 742' }),
     ]);
     const t = TIENDAS['Tienda Nueva'];
@@ -82,6 +82,19 @@ describe('registrarTiendasBD', () => {
     expect(t.celular).toBe('999');
     expect(t.calle).toBe('Av. Siempreviva 742');
     expect(t.rut).toBe('76360868-9');
-    expect(sinDatosSendu).toContain('93NUE');   // le faltan region_sendu/comuna → la UI avisa
+    // Ahora se reporta QUÉ le falta, no solo que vino de la BD.
+    expect(incompletas.map(i => i.cod)).toContain('93NUE');
+    expect(incompletas.find(i => i.cod === '93NUE')!.falta)
+      .toEqual(['región Sendu', 'comuna', 'número']);
+  });
+
+  it('una tienda de la BD CON todos los datos de envío no se reporta', () => {
+    const { incompletas } = registrarTiendasBD([
+      fila('94FUL', 'Tienda Completa', {
+        correos: 'full@kiosclub.com', tel_encargado: '999',
+        region_sendu: 'Araucanía', comuna: 'Temuco', calle: 'Av. Alemania', numero: '850',
+      }),
+    ]);
+    expect(incompletas.map(i => i.cod)).not.toContain('94FUL');
   });
 });

@@ -30,6 +30,8 @@ type SenduExtra = {
   str_val: string;      // alias de búsqueda en Sendu
 };
 
+import { camposSenduFaltantes } from './senduCompletitud';
+
 export const SENDU_EXTRAS: Record<string, SenduExtra> = {
   "39PSB": { name:"La Serena (PSB)",   region:"COQUIMBO",     nombre_dest:"tienda la serena",             email:"paseobalmaceda@kiosclub.com",  celular:"940443161",   rut:"76360868-9", region_sendu:"Coquimbo",                                        comuna:"La Serena",           calle:"Av Balmaceda",          numero:"2885",  complemento:"Local 133 al 136",   str_val:"La Serena" },
   "51SER": { name:"La Serena 2 (SER)", region:"COQUIMBO",     nombre_dest:"tienda la serena 2",           email:"laserena2@kiosclub.com",        celular:"969158948",   rut:"76360868-9", region_sendu:"Coquimbo",                                        comuna:"La Serena",           calle:"Av Cuatro Esquinas",    numero:"1617",  complemento:"Local 117 y 118",    str_val:"La Serena" },
@@ -79,6 +81,15 @@ export interface TiendaBDRow {
   correos?: string | null;
   tel_encargado?: string | null;
   activo?: boolean | null;
+  // [Fase 4] Datos de envío de Sendu. Antes no existían como columna, así que solo podían vivir
+  // en la lista curada del código y agregar una tienda de Regiones exigía un despliegue.
+  region_sendu?: string | null;
+  comuna?: string | null;
+  calle?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  nombre_dest?: string | null;
+  str_val?: string | null;
 }
 
 /** ¿El sector la ubica en Regiones? Acepta 'Región Sur', 'Región Norte' y 'Región' a secas. */
@@ -97,9 +108,19 @@ export function esSectorRegiones(sector?: string | null): boolean {
  * Devuelve `agregadas` (cods nuevos) y `sinDatosSendu` (los que quedaron sin los campos de envío
  * que la BD no guarda — region_sendu, comuna, número de calle — para que la UI lo advierta).
  */
-export function registrarTiendasBD(rows: TiendaBDRow[]): { agregadas: string[]; sinDatosSendu: string[] } {
+export interface TiendaIncompleta { cod: string; falta: string[] }
+
+/**
+ * Registra las tiendas de Regiones que vienen de la BD.
+ *
+ * `incompletas` dice QUÉ le falta a cada una para poder exportarla a Sendu. Antes esta lista se
+ * llenaba con TODAS las tiendas de la BD sin mirar un solo campo: era un marcador de procedencia
+ * ("viene de Config") disfrazado de validación. Marcaba igual a una tienda con todo lleno y no se
+ * apagaba nunca por más que se completaran los datos.
+ */
+export function registrarTiendasBD(rows: TiendaBDRow[]): { agregadas: string[]; incompletas: TiendaIncompleta[] } {
   const agregadas: string[] = [];
-  const sinDatosSendu: string[] = [];
+  const incompletas: TiendaIncompleta[] = [];
   for (const r of rows ?? []) {
     const cod    = String(r?.codigo ?? '').trim().toUpperCase();
     const nombre = String(r?.nombre ?? '').trim();
@@ -115,18 +136,21 @@ export function registrarTiendasBD(rows: TiendaBDRow[]): { agregadas: string[]; 
       email:       String(r.correos ?? '').trim(),
       celular:     String(r.tel_encargado ?? '').trim(),
       rut:         RUT_KIOS,
-      region_sendu: '',                                  // la BD no lo guarda
-      comuna:       '',                                  // la BD no lo guarda
-      calle:        String(r.direccion ?? '').trim(),    // dirección completa
-      numero:       '',
-      complemento:  '',
-      str_val:      nombre,
+      // Ya vienen de la BD; `calle` cae a la dirección completa mientras no se separe el número.
+      region_sendu: String(r.region_sendu ?? '').trim(),
+      comuna:       String(r.comuna ?? '').trim(),
+      calle:        String(r.calle ?? r.direccion ?? '').trim(),
+      numero:       String(r.numero ?? '').trim(),
+      complemento:  String(r.complemento ?? '').trim(),
+      str_val:      String(r.str_val ?? '').trim() || nombre,
     };
+    if (r.nombre_dest) TIENDAS[nombre].nombre_dest = String(r.nombre_dest).trim();
     REGIONES_CODS.add(cod);
     agregadas.push(cod);
-    sinDatosSendu.push(cod);
+    const falta = camposSenduFaltantes(TIENDAS[nombre]);
+    if (falta.length) incompletas.push({ cod, falta });
   }
-  return { agregadas, sinDatosSendu };
+  return { agregadas, incompletas };
 }
 
 export const CALENDARIO: Record<number, string[]> = {

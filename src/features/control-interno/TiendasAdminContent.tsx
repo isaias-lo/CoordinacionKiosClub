@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { camposSenduFaltantes } from '@/features/despacho/regiones/data/senduCompletitud';
+import { esSectorRegiones } from '@/features/despacho/regiones/data/tiendas';
 import { opcionesSector } from '@/lib/sectores';
 import {
   Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck,
@@ -18,6 +20,9 @@ export interface Tienda {
   sector_comuna: string; corredor: string; tipo: string; ventana: string;
   frecuencia: string; prom_por_dia: string; lat: number | null; lon: number | null;
   correos: string; tel_encargado: string; supervisor: string;
+  // [Fase 4] Datos que el export de Sendu necesita. Antes no tenían columna ni campo: agregar una
+  // tienda de Regiones exigía que un desarrollador la escribiera en el código y desplegara.
+  region_sendu: string; comuna: string; calle: string; numero: string; complemento: string;
   tel_supervisor: string; transportista: string; recepcion_pallet: string; activo: boolean;
   created_at?: string; updated_at?: string;
 }
@@ -26,6 +31,7 @@ const EMPTY: Tienda = {
   codigo: '', nombre: '', direccion: '', region: '', sector_comuna: '',
   corredor: '', tipo: '', ventana: '', frecuencia: '', prom_por_dia: '',
   lat: null, lon: null, correos: '', tel_encargado: '', supervisor: '',
+  region_sendu: '', comuna: '', calle: '', numero: '', complemento: '',
   tel_supervisor: '', transportista: '', recepcion_pallet: '', activo: true,
 };
 
@@ -139,6 +145,14 @@ export default function TiendasAdminContent({
   const [search,    setSearch]    = useState('');
   const [modal,     setModal]     = useState<'add' | 'edit' | null>(null);
   const [form,      setForm]      = useState<Tienda>(EMPTY);
+  // [Fase 4] Los datos de Sendu solo aplican a Regiones: son los que arma el Excel del
+  // transportista. En RM y Costa no se piden porque el despacho es en camión propio.
+  const esRegiones = esSectorRegiones(form.sector_comuna);
+  // En Config los campos se llaman `correos` y `tel_encargado`; en el export de Sendu, `email` y
+  // `celular`. Sin mapearlos, los dos saldrían siempre como faltantes.
+  const faltaSendu = esRegiones
+    ? camposSenduFaltantes({ ...form, email: form.correos, celular: form.tel_encargado })
+    : [];
   // Inputs de coordenadas como texto (permiten teclear coma decimal); se parsean al guardar.
   const [latStr,    setLatStr]    = useState('');
   const [lonStr,    setLonStr]    = useState('');
@@ -736,6 +750,34 @@ export default function TiendasAdminContent({
               <div><label style={lbl}>Tel. Encargado</label><input style={inp} value={form.tel_encargado} onChange={f('tel_encargado')} placeholder="+56 9 1234 5678" /></div>
               <div><label style={lbl}>Supervisor</label><input style={inp} value={form.supervisor} onChange={f('supervisor')} placeholder="Nombre supervisor" /></div>
             </div>
+            {/* [Fase 4] Datos de envío de Sendu. Solo tienen sentido en Regiones: son los que arma
+                el Excel que se le manda al transportista. Sendu pide la calle y el número por
+                separado, y la región en su propio formato ("Los_Lagos", "Araucanía"). */}
+            {esRegiones && (
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #E2E8F0' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                  Datos de envío (Sendu)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div><label style={lbl}>Región Sendu</label><input style={inp} value={form.region_sendu} onChange={f('region_sendu')} placeholder="Los_Lagos" /></div>
+                  <div><label style={lbl}>Comuna</label><input style={inp} value={form.comuna} onChange={f('comuna')} placeholder="Castro" /></div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div><label style={lbl}>Calle (sin número)</label><input style={inp} value={form.calle} onChange={f('calle')} placeholder="Ignacio Serrano" /></div>
+                  <div><label style={lbl}>Número</label><input style={inp} value={form.numero} onChange={f('numero')} placeholder="574" /></div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label style={lbl}>Complemento (opcional)</label>
+                  <input style={inp} value={form.complemento} onChange={f('complemento')} placeholder="Local 101 y 102" />
+                </div>
+                {faltaSendu.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 11.5, color: '#A55A06' }}>
+                    ⚠ Falta {faltaSendu.join(', ')} — sin eso, el Excel de Sendu sale con esas celdas en blanco.
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Transportista: se define en el Enrutador al asignar patente (viene de la FLOTA), no se
                 edita aquí. Se preserva el valor existente al guardar (no se borra la columna). */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
