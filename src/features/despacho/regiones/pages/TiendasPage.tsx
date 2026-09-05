@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
-import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow } from '../data/tiendas';
+import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
+import { avisoSendu } from '../data/senduCompletitud';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
@@ -233,7 +234,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // [P7] Versión del catálogo: se incrementa al hidratar tiendas de la BD (registro de módulo, no
   // reactivo por sí solo). `sinDatosSendu` son las que aparecen pero les falta data de envío.
   const [catalogoVer,       setCatalogoVer]        = useState(0);
-  const [sinDatosSendu,     setSinDatosSendu]      = useState<string[]>([]);
+  const [sinDatosSendu,     setSinDatosSendu]      = useState<TiendaIncompleta[]>([]);
   const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
@@ -274,9 +275,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     fetch('/api/tiendas')
       .then(r => (r.ok ? r.json() : null))
       .then((j: { tiendas?: TiendaBDRow[] } | null) => {
-        const { agregadas, sinDatosSendu } = registrarTiendasBD(j?.tiendas ?? []);
+        const { agregadas, incompletas } = registrarTiendasBD(j?.tiendas ?? []);
         if (agregadas.length) {
-          setSinDatosSendu(prev => [...new Set([...prev, ...sinDatosSendu])]);
+          setSinDatosSendu(prev => {
+            const porCod = new Map(prev.map(t => [t.cod, t]));
+            for (const t of incompletas) porCod.set(t.cod, t);
+            return [...porCod.values()];
+          });
           setCatalogoVer(v => v + 1);   // el catálogo es un registro de módulo → forzar re-render
         }
       })
@@ -2045,10 +2050,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
         {/* [P7] Tiendas traídas de la BD que aún no tienen los datos de envío de Sendu (region_sendu,
             comuna, número). Se muestran igual —antes desaparecían en silencio— pero se avisa para
-            completarlas en el catálogo antes de exportar a Sendu. */}
-        {sinDatosSendu.length > 0 && (
+            completarlas antes de exportar a Sendu.
+            [Fase 4] Ahora dice QUÉ falta en cada una. Antes marcaba a toda tienda venida de la BD
+            sin mirar un solo campo, así que no se apagaba nunca por más que se completaran. */}
+        {avisoSendu(sinDatosSendu) && (
           <div className="px-2 py-1.5 bg-amber-50 border-b border-amber-200 flex-shrink-0 text-[11.5px] text-amber-800 leading-snug">
-            ⚠ {sinDatosSendu.join(', ')} {sinDatosSendu.length === 1 ? 'viene' : 'vienen'} de Config. Tiendas sin datos completos de envío (Sendu). Se {sinDatosSendu.length === 1 ? 'puede cargar' : 'pueden cargar'} normalmente; revisa sus datos antes de exportar.
+            ⚠ {avisoSendu(sinDatosSendu)}
           </div>
         )}
 

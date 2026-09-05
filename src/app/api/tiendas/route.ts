@@ -50,6 +50,12 @@ interface TiendaBody {
   correos?: string;
   tel_encargado?: string;
   supervisor?: string;
+  // [Fase 4] Datos de envío de Sendu, editables desde Config → Tiendas.
+  region_sendu?: string;
+  comuna?: string;
+  calle?: string;
+  numero?: string;
+  complemento?: string;
   tel_supervisor?: string;
   transportista?: string;
   recepcion_pallet?: string;
@@ -151,7 +157,7 @@ export async function GET(request: NextRequest) {
     const sb = supabaseServer();
     const { data, error } = await sb
       .from('tiendas')
-      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, activo, created_at, updated_at')
+      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, region_sendu, comuna, calle, numero, complemento, nombre_dest, str_val, activo, created_at, updated_at')
       .order('codigo');
     if (error) throw error;
     return NextResponse.json({ tiendas: data });
@@ -191,6 +197,13 @@ export async function POST(request: NextRequest) {
         supervisor:     body.supervisor     ?? '',
         tel_supervisor: body.tel_supervisor ?? '',
         transportista:  body.transportista  ?? '',
+        // Sendu: `null` y no `''` para que "sin dato" sea uno solo y el chequeo de completitud
+        // no tenga que distinguir entre vacío y ausente.
+        region_sendu:   body.region_sendu   || null,
+        comuna:         body.comuna         || null,
+        calle:          body.calle          || null,
+        numero:         body.numero         || null,
+        complemento:    body.complemento    || null,
         recepcion_pallet: body.recepcion_pallet || null,
         activo:         body.activo         ?? true,
       }, { onConflict: 'codigo' })
