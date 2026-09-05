@@ -31,6 +31,8 @@ type SenduExtra = {
 };
 
 import { camposSenduFaltantes } from './senduCompletitud';
+import { despachoPorSendu } from './despachoPorSendu';
+import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
 
 export const SENDU_EXTRAS: Record<string, SenduExtra> = {
   "39PSB": { name:"La Serena (PSB)",   region:"COQUIMBO",     nombre_dest:"tienda la serena",             email:"paseobalmaceda@kiosclub.com",  celular:"940443161",   rut:"76360868-9", region_sendu:"Coquimbo",                                        comuna:"La Serena",           calle:"Av Balmaceda",          numero:"2885",  complemento:"Local 133 al 136",   str_val:"La Serena" },
@@ -90,6 +92,9 @@ export interface TiendaBDRow {
   complemento?: string | null;
   nombre_dest?: string | null;
   str_val?: string | null;
+  // La zona (y por lo tanto el transportista, y por lo tanto si va o no por Sendu) sale del
+  // sector; las 17 fichas viejas dicen 'Región' a secas y ahí desempata la latitud.
+  lat?: number | null;
 }
 
 /** ¿El sector la ubica en Regiones? Acepta 'Región Sur', 'Región Norte' y 'Región' a secas. */
@@ -117,8 +122,17 @@ export interface TiendaIncompleta { cod: string; falta: string[] }
  * llenaba con TODAS las tiendas de la BD sin mirar un solo campo: era un marcador de procedencia
  * ("viene de Config") disfrazado de validación. Marcaba igual a una tienda con todo lleno y no se
  * apagaba nunca por más que se completaran los datos.
+ *
+ * Y aun mirando los campos, preguntaba lo equivocado: pedía datos de Sendu a TODA tienda de
+ * Regiones. Desde que Luis Fica tomó el sur (31/08/2026) solo el norte va por Sendu, así que
+ * ahora se pregunta por el TRANSPORTISTA de su zona (`zonas`, de Config → Transportistas).
+ * La tienda se agrega al catálogo igual —tiene que aparecer en Bodega—; lo que se acota es a
+ * quién se le exigen esos datos.
  */
-export function registrarTiendasBD(rows: TiendaBDRow[]): { agregadas: string[]; incompletas: TiendaIncompleta[] } {
+export function registrarTiendasBD(
+  rows: TiendaBDRow[],
+  zonas: ConfigZonas = ZONAS_DEFAULT,
+): { agregadas: string[]; incompletas: TiendaIncompleta[] } {
   const agregadas: string[] = [];
   const incompletas: TiendaIncompleta[] = [];
   for (const r of rows ?? []) {
@@ -147,6 +161,8 @@ export function registrarTiendasBD(rows: TiendaBDRow[]): { agregadas: string[]; 
     if (r.nombre_dest) TIENDAS[nombre].nombre_dest = String(r.nombre_dest).trim();
     REGIONES_CODS.add(cod);
     agregadas.push(cod);
+    // Solo se le exigen los datos de Sendu a quien de verdad se despacha por ahí.
+    if (!despachoPorSendu({ sector_comuna: r.sector_comuna, lat: r.lat }, zonas).aplica) continue;
     const falta = camposSenduFaltantes(TIENDAS[nombre]);
     if (falta.length) incompletas.push({ cod, falta });
   }

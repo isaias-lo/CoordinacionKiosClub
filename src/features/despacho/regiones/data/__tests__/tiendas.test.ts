@@ -25,6 +25,20 @@ describe('isRegionesCod', () => {
 
 // ─── Hidratación desde la BD (60PBL / 38SP2 y toda tienda nueva) ──────────────
 import { registrarTiendasBD, esSectorRegiones, TIENDAS } from '../tiendas';
+import type { ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
+
+// Los datos de Sendu se piden segun QUIEN transporta la zona, no segun geografia. Estas dos
+// configuraciones son las que separan un caso del otro, y van explicitas en cada test: apoyarse
+// en ZONAS_DEFAULT haria que pasaran por la razon equivocada (su `sur` es una foto del 29/08,
+// anterior al traspaso a Luis Fica).
+const ZONA = (empresas: string[]): ConfigZonas => ({
+  sur:      { zona: 'sur',      modo: 'consolidacion', empresas,                             orden: 1, activo: true },
+  norte:    { zona: 'norte',    modo: 'consolidacion', empresas: ['Falabella'],              orden: 2, activo: true },
+  costa:    { zona: 'costa',    modo: 'ruta',          empresas: ['Luis Fica', 'Kios Club'], orden: 3, activo: true },
+  santiago: { zona: 'santiago', modo: 'ruta',          empresas: ['Luis Fica', 'Kios Club'], orden: 4, activo: true },
+});
+const SUR_FALABELLA = ZONA(['Falabella']);   // como era antes del traspaso
+const SUR_LUIS      = ZONA(['Luis Fica']);   // la realidad desde el 31/08/2026
 
 describe('esSectorRegiones', () => {
   it('acepta Región Sur/Norte y "Región" a secas, con o sin tilde', () => {
@@ -76,7 +90,7 @@ describe('registrarTiendasBD', () => {
   it('mapea los datos que la BD sí tiene y reporta la que queda incompleta para Sendu', () => {
     const { incompletas } = registrarTiendasBD([
       fila('93NUE', 'Tienda Nueva', { correos: 'nueva@kiosclub.com', tel_encargado: '999', direccion: 'Av. Siempreviva 742' }),
-    ]);
+    ], SUR_FALABELLA);
     const t = TIENDAS['Tienda Nueva'];
     expect(t.email).toBe('nueva@kiosclub.com');
     expect(t.celular).toBe('999');
@@ -94,7 +108,24 @@ describe('registrarTiendasBD', () => {
         correos: 'full@kiosclub.com', tel_encargado: '999',
         region_sendu: 'Araucanía', comuna: 'Temuco', calle: 'Av. Alemania', numero: '850',
       }),
-    ]);
+    ], SUR_FALABELLA);
     expect(incompletas.map(i => i.cod)).not.toContain('94FUL');
+  });
+
+  // El caso 60PBL: la tienda se agrega igual —tiene que aparecer en Bodega— pero desde que
+  // Luis Fica lleva el sur no se le exigen datos que ya no alimentan ningun Excel.
+  it('si la zona ya no la lleva Falabella, no se piden datos de Sendu', () => {
+    const { agregadas, incompletas } = registrarTiendasBD([
+      fila('95SUR', 'Tienda Del Sur'),
+    ], SUR_LUIS);
+    expect(agregadas).toContain('95SUR');          // igual entra al catalogo
+    expect(incompletas.map(i => i.cod)).not.toContain('95SUR');
+  });
+
+  it('la misma tienda SI se reporta mientras la zona la lleve Falabella', () => {
+    const { incompletas } = registrarTiendasBD([
+      fila('96SUR', 'Otra Del Sur'),
+    ], SUR_FALABELLA);
+    expect(incompletas.map(i => i.cod)).toContain('96SUR');
   });
 });
