@@ -9,6 +9,7 @@ import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
 import CierreJornadaPanel from './components/CierreJornadaPanel';
+import PreflightCierrePanel from './components/PreflightCierrePanel';
 import TableroVivo from './components/TableroVivo';
 import ComparisonView from './components/ComparisonView';
 import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales';
@@ -23,6 +24,7 @@ import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/recons
 import { esFantasmaCalT } from './utils/calTFantasma';
 import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
 import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/resumenCierre';
+import { preflightCierre, type Preflight } from './utils/preflightCierre';
 import { porTienda, porCamion, mergeTablero, patentesDelTablero, type TableroPorTienda } from './utils/tableroSync';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo } from './utils/asignacionIncremental';
@@ -245,6 +247,10 @@ export default function RutasScreen() {
   // renderiza dentro de ResultsSection, que solo se monta si hay resultados calculados — en el
   // flujo del tablero no los hay, así que ahí el mensaje sería invisible.
   const [cierreResumen, setCierreResumen] = useState<(ResumenCierre & { error?: string }) | null>(null);
+  // [Fase 5] Lo que se va a registrar, revisado ANTES de escribir. El resumen de la fase 1 llega
+  // tarde por definición: para cuando lo lees, los manifiestos ya salieron. Mientras esto no sea
+  // null, el panel de confirmación está arriba y nada se ha escrito todavía.
+  const [preflight, setPreflight] = useState<Preflight | null>(null);
 
   const [manualAsignaciones, setManualAsignaciones] = useState<Record<string, StoreItem[]>>({});
   // [E4·4b] Clusters históricos ("líneas" del coordinador) para la auto-asignación instantánea.
@@ -1646,7 +1652,27 @@ export default function RutasScreen() {
     })();
   }, [fecha]);
 
+  // [Fase 5] "Listo por hoy" ya no escribe: arma el preflight y lo pone a confirmar.
+  //
+  // Casi todos los incidentes de estas semanas —40LIL sin patente, los registros dobles, los
+  // manifiestos perdidos— se detectan mirando lo mismo que el resumen de cierre, un segundo antes
+  // de escribir. No bloquea nada: el coordinador puede registrar igual (ver `PreflightCierrePanel`).
   function handleListoPorHoy() {
+    const registrado = [...sesionRowsRef.current.keys()];
+    setPreflight(preflightCierre({
+      fecha,
+      enElPool: codsEnPool(calT),
+      asignaciones: manualAsignaciones,
+      conDatosDeBodega: registrado,
+      // La capacidad sale de la flota del día: sin ella el chequeo no corre, en vez de inventarse.
+      capacidades: Object.fromEntries(flota.map(v => [v.p, v.c])),
+      cerradas: cerradasV1Ref.current,
+      manifiestos: manifiestosGuardados,
+    }));
+  }
+
+  function ejecutarCierre() {
+    setPreflight(null);
     // [Feedback motor — cobertura modo drag] En el tablero DESPACHO el coordinador arma a mano y
     // nunca pasa por la vista de comparación, así que `handleUsarRuta` no graba nada: sin esto, los
     // días 100% drag no entran al corpus. Al terminar el día calculamos qué HABRÍA propuesto el motor
@@ -2810,6 +2836,17 @@ export default function RutasScreen() {
         pendientesBacklog={pendientesV2Origen}
         onCargarPendientes={handleCargarPendientes}
         onListoPorHoy={handleListoPorHoy}
+      />
+
+      {/* [Fase 5] "Esto se va a registrar así, ¿confirmas?" — lo último antes de la acción más
+          irreversible del Enrutador. Va encima del panel de cierre (z mayor) porque ese se
+          cierra solo al pulsar "Listo por hoy". */}
+      <PreflightCierrePanel
+        isOpen={preflight !== null}
+        preflight={preflight}
+        supervisor={supervisor}
+        onRevisar={() => setPreflight(null)}
+        onConfirmar={ejecutarCierre}
       />
 
       <TableroVivo
