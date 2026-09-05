@@ -19,6 +19,7 @@ import { normPatente } from './cierrePorVehiculo';
 
 export type TipoHallazgo =
   | 'sin-camion'
+  | 'en-camion-apagado'
   | 'cerrado-sin-manifiesto'
   | 'sobre-capacidad'
   | 'sin-datos-bodega';
@@ -55,11 +56,19 @@ export interface EntradaPreflight {
   cerradas?: Iterable<string>;
   /** Manifiestos ya guardados para la fecha (`rutas_despacho`). */
   manifiestos?: { patente?: string | null }[];
+  /**
+   * Patentes encendidas en la flota. Sin ella el chequeo de camión apagado no corre.
+   *
+   * Apagar un camión no saca sus tiendas del tablero: la columna deja de dibujarse y
+   * `rutasDesdeAsignaciones` filtra por `v.on`, así que esa carga no genera manifiesto y no sale.
+   * Pero el tablero la sigue dando por asignada, así que tampoco aparecía como "sin camión".
+   */
+  patentesActivas?: Iterable<string>;
 }
 
 // El orden en que se muestran. Una tienda que nadie va a llevar es peor que una que sale sin
 // dimensiones: si lo leve va primero, lo grave se lee último o no se lee.
-const ORDEN: TipoHallazgo[] = ['sin-camion', 'cerrado-sin-manifiesto', 'sobre-capacidad', 'sin-datos-bodega'];
+const ORDEN: TipoHallazgo[] = ['sin-camion', 'en-camion-apagado', 'cerrado-sin-manifiesto', 'sobre-capacidad', 'sin-datos-bodega'];
 
 /**
  * Revisa el día tal como quedó y devuelve lo que merece una mirada antes de registrar.
@@ -67,7 +76,7 @@ const ORDEN: TipoHallazgo[] = ['sin-camion', 'cerrado-sin-manifiesto', 'sobre-ca
  * Todo se compara por código o por patente normalizada, sin tocar red ni estado.
  */
 export function preflightCierre(entrada: EntradaPreflight): Preflight {
-  const { fecha, enElPool, asignaciones, conDatosDeBodega = [], capacidades, cerradas = [], manifiestos = [] } = entrada;
+  const { fecha, enElPool, asignaciones, conDatosDeBodega = [], capacidades, cerradas = [], manifiestos = [], patentesActivas } = entrada;
 
   // Los dos primeros chequeos ya existen y están probados: se reusan, no se reescriben.
   const base = resumenCierre(fecha, enElPool, asignaciones, conDatosDeBodega);
@@ -80,6 +89,27 @@ export function preflightCierre(entrada: EntradaPreflight): Preflight {
       consecuencia: 'Nadie las va a llevar hoy. Al registrar así, quedan pendientes de 2ª vuelta.',
       items: base.sinCamion,
     });
+  }
+
+  // Tiendas que quedaron en un camión apagado. No se dibujan, no salen en ningún manifiesto y
+  // el tablero las da por asignadas: es la peor combinación, porque nada lo delata.
+  if (patentesActivas) {
+    const activas = new Set([...patentesActivas].map(normPatente).filter(Boolean));
+    const varadas: string[] = [];
+    for (const [patente, tiendas] of Object.entries(asignaciones)) {
+      const lista = (tiendas ?? []).filter(t => t?.c);
+      if (!lista.length) continue;
+      if (activas.has(normPatente(patente))) continue;
+      for (const t of lista) varadas.push(`${t.c} (${patente})`);
+    }
+    if (varadas.length) {
+      hallazgos.push({
+        tipo: 'en-camion-apagado',
+        titulo: varadas.length === 1 ? 'Una tienda quedó en un camión apagado' : `${varadas.length} tiendas quedaron en un camión apagado`,
+        consecuencia: 'Ese camión no emite manifiesto: esa carga no sale hoy y el tablero igual la da por asignada.',
+        items: varadas.sort(),
+      });
+    }
   }
 
   // Un camión cerrado ya emitió su QR y su carga no la mueve nadie. Si además no dejó manifiesto
