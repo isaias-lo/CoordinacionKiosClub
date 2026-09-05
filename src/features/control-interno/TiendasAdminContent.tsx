@@ -3,6 +3,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { camposSenduFaltantes } from '@/features/despacho/regiones/data/senduCompletitud';
 import { esSectorRegiones } from '@/features/despacho/regiones/data/tiendas';
+import { despachoPorSendu } from '@/features/despacho/regiones/data/despachoPorSendu';
+import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
 import { opcionesSector } from '@/lib/sectores';
 import {
   Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck,
@@ -145,17 +147,21 @@ export default function TiendasAdminContent({
   const [search,    setSearch]    = useState('');
   const [modal,     setModal]     = useState<'add' | 'edit' | null>(null);
   const [form,      setForm]      = useState<Tienda>(EMPTY);
-  // [Fase 4] Los datos de Sendu solo aplican a Regiones: son los que arma el Excel del
-  // transportista. En RM y Costa no se piden porque el despacho es en camión propio.
-  const esRegiones = esSectorRegiones(form.sector_comuna);
-  // En Config los campos se llaman `correos` y `tel_encargado`; en el export de Sendu, `email` y
-  // `celular`. Sin mapearlos, los dos saldrían siempre como faltantes.
-  const faltaSendu = esRegiones
-    ? camposSenduFaltantes({ ...form, email: form.correos, celular: form.tel_encargado })
-    : [];
   // Inputs de coordenadas como texto (permiten teclear coma decimal); se parsean al guardar.
   const [latStr,    setLatStr]    = useState('');
   const [lonStr,    setLonStr]    = useState('');
+  // Quién transporta cada zona (Config → Transportistas). De acá sale si la tienda va por Sendu.
+  const [zonas,     setZonas]     = useState<ConfigZonas>(ZONAS_DEFAULT);
+  // Los datos de Sendu no dependen de la geografía sino de QUIÉN transporta: Sendu es el sistema
+  // de Falabella, y desde que Luis Fica tomó el sur (31/08/2026) solo el norte pasa por ahí.
+  // Preguntar "¿es Regiones?" le pedía esos datos a 14 tiendas que ya no los usan.
+  // La latitud se toma del input en vivo: al elegir "Región" a secas, es la que decide la zona.
+  const sendu = despachoPorSendu({ sector_comuna: form.sector_comuna, lat: parseCoord(latStr, 90) ?? form.lat }, zonas);
+  // En Config los campos se llaman `correos` y `tel_encargado`; en el export de Sendu, `email` y
+  // `celular`. Sin mapearlos, los dos saldrían siempre como faltantes.
+  const faltaSendu = sendu.aplica
+    ? camposSenduFaltantes({ ...form, email: form.correos, celular: form.tel_encargado })
+    : [];
   const [saving,    setSaving]    = useState(false);
   const [togglingCod, setTogglingCod] = useState<string | null>(null);
   // [P3] Diálogo de eliminar: se consulta el USO antes de ofrecer el borrado real.
@@ -188,6 +194,18 @@ export default function TiendasAdminContent({
     const unsub = subscribeToCalendarChanges(cal => setFreqByCod(frecuenciasPorTienda(cal)));
     return () => { alive = false; unsub(); };
   }, []);
+
+  // Quién transporta cada zona. Decide a qué tiendas se les piden los datos de Sendu, así que
+  // se relee al abrir la pestaña Transportistas y volver: si acabas de traspasar una zona, el
+  // formulario tiene que reflejarlo sin recargar la página.
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/zonas-transporte')
+      .then(r => (r.ok ? r.json() : null))
+      .then((j: { data?: ConfigZonas } | null) => { if (alive && j?.data) setZonas(j.data); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [activeTab]);
 
   // Frecuencia derivada del Calendario de Congelados, mismo patrón que freqByCod.
   const [freqCongByCod, setFreqCongByCod] = useState<Record<string, string>>({});
@@ -750,10 +768,12 @@ export default function TiendasAdminContent({
               <div><label style={lbl}>Tel. Encargado</label><input style={inp} value={form.tel_encargado} onChange={f('tel_encargado')} placeholder="+56 9 1234 5678" /></div>
               <div><label style={lbl}>Supervisor</label><input style={inp} value={form.supervisor} onChange={f('supervisor')} placeholder="Nombre supervisor" /></div>
             </div>
-            {/* [Fase 4] Datos de envío de Sendu. Solo tienen sentido en Regiones: son los que arma
-                el Excel que se le manda al transportista. Sendu pide la calle y el número por
-                separado, y la región en su propio formato ("Los_Lagos", "Araucanía"). */}
-            {esRegiones && (
+            {/* Datos de envío de Sendu. Solo tienen sentido si a la tienda la lleva Falabella:
+                son los que arman el Excel que se le manda. Sendu pide la calle y el número por
+                separado, y la región en su propio formato ("Los_Lagos", "Araucanía").
+                Antes esto se mostraba a TODA tienda de Regiones — incluidas las 14 del sur, que
+                desde el traspaso a Luis Fica no pasan por Sendu. */}
+            {sendu.aplica && (
               <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #E2E8F0' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
                   Datos de envío (Sendu)
@@ -775,6 +795,24 @@ export default function TiendasAdminContent({
                     ⚠ Falta {faltaSendu.join(', ')} — sin eso, el Excel de Sendu sale con esas celdas en blanco.
                   </div>
                 )}
+                <div style={{ marginTop: 8, fontSize: 11, color: '#64748B' }}>
+                  Se piden porque {sendu.motivo.charAt(0).toLowerCase() + sendu.motivo.slice(1)}
+                </div>
+              </div>
+            )}
+
+            {/* Que los campos simplemente no aparezcan sería magia: si es una tienda de Regiones
+                y aun así no se le piden, hay que decir por qué y dónde se cambia. */}
+            {!sendu.aplica && esSectorRegiones(form.sector_comuna) && (
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #E2E8F0' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
+                  Datos de envío (Sendu)
+                </div>
+                <div style={{ fontSize: 11.5, color: '#64748B', lineHeight: 1.5 }}>
+                  No se piden: {sendu.motivo.charAt(0).toLowerCase() + sendu.motivo.slice(1)}{' '}
+                  Sendu es el sistema de Falabella. Si esta zona vuelve a Falabella, cámbialo en{' '}
+                  <strong style={{ color: '#334155' }}>Transportistas</strong> y los campos reaparecen solos.
+                </div>
               </div>
             )}
 

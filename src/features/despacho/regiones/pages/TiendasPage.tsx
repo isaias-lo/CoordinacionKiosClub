@@ -7,6 +7,7 @@ import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
 import { avisoSendu } from '../data/senduCompletitud';
+import { ZONAS_DEFAULT, type ConfigZonas } from '../../rutas/utils/zonasTransporte';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
@@ -272,10 +273,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // [P7] Hidratar el catálogo con las tiendas de Regiones de la BD (Config. Tiendas). Sin esto,
     // una tienda nueva quedaba en el calendario pero NO se renderizaba acá (la lista sale de
     // `TIENDAS`) ni se podía agrupar en Regiones — le pasaba a 60PBL, 38SP2 y a toda tienda futura.
-    fetch('/api/tiendas')
-      .then(r => (r.ok ? r.json() : null))
-      .then((j: { tiendas?: TiendaBDRow[] } | null) => {
-        const { agregadas, incompletas } = registrarTiendasBD(j?.tiendas ?? []);
+    // Las zonas dicen quién transporta cada una, y de ahí sale si la tienda va por Sendu: solo
+    // el norte (Falabella) lo usa desde que Luis Fica tomó el sur. Sin esto se le pedían datos
+    // de Sendu a las 14 tiendas del sur, que ya no pasan por ese sistema.
+    Promise.all([
+      fetch('/api/tiendas').then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/zonas-transporte').then(r => (r.ok ? r.json() : null)).catch(() => null),
+    ])
+      .then(([j, z]: [{ tiendas?: TiendaBDRow[] } | null, { data?: ConfigZonas } | null]) => {
+        const { agregadas, incompletas } = registrarTiendasBD(j?.tiendas ?? [], z?.data ?? ZONAS_DEFAULT);
         if (agregadas.length) {
           setSinDatosSendu(prev => {
             const porCod = new Map(prev.map(t => [t.cod, t]));
