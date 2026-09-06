@@ -27,17 +27,21 @@ export interface ConfigZona {
 export type ConfigZonas = Record<ZonaRuteo, ConfigZona>;
 
 /**
- * Estado al 29/08/2026. Es el respaldo si la tabla todavía no existe o el endpoint falla:
+ * Estado al 05/09/2026. Es el respaldo si la tabla todavía no existe o el endpoint falla:
  * el motor tiene que poder rutear igual, no quedarse sin nada.
  *
- * El sur está REPARTIDO a propósito: las seis ya traspasadas van con Luis Fica y el resto
- * sigue con Falabella — verificado en el despacho del 28/08, donde Panguipulli salió en un
- * camión de Falabella. El lunes 31 pasa a ser solo Luis Fica, y eso se cambia desde la
- * pantalla, no acá.
+ * El traspaso del sur YA OCURRIÓ: desde el 31/08 lo lleva Luis Fica solo, y así está en
+ * `zonas_transporte`. Hasta acá este default seguía diciendo que Falabella también lo cubría
+ * —una foto del 29/08, tomada a mitad del traspaso—, así que ante una caída del endpoint el
+ * respaldo contradecía a la realidad: dejaba rutear el sur con un camión de Falabella, y le
+ * pedía datos de Sendu a 14 tiendas que ya no pasan por ese sistema (ver `despachoPorSendu`).
+ *
+ * La regla sigue siendo la misma: esto se cambia desde Config → Transportistas. El default solo
+ * tiene que describir el estado ACTUAL para que una caída no reviva una configuración vieja.
  */
 export const ZONAS_DEFAULT: ConfigZonas = {
-  sur:      { zona: 'sur',      modo: 'consolidacion', empresas: ['Luis Fica', 'Falabella'], orden: 1, activo: true },
-  norte:    { zona: 'norte',    modo: 'consolidacion', empresas: ['Falabella', 'Ortiz'],    orden: 2, activo: true },
+  sur:      { zona: 'sur',      modo: 'consolidacion', empresas: ['Luis Fica'],              orden: 1, activo: true },
+  norte:    { zona: 'norte',    modo: 'consolidacion', empresas: ['Falabella'],             orden: 2, activo: true },
   costa:    { zona: 'costa',    modo: 'ruta',          empresas: ['Luis Fica', 'Kios Club'], orden: 3, activo: true },
   santiago: { zona: 'santiago', modo: 'ruta',          empresas: ['Luis Fica', 'Kios Club'], orden: 4, activo: true },
 };
