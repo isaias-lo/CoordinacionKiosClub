@@ -12,7 +12,7 @@
 //
 // Puro y testeable: recibe el catálogo y el calendario ya cargados; acá no hay red.
 
-import { zonaDeSector } from '@/lib/sectores';
+import { grupoDeSector } from '@/lib/sectores';
 
 export interface TiendaCatalogo {
   codigo: string;
@@ -56,17 +56,12 @@ const norm = (s: unknown): string => String(s ?? '').trim().toUpperCase();
 const vacio = (s: unknown): boolean => String(s ?? '').trim() === '';
 const sobra = (s: unknown): boolean => s != null && String(s) !== String(s).trim();
 
-/** El grupo del calendario que le corresponde a un sector. `null` = no se puede saber. */
-export function grupoEsperado(sector: string | null | undefined): 'rm' | 'fal' | 'costa' | null {
-  const s = String(sector ?? '').trim().toLowerCase();
-  if (!s) return null;
-  // 'Región' a secas no dice si es norte o sur, pero sí que es Regiones: para el grupo alcanza.
-  if (s.startsWith('regi')) return 'fal';
-  const z = zonaDeSector(sector);
-  if (z === 'costa') return 'costa';
-  if (z === 'santiago') return 'rm';
-  return null;
-}
+/**
+ * El grupo del calendario que le corresponde a un sector. `null` = no se puede saber.
+ * Delega en `grupoDeSector`: la regla vive en un solo lugar y este chequeo no puede divergir
+ * de la que usan el armado y el pool.
+ */
+export const grupoEsperado = grupoDeSector;
 
 /** Aplana el calendario a (código → días y grupos donde aparece). */
 function indexarCalendario(cal: CalendarioPorDia | null | undefined) {

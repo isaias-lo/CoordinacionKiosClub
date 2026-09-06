@@ -19,7 +19,7 @@ export interface CalDataCounts {
  * conocidos, sin pisar ediciones manuales.
  *
  * Además INYECTA las tiendas armadas hoy con carga que NO están en el calendario (p. ej. 55ITA
- * agregada en Picking), colocándolas en su grupo (`regionDe` + fuente). Antes se perdían.
+ * agregada en Picking), colocándolas en su grupo (`sectorDe` + fuente). Antes se perdían.
  *
  * Puro y testeable. No pisa ediciones manuales.
  */
@@ -27,7 +27,7 @@ export function reaplicarCounts(
   calT: Record<string, CalDataCounts>,
   sesionRows: Map<string, SesionRow>,
   manuallyEdited: Set<string>,
-  regionDe?: (cod: string) => string | null | undefined,
+  sectorDe?: (cod: string) => string | null | undefined,
 ): Record<string, CalDataCounts> {
   const next: Record<string, CalDataCounts> = { ...calT };
   sesionRows.forEach((row, cod) => {
@@ -38,7 +38,7 @@ export function reaplicarCounts(
     if (next[cod]) {
       next[cod] = { ...next[cod], p: row.pallets, b: row.bultos, c: cc, ch, on: hasCounts };
     } else if (hasCounts) {
-      next[cod] = { on: true, p: row.pallets, b: row.bultos, c: cc, ch, g: grupoArmada(row.fuente, regionDe?.(cod)) };
+      next[cod] = { on: true, p: row.pallets, b: row.bultos, c: cc, ch, g: grupoArmada(row.fuente, sectorDe?.(cod)) };
     }
   });
   return next;
