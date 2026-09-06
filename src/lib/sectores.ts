@@ -132,3 +132,27 @@ export function esRegionNorte(
 ): boolean {
   return zonaDeSectorOGeo(sector, lat, latCD) === 'norte';
 }
+
+/** Los tres grupos con los que se arma y se rutea: Santiago, Costa y Regiones. */
+export type GrupoOperativo = 'rm' | 'costa' | 'fal';
+
+/**
+ * A qué grupo pertenece un sector. `null` = el sector no alcanza para decidirlo.
+ *
+ * Es la MISMA pregunta que responde `zonaDeSector`, agrupada como la usa la operación: sur y norte
+ * son "Regiones" para armar y para el calendario, y solo se separan para saber quién transporta.
+ *
+ * Existe para que esta regla viva en un solo lugar. Antes cada consumidor la deducía de la
+ * REGIÓN —un campo de etiqueta— y con vocabularios distintos: el catálogo de rutas escribe
+ * 'Valparaíso' y el de Santiago 'VR', así que `grupoArmada` comparaba contra un valor que nunca
+ * le llegaba y su rama de Costa era código muerto. El sector es el campo que DECLARA el ruteo;
+ * la región es cómo se llama el lugar.
+ */
+export function grupoDeSector(sector: string | null | undefined): GrupoOperativo | null {
+  const s = String(sector ?? '').trim().toLowerCase();
+  if (!s) return null;
+  if (s.startsWith('costa')) return 'costa';
+  // 'Región' a secas no dice norte ni sur, pero para el GRUPO alcanza: es Regiones igual.
+  if (s.startsWith('regi'))  return 'fal';
+  return 'rm';
+}
