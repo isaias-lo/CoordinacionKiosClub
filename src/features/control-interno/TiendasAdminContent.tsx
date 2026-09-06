@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { camposSenduFaltantes } from '@/features/despacho/regiones/data/senduCompletitud';
 import { esSectorRegiones } from '@/features/despacho/regiones/data/tiendas';
 import { despachoPorSendu } from '@/features/despacho/regiones/data/despachoPorSendu';
+import { coherenciaCatalogo, type CalendarioPorDia } from './coherenciaCatalogo';
+import { seAbastecePorCalendario } from '@/features/despacho/rutas/utils/codigosEspeciales';
 import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
 import { opcionesSector } from '@/lib/sectores';
 import {
@@ -177,6 +179,7 @@ export default function TiendasAdminContent({
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
   const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
+  const [coherenciaAbierta, setCoherenciaAbierta] = useState(false);
   const [sortBy,  setSortBy]  = useState<SortBy>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre' : 'nombre');
   const [sortDir, setSortDir] = useState<SortDir>(() =>
@@ -188,12 +191,27 @@ export default function TiendasAdminContent({
   // Frecuencia DERIVADA del Calendario de Abastecimiento (cod → "MA-JU-VI"), no del campo manual (que suele
   // quedar vacío). Se actualiza sola cuando cambia el calendario (cross-device).
   const [freqByCod, setFreqByCod] = useState<Record<string, string>>({});
+  // El calendario COMPLETO, del mismo fetch: alimenta el chequeo de coherencia sin pedir nada extra.
+  const [calCompleto, setCalCompleto] = useState<CalendarioPorDia | null>(null);
   useEffect(() => {
     let alive = true;
-    fetchCalendarioCompleto().then(cal => { if (alive) setFreqByCod(frecuenciasPorTienda(cal)); }).catch(() => {});
-    const unsub = subscribeToCalendarChanges(cal => setFreqByCod(frecuenciasPorTienda(cal)));
+    const aplicar = (cal: Parameters<typeof frecuenciasPorTienda>[0]) => {
+      setFreqByCod(frecuenciasPorTienda(cal));
+      setCalCompleto((cal ?? null) as CalendarioPorDia | null);
+    };
+    fetchCalendarioCompleto().then(cal => { if (alive) aplicar(cal); }).catch(() => {});
+    const unsub = subscribeToCalendarChanges(cal => aplicar(cal));
     return () => { alive = false; unsub(); };
   }, []);
+
+  // [Fase 5] Coherencia del catálogo. El calendario, los grupos y las zonas se derivan del
+  // catálogo y nada comprobaba que siguieran coincidiendo: van seis desincronizaciones de este
+  // tipo encontradas en dos días, y ninguna falla ruidosamente — la operación se entera cuando
+  // el camión sale mal. Se calcula acá, que es donde se arreglan.
+  const incoherencias = useMemo(
+    () => (calCompleto ? coherenciaCatalogo(tiendas, calCompleto, (_c, tipo) => !seAbastecePorCalendario(tipo)) : []),
+    [tiendas, calCompleto],
+  );
 
   // Quién transporta cada zona. Decide a qué tiendas se les piden los datos de Sendu, así que
   // se relee al abrir la pestaña Transportistas y volver: si acabas de traspasar una zona, el
@@ -476,6 +494,43 @@ export default function TiendasAdminContent({
         {/* Transportistas por zona (capa 3 del Enrutador) */}
         {activeTab === 'transportistas' && <TransportistasTab canEdit={canEditTiendas} />}
 
+        {/* [Fase 5] Coherencia del catálogo — se muestra donde se arregla. Solo aparece si hay
+            algo: un aviso que sale todos los días deja de leerse. Verificado contra la base real,
+            un catálogo sano no dispara ninguno de los siete chequeos. */}
+        {activeTab === 'tiendas' && incoherencias.length > 0 && (
+          <div style={{ marginBottom: 16, border: '1px solid #FCD34D', background: '#FFFBEB', borderRadius: 10, overflow: 'hidden' }}>
+            <button
+              onClick={() => setCoherenciaAbierta(v => !v)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 14 }} aria-hidden="true">⚠</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>
+                {incoherencias.reduce((n, i) => n + i.items.length, 0)} {incoherencias.reduce((n, i) => n + i.items.length, 0) === 1 ? 'cosa por revisar' : 'cosas por revisar'} en el catálogo
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#A16207', fontWeight: 600 }}>
+                {coherenciaAbierta ? 'Ocultar' : 'Ver detalle'}
+              </span>
+            </button>
+            {coherenciaAbierta && (
+              <div style={{ padding: '0 14px 12px' }}>
+                {incoherencias.map(inc => (
+                  <div key={inc.tipo} style={{ paddingTop: 10, borderTop: '1px solid #FDE68A' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400E' }}>{inc.titulo}</div>
+                    <div style={{ fontSize: 11.5, color: '#78716C', marginTop: 2, lineHeight: 1.45 }}>{inc.consecuencia}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                      {inc.items.map(it => (
+                        <span key={it} style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace', fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                          {it}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tiendas tab */}
         {activeTab === 'tiendas' && (
           <>
@@ -726,7 +781,11 @@ export default function TiendasAdminContent({
                   <option value="STRIPCENTER">Strip Center</option>
                   <option value="TIENDA">Tienda (calle)</option>
                   <option value="oficina">Oficina</option>
-                  {form.tipo && !['MALL', 'STRIPCENTER', 'TIENDA', 'oficina'].includes(form.tipo) && <option value={form.tipo}>{form.tipo}</option>}
+                  {/* Puntos que se cargan para poder rutearlos desde el Planificador (proveedores,
+                      distribuidores, retiros). No son tiendas: nadie les programa carga, así que
+                      no se les exige estar en el calendario de abastecimiento. */}
+                  <option value="punto">Punto (retiro / entrega)</option>
+                  {form.tipo && !['MALL', 'STRIPCENTER', 'TIENDA', 'oficina', 'punto'].includes(form.tipo) && <option value={form.tipo}>{form.tipo}</option>}
                 </select>
               </div>
             </div>
