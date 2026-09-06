@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { registrarCambio } from '@/lib/bitacoraServer';
+import { verifyActor } from '@/lib/apiAuth';
 import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateTiendaSchema } from '@/lib/schemas';
 import { normalizeCod } from './sync/normalizeCod';
@@ -177,10 +179,14 @@ export async function POST(request: NextRequest) {
     const body = parsed.data as TiendaBody;
 
     const sb = supabaseServer();
+    // El estado previo, para la bitácora: el upsert crea Y edita, así que sin esto no habría
+    // con qué comparar y el registro solo diría "alguien guardó algo".
+    const cod = normalizeCod(body.codigo);
+    const { data: antes } = await sb.from('tiendas').select('*').eq('codigo', cod).maybeSingle();
     const { data, error } = await sb
       .from('tiendas')
       .upsert({
-        codigo:         normalizeCod(body.codigo),
+        codigo:         cod,
         nombre:         body.nombre.trim(),
         direccion:      body.direccion      ?? '',
         region:         body.region         ?? '',
@@ -212,6 +218,15 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    // Queda constancia de quién cambió qué. No bloquea: si la bitácora falla, la tienda ya se
+    // guardó (ver `registrarCambio`).
+    void registrarCambio({
+      actor: await verifyActor(request),
+      entidad: 'tienda', entidadId: cod,
+      accion: antes ? 'editar' : 'crear',
+      antes, despues: data,
+    });
+
     // Fire-and-forget: sync to Google Sheets (doesn't block response)
     // Auto-sync a Sheets: se ESPERA y se reporta el resultado (antes era fire-and-forget que
     // se tragaba los errores → el usuario creía que estaba sincronizado). Si falla, la tienda
@@ -241,8 +256,16 @@ export async function DELETE(request: NextRequest) {
     if (!codigo) return NextResponse.json({ error: 'codigo requerido' }, { status: 400 });
 
     const sb = supabaseServer();
+    // Se guarda la ficha completa ANTES de borrarla: es el único momento en que existe, y sin
+    // ella el registro no podría responder qué tenía la tienda que desapareció.
+    const { data: antes } = await sb.from('tiendas').select('*').eq('codigo', codigo).maybeSingle();
     const { error } = await sb.from('tiendas').delete().eq('codigo', codigo);
     if (error) throw error;
+
+    void registrarCambio({
+      actor: await verifyActor(request),
+      entidad: 'tienda', entidadId: codigo, accion: 'eliminar', antes, despues: null,
+    });
 
     // Refleja el borrado en el Sheet (evita fila huérfana). Fire-and-forget.
     let sheetSynced = true;
