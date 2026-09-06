@@ -6,8 +6,11 @@ import {
 
 describe('ZONAS_DEFAULT', () => {
   it('refleja el estado del 29/08: el sur está repartido entre Luis Fica y Falabella', () => {
-    expect(ZONAS_DEFAULT.sur.empresas).toEqual(['Luis Fica', 'Falabella']);
-    expect(ZONAS_DEFAULT.norte.empresas).toEqual(['Falabella', 'Ortiz']);
+    // El respaldo tiene que describir el estado ACTUAL, no una foto vieja: si el endpoint de
+    // zonas se cae, un default caducado revive una configuración que ya no existe. El sur pasó
+    // a Luis Fica solo el 31/08, y Ortiz no tiene ni un camión activo en la flota.
+    expect(ZONAS_DEFAULT.sur.empresas).toEqual(['Luis Fica']);
+    expect(ZONAS_DEFAULT.norte.empresas).toEqual(['Falabella']);
   });
   it('Santiago y Costa se rutean; sur y norte se consolidan', () => {
     expect(ZONAS_DEFAULT.santiago.modo).toBe('ruta');
@@ -43,7 +46,9 @@ describe('parseZonas', () => {
 });
 
 describe('empresaHabilitada', () => {
-  const sur = ZONAS_DEFAULT.sur;
+  // Config PROPIA, no ZONAS_DEFAULT: esto prueba la función, no el contenido del respaldo.
+  // Atarla al default hacía que cambiar quién cubre una zona rompiera un test de otra cosa.
+  const sur = { ...ZONAS_DEFAULT.sur, empresas: ['Luis Fica', 'Falabella'] };
   it('reconoce las empresas habilitadas', () => {
     expect(empresaHabilitada('Luis Fica', sur)).toBe(true);
     expect(empresaHabilitada('Falabella', sur)).toBe(true);
