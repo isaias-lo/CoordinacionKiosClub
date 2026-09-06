@@ -22,3 +22,31 @@ export const CODIGOS_SIN_CALENDARIO = new Set<string>(['OFIKC']);
 export function fluyeSinCalendario(cod: string, tipo?: string | null): boolean {
   return (tipo ?? '').toLowerCase() === TIPO_SIN_CALENDARIO || CODIGOS_SIN_CALENDARIO.has(cod);
 }
+
+/**
+ * Tipos que NO se abastecen por calendario.
+ *
+ * `oficina` es la central (recados internos). `punto` son los puntos logísticos que el
+ * coordinador carga a propósito para poder rutearlos desde el Planificador cuando hay que
+ * agendar un retiro o una entrega: el proveedor de cajas del CD, un proveedor que no entrega
+ * congelados, el distribuidor que lleva los congelados a Regiones Norte y Sur.
+ *
+ * No son tiendas: nadie les programa carga y nunca van a estar en el calendario. Distinguirlos
+ * es lo que permite que el chequeo de coherencia no los denuncie todos los días — y un aviso
+ * que sale todos los días deja de leerse.
+ */
+export const TIPOS_SIN_ABASTECIMIENTO = new Set(['oficina', 'punto']);
+
+/**
+ * ¿A esta tienda se le programa carga por calendario?
+ *
+ * Se pregunta por `tipo` y NO por código: así, si mañana agregan otro punto de retiro, basta
+ * marcarlo en Config y ningún chequeo hay que tocar.
+ *
+ * Es distinto de `fluyeSinCalendario`: esa dice quién ENTRA al Enrutador sin estar en el
+ * calendario (solo la oficina). Un punto logístico no se abastece, pero tampoco tiene por qué
+ * aparecer en el pool del día.
+ */
+export function seAbastecePorCalendario(tipo?: string | null): boolean {
+  return !TIPOS_SIN_ABASTECIMIENTO.has(String(tipo ?? '').trim().toLowerCase());
+}
