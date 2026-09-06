@@ -4,8 +4,7 @@ import {
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
   construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
   hhmmAMin, minAHHMM, parseVentana, estadoVentana, calcularETAs,
-  type ParadaDireccion, type LineaParada,
-} from '../planificador';
+  type ParadaDireccion, type LineaParada, filtrarPorZonas } from '../planificador';
 
 const gps: Record<string, number[]> = {
   '26ALC': [-33.39, -70.50],
@@ -348,5 +347,70 @@ describe('formatDuracion', () => {
   it('0 o undefined → vacío', () => {
     expect(formatDuracion(0)).toBe('');
     expect(formatDuracion(undefined)).toBe('');
+  });
+});
+
+// ─── Filtrar el día por zona ──────────────────────────────────────────────────
+// "Armar desde el calendario" tomaba los tres grupos sin preguntar: pedir "Congelados, lunes,
+// 2 rutas" traía también Antofagasta y Puerto Montt.
+describe('filtrarPorZonas', () => {
+  // Sectores y latitudes reales.
+  const SECTOR: Record<string, string> = {
+    '22LGN': 'Corredor Norte',   // Santiago
+    '52MUT': 'Corredor Oriente', // Santiago
+    '37VIÑ': 'Costa',            // Costa
+    '57CAS': 'Región',           // Regiones — la latitud decide sur
+    '41ANA': 'Región',           // Regiones — la latitud decide norte
+    'XXSIN': '',                 // sin sector → sin zona
+  };
+  const LAT: Record<string, number> = {
+    '22LGN': -33.36, '52MUT': -33.40, '37VIÑ': -33.01, '57CAS': -42.48, '41ANA': -23.67, 'XXSIN': -33.4,
+  };
+  const TODAS = ['22LGN', '52MUT', '37VIÑ', '57CAS', '41ANA'];
+  const correr = (cods: string[], zonas: Parameters<typeof filtrarPorZonas>[1]) =>
+    filtrarPorZonas(cods, zonas, c => SECTOR[c], c => LAT[c]);
+
+  it('sin zonas elegidas trae todo: no elegir no puede dejar el plan en blanco', () => {
+    expect(correr(TODAS, []).incluidas).toEqual(TODAS);
+  });
+
+  // El caso reportado: quiero planificar solo Santiago.
+  it('solo Santiago deja fuera Costa y Regiones', () => {
+    expect(correr(TODAS, ['santiago']).incluidas).toEqual(['22LGN', '52MUT']);
+  });
+
+  it('se pueden combinar zonas: RM + Costa', () => {
+    expect(correr(TODAS, ['santiago', 'costa']).incluidas).toEqual(['22LGN', '52MUT', '37VIÑ']);
+  });
+
+  // El calendario trata Regiones como una sola cosa ('fal'); acá se separan por latitud.
+  it('separa Región Sur de Región Norte, que el calendario no distingue', () => {
+    expect(correr(TODAS, ['sur']).incluidas).toEqual(['57CAS']);
+    expect(correr(TODAS, ['norte']).incluidas).toEqual(['41ANA']);
+  });
+
+  it('cuenta cuántas hay por zona, aunque no estén elegidas', () => {
+    expect(correr(TODAS, ['santiago']).porZona).toEqual({ santiago: 2, costa: 1, sur: 1, norte: 1 });
+  });
+
+  // Una tienda sin sector no se cuela ni se pierde callada: se informa.
+  it('las que no se pueden clasificar salen aparte, no dentro', () => {
+    const r = correr([...TODAS, 'XXSIN'], ['santiago']);
+    expect(r.sinZona).toEqual(['XXSIN']);
+    expect(r.incluidas).not.toContain('XXSIN');
+  });
+
+  it('tampoco se cuelan cuando no se filtra nada', () => {
+    const r = correr(['XXSIN'], []);
+    expect(r.incluidas).toEqual([]);
+    expect(r.sinZona).toEqual(['XXSIN']);
+  });
+
+  it('conserva el orden de entrada', () => {
+    expect(correr(['52MUT', '22LGN'], ['santiago']).incluidas).toEqual(['52MUT', '22LGN']);
+  });
+
+  it('lista vacía no rompe', () => {
+    expect(correr([], ['santiago'])).toMatchObject({ incluidas: [], sinZona: [] });
   });
 });

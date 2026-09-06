@@ -20,6 +20,8 @@ import { fetchSessionState, subscribeToSessionState, pushSessionStateResult } fr
 import { mergeRutasPlan, conAlMenosUna, type RutaPlan } from '../utils/planSync';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados } from '@/lib/calendarioCongeladosSync';
+import { filtrarPorZonas } from '../utils/planificador';
+import type { ZonaRuteo } from '@/lib/sectores';
 
 // Vehículo "virtual" — el planificador es solo visual (rutas sin carga ni patente real).
 const PLAN_VEHICLE: Vehiculo = { p: 'PLAN', c: 0, b: 0, t: 'Planificador', tlbd: false, on: true, porton: null, refrigerado: false, empresa: '' };
@@ -129,6 +131,21 @@ function loadPlan(): PlanPersist {
   };
 }
 
+// Las cuatro zonas que se pueden planificar por separado, con el nombre que usa la operación.
+const ZONAS_PLAN: { id: ZonaRuteo; label: string }[] = [
+  { id: 'santiago', label: 'RM' },
+  { id: 'costa',    label: 'Costa' },
+  { id: 'sur',      label: 'R. Sur' },
+  { id: 'norte',    label: 'R. Norte' },
+];
+
+/** Cómo nombrar la selección en los avisos. Vacío = todas, igual que el comportamiento de antes. */
+function etiquetaZonas(zonas: ZonaRuteo[]): string {
+  if (!zonas.length) return 'todas las zonas';
+  const orden = ZONAS_PLAN.filter(z => zonas.includes(z.id)).map(z => z.label);
+  return orden.length === 1 ? orden[0] : `${orden.slice(0, -1).join(', ')} y ${orden[orden.length - 1]}`;
+}
+
 export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute, fecha, userId }: Props) {
   // Punto de partida — COMPARTIDO por todas las rutas (el mapa dibuja todas desde un mismo origen).
   const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode);
@@ -160,6 +177,12 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [calFuente,   setCalFuente]   = useState<'seco' | 'congelados'>('seco');
   const [calDia,      setCalDia]      = useState<string>(() => diaHoy());
   const [calN,        setCalN]        = useState(3);
+  // Zonas a incluir. VACÍO = todas, que es como se comportaba antes: no elegir nada no puede
+  // dejar el plan en blanco. Se filtra por zona y no por el grupo del calendario porque el
+  // calendario trata Regiones como una sola cosa y acá hace falta separar norte de sur.
+  const [calZonas,    setCalZonas]    = useState<ZonaRuteo[]>([]);
+  // Cuántas tiendas tiene cada zona ese día, para mostrarlo en cada opción antes de armar.
+  const [calConteo,   setCalConteo]   = useState<Record<ZonaRuteo, number> | null>(null);
   const [calStatus,   setCalStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
   const [calAviso,    setCalAviso]    = useState('');
   // Places no disponible (key sin Places API / sin billing) → se avisa y se usa el fallback (Buscar/Enter).
@@ -173,6 +196,21 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
+
+  // Cuántas tiendas tiene cada zona el día elegido. Se muestra en cada opción para poder decidir
+  // ANTES de armar — si no, elegir "R. Norte" un día sin tiendas del norte se descubre al final.
+  // El calendario viene cacheado, así que esto no agrega una llamada por cada tecla.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const cal = calFuente === 'seco' ? await fetchCalendarioCompleto() : await fetchCalendarioCongelados();
+      const d = cal[calDia];
+      const delDia = d ? [...d.rm, ...d.costa, ...d.fal] : [];
+      const { porZona } = filtrarPorZonas(delDia, [], c => tiendas[c]?.sector ?? tiendas[c]?.z, c => gps[c]?.[0]);
+      if (alive) setCalConteo(porZona);
+    })().catch(() => { if (alive) setCalConteo(null); });
+    return () => { alive = false; };
+  }, [calFuente, calDia, tiendas, gps]);
 
   const plan = useMemo(() => ({ startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId }),
     [startMode, startTienda, customCoord, customAddr, endMode, endCoord, endAddr, horaSalida, servicioMin, routes, visibleIds, editId]);
@@ -275,11 +313,20 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     try {
       const cal = calFuente === 'seco' ? await fetchCalendarioCompleto() : await fetchCalendarioCongelados();
       const d = cal[calDia];
-      const cods = d ? [...d.rm, ...d.costa, ...d.fal] : [];
+      const delDia = d ? [...d.rm, ...d.costa, ...d.fal] : [];
       const fuenteLbl = calFuente === 'seco' ? 'Seco' : 'Congelados';
-      if (!cods.length) {
+      if (!delDia.length) {
         setCalStatus('error');
         setCalAviso(`No hay tiendas el ${DIA_LABEL[calDia]} en el calendario ${fuenteLbl}.`);
+        return;
+      }
+      // Antes se tomaban los tres grupos del día sin preguntar, así que pedir "Congelados, lunes"
+      // traía también Antofagasta y Puerto Montt y las repartía entre las mismas rutas.
+      const { incluidas: cods, sinZona } = filtrarPorZonas(
+        delDia, calZonas, c => tiendas[c]?.sector ?? tiendas[c]?.z, c => gps[c]?.[0]);
+      if (!cods.length) {
+        setCalStatus('error');
+        setCalAviso(`Ninguna de las ${delDia.length} tiendas del ${DIA_LABEL[calDia]} es de ${etiquetaZonas(calZonas)}.`);
         return;
       }
       const { rutas, sinGps } = repartirEnNRutas(cods, calN, gps, [startCoord.lat, startCoord.lng]);
@@ -294,8 +341,10 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       setCalOpen(false); // colapsa el panel tras armar → deja ver las rutas/paradas
       const nConParadas = rutas.filter(r => r.length).length;
       const nTiendas = rutas.reduce((s, r) => s + r.length, 0);
-      let aviso = `${nConParadas} ruta${nConParadas === 1 ? '' : 's'} · ${nTiendas} tienda${nTiendas === 1 ? '' : 's'} (${fuenteLbl}, ${DIA_LABEL[calDia]}).`;
+      let aviso = `${nConParadas} ruta${nConParadas === 1 ? '' : 's'} · ${nTiendas} tienda${nTiendas === 1 ? '' : 's'} (${fuenteLbl}, ${DIA_LABEL[calDia]}, ${etiquetaZonas(calZonas)}).`;
       if (sinGps.length) aviso += ` ${sinGps.length} sin ubicación, omitida${sinGps.length === 1 ? '' : 's'}: ${sinGps.slice(0, 6).join(', ')}${sinGps.length > 6 ? '…' : ''}.`;
+      // Una tienda sin sector no se puede clasificar: se dice, no se descarta en silencio.
+      if (sinZona.length) aviso += ` ${sinZona.length} sin zona en el catálogo, omitida${sinZona.length === 1 ? '' : 's'}: ${sinZona.slice(0, 6).join(', ')}${sinZona.length > 6 ? '…' : ''}.`;
       setCalAviso(aviso);
     } catch {
       setCalStatus('error');
@@ -594,7 +643,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           <CalendarDays size={14} className="text-knavy" /> Armar desde el calendario
           {!calOpen && (
             <span className="ml-auto font-semibold text-[11px] text-kmuted normal-case">
-              {calFuente === 'seco' ? 'Seco' : 'Congelados'} · {DIA_LABEL[calDia]} · {calN} ruta{calN === 1 ? '' : 's'}
+              {calFuente === 'seco' ? 'Seco' : 'Congelados'} · {DIA_LABEL[calDia]} · {etiquetaZonas(calZonas)} · {calN} ruta{calN === 1 ? '' : 's'}
             </span>
           )}
         </button>
@@ -622,16 +671,44 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               ))}
             </div>
           </div>
-          {/* N rutas */}
+          {/* Zonas — se pueden combinar. Ninguna elegida = todas, como se comportaba antes. */}
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">
+              Zonas {calZonas.length === 0 && <span className="normal-case font-semibold text-kmuted/70">· todas</span>}
+            </span>
+            <div className="flex gap-1 flex-wrap">
+              {ZONAS_PLAN.map(({ id, label }) => {
+                const on = calZonas.includes(id);
+                const n  = calConteo?.[id];
+                return (
+                  <button key={id}
+                    onClick={() => setCalZonas(prev => prev.includes(id) ? prev.filter(z => z !== id) : [...prev, id])}
+                    title={n === 0 ? `Sin tiendas de ${label} ese día` : undefined}
+                    className={`min-h-[38px] px-2.5 py-1.5 rounded-[7px] text-[11px] font-bold cursor-pointer border transition-colors ${
+                      on ? 'bg-knavy text-white border-knavy'
+                         : n === 0 ? 'bg-white text-kmuted/40 border-black/[0.08]'
+                                   : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
+                    {label}{n != null && <span className={`ml-1 font-semibold ${on ? 'text-white/70' : 'text-kmuted/70'}`}>{n}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* N rutas — escribible y sin tope de 5: la flota tiene más camiones que eso. */}
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-kmuted">Rutas</span>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map(n => (
-                <button key={n} onClick={() => setCalN(n)}
-                  className={`w-9 min-h-[38px] py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer border transition-colors ${calN === n ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.12] hover:border-knavy/40'}`}>
-                  {n}
-                </button>
-              ))}
+            <div className="flex items-stretch rounded-[7px] border border-black/[0.12] bg-white overflow-hidden">
+              <button onClick={() => setCalN(n => Math.max(1, n - 1))} aria-label="Una ruta menos"
+                className="w-9 min-h-[38px] text-[15px] font-bold text-kmuted hover:text-knavy hover:bg-knavy/[0.05] cursor-pointer transition-colors">−</button>
+              <input type="number" inputMode="numeric" min={1} max={99} value={calN}
+                onChange={e => {
+                  const v = parseInt(e.target.value, 10);
+                  setCalN(Number.isFinite(v) ? Math.min(99, Math.max(1, v)) : 1);
+                }}
+                aria-label="Cuántas rutas armar"
+                className="w-11 min-h-[38px] text-center text-[13px] font-bold text-ktext border-x border-black/[0.08] outline-none focus:bg-knavy/[0.04] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              <button onClick={() => setCalN(n => Math.min(99, n + 1))} aria-label="Una ruta más"
+                className="w-9 min-h-[38px] text-[15px] font-bold text-kmuted hover:text-knavy hover:bg-knavy/[0.05] cursor-pointer transition-colors">+</button>
             </div>
           </div>
           {/* Armar */}
@@ -642,7 +719,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>
         {calAviso
           ? <div className={`text-[11px] ${calStatus === 'error' ? 'text-[#D42B2B] font-semibold' : 'text-kmuted'}`}>{calAviso}</div>
-          : <div className="text-[10px] text-kmuted/80">Trae las tiendas de ese día y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
+          : <div className="text-[10px] text-kmuted/80">Trae las tiendas de ese día en las zonas elegidas y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
         </>)}
       </div>
 

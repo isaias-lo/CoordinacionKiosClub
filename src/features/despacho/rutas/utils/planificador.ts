@@ -294,3 +294,59 @@ export function construirTextoRuta(opts: {
   if (mapaUrl) partes.push('', `Mapa: ${mapaUrl}`);
   return partes.join('\n');
 }
+
+// ── Filtrar el día por zona ───────────────────────────────────────────────────
+//
+// "Armar desde el calendario" tomaba los TRES grupos del día sin preguntar:
+//
+//     const cods = [...d.rm, ...d.costa, ...d.fal];
+//
+// Así, pedir "Congelados, lunes, 2 rutas" traía también Antofagasta y Puerto Montt y las repartía
+// entre esas dos rutas. No hay forma de planificar solo Santiago, ni Santiago con Costa.
+//
+// Se filtra por ZONA y no por el grupo del calendario porque el calendario trata Regiones como una
+// sola cosa ('fal'), y acá hace falta separar norte de sur — que es justo lo que se pidió. La zona
+// sale del sector, con la latitud como desempate: la misma regla que usa el motor.
+
+import { zonaDeSectorOGeo, type ZonaRuteo } from '@/lib/sectores';
+
+export interface RepartoPorZona {
+  /** Los códigos que quedan tras el filtro, en el orden en que venían. */
+  incluidas: string[];
+  /** Cuántas tiendas tiene cada zona ese día — para mostrarlo junto a cada opción. */
+  porZona: Record<ZonaRuteo, number>;
+  /** Las que no se pudieron clasificar. Se informan; no se cuelan en el resultado. */
+  sinZona: string[];
+}
+
+const CERO: Record<ZonaRuteo, number> = { santiago: 0, costa: 0, sur: 0, norte: 0 };
+
+/**
+ * Deja solo las tiendas de las zonas elegidas.
+ *
+ * `zonas` vacío significa TODAS: es el comportamiento de siempre, así que no elegir nada no puede
+ * dejar el plan en blanco.
+ *
+ * Una tienda sin zona no se incluye ni se descarta en silencio: sale en `sinZona` para poder
+ * decirlo, igual que ya se hace con las que no tienen ubicación.
+ */
+export function filtrarPorZonas(
+  cods: string[],
+  zonas: Iterable<ZonaRuteo>,
+  sectorDe: (cod: string) => string | null | undefined,
+  latDe: (cod: string) => number | null | undefined,
+): RepartoPorZona {
+  const sel = new Set(zonas);
+  const porZona = { ...CERO };
+  const incluidas: string[] = [];
+  const sinZona: string[] = [];
+
+  for (const cod of cods ?? []) {
+    if (!cod) continue;
+    const z = zonaDeSectorOGeo(sectorDe(cod), latDe(cod));
+    if (!z) { sinZona.push(cod); continue; }
+    porZona[z]++;
+    if (sel.size === 0 || sel.has(z)) incluidas.push(cod);
+  }
+  return { incluidas, porZona, sinZona };
+}
