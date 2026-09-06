@@ -109,3 +109,40 @@ describe('coherenciaCatalogo', () => {
     expect(coherenciaCatalogo([t('22LGN')], null, () => true)).toEqual([]);
   });
 });
+
+// Un punto de retiro (proveedor de cajas, distribuidor de congelados) no se abastece: el sector y
+// la región son campos de DESPACHO. Sin esta exención el aviso quedaría encendido para siempre por
+// tiendas que están BIEN así — y un aviso permanente deja de leerse.
+describe('coherenciaCatalogo · los puntos no se revisan como tiendas', () => {
+  const t = (codigo: string, extra: Partial<TiendaCatalogo> = {}): TiendaCatalogo =>
+    ({ codigo, nombre: codigo, sector_comuna: 'Corredor Norte', region: 'RM', activo: true, ...extra });
+  const soloOficina = (_c: string, tipo?: string | null) =>
+    ['oficina', 'punto'].includes((tipo ?? '').toLowerCase());
+
+  it('un punto sin sector, sin región y fuera del calendario no reporta nada', () => {
+    const r = coherenciaCatalogo(
+      [t('LUN', { tipo: 'punto', sector_comuna: '', region: '' })], { LU: { rm: [] } }, soloOficina);
+    expect(r).toEqual([]);
+  });
+
+  it('la oficina tampoco', () => {
+    const r = coherenciaCatalogo(
+      [t('OFIKC', { tipo: 'oficina', sector_comuna: '', region: '' })], { LU: { rm: [] } }, soloOficina);
+    expect(r).toEqual([]);
+  });
+
+  // Pero una tienda de verdad sin sector SÍ se sigue reportando: es el caso 59EGN.
+  it('una tienda sí se reporta: la exención es por tipo, no para todos', () => {
+    const r = coherenciaCatalogo(
+      [t('59EGN', { tipo: 'MALL', sector_comuna: '' })], { LU: { rm: ['59EGN'] } }, soloOficina);
+    expect(r.map(i => i.tipo)).toContain('sin-sector');
+  });
+
+  // Los espacios sobrantes SÍ se revisan igual: un espacio invisible rompe cruces con cualquier
+  // sistema, sea tienda o punto.
+  it('los espacios sobrantes se revisan también en un punto', () => {
+    const r = coherenciaCatalogo(
+      [t('CAJAS', { tipo: 'punto', nombre: 'CajasPack ' })], { LU: { rm: [] } }, soloOficina);
+    expect(r.map(i => i.tipo)).toEqual(['espacios-sobrantes']);
+  });
+});
