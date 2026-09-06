@@ -5,6 +5,9 @@ import { camposSenduFaltantes } from '@/features/despacho/regiones/data/senduCom
 import { esSectorRegiones } from '@/features/despacho/regiones/data/tiendas';
 import { despachoPorSendu } from '@/features/despacho/regiones/data/despachoPorSendu';
 import { coherenciaCatalogo, type CalendarioPorDia } from './coherenciaCatalogo';
+import AddressAutocomplete from '@/features/despacho/rutas/components/AddressAutocomplete';
+import { desarmarDireccion, type ComponenteGoogle } from './direccionGoogle';
+import { sugerirSector, type SugerenciaSector } from './sugerirSector';
 import { seAbastecePorCalendario } from '@/features/despacho/rutas/utils/codigosEspeciales';
 import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
 import { opcionesSector } from '@/lib/sectores';
@@ -180,6 +183,9 @@ export default function TiendasAdminContent({
   const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
   const [coherenciaAbierta, setCoherenciaAbierta] = useState(false);
+  // Autocompletado de dirección: lo que Google devolvió y el sector que se propone a partir de eso.
+  const [gmapsCaido,  setGmapsCaido]  = useState(false);
+  const [sugerencia,  setSugerencia]  = useState<SugerenciaSector | null>(null);
   const [sortBy,  setSortBy]  = useState<SortBy>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre' : 'nombre');
   const [sortDir, setSortDir] = useState<SortDir>(() =>
@@ -279,8 +285,10 @@ export default function TiendasAdminContent({
     finally { setExporting(false); }
   }
 
-  function openAdd()           { setForm(EMPTY);    setLatStr('');                              setLonStr('');                              setModal('add');  }
-  function openEdit(t: Tienda) { setForm({ ...t }); setLatStr(t.lat != null ? String(t.lat) : ''); setLonStr(t.lon != null ? String(t.lon) : ''); setModal('edit'); }
+  // La sugerencia de sector se limpia al abrir CUALQUIER ficha: es de la dirección que se acaba de
+  // elegir, y arrastrarla a la tienda siguiente sería proponerle el sector de otra.
+  function openAdd()           { setSugerencia(null); setForm(EMPTY);    setLatStr('');                              setLonStr('');                              setModal('add');  }
+  function openEdit(t: Tienda) { setSugerencia(null); setForm({ ...t }); setLatStr(t.lat != null ? String(t.lat) : ''); setLonStr(t.lon != null ? String(t.lon) : ''); setModal('edit'); }
 
   async function handleSave() {
     if (!form.codigo || !form.nombre) return;
@@ -385,6 +393,32 @@ export default function TiendasAdminContent({
   const baseFiltered = activeFilter === 'activas'   ? searchFiltered.filter(t =>  t.activo)
                      : activeFilter === 'inactivas' ? searchFiltered.filter(t => !t.activo)
                      : searchFiltered;
+  /**
+   * Aplica al formulario lo que devolvió Google, y propone el sector aparte.
+   *
+   * Se rellena solo lo que Google SÍ sabe. El sector NO: es una decisión de negocio —"un typo la
+   * cambia de camión", dice `sectores.ts`— y ninguna fuente externa conoce los corredores. Se
+   * propone con la evidencia a la vista y lo confirma quien crea la tienda.
+   *
+   * Los campos que ya tienen algo NO se pisan: editar una tienda para corregirle la dirección no
+   * puede borrarle en silencio una comuna que alguien escribió a mano.
+   */
+  const aplicarDireccionGoogle = useCallback((sel: { address: string; lat: number; lng: number; componentes?: ComponenteGoogle[] }) => {
+    const d = desarmarDireccion(sel.componentes);
+    setLatStr(String(sel.lat));
+    setLonStr(String(sel.lng));
+    setForm(prev => ({
+      ...prev,
+      direccion: sel.address,
+      lat: sel.lat, lon: sel.lng,
+      comuna: prev.comuna?.trim() ? prev.comuna : d.comuna,
+      region: prev.region?.trim() ? prev.region : d.region,
+      calle:  prev.calle?.trim()  ? prev.calle  : d.calle,
+      numero: prev.numero?.trim() ? prev.numero : d.numero,
+    }));
+    setSugerencia(sugerirSector({ lat: sel.lat, lon: sel.lng }, d.region || undefined, tiendas));
+  }, [tiendas]);
+
   const filtered = sortTiendas(baseFiltered, sortBy, sortDir, freqByCod);
   const hasTimestamps = filtered.some(t => t.created_at || t.updated_at);
 
@@ -755,7 +789,46 @@ export default function TiendasAdminContent({
               <div><label style={lbl}>Código *</label><input style={inp} value={form.codigo} onChange={f('codigo')} placeholder="02SCL" disabled={modal === 'edit'} /></div>
               <div><label style={lbl}>Nombre *</label><input style={inp} value={form.nombre} onChange={f('nombre')} placeholder="San Carlos" /></div>
             </div>
-            <div style={{ marginTop: 12 }}><label style={lbl}>Dirección</label><input style={inp} value={form.direccion} onChange={f('direccion')} placeholder="Av. Plaza 1250, Las Condes" /></div>
+            {/* Dirección con autocompletado de Google (el mismo del Planificador). Al elegir una
+                sugerencia rellena de una lo que Google SÍ sabe —calle y número por separado, como
+                los pide Sendu, más comuna, región y coordenadas— y propone el sector aparte.
+                Es la causa raíz de fichas como 59EGN, que se creó sin sector ni corredor. */}
+            <div style={{ marginTop: 12 }}>
+              <label style={lbl}>Dirección</label>
+              <AddressAutocomplete
+                value={form.direccion}
+                onChange={v => setForm(p => ({ ...p, direccion: v }))}
+                onSelect={aplicarDireccionGoogle}
+                onUnavailable={() => setGmapsCaido(true)}
+                placeholder="Av. Plaza 1250, Las Condes"
+                className=""
+              />
+              {gmapsCaido && (
+                <div style={{ fontSize: 11, color: '#A16207', marginTop: 4 }}>
+                  El autocompletado de Google no está disponible: escribe la dirección y completa los campos a mano.
+                </div>
+              )}
+              {sugerencia && sugerencia.sector && form.sector_comuna !== sugerencia.sector && (
+                <div style={{ marginTop: 8, padding: '8px 10px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1D4ED8' }}>Sector sugerido: {sugerencia.sector}</div>
+                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 2, lineHeight: 1.45 }}>{sugerencia.motivo}</div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
+                    <button
+                      onClick={() => setForm(p => ({ ...p, sector_comuna: sugerencia.sector as string }))}
+                      style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#2563EB', color: '#fff', cursor: 'pointer' }}
+                    >
+                      Usar {sugerencia.sector}
+                    </button>
+                    <button
+                      onClick={() => setSugerencia(null)}
+                      style={{ fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 6, border: '1px solid #CBD5E1', background: '#fff', color: '#475569', cursor: 'pointer' }}
+                    >
+                      Elegir otro
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Región</label><input style={inp} value={form.region} onChange={f('region')} placeholder="Región Metropolitana" /></div>
               <div>
