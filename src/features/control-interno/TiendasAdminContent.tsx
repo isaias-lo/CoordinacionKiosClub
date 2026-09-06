@@ -12,11 +12,12 @@ import { seAbastecePorCalendario } from '@/features/despacho/rutas/utils/codigos
 import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
 import { opcionesSector } from '@/lib/sectores';
 import {
-  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck,
+  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck, History,
   Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
 import TransportistasTab from './TransportistasTab';
+import BitacoraTab from './BitacoraTab';
 import { parseCoord } from './coords';
 import { frecuenciasPorTienda } from './frecuencia';
 import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
@@ -180,7 +181,7 @@ export default function TiendasAdminContent({
     borrando: boolean;
   } | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
-  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas'>('tiendas');
+  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas' | 'bitacora'>('tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
   const [coherenciaAbierta, setCoherenciaAbierta] = useState(false);
   // Autocompletado de dirección: lo que Google devolvió y el sector que se propone a partir de eso.
@@ -497,6 +498,7 @@ export default function TiendasAdminContent({
             ? [
                 { id: 'congelados'     as const, label: 'Calendario de Congelados', Icon: Snowflake },
                 { id: 'transportistas' as const, label: 'Transportistas',           Icon: Truck },
+                { id: 'bitacora' as const,       label: 'Bitácora',                 Icon: History },
               ]
             : []),
         ]).map(({ id, label, Icon }) => {
@@ -527,6 +529,9 @@ export default function TiendasAdminContent({
 
         {/* Transportistas por zona (capa 3 del Enrutador) */}
         {activeTab === 'transportistas' && <TransportistasTab canEdit={canEditTiendas} />}
+
+        {/* [Fase 5] Quién cambió qué. Va acá porque es donde se hacen los cambios que registra. */}
+        {activeTab === 'bitacora' && <BitacoraTab />}
 
         {/* [Fase 5] Coherencia del catálogo — se muestra donde se arregla. Solo aparece si hay
             algo: un aviso que sale todos los días deja de leerse. Verificado contra la base real,
