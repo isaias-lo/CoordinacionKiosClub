@@ -116,9 +116,13 @@ export function coherenciaCatalogo(
     const cod = norm(t.codigo);
     if (!cod || t.activo === false) continue;
     const donde = enCalendario.get(cod);
+    // Un punto de retiro o la oficina no se abastecen: el sector y la región son campos de
+    // DESPACHO (ruteo y reportes) y no tienen por qué estar. Exigírselos dejaría el aviso
+    // encendido para siempre, que es como se deja de leer.
+    const despacha = !despachaSinCalendario(cod, t.tipo);
 
-    if (vacio(t.sector_comuna)) sinSector.push(cod);
-    if (vacio(t.region))        sinRegion.push(cod);
+    if (despacha && vacio(t.sector_comuna)) sinSector.push(cod);
+    if (despacha && vacio(t.region))        sinRegion.push(cod);
 
     for (const [campo, valor] of [['código', t.codigo], ['nombre', t.nombre], ['región', t.region], ['sector', t.sector_comuna]] as const)
       if (sobra(valor)) espacios.push(`${cod} · ${campo}: "${valor}"`);
@@ -131,7 +135,7 @@ export function coherenciaCatalogo(
         const real = [...donde.grupos][0];
         if (real !== esperado) noCalza.push(`${cod} · está en "${real}", su sector dice "${esperado}"`);
       }
-    } else if (!despachaSinCalendario(cod, t.tipo)) {
+    } else if (despacha) {
       fuera.push(cod);
     }
   }
