@@ -41,6 +41,11 @@ const flota = [V('AAA111', 10), V('BBB222', 10), V('CCC333', 10), V('DDD444', 14
 const calT = (cods: string[], p = 2): Record<string, CalTData> =>
   Object.fromEntries(cods.map(c => [c, { on: true, p, b: 1, c: 0, ch: 0 }]));
 
+// Esta simulación no prueba el filtro de "Tienda Terminada" (eso ya lo cubre
+// poolDespacho.test.ts) — todas las tiendas de cada escenario se dan por terminadas, así el
+// resto del flujo se comporta igual que antes de agregar el filtro.
+const poolTerminado = (calTObj: Record<string, CalTData>) => poolDesdeCalT(calTObj, new Set(Object.keys(calTObj)));
+
 const zonaDe = (c: string) => zonaDeTienda(c, tiendas, 0, OPCIONES_DEFAULT, gps[c]?.[0], CD[0]);
 const codsDe = (r: Ruta[]) => r.flatMap(x => x.ts.map(t => t.c));
 
@@ -55,7 +60,7 @@ describe('simulación del día de despacho', () => {
 
   // ── Mañana: sale Regiones primero, como en la operación real ──────────────────
   it('paso 1 · Regiones no se rutea desde el CD, pero recibe transportista', () => {
-    const r = enrutarV2(poolDesdeCalT(calT(REGIONES)), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT(REGIONES)), flota, gps, CD, tiendas);
     expect(r.rutas).toEqual([]);                                    // ninguna ruta calculada
     expect(r.consolidacion.flatMap(x => x.ts.map(t => t.c)).sort())  // pero sí camión asignado
       .toEqual([...REGIONES].sort());
@@ -64,21 +69,21 @@ describe('simulación del día de despacho', () => {
 
   // ── Después sale Costa ────────────────────────────────────────────────────────
   it('paso 2 · Costa se arma en UN camión, no uno por tienda', () => {
-    const r = enrutarV2(poolDesdeCalT(calT(COSTA)), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT(COSTA)), flota, gps, CD, tiendas);
     expect(r.rutas).toHaveLength(1);
     expect(r.rutas[0].ts.map(t => t.c).sort()).toEqual([...COSTA].sort());
     expect(r.costa.map(s => s.c).sort()).toEqual([...COSTA].sort());
   });
 
   it('paso 2b · el camión de Costa llega dentro de ventana', () => {
-    const r = enrutarV2(poolDesdeCalT(calT(COSTA)), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT(COSTA)), flota, gps, CD, tiendas);
     const tarde = ventanasIncumplidas(r.rutas[0].ts.map(t => t.c), gps, CD, tiendas, OPCIONES_DEFAULT);
     expect(tarde).toEqual([]);
   });
 
   // ── Y al final Santiago, con todo junto en el pool ─────────────────────────────
   it('paso 3 · con el día completo, NINGÚN camión mezcla zonas', () => {
-    const r = enrutarV2(poolDesdeCalT(calT([...REGIONES, ...COSTA, ...SANTIAGO])), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT([...REGIONES, ...COSTA, ...SANTIAGO])), flota, gps, CD, tiendas);
     for (const ruta of r.rutas) {
       const zonas = new Set(ruta.ts.map(t => zonaDe(t.c)));
       expect(zonas.size).toBe(1);
@@ -86,7 +91,7 @@ describe('simulación del día de despacho', () => {
   });
 
   it('paso 3b · Castro nunca viaja con una tienda de Santiago', () => {
-    const r = enrutarV2(poolDesdeCalT(calT([...REGIONES, ...SANTIAGO])), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT([...REGIONES, ...SANTIAGO])), flota, gps, CD, tiendas);
     for (const ruta of r.rutas) expect(ruta.ts.map(t => t.c).includes('57CAS')).toBe(false);
     // Castro va en un camión de consolidación, con solo tiendas de Regiones
     const suyo = r.consolidacion.find(x => x.ts.some(t => t.c === '57CAS'));
@@ -95,7 +100,7 @@ describe('simulación del día de despacho', () => {
   });
 
   it('paso 3c · ninguna tienda del pool se pierde', () => {
-    const pool = poolDesdeCalT(calT([...REGIONES, ...COSTA, ...SANTIAGO]));
+    const pool = poolTerminado(calT([...REGIONES, ...COSTA, ...SANTIAGO]));
     const r = enrutarV2(pool, flota, gps, CD, tiendas);
     const vistas = [
       ...codsDe(r.rutas), ...codsDe(r.consolidacion), ...r.fueraDeRadio.map(s => s.c),
@@ -105,14 +110,14 @@ describe('simulación del día de despacho', () => {
   });
 
   it('paso 3d · ningún camión supera su capacidad', () => {
-    const r = enrutarV2(poolDesdeCalT(calT([...COSTA, ...SANTIAGO], 3)), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT([...COSTA, ...SANTIAGO], 3)), flota, gps, CD, tiendas);
     for (const ruta of r.rutas) expect(ruta.tp).toBeLessThanOrEqual(ruta.v.c);
   });
 
   // ── El coordinador mueve algo a mano ──────────────────────────────────────────
   it('paso 4 · mover una tienda de camión no rompe la ruta ni pierde carga', () => {
     const cal = calT(SANTIAGO);
-    const r = enrutarV2(poolDesdeCalT(cal), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(cal), flota, gps, CD, tiendas);
     // el tablero guarda patente → tiendas
     const asig: Record<string, StoreItem[]> = {};
     for (const x of r.rutas) asig[x.v.p] = x.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
@@ -133,13 +138,13 @@ describe('simulación del día de despacho', () => {
 
   it('paso 4b · al mover, la red de seguridad no reporta faltantes', () => {
     const cal = calT(SANTIAGO);
-    const r = enrutarV2(poolDesdeCalT(cal), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(cal), flota, gps, CD, tiendas);
     expect(tiendasArmadasSinRutear(cal, r.rutas)).toEqual([]);
   });
 
   it('paso 4c · si una tienda queda fuera del tablero, la red de seguridad la marca', () => {
     const cal = calT(SANTIAGO);
-    const r = enrutarV2(poolDesdeCalT(cal), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(cal), flota, gps, CD, tiendas);
     const sinUna = r.rutas.map(x => ({ ...x, ts: x.ts.filter(t => t.c !== '20CTC') }));
     expect(tiendasArmadasSinRutear(cal, sinUna)).toEqual(['20CTC']);
   });
@@ -147,7 +152,7 @@ describe('simulación del día de despacho', () => {
   // ── Llega carga tarde, con el tablero ya armado ───────────────────────────────
   it('paso 5 · la tienda que llega tarde queda pendiente, no se pierde', () => {
     const cal = calT(SANTIAGO);
-    const r = enrutarV2(poolDesdeCalT(cal), flota, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(cal), flota, gps, CD, tiendas);
     const asig: Record<string, StoreItem[]> = {};
     for (const x of r.rutas) asig[x.v.p] = x.ts.map(t => ({ c: t.c, p: t.p, b: t.b, ch: t.ch ?? 0 }));
 
@@ -160,7 +165,7 @@ describe('simulación del día de despacho', () => {
   // ── Cierre: la carga que no cabe va a 2ª vuelta, no se aplasta ────────────────
   it('paso 6 · con flota insuficiente, lo que no cabe va a 2ª vuelta sin sobrecargar', () => {
     const chica = [V('UNICO', 4)];
-    const r = enrutarV2(poolDesdeCalT(calT(SANTIAGO, 2)), chica, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT(SANTIAGO, 2)), chica, gps, CD, tiendas);
     for (const ruta of r.rutas) expect(ruta.tp).toBeLessThanOrEqual(ruta.v.c);
     expect(r.segundaVuelta.length).toBeGreaterThan(0);
     const vistas = [...codsDe(r.rutas), ...r.segundaVuelta.map(s => s.c), ...r.fueraDeRadio.map(s => s.c)];
@@ -169,14 +174,14 @@ describe('simulación del día de despacho', () => {
 
   it('paso 6b · sin ningún camión activo, el pool entero queda en sinFlota', () => {
     const apagados = [V('OFF', 10)].map(v => ({ ...v, on: false }));
-    const r = enrutarV2(poolDesdeCalT(calT(SANTIAGO)), apagados, gps, CD, tiendas);
+    const r = enrutarV2(poolTerminado(calT(SANTIAGO)), apagados, gps, CD, tiendas);
     expect(r.rutas).toEqual([]);
     expect(r.sinFlota.map(s => s.c).sort()).toEqual(SANTIAGO.slice().sort());
   });
 
   // ── El día completo, de una ─────────────────────────────────────────────────
   it('día completo · resumen coherente y sin sorpresas', () => {
-    const pool = poolDesdeCalT(calT([...REGIONES, ...COSTA, ...SANTIAGO]));
+    const pool = poolTerminado(calT([...REGIONES, ...COSTA, ...SANTIAGO]));
     const r = enrutarV2(pool, flota, gps, CD, tiendas);
 
     const km = r.rutas.reduce((s, x) => s + kmRuta(x.ts.map(t => t.c), gps, CD), 0);

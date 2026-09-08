@@ -35,6 +35,7 @@ import { asignar, nn, rutasDesdeAsignaciones } from './utils/routing';
 import type { Ruta, StoreItem } from './utils/routing';
 import { enrutarV2, type ResultadoEnrutador } from './utils/enrutadorV2';
 import { poolDesdeCalT } from './utils/poolDespacho';
+import { useTiendaTerminada } from '../shared/useTiendaTerminada';
 import type { ConfigZonas } from './utils/zonasTransporte';
 import type { CentroideCluster } from './utils/asignarPorClusters';
 import { faseEnrutador } from './utils/faseEnrutador';
@@ -194,6 +195,17 @@ export default function RutasScreen() {
 
   const [modo,       setModo]       = useState('drag');
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
+  // "Tienda Terminada" (marcador manual de Bodega, ver useTiendaTerminada) — filtro ORTOGONAL a
+  // enElPool, solo para el tablero y la generación de rutas: sin esto, un despachador podía
+  // armar una ruta con una tienda que Bodega seguía cargando, y el conteo crecía después de
+  // armada la ruta (el camión terminaba necesitando más pallets de los planeados). A propósito
+  // NO afecta preflightCierre/resumenCierre ni el backlog de tiendasArmadasSinRutear — esos deben
+  // seguir viendo TODO lo que tiene carga hoy, para que se note si algo quedó sin marcar.
+  const { terminadas: terminadasInfo } = useTiendaTerminada();
+  const terminadas = useMemo(
+    () => new Set([...terminadasInfo.entries()].filter(([, v]) => v.terminada).map(([cod]) => norm(cod))),
+    [terminadasInfo],
+  );
   const [supervisor, setSupervisor] = useState('');
   const [fecha,      setFecha]      = useState(todayStr);
   const [manualText, setManualText] = useState('');
@@ -1705,7 +1717,7 @@ export default function RutasScreen() {
     if (feedbackFechaRef.current !== fecha && Object.keys(manualAsignaciones).length > 0) {
       const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
       const paradasItems = paradasAdicionales.filter(p => p.gps).map(p => ({ c: p.id, p: p.p, b: p.b }));
-      const allItems     = [...poolDesdeCalT(calT), ...paradasItems];
+      const allItems     = [...poolDesdeCalT(calT, terminadas), ...paradasItems];
       const finalRutas    = rutasDesdeAsignaciones(manualAsignaciones, flota, extGps, cdRef.current, extTiendas);
       if (finalRutas.length) {
         const { rutas: propuesta, segundaVuelta, sinFlota } = enrutar(allItems, extGps, extTiendas);
@@ -1824,7 +1836,7 @@ export default function RutasScreen() {
     // [PASO 2] Pool con los CUATRO tipos: contenedores (calT[c].c) suman a p (ocupan piso como un
     // pallet), chocolates van en ch. El filtro incluye tiendas de solo cont./choc. (antes se perdían).
     const stores: IAStore[] = Object.keys(calT)
-      .filter(c => enElPool(calT[c]))
+      .filter(c => enElPool(calT[c]) && terminadas.has(c))
       .map(c => ({ cod: c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0, zona: tiendas[c]?.z || tiendas[c]?.corredor || '' }));
     const trucks: IATruck[] = flota
       .filter(v => v.on && !v.tlbd)
@@ -1862,7 +1874,7 @@ export default function RutasScreen() {
 
     // [PASO 2] Pool con los cuatro tipos (contenedores suman a p, chocolates en ch, incluye tiendas
     // de solo cont./choc.) — antes armaba {c,p,b} y perdía contenedores y chocolates.
-    const tiendasActivas = poolDesdeCalT(calT);
+    const tiendasActivas = poolDesdeCalT(calT, terminadas);
 
     const paradasItems = paradasAdicionales.filter(p => p.gps).map(p => ({ c: p.id, p: p.p, b: p.b }));
     const allItems     = [...tiendasActivas, ...paradasItems];
@@ -1932,7 +1944,7 @@ export default function RutasScreen() {
     // reemplazaba el tablero ENTERO, así que una re-asignación después de cerrar dejaba la pantalla
     // contradiciendo el manifiesto y el registro ya escritos.
     const congeladas = codsEnCerradas(manualAsignaciones, cerradasV1);
-    const stores = poolDesdeCalT(calT).filter(t => !congeladas.has(t.c));
+    const stores = poolDesdeCalT(calT, terminadas).filter(t => !congeladas.has(t.c));
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
     const flotaLibre = flota.filter(v => !isCerrada(cerradasV1, v.p));
     if (!flotaLibre.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
@@ -1962,7 +1974,7 @@ export default function RutasScreen() {
   // pisaría el trabajo del coordinador. Acá se rutea SOLO lo pendiente sobre la capacidad que
   // queda en cada camión (flota sombra), y el resultado se SUMA: nada se mueve de lugar.
   const completarAsignacion = (scopes: PoolScope[] = [pool]) => {
-    const todo = poolDesdeCalT(calT);
+    const todo = poolDesdeCalT(calT, terminadas);
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
     // Los pools se recorren contra un tablero que se va ACUMULANDO, no contra el del render. Si se
     // llamara una vez por pool con `setManualAsignaciones` en medio, la segunda pasada leería el
@@ -2672,6 +2684,7 @@ export default function RutasScreen() {
         onOpenParadas={handleOpenParadas} paradasCount={paradasAdicionales.length}
         dnom={DNOM} calT={sortedCalT}
         mapContent={isMobile ? mapPanel : undefined}
+        terminadas={terminadas}
       />
 
       <main className="flex-1 overflow-hidden">
@@ -2815,6 +2828,7 @@ export default function RutasScreen() {
               </div>
             }
             mapPanel={!isMobile ? mapPanel : undefined}
+            terminadas={terminadas}
           />
       </main>
 

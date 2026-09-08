@@ -19,6 +19,10 @@ interface Props {
   /** Mapa persistente — en desktop RutasScreen lo monta aparte, en mobile se monta acá
    *  adentro del drawer (nunca las dos instancias a la vez). */
   mapContent?: React.ReactNode;
+  /** [Tienda Terminada] Si viene, el conteo "activas" solo suma las que Bodega ya marcó
+   *  terminada — mismo criterio que el tablero DESPACHO, para no mostrar un número más alto
+   *  que las tarjetas que realmente se ven abajo. */
+  terminadas?: ReadonlySet<string>;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -102,12 +106,12 @@ function HeaderFields({
      (incluido el mapa, ver `mapContent`). ── */
 export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
-  dnom, calT, mapContent,
+  dnom, calT, mapContent, terminadas,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
   const totalStores = Object.keys(calT).length;
-  const activeCount = Object.values(calT).filter(enElPool).length;
+  const activeCount = Object.entries(calT).filter(([c, d]) => enElPool(d) && (!terminadas || terminadas.has(c))).length;
   const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);

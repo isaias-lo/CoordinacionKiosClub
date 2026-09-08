@@ -95,6 +95,9 @@ interface Props {
   planKmByRoute?: Record<number, number>;
   // [Layout] Mapa fijo a la DERECHA del contenido (desktop). En móvil va en el drawer del header.
   mapPanel?: React.ReactNode;
+  /** [Tienda Terminada] Solo para el tablero DESPACHO (el `<ManualDispatch calT={calT}>` de más
+   *  abajo) — Congelados y 2ª VUELTA siguen mostrando todo lo que tiene carga, a propósito. */
+  terminadas?: ReadonlySet<string>;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -139,6 +142,7 @@ export default function InputSection({
   segundaVueltaContent,
   onPlanRutas, planLegsByRoute, planKmByRoute,
   mapPanel,
+  terminadas,
 }: Props) {
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
   // Fuente del calendario del tab CALENDARIO: Central (Seco) por defecto, o Congelados.
@@ -351,7 +355,8 @@ export default function InputSection({
                   scrollContainerRef={dragScrollRef}
                   cerrarSel={cerrarSel} onToggleCerrarSel={onToggleCerrarSel} onCerrarVarios={onCerrarVarios} esCerrada={esCerrada}
                   zonasCfg={zonasCfg}
-                  onAsignar={onAsignar} onReasignarTodo={onReasignarTodo} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular />
+                  onAsignar={onAsignar} onReasignarTodo={onReasignarTodo} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular
+                  terminadas={terminadas} />
               </div>
             )}
             {modo === 'man' && (
@@ -496,6 +501,7 @@ export default function InputSection({
                 esCerrada={esCerrada}
                 zonasCfg={zonasCfg}
                 hideCalcular
+                terminadas={terminadas}
               />
             </div>
           )}

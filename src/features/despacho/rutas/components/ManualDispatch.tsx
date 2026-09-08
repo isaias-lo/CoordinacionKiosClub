@@ -75,6 +75,11 @@ interface Props {
   /** [E8] Config de zonas (capa 3): para la etiqueta zona·modo y el aviso de transportista por
    *  camión. Si no viene, la etiqueta cae al default geográfico y no se muestran avisos de zona. */
   zonasCfg?: ConfigZonas;
+  /** [Tienda Terminada] Códigos (normalizados) que Bodega ya marcó terminada — SOLO para el
+   *  tablero principal de DESPACHO. Sin esto (undefined), no se aplica ningún filtro extra: es
+   *  el caso de Congelados y de 2ª VUELTA, que a propósito siguen mostrando todo lo que tiene
+   *  carga, terminada o no. */
+  terminadas?: ReadonlySet<string>;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -135,6 +140,7 @@ export default function ManualDispatch({
   onCerrarVarios,
   esCerrada,
   zonasCfg,
+  terminadas,
 }: Props) {
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
@@ -165,7 +171,7 @@ export default function ManualDispatch({
   }, [dragging, scrollContainerRef]);
 
   const tiendasActivas = Object.keys(calT)
-    .filter(c => enElPool(calT[c]))
+    .filter(c => enElPool(calT[c]) && (!terminadas || terminadas.has(c)))
     .map(c => ({ c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0 }));
 
   const paradasConGps = paradas.filter(p => p.gps);
@@ -609,10 +615,20 @@ export default function ManualDispatch({
           )}
           <div className="p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start">
             {pool.length === 0 && paradasPool.length === 0 ? (
-              <div className="flex items-center gap-2 text-green-600">
-                <span className="text-[18px]">✓</span>
-                <span className="text-[13px] font-semibold">Todo asignado</span>
-              </div>
+              // [Tienda Terminada] "Todo asignado" sería engañoso si el pool está vacío porque
+              // ninguna tienda con carga fue marcada terminada todavía en Bodega (no porque ya
+              // se haya armado todo) — se avisa distinto para que no se confunda una cosa con la otra.
+              terminadas && Object.entries(calT).some(([c, d]) => enElPool(d) && !terminadas.has(c)) ? (
+                <div className="flex items-center gap-2 text-amber-600">
+                  <span className="text-[18px]">⏳</span>
+                  <span className="text-[13px] font-semibold">Hay tiendas con carga, pero ninguna está marcada &quot;Tienda Terminada&quot; en Bodega todavía</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-green-600">
+                  <span className="text-[18px]">✓</span>
+                  <span className="text-[13px] font-semibold">Todo asignado</span>
+                </div>
+              )
             ) : (
               <>
                 {poolMostrado.map(t => (
