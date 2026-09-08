@@ -19,9 +19,8 @@ interface Props {
   /** Mapa persistente — en desktop RutasScreen lo monta aparte, en mobile se monta acá
    *  adentro del drawer (nunca las dos instancias a la vez). */
   mapContent?: React.ReactNode;
-  /** [Tienda Terminada] Si viene, el conteo "activas" solo suma las que Bodega ya marcó
-   *  terminada — mismo criterio que el tablero DESPACHO, para no mostrar un número más alto
-   *  que las tarjetas que realmente se ven abajo. */
+  /** [Tienda Terminada] Códigos que Bodega ya marcó terminada — usado para mostrar cuántas de las
+   *  "con carga" ya se pueden asignar a un camión (`readyCount`), sin ocultar el resto. */
   terminadas?: ReadonlySet<string>;
   /** [Asignación automática] Si el sistema completa el tablero solo cuando llega carga nueva de
    *  Bodega (ON, default) o si el coordinador prefiere armar todo a mano (OFF). */
@@ -135,7 +134,11 @@ export default function DespachoHeader({
   const dia         = getDia(fecha);
   const hoy         = todayStr();
   const totalStores = Object.keys(calT).length;
-  const activeCount = Object.entries(calT).filter(([c, d]) => enElPool(d) && (!terminadas || terminadas.has(c))).length;
+  // [Tienda Terminada] El tablero ahora MUESTRA toda tienda con carga de hoy (terminada o no, ver
+  // ManualDispatch) — así que el resumen cuenta lo mismo: cuántas van a salir en total. `readyCount`
+  // es el subconjunto que ya se puede asignar a un camión, para no sugerir más avance del real.
+  const activeCount = Object.values(calT).filter(enElPool).length;
+  const readyCount  = Object.entries(calT).filter(([c, d]) => enElPool(d) && (!terminadas || terminadas.has(c))).length;
   const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -165,7 +168,7 @@ export default function DespachoHeader({
               <div className="px-4 py-3.5 border-b border-black/[0.09] bg-white flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
                 <div>
                   <div className="text-[15px] font-bold text-ktext">Despacho</div>
-                  <div className="text-[11px] text-kmuted">{dnom[dia] || 'Hoy'} · {activeCount > 0 ? `${activeCount} con carga` : 'sin carga asignada'}</div>
+                  <div className="text-[11px] text-kmuted">{dnom[dia] || 'Hoy'} · {activeCount > 0 ? `${activeCount} con carga${readyCount < activeCount ? ` (${readyCount} listas)` : ''}` : 'sin carga asignada'}</div>
                 </div>
                 <button onClick={() => setDrawerOpen(false)} aria-label="Cerrar menú"
                   className="w-[32px] h-[32px] rounded-full bg-kbg border border-black/[0.09] flex items-center justify-center text-kmuted">
@@ -216,7 +219,7 @@ export default function DespachoHeader({
 
         {/* Resumen del día */}
         <div className="text-[12px] text-kmuted whitespace-nowrap">
-          <span className="font-semibold text-ktext">{dnom[dia] || 'Hoy'}</span> · {totalStores} tiendas · {activeCount > 0 ? `${activeCount} con carga` : 'sin carga asignada'}
+          <span className="font-semibold text-ktext">{dnom[dia] || 'Hoy'}</span> · {totalStores} tiendas · {activeCount > 0 ? `${activeCount} con carga${readyCount < activeCount ? ` (${readyCount} listas)` : ''}` : 'sin carga asignada'}
         </div>
 
         <div className="flex-1 min-w-[8px]" />

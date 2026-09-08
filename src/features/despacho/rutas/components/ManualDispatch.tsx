@@ -170,8 +170,14 @@ export default function ManualDispatch({
     }
   }, [dragging, scrollContainerRef]);
 
+  // [Tienda Terminada] Se MUESTRAN todas las tiendas con carga de hoy, terminadas o no — así el
+  // que arma rutas sabe de entrada cuántas van a salir, en vez de descubrirlas de a poco. Las que
+  // Bodega no marcó terminada se pintan más claras y NO se pueden arrastrar a un camión (ver
+  // `StoreTagComp`/`ejecutarDrop`/`moveSelectedTo`): entran al pool recién cuando Bodega confirma
+  // que la tienda está cerrada. Antes se ocultaban del todo, pero eso escondía carga real que el
+  // coordinador necesitaba anticipar (pedido 2026-09-08).
   const tiendasActivas = Object.keys(calT)
-    .filter(c => enElPool(calT[c]) && (!terminadas || terminadas.has(c)))
+    .filter(c => enElPool(calT[c]))
     .map(c => ({ c, p: calT[c].p + (calT[c].c ?? 0), b: calT[c].b, ch: calT[c].ch ?? 0 }));
 
   const paradasConGps = paradas.filter(p => p.gps);
@@ -182,6 +188,10 @@ export default function ManualDispatch({
   // [Pools] Solo se muestran las tiendas del pool activo. Es un filtro de VISTA: los conteos, la
   // capacidad y el registro siguen viendo el día completo.
   const poolMostrado = pool.filter(t => enPool(calT[t.c]?.g, poolScope));
+  // De lo mostrado, lo que YA se puede arrastrar a un camión (terminada en Bodega, o sin filtro
+  // configurado — Congelados/2ª vuelta). Es lo que cuenta "Asignar N"/"restantes": lo demás está
+  // visible pero todavía no es carga real para rutear.
+  const poolAsignable = poolMostrado.filter(t => !terminadas || terminadas.has(t.c));
   // ¿Hay algo armado? Cuenta CONTENIDO, no llaves: el tablero deja patentes con lista vacía.
   const hayTrabajo = tableroConTrabajo(asignaciones);
 
@@ -232,6 +242,11 @@ export default function ManualDispatch({
   const bloqueada = (patente: string) => !puedeMoverCarga(esCerrada ?? (() => false), patente);
   const avisarCerrado = (patente: string) =>
     alert(`🔒 ${patente} ya está cerrado: su manifiesto y su QR están emitidos.\n\nPara cambiar su carga hay que reabrirlo desde el manifiesto.`);
+  // [Tienda Terminada] Defensa además del `draggable={false}` del chip: aunque algo dispare un
+  // drop igual (touch, selección múltiple), una tienda sin terminar no puede entrar a un camión.
+  const noTerminada = (code: string) => !!terminadas && !terminadas.has(code);
+  const avisarNoTerminada = (code: string) =>
+    alert(`⏳ ${formatCod(code)} todavía no está marcada "Tienda Terminada" en Bodega.\n\nSu carga puede seguir creciendo — recién se puede asignar a un camión cuando Bodega la cierre.`);
 
   function moveSelectedTo(target: string) {
     const codes = [...selected];
@@ -259,6 +274,8 @@ export default function ManualDispatch({
     };
     const tags = codes.map(findTag).filter((t): t is StoreTag => !!t);
     if (target !== 'pool') {
+      const sinTerminar = codes.find(noTerminada);
+      if (sinTerminar) { avisarNoTerminada(sinTerminar); return; }
       const vehicle = flota.find(v => v.p === target);
       const cap     = vehicle?.c || 10;
       const current = newAsig[target] || [];
@@ -284,6 +301,9 @@ export default function ManualDispatch({
     // Ver `bloqueada`: un camión cerrado no admite carga nueva ni suelta la que ya lleva.
     if (bloqueada(target)) { avisarCerrado(target); setDragging(null); setDragOver(null); return; }
     if (bloqueada(from))   { avisarCerrado(from);   setDragging(null); setDragOver(null); return; }
+    if (target !== 'pool' && noTerminada(store.c)) {
+      avisarNoTerminada(store.c); setDragging(null); setDragOver(null); return;
+    }
     const newAsig = { ...asignaciones };
     if (from !== 'pool') {
       newAsig[from] = (newAsig[from] || []).filter(s => s.c !== store.c);
@@ -575,8 +595,10 @@ export default function ManualDispatch({
             )}
             <div className="flex-1 min-w-[8px]" />
             {/* [P4] Dos acciones distintas, antes eran una sola. "Asignar" completa lo que falta y
-                nunca mueve lo ya armado; "Reasignar todo" rehace el tablero y por eso pregunta. */}
-            {onAsignar && poolMostrado.length > 0 && (
+                nunca mueve lo ya armado; "Reasignar todo" rehace el tablero y por eso pregunta.
+                Cuenta solo lo ASIGNABLE (terminada): lo demás está visible pero Bodega todavía no
+                lo cerró, así que ni el botón ni el motor lo van a tocar. */}
+            {onAsignar && poolAsignable.length > 0 && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignar(); }}
@@ -587,7 +609,7 @@ export default function ManualDispatch({
               >
                 {iaLoading
                   ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
-                  : <><Sparkles size={14} aria-hidden="true" /> Asignar {poolMostrado.length}</>}
+                  : <><Sparkles size={14} aria-hidden="true" /> Asignar {poolAsignable.length}</>}
               </button>
             )}
             {onReasignarTodo && hayTrabajo && (
@@ -610,9 +632,14 @@ export default function ManualDispatch({
                 {todaLaFlota ? 'Ver solo los habilitados' : `+ Camión de otra empresa (${ocultos})`}
               </button>
             )}
-            <span className={`text-[13px] font-bold ${poolMostrado.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
-              {poolMostrado.length > 0 ? `${poolMostrado.length} restantes` : '✓ Todas asignadas'}
+            <span className={`text-[13px] font-bold ${poolAsignable.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+              {poolAsignable.length > 0 ? `${poolAsignable.length} restantes` : '✓ Todas asignadas'}
             </span>
+            {poolMostrado.length > poolAsignable.length && (
+              <span className="text-[11px] font-semibold text-kmuted" title="Tienen carga pero Bodega todavía no marcó la tienda como Terminada">
+                · {poolMostrado.length - poolAsignable.length} por terminar en Bodega
+              </span>
+            )}
           </div>
           {hasSelection && (
             <div className="px-4 py-2 bg-knavy/[0.05] border-b border-knavy/15 flex items-center gap-2 text-[12px]">
@@ -623,34 +650,31 @@ export default function ManualDispatch({
           )}
           <div className="p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start">
             {pool.length === 0 && paradasPool.length === 0 ? (
-              // [Tienda Terminada] "Todo asignado" sería engañoso si el pool está vacío porque
-              // ninguna tienda con carga fue marcada terminada todavía en Bodega (no porque ya
-              // se haya armado todo) — se avisa distinto para que no se confunda una cosa con la otra.
-              terminadas && Object.entries(calT).some(([c, d]) => enElPool(d) && !terminadas.has(c)) ? (
-                <div className="flex items-center gap-2 text-amber-600">
-                  <span className="text-[18px]">⏳</span>
-                  <span className="text-[13px] font-semibold">Hay tiendas con carga, pero ninguna está marcada &quot;Tienda Terminada&quot; en Bodega todavía</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-green-600">
-                  <span className="text-[18px]">✓</span>
-                  <span className="text-[13px] font-semibold">Todo asignado</span>
-                </div>
-              )
+              <div className="flex items-center gap-2 text-green-600">
+                <span className="text-[18px]">✓</span>
+                <span className="text-[13px] font-semibold">Todo asignado</span>
+              </div>
             ) : (
               <>
-                {poolMostrado.map(t => (
-                  <StoreTagComp
-                    key={t.c} store={t} tiendas={tiendas}
-                    isDragging={dragging?.c === t.c}
-                    selected={selected.has(t.c)}
-                    onToggleSelect={() => toggleSelect(t.c)}
-                    onDragStart={e => handleDragStart(e, t, 'pool')}
-                    onDragEnd={handleDragEnd}
-                    onTouchStart={e => handleTouchStart(e, t, 'pool')}
-                    onRemove={null}
-                  />
-                ))}
+                {poolMostrado.map(t => {
+                  // [Tienda Terminada] Se dibuja SIEMPRE (para que se sepa que la tienda va a salir
+                  // hoy), pero solo se puede arrastrar si Bodega ya la marcó terminada — antes de
+                  // eso el peso/cantidad de pallets puede seguir creciendo.
+                  const lista = !terminadas || terminadas.has(t.c);
+                  return (
+                    <StoreTagComp
+                      key={t.c} store={t} tiendas={tiendas}
+                      isDragging={dragging?.c === t.c}
+                      selected={selected.has(t.c)}
+                      pendienteTerminar={!lista}
+                      onToggleSelect={lista ? () => toggleSelect(t.c) : undefined}
+                      onDragStart={lista ? e => handleDragStart(e, t, 'pool') : e => e.preventDefault()}
+                      onDragEnd={handleDragEnd}
+                      onTouchStart={lista ? e => handleTouchStart(e, t, 'pool') : undefined}
+                      onRemove={null}
+                    />
+                  );
+                })}
                 {(() => {
                   // Una tienda sin grupo se muestra en RM/Costa porque es donde el registro la va
                   // a escribir. Se avisa para que nadie la dé por sentada en Regiones.
@@ -1047,15 +1071,19 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
   );
 }
 
-function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove, requireConfirm }: {
+function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove, requireConfirm, pendienteTerminar }: {
   store: StoreTag; tiendas: Record<string, TiendaInfo>; isDragging: boolean;
   selected?: boolean; onToggleSelect?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
-  onTouchStart: (e: React.TouchEvent) => void;
+  onTouchStart?: (e: React.TouchEvent) => void;
   onRemove: (() => void) | null;
   /** Pide "¿Quitar? Sí/No" antes de ejecutar onRemove — para tiendas ya asignadas a un camión. */
   requireConfirm?: boolean;
+  /** [Tienda Terminada] Tiene carga hoy pero Bodega todavía no la marcó terminada: se ve más clara,
+   *  no se puede arrastrar ni seleccionar en grupo. Sirve para anticipar cuánto va a salir, sin
+   *  dejar que se rutee con un conteo que todavía puede seguir creciendo. */
+  pendienteTerminar?: boolean;
 }) {
   const info = tiendas[store.c];
   // Tipo de tienda (Mall / Strip / Street / …) para el badge del chip — mismo helper que el Planificador.
@@ -1083,14 +1111,18 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
 
   return (
     <div
-      draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
+      draggable={!pendienteTerminar} onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
       style={!isDragging ? { boxShadow: '0 1px 3px rgba(27,42,107,0.15)' } : undefined}
-      className={`flex items-center gap-1.5 rounded-[8px] px-2 py-[3px] cursor-grab select-none transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
-        ? 'opacity-30 scale-95 bg-knavy/[0.05] border-knavy/20'
-        : selected
-          ? 'bg-knavy/[0.15] border-knavy text-knavy ring-2 ring-knavy/40'
-          : 'bg-knavy/[0.07] border-knavy/[0.25] text-knavy active:bg-knavy/[0.15]'}`}
-      title={info ? `${info.n} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b` : `${store.c} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b`}
+      className={`flex items-center gap-1.5 rounded-[8px] px-2 py-[3px] select-none transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
+        ? 'opacity-30 scale-95 cursor-grab bg-knavy/[0.05] border-knavy/20'
+        : pendienteTerminar
+          ? 'opacity-45 cursor-not-allowed bg-knavy/[0.03] border-knavy/[0.12] text-knavy/70 border-dashed'
+          : selected
+            ? 'cursor-grab bg-knavy/[0.15] border-knavy text-knavy ring-2 ring-knavy/40'
+            : 'cursor-grab bg-knavy/[0.07] border-knavy/[0.25] text-knavy active:bg-knavy/[0.15]'}`}
+      title={pendienteTerminar
+        ? `Pendiente de "Tienda Terminada" en Bodega — el conteo puede seguir creciendo, todavía no se puede asignar a un camión`
+        : (info ? `${info.n} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b` : `${store.c} · ${store.p}p ${store.b + ((store as { ch?: number }).ch ?? 0)}b`)}
     >
       {onToggleSelect && (
         <button
@@ -1106,6 +1138,7 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           fija al borde derecho (ml-auto). Prioridad ante angostura: el CÓDIGO no se achica (identidad
           de la tienda) y la × siempre queda visible; la CARGA es la que cede (min-w-0 + truncate). El
           alto bajó de 38 a 30px; la grilla adaptable evita que la tarjeta llegue a angostarse tanto. */}
+      {pendienteTerminar && <span className="text-[11px] flex-shrink-0" aria-hidden="true">⏳</span>}
       <span className="font-mono font-bold text-[13px] flex-shrink-0 whitespace-nowrap">{formatCod(store.c)}</span>
       {tp && (
         <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
