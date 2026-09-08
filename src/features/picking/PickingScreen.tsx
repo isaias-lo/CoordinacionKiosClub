@@ -33,7 +33,7 @@ import {
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
-import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, type Seccion } from './picking-secciones';
+import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -251,28 +251,56 @@ export function PickingScreen() {
   useRealtimeRefresh('picking_session_state', loadSessionState, true, 15000, 1000);
 
   // Merge server state into local — skip keys actively being edited by this client
-  // Only names are synced cross-client; tipos are managed locally per client (date-scoped localStorage)
+  // Only names son sincronizados cross-client; tipos son manejados localmente por cliente (date-scoped localStorage)
+  // Filtra por tipo==='P' (el que ya usaba onNameChange para el nombre) para no mezclarse con
+  // otros "usos" de esta misma tabla con el mismo state_key — ver pickerBatch (tipo='batch') abajo.
   useEffect(() => {
     if (!sessionStateRows.length) return;
     setPickerDisplayNames(prev => {
       const next = { ...prev };
       for (const r of sessionStateRows)
-        if (!dirtyStateKeys.current.has(r.state_key) && r.picker_label) next[r.state_key] = r.picker_label;
+        if (r.tipo === 'P' && !dirtyStateKeys.current.has(`${r.state_key}::P`) && r.picker_label) next[r.state_key] = r.picker_label;
+      return next;
+    });
+  }, [sessionStateRows]);
+
+  // Batch (Transferir Agrupación) manual — opcional, para encargados sin ese dato de Odoo
+  // (típicamente los manuales). Mismo mecanismo que el nombre (picking_session_state), con un
+  // tipo distinto ('batch') para no pisarse con el nombre en el mismo state_key.
+  const [pickerBatch, setPickerBatch] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!sessionStateRows.length) return;
+    setPickerBatch(prev => {
+      const next = { ...prev };
+      for (const r of sessionStateRows)
+        if (r.tipo === 'batch' && !dirtyStateKeys.current.has(`${r.state_key}::batch`)) next[r.state_key] = r.picker_label ?? '';
       return next;
     });
   }, [sessionStateRows]);
 
   // Debounced upsert — waits 500ms of inactivity before writing to server
+  // dirtyKey incluye el `tipo` — nombre y batch comparten state_key pero son ediciones
+  // independientes; sin esto, tipear el batch bloqueaba (por "dirty") la sync del nombre y
+  // viceversa.
   const upsertSessionState = useCallback((stateKey: string, pickerLabel: string, tipo: string) => {
-    dirtyStateKeys.current.add(stateKey);
-    clearTimeout(upsertTimers.current[stateKey]);
-    upsertTimers.current[stateKey] = setTimeout(() => {
+    const dirtyKey = `${stateKey}::${tipo}`;
+    dirtyStateKeys.current.add(dirtyKey);
+    clearTimeout(upsertTimers.current[dirtyKey]);
+    upsertTimers.current[dirtyKey] = setTimeout(() => {
       void pickingFetch('/api/picking-session-state', {
         method: 'POST',
         body: JSON.stringify({ state_key: stateKey, date: todayISO(), picker_label: pickerLabel, tipo }),
-      }).then(() => { dirtyStateKeys.current.delete(stateKey); });
+      }).then(() => { dirtyStateKeys.current.delete(dirtyKey); });
     }, 500);
   }, []);
+
+  // Setea el batch manual de un encargado y lo persiste — mismo patrón que onNameChange.
+  // Solo dígitos: se guarda el número crudo, el formato "BATCH/N" se aplica al mostrarlo.
+  const setPickerBatchValue = useCallback((stateKey: string, raw: string) => {
+    const num = raw.replace(/\D/g, '');
+    setPickerBatch(prev => ({ ...prev, [stateKey]: num }));
+    upsertSessionState(stateKey, num, 'batch');
+  }, [upsertSessionState]);
 
   // Al renombrar un picker, propaga el nombre a los slots YA creados de ese grupo. Su
   // picker_label queda congelado al crearse; sin esto, un equipo sin el nombre en sesión
@@ -990,8 +1018,8 @@ export function PickingScreen() {
           slotTipos.reduce((acc, t) =>
             slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
           , slotTipos[0]);
-        // BATCH (Transferir Agrupación) de Odoo: primer batch no vacío entre las operaciones del picker
-        const batch = group.operations.find(o => o.batch)?.batch ?? '';
+        // BATCH (Transferir Agrupación): de Odoo si hay, o el que se ingresó a mano (pickerBatch).
+        const batch = group.operations.find(o => o.batch)?.batch || (pickerBatch[group.stateKey] ? `BATCH/${pickerBatch[group.stateKey]}` : '');
         return pickingFetch('/api/picking-prints', {
           method: 'POST',
           body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch }),
@@ -1020,7 +1048,7 @@ export function PickingScreen() {
             slotTipos.reduce((acc, t) =>
               slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
             , slotTipos[0]);
-          const batch = group.operations.find(o => o.batch)?.batch ?? '';
+          const batch = group.operations.find(o => o.batch)?.batch || (pickerBatch[group.stateKey] ? `BATCH/${pickerBatch[group.stateKey]}` : '');
           enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch });
         }
       });
@@ -1042,7 +1070,7 @@ export function PickingScreen() {
     void loadPrintRecords();
 
     return failures;
-  }, [pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords]);
+  }, [pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords, pickerBatch]);
 
   // Imprime y registra SOLO los labels de un picker específico.
   // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
@@ -1138,13 +1166,18 @@ export function PickingScreen() {
       for (const group of sortedGroups) {
         const groupSlots = storeSlots.filter(s => s.state_key === group.stateKey);
         if (!groupSlots.length) continue;
-        const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
+        // Modo manual: sin operaciones de Odoo no hay `op.categories` de dónde sacar el tipo de
+        // carga — antes la etiqueta impresa salía siempre sin categoría para un encargado
+        // manual. Se deriva de la sección real de sus pallets (la elegida al crearlo).
+        const allCategories = group.operations.length > 0
+          ? [...new Set(group.operations.flatMap(o => o.categories))]
+          : categoriasDeSlotsManual(groupSlots);
         const refs  = group.operations.map(o => o.name).join('+');
         const cats  = allCategories.join(',');
         // Prioridad: 1) nombre del supervisor en esta sesión, 2) canónico de Supabase, 3) label del slot (histórico), 4) clave Odoo
         const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || groupSlots[0]?.picker_label || group.key;
-        // Batch (Transferir Agrupación) del grupo — misma derivación que ya usa recordPrints.
-        const batch = group.operations.find(o => o.batch)?.batch ?? undefined;
+        // Batch (Transferir Agrupación): de Odoo si hay, o el que se ingresó a mano (pickerBatch).
+        const batch = group.operations.find(o => o.batch)?.batch ?? (pickerBatch[group.stateKey] ? `BATCH/${pickerBatch[group.stateKey]}` : undefined);
         // Hora de término: solo si TODAS las operaciones del grupo ya cerraron (state 'done') —
         // si alguna sigue abierta, no se imprime un "término" prematuro/engañoso. Entre las
         // operaciones cerradas, la más reciente (comparación lexicográfica válida en
@@ -1184,7 +1217,7 @@ export function PickingScreen() {
       }
     }
     return labels;
-  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, getCanonicalName]);
+  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, getCanonicalName, pickerBatch]);
 
   const hasBarcodes = printableLabels.length > 0;
 
@@ -1664,13 +1697,20 @@ export function PickingScreen() {
                           // Congelados se determina por las categorías del propio grupo (no por el
                           // filtro de página): en la vista "Todas" cada card debe mostrar SOLO Caja
                           // Cartón/Caja Negra si es de Congelados, sin importar en qué columna cae.
-                          const isCongelados = group.operations.some(o => o.categories.includes('Congelados'));
+                          // Modo manual: sin operaciones de Odoo, cae a la sección real de sus pallets.
+                          const isCongelados = group.operations.length > 0
+                            ? group.operations.some(o => o.categories.includes('Congelados'))
+                            : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
                           // Para el CONTENIDO/refs del pallet (que lee Bodega/Sheets) usamos las operaciones
                           // del grupo COMPLETO (no las recortadas por sección), para NO cambiar lo que Bodega
                           // ve/escribe respecto a antes. La sección va aparte, en la columna `section`.
                           const fullOps = (allGroupedByStore[group.storeCod] ?? []).find(g => g.stateKey === group.stateKey)?.operations ?? group.operations;
-                          const fullGroupCats = [...new Set(fullOps.flatMap(o => o.categories))];
-                          const fullIsCongelados = fullOps.some(o => o.categories.includes('Congelados'));
+                          const fullGroupCats = fullOps.length > 0
+                            ? [...new Set(fullOps.flatMap(o => o.categories))]
+                            : categoriasDeSlotsManual(allCardSlots);
+                          const fullIsCongelados = fullOps.length > 0
+                            ? fullOps.some(o => o.categories.includes('Congelados'))
+                            : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
                           return (
                             <PickerGroupCard
                               key={group.stateKey}
@@ -1681,6 +1721,8 @@ export function PickingScreen() {
                               isCongelados={isCongelados}
                               adelanto={adelantoByCod[group.storeCod]}
                               otroDia={otroDiaGroupKeys.has(group.stateKey)}
+                              batchValue={pickerBatch[group.stateKey] ?? ''}
+                              onBatchChange={raw => setPickerBatchValue(group.stateKey, raw)}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
