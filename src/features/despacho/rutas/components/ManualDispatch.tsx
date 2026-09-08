@@ -196,9 +196,17 @@ export default function ManualDispatch({
   // excepción, o cambió la config con el día armado — esconderlos dejaría carga fuera de la vista.
   const activos    = flota.filter(v => v.on);
   const ofrecidos  = todaLaFlota ? activos : flotaDePool(activos, poolScope, zonasCfg);
-  const extra      = todaLaFlota ? [] : camionesExtra(activos, ofrecidos, asignaciones);
+  const extraZona  = todaLaFlota ? [] : camionesExtra(activos, ofrecidos, asignaciones);
+  // [Bug carga invisible] Apagar un camión no le saca la carga (el tablero solo se ACUMULA, ver
+  // `flotaConCapacidadRestante`/preflightCierre): si ese camión desaparecía del tablero, sus
+  // tiendas quedaban invisibles — ni en su columna (no se dibuja) ni en el pool (siguen en
+  // `asignadasSet`). Reportado 2026-09-08: 10 tiendas asignadas repartidas en varios camiones,
+  // con solo 2 activos, se veían solo 4. Se muestran igual, para que el coordinador las note y
+  // decida: reactivar el camión o mover la carga a uno activo.
+  const extraApagados = flota.filter(v => !v.on && (asignaciones[v.p]?.length ?? 0) > 0);
+  const extra      = [...extraZona, ...extraApagados];
   const flotaDisp  = [...ofrecidos, ...extra].sort(porRecencia);
-  const ocultos    = activos.length - flotaDisp.length;
+  const ocultos    = activos.length - (ofrecidos.length + extraZona.length);
 
   // P10b: mover todas las tiendas seleccionadas a una patente (o de vuelta al pool) de una vez
   function toggleSelect(code: string) {
@@ -737,10 +745,11 @@ export default function ManualDispatch({
                           ? '0 2px 10px rgba(245,158,11,0.18)'
                           : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
                 borderLeftWidth: '4px',
-                borderLeftColor: cerrado ? '#16A34A' : g.color,
+                borderLeftColor: cerrado ? '#16A34A' : !v.on ? '#DC2626' : g.color,
               }}
               className={`rounded-[14px] border-[1.5px] transition-all flex flex-col min-w-0 ${
                 cerrado ? 'bg-green-50/70 border-green-500/50'
+                : !v.on ? 'bg-red-50/60 border-red-400/60'
                 : isOver || isPreview || selForClose ? 'bg-white border-knavy'
                 : m.overCap ? 'bg-white border-amber-400'
                 : 'bg-white border-black/[0.08]'}`}
@@ -766,6 +775,7 @@ export default function ManualDispatch({
                   )}
                   <span className={`font-mono font-bold text-[17px] leading-none tracking-tight ${cerrado ? 'text-green-700' : 'text-ktext'}`}>{v.p}</span>
                   <div className="flex gap-1 flex-wrap justify-end ml-auto">
+                    {!v.on && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-[2px] rounded font-bold" title="Este camión está apagado — su carga sigue asignada pero no va a salir así">⚠ Apagado</span>}
                     {cerrado     && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
                     {isPreview && !cerrado && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
