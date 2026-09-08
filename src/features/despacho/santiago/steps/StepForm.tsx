@@ -127,7 +127,7 @@ interface ResumenEditState {
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat,
+  tipoCat, terminada,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -135,6 +135,10 @@ function TiendaGridCard({
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number; despachoCH?: number;
   hasGuide?: boolean; storeStatus?: 'none' | 'partial' | 'complete'; storeDoneOps?: number; storeTotalOps?: number;
+  /** [Tienda Terminada] Marcador manual de Bodega — se ve por encima de "tiene guía"/"es hoy"
+   *  para que quien mira la grilla nunca confunda una tienda cerrada con una que sigue abierta
+   *  y todavía puede sumar más pallets. */
+  terminada?: boolean;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -155,6 +159,8 @@ function TiendaGridCard({
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
           ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
+          : terminada
+          ? 'bg-[#16A34A] border-2 border-[#16A34A] shadow-sm'
           : hasGuide
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success active:bg-[rgba(22,163,74,0.12)]'
           : isToday
@@ -171,12 +177,15 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : hasGuide ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasGuide ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
+      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide ${terminada ? 'text-white/90' : 'text-text-2'}`}>
         {t.tienda}
       </div>
+      {terminada && (
+        <span className="text-[9px] font-extrabold text-white/95 tracking-wide uppercase mt-0.5">✓ Terminada</span>
+      )}
       {(() => {
         const tb = tipoBadge(tipoCat);
         return tb ? (
@@ -1730,6 +1739,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
+                  terminada={terminadas.get(t.cod)?.terminada === true}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -1767,6 +1777,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
+                  terminada={terminadas.get(t.cod)?.terminada === true}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );

@@ -120,10 +120,14 @@ interface GridCardProps {
   storeDoneOps?: number;
   storeTotalOps?: number;
   tipoCat?: string;
+  /** [Tienda Terminada] Marcador manual de Bodega — se ve por encima de "tiene guía"/"es hoy"
+   *  para que quien mira la grilla nunca confunda una tienda cerrada con una que sigue abierta
+   *  y todavía puede sumar más pallets. */
+  terminada?: boolean;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, onSelect, onDragStart }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -140,18 +144,23 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${isActive
           ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
+          : terminada
+          ? 'bg-[#16A34A] border-2 border-[#16A34A] shadow-sm'
           : hasPdf
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
           : isToday
           ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] hover:bg-[rgba(30,64,175,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : hasPdf ? 'text-success' : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className="text-[10px] font-semibold text-text-2 w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide">
+      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide ${terminada ? 'text-white/90' : 'text-text-2'}`}>
         {t.name}
       </div>
+      {terminada && (
+        <span className="text-[9px] font-extrabold text-white/95 tracking-wide uppercase mt-0.5">✓ Terminada</span>
+      )}
       {(() => {
         const tb = tipoBadge(tipoCat);
         return tb ? (
@@ -2127,6 +2136,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       storeStatus={prog?.status ?? 'none'}
                       storeDoneOps={storeDoneOpsSeco}
                       storeTotalOps={storeTotalOpsSeco}
+                      terminada={terminadas.get(t.cod)?.terminada === true}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)} />
                   );
@@ -2177,6 +2187,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         storeStatus="none"
                         storeDoneOps={0}
                         storeTotalOps={0}
+                        terminada={terminadas.get(t.cod)?.terminada === true}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)} />
                     );
