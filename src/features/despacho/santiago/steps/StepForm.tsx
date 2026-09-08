@@ -860,11 +860,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       if (hasPicking) {
         // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
         // Indexar items guardados: por slot (pickingSlotId) y un pool por tipo de respaldo.
-        const savedBySlot = new Map<number, SantiagoItem>();
+        // OJO: es un ARRAY por slot, no un solo item. Si 2 items guardados terminan con el MISMO
+        // pickingSlotId (ej. carrera al materializar el mismo slot dos veces), un Map de 1 solo
+        // valor pierde en silencio al primero con el `.set()` del segundo — el ítem seguía
+        // existiendo en `existing`/el estado (por eso el conteo daba de más) pero nunca volvía a
+        // aparecer como tarjeta editable, así que tampoco se podía borrar desde la UI. Mismo bug
+        // reportado 2026-09-08 en TiendasPage.tsx (Regiones), 28 TEM.
+        const savedBySlot = new Map<number, SantiagoItem[]>();
         const leftoverByTipo = new Map<string, SantiagoItem[]>();
         for (const it of existing) {
-          if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
-          else {
+          if (it.pickingSlotId) {
+            const arr = savedBySlot.get(it.pickingSlotId) ?? [];
+            arr.push(it); savedBySlot.set(it.pickingSlotId, arr);
+          } else {
             const arr = leftoverByTipo.get(it.tipo) ?? [];
             arr.push(it); leftoverByTipo.set(it.tipo, arr);
           }
@@ -885,9 +893,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           const sid  = (s as { id?: number }).id || 0;
           const tipo = SANT_TIPO[s.tipo] ?? 'Pallet';
           // 1) match por slot  2) fallback: item guardado del mismo tipo sin vínculo
-          let saved = sid ? savedBySlot.get(sid) : undefined;
-          if (saved) savedBySlot.delete(sid);
-          else saved = takeLeftover(tipo);
+          const slotPool = sid ? savedBySlot.get(sid) : undefined;
+          let saved = slotPool?.shift();
+          if (saved && slotPool && slotPool.length === 0) savedBySlot.delete(sid);
+          if (!saved) saved = takeLeftover(tipo);
 
           // 3) Chocolate sin guardar → materializar agregado con peso por defecto
           if (!saved && tipo === 'Chocolate' && regimen) {
@@ -922,8 +931,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             });
           }
         });
-        // Items guardados sin slot vigente (manuales o slot eliminado) → al final, siempre como tarjeta
-        const remaining: SantiagoItem[] = [...savedBySlot.values()];
+        // Items guardados sin slot vigente (manuales o slot eliminado, o el "sobrante" de un slot
+        // duplicado) → al final, siempre como tarjeta.
+        const remaining: SantiagoItem[] = [...savedBySlot.values()].flat();
         for (const pool of leftoverByTipo.values()) remaining.push(...pool);
         for (const it of remaining) {
           rows.push({

@@ -584,11 +584,19 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (hasPickingData) {
         // ── Reconstrucción determinista: un row por slot de picking (incluye CH) ──
         // Indexar items guardados: por slot (pickingSlotId) y un pool por pkg de respaldo.
-        const savedBySlot = new Map<number, DispatchItem>();
+        // OJO: es un ARRAY por slot, no un solo item. Si por lo que sea 2 items guardados terminan
+        // con el MISMO pickingSlotId (ej. carrera al materializar el mismo slot dos veces), un Map
+        // de 1 solo valor pierde en silencio al primero con el `.set()` del segundo — el pallet
+        // seguía existiendo en `dispatchData` (por eso el conteo del Enrutador/tarjeta daba de más)
+        // pero nunca volvía a aparecer como tarjeta editable, así que tampoco se podía borrar desde
+        // la UI. Bug reportado 2026-09-08 en 28 TEM (3 pallets reales, 2 tarjetas visibles).
+        const savedBySlot = new Map<number, DispatchItem[]>();
         const leftoverByPkg = new Map<string, DispatchItem[]>();
         for (const it of existingItems) {
-          if (it.pickingSlotId) savedBySlot.set(it.pickingSlotId, it);
-          else {
+          if (it.pickingSlotId) {
+            const arr = savedBySlot.get(it.pickingSlotId) ?? [];
+            arr.push(it); savedBySlot.set(it.pickingSlotId, arr);
+          } else {
             const arr = leftoverByPkg.get(it.pkg) ?? [];
             arr.push(it); leftoverByPkg.set(it.pkg, arr);
           }
@@ -608,9 +616,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           const sid = (s as { id?: number }).id || 0;
           const pkg = PICKING_PKG[s.tipo] ?? 'pallet';
           // 1) match por slot  2) fallback: item guardado del mismo pkg sin vínculo
-          let saved = sid ? savedBySlot.get(sid) : undefined;
-          if (saved) savedBySlot.delete(sid);
-          else saved = takeLeftover(pkg);
+          const slotPool = sid ? savedBySlot.get(sid) : undefined;
+          let saved = slotPool?.shift();
+          if (saved && slotPool && slotPool.length === 0) savedBySlot.delete(sid);
+          if (!saved) saved = takeLeftover(pkg);
 
           // 3) Chocolate sin guardar → materializar agregado con peso por defecto
           if (!saved && pkg === 'chocolate') {
@@ -649,18 +658,21 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             });
           }
         });
-        // Items guardados sin slot vigente (manuales o slot eliminado) → al final, siempre como tarjeta
-        const remaining: DispatchItem[] = [...savedBySlot.values()];
+        // Items guardados sin slot vigente (manuales o slot eliminado, o el "sobrante" de un slot
+        // duplicado) → al final, siempre como tarjeta. El índice del loop entra al id porque 2
+        // sobrantes pueden compartir `orden` (ej. dos pallets sin renumerar) — sin el índice,
+        // volvía a colisionar la key de React y una tarjeta real se quedaba sin dibujar.
+        const remaining: DispatchItem[] = [...savedBySlot.values()].flat();
         for (const pool of leftoverByPkg.values()) remaining.push(...pool);
-        for (const it of remaining) {
+        remaining.forEach((it, ri) => {
           rows.push({
-            id: `savedm-${it.orden}-${Date.now()}`, pkg: it.pkg, tipo: it.tipo,
+            id: `savedm-${it.orden}-${ri}-${Date.now()}`, pkg: it.pkg, tipo: it.tipo,
             peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
             ancho: String(it.ancho ?? ''), largo: String(it.largo ?? ''),
             guia: it.guia || '', valor: it.valor ? String(it.valor) : '',
             saved: true, savedItem: it, pickingSlotId: it.pickingSlotId,
           });
-        }
+        });
         setFormRows(rows);
 
         // Persistir en el estado los chocolates auto-agregados + reflejar peso en picking_pallets

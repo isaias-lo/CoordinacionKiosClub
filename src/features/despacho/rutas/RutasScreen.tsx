@@ -179,6 +179,17 @@ export default function RutasScreen() {
   useEffect(() => {
     try { localStorage.setItem('flotaOrdenActivacion', JSON.stringify(flotaActivadaEn)); } catch {}
   }, [flotaActivadaEn]);
+  // [Asignación automática] Interruptor para el efecto de más abajo que completa el tablero solo
+  // cuando llega carga nueva de Bodega. Por defecto ON (comportamiento de siempre); apagarlo deja
+  // que el coordinador arme todo a mano sin que el sistema le "adelante" camiones. Persiste en
+  // localStorage — es una preferencia de armado local, igual que el orden de activación de arriba.
+  const [asignacionAutomatica, setAsignacionAutomatica] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try { const v = localStorage.getItem('asignacionAutomaticaOn'); return v === null ? true : v === '1'; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('asignacionAutomaticaOn', asignacionAutomatica ? '1' : '0'); } catch {}
+  }, [asignacionAutomatica]);
   const [cal,     setCal]     = useState<CalRecord>(() => {
     // Fast-path: use localStorage cache written by the Calendario de Abastecimiento (if fresh)
     try {
@@ -1788,7 +1799,11 @@ export default function RutasScreen() {
   // ZONAS_DEFAULT, así que cambiar un transportista en Config no movía ni una tienda. Pasarla acá
   // es lo que hace que esa pantalla signifique algo. Si no cargó todavía, `undefined` → el default.
   // `enrutarCon` recibe la flota explícita para poder excluir camiones (p. ej. los ya cerrados);
-  // `enrutar` es el caso normal, con toda la flota.
+  // `enrutar` es el caso normal, con la flota ACTIVA (nunca con toda: un camión apagado no sale
+  // hoy, y proponerle una ruta terminaba asignándole tiendas que después el tablero esconde —
+  // bug reportado 2026-09-08, "10 tiendas asignadas a camiones que tuve que activar para ver-
+  // las". `completarAsignacion`/`flotaConCapacidadRestante` ya filtraban por `.on`; esto empareja
+  // el resto de los flujos (Reasignar todo, Calcular manual) con ese mismo criterio).
   const enrutarCon = (
     flotaUsada: Vehiculo[], pool: StoreItem[],
     egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>,
@@ -1798,7 +1813,7 @@ export default function RutasScreen() {
       : { rutas: asignar(pool, flotaUsada, egps, cdRef.current, null, null, null, etiendas, false),
           consolidacion: [], fueraDeRadio: [], costa: [], segundaVuelta: [], sinFlota: [], avisos: [] };
   const enrutar = (pool: StoreItem[], egps: Record<string, number[]>, etiendas: Record<string, TiendaInfo>): ResultadoEnrutador =>
-    enrutarCon(flota, pool, egps, etiendas);
+    enrutarCon(flota.filter(v => v.on), pool, egps, etiendas);
 
   // ── Calculate routes (modo MANUAL) ───────────────────────────────
   // Nota: el tab CALCULAR fue eliminado; este handler sólo se activa desde el modo MANUAL.
@@ -1946,8 +1961,10 @@ export default function RutasScreen() {
     const congeladas = codsEnCerradas(manualAsignaciones, cerradasV1);
     const stores = poolDesdeCalT(calT, terminadas).filter(t => !congeladas.has(t.c));
     if (!stores.length) { setErrors(['No hay tiendas con carga para asignar.']); return; }
-    const flotaLibre = flota.filter(v => !isCerrada(cerradasV1, v.p));
-    if (!flotaLibre.some(v => v.on)) { setErrors(['No hay camiones activos para asignar.']); return; }
+    // Solo camiones ACTIVOS: uno apagado no sale hoy, así que no se le propone carga nueva (ver
+    // comentario en `enrutar`, mismo bug — un camión apagado con carga asignada queda invisible).
+    const flotaLibre = flota.filter(v => v.on && !isCerrada(cerradasV1, v.p));
+    if (!flotaLibre.length) { setErrors(['No hay camiones activos para asignar.']); return; }
     const { extGps, extTiendas } = buildExtendidos(gps, tiendas);
     const { rutas, consolidacion, avisos } = enrutarCon(flotaLibre, stores, extGps, extTiendas);
     const asig: Record<string, StoreItem[]> = {};
@@ -2011,13 +2028,13 @@ export default function RutasScreen() {
   const poolSig   = useMemo(() => codsEnPool(calT).join(','), [calT]);
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
   useEffect(() => {
-    if (!poolSig || !trucksSig) return;
+    if (!asignacionAutomatica || !poolSig || !trucksSig) return;
     // Los DOS pools, no solo el que se está mirando: las tiendas que Bodega registra para Regiones
     // tienen que asignarse solas aunque el coordinador esté trabajando RM en ese momento. El
     // `scope` es para las acciones que se piden a mano; esto corre en segundo plano y solo agrega.
     const t = setTimeout(() => completarRef.current(['rm-costa', 'regiones']), 1000);
     return () => clearTimeout(t);
-  }, [poolSig, trucksSig]);
+  }, [asignacionAutomatica, poolSig, trucksSig]);
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
@@ -2685,6 +2702,7 @@ export default function RutasScreen() {
         dnom={DNOM} calT={sortedCalT}
         mapContent={isMobile ? mapPanel : undefined}
         terminadas={terminadas}
+        asignacionAutomatica={asignacionAutomatica} onToggleAsignacionAutomatica={() => setAsignacionAutomatica(v => !v)}
       />
 
       <main className="flex-1 overflow-hidden">

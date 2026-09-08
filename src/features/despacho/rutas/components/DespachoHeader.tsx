@@ -23,6 +23,10 @@ interface Props {
    *  terminada — mismo criterio que el tablero DESPACHO, para no mostrar un número más alto
    *  que las tarjetas que realmente se ven abajo. */
   terminadas?: ReadonlySet<string>;
+  /** [Asignación automática] Si el sistema completa el tablero solo cuando llega carga nueva de
+   *  Bodega (ON, default) o si el coordinador prefiere armar todo a mano (OFF). */
+  asignacionAutomatica: boolean;
+  onToggleAsignacionAutomatica: () => void;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -50,6 +54,25 @@ function RefreshButton({ compact }: { compact?: boolean }) {
     >
       <RefreshCw size={14} className={status.status === 'loading' ? 'animate-spin' : ''} aria-hidden="true" />
       {!compact && <span className="text-[11px] font-bold">{label}</span>}
+    </button>
+  );
+}
+
+/** Interruptor "Asignación automática" — cuando está ON (default), el sistema completa el
+ *  tablero solo apenas Bodega registra carga nueva. Apagado, el coordinador arma todo a mano. */
+function AutoAsignarToggle({ on, onToggle, compact }: { on: boolean; onToggle: () => void; compact?: boolean }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-label={`Asignación automática ${on ? 'activada' : 'desactivada'}`}
+      title={on ? 'Asignación automática ON — clic para armar todo a mano' : 'Asignación automática OFF — el tablero no se completa solo'}
+      className={`flex items-center gap-1.5 h-[38px] rounded-[10px] flex-shrink-0 transition-all active:scale-95 border ${
+        on ? 'bg-kbg border-black/[0.10] text-kmuted hover:text-ktext hover:border-black/[0.18]'
+           : 'bg-amber-50 border-amber-400 text-amber-700'
+      } ${compact ? 'w-[38px] justify-center' : 'px-3'}`}
+    >
+      <span className="text-[13px] leading-none">{on ? '🤖' : '✋'}</span>
+      {!compact && <span className="text-[11px] font-bold whitespace-nowrap">{on ? 'Auto: ON' : 'Auto: OFF'}</span>}
     </button>
   );
 }
@@ -107,6 +130,7 @@ function HeaderFields({
 export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
   dnom, calT, mapContent, terminadas,
+  asignacionAutomatica, onToggleAsignacionAutomatica,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -130,6 +154,7 @@ export default function DespachoHeader({
           <div className="min-w-0 flex-1 text-[12px] text-kmuted truncate">
             <span className="font-semibold text-ktext">{supervisor || 'Sin supervisor'}</span> · {totalStores} tiendas
           </div>
+          <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} compact />
           <RefreshButton compact />
         </div>
 
@@ -196,6 +221,7 @@ export default function DespachoHeader({
 
         <div className="flex-1 min-w-[8px]" />
 
+        <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} />
         <RefreshButton />
 
         {/* + Parada */}
