@@ -39,6 +39,19 @@ const GRP_ICON: Record<string, LucideIcon> = {
   rm: Package, costa: Waves, fal: Building2, general: ClipboardList,
 };
 
+// Zonas de la vista "General" (todas las tiendas del día, coloreadas por zona). Antes vivía
+// declarado adentro del bloque `grp === 'general'`, sin estado — la "leyenda" de colores se veía
+// como si fueran filtros clicables (chips redondeados, bordeados) pero no filtraba nada.
+type GZone = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
+const GZONE: Record<GZone, { accent: string; label: string }> = {
+  rm:    { accent: '#475569', label: 'RM'             },
+  mall:  { accent: '#D42B2B', label: 'Mall RM'        },  // rojo del logo K (kred)
+  costa: { accent: '#2563EB', label: 'Costa'          },
+  norte: { accent: '#D97706', label: 'Regiones Norte' },
+  sur:   { accent: '#16A34A', label: 'Regiones Sur'   },
+};
+const TODAS_LAS_ZONAS = new Set<GZone>(['rm', 'mall', 'costa', 'norte', 'sur']);
+
 
 /** Ficha mínima que el calendario necesita de cada tienda. `lat` es para separar norte de sur. */
 type TiendaCal = { n: string; z: string; d: string; tipo: string; lat: number | null };
@@ -75,6 +88,10 @@ export default function CalendarioColumnas({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [lastSaved, setLastSaved]   = useState<string | null>(null);
   const [grp, setGrp]               = useState(forceGeneral ? 'general' : 'rm');
+  // Filtro de zona de la vista "General" — antes la leyenda RM/Mall RM/Costa/Regiones Norte/
+  // Regiones Sur no filtraba nada, solo coloreaba. Empieza con todas activas (comportamiento
+  // idéntico al de antes) y cada chip se puede apagar/prender.
+  const [activeZones, setActiveZones] = useState<Set<GZone>>(new Set(TODAS_LAS_ZONAS));
   const [search, setSearch]         = useState('');
   const [suggest, setSuggest]       = useState<string[]>([]);
   const [showSug, setShowSug]       = useState(false);
@@ -724,29 +741,51 @@ export default function CalendarioColumnas({
 
       {/* ── General view: days as columns, stores as chips (PDF-style) ── */}
       {grp === 'general' && (() => {
-        type GZone = 'rm' | 'mall' | 'costa' | 'norte' | 'sur';
-        const GZONE: Record<GZone, { accent: string; label: string }> = {
-          rm:    { accent: '#475569', label: 'RM'             },
-          mall:  { accent: '#D42B2B', label: 'Mall RM'        },  // rojo del logo K (kred)
-          costa: { accent: '#2563EB', label: 'Costa'          },
-          norte: { accent: '#D97706', label: 'Regiones Norte' },
-          sur:   { accent: '#16A34A', label: 'Regiones Sur'   },
-        };
+        const toggleZone = (z: GZone) => setActiveZones(prev => {
+          const next = new Set(prev);
+          if (next.has(z)) { if (next.size > 1) next.delete(z); } // siempre al menos una activa
+          else next.add(z);
+          return next;
+        });
+        // Una sola vez por día: código + zona, YA filtrado por activeZones — el header (conteo)
+        // y el body (chips) usan la misma lista, así el número de arriba siempre coincide con
+        // lo que realmente se ve abajo.
+        const storesPorDia: Record<string, { cod: string; zone: GZone }[]> = {};
+        for (const dia of visibleDias) {
+          const rm    = local![dia]?.rm    || [];
+          const costa = local![dia]?.costa || [];
+          const fal   = local![dia]?.fal   || [];
+          const all: { cod: string; zone: GZone }[] = [
+            ...fal.map(c   => ({ cod: c, zone: (esNorte(c) ? 'norte' : 'sur') as GZone })),
+            ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
+            ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as GZone })),
+          ];
+          storesPorDia[dia] = all.filter(s => activeZones.has(s.zone));
+        }
         return (
           <div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {(Object.entries(GZONE) as [GZone, typeof GZONE[GZone]][]).map(([z, zc]) => (
-                <div key={z} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: '#F1F5F9', border: '1px solid #E2E8F0', borderLeft: `3px solid ${zc.accent}` }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{zc.label}</span>
-                </div>
-              ))}
+              {(Object.entries(GZONE) as [GZone, typeof GZONE[GZone]][]).map(([z, zc]) => {
+                const active = activeZones.has(z);
+                return (
+                  <button key={z} onClick={() => toggleZone(z)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6,
+                      background: active ? '#F1F5F9' : '#fff', border: `1px solid ${active ? '#E2E8F0' : '#F1F5F9'}`,
+                      borderLeft: `3px solid ${active ? zc.accent : '#E2E8F0'}`, cursor: 'pointer',
+                      opacity: active ? 1 : 0.55,
+                    }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: active ? '#475569' : '#94A3B8' }}>{zc.label}</span>
+                  </button>
+                );
+              })}
             </div>
             <div style={{ overflowX: 'auto', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
                 <thead>
                   <tr>
                     {visibleDias.map(dia => {
-                      const count = (local![dia]?.rm?.length || 0) + (local![dia]?.costa?.length || 0) + (local![dia]?.fal?.length || 0);
+                      const count = storesPorDia[dia].length;
                       const isToday = dia === TODAY_DIA;
                       return (
                         <th key={dia} style={{
@@ -764,14 +803,7 @@ export default function CalendarioColumnas({
                 <tbody>
                   <tr>
                     {visibleDias.map(dia => {
-                      const rm    = local![dia]?.rm    || [];
-                      const costa = local![dia]?.costa || [];
-                      const fal   = local![dia]?.fal   || [];
-                      const stores: { cod: string; zone: GZone }[] = [
-                        ...fal.map(c   => ({ cod: c, zone: (esNorte(c) ? 'norte' : 'sur') as GZone })),
-                        ...costa.map(c => ({ cod: c, zone: 'costa'                                    as GZone })),
-                        ...rm.map(c    => ({ cod: c, zone: (getTipo(c) === 'mall' ? 'mall' : 'rm')    as GZone })),
-                      ];
+                      const stores = storesPorDia[dia];
                       return (
                         <td key={dia} style={{ verticalAlign: 'top', padding: '8px 6px 10px', borderRight: '1px solid #E2E8F0', background: '#fff', minWidth: 118 }}>
                           {stores.length === 0 ? (

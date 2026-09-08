@@ -110,7 +110,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
             </div>
             <button style={{ ...bigBtn, borderColor: '#BFDBFE', background: '#F8FAFF' }} onClick={() => setModo('preexistente')}>
               <div className="text-[16px] font-bold" style={{ color: '#1E40AF' }}>📦 Preexistente (ya etiquetado)</div>
-              <div className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>Pallet adelantado de otro día que ya tiene su etiqueta.</div>
+              <div className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>{tipoLabel} adelantado de otro día que ya tiene su etiqueta.</div>
             </button>
           </div>
         ) : (

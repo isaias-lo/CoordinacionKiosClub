@@ -554,8 +554,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           const cod = String(t.codigo ?? '');
           if (!cod || t.activo === false) continue;
           const corredor = String(t.corredor ?? '').toLowerCase();
-          const region   = String(t.region   ?? '').toLowerCase();
-          const isVR     = corredor.includes('costa') || region.includes('valparaíso') || region === 'vr';
+          // Sin normalizar acentos: "Valparaiso" (sin tilde, variante común de captura de datos)
+          // no matcheaba nunca contra 'valparaíso' → esa tienda quedaba clasificada como RM en
+          // vez de Costa, sin aviso — el badge "COSTA" de la sección HOY se quedaba en 0 para
+          // siempre (parecía que el sub-filtro RM/Costa no importara). Mismo criterio que ya usa
+          // sectores.ts para esto mismo.
+          const region = String(t.region ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isVR     = corredor.includes('costa') || region.includes('valparaiso') || region === 'vr';
           const raw      = String(t.frecuencia ?? '');
           const dias     = raw ? raw.split(/[,;\s]+/).map(d => d.trim().toUpperCase()).filter(Boolean) : [];
           const tipoVal  = String(t.tipo ?? '');

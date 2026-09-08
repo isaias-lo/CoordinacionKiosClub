@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -20,14 +21,20 @@ export function FinishModal({ open, onClose }: Props) {
   const { dispatch: dispatchData, dispatchDate } = state;
   const { user } = useAuth();
 
-  if (!open) return null;
-
   const withItems = Object.entries(dispatchData).filter(([, items]) => items.length > 0);
-  if (!withItems.length) {
-    showToast('No hay despachos para terminar', '#D97706');
-    onClose();
-    return null;
-  }
+
+  // El aviso + cierre son un efecto secundario de "no hay nada que registrar", no parte del
+  // render — llamar showToast() (un dispatch) directo en el cuerpo del componente viola las
+  // reglas de React (setState durante el render de OTRO componente) y podía disparar un loop
+  // de renders sin control. Se dispara solo una vez por apertura vacía (useEffect + deps).
+  useEffect(() => {
+    if (open && withItems.length === 0) {
+      showToast('No hay despachos para terminar', '#D97706');
+      onClose();
+    }
+  }, [open, withItems.length, showToast, onClose]);
+
+  if (!open || !withItems.length) return null;
 
   let tp = 0, tb = 0, tc = 0, tch = 0;
   const tiendaStats = withItems.map(([name, items]) => {
