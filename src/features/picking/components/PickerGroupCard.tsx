@@ -5,6 +5,7 @@ import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
+import { categoriasDeSlotsManual } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
 
 // ─── StateBadge ───────────────────────────────────────────────────────────────
@@ -46,6 +47,10 @@ interface Props {
   isCongelados?: boolean;
   adelanto?: { fecha_despacho: string | null }; // si la tienda es un adelanto
   otroDia?: boolean; // fecha del "Documento origen" en Odoo distinta a hoy — solo advertencia
+  // Batch (Transferir Agrupación) manual — opcional, para encargados sin ese dato de Odoo.
+  // Solo el número; el formato "BATCH/N" se aplica al mostrarlo/imprimirlo.
+  batchValue?: string;
+  onBatchChange?: (raw: string) => void;
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
@@ -53,6 +58,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
   lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
+  batchValue, onBatchChange,
 }: Props) {
   // Dos cosas DISTINTAS que antes vivían en una sola variable (`allDone`):
   //  - odooConfirmado: para el badge verde "Realizado" — un grupo manual (sin operaciones de
@@ -65,7 +71,12 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   //    Odoo = nada que esperar de Odoo = no bloqueado.
   const odooConfirmado  = group.operations.length > 0 && group.operations.every(o => o.state === 'done');
   const sinBloqueoOdoo  = group.operations.length === 0 || group.operations.every(o => o.state === 'done');
-  const allCategories = [...new Set(group.operations.flatMap(o => o.categories))];
+  // Modo manual: sin operaciones de Odoo no hay categorías de dónde sacar el tipo de carga —
+  // se derivan de la sección real de los pallets (la elegida al crear el encargado). Sin esto,
+  // la card/etiqueta de un encargado manual nunca mostraba el tipo de carga.
+  const allCategories = group.operations.length > 0
+    ? [...new Set(group.operations.flatMap(o => o.categories))]
+    : categoriasDeSlotsManual(slots);
   const refs          = group.operations.map(o => o.name).join('+');
   const cats          = allCategories.join(',');
   const pickerLabel   = displayName || group.key;
@@ -190,6 +201,23 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
               <div className="text-[12px] text-amber-600 mt-1"><AlertTriangle size={12} className="inline text-amber-600 mr-1" />Se usará &quot;{group.key}&quot; si no ingresas nombre</div>
             )}
           </div>
+
+          {/* Batch (Transferir Agrupación) manual — opcional, solo si no viene ya de Odoo */}
+          {onBatchChange && !group.operations.some(o => o.batch) && (
+            <div>
+              <label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide block mb-1.5">
+                Batch <span className="text-[11px] font-normal normal-case text-text-3">(opcional)</span>
+              </label>
+              <input type="text" inputMode="numeric" value={batchValue ?? ''}
+                onChange={e => onBatchChange(e.target.value)}
+                placeholder="Número de batch"
+                className="w-full border rounded-lg px-4 py-3 text-[16px] font-barlow text-text bg-white outline-none transition-colors"
+                style={{ borderColor: 'var(--color-border)' }} />
+              {batchValue && (
+                <div className="text-[12px] text-text-3 mt-1">Se imprimirá como <span className="font-mono font-semibold text-text-2">BATCH/{batchValue}</span></div>
+              )}
+            </div>
+          )}
 
           {/* Contadores P / C / B / CH */}
           <div>

@@ -75,3 +75,30 @@ export function filtrarOpsPorSeccion(ops: PickingOperation[], section: SectionFi
 export function seccionDeSlot(slot: Pick<PalletSlot, 'section' | 'contenido'>): Seccion | null {
   return normalizarSeccion(slot.section) ?? seccionDeContenido(slot.contenido);
 }
+
+// Mismo vocabulario que usan las categorías reales de Odoo (ABAST_KEYWORDS en picking-utils.ts:
+// 'Comida' | 'Aseo' | 'Hogar' | 'Chocolates' | 'Congelados') — para que una etiqueta de un
+// encargado manual se vea igual que una de Odoo, no un formato distinto.
+const SECCION_A_CATEGORIAS: Record<Seccion, string[]> = {
+  'aseo-comida': ['Aseo', 'Comida'],
+  hogar: ['Hogar'],
+  chocolates: ['Chocolates'],
+  congelados: ['Congelados'],
+};
+
+/**
+ * Categorías "sintéticas" para un grupo SIN operaciones de Odoo (modo manual): un encargado
+ * manual no tiene `op.categories` de dónde sacarlas (allCategories salía siempre vacío), así
+ * que se derivan de la sección real de sus pallets (la que se eligió al crearlo). Sin esto, la
+ * etiqueta impresa de un encargado manual nunca mostraba el tipo de carga.
+ */
+export function categoriasDeSlotsManual(slots: Pick<PalletSlot, 'section' | 'contenido'>[]): string[] {
+  const secciones = new Set<Seccion>();
+  for (const s of slots) {
+    const sec = seccionDeSlot(s);
+    if (sec) secciones.add(sec);
+  }
+  const labels = new Set<string>();
+  for (const sec of secciones) SECCION_A_CATEGORIAS[sec].forEach(l => labels.add(l));
+  return [...labels];
+}
