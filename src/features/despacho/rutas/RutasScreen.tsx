@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { useAuth } from '../../../components/AuthProvider';
 import InputSection   from './components/InputSection';
 import DespachoHeader from './components/DespachoHeader';
@@ -142,6 +143,14 @@ interface ComparisonData {
 
 type PendientesGuardados = { savedAt: string; stores: { c: string; p: number; b: number; ch: number }[] };
 
+// Los modos del Enrutador. Los seis primeros son las pestañas de InputSection (ver MODES ahí).
+//
+// 'man' NO está en los recordables a propósito: es un modo al que se ENTRA por una acción
+// —cargar los pendientes de 2ª vuelta—, no una pestaña. Volver ahí tras recargar dejaría una
+// pantalla de texto vacía, porque el texto no se guarda.
+type ModoEnrutador = 'drag' | 'cong' | 'v2' | 'flota' | 'plan' | 'cal' | 'man';
+const MODOS_RECORDABLES: readonly ModoEnrutador[] = ['drag', 'cong', 'v2', 'flota', 'plan', 'cal'];
+
 export default function RutasScreen() {
   const { user } = useAuth();
   const userId = user?.id;
@@ -204,7 +213,9 @@ export default function RutasScreen() {
     return JSON.parse(JSON.stringify(CAL_INICIAL));
   });
 
-  const [modo,       setModo]       = useState('drag');
+  // Las pestañas del Enrutador. Se recuerda cuál mirabas: recargar estando en PLAN te devolvía
+  // a DESPACHO, y recargar es lo primero que uno hace cuando algo se ve raro.
+  const [modo,       setModo]       = usePestanaRecordada<ModoEnrutador>('enrutador_modo', MODOS_RECORDABLES, 'drag');
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   // "Tienda Terminada" (marcador manual de Bodega, ver useTiendaTerminada) — filtro ORTOGONAL a
   // enElPool, solo para el tablero y la generación de rutas: sin esto, un despachador podía
@@ -2733,7 +2744,7 @@ export default function RutasScreen() {
             camionSeleccionado={camionSeleccionado}
             camionSeleccionadoKm={previewKm}
             onSelectTruck={setCamionSeleccionado}
-            onModo={m => { setModo(m); if (m !== 'drag') setCamionSeleccionado(null); }}
+            onModo={m => { setModo(m as ModoEnrutador); if (m !== 'drag') setCamionSeleccionado(null); }}
             flotaStatus={flotaStatus}
             onToggleFlota={handleToggleFlota}
             ordenActivacion={flotaActivadaEn}

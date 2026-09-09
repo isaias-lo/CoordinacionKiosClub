@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
@@ -108,7 +109,8 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
-  const [rightTab, setRightTab]   = useState<'monitoreo' | 'congelados' | 'actividad' | 'estadisticas' | 'historial' | 'configuracion' | 'calendario'>('monitoreo');
+  const [rightTab, setRightTab]   = usePestanaRecordada('picking_tab',
+    ['monitoreo', 'congelados', 'actividad', 'estadisticas', 'historial', 'configuracion', 'calendario'] as const, 'monitoreo');
   // [P6] El monitoreo se separó en dos tabs que comparten la MISMA vista: 'monitoreo' (Seco:
   // aseo/comida, hogar y chocolates) y 'congelados'. `esTabCongelados` decide qué operaciones
   // se muestran y de qué calendario salen las tiendas del panel izquierdo.

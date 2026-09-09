@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { Truck, Store, AlertTriangle, Camera, CheckCircle2, MapPin, Clock } from 'lucide-react';
 
 type Fuente = 'conductor' | 'tienda' | 'pendientes';
@@ -342,7 +343,7 @@ function KpiCard({ value, label, color }: { value: number; label: string; color:
 export default function PanelOperaciones() {
   const today  = todayISO();
 
-  const [tab,          setTab]          = useState<Fuente>('conductor');
+  const [tab,          setTab]          = usePestanaRecordada<Fuente>('panel_operaciones_tab', ['conductor', 'tienda', 'pendientes'], 'conductor');
   const [desde,        setDesde]        = useState(today);
   const [hasta,        setHasta]        = useState(today);
   const [codFilt,      setCodFilt]      = useState('');

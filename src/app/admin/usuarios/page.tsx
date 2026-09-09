@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Users, ShieldCheck, Bell, Plus, Pencil, Trash2,
@@ -119,7 +120,7 @@ export default function UsuariosPage() {
   const { profile, accessToken } = useAuth();
 
   /* ── Tab ── */
-  const [activeTab, setActiveTab] = useState<'usuarios' | 'roles'>('usuarios');
+  const [activeTab, setActiveTab] = usePestanaRecordada('usuarios_tab', ['usuarios', 'roles'] as const, 'usuarios');
 
   /* ── Users state ── */
   const [users,        setUsers]        = useState<AppUser[]>([]);

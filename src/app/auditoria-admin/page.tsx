@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardList, Camera, BarChart3 } from 'lucide-react';
@@ -245,7 +246,7 @@ function AuditoriaAdminContent() {
   const [lightbox,        setLightbox]        = useState<string | null>(null);
   const [carouselPhotos,  setCarouselPhotos]  = useState<{ url: string; label?: string }[] | null>(null);
   const [carouselIdx,     setCarouselIdx]     = useState(0);
-  const [tab,             setTab]             = useState<'lista' | 'fotos' | 'stats'>('lista');
+  const [tab,             setTab]             = usePestanaRecordada('auditoria_admin_tab', ['lista', 'fotos', 'stats'] as const, 'lista');
   const listParentRef = useRef<HTMLDivElement>(null);
 
   function openLightbox(photos: { url: string; label?: string }[], startIdx: number) {
