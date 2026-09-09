@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { camposSenduFaltantes } from '@/features/despacho/regiones/data/senduCompletitud';
 import { esSectorRegiones } from '@/features/despacho/regiones/data/tiendas';
 import { despachoPorSendu } from '@/features/despacho/regiones/data/despachoPorSendu';
@@ -181,7 +182,8 @@ export default function TiendasAdminContent({
     borrando: boolean;
   } | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
-  const [activeTab,    setActiveTab]    = useState<'tiendas' | 'calendario' | 'congelados' | 'transportistas' | 'bitacora'>('tiendas');
+  const [activeTab,    setActiveTab]    = usePestanaRecordada('config_tab',
+    ['tiendas', 'calendario', 'congelados', 'transportistas', 'bitacora'] as const, 'tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
   const [coherenciaAbierta, setCoherenciaAbierta] = useState(false);
   // Autocompletado de dirección: lo que Google devolvió y el sector que se propone a partir de eso.
