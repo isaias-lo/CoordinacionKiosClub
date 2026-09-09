@@ -206,7 +206,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       const cal = calFuente === 'seco' ? await fetchCalendarioCompleto() : await fetchCalendarioCongelados();
       const d = cal[calDia];
       const delDia = d ? [...d.rm, ...d.costa, ...d.fal] : [];
-      const { porZona } = filtrarPorZonas(delDia, [], c => tiendas[c]?.sector ?? tiendas[c]?.z, c => gps[c]?.[0]);
+      const { porZona } = filtrarPorZonas(delDia, [], c => tiendas[c]?.sector || tiendas[c]?.z, c => gps[c]?.[0]);
       if (alive) setCalConteo(porZona);
     })().catch(() => { if (alive) setCalConteo(null); });
     return () => { alive = false; };
@@ -323,7 +323,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       // Antes se tomaban los tres grupos del día sin preguntar, así que pedir "Congelados, lunes"
       // traía también Antofagasta y Puerto Montt y las repartía entre las mismas rutas.
       const { incluidas: cods, sinZona } = filtrarPorZonas(
-        delDia, calZonas, c => tiendas[c]?.sector ?? tiendas[c]?.z, c => gps[c]?.[0]);
+        delDia, calZonas, c => tiendas[c]?.sector || tiendas[c]?.z, c => gps[c]?.[0]);
       if (!cods.length) {
         setCalStatus('error');
         setCalAviso(`Ninguna de las ${delDia.length} tiendas del ${DIA_LABEL[calDia]} es de ${etiquetaZonas(calZonas)}.`);

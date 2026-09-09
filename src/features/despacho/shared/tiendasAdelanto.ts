@@ -33,7 +33,7 @@ export function zonaForStore(cod: string, tienda?: TiendaInfo): ZonaAdelanto {
   const info = tienda ?? TIENDAS_INICIAL[(cod ?? '').toUpperCase()];
   if (!info) return 'rm';
   // `sector` solo lo trae la BD; las fichas estáticas lo tienen en `z`.
-  return grupoDeSector(info.sector ?? info.z) ?? 'rm';
+  return grupoDeSector(info.sector || info.z) ?? 'rm';
 }
 
 /** Hoy en formato YYYY-MM-DD (hora local del dispositivo). */
