@@ -180,12 +180,14 @@ export default function RutasScreen() {
     try { localStorage.setItem('flotaOrdenActivacion', JSON.stringify(flotaActivadaEn)); } catch {}
   }, [flotaActivadaEn]);
   // [Asignación automática] Interruptor para el efecto de más abajo que completa el tablero solo
-  // cuando llega carga nueva de Bodega. Por defecto ON (comportamiento de siempre); apagarlo deja
-  // que el coordinador arme todo a mano sin que el sistema le "adelante" camiones. Persiste en
-  // localStorage — es una preferencia de armado local, igual que el orden de activación de arriba.
+  // cuando llega carga nueva de Bodega. Por defecto OFF (pedido 2026-09-08: que el arranque sea
+  // siempre a mano, determinado, y no dependa de lo que quedó guardado de una sesión anterior en
+  // este equipo) — el coordinador lo prende cuando quiere que el sistema le adelante camiones.
+  // Persiste en localStorage — es una preferencia de armado local, igual que el orden de
+  // activación de arriba, pero el DEFAULT ya no varía según el último valor guardado.
   const [asignacionAutomatica, setAsignacionAutomatica] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    try { const v = localStorage.getItem('asignacionAutomaticaOn'); return v === null ? true : v === '1'; } catch { return true; }
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem('asignacionAutomaticaOn') === '1'; } catch { return false; }
   });
   useEffect(() => {
     try { localStorage.setItem('asignacionAutomaticaOn', asignacionAutomatica ? '1' : '0'); } catch {}

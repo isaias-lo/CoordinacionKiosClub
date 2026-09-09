@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
+import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 function syncPersonalSheets() {
@@ -20,9 +20,15 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ data });
 }
 
+// [Permiso 2026-09-08] POST/PATCH/DELETE eran admin-only desde un endurecimiento de seguridad
+// masivo (6b80ad1) que no distinguió este catálogo de otros endpoints más sensibles — mantener
+// nombres/teléfonos de pionetas al día es trabajo normal de quien coordina despacho, no solo de
+// admin, y `/api/control-flota` (que sí reasigna pionetas EN una ruta activa) ya solo pedía
+// `verifyAuth`. Bajado a `verifyAuth` para que cualquier usuario logueado pueda gestionar el
+// catálogo desde FLOTA → Personal, igual que ya podía hacerlo con las rutas.
 export async function POST(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as { nombre?: string; telefono?: string; empresa?: string };
   if (!body.nombre?.trim())
     return NextResponse.json({ error: 'nombre requerido' }, { status: 400 });
@@ -38,8 +44,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as { id?: string; nombre?: string; telefono?: string; empresa?: string };
   if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 
@@ -63,8 +69,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 

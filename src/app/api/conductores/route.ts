@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
+import { verifyAuth } from '@/lib/apiAuth';
 import { parseBody, CreateConductorSchema, UpdateConductorSchema } from '@/lib/schemas';
 
 function syncPersonalSheets() {
@@ -21,9 +21,14 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ conductores: data ?? [] });
 }
 
+// [Permiso 2026-09-08] POST/PATCH/DELETE eran admin-only desde un endurecimiento de seguridad
+// masivo (6b80ad1) que no distinguió este catálogo de otros endpoints más sensibles — mantener
+// nombres/teléfonos de conductores al día es trabajo normal de quien coordina despacho, no solo
+// de admin, y `/api/control-flota` (que sí reasigna al chofer EN una ruta activa) ya solo pedía
+// `verifyAuth`. Bajado a `verifyAuth`, igual que en `/api/pionetas`.
 export async function POST(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
   const parsed = parseBody(CreateConductorSchema, await request.json());
   if (!parsed.ok) return parsed.response;
@@ -40,8 +45,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
   const parsed = parseBody(UpdateConductorSchema, await request.json());
   if (!parsed.ok) return parsed.response;
@@ -67,8 +72,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!await verifyAdmin(request))
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
 

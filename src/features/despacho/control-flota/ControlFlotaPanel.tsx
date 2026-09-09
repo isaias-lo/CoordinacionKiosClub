@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Truck, Users, Plus, Trash2, Save, X, AlertCircle, Edit2 } from 'lucide-react';
+import { useIsMobile } from '../rutas/utils/useIsMobile';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Pioneta { id: string; nombre: string; telefono?: string; empresa?: string; }
@@ -67,6 +68,11 @@ function syncPersonal() {
 }
 
 function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRefresh: () => void }) {
+  // [Bug tablet 2026-09-08] Este panel era 100% inline-style sin ningún breakpoint — a diferencia
+  // del resto del Enrutador (que usa `useIsMobile` en todas partes). En una tablet angosta, los 3
+  // inputs de nombre/teléfono/empresa se apretaban a ~90px cada uno y el texto se quebraba en
+  // "líneas como locas". Se colapsa a 1 columna bajo los 640px.
+  const compact = useIsMobile(640);
   const [nombre,   setNombre]   = useState('');
   const [telefono, setTelefono] = useState('');
   const [empresa,  setEmpresa]  = useState('');
@@ -163,7 +169,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
           <div key={p.id}>
             {editingId === p.id ? (
               <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr 1fr', gap: 8 }}>
                   <input value={editNombre}   onChange={e => setEditNombre(e.target.value)}   placeholder="Nombre *"  style={inputStyle} />
                   <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono"  style={inputStyle} />
                   <input value={editEmpresa}  onChange={e => setEditEmpresa(e.target.value)}  placeholder="Empresa"   style={inputStyle} />
@@ -207,7 +213,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
       {/* Add form - collapsible */}
       {showAddForm && (
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr 1fr', gap: 8 }}>
             <input
               value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
               style={inputStyle} onKeyDown={e => e.key === 'Enter' && void handleAdd()} autoFocus />
@@ -233,6 +239,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
 
 // ── Sub-component: Gestionar Conductores ──────────────────────────────────────
 function GestionarConductores({ conductores, onRefresh }: { conductores: Conductor[]; onRefresh: () => void }) {
+  const compact = useIsMobile(640);
   const [nombre,    setNombre]    = useState('');
   const [telefono,  setTelefono]  = useState('');
   const [empresa,   setEmpresa]   = useState('');
@@ -329,7 +336,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
           <div key={c.id}>
             {editingId === c.id ? (
               <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr 1fr', gap: 8 }}>
                   <input value={editNombre} onChange={e => setEditNombre(e.target.value)} placeholder="Nombre *" style={inputStyle} />
                   <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono" style={inputStyle} />
                   <input value={editEmpresa} onChange={e => setEditEmpresa(e.target.value)} placeholder="Empresa" style={inputStyle} />
@@ -373,7 +380,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
       {/* Add form - collapsible */}
       {showAddForm && (
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr 1fr', gap: 8 }}>
             <input
               value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
               style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
@@ -726,6 +733,9 @@ export function ControlFlotaPanel() {
 
 // ── Catálogo de Personal (conductores + pionetas) ─────────────────────────────
 export function PersonalCatalogPanel() {
+  // [Bug tablet 2026-09-08] Los dos catálogos lado a lado necesitan más ancho del que tiene una
+  // tablet en portrait — se apilan en 1 columna abajo de 900px.
+  const stacked = useIsMobile(900);
   const [pionetas,    setPionetas]    = useState<Pioneta[]>([]);
   const [conductores, setConductores] = useState<Conductor[]>([]);
 
@@ -745,7 +755,7 @@ export function PersonalCatalogPanel() {
   useEffect(() => { loadConductores(); }, [loadConductores]);
 
   return (
-    <div style={{ background: 'white', padding: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+    <div style={{ background: 'white', padding: '16px', display: 'grid', gridTemplateColumns: stacked ? '1fr' : '1fr 1fr', gap: 16, alignItems: 'start' }}>
       <GestionarConductores conductores={conductores} onRefresh={loadConductores} />
       <GestionarPionetas    pionetas={pionetas}       onRefresh={loadPionetas}    />
     </div>
