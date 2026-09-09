@@ -416,7 +416,7 @@ export default function RutasScreen() {
         mergeCalT(dbCal, fechaRef.current, prev),
         sesionRowsRef.current,
         new Set(),
-        (cod) => tiendasRef.current[cod]?.sector ?? tiendasRef.current[cod]?.z,
+        (cod) => tiendasRef.current[cod]?.sector || tiendasRef.current[cod]?.z,
       ));
     };
     fetchCalendarioSupa().then(dbCal => { if (dbCal) aplicarCalBD(dbCal); }).catch(() => {});
@@ -573,7 +573,7 @@ export default function RutasScreen() {
           // solo HOY, con cantidades, y con el calendario ya cargado (calT no vacío) para no
           // saltarse el init. El orden lo resuelve `ordenarCalT` (extras van en su grupo).
           if (fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
-          const g = grupoArmada(row.fuente, tiendasRef.current[c]?.sector ?? tiendasRef.current[c]?.z);
+          const g = grupoArmada(row.fuente, tiendasRef.current[c]?.sector || tiendasRef.current[c]?.z);
           return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: cc, ch: rowCh, g } };
         }
         if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === cc && (prev[c].ch ?? 0) === rowCh) return prev;
@@ -594,7 +594,7 @@ export default function RutasScreen() {
         if (!prev[c]) {
           if (boxes <= 0) return prev;
           // Grupo para el filtro RM/Costa/Regiones (helper puro, testeado).
-          const g = grupoCongelados(row.fuente ?? '', tiendasRef.current[c]?.sector ?? tiendasRef.current[c]?.z);
+          const g = grupoCongelados(row.fuente ?? '', tiendasRef.current[c]?.sector || tiendasRef.current[c]?.z);
           return { ...prev, [c]: { on: true, p: 0, b: boxes, c: 0, ch: 0, g } };
         }
         if (prev[c].b === boxes) return prev;
@@ -1177,7 +1177,7 @@ export default function RutasScreen() {
         newCalT[c] = { ...newCalT[c], p: row.pallets, b: row.bultos, c: cc, ch: chh, on: hasCounts };
       } else if (hasCounts) {
         // Armada hoy fuera del calendario → inyectar en su grupo (ver applyRow / reaplicarCounts).
-        const g = grupoArmada(row.fuente, tiendasRef.current[c]?.sector ?? tiendasRef.current[c]?.z);
+        const g = grupoArmada(row.fuente, tiendasRef.current[c]?.sector || tiendasRef.current[c]?.z);
         newCalT[c] = { on: true, p: row.pallets, b: row.bultos, c: cc, ch: chh, g };
       }
     });
@@ -2270,7 +2270,16 @@ export default function RutasScreen() {
           setCalT(prev => mergeCalT(newCal, fecha, prev));
         }
       }
-      setTiendas(newTiendas); setGps(newGps);
+      // Fusionar, NO reemplazar. `newTiendas` sale de `{ ...tiendas }` del CLOSURE, que al montar
+      // es el catálogo estático: reemplazar el estado descartaba lo que hubiera traído la BD si su
+      // fetch llegó primero — y la BD es la única fuente de `sector`, `tipo` y los datos de Sendu.
+      // Los dos fetch corren en paralelo al montar, así que cuál ganaba dependía de la red.
+      setTiendas(prev => {
+        const out = { ...prev };
+        for (const [cod, t] of Object.entries(newTiendas)) out[cod] = { ...out[cod], ...t };
+        return out;
+      });
+      setGps(prev => ({ ...prev, ...newGps }));
       // Preservar el estado "en servicio" (on) que ya está en memoria/Supabase: la carga de Sheets
       // NO debe resetear qué camiones dejó activos el coordinador (persistencia + cross-device).
       setFlota(prev => {

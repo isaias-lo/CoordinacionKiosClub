@@ -122,6 +122,17 @@ export function parseTSheetAuth(values: string[][], tiendas: Record<string, Tien
     if (row[1]) tiendas[cod].n = row[1];
     if (row[2]) tiendas[cod].d = row[2];
     if (row[3]) tiendas[cod].region = row[3];
+    // row[4] = SECTOR/COMUNA · row[5] = CORREDOR (ver HEADERS en api/tiendas/export-sheets).
+    //
+    // `sector` NO se escribía acá, y esta carga corre sola al montar pisando el catálogo: por eso
+    // quedaba en undefined para todas las tiendas. `z` además se llenaba con el CORREDOR, que es
+    // texto libre ("V Región (Ruta 68)", "Sur (Ruta 5 Sur)", "Norte Grande"), así que cualquiera
+    // que dedujera la zona del sector la resolvía como Santiago — Costa y Regiones incluidas.
+    //
+    // El motor y el tablero lo tapaban cayendo a la DISTANCIA al CD (ver zonaCamion: "el bug de
+    // que `sector` nunca se escribía dejaba TODO en null"). Funcionaba, pero significaba que el
+    // sector elegido en Config no decidía nada: decidía la geografía.
+    if (row[4]) tiendas[cod].sector = row[4].trim();
     if (row[5]) tiendas[cod].z = row[5].trim();
     else if (row[4]) tiendas[cod].z = row[4].trim();
     if (row[5]) tiendas[cod].corredor = row[5].trim();
