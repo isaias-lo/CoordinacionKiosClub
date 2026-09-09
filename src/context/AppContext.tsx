@@ -282,7 +282,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // toqué siguen adoptando la remota tal cual (ausencia remota = borrado intencional).
       const remoteDispatch = remote.dispatch ?? {};
       const localDispatch  = stateRef.current.dispatch;
-      const mergedDispatch = mergeItemsByTienda(remoteDispatch, localDispatch, lastDispatch, stableItemKey);
+      // [Aviso de conflicto 2026-09-09] Igual que Santiago: si A y B cambiaron el MISMO ítem de
+      // forma distinta desde el último sync de cada uno, se avisa vía evento (el toast vive en
+      // TiendasPage.tsx, no en este provider). Gana local igual, pero ya no en silencio.
+      const mergedDispatch = mergeItemsByTienda(remoteDispatch, localDispatch, lastDispatch, stableItemKey,
+        (tiendaNombre, item) => {
+          if (typeof window === 'undefined') return;
+          // `dispatch` está indexado por NOMBRE de tienda (no cod) en este contexto — se manda tal
+          // cual, el listener ya lo usa directo para el mensaje.
+          window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { tiendaNombre, orden: item.orden } }));
+        });
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto

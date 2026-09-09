@@ -30,6 +30,8 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
+import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
+import { PresenciaBadge } from '../../shared/PresenciaBadge';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
@@ -124,6 +126,8 @@ interface GridCardProps {
    *  para que quien mira la grilla nunca confunda una tienda cerrada con una que sigue abierta
    *  y todavía puede sumar más pallets. */
   terminada?: boolean;
+  /** [Presencia] Quién más tiene esta tienda abierta ahora. */
+  viendo?: ViendoInfo[];
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   /** [Bug tablet 2026-09-09] El drag HTML5 nativo no dispara de forma confiable con touch — en una
@@ -132,7 +136,7 @@ interface GridCardProps {
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -157,6 +161,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] hover:bg-[rgba(30,64,175,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
+      <PresenciaBadge viendo={viendo} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-warn bg-[rgba(217,119,6,0.15)] rounded-full cursor-pointer border-none leading-none"
@@ -208,8 +213,8 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
 }
 
 /* ── Calendar confirmation modal ── */
-function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
-  name: string; mode: 'add' | 'remove'; onConfirm: () => void; onCancel: () => void;
+function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
+  name: string; mode: 'add' | 'remove'; viendo?: ViendoInfo[]; onConfirm: () => void; onCancel: () => void;
 }) {
   const tiendaName = TIENDAS[name]?.name || name;
   const isAdd = mode === 'add';
@@ -226,6 +231,13 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
             {isAdd ? ' al despacho de hoy?' : ' del despacho de hoy?'}
           </p>
           <p className="text-[12px] text-text-3 mt-1.5">Este cambio aplica solo para hoy.</p>
+          {/* [Presencia] Retirar una tienda del día la saca para TODOS al instante — si alguien
+              la tiene abierta ahora mismo, avisar explícitamente en vez de sacarla en silencio. */}
+          {!isAdd && !!viendo?.length && (
+            <p className="text-[12px] text-warn font-bold mt-2 bg-[rgba(217,119,6,0.08)] border border-[rgba(217,119,6,0.25)] rounded px-2 py-1.5">
+              ⚠ {viendo.map(v => v.name).join(', ')} {viendo.length > 1 ? 'están' : 'está'} viendo esta tienda ahora mismo.
+            </p>
+          )}
         </div>
         <div className="flex border-t border-border">
           <button onClick={onCancel} className="flex-1 py-3.5 font-barlow-condensed text-[17px] font-bold text-text-2 bg-bg-2 hover:bg-bg-3 transition-all cursor-pointer border-r border-border">Cancelar</button>
@@ -247,6 +259,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
   const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
+  // [Aviso de conflicto 2026-09-09] AppContext dispara este evento cuando el merge cross-device
+  // detecta que DOS equipos cambiaron el MISMO ítem de forma distinta desde el último sync de
+  // cada uno — gana la copia local igual (nunca se pierde un cambio legítimo en silencio), pero
+  // ahora se avisa en vez de resolverlo callado.
+  useEffect(() => {
+    const onConflicto = (e: Event) => {
+      const { tiendaNombre, orden } = (e as CustomEvent<{ tiendaNombre: string; orden: string }>).detail;
+      showToast(`⚠ ${ordenToLabel(orden)} de ${tiendaNombre} cambió mientras alguien más editaba — se guardó tu versión`, '#D97706');
+    };
+    window.addEventListener('bodega-conflicto-edicion', onConflicto);
+    return () => window.removeEventListener('bodega-conflicto-edicion', onConflicto);
+  }, [showToast]);
   const [search, setSearch] = useState('');
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
@@ -365,6 +389,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
+  // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
+  // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
+  const { viendoPorTienda } = usePresenciaTienda('regiones', selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? null) : null);
   useEffect(() => { setMergeSel(new Set()); setDupRow(null); }, [selectedTienda, registrado]);
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
@@ -1503,7 +1530,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         </div>
         {tienda?.cod && (
           <div className="flex justify-end touch-auto">
-            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length} />
+            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length}
+              sinPesarCount={items.filter(esSinPesar).length} viendo={viendoPorTienda.get(tienda.cod)} />
           </div>
         )}
       </div>
@@ -2176,6 +2204,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       storeDoneOps={storeDoneOpsSeco}
                       storeTotalOps={storeTotalOpsSeco}
                       terminada={terminadas.get(t.cod)?.terminada === true}
+                      viendo={viendoPorTienda.get(t.cod)}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)}
                       onRemoveFromToday={() => setConfirmRemoveName(t.name)} />
@@ -2228,6 +2257,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         storeDoneOps={0}
                         storeTotalOps={0}
                         terminada={terminadas.get(t.cod)?.terminada === true}
+                        viendo={viendoPorTienda.get(t.cod)}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)}
                         onAddToday={() => setConfirmAddName(t.name)} />
@@ -2359,6 +2389,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       )}
       {confirmRemoveName && (
         <ConfirmCalendarModal name={confirmRemoveName} mode="remove"
+          viendo={viendoPorTienda.get(TIENDAS[confirmRemoveName]?.cod ?? '')}
           onConfirm={() => { removeFromToday(confirmRemoveName); setConfirmRemoveName(null); }}
           onCancel={() => setConfirmRemoveName(null)} />
       )}

@@ -2,13 +2,14 @@
 
 import { useAuth } from '@/components/AuthProvider';
 import type { TerminadaInfo } from './useTiendaTerminada';
+import type { ViendoInfo } from './usePresenciaTienda';
 
 /**
  * Botón/badge "Tienda Terminada" — marcador manual, NO bloquea edición (fase 1, ver
  * useTiendaTerminada.ts). Mismo lenguaje visual que el "✓ Completado" del pie de Resumen
  * (verde relleno = hecho, toca para deshacer).
  */
-export function TiendaTerminadaButton({ cod, info, onToggle, itemCount }: {
+export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesarCount, viendo }: {
   cod: string;
   info?: TerminadaInfo;
   onToggle: (cod: string, terminada: boolean, por?: string) => void;
@@ -18,6 +19,13 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount }: {
    *  marcar antes de que Bodega termine de cargar) es exactamente el error que la función entera
    *  existe para evitar. */
   itemCount?: number;
+  /** Cuántos de esos ítems quedaron "sin pesar" (peso 0) — pedido 2026-09-09: "Persona A termina
+   *  su parte y marca terminada, Persona B todavía estaba agregando un pallet. La tienda queda
+   *  cerrada con datos incompletos." Si hay ítems sin pesar, se avisa antes de cerrar. */
+  sinPesarCount?: number;
+  /** [Presencia] Quién más tiene esta tienda abierta ahora — si alguien la está viendo, puede
+   *  estar a mitad de agregar algo que todavía no se guardó. */
+  viendo?: ViendoInfo[];
 }) {
   const { profile } = useAuth();
   const terminada = info?.terminada === true;
@@ -27,9 +35,12 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount }: {
       if (!confirm('¿Reabrir esta tienda? Ya no se mostrará como lista para despachar.')) return;
       onToggle(cod, false);
     } else {
-      const msg = itemCount === 0
-        ? '⚠ Esta tienda no tiene ningún ítem agregado.\n\n¿Marcarla "Terminada" igual? En el Enrutador va a quedar habilitada para asignarse a un camión.'
-        : '¿Marcar esta tienda como "Terminada"?\n\nEn el Enrutador va a poder asignarse a un camión — solo hazlo si ya no le vas a agregar más carga.';
+      const avisos: string[] = [];
+      if (itemCount === 0) avisos.push('⚠ Esta tienda no tiene ningún ítem agregado.');
+      if (sinPesarCount) avisos.push(`⚠ ${sinPesarCount} ítem${sinPesarCount > 1 ? 's' : ''} quedó${sinPesarCount > 1 ? 'n' : ''} "sin pesar" (peso en 0).`);
+      if (viendo?.length) avisos.push(`⚠ ${viendo.map(v => v.name).join(', ')} ${viendo.length > 1 ? 'están viendo' : 'está viendo'} esta tienda ahora — puede estar a mitad de agregar algo.`);
+      const msg = (avisos.length ? avisos.join('\n') + '\n\n' : '')
+        + '¿Marcar esta tienda como "Terminada"?\n\nEn el Enrutador va a poder asignarse a un camión — solo hazlo si ya no le vas a agregar más carga.';
       if (!confirm(msg)) return;
       onToggle(cod, true, profile?.full_name ?? undefined);
     }
