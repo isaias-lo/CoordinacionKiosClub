@@ -1482,7 +1482,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         </div>
         {tienda?.cod && (
           <div className="flex justify-end touch-auto">
-            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} />
+            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length} />
           </div>
         )}
       </div>
