@@ -20,6 +20,12 @@ export function mergeItemsByTienda<T>(
   local: Record<string, T[]>,
   lastSynced: Record<string, T[]>,
   keyOf: (item: T) => string,
+  // [Aviso de conflicto 2026-09-09] Cuando A y B cambian el MISMO ítem (no solo la misma tienda)
+  // de forma distinta entre el último sync de cada uno, el merge por-ítem de abajo sigue
+  // resolviendo a favor de lo local (sin esto, era la única forma de no perder NINGÚN cambio
+  // legítimo) — pero antes lo hacía en silencio. `onConflict` deja que el caller avise "esto
+  // cambió mientras editabas" sin tener que bloquear a nadie con una reserva/lock.
+  onConflict?: (cod: string, item: T) => void,
 ): Record<string, T[]> {
   // [E3b/C2] Antes el merge era por TIENDA completa (dirty ⇒ gana toda la local). Eso pisaba lo
   // que otro usuario hacía en la MISMA tienda al mismo tiempo (A edita dims mientras B agrega un
@@ -35,7 +41,7 @@ export function mergeItemsByTienda<T>(
     // nuevas de otro equipo; ausencia remota = borrado intencional). Igual que antes.
     if (JSON.stringify(loc) === JSON.stringify(base)) { out[cod] = rem; continue; }
     // Tienda editada localmente → merge por-ítem (protege mi edición sin pisar lo del otro).
-    out[cod] = mergeListaPorItem(rem, loc, base, keyOf);
+    out[cod] = mergeListaPorItem(rem, loc, base, keyOf, onConflict ? item => onConflict(cod, item) : undefined);
   }
   return out;
 }
@@ -52,7 +58,7 @@ export function mergeItemsByTienda<T>(
  * El borrado siempre gana sobre "reaparecer" (anti-zombie). Orden: primero la vista local, luego
  * las altas remotas nuevas al final (el `orden` se renumera aguas abajo).
  */
-export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: (i: T) => string): T[] {
+export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: (i: T) => string, onConflict?: (item: T) => void): T[] {
   const bMap = new Map(base.map(i => [keyOf(i), i]));
   const rMap = new Map(remote.map(i => [keyOf(i), i]));
   const eq = (a?: T, b?: T) => JSON.stringify(a) === JSON.stringify(b);
@@ -66,6 +72,11 @@ export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: 
     if (inR) {
       const lChanged = !inB || !eq(item, bMap.get(k));
       const rChanged = inB ? !eq(rMap.get(k), bMap.get(k)) : true;
+      // Conflicto real: LOS DOS lados cambiaron el mismo ítem desde la base, y a valores
+      // distintos entre sí. Gana local igual (nunca perder un cambio legítimo en silencio no es
+      // negociable), pero se avisa — a diferencia de "solo cambió uno de los dos", que no es
+      // conflicto, es simplemente la edición más nueva ganando.
+      if (lChanged && rChanged && !eq(item, rMap.get(k))) onConflict?.(item);
       result.push(lChanged || !rChanged ? item : rMap.get(k)!);
     } else if (!inB) {
       result.push(item); // alta local nueva

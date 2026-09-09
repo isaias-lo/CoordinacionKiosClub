@@ -23,7 +23,7 @@ import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
 import { unionRefs } from '../../shared/unifyPallets';
 import { tipoBadge } from '../tipoTienda';
-import { logActividad } from '@/lib/actividad';
+import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { fechaISOLocal } from '../../shared/fechaLocal';
@@ -33,6 +33,8 @@ import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
+import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
+import { PresenciaBadge } from '../../shared/PresenciaBadge';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
@@ -127,7 +129,7 @@ interface ResumenEditState {
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat, terminada,
+  tipoCat, terminada, viendo,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -139,6 +141,8 @@ function TiendaGridCard({
    *  para que quien mira la grilla nunca confunda una tienda cerrada con una que sigue abierta
    *  y todavía puede sumar más pallets. */
   terminada?: boolean;
+  /** [Presencia] Quién más tiene esta tienda abierta ahora. */
+  viendo?: ViendoInfo[];
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -167,6 +171,7 @@ function TiendaGridCard({
           ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] active:bg-[rgba(30,64,175,0.09)]'
           : 'bg-white border border-border active:bg-bg'
         }`}>
+      <PresenciaBadge viendo={viendo} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-warn bg-[rgba(217,119,6,0.15)] rounded-full cursor-pointer border-none leading-none"
@@ -214,8 +219,8 @@ function TiendaGridCard({
 /* ═══════════════════════════════════════
    CALENDAR CONFIRMATION MODAL
 ═══════════════════════════════════════ */
-function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
-  name: string; mode: 'add' | 'remove'; onConfirm: () => void; onCancel: () => void;
+function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
+  name: string; mode: 'add' | 'remove'; viendo?: ViendoInfo[]; onConfirm: () => void; onCancel: () => void;
 }) {
   const t = TIENDAS_SANTIAGO.find(t => t.tienda === name);
   const isAdd = mode === 'add';
@@ -232,6 +237,13 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
             {isAdd ? ' al despacho de hoy?' : ' del despacho de hoy?'}
           </p>
           <p className="text-[12px] text-text-3 mt-1.5">Este cambio aplica solo para hoy.</p>
+          {/* [Presencia] Retirar una tienda del día la saca para TODOS al instante — si alguien
+              la tiene abierta ahora mismo, avisar explícitamente en vez de sacarla en silencio. */}
+          {!isAdd && !!viendo?.length && (
+            <p className="text-[12px] text-warn font-bold mt-2 bg-[rgba(217,119,6,0.08)] border border-[rgba(217,119,6,0.25)] rounded px-2 py-1.5">
+              ⚠ {viendo.map(v => v.name).join(', ')} {viendo.length > 1 ? 'están' : 'está'} viendo esta tienda ahora mismo.
+            </p>
+          )}
         </div>
         <div className="flex border-t border-border">
           <button onClick={onCancel}
@@ -251,10 +263,12 @@ function ConfirmCalendarModal({ name, mode, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, viendo }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
+  sinPesarCount?: number;
+  viendo?: ViendoInfo[];
 }) {
   const itemCount = pallets + bultos + chocolates + contenedores;
   return (
@@ -292,8 +306,14 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
           )}
         </div>
       </div>
-      <div className="flex justify-end touch-auto">
-        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} />
+      <div className="flex items-center justify-end gap-2 touch-auto">
+        {!!viendo?.length && (
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-white/70" title={`${viendo.map(v => v.name).join(', ')} viendo esta tienda ahora`}>
+            <span className="w-[7px] h-[7px] rounded-full bg-[#16A34A]" />
+            {viendo.map(v => v.name.split(' ')[0]).join(', ')}
+          </span>
+        )}
+        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} sinPesarCount={sinPesarCount} viendo={viendo} />
       </div>
     </div>
   );
@@ -321,6 +341,22 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
   const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
+  // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
+  // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
+  const { viendoPorTienda } = usePresenciaTienda('nacional', currentTienda?.cod ?? null);
+  // [Aviso de conflicto 2026-09-09] SantiagoContext dispara este evento cuando el merge cross-
+  // device detecta que DOS equipos cambiaron el MISMO ítem de forma distinta desde el último
+  // sync — gana la copia local igual (nunca se pierde un cambio legítimo en silencio), pero
+  // ahora se avisa en vez de resolverlo callado.
+  useEffect(() => {
+    const onConflicto = (e: Event) => {
+      const { cod, orden } = (e as CustomEvent<{ cod: string; orden: string }>).detail;
+      const nombre = TIENDAS_SANTIAGO.find(t => t.cod === cod)?.tienda ?? cod;
+      showToast(`⚠ ${ordenToLabel(orden)} de ${nombre} cambió mientras alguien más editaba — se guardó tu versión`, '#D97706');
+    };
+    window.addEventListener('bodega-conflicto-edicion', onConflicto);
+    return () => window.removeEventListener('bodega-conflicto-edicion', onConflicto);
+  }, [showToast]);
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
 
   /* Mobile view */
@@ -1751,6 +1787,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
                   terminada={terminadas.get(t.cod)?.terminada === true}
+                  viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
               );
@@ -1789,6 +1826,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
                   terminada={terminadas.get(t.cod)?.terminada === true}
+                  viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
               );
@@ -2200,7 +2238,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada} />
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
+          sinPesarCount={tiendaItems.filter(esSinPesar).length} viendo={viendoPorTienda.get(currentTienda.cod)} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
@@ -2854,6 +2893,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       )}
       {confirmRemove && (
         <ConfirmCalendarModal name={confirmRemove} mode="remove"
+          viendo={viendoPorTienda.get(TIENDAS_SANTIAGO.find(t => t.tienda === confirmRemove)?.cod ?? '')}
           onConfirm={() => { removeFromToday(confirmRemove); setConfirmRemove(null); }}
           onCancel={() => setConfirmRemove(null)} />
       )}

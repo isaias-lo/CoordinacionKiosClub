@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { mergeItemsByTienda, mergeEntriesByKey, itemsFromSnapshot } from '../mergeItems';
+import { describe, it, expect, vi } from 'vitest';
+import { mergeItemsByTienda, mergeListaPorItem, mergeEntriesByKey, itemsFromSnapshot } from '../mergeItems';
 
 // Item con id estable (llave) + un valor `v` para simular ediciones de contenido (dims, peso…).
 type Item = { id: string; v?: number };
@@ -77,6 +77,64 @@ describe('mergeItemsByTienda', () => {
   it('sin base: ítems DISTINTOS local y remoto se UNEN (no se pierde el remoto)', () => {
     expect(mergeItemsByTienda({ A: [P('zzz')] }, { A: [P('a1')] }, {}, K))
       .toEqual({ A: [P('a1'), P('zzz')] });
+  });
+
+  // ── [Aviso de conflicto 2026-09-09] "no saben quién está haciendo qué" ────────────────────
+  it('avisa cuando A y B cambian el MISMO ítem a valores DISTINTOS (conflicto real)', () => {
+    const lastSynced = { PTV: [P('P1', 10)] };
+    const local      = { PTV: [P('P1', 99)] };  // A cambió a 99
+    const remote     = { PTV: [P('P1', 55)] };  // B cambió a 55 (distinto)
+    const onConflict = vi.fn();
+    const merged = mergeItemsByTienda(remote, local, lastSynced, K, onConflict);
+    expect(merged).toEqual({ PTV: [P('P1', 99)] }); // gana local igual — el aviso no cambia el resultado
+    expect(onConflict).toHaveBeenCalledTimes(1);
+    expect(onConflict).toHaveBeenCalledWith('PTV', P('P1', 99));
+  });
+
+  it('NO avisa si solo UN lado cambió el ítem (no es conflicto, es la edición más nueva)', () => {
+    const lastSynced = { PTV: [P('P1', 10), P('P2', 20)] };
+    const local      = { PTV: [P('P1', 99), P('P2', 20)] }; // solo A cambió P1
+    const remote     = { PTV: [P('P1', 10), P('P2', 20), P('B1', 5)] }; // B agregó B1, no tocó P1
+    const onConflict = vi.fn();
+    mergeItemsByTienda(remote, local, lastSynced, K, onConflict);
+    expect(onConflict).not.toHaveBeenCalled();
+  });
+
+  it('NO avisa si A y B cambiaron el ítem al MISMO valor (coincidencia, no conflicto)', () => {
+    const lastSynced = { PTV: [P('P1', 10)] };
+    const local      = { PTV: [P('P1', 42)] };
+    const remote     = { PTV: [P('P1', 42)] }; // ambos llegaron al mismo valor
+    const onConflict = vi.fn();
+    mergeItemsByTienda(remote, local, lastSynced, K, onConflict);
+    expect(onConflict).not.toHaveBeenCalled();
+  });
+
+  it('sin onConflict (comportamiento por defecto) no lanza ni cambia el resultado', () => {
+    const lastSynced = { PTV: [P('P1', 10)] };
+    const local      = { PTV: [P('P1', 99)] };
+    const remote     = { PTV: [P('P1', 55)] };
+    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1', 99)] });
+  });
+});
+
+describe('mergeListaPorItem — onConflict', () => {
+  it('reporta el ítem en conflicto (no la clave) al callback', () => {
+    const base   = [P('P1', 1)];
+    const local  = [P('P1', 2)];
+    const remote = [P('P1', 3)];
+    const onConflict = vi.fn();
+    const result = mergeListaPorItem(remote, local, base, K, onConflict);
+    expect(result).toEqual([P('P1', 2)]);
+    expect(onConflict).toHaveBeenCalledWith(P('P1', 2));
+  });
+
+  it('alta nueva simultánea en ambos lados con el MISMO id pero valores distintos también avisa', () => {
+    // Colisión de ids en altas nuevas (sin base): se trata igual que una edición concurrente —
+    // ambos "cambiaron" desde la nada a algo distinto entre sí. Gana local igual, pero se avisa.
+    const onConflict = vi.fn();
+    const result = mergeListaPorItem([P('n1', 1)], [P('n1', 2)], [], K, onConflict);
+    expect(result).toEqual([P('n1', 2)]);
+    expect(onConflict).toHaveBeenCalledWith(P('n1', 2));
   });
 });
 

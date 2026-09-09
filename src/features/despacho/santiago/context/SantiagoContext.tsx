@@ -201,7 +201,15 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         // ser una edición más nueva del otro dispositivo). Antes era `{ ...remote, ...local }` y la
         // copia local pisaba TODA tienda → "revertía" al unir CH/bultos desde el móvil. Ver mergeItems.ts.
         const lastSyncedItems = itemsFromSnapshot<SantiagoItem>(lastPushedRef.current);
-        const merged = mergeItemsByTienda(remote.items, stateRef.current.items, lastSyncedItems, stableItemKey);
+        // [Aviso de conflicto] Si A y B editaron el MISMO ítem de forma distinta desde el último
+        // sync de cada uno, se avisa acá — vía evento, no vía contexto, porque el toast vive en
+        // la pantalla (StepForm.tsx), no en el provider. Gana local igual (nunca se pierde un
+        // cambio legítimo en silencio), pero ya no es en silencio.
+        const merged = mergeItemsByTienda(remote.items, stateRef.current.items, lastSyncedItems, stableItemKey,
+          (cod, item) => {
+            if (typeof window === 'undefined') return;
+            window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { cod, orden: item.orden } }));
+          });
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
       } else {
         lastPushedRef.current = remoteStr;
