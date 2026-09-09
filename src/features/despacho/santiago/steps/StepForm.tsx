@@ -2400,13 +2400,17 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   )}
                   {!isContRow && !isChocTipo && (
-                  <div className="flex gap-0.5 mb-2">
-                    {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
-                      <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
-                        className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
-                        {c.slice(0, 3)}
-                      </button>
-                    ))}
+                  <div className="mb-2">
+                    <label className="text-[11px] text-text-3 uppercase block mb-0.5">Tipo de carga</label>
+                    <div className="flex gap-0.5">
+                      {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
+                        <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
+                          title={c}
+                          className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
+                          {c.slice(0, 3)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">

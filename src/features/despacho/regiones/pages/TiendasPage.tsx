@@ -126,8 +126,13 @@ interface GridCardProps {
   terminada?: boolean;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
+  /** [Bug tablet 2026-09-09] El drag HTML5 nativo no dispara de forma confiable con touch — en una
+   *  tablet sin mouse, mover una tienda entre TODAS/HOY podía ser directamente imposible. Estos dos
+   *  botones (tap, no drag) son el mismo fallback +/× que ya tenía Santiago (StepForm.tsx). */
+  onAddToday?: () => void;
+  onRemoveFromToday?: () => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, onSelect, onDragStart }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -152,6 +157,16 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] hover:bg-[rgba(30,64,175,0.09)]'
           : 'bg-white border border-border hover:bg-bg'
         }`}>
+      {isToday && onRemoveFromToday && (
+        <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
+          className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-warn bg-[rgba(217,119,6,0.15)] rounded-full cursor-pointer border-none leading-none"
+          title="Retirar de hoy">×</button>
+      )}
+      {!isToday && onAddToday && (
+        <button onClick={e => { e.stopPropagation(); onAddToday(); }}
+          className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
+          title="Agregar a hoy">+</button>
+      )}
       <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasPdf ? 'text-success' : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
@@ -1058,6 +1073,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       a  = isCont ? 150 : isChoc ? 42  : (parseFloat(row.alto)  || 0);
       aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? 56 : (parseFloat(row.ancho) || 0);
       l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? 80 : (parseFloat(row.largo) || 0);
+      // [Guardia 2026-09-09] `validarDimensiones` solo revisa el MÁXIMO, y solo cuando el valor no
+      // es 0 — un campo vacío (`parseFloat('') || 0` → 0) pasaba de largo sin ningún aviso y el
+      // pallet/bulto se guardaba con alto/ancho/largo en 0. Santiago (StepForm.tsx) ya tenía este
+      // mismo chequeo; acá faltaba.
+      if (!isCont && !isChoc && !a) { showToast('Ingresa el alto', '#D97706'); return; }
+      if (row.pkg === 'box' && (!aw || !l)) { showToast('Ingresa ancho y largo', '#D97706'); return; }
       const errores = (isCont || isChoc) ? [] : validarDimensiones(row.pkg, p, a, aw, l);
       if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
     }
@@ -1698,6 +1719,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                           ) : (
                             <button
                               onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                              title={`Sumar el peso de ${getRowLabel(row)} a otro ${row.pkg === 'contenedor' ? 'contenedor' : 'pallet'} y borrar ${getRowLabel(row)} — no se puede deshacer`}
                               className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
                               style={{ border: `1.5px dashed ${col.border}`, color: col.color, background: col.bg }}>
                               UNIFICAR
@@ -1737,13 +1759,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                   )}
                   {row.pkg === 'pallet' && (
-                    <div className="flex gap-0.5 mb-1.5">
-                      {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
-                        <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
-                          className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
-                          {t === 'comida' ? 'Com' : t === 'hogar' ? 'Hog' : 'Mix'}
-                        </button>
-                      ))}
+                    <div className="mb-1.5">
+                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Tipo de carga</label>
+                      <div className="flex gap-0.5">
+                        {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
+                          <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
+                            title={t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto (comida y hogar)'}
+                            className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
+                            {t === 'comida' ? 'Com' : t === 'hogar' ? 'Hog' : 'Mix'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
@@ -1879,6 +1905,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         ) : (
                           <button
                             onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                            title={`Sumar el peso de ${getRowLabel(row)} a un pallet o a otro ${row.pkg === 'chocolate' ? 'chocolate' : 'bulto'} y borrar ${getRowLabel(row)} — no se puede deshacer`}
                             className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
                             style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
                             {palletTargets.length > 0 ? 'SUMAR / UNIFICAR' : 'UNIFICAR'}
@@ -1998,7 +2025,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-              + Choc. CH
+              + Choc.
             </button>
           </div>
           {dialogPkg && selectedTienda && (
@@ -2150,7 +2177,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       storeTotalOps={storeTotalOpsSeco}
                       terminada={terminadas.get(t.cod)?.terminada === true}
                       onSelect={() => select(t.name)}
-                      onDragStart={e => handleRemoveDragStart(e, t.name)} />
+                      onDragStart={e => handleRemoveDragStart(e, t.name)}
+                      onRemoveFromToday={() => setConfirmRemoveName(t.name)} />
                   );
                 })}
               </div>
@@ -2201,7 +2229,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         storeTotalOps={0}
                         terminada={terminadas.get(t.cod)?.terminada === true}
                         onSelect={() => select(t.name)}
-                        onDragStart={e => handleAddDragStart(e, t.name)} />
+                        onDragStart={e => handleAddDragStart(e, t.name)}
+                        onAddToday={() => setConfirmAddName(t.name)} />
                     );
                   })}
                 </div>
