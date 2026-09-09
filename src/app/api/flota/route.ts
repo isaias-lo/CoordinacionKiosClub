@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { registrarCambio } from '@/lib/bitacoraServer';
+import { verifyActor } from '@/lib/apiAuth';
 import type { Vehiculo } from '@/features/despacho/rutas/data/flota';
 
 // ── Row shape from flota_vehiculos table ───────────────────────────────────
@@ -77,9 +79,11 @@ export async function POST(request: NextRequest) {
   // la fila quedaba activo=false y el camión "desaparecía" al recargar (el GET filtra activo=true).
   // Por eso: si ya existe una fila borrada, la REVIVIMOS (activo=true + su config); si existe activa,
   // es un duplicado real (409); si no existe, insert normal.
+  // `select('*')` y no solo `activo`: al revivir un camión borrado hace falta el estado previo
+  // para que la bitácora pueda decir qué cambió de su configuración.
   const { data: existing } = await sb
     .from('flota_vehiculos')
-    .select('activo')
+    .select('*')
     .eq('patente', body.p)
     .maybeSingle();
 
@@ -91,6 +95,8 @@ export async function POST(request: NextRequest) {
     // Estaba soft-deleted → revivir con la config re-ingresada (row ya trae activo:true).
     const { error } = await sb.from('flota_vehiculos').update(row).eq('patente', body.p);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    void registrarCambio({ actor: await verifyActor(request), entidad: 'flota', entidadId: body.p,
+      accion: 'editar', antes: existing, despues: { ...existing, ...row } });
     return NextResponse.json({ ok: true, revived: true });
   }
 
@@ -103,6 +109,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  void registrarCambio({ actor: await verifyActor(request), entidad: 'flota', entidadId: body.p,
+    accion: 'crear', antes: null, despues: row as unknown as Record<string, unknown> });
   return NextResponse.json({ ok: true });
 }
 
@@ -132,9 +140,21 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true, cambios: 0 });
   }
 
-  const { error } = await supabaseServer().from('flota_vehiculos').update(updates).eq('patente', body.p);
+  const sb = supabaseServer();
+  // El estado previo solo se lee para las ediciones estructurales: el toggle "en servicio" se usa
+  // todos los días en el Enrutador y registrarlo ahogaría los cambios de configuración, que es lo
+  // único que la bitácora viene a responder. Para la operación del día está `actividad_bodega`.
+  const { data: antes } = onlyEnServicio
+    ? { data: null }
+    : await sb.from('flota_vehiculos').select('*').eq('patente', body.p).maybeSingle();
+
+  const { error } = await sb.from('flota_vehiculos').update(updates).eq('patente', body.p);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  if (!onlyEnServicio) {
+    void registrarCambio({ actor: await verifyActor(request), entidad: 'flota', entidadId: body.p,
+      accion: 'editar', antes, despues: { ...(antes ?? {}), ...updates } });
+  }
   return NextResponse.json({ ok: true });
 }
 
@@ -145,11 +165,17 @@ export async function DELETE(request: NextRequest) {
   const patente = request.nextUrl.searchParams.get('patente');
   if (!patente) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
 
-  const { error } = await supabaseServer()
+  const sb = supabaseServer();
+  // El DELETE es SOFT, así que la fila sobrevive — pero su configuración puede cambiar después al
+  // revivirla. Se guarda como estaba al borrarla.
+  const { data: antes } = await sb.from('flota_vehiculos').select('*').eq('patente', patente).maybeSingle();
+  const { error } = await sb
     .from('flota_vehiculos')
     .update({ activo: false })
     .eq('patente', patente);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void registrarCambio({ actor: await verifyActor(request), entidad: 'flota', entidadId: patente,
+    accion: 'eliminar', antes, despues: null });
   return NextResponse.json({ ok: true });
 }
