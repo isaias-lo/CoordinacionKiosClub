@@ -256,6 +256,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
 }) {
+  const itemCount = pallets + bultos + chocolates + contenedores;
   return (
     <div className="bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 touch-none select-none"
       onTouchStart={swipe?.start}
@@ -292,7 +293,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
         </div>
       </div>
       <div className="flex justify-end touch-auto">
-        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} />
+        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} />
       </div>
     </div>
   );
