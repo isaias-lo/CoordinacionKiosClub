@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake, Radio } from 'lucide-react';
+import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake, Radio, PanelRightClose, PanelRightOpen } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -14,6 +14,10 @@ import PlanificadorTab from './PlanificadorTab';
 import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
+import {
+  clampMapPct, mapaColapsado, anchoMapa, anchoContenido, rotuloBotonMapa,
+  MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO,
+} from '../utils/mapLayout';
 import type { Vehiculo } from '../data/flota';
 import type { Ruta } from '../utils/routing';
 import type { TiendaInfo } from '../data/tiendas';
@@ -151,10 +155,18 @@ export default function InputSection({
 
   // Divisor arrastrable contenido ↔ mapa (desktop): % de ANCHO del mapa (a la derecha).
   const [mapPct, setMapPct] = useState<number>(() => {
-    if (typeof window === 'undefined') return 37;
-    const s = Number(localStorage.getItem('enrutador_map_w_pct'));
-    return s >= 20 && s <= 60 ? s : 37;
+    if (typeof window === 'undefined') return MAP_PCT_DEFAULT;
+    try { return clampMapPct(localStorage.getItem(LS_MAP_PCT)); } catch { return MAP_PCT_DEFAULT; }
   });
+  // Mostrar/esconder el mapa a mano. Persistido igual que el ancho: es una preferencia de armado
+  // de este equipo, no un dato compartido.
+  const [mapOculto, setMapOculto] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem(LS_MAP_OCULTO) === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(LS_MAP_OCULTO, mapOculto ? '1' : '0'); } catch {}
+  }, [mapOculto]);
   const contentRowRef = useRef<HTMLDivElement>(null);
   const mapResizingRef = useRef(false);
   useEffect(() => {
@@ -169,7 +181,7 @@ export default function InputSection({
       if (!mapResizingRef.current) return;
       mapResizingRef.current = false;
       document.body.style.cursor = ''; document.body.style.userSelect = '';
-      setMapPct(p => { try { localStorage.setItem('enrutador_map_w_pct', String(Math.round(p))); } catch {} return p; });
+      setMapPct(p => { try { localStorage.setItem(LS_MAP_PCT, String(Math.round(p))); } catch {} return p; });
     };
     document.addEventListener('mousemove', onMouse);
     document.addEventListener('mouseup', stop);
@@ -196,9 +208,12 @@ export default function InputSection({
       </div>
     </div>
   ) : null;
-  // El tab FLOTA no usa mapa: se oculta el panel del mapa (y su divisor) para que la gestión de
-  // vehículos ocupe todo el ancho. El resto de los tabs sí lo muestran.
-  const hideMap = modo === 'flota';
+  // El tab FLOTA no usa mapa, y además el coordinador puede esconderlo a mano. Los dos casos
+  // COLAPSAN el panel a 0 px de ancho — nunca lo desmontan: `MapSection` guarda en `lastDrawnRef`
+  // la firma de lo último dibujado para no re-llamar a Google Directions (facturable), y ese ref
+  // se pierde si el componente se desmonta. Antes esto era `{mapPanel && !hideMap && …}`, así que
+  // ir a FLOTA y volver ya re-facturaba Directions sin que nadie lo hubiera pedido.
+  const hideMap = mapaColapsado({ modo, oculto: mapOculto });
   // Contenedor real con scroll del tablero DESPACHO — se lo pasamos a ManualDispatch para
   // el auto-scroll al arrastrar cerca del borde (más confiable que buscarlo por DOM-walk).
   const dragScrollRef = useRef<HTMLDivElement>(null);
@@ -400,6 +415,18 @@ export default function InputSection({
             ))}
           </div>
           <div className="flex-1" />
+          {/* Solo donde hay mapa: en FLOTA no hay nada que mostrar ni esconder. */}
+          {mapPanel && modo !== 'flota' && (
+            <button
+              onClick={() => setMapOculto(v => !v)}
+              title={mapOculto ? 'Mostrar el mapa' : 'Esconder el mapa y darle todo el ancho al tablero'}
+              aria-pressed={mapOculto}
+              className="h-[40px] px-3.5 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all flex items-center gap-2 mr-2"
+            >
+              {mapOculto ? <PanelRightOpen size={15} strokeWidth={2} /> : <PanelRightClose size={15} strokeWidth={2} />}
+              <span className="hidden xl:inline">{rotuloBotonMapa(mapOculto)}</span>
+            </button>
+          )}
           {!rightPanelContent && modo === 'drag' && onAbrirTablero && (
             <button
               onClick={onAbrirTablero}
@@ -439,7 +466,7 @@ export default function InputSection({
 
       {/* Content area — contenido (izquierda) + mapa fijo (derecha, desktop) */}
       <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0">
-        <div className="flex flex-col overflow-hidden min-w-0" style={mapPanel && !hideMap ? { flex: `1 1 ${100 - mapPct}%` } : { flex: '1 1 100%' }}>
+        <div className="flex flex-col overflow-hidden min-w-0" style={{ flex: anchoContenido(hideMap, mapPct, !!mapPanel) }}>
       {modo === 'flota' ? flotaTabContent
       : modo === 'v2' ? (
         <div className="flex-1 overflow-hidden">
@@ -517,8 +544,16 @@ export default function InputSection({
       )}
         </div>
         {!hideMap && mapDivider}
-        {mapPanel && !hideMap && (
-          <div className="flex-shrink-0 overflow-hidden border-l border-black/[0.09]" style={{ flex: `0 0 ${mapPct}%`, minWidth: 0 }}>
+        {/* SIN condicional de montaje: colapsar es poner el ancho en 0, no sacar el panel del
+            árbol. Desmontarlo pierde el dedupe de Directions y cada vuelta se factura de nuevo.
+            `aria-hidden` + `inert` lo sacan del foco y del lector de pantalla mientras mide 0. */}
+        {mapPanel && (
+          <div
+            className="flex-shrink-0 overflow-hidden border-l border-black/[0.09]"
+            style={{ flex: anchoMapa(hideMap, mapPct), minWidth: 0, borderLeftWidth: hideMap ? 0 : undefined }}
+            aria-hidden={hideMap || undefined}
+            inert={hideMap || undefined}
+          >
             {mapPanel}
           </div>
         )}
