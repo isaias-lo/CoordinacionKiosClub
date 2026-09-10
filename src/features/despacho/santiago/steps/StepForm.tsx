@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList, User, Store } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
@@ -33,6 +33,7 @@ import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
+import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
 import { PresenciaBadge } from '../../shared/PresenciaBadge';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
@@ -182,10 +183,12 @@ function TiendaGridCard({
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasGuide ? 'text-success' : 'text-navy'}`}>
+      {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
+          oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasGuide ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide ${terminada ? 'text-white/90' : 'text-text-2'}`}>
+      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 ${terminada ? 'text-white/90' : 'text-text-2'}`}>
         {t.tienda}
       </div>
       {terminada && (
@@ -199,17 +202,21 @@ function TiendaGridCard({
           </span>
         ) : null;
       })()}
+      {/* [a11y] title en cada badge — P/B/C/CH no se explican solos en ningún lado de la UI.
+          [Contraste AA + alineación] Colores compartidos con Regiones vía `storeCardStyles.ts`
+          (ver ese archivo para el detalle de contraste). Los "ghost" (picking pendiente) dejan el
+          fondo/borde punteado tenue como señal de "pendiente", pero el texto va sólido y AA. */}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-info/25">{remP}P</span>}
-        {remB > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-warn/25">{remB}B</span>}
-        {remC > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
-        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.45)', background: 'rgba(146,64,14,0.05)', borderColor: 'rgba(146,64,14,0.25)' }}>{remCH}CH</span>}
+        {remP > 0 && <span title="Pallets pendientes de picking" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.pallet.ghostBorderCls}`} style={{ background: SCB.pallet.ghostBg }}>{remP}P</span>}
+        {remB > 0 && <span title="Bultos pendientes de picking" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.bulto.ghostBorderCls}`} style={{ background: SCB.bulto.ghostBg }}>{remB}B</span>}
+        {remC > 0 && <span title="Contenedores pendientes de picking" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.contenedor.ghostBorderCls}`} style={{ background: SCB.contenedor.ghostBg }}>{remC}C</span>}
+        {remCH > 0 && <span title="Chocolates pendientes de picking" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: SCB.chocolate.color, background: SCB.chocolate.ghostBg, borderColor: SCB.chocolate.ghostBorderColor }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
-        {palletCount     > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded leading-none">{palletCount}P</span>}
-        {boxCount        > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded leading-none">{boxCount}B</span>}
-        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded leading-none">{contenedorCount}C</span>}
-        {chocolateCount  > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: 'rgba(146,64,14,0.10)' }}>{chocolateCount}CH</span>}
+        {palletCount     > 0 && <span title="Pallets" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.pallet.bg }}>{palletCount}P</span>}
+        {boxCount        > 0 && <span title="Bultos" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.bulto.bg }}>{boxCount}B</span>}
+        {contenedorCount > 0 && <span title="Contenedores" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.contenedor.bg }}>{contenedorCount}C</span>}
+        {chocolateCount  > 0 && <span title="Chocolates" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: SCB.chocolate.color, background: SCB.chocolate.bg }}>{chocolateCount}CH</span>}
       </div>
       <StoreProgressBar total={storeTotalOps} done={storeDoneOps} variant="grid" showCount />
     </div>
@@ -286,20 +293,20 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
           <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
         </div>
         <div className="flex gap-3 flex-shrink-0">
-          <div className="text-center">
+          <div className="text-center" title="Pallets">
             <div className="font-barlow-condensed text-[22px] font-extrabold text-[#93C5FD] leading-none">{pallets}</div>
             <div className="text-[9px] text-white/50 uppercase tracking-widest">P</div>
           </div>
-          <div className="text-center">
+          <div className="text-center" title="Bultos">
             <div className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{bultos}</div>
             <div className="text-[9px] text-white/50 uppercase tracking-widest">B</div>
           </div>
-          <div className="text-center">
+          <div className="text-center" title="Chocolates">
             <div className="font-barlow-condensed text-[22px] font-extrabold text-[#E9A178] leading-none">{chocolates}</div>
             <div className="text-[9px] text-white/50 uppercase tracking-widest">CH</div>
           </div>
           {contenedores > 0 && (
-            <div className="text-center">
+            <div className="text-center" title="Contenedores">
               <div className="font-barlow-condensed text-[22px] font-extrabold text-[#C4A3E8] leading-none">{contenedores}</div>
               <div className="text-[9px] text-white/50 uppercase tracking-widest">C</div>
             </div>
@@ -1748,7 +1755,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       {todayList.length > 0 && (
         <div>
           <div className="px-3 py-2 bg-[rgba(30,64,175,0.10)] border-b border-[rgba(30,64,175,0.20)] sticky top-0 z-10 flex items-center gap-2">
-            <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-[#1E40AF]">HOY</span>
+            <span className="font-barlow-condensed text-[15px] font-extrabold tracking-wide text-[#1E40AF]">Hoy</span>
             <span className="font-barlow-condensed text-[10px] text-[#1E40AF]/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
             <span className="ml-auto flex items-center gap-2.5">
               {rmProg.total > 0 && (
@@ -1800,7 +1807,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           <div
             onClick={() => todayList.length > 0 && setShowTodas(prev => !prev)}
             className={`px-3 py-2 bg-bg border-b border-border sticky top-0 z-10 flex items-center gap-2 ${todayList.length > 0 ? 'cursor-pointer' : ''}`}>
-            <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3 flex-1">Todas</span>
+            <span className="font-barlow-condensed text-[13px] font-bold tracking-wide text-text-3 flex-1">Todas</span>
             <span className="font-barlow-condensed text-[10px] text-text-3/50 uppercase tracking-wide hidden sm:inline">toca + para agregar a hoy</span>
             {todayList.length > 0 && (
               <span className="font-barlow-condensed text-[12px] text-text-3/50 select-none ml-1">
@@ -1867,19 +1874,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       <div className="px-3 pb-3 pt-1 flex gap-2">
         <button onClick={goToResumen}
           className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
-          RESUMEN ({activeTiendasCount})
+          Resumen ({activeTiendasCount})
         </button>
         <button onClick={() => setShowCalManual(true)}
           className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
           title="Manual para copiar / Calendario del día">
           <ClipboardList size={16} />
-          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Manual / Cal</span>
+          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Manual / Cal</span>
         </button>
         <button onClick={enrutar}
           className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
           title="Ir al Enrutador">
           <Navigation size={16} />
-          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Enrutador</span>
+          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Enrutador</span>
         </button>
       </div>
     </div>
@@ -2212,14 +2219,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             <button
               onClick={() => onReopen?.()}
               title={`Registrado${terminatedAt ? ` a las ${terminatedAt}` : ''} · toca para reabrir`}
-              className="ml-auto py-2.5 px-5 bg-[#16A34A] text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="ml-auto py-2.5 px-5 bg-[#16A34A] text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
               style={{ boxShadow: '0 4px 16px rgba(22,163,74,0.30)' }}>
               ✓ Completado
             </button>
           ) : (
             <button
               onClick={() => onRegistrar?.()}
-              className="ml-auto py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="ml-auto py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
               style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
               Registrar
             </button>
@@ -2757,7 +2764,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           <div className="flex gap-2 mt-2">
             {([
               { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-[#1E40AF] border-[#1E40AF]' },
-              { id: 'costa' as const, label: 'COSTA', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
+              { id: 'costa' as const, label: 'Costa', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
             ]).map(({ id, label, active_bg }) => {
               const active = selectedGrps.has(id);
               return (
@@ -2768,7 +2775,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     else next.add(id);
                     return next;
                   })}
-                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded border-2 tracking-widest uppercase transition-all cursor-pointer select-none
+                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded border-2 tracking-wide transition-all cursor-pointer select-none
                     ${active ? `${active_bg} text-white shadow-md` : 'bg-white text-text-3 border-border'}`}>
                   {label}
                 </button>
@@ -2788,10 +2795,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setGuideDragOver(true); } }}
             onDragLeave={e => { e.stopPropagation(); setGuideDragOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setGuideDragOver(false); if (!guideUploading && e.dataTransfer.files.length) handleGuideFiles(e.dataTransfer.files); }}
-            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${guideDragOver ? 'border-[#1E40AF] bg-[rgba(30,64,175,0.18)] text-[#1E40AF] scale-[1.02]' : 'border-[#1E40AF] bg-[rgba(30,64,175,0.06)] text-[#1E40AF] active:bg-[rgba(30,64,175,0.12)]'}`}>
+            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold tracking-wide cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${guideDragOver ? 'border-[#1E40AF] bg-[rgba(30,64,175,0.18)] text-[#1E40AF] scale-[1.02]' : 'border-[#1E40AF] bg-[rgba(30,64,175,0.06)] text-[#1E40AF] active:bg-[rgba(30,64,175,0.12)]'}`}>
             {guideUploading
-              ? <><div className="w-3 h-3 border-2 border-[#1E40AF]/30 border-t-[#1E40AF] rounded-full animate-spin" />PROCESANDO…</>
-              : guideDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
+              ? <><div className="w-3 h-3 border-2 border-[#1E40AF]/30 border-t-[#1E40AF] rounded-full animate-spin" />Procesando…</>
+              : guideDragOver ? '↓ Suelta PDFs' : 'Subir guías'}
           </button>
         </div>
 
@@ -2818,8 +2825,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       <div className="hidden lg:flex flex-1 flex-col overflow-hidden">
         {!currentTienda
           ? (
-            <div className="flex-1 flex flex-col items-center justify-center bg-navy" style={{ minHeight: 0 }}>
-              <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
+            // [Rediseño enterprise] El panel vacío ocupaba flex-1 completo en navy saturado —
+            // ahora es un bloque compacto arriba (icono + texto), sobre superficie neutra.
+            <div className="flex-1 flex flex-col bg-bg" style={{ minHeight: 0 }}>
+              <div className="flex-shrink-0 flex flex-col items-center gap-1 py-8 px-6">
+                <Store size={24} className="text-text-3/50 mb-1" strokeWidth={1.5} aria-hidden="true" />
+                <p className="font-barlow-condensed text-[15px] font-bold text-text-2">Selecciona una tienda</p>
+              </div>
             </div>
           )
           : renderMultiForm(false)

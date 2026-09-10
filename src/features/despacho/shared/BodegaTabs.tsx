@@ -45,7 +45,10 @@ export function BodegaTabs() {
             } ${active
                 ? (isCongelados
                     ? 'text-[#0891B2] border-b-[#0891B2] bg-[rgba(8,145,178,0.04)]'
-                    : 'text-red border-b-red bg-[rgba(211,47,47,0.04)]')
+                    // [Un solo significado por color] El rojo queda reservado para
+                    // eliminar/peligro (ver design_system.md) — la tab activa usa navy, el
+                    // acento de marca real (`knavy`/`#1B2A6B`), no rojo.
+                    : 'text-navy border-b-navy bg-[rgba(27,42,107,0.04)]')
                 : 'text-text-3 border-b-transparent hover:text-text-2 hover:bg-bg/50'
               }`}>
             {tab.label}
