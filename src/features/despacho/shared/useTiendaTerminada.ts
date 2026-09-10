@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { fechaISOLocal } from './fechaLocal';
+import { claveSesion, parseClaveSesion } from '@/lib/sessionStateKeys';
 
 export interface TerminadaInfo {
   terminada: boolean;
@@ -36,7 +37,10 @@ export function useTiendaTerminada(): {
       const json = await res.json() as { data?: Array<{ state_key: string; picker_label: string }> };
       const next = new Map<string, TerminadaInfo>();
       for (const row of json.data ?? []) {
-        try { next.set(row.state_key, JSON.parse(row.picker_label) as TerminadaInfo); } catch { /* skip malformed */ }
+        // `parseClaveSesion` le quita el sufijo y sigue entendiendo las 52 filas guardadas antes
+        // de agregarlo, así que las marcas de estos días no se pierden.
+        const { stateKey } = parseClaveSesion({ state_key: row.state_key, tipo: TIPO });
+        try { next.set(stateKey, JSON.parse(row.picker_label) as TerminadaInfo); } catch { /* skip malformed */ }
       }
       setMap(next);
     } catch { /* silent */ }
@@ -66,7 +70,12 @@ export function useTiendaTerminada(): {
     try {
       await fetch('/api/picking-session-state', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state_key: cod, date: fechaISOLocal(), tipo: TIPO, picker_label: JSON.stringify(payload) }),
+        // La clave lleva el tipo. `odoo-progress` usa `state_key = store_cod` igual que esto, y
+        // la PK de la tabla es (state_key, date) SIN tipo: con la clave pelada, marcar una tienda
+        // terminada y el progreso de Odoo se borrarían entre sí. Hoy no pasa solo porque Odoo
+        // está desconectado desde el 04/09 y esta marca nació el 07/09 — nunca convivieron.
+        // Se desactiva antes de que reconecten Odoo.
+        body: JSON.stringify({ state_key: claveSesion(cod, TIPO), date: fechaISOLocal(), tipo: TIPO, picker_label: JSON.stringify(payload) }),
       });
     } catch { /* best-effort — ver comentario arriba */ }
   }, []);

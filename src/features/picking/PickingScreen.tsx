@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
+import { claveSesion, parseClaveSesion, TIPO_NOMBRE } from '@/lib/sessionStateKeys';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
@@ -260,8 +261,10 @@ export function PickingScreen() {
     if (!sessionStateRows.length) return;
     setPickerDisplayNames(prev => {
       const next = { ...prev };
-      for (const r of sessionStateRows)
-        if (r.tipo === 'P' && !dirtyStateKeys.current.has(`${r.state_key}::P`) && r.picker_label) next[r.state_key] = r.picker_label;
+      for (const r of sessionStateRows) {
+        const { stateKey, tipo } = parseClaveSesion(r);
+        if (tipo === TIPO_NOMBRE && !dirtyStateKeys.current.has(`${stateKey}::${TIPO_NOMBRE}`) && r.picker_label) next[stateKey] = r.picker_label;
+      }
       return next;
     });
   }, [sessionStateRows]);
@@ -274,8 +277,12 @@ export function PickingScreen() {
     if (!sessionStateRows.length) return;
     setPickerBatch(prev => {
       const next = { ...prev };
-      for (const r of sessionStateRows)
-        if (r.tipo === 'batch' && !dirtyStateKeys.current.has(`${r.state_key}::batch`)) next[r.state_key] = r.picker_label ?? '';
+      for (const r of sessionStateRows) {
+        // `parseClaveSesion` le quita el sufijo, y de paso sigue entendiendo las filas guardadas
+        // ANTES de este arreglo (clave pelada con tipo='batch'): así no se pierde lo ya cargado.
+        const { stateKey, tipo } = parseClaveSesion(r);
+        if (tipo === 'batch' && !dirtyStateKeys.current.has(`${stateKey}::batch`)) next[stateKey] = r.picker_label ?? '';
+      }
       return next;
     });
   }, [sessionStateRows]);
@@ -291,7 +298,11 @@ export function PickingScreen() {
     upsertTimers.current[dirtyKey] = setTimeout(() => {
       void pickingFetch('/api/picking-session-state', {
         method: 'POST',
-        body: JSON.stringify({ state_key: stateKey, date: todayISO(), picker_label: pickerLabel, tipo }),
+        // La clave lleva el tipo. La PK de la tabla es (state_key, date) SIN tipo, así que sin
+        // esto el batch y el nombre compiten por la misma fila y el último gana: guardar el
+        // batch borraba el nombre del encargado. El nombre conserva su clave pelada para no
+        // mover las cientos de filas que ya existen (ver sessionStateKeys.ts).
+        body: JSON.stringify({ state_key: claveSesion(stateKey, tipo), date: todayISO(), picker_label: pickerLabel, tipo }),
       }).then(() => { dirtyStateKeys.current.delete(dirtyKey); });
     }, 500);
   }, []);
@@ -1013,7 +1024,11 @@ export function PickingScreen() {
     const results = await Promise.allSettled(
       candidates.map(group => {
         const pallets     = slotsOf(group.stateKey).length;
-        const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+        // El `picker_label` del slot como respaldo: si el nombre en sesión se perdió —les pasó a
+        // 25 encargados cuando el batch pisaba esa fila— el slot todavía lo tiene. Mismo orden
+        // que ya usaba la tarjeta al mostrarlo.
+        const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)
+          || slotsOf(group.stateKey)[0]?.picker_label || group.key;
         // Tipo dominante entre los slots (de la sección) del picker (evita perder grupos mixtos P+B)
         const slotTipos = slotsOf(group.stateKey).map(s => s.tipo || 'P');
         const tipo = slotTipos.length === 0 ? 'P' :
@@ -1044,7 +1059,8 @@ export function PickingScreen() {
         if (r.status === 'rejected') {
           const group     = candidates[i];
           const pallets   = slotsOf(group.stateKey).length;
-          const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+          const pickerLabel = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)
+            || slotsOf(group.stateKey)[0]?.picker_label || group.key;
           const slotTipos = slotsOf(group.stateKey).map(s => s.tipo || 'P');
           const tipo = slotTipos.length === 0 ? 'P' :
             slotTipos.reduce((acc, t) =>
