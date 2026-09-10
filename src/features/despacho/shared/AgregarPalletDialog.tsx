@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { CameraBarcodeScanner } from '@/features/auditoria/components/scanner/CameraBarcodeScanner';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
+import { mensajeClaim, type MotivoClaim } from './mensajeClaim';
+import { botonDeTipoCode } from './tipoCode';
 
 interface Props {
   /** Etiqueta del tipo que se está agregando (para el título). */
@@ -40,11 +42,21 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ref: r, date, store_cod: storeCod }),
       });
-      const json = await res.json() as { data?: PickingSlot; reason?: string; store_cod?: string; error?: string };
+      const json = await res.json() as {
+        data?: PickingSlot; reason?: string; store_cod?: string; error?: string;
+        eliminado_en?: string | null; eliminado_por?: string | null; tipo?: string | null;
+      };
       if (!res.ok) {
-        if (json.reason === 'otra_tienda')        setError(`Este pallet es de la tienda ${json.store_cod} — no se puede agregar aquí.`);
-        else if (json.reason === 'no_encontrado') setError(`No encontramos el pallet #${r}. Verifica el número.`);
-        else                                       setError(json.error || 'No se pudo agregar el pallet.');
+        // El texto lo arma `mensajeClaim`, que es puro y está testeado. Antes vivía acá y decía
+        // "Verifica el número" para TODO lo que no aparecía — cuando lo normal es que el pallet
+        // exista y alguien lo haya borrado, así que mandaba a revisar una etiqueta impecable.
+        setError(mensajeClaim((json.reason ?? 'desconocido') as MotivoClaim, {
+          ref: r,
+          storeCod: json.store_cod,
+          eliminadoEn: json.eliminado_en,
+          eliminadoPor: json.eliminado_por,
+          boton: botonDeTipoCode(json.tipo),
+        }));
         return;
       }
       if (json.data) onExistente(json.data);
