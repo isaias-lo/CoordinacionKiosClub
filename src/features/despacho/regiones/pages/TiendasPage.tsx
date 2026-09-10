@@ -48,10 +48,19 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 
-/* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ── */
-const COD_TO_TIENDA_NAME: Record<string, string> = Object.fromEntries(
-  Object.entries(TIENDAS).map(([name, t]) => [t.cod, name])
-);
+/* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
+   [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
+   `TIENDAS` (data/tiendas.ts) no es estático: `registrarTiendasBD` le agrega en runtime (dentro de
+   un useEffect, tras el fetch a /api/tiendas) toda tienda de Regiones que solo vive en Config.
+   Tiendas y no está en el SENDU_EXTRAS curado a mano — 60PBL (Los Pablos) es exactamente ese caso.
+   Un const fijo tomaba la foto ANTES de esa hidratación y nunca la volvía a mirar: las etiquetas
+   que Picking generaba para 60PBL (picking_pallets.store_cod='60PBL') nunca encontraban su nombre
+   acá, así que el `if (!name) continue` de más abajo las descartaba en silencio para siempre. Le
+   iba a pasar a TODA tienda nueva agregada solo desde Config. Tiendas. Ahora se recalcula fresco
+   cada vez que se usa (adentro de `load()`, una vez por carga — no por fila). */
+function codToTiendaName(): Record<string, string> {
+  return Object.fromEntries(Object.entries(TIENDAS).map(([name, t]) => [t.cod, name]));
+}
 
 /* ── Per-day calendar overrides ── */
 const _today = new Date();
@@ -527,11 +536,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         .eq('is_active', true)
         .order('id', { ascending: true });
       if (!data) return;
+      const codToName = codToTiendaName();  // fresco: TIENDAS puede haber crecido desde el último load()
       const slots: Record<string, { tipo: string; contenido: string }[]> = {};
       const full:  Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
       for (const row of data) {
         if (fueRecienBorrado(row.id as number)) continue; // [RC-3] no revivir un slot recién borrado
-        const name = COD_TO_TIENDA_NAME[row.store_cod as string];
+        const name = codToName[row.store_cod as string];
         if (!name) continue;
         if (!slots[name]) { slots[name] = []; full[name] = []; }
         slots[name].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
