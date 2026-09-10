@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, ChevronLeft, ClipboardList, User } from 'lucide-react';
+import { Navigation, ChevronLeft, ClipboardList, User, Store } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
@@ -47,6 +47,7 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -181,10 +182,12 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
           title="Agregar a hoy">+</button>
       )}
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasPdf ? 'text-success' : 'text-navy'}`}>
+      {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
+          oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasPdf ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 uppercase tracking-wide ${terminada ? 'text-white/90' : 'text-text-2'}`}>
+      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 ${terminada ? 'text-white/90' : 'text-text-2'}`}>
         {t.name}
       </div>
       {terminada && (
@@ -198,17 +201,21 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
           </span>
         ) : null;
       })()}
+      {/* [a11y] title en cada badge — P/B/C/CH no se explican solos en ningún lado de la UI.
+          [Contraste AA + alineación] Colores compartidos con Santiago vía `storeCardStyles.ts`
+          (ver ese archivo para el detalle de contraste). Los "ghost" (picking pendiente) dejan el
+          fondo/borde punteado tenue como señal de "pendiente", pero el texto va sólido y AA. */}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP  > 0 && <span className="text-[11px] font-bold text-info/40 bg-[rgba(37,99,235,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-info/25">{remP}P</span>}
-        {remB  > 0 && <span className="text-[11px] font-bold text-warn/40 bg-[rgba(217,119,6,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-warn/25">{remB}B</span>}
-        {remC  > 0 && <span className="text-[11px] font-bold text-[rgba(107,33,168,0.40)] bg-[rgba(107,33,168,0.06)] px-1.5 py-0.5 rounded leading-none border border-dashed border-[rgba(107,33,168,0.25)]">{remC}C</span>}
-        {remCH > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: 'rgba(146,64,14,0.40)', background: 'rgba(120,53,15,0.06)', borderColor: 'rgba(120,53,15,0.25)' }}>{remCH}CH</span>}
+        {remP  > 0 && <span title="Pallets pendientes de picking" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.pallet.ghostBorderCls}`} style={{ background: SCB.pallet.ghostBg }}>{remP}P</span>}
+        {remB  > 0 && <span title="Bultos pendientes de picking" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.bulto.ghostBorderCls}`} style={{ background: SCB.bulto.ghostBg }}>{remB}B</span>}
+        {remC  > 0 && <span title="Contenedores pendientes de picking" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.contenedor.ghostBorderCls}`} style={{ background: SCB.contenedor.ghostBg }}>{remC}C</span>}
+        {remCH > 0 && <span title="Chocolates pendientes de picking" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: SCB.chocolate.color, background: SCB.chocolate.ghostBg, borderColor: SCB.chocolate.ghostBorderColor }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
-        {palletCount    > 0 && <span className="text-[11px] font-bold text-info bg-[rgba(37,99,235,0.12)] px-1.5 py-0.5 rounded leading-none">{palletCount}P</span>}
-        {boxCount       > 0 && <span className="text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.12)] px-1.5 py-0.5 rounded leading-none">{boxCount}B</span>}
-        {contenedorCount > 0 && <span className="text-[11px] font-bold text-[#6B21A8] bg-[rgba(107,33,168,0.10)] px-1.5 py-0.5 rounded leading-none">{contenedorCount}C</span>}
-        {chocolateCount > 0 && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: 'rgba(120,53,15,0.10)' }}>{chocolateCount}CH</span>}
+        {palletCount    > 0 && <span title="Pallets" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.pallet.bg }}>{palletCount}P</span>}
+        {boxCount       > 0 && <span title="Bultos" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.bulto.bg }}>{boxCount}B</span>}
+        {contenedorCount > 0 && <span title="Contenedores" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.contenedor.bg }}>{contenedorCount}C</span>}
+        {chocolateCount > 0 && <span title="Chocolates" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: SCB.chocolate.color, background: SCB.chocolate.bg }}>{chocolateCount}CH</span>}
         {/* Preset fallback (solo cuando no hay picking ni items) */}
         {!hasGhost && preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
           <span className="text-[11px] text-text-3/50 leading-none">
@@ -1522,16 +1529,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
           </div>
           <div className="flex gap-2.5 ml-2 flex-shrink-0">
-            <div className="text-center">
+            <div className="text-center" title="Pallets">
               <div className="font-barlow-condensed text-[26px] font-extrabold text-[#93C5FD] leading-none">{items.filter(i => i.pkg === 'pallet').length}</div>
               <div className="text-[10px] text-white/50 uppercase tracking-widest">P</div>
             </div>
-            <div className="text-center">
+            <div className="text-center" title="Bultos">
               <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{items.filter(i => i.pkg === 'box').length}</div>
               <div className="text-[10px] text-white/50 uppercase tracking-widest">B</div>
             </div>
             {items.filter(i => i.pkg === 'chocolate').length > 0 && (
-              <div className="text-center">
+              <div className="text-center" title="Chocolates">
                 <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{items.filter(i => i.pkg === 'chocolate').length}</div>
                 <div className="text-[10px] text-white/50 uppercase tracking-widest">CH</div>
               </div>
@@ -2160,10 +2167,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setMultiDragOver(true); } }}
             onDragLeave={e => { e.stopPropagation(); setMultiDragOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setMultiDragOver(false); if (!multiPdfLoading && e.dataTransfer.files.length) handleMultiplePdfs(e.dataTransfer.files); }}
-            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${multiDragOver ? 'border-[#1E40AF] bg-[rgba(30,64,175,0.18)] text-[#1E40AF] scale-[1.02]' : 'border-[#1E40AF] bg-[rgba(30,64,175,0.06)] text-[#1E40AF] active:bg-[rgba(30,64,175,0.12)]'}`}>
+            className={`flex-1 py-3 border-2 rounded-btn font-barlow-condensed text-[16px] font-extrabold tracking-wide cursor-pointer transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${multiDragOver ? 'border-[#1E40AF] bg-[rgba(30,64,175,0.18)] text-[#1E40AF] scale-[1.02]' : 'border-[#1E40AF] bg-[rgba(30,64,175,0.06)] text-[#1E40AF] active:bg-[rgba(30,64,175,0.12)]'}`}>
             {multiPdfLoading
-              ? <><div className="w-3 h-3 border-2 border-[#1E40AF]/30 border-t-[#1E40AF] rounded-full animate-spin" />PROCESANDO…</>
-              : multiDragOver ? '↓ SUELTA PDFs' : 'SUBIR GUÍAS'}
+              ? <><div className="w-3 h-3 border-2 border-[#1E40AF]/30 border-t-[#1E40AF] rounded-full animate-spin" />Procesando…</>
+              : multiDragOver ? '↓ Suelta PDFs' : 'Subir guías'}
           </button>
         </div>
 
@@ -2178,8 +2185,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               onDrop={handleAddDrop}
               className={`transition-colors ${addDropActive ? 'bg-[rgba(30,64,175,0.07)]' : ''}`}>
               <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all flex items-center gap-2 ${addDropActive ? 'bg-[rgba(30,64,175,0.18)] border-[#1E40AF]/60' : 'bg-[rgba(30,64,175,0.10)] border-[rgba(30,64,175,0.20)]'}`}>
-                <span className="font-barlow-condensed text-[15px] font-extrabold uppercase tracking-widest text-[#1E40AF]">
-                  {addDropActive ? '↓ Suelta aquí' : 'HOY'}
+                <span className="font-barlow-condensed text-[15px] font-extrabold tracking-wide text-[#1E40AF]">
+                  {addDropActive ? '↓ Suelta aquí' : 'Hoy'}
                 </span>
                 {!addDropActive && <span className="font-barlow-condensed text-[11px] text-[#1E40AF]/50 uppercase tracking-wide">arrastra aquí</span>}
                 {!addDropActive && <span className="ml-auto flex items-center gap-1.5">
@@ -2235,7 +2242,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 <div
                   onClick={() => !removeDropActive && setShowTodas(prev => !prev)}
                   className={`px-2.5 py-2 border-b border-t sticky top-0 z-10 transition-all flex items-center ${removeDropActive ? 'cursor-default bg-[rgba(217,119,6,0.18)] border-warn/60' : 'cursor-pointer bg-bg border-border'}`}>
-                  <span className="font-barlow-condensed text-[13px] font-bold uppercase tracking-widest text-text-3 flex-1">
+                  <span className="font-barlow-condensed text-[13px] font-bold tracking-wide text-text-3 flex-1">
                     {removeDropActive ? '↓ Suelta para retirar de hoy' : 'Todas'}
                   </span>
                   {!removeDropActive && (
@@ -2308,21 +2315,21 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             <button
               onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
               className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
-              RESUMEN ({activeTiendasCount})
+              Resumen ({activeTiendasCount})
             </button>
             <button
               onClick={() => setShowCalManual(true)}
               className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Manual para copiar / Calendario general">
               <ClipboardList size={16} />
-              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Manual / Cal</span>
+              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Manual / Cal</span>
             </button>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
               className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Ir al Enrutador">
               <Navigation size={16} />
-              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide uppercase">Enrutador</span>
+              <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Enrutador</span>
             </button>
           </div>
         </div>
@@ -2349,9 +2356,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           {selectedTienda
             ? renderForm(false)
             : (
-              <div className="flex-1 flex flex-col items-center justify-center bg-navy" style={{ minHeight: 0 }}>
-                <p className="font-barlow-condensed text-[22px] font-bold text-white/70 uppercase tracking-widest">Selecciona una tienda</p>
-                <p className="text-[13px] text-white/35 mt-1">o arrastra desde &quot;Todas&quot; a Hoy</p>
+              // [Rediseño enterprise] El panel vacío ocupaba flex-1 completo en navy saturado
+              // (~59% del viewport en 1440px) sin contenido útil. Ahora es un bloque compacto
+              // arriba (icono + 2 líneas), sobre superficie neutra — el resto del espacio queda
+              // simplemente en blanco, no "ocupado" por un panel decorativo.
+              <div className="flex-1 flex flex-col bg-bg" style={{ minHeight: 0 }}>
+                <div className="flex-shrink-0 flex flex-col items-center gap-1 py-8 px-6">
+                  <Store size={24} className="text-text-3/50 mb-1" strokeWidth={1.5} aria-hidden="true" />
+                  <p className="font-barlow-condensed text-[15px] font-bold text-text-2">Selecciona una tienda</p>
+                  <p className="text-[12px] text-text-3">o arrastra desde &quot;Todas&quot; a Hoy</p>
+                </div>
               </div>
             )
           }
@@ -2440,13 +2454,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               }}>
               <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
             </button>
-            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-widest uppercase flex-1">Resumen</span>
+            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
             <button
               onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
               className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
               style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
               <Navigation size={13} color="#93C5FD" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-widest uppercase" style={{ color: '#93C5FD' }}>Enrutador</span>
+              <span className="font-barlow-condensed text-[13px] font-bold tracking-wide" style={{ color: '#93C5FD' }}>Enrutador</span>
             </button>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">
