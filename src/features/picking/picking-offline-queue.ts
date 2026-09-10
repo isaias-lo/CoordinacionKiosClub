@@ -16,6 +16,9 @@ export type OfflineQueueItem =
       tipo: string; contenido: string; section?: string | null; refs: string; date: string;
       clientOpId?: string;  // idempotencia: el replay reusa el mismo id ⇒ no duplica
       actorName?: string;   // atribución: conserva quién creó aunque se reenvíe offline
+      // El peso viaja en la cola: si se pesó sin red, ese dato no se puede perder — nadie va a
+      // volver a subir el pallet a la balanza cuando vuelva la señal.
+      medidas?: { peso_kg: number | null; alto: number | null; largo: number | null; ancho: number | null; peso_v: number | null };
     }
   | {
       op: 'print';
@@ -67,6 +70,7 @@ export async function flushPickingQueue(
             picker_label: item.pickerLabel, tipo: item.tipo,
             contenido: item.contenido, section: item.section ?? null, refs: item.refs,
             client_op_id: item.clientOpId, actor_name: item.actorName,
+            ...(item.medidas ?? {}),
           }),
         });
       } else {

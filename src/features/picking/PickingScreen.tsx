@@ -46,6 +46,7 @@ import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
 import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
+import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import {
   getTiendasAdelantoHoy, deleteTiendaAdelanto, todayISO as adelantoTodayISO,
@@ -445,7 +446,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id')
+        .select('id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
         .eq('date', todayISO())
         .eq('is_active', true)
         .order('created_at', { ascending: true })
@@ -484,6 +485,13 @@ export function PickingScreen() {
           section:      (r.section as string | null) ?? null,
           refs:         (r.refs as string) ?? '',
           created_at:   r.created_at as string,
+          // Sin estas cinco, el evento de Realtime PISABA el peso recién guardado con undefined:
+          // el slot local volvía a quedar sin pesar hasta la próxima recarga completa.
+          peso_kg:      (r.peso_kg as number | null) ?? null,
+          alto:         (r.alto as number | null) ?? null,
+          largo:        (r.largo as number | null) ?? null,
+          ancho:        (r.ancho as number | null) ?? null,
+          peso_v:       (r.peso_v as number | null) ?? null,
         });
 
         if (eventType === 'INSERT') {
@@ -518,7 +526,7 @@ export function PickingScreen() {
     return unsub;
   }, [loadPalletSlots]);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null) => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet) => {
     const date = todayISO();
     // Idempotencia: id de operación único por click. Si el POST se reintenta (red,
     // doble-click, replay de cola offline), el server deduplica por client_op_id.
@@ -532,19 +540,20 @@ export function PickingScreen() {
       id: tempId, store_cod: storeCod, state_key: stateKey,
       picker_label: pickerLabel, tipo, contenido, section, refs,
       created_at: new Date().toISOString(),
+      ...(medidas ?? {}),
     };
     setPalletSlots(prev => [...prev, tempSlot]);
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
         setPalletSlots(prev => prev.filter(s => s.id !== tempId));
         showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
-        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
+        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName, medidas });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };

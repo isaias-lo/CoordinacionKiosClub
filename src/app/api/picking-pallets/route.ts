@@ -3,7 +3,9 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyActor } from '@/lib/apiAuth';
 import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
 
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id';
+// peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
+// también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
@@ -88,6 +90,12 @@ export async function POST(request: NextRequest) {
       section:      body.section ?? null,
       refs:         body.refs ?? '',
       client_op_id: body.client_op_id ?? null,
+      // Null cuando no vienen: un slot sin pesar queda igual que siempre.
+      peso_kg:      body.peso_kg ?? null,
+      alto:         body.alto ?? null,
+      largo:        body.largo ?? null,
+      ancho:        body.ancho ?? null,
+      peso_v:       body.peso_v ?? null,
     })
     .select(SELECT_COLS)
     .single();
@@ -117,7 +125,9 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as
-    | { id: number; tipo?: string; contenido?: string }
+    | { id: number; tipo?: string; contenido?: string;
+        peso_kg?: number | null; alto?: number | null; largo?: number | null;
+        ancho?: number | null; peso_v?: number | null }
     | { slots: { id: number; seq: number; canonical_id: string }[] };
 
   // Batch: asignar seq + canonical_id a múltiples slots al imprimir
@@ -139,6 +149,11 @@ export async function PATCH(request: NextRequest) {
   const update: Record<string, unknown> = {};
   if (body.tipo      !== undefined) update.tipo      = body.tipo;
   if (body.contenido !== undefined) update.contenido = body.contenido;
+  // Corregir el peso después de crear el slot (se pesó tarde, o se pesó mal la primera vez).
+  // Whitelist explícita a propósito: nunca un spread del body a la base.
+  for (const campo of ['peso_kg', 'alto', 'largo', 'ancho', 'peso_v'] as const) {
+    if (body[campo] !== undefined) update[campo] = body[campo];
+  }
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
   const { error } = await supabaseServer()
     .from('picking_pallets')
