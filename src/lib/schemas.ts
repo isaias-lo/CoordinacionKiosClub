@@ -184,6 +184,16 @@ export const CreatePickingPalletSchema = z.object({
   refs:         z.string().max(500).nullish(),
   actor_name:   z.string().max(100).nullish(),
   client_op_id: z.string().uuid().optional(), // idempotencia: mismo id ⇒ no duplica
+  // Peso y medidas desde Picking, que es quien tiene la balanza delante. Las columnas ya existían
+  // en `picking_pallets` pero solo las escribía Bodega, así que el chocolate llegaba con los 20 kg
+  // de la constante por defecto. Todo opcional: quien no pese, no manda nada y no cambia nada.
+  // Los topes son de cordura, no de negocio (el máximo real del chocolate vive en su módulo):
+  // acá solo se rechaza lo imposible, para que un dedazo no entre a la base.
+  peso_kg:      z.number().positive().max(2000).nullish(),
+  alto:         z.number().int().positive().max(400).nullish(),
+  largo:        z.number().int().positive().max(400).nullish(),
+  ancho:        z.number().int().positive().max(400).nullish(),
+  peso_v:       z.number().positive().max(5000).nullish(),
 });
 
 // ── Conductores ────────────────────────────────────────────────────────────

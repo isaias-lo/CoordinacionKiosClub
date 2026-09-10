@@ -46,6 +46,13 @@ export interface PalletSlot {
   created_at: string;
   seq?: number | null;          // ordinal asignado al imprimir (P{seq}/B{seq})
   canonical_id?: string | null; // código generado al imprimir
+  // Peso y medidas tomados en Picking. Ya existían en la tabla pero solo los escribía Bodega;
+  // ahora viajan desde acá, que es donde está la balanza. `null` = no se pesó.
+  peso_kg?: number | null;
+  alto?: number | null;
+  largo?: number | null;
+  ancho?: number | null;
+  peso_v?: number | null;       // derivado de las medidas — ver shared/medidasPallet.ts
 }
 
 export interface PrintRecord {
