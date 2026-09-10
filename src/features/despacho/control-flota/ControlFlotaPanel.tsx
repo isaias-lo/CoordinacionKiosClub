@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Truck, Users, Plus, Trash2, Save, X, AlertCircle, Edit2 } from 'lucide-react';
+import { useAnchoVentana } from '../rutas/utils/useIsMobile';
+import { columnasCatalogo, columnasCampos } from '../rutas/utils/gridPersonal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Pioneta { id: string; nombre: string; telefono?: string; empresa?: string; }
@@ -67,6 +69,9 @@ function syncPersonal() {
 }
 
 function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRefresh: () => void }) {
+  // Este panel era 100% inline-style sin un solo breakpoint, a diferencia del resto del Enrutador.
+  // El porqué del `minmax(0,…)` está en `gridPersonal.ts`.
+  const gridCampos = columnasCampos(useAnchoVentana());
   const [nombre,   setNombre]   = useState('');
   const [telefono, setTelefono] = useState('');
   const [empresa,  setEmpresa]  = useState('');
@@ -163,7 +168,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
           <div key={p.id}>
             {editingId === p.id ? (
               <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
                   <input value={editNombre}   onChange={e => setEditNombre(e.target.value)}   placeholder="Nombre *"  style={inputStyle} />
                   <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono"  style={inputStyle} />
                   <input value={editEmpresa}  onChange={e => setEditEmpresa(e.target.value)}  placeholder="Empresa"   style={inputStyle} />
@@ -207,7 +212,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
       {/* Add form - collapsible */}
       {showAddForm && (
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
             <input
               value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
               style={inputStyle} onKeyDown={e => e.key === 'Enter' && void handleAdd()} autoFocus />
@@ -233,6 +238,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
 
 // ── Sub-component: Gestionar Conductores ──────────────────────────────────────
 function GestionarConductores({ conductores, onRefresh }: { conductores: Conductor[]; onRefresh: () => void }) {
+  const gridCampos = columnasCampos(useAnchoVentana());
   const [nombre,    setNombre]    = useState('');
   const [telefono,  setTelefono]  = useState('');
   const [empresa,   setEmpresa]   = useState('');
@@ -329,7 +335,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
           <div key={c.id}>
             {editingId === c.id ? (
               <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
                   <input value={editNombre} onChange={e => setEditNombre(e.target.value)} placeholder="Nombre *" style={inputStyle} />
                   <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono" style={inputStyle} />
                   <input value={editEmpresa} onChange={e => setEditEmpresa(e.target.value)} placeholder="Empresa" style={inputStyle} />
@@ -373,7 +379,7 @@ function GestionarConductores({ conductores, onRefresh }: { conductores: Conduct
       {/* Add form - collapsible */}
       {showAddForm && (
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
             <input
               value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
               style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
@@ -471,8 +477,9 @@ function RutaCard({
           </select>
         </div>
 
-        {/* Pionetas */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* Pionetas — `minmax(0,…)` por lo mismo que los campos del catálogo: el min-content de un
+            <select> con nombres largos desbordaba la grilla en vez de encogerla (ver gridPersonal.ts). */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
           <div>
             <label style={labelStyle}>Pioneta 1</label>
             <select value={edit.pioneta_1} onChange={e => onChange('pioneta_1', e.target.value)} style={selectStyle}>
@@ -648,14 +655,16 @@ export function ControlFlotaPanel() {
 
   const modifiedCount = rutas.filter(r => r.flota_modificada).length;
 
-  // Grid columns CSS based on density
+  // Grid columns CSS based on density. `minmax(0,1fr)` y no `1fr`: con densidad 3 o 4 en una
+  // tablet, el min-content de las tarjetas desbordaba la grilla en vez de encogerla — el mismo
+  // defecto que deformaba el catálogo de Personal (ver gridPersonal.ts).
   const gridCols = density === 1
-    ? 'repeat(1, 1fr)'
+    ? 'repeat(1, minmax(0,1fr))'
     : density === 2
-    ? 'repeat(2, 1fr)'
+    ? 'repeat(2, minmax(0,1fr))'
     : density === 3
-    ? 'repeat(3, 1fr)'
-    : 'repeat(4, 1fr)';
+    ? 'repeat(3, minmax(0,1fr))'
+    : 'repeat(4, minmax(0,1fr))';
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'white', padding: '16px 16px 32px' }}>
@@ -726,6 +735,8 @@ export function ControlFlotaPanel() {
 
 // ── Catálogo de Personal (conductores + pionetas) ─────────────────────────────
 export function PersonalCatalogPanel() {
+  // Los dos catálogos lado a lado necesitan más ancho del que tiene una tablet en vertical.
+  const gridCatalogo = columnasCatalogo(useAnchoVentana());
   const [pionetas,    setPionetas]    = useState<Pioneta[]>([]);
   const [conductores, setConductores] = useState<Conductor[]>([]);
 
@@ -745,7 +756,7 @@ export function PersonalCatalogPanel() {
   useEffect(() => { loadConductores(); }, [loadConductores]);
 
   return (
-    <div style={{ background: 'white', padding: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+    <div style={{ background: 'white', padding: '16px', display: 'grid', gridTemplateColumns: gridCatalogo, gap: 16, alignItems: 'start' }}>
       <GestionarConductores conductores={conductores} onRefresh={loadConductores} />
       <GestionarPionetas    pionetas={pionetas}       onRefresh={loadPionetas}    />
     </div>
