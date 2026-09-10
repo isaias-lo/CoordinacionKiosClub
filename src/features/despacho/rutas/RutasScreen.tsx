@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { useAuth } from '../../../components/AuthProvider';
+import { useAsignacionAutomatica } from '@/hooks/useAsignacionAutomatica';
+import { puedeCambiarAuto, motivoBloqueoAuto } from './utils/autoAsignar';
 import InputSection   from './components/InputSection';
 import DespachoHeader from './components/DespachoHeader';
 import { useIsMobile } from './utils/useIsMobile';
@@ -152,7 +154,7 @@ type ModoEnrutador = 'drag' | 'cong' | 'v2' | 'flota' | 'plan' | 'cal' | 'man';
 const MODOS_RECORDABLES: readonly ModoEnrutador[] = ['drag', 'cong', 'v2', 'flota', 'plan', 'cal'];
 
 export default function RutasScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const userId = user?.id;
   useDayRollover();  // recarga al cruzar medianoche → evita arrastrar tiendas/cantidades de ayer
 
@@ -190,15 +192,13 @@ export default function RutasScreen() {
   }, [flotaActivadaEn]);
   // [Asignación automática] Interruptor para el efecto de más abajo que completa el tablero solo
   // cuando llega carga nueva de Bodega. Por defecto ON (comportamiento de siempre); apagarlo deja
-  // que el coordinador arme todo a mano sin que el sistema le "adelante" camiones. Persiste en
-  // localStorage — es una preferencia de armado local, igual que el orden de activación de arriba.
-  const [asignacionAutomatica, setAsignacionAutomatica] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    try { const v = localStorage.getItem('asignacionAutomaticaOn'); return v === null ? true : v === '1'; } catch { return true; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem('asignacionAutomaticaOn', asignacionAutomatica ? '1' : '0'); } catch {}
-  }, [asignacionAutomatica]);
+  // que el coordinador arme todo a mano sin que el sistema le "adelante" camiones.
+  //
+  // COMPARTIDO por todo el equipo (`config_despacho`), no una preferencia de este navegador. Antes
+  // vivía en localStorage y eso rompía justo en el caso que importa: alguien lo apagaba para armar
+  // a mano, y en el equipo de al lado seguía en ON adelantando camiones sobre su armado.
+  const { activo: asignacionAutomatica, guardar: guardarAuto } = useAsignacionAutomatica();
+  const puedeAuto = puedeCambiarAuto(profile?.role);
   const [cal,     setCal]     = useState<CalRecord>(() => {
     // Fast-path: use localStorage cache written by the Calendario de Abastecimiento (if fresh)
     try {
@@ -2722,7 +2722,10 @@ export default function RutasScreen() {
         dnom={DNOM} calT={sortedCalT}
         mapContent={isMobile ? mapPanel : undefined}
         terminadas={terminadas}
-        asignacionAutomatica={asignacionAutomatica} onToggleAsignacionAutomatica={() => setAsignacionAutomatica(v => !v)}
+        asignacionAutomatica={asignacionAutomatica}
+        onToggleAsignacionAutomatica={() => { void guardarAuto(!asignacionAutomatica); }}
+        puedeCambiarAuto={puedeAuto}
+        motivoBloqueoAuto={motivoBloqueoAuto(profile?.role)}
       />
 
       <main className="flex-1 overflow-hidden">
