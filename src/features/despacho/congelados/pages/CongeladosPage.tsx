@@ -26,14 +26,19 @@ import { construirItemsCongelados, type SlotCongelado } from '../utils/construir
 // porque el fetch lo trae de todas formas).
 type PickingSlotCongelado = SlotCongelado & { contenido: string };
 
-// Reverse lookup cod → tienda (catálogo Nacional), igual patrón que TiendasPage
-// (COD_TO_TIENDA_NAME) pero quedándonos con el registro completo (nombre + región).
-const COD_TO_NACIONAL = Object.fromEntries(
-  Object.values(TIENDAS_NACIONAL).map(t => [t.cod, t])
-);
+// Reverse lookup cod → tienda (catálogo Nacional/Regiones), igual patrón que TiendasPage.
+// [Bug 60PBL, 2026-09-10] `TIENDAS_NACIONAL` es el mismo objeto mutable `TIENDAS` de
+// regiones/data/tiendas.ts (import con alias) — `registrarTiendasBD` le agrega tiendas en
+// runtime (tras el fetch a /api/tiendas) que solo viven en Config. Tiendas, no en el
+// SENDU_EXTRAS curado a mano. Un `const` calculado una sola vez al cargar el módulo tomaba la
+// foto ANTES de esa hidratación y se quedaba ciego para siempre a esas tiendas — le pasó a 60PBL
+// también acá. Ahora se recalcula fresco en cada llamada.
+function codToNacional(): Record<string, typeof TIENDAS_NACIONAL[string]> {
+  return Object.fromEntries(Object.values(TIENDAS_NACIONAL).map(t => [t.cod, t]));
+}
 
 function nombreDeTienda(cod: string, zona: ZonaCongelados): string {
-  if (zona === 'nacional') return COD_TO_NACIONAL[cod]?.name ?? cod;
+  if (zona === 'nacional') return codToNacional()[cod]?.name ?? cod;
   return getTiendaSantiagoByCod(cod)?.tienda ?? cod;
 }
 
@@ -275,7 +280,7 @@ export function CongeladosPage({ zona }: Props) {
       let comuna = '';
       let ventana = '';
       if (zona === 'nacional') {
-        const t = COD_TO_NACIONAL[cod];
+        const t = codToNacional()[cod];
         region = t?.region ?? '';
         comuna = t?.comuna ?? '';
         // Nacional (Sendu) no trae ventana horaria en el catálogo estático.
