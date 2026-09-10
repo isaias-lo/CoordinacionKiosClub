@@ -24,3 +24,26 @@ export function pkgCodeNacional(pkg: string): TipoCodePicking {
     default:           return 'P'; // pallet
   }
 }
+
+/**
+ * El mapeo inverso: de la letra guardada al TEXTO EXACTO del botón que hay que apretar.
+ *
+ * Se usa para decirle a alguien "vuelve a crearlo con + Choc." cuando el pallet que busca fue
+ * eliminado. Va el texto literal del botón —"+ Choc." y no "+ Chocolate"— porque el punto del
+ * mensaje es que lo encuentre en pantalla sin traducir nada.
+ *
+ * Acepta CC y CN (cajas de congelados), que existen en `picking_eventos` aunque no estén en
+ * `TipoCodePicking`. Un código desconocido devuelve null: mejor omitir la instrucción que mandar
+ * a alguien a buscar un botón que no existe.
+ */
+export function botonDeTipoCode(code?: string | null): string | null {
+  switch ((code ?? '').trim().toUpperCase()) {
+    case 'P':  return '+ Pallet';
+    case 'B':  return '+ Bulto';
+    case 'C':  return '+ Cont.';
+    case 'CH': return '+ Choc.';
+    case 'CC': return '+ Caja cartón';
+    case 'CN': return '+ Caja negra';
+    default:   return null;
+  }
+}
