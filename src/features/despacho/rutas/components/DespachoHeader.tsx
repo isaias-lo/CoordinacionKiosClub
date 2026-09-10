@@ -26,6 +26,11 @@ interface Props {
    *  Bodega (ON, default) o si el coordinador prefiere armar todo a mano (OFF). */
   asignacionAutomatica: boolean;
   onToggleAsignacionAutomatica: () => void;
+  /** Si este usuario puede cambiarlo. El permiso REAL lo aplica el servidor (POST admin-only);
+   *  esto solo evita ofrecer un botón que va a devolver 403 sin explicar nada. */
+  puedeCambiarAuto?: boolean;
+  /** Por qué está bloqueado, para el title. Un botón apagado sin explicación parece roto. */
+  motivoBloqueoAuto?: string | null;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -57,17 +62,43 @@ function RefreshButton({ compact }: { compact?: boolean }) {
   );
 }
 
-/** Interruptor "Asignación automática" — cuando está ON (default), el sistema completa el
- *  tablero solo apenas Bodega registra carga nueva. Apagado, el coordinador arma todo a mano. */
-function AutoAsignarToggle({ on, onToggle, compact }: { on: boolean; onToggle: () => void; compact?: boolean }) {
+/**
+ * Interruptor "Asignación automática" — cuando está ON (default), el sistema completa el tablero
+ * solo apenas Bodega registra carga nueva. Apagado, el coordinador arma todo a mano.
+ *
+ * Es un ajuste COMPARTIDO por todo el equipo, no de este navegador: por eso lleva la aclaración
+ * en el título, y por eso solo un admin lo cambia.
+ *
+ * Sobre los colores: antes ON era gris apagado con texto atenuado —indistinguible de un botón
+ * deshabilitado— y OFF era el único con color. Así no se leía "el sistema está ayudando", se leía
+ * "este botón no hace nada". Ahora los DOS estados tienen color y peso propio: navy afirmativo
+ * cuando el sistema asigna, ámbar de advertencia cuando no. El estado deshabilitado —que ahora
+ * existe, para quien no es admin— es el único apagado, que es lo que corresponde.
+ */
+function AutoAsignarToggle(
+  { on, onToggle, compact, puedeCambiar = true, motivoBloqueo }:
+  { on: boolean; onToggle: () => void; compact?: boolean; puedeCambiar?: boolean; motivoBloqueo?: string | null },
+) {
+  const estado = on
+    ? 'Asignación automática ACTIVA — el tablero se completa solo cuando Bodega registra carga.'
+    : 'Asignación automática APAGADA — el tablero no se completa solo; se arma a mano.';
+  const accion = puedeCambiar
+    ? (on ? ' Clic para apagarla.' : ' Clic para activarla.')
+    : '';
+
   return (
     <button
-      onClick={onToggle}
+      onClick={puedeCambiar ? onToggle : undefined}
+      disabled={!puedeCambiar}
       aria-label={`Asignación automática ${on ? 'activada' : 'desactivada'}`}
-      title={on ? 'Asignación automática ON — clic para armar todo a mano' : 'Asignación automática OFF — el tablero no se completa solo'}
-      className={`flex items-center gap-1.5 h-[38px] rounded-[10px] flex-shrink-0 transition-all active:scale-95 border ${
-        on ? 'bg-kbg border-black/[0.10] text-kmuted hover:text-ktext hover:border-black/[0.18]'
+      aria-pressed={on}
+      title={`${estado}${accion}${motivoBloqueo ? ` ${motivoBloqueo}` : ' Es un ajuste compartido con todo el equipo.'}`}
+      className={`flex items-center gap-1.5 h-[38px] rounded-[10px] flex-shrink-0 transition-all border-2 ${
+        on ? 'bg-knavy/[0.07] border-knavy/45 text-knavy'
            : 'bg-amber-50 border-amber-400 text-amber-700'
+      } ${puedeCambiar
+        ? `active:scale-95 cursor-pointer ${on ? 'hover:border-knavy' : 'hover:border-amber-500'}`
+        : 'opacity-55 cursor-not-allowed'
       } ${compact ? 'w-[38px] justify-center' : 'px-3'}`}
     >
       <span className="text-[13px] leading-none">{on ? '🤖' : '✋'}</span>
@@ -129,7 +160,7 @@ function HeaderFields({
 export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
   dnom, calT, mapContent, terminadas,
-  asignacionAutomatica, onToggleAsignacionAutomatica,
+  asignacionAutomatica, onToggleAsignacionAutomatica, puedeCambiarAuto = true, motivoBloqueoAuto,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -157,7 +188,7 @@ export default function DespachoHeader({
           <div className="min-w-0 flex-1 text-[12px] text-kmuted truncate">
             <span className="font-semibold text-ktext">{supervisor || 'Sin supervisor'}</span> · {totalStores} tiendas
           </div>
-          <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} compact />
+          <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} compact puedeCambiar={puedeCambiarAuto} motivoBloqueo={motivoBloqueoAuto} />
           <RefreshButton compact />
         </div>
 
@@ -224,7 +255,7 @@ export default function DespachoHeader({
 
         <div className="flex-1 min-w-[8px]" />
 
-        <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} />
+        <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} puedeCambiar={puedeCambiarAuto} motivoBloqueo={motivoBloqueoAuto} />
         <RefreshButton />
 
         {/* + Parada */}
