@@ -8,7 +8,7 @@ import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
 import { partsOf, buildManualText, lineaTotal, type ManualLine, type ManualGrupo } from './manualText';
 import {
-  resumenPesaje, textoResumenPesaje, avisosAltoPorTienda, ALTO_AVISO_CM, type SlotPesaje,
+  resumenPesaje, lineasPesaje, avisosAltoPorTienda, textoManualParaCopiar, ALTO_AVISO_CM, type SlotPesaje,
 } from './manualPesaje';
 import { MAX_ALTO_CM } from './palletLimits';
 import { supabase } from '@/lib/supabase';
@@ -69,7 +69,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
     if (!open) return;
     let cancelled = false;
     supabase.from('picking_pallets')
-      .select('store_cod,tipo,peso_kg,alto')
+      .select('store_cod,tipo,peso_kg,alto,picker_label')
       .eq('date', todayStr())
       .eq('is_active', true)
       .then(({ data }: { data: SlotPesaje[] | null }) => { if (!cancelled && data) setSlots(data); });
@@ -100,17 +100,17 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
     });
   };
 
-  const { text: manualText, withItems, tot } = buildManualText(filteredLines);
+  const { withItems, tot } = buildManualText(filteredLines);
 
   // Solo las tiendas que se están viendo: el resumen y los avisos siguen al filtro de grupo.
   const codsVisibles = new Set(withItems.map(l => l.cod));
   const resumen      = resumenPesaje(slots, codsVisibles);
-  const lineaPesaje  = textoResumenPesaje(resumen);
+  const lineasPeso   = lineasPesaje(resumen);
   const avisos       = avisosAltoPorTienda(slots, codsVisibles);
 
-  // El resumen de pesaje viaja en el copiado (es una línea de cierre, como el TOTAL). Los avisos
-  // de alto NO: el formato "COD: 2P" se pega en otros lados y tiene que quedar parseable.
-  const textoCopiar = manualText && lineaPesaje ? `${manualText}\n${lineaPesaje}` : manualText;
+  // Lo copiado dice lo mismo que la pantalla: tiendas CON sus avisos de alto, TOTAL y el pesaje por
+  // tipo. Sale de la misma función que arma estas líneas, así que no pueden diferir.
+  const textoCopiar = textoManualParaCopiar(withItems, tot, avisos, resumen);
 
   const copy = async () => {
     if (!textoCopiar) return;
@@ -223,7 +223,10 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
                     );
                   })}
                   <div className="mt-3 font-bold">{lineaTotal(tot, withItems.length)}</div>
-                  {lineaPesaje && <div className="text-text-2">{lineaPesaje}</div>}
+                  {lineasPeso.map((l, i) => (
+                    // Una línea por tipo (Pallets, Bultos, Chocolates…), cada una con su fracción y %.
+                    <div key={l} className={i === 0 ? 'text-text-2 mt-1' : 'text-text-2'}>{l}</div>
+                  ))}
                 </>
               )}
             </div>
