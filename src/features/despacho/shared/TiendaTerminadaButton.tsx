@@ -9,7 +9,7 @@ import type { ViendoInfo } from './usePresenciaTienda';
  * useTiendaTerminada.ts). Mismo lenguaje visual que el "✓ Completado" del pie de Resumen
  * (verde relleno = hecho, toca para deshacer).
  */
-export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesarCount, viendo }: {
+export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesarCount, sinGuardar, viendo }: {
   cod: string;
   info?: TerminadaInfo;
   onToggle: (cod: string, terminada: boolean, por?: string) => void;
@@ -23,6 +23,11 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesar
    *  su parte y marca terminada, Persona B todavía estaba agregando un pallet. La tienda queda
    *  cerrada con datos incompletos." Si hay ítems sin pesar, se avisa antes de cerrar. */
   sinPesarCount?: number;
+  /** Unidades que Picking ya etiquetó y que Bodega NO guardó — tarjetas "sin guardar" que quedaron
+   *  ahí. No entran en el conteo que leen el Manual y el Enrutador, así que esa carga no existe
+   *  para el camión (2026-09-11: 13PIE salió con 3 bultos así, 22LGN con 2). Ver
+   *  `avisoSinGuardar` en sinGuardarEnBodega.ts. */
+  sinGuardar?: string | null;
   /** [Presencia] Quién más tiene esta tienda abierta ahora — si alguien la está viendo, puede
    *  estar a mitad de agregar algo que todavía no se guardó. */
   viendo?: ViendoInfo[];
@@ -38,6 +43,7 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesar
       const avisos: string[] = [];
       if (itemCount === 0) avisos.push('⚠ Esta tienda no tiene ningún ítem agregado.');
       if (sinPesarCount) avisos.push(`⚠ ${sinPesarCount} ítem${sinPesarCount > 1 ? 's' : ''} quedó${sinPesarCount > 1 ? 'n' : ''} "sin pesar" (peso en 0).`);
+      if (sinGuardar) avisos.push(sinGuardar);
       if (viendo?.length) avisos.push(`⚠ ${viendo.map(v => v.name).join(', ')} ${viendo.length > 1 ? 'están viendo' : 'está viendo'} esta tienda ahora — puede estar a mitad de agregar algo.`);
       const msg = (avisos.length ? avisos.join('\n') + '\n\n' : '')
         + '¿Marcar esta tienda como "Terminada"?\n\nEn el Enrutador va a poder asignarse a un camión — solo hazlo si ya no le vas a agregar más carga.';
