@@ -32,11 +32,13 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [cantidad, setCantidad] = useState(1); // "agregar de a N" (crear varios juntos)
+  // Pallet borrado que se puede devolver tal como estaba (hay copia y es de esta tienda).
+  const [restaurar, setRestaurar] = useState<{ palletId: number; aviso: string } | null>(null);
 
   async function claim(refValue: string) {
     const r = refValue.trim().replace(/^#/, '');
     if (!r) { setError('Ingresa o escanea el número del pallet.'); return; }
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setRestaurar(null);
     try {
       const res = await fetch('/api/picking-pallets/claim-bodega', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -45,6 +47,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
       const json = await res.json() as {
         data?: PickingSlot; reason?: string; store_cod?: string; error?: string;
         eliminado_en?: string | null; eliminado_por?: string | null; tipo?: string | null;
+        pallet_id?: number | null; restaurable?: boolean; aviso_restaurar?: string | null;
       };
       if (!res.ok) {
         // El texto lo arma `mensajeClaim`, que es puro y está testeado. Antes vivía acá y decía
@@ -56,7 +59,39 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
           eliminadoEn: json.eliminado_en,
           eliminadoPor: json.eliminado_por,
           boton: botonDeTipoCode(json.tipo),
+          restaurable: !!json.restaurable,
         }));
+        if (json.reason === 'eliminado' && json.restaurable && json.pallet_id) {
+          setRestaurar({ palletId: json.pallet_id, aviso: json.aviso_restaurar ?? '' });
+        }
+        return;
+      }
+      if (json.data) onExistente(json.data);
+    } catch {
+      setError('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Devuelve el pallet borrado tal como estaba. La respuesta tiene la misma forma que un reclamo
+  // exitoso, así que sigue por el mismo camino (`onExistente`): el formulario no nota la diferencia.
+  async function restaurarBorrado() {
+    if (!restaurar) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch('/api/picking-pallets/restaurar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pallet_id: restaurar.palletId, date, store_cod: storeCod }),
+      });
+      const json = await res.json() as { data?: PickingSlot; reason?: string; error?: string };
+      if (!res.ok) {
+        setRestaurar(null);
+        setError(json.reason === 'ya_existe'
+          ? `El pallet #${restaurar.palletId} ya fue restaurado. Toca "Agregar" para sumarlo a la carga.`
+          : json.reason === 'otra_tienda'
+            ? `El pallet #${restaurar.palletId} es de otra tienda.`
+            : `No se pudo restaurar el pallet #${restaurar.palletId}. ${json.error ?? ''}`.trim());
         return;
       }
       if (json.data) onExistente(json.data);
@@ -137,7 +172,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
                 autoFocus
                 inputMode="numeric"
                 value={ref}
-                onChange={e => { setRef(e.target.value); if (error) setError(null); }}
+                onChange={e => { setRef(e.target.value); if (error) setError(null); if (restaurar) setRestaurar(null); }}
                 onKeyDown={e => { if (e.key === 'Enter') void claim(ref); }}
                 placeholder="1050"
                 className="flex-1 text-[18px] font-semibold outline-none"
@@ -158,8 +193,20 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
               </div>
             )}
 
+            {restaurar && (
+              <div className="rounded-xl px-3 py-2.5 flex flex-col gap-2"
+                style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                {restaurar.aviso && <div className="text-[12px] leading-snug" style={{ color: '#1E3A8A' }}>{restaurar.aviso}</div>}
+                <button onClick={() => void restaurarBorrado()} disabled={loading}
+                  className="rounded-lg py-2 font-bold text-[14px] cursor-pointer"
+                  style={{ background: loading ? '#94A3B8' : '#1E40AF', color: '#fff', border: 'none' }}>
+                  {loading ? 'Restaurando…' : `↺ Restaurar #${restaurar.palletId}`}
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2 mt-1">
-              <button onClick={() => { setModo('elegir'); setError(null); setRef(''); }}
+              <button onClick={() => { setModo('elegir'); setError(null); setRef(''); setRestaurar(null); }}
                 className="flex-1 rounded-xl py-2.5 font-semibold text-[14px] cursor-pointer"
                 style={{ background: '#F1F5F9', color: '#475569', border: 'none' }}>
                 Atrás

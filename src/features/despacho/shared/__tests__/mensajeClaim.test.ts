@@ -131,3 +131,19 @@ describe('normalización de la referencia', () => {
     expect(t).not.toContain('#');
   });
 });
+
+describe('mensajeClaim · restaurable', () => {
+  const ahora = new Date('2026-09-11T15:00:00Z');
+
+  it('si se puede restaurar, NO manda a recrearlo ni a reimprimir: su etiqueta vuelve a servir', () => {
+    const m = mensajeClaim('eliminado', { ref: '12345', eliminadoEn: '2026-09-11T13:00:00Z', restaurable: true, boton: '+ Choc.', ahora });
+    expect(m).toContain('restaurarlo');
+    expect(m).not.toContain('Vuelve a crearlo');
+    expect(m).not.toContain('reimprime');
+  });
+
+  it('sin copia (borrado anterior al 11/09) sigue diciendo cómo recrearlo', () => {
+    const m = mensajeClaim('eliminado', { ref: '12345', restaurable: false, boton: '+ Choc.', ahora });
+    expect(m).toContain('Vuelve a crearlo con “+ Choc.”');
+  });
+});

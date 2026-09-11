@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
+import { puedeRestaurar, avisoRestaurar } from '@/features/despacho/shared/restaurarPallet';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
@@ -52,24 +53,46 @@ export async function POST(request: NextRequest) {
       // físico (la fila desaparece), así que el caso más común es que alguien lo haya eliminado.
       // El único rastro queda en `picking_eventos` — sin mirar ahí, el mensaje mandaba a revisar
       // una etiqueta que estaba perfecta.
-      const borrado = /^\d+$/.test(ref)
+      const CAMPOS_BORRADO = 'id, pallet_id, created_at, actor_name, tipo, store_cod';
+      let borrado = /^\d+$/.test(ref)
         ? (await sb
             .from('picking_eventos')
-            .select('created_at, actor_name, tipo, store_cod')
+            .select(CAMPOS_BORRADO)
             .eq('event_type', 'eliminar')
             .eq('pallet_id', Number(ref))
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()).data
         : null;
+      // Escaneado por código de barras: el evento no tiene el canonical en una columna, pero desde
+      // el 11/09/2026 la copia de la fila sí (`datos`). Antes, escanear un pallet borrado decía
+      // "no existe" aunque hubiera existido. Si la columna faltara, la consulta falla y se sigue igual.
+      if (!borrado) {
+        borrado = (await sb
+          .from('picking_eventos')
+          .select(CAMPOS_BORRADO)
+          .eq('event_type', 'eliminar')
+          .eq('datos->>canonical_id', ref)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()).data;
+      }
 
       if (borrado) {
+        // La copia se lee aparte: si todavía no existiera la columna, el mensaje de siempre sale
+        // igual y solo no se ofrece restaurar.
+        const { data: conCopia } = await sb.from('picking_eventos').select('datos').eq('id', borrado.id).maybeSingle();
+        const copia = (conCopia as { datos?: Record<string, unknown> | null } | null)?.datos ?? null;
         return NextResponse.json({
           error: 'Pallet eliminado', reason: 'eliminado',
           eliminado_en: borrado.created_at,
           // Viene vacío en la mayoría de los borrados; el cliente ya lo contempla.
           eliminado_por: borrado.actor_name ?? null,
           tipo: borrado.tipo ?? null,
+          // Para ofrecer "Restaurar": el id real (aunque se haya escaneado el código) y si hay copia.
+          pallet_id: borrado.pallet_id ?? null,
+          restaurable: puedeRestaurar(copia, storeCod).ok,
+          aviso_restaurar: copia && puedeRestaurar(copia, storeCod).ok ? avisoRestaurar(copia) : null,
         }, { status: 404 });
       }
       return NextResponse.json({ error: 'Pallet no encontrado', reason: 'no_encontrado' }, { status: 404 });
