@@ -12,7 +12,11 @@ import type { Seccion } from './picking-secciones';
  * distinta de aquella en la que se está parado, y el encargado recién creado desaparece de la
  * vista al instante porque el filtro lo excluye.
  */
-export function pideSeccion(filtro: SectionFilter): boolean {
+export function pideSeccion(filtro: SectionFilter, esTabCongelados = false): boolean {
+  // En la pestaña Congelados la sección ya está decidida: es congelados. Antes esto miraba solo el
+  // filtro, y como en Congelados el único chip es "Todas", mostraba el selector con las secciones
+  // de SECO — y el encargado terminaba creado en Seco.
+  if (esTabCongelados) return false;
   return filtro === 'all';
 }
 
@@ -26,7 +30,14 @@ export function pideSeccion(filtro: SectionFilter): boolean {
  * "Todas" nace SIN sección y con contenido 'mixto' —que a propósito no matchea ninguna sección—
  * porque "todas" significa "sin sección específica", no "una por cada sección".
  */
-export function seccionYContenidoManual(sel: SectionFilter): { seccion: Seccion | null; contenido: string } {
+export function seccionYContenidoManual(
+  sel: SectionFilter, primeraUnidad?: string,
+): { seccion: Seccion | null; contenido: string } {
+  // La primera unidad puede decidir la sección sola: un chocolate es de Chocolates y una caja de
+  // cartón o negra es de Congelados, se haya elegido "Todas" o no. Sin esto, un CH creado desde
+  // "Todas" quedaba sin sección y no aparecía bajo el chip Chocolates.
+  if (primeraUnidad === 'CH') return { seccion: 'chocolates', contenido: 'chocolate' };
+  if (primeraUnidad === 'CC' || primeraUnidad === 'CN') return { seccion: 'congelados', contenido: 'congelados' };
   if (sel === 'all') return { seccion: null, contenido: 'mixto' };
   if (sel === 'chocolates') return { seccion: 'chocolates', contenido: 'chocolate' };
   if (sel === 'congelados') return { seccion: 'congelados', contenido: 'congelados' };

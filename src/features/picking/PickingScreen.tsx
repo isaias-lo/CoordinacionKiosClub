@@ -39,6 +39,7 @@ import {
 import type { PickingEvento } from './picking-utils';
 import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
+import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, type ColumnaSeco } from './tiposUnidad';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -155,6 +156,9 @@ export function PickingScreen() {
   // Batch escrito al crear el encargado. Solo se pide dentro de una sección, donde ocupa el
   // lugar que tenía el selector de sección (ver `pideSeccion`).
   const [manualBatch, setManualBatch]         = useState('');
+  // Con qué unidad nace el encargado. Antes siempre un Pallet — también en Congelados, que solo
+  // maneja cajas, y en Chocolates, donde el 99% de lo que se prepara es CH.
+  const [manualTipo, setManualTipo]           = useState<PickerType>('P');
   // Bug 5 reportado: el botón de imprimir toda una tienda disparaba la impresión de una al
   // toque, sin confirmar — un click accidental imprimía una etiqueta real de más. Armar/
   // confirmar: el primer click solo "arma" el botón (2.5 s); el segundo click, dentro de esa
@@ -176,7 +180,14 @@ export function PickingScreen() {
   // Tipo/dirección/zona desde Supabase — para el badge de tipo de tienda (Mall/Strip/…) del header.
   const [tiendaTipoInfo, setTiendaTipoInfo] = useState<Record<string, { tipo: string; d: string; z: string }>>({});
 
-  const [sectionFilter, setSectionFilter] = useLocalStorage<SectionFilter>(SECTION_FILTER_KEY, 'all');
+  const [sectionFilterGuardado, setSectionFilter] = useLocalStorage<SectionFilter>(SECTION_FILTER_KEY, 'all');
+  // El filtro que APLICA en esta pestaña (ver seccionEfectiva). El guardado no se reinicia al cambiar
+  // de pestaña: un "Chocolates" guardado mandaba dentro de Congelados — contaba las cajas en 0, la
+  // impresión salía vacía y una caja agregada con el + se grababa con section='chocolates'.
+  const sectionFilter = seccionEfectiva(sectionFilterGuardado, esTabCongelados);
+  // El calendario de la pestaña Calendario tiene su propio selector. Antes seguía al chip
+  // "Congelados" de Seco, que ya no existe (Congelados tiene su pestaña).
+  const [calFuente, setCalFuente] = useLocalStorage<'despacho' | 'congelados'>('picking_cal_fuente', 'despacho');
   const [colsPerRow, setColsPerRow]       = useLocalStorage<number>(COLS_PER_ROW_KEY, 3);
 
 
@@ -643,8 +654,8 @@ export function PickingScreen() {
     // BUG 7 corregido: antes 'all' caía en contenido='hogar' por defecto, así que
     // seccionDeSlot (sin `section`, cae al contenido) lo clasificaba como Hogar en vez de
     // dejarlo sin clasificar — 'mixto' no matchea ninguna sección en seccionDeContenido.
-    const { seccion, contenido } = seccionYContenidoManual(manualSeccion);
-    void addPalletSlot(stateKey, cod, nombre, 'P', contenido, '', seccion);
+    const { seccion, contenido } = seccionYContenidoManual(manualSeccion, manualTipo);
+    void addPalletSlot(stateKey, cod, nombre, manualTipo, contenido, '', seccion);
     // BUG 1/2 corregido: sin esto, el campo "Nombre del picker" del card recién creado
     // aparecía vacío (solo el placeholder mostraba el nombre) y la advertencia de fallback
     // salía de entrada aunque el encargado ya tuviera nombre real. Al sembrar el nombre acá
@@ -658,7 +669,7 @@ export function PickingScreen() {
     setManualName('');
     setManualBatch('');
     setAddingManualCod(null);
-  }, [manualName, manualSeccion, manualBatch, addPalletSlot, upsertSessionState, setPickerBatchValue]);
+  }, [manualName, manualSeccion, manualTipo, manualBatch, addPalletSlot, upsertSessionState, setPickerBatchValue]);
 
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
@@ -1507,7 +1518,20 @@ export function PickingScreen() {
              en el resto (Seco/Aseo-Comida/Hogar/Chocolates/Todas), el Central. */}
           {rightTab === 'calendario' && (
             <div className="flex-1 overflow-y-auto min-h-0 p-3">
-              <CalendarioColumnas readOnly forceGeneral source={sectionFilter === 'congelados' ? 'congelados' : 'despacho'} />
+              <div className="flex gap-1.5 mb-3 print:hidden" role="group" aria-label="Calendario a mostrar">
+                {([['despacho', 'Central'], ['congelados', 'Congelados']] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setCalFuente(k)} aria-pressed={calFuente === k}
+                    className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
+                    style={{
+                      background:  calFuente === k ? 'var(--color-info)' : '#fff',
+                      color:       calFuente === k ? '#fff' : '#64748B',
+                      borderColor: calFuente === k ? 'var(--color-info)' : 'var(--color-border)',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <CalendarioColumnas readOnly forceGeneral source={calFuente} />
             </div>
           )}
 
@@ -1543,10 +1567,10 @@ export function PickingScreen() {
                       { key: 'aseo-comida', label: 'Aseo y Comida' },
                       { key: 'hogar',       label: 'Hogar' },
                       { key: 'chocolates',  label: 'Chocolates' },
-                      { key: 'congelados',  label: 'Congelados' },
             ] as { key: SectionFilter; label: string }[])
-              // [P6] En el tab Congelados no se ofrecen las secciones de seco.
-              .filter(({ key }) => !esTabCongelados || key === 'all')
+              // Cada pestaña ofrece lo suyo: Congelados solo "Todas"; Seco sus cuatro secciones, sin
+              // "Congelados" (que tiene su propia pestaña — antes aparecía en los dos lados).
+              .filter(({ key }) => seccionesDeLaPestana(esTabCongelados).includes(key))
               .map(({ key, label }) => (
                       <button key={key} onClick={() => setSectionFilter(key)}
                         className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
@@ -1653,7 +1677,7 @@ export function PickingScreen() {
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
-                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualBatch(''); setManualSeccion(sectionFilter); }}
+                        <button onClick={() => { const sec: SectionFilter = esTabCongelados ? 'congelados' : sectionFilter; setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualBatch(''); setManualSeccion(sec); setManualTipo(primeraUnidadPorDefecto(sec)); }}
                           className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5"
                           style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
                           <UserPlus size={13} /> Encargado manual
@@ -1704,10 +1728,15 @@ export function PickingScreen() {
                         />
                         {/* La sección solo se pregunta en "Todas". Dentro de una sección ya se sabe
                             cuál es, así que ese espacio lo ocupa el Batch — el dato que ahí sí falta. */}
-                        {pideSeccion(sectionFilter) ? (
+                        {pideSeccion(sectionFilter, esTabCongelados) ? (
                           <select
                             value={manualSeccion}
-                            onChange={e => setManualSeccion(e.target.value as SectionFilter)}
+                            onChange={e => {
+                              const sec = e.target.value as SectionFilter;
+                              setManualSeccion(sec);
+                              // Si la unidad elegida no existe en la sección nueva, vuelve a su default.
+                              setManualTipo(t => (tiposDeUnidad(false, sec).includes(t) ? t : primeraUnidadPorDefecto(sec)));
+                            }}
                             aria-label="Sección del encargado"
                             className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
                             style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
@@ -1715,7 +1744,6 @@ export function PickingScreen() {
                             <option value="aseo-comida">Aseo y Comida</option>
                             <option value="hogar">Hogar</option>
                             <option value="chocolates">Chocolates</option>
-                            <option value="congelados">Congelados</option>
                           </select>
                         ) : (
                           <input
@@ -1730,6 +1758,27 @@ export function PickingScreen() {
                             style={{ borderColor: 'var(--color-border)', width: 130 }}
                           />
                         )}
+                        {/* Con qué unidad nace. Viene preseleccionada según la sección (Congelados →
+                            Caja Cartón, Chocolates → CH, el resto → P) y se puede cambiar. */}
+                        <div className="flex items-center gap-1" role="radiogroup" aria-label="Primera unidad del encargado">
+                          <span className="text-[11px] text-slate-400 mr-0.5">Nace con</span>
+                          {tiposDeUnidad(manualSeccion === 'congelados', manualSeccion).map(t => {
+                            const nombre = ({ P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate', CC: 'Caja Cartón', CN: 'Caja Negra' } as Record<PickerType, string>)[t];
+                            const activo = manualTipo === t;
+                            return (
+                              <button key={t} type="button" role="radio" aria-checked={activo}
+                                onClick={() => setManualTipo(t)} title={nombre}
+                                className="text-[12px] font-bold px-2 py-1 rounded cursor-pointer transition-all border"
+                                style={{
+                                  background:  activo ? 'var(--color-info)' : '#fff',
+                                  color:       activo ? '#fff' : '#64748B',
+                                  borderColor: activo ? 'var(--color-info)' : 'var(--color-border)',
+                                }}>
+                                {t}
+                              </button>
+                            );
+                          })}
+                        </div>
                         <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
                           className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
                           style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
@@ -1861,12 +1910,14 @@ export function PickingScreen() {
                           );
                         };
 
-                        // Filtro activo (Hogar / Aseo y Comida): render plano, sin cambios
-                        if (sectionFilter !== 'all') {
+                        // Filtro activo (Hogar / Aseo y Comida), o la pestaña Congelados: render plano.
+                        // Congelados no tiene secciones — antes caía en la grilla de Seco y mostraba
+                        // tres columnas de seco vacías más una con sus tarjetas.
+                        if (sectionFilter !== 'all' || esTabCongelados) {
                           return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
                         }
 
-                        // "Todas": grid de 4 columnas fijas, siempre visibles
+                        // "Todas" de Seco: grid de 3 columnas fijas, siempre visibles (Congelados tiene su pestaña)
                         const SECTION_META = {
                           'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
                           hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
@@ -1875,17 +1926,14 @@ export function PickingScreen() {
                           mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
                         } as const;
 
-                        const getSection = (g: PickerGroup): keyof typeof SECTION_META => {
-                          const cats = new Set(g.operations.flatMap(o => o.categories));
-                          const hasHogar      = cats.has('Hogar');
-                          const hasAseoComida = cats.has('Aseo') || cats.has('Comida');
-                          const hasChoco      = cats.has('Chocolates');
-                          const hasCongelados = cats.has('Congelados');
-                          if (hasHogar && hasAseoComida) return 'mixto';
-                          if (hasChoco) return 'chocolates';
-                          if (hasCongelados) return 'congelados';
-                          if (hasAseoComida) return 'aseo-comida';
-                          return 'hogar';
+                        // Un encargado manual no tiene operaciones de Odoo: su columna sale de la sección
+                        // de sus unidades (antes caían TODOS en Hogar). Ver columnaSeco.
+                        const getSection = (g: PickerGroup): ColumnaSeco => {
+                          const esManual = g.operations.length === 0;
+                          const cats = esManual
+                            ? categoriasDeSlotsManual(slotsByStateKey[g.stateKey] ?? [])
+                            : g.operations.flatMap(o => o.categories);
+                          return columnaSeco(cats, esManual);
                         };
 
                         const countSlots = (gs: PickerGroup[]) =>
@@ -1894,7 +1942,6 @@ export function PickingScreen() {
                         const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
                         const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
                         const chocoGroups      = storeGroups.filter(g => getSection(g) === 'chocolates');
-                        const congeladosGroups = storeGroups.filter(g => getSection(g) === 'congelados');
                         const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
                         const mixtoTotal       = countSlots(mixtoGroups);
 
@@ -1922,13 +1969,12 @@ export function PickingScreen() {
                           { key: 'aseo-comida', groups: aseoComidaGroups },
                           { key: 'hogar',       groups: hogarGroups },
                           { key: 'chocolates',  groups: chocoGroups },
-                          { key: 'congelados',  groups: congeladosGroups },
                         ];
 
                         return (
                           <div className="space-y-4">
-                            {/* Grid de 4 columnas fijas — todas siempre visibles */}
-                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
+                            {/* Grid de 3 columnas fijas — todas siempre visibles */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
