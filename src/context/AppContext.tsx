@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
+import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 
@@ -82,9 +83,11 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentPkg: action.payload };
     case 'ADD_ITEM': {
       const prev = state.dispatch[action.tienda] || [];
-      const updated = renumber([...prev, action.item]);
+      // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
+      const updated = renumber(agregarSinDuplicar(prev, action.item));
+      const pos = updated.findIndex(i => action.item.pickingSlotId != null && i.pickingSlotId === action.item.pickingSlotId);
       const sel = new Set(state.selection[action.tienda] || []);
-      sel.add(updated.length - 1);
+      sel.add(pos >= 0 ? pos : updated.length - 1);
       return {
         ...state,
         dispatch: { ...state.dispatch, [action.tienda]: updated },

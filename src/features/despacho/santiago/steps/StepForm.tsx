@@ -55,6 +55,7 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
+import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 
 /* ── Calendar localStorage ── */
 const _d = new Date();
@@ -1270,7 +1271,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const pickingSlot = nuevoSlot ?? (slotId
       ? (pickingSlotsFull[cod] ?? []).find(s => s.id === slotId)
       : undefined);
-    const savedItem: SantiagoItem = {
+    const candidato: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: pesoV, regimen,
@@ -1284,20 +1285,26 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       pickingSlotId: slotId,
       canonical_id: pickingSlot?.canonical_id ?? undefined,
     };
+    // Esta unidad ya puede tener ítem aunque la tarjeta diga "sin guardar": lo guardó otro equipo
+    // mientras esta tarjeta estaba abierta. Entonces se completa ese ítem, no se agrega otro.
+    const previo = itemDeLaUnidad(existing, slotId);
+    const savedItem = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', item: savedItem });
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") tras el await,
     // así queda determinista sin importar si esta función esperó por el fetch del slot.
-    if (!sinPesar) showToast(`✓ ${savedItem.orden} agregado`, '#16A34A');
+    if (!sinPesar) showToast(`✓ ${savedItem.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
-      tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: p, alto: a,
+      tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: savedItem.peso, alto: savedItem.alto,
       contenido: savedItem.contenido, slotId });
 
-    // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado
+    // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado. Con las medidas
+    // ya fusionadas: un "sin pesar" encima de un bulto pesado no le borra el peso en Picking.
     if (slotId) {
+      const { peso: sp, alto: sa, largo: sl, ancho: sw } = savedItem;
       supabase.from('picking_pallets').update({
-        peso_kg: p, alto: a, ancho: fA, largo: fL,
-        peso_v: sinPesar ? 0 : (Math.round((a * fL * fA) / 6000 * 10) / 10 || null),
+        peso_kg: sp, alto: sa, ancho: sw, largo: sl,
+        peso_v: esSinPesar(savedItem) ? 0 : (Math.round((sa * sl * sw) / 6000 * 10) / 10 || null),
       }).eq('id', slotId).then(({ error }) => {
         if (error) console.error('[picking_pallets update]', error.message);
       });

@@ -51,6 +51,7 @@ import type { PickingSlot } from '@/features/despacho/santiago/components/Pickin
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
+import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 
@@ -1171,27 +1172,34 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const cc  = currentItems.filter(i => i.pkg === 'contenedor').length + 1;
     const chc = currentItems.filter(i => i.pkg === 'chocolate').length + 1;
     const orden = row.pkg === 'pallet' ? `pallet${pc}` : isCont ? `contenedor${cc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
-    const itemGuia  = hasPdf ? (pdfInfo?.guias[currentItems.length]?.num || '') : row.guia.trim();
+    // Esta unidad ya puede tener ítem aunque la tarjeta diga "sin guardar": lo guardó otro equipo
+    // mientras esta tarjeta estaba abierta. Entonces se completa ese ítem, no se agrega otro.
+    const previo = itemDeLaUnidad(currentItems, slotId);
+    const posItem = previo ? currentItems.indexOf(previo) : currentItems.length;
+    const itemGuia  = hasPdf ? (pdfInfo?.guias[posItem]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
-    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item: { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId } });
+    const candidato: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId };
+    const item = previo ? fusionarConPrevio(previo, candidato) : candidato;
+    dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
     if (hasPdf && pdfInfo) {
-      const newItems = [...currentItems, { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: 0, pickingSlotId: slotId }];
+      const newItems = agregarSinDuplicar(currentItems, { ...item, valor: 0 });
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
     const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
-    const savedItem: DispatchItem = { id: crypto.randomUUID(), orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId, canonical_id: pickingSlot?.canonical_id ?? undefined };
+    const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(), canonical_id: pickingSlot?.canonical_id ?? undefined };
     setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
-    if (!sinPesar) showToast(`✓ ${orden} agregado`, '#16A34A');
+    if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
-      tiendaNombre: selectedTienda, label: ordenToLabel(orden), peso: p, alto: a, slotId });
+      tiendaNombre: selectedTienda, label: ordenToLabel(item.orden), peso: item.peso, alto: item.alto, slotId });
 
     // Sincronizar dimensiones en picking_pallets — a esta altura slotId siempre existe (si
-    // faltaba, se creó arriba o la función ya retornó).
-    const pesoV = sinPesar ? 0 : (Math.round((a * aw * l) / 6000 * 10) / 10 || null);
+    // faltaba, se creó arriba o la función ya retornó). Con las medidas ya fusionadas: un "sin
+    // pesar" encima de un bulto pesado no le borra el peso en Picking.
+    const pesoV = esSinPesar(item) ? 0 : (Math.round((item.alto * item.ancho * item.largo) / 6000 * 10) / 10 || null);
     supabase.from('picking_pallets').update({
-      peso_kg: p, alto: a, ancho: aw, largo: l, peso_v: pesoV,
+      peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo, peso_v: pesoV,
     }).eq('id', slotId).then(({ error }) => {
       if (error) console.error('[picking_pallets update]', error.message);
     });
