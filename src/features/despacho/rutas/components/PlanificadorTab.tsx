@@ -419,8 +419,12 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const etasActive = useMemo<number[] | null>(() => {
     if (!legsOk || salidaMin == null) return null;
     const legSec = legData!.slice(0, orderedCods.length).map(l => l.durSec ?? 0);
-    return calcularETAs(legSec, salidaMin, servicioMin);
-  }, [legsOk, legData, orderedCods.length, salidaMin, servicioMin]);
+    // Las ventanas van para que el cálculo ESPERE a que la tienda abra: llegar 08:14 a un local
+    // que abre 08:30 no adelanta la descarga, y sin esto todas las ETAs siguientes quedaban
+    // optimistas. Las paradas por dirección no tienen ventana → nunca esperan.
+    return calcularETAs(legSec, salidaMin, servicioMin,
+      orderedCods.map(c => (esParadaDireccion(c) ? undefined : tiendas[c]?.v)));
+  }, [legsOk, legData, orderedCods, salidaMin, servicioMin, tiendas]);
 
   // Levantar TODAS las rutas al padre (RutasScreen → MapSection). Ref fuera de deps para no
   // reventar el debounce del mapa (el callback llega inline en cada render de RutasScreen).

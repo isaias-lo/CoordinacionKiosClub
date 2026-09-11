@@ -230,14 +230,29 @@ export function estadoVentana(etaMin: number, ventana?: string): EstadoVentana {
  * ETA (minutos del día) de cada parada, acumulando desde `salidaMin` los tiempos de MANEJO
  * (`legSec[i]` = segundos para LLEGAR a la parada i) + `servicioMin` de atención por parada (se
  * suma tras llegar, antes de arrancar a la siguiente). Puro. `legSec` faltante/0 se trata como 0.
+ *
+ * `ventanas[i]` (opcional) es la ventana de la parada i. Si se pasan, el camión ESPERA a que la
+ * tienda abra: no se puede descargar a las 08:14 en un local que abre 08:30. Sin esto el reloj
+ * seguía corriendo desde la llegada, y todas las ETAs posteriores quedaban optimistas — en la
+ * cadena de malls del lunes, 16 minutos menos de atraso del real. La atención se cuenta desde que
+ * EMPIEZA la descarga, no desde que se llega: esperar en la puerta no descarga nada.
+ *
+ * Lo que se devuelve sigue siendo la hora de LLEGADA (no la de salida de la parada), que es lo
+ * que compara `estadoVentana` — así un 'temprano' se sigue viendo como temprano.
  */
-export function calcularETAs(legSec: number[], salidaMin: number, servicioMin = 0): number[] {
+export function calcularETAs(
+  legSec: number[], salidaMin: number, servicioMin = 0,
+  ventanas?: (string | undefined)[],
+): number[] {
   const etas: number[] = [];
   let t = salidaMin;
   for (let i = 0; i < legSec.length; i++) {
     t += (legSec[i] ?? 0) / 60;   // manejo hasta la parada i
-    etas.push(Math.round(t));
-    t += servicioMin;             // atención en la parada i (antes de salir a la siguiente)
+    const llegada = t;
+    etas.push(Math.round(llegada));
+    const w = ventanas ? parseVentana(ventanas[i]) : null;
+    const inicioDescarga = w && llegada < w.open ? w.open : llegada;  // espera a que abran
+    t = inicioDescarga + servicioMin;  // atención en la parada i (antes de salir a la siguiente)
   }
   return etas;
 }
