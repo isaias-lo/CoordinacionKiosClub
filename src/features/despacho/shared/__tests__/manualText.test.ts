@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partsOf, buildManualText, type ManualLine } from '../manualText';
+import { partsOf, buildManualText, lineaTotal, type ManualLine } from '../manualText';
 
 describe('partsOf', () => {
   it('omite los conteos en cero', () => {
@@ -54,5 +54,21 @@ describe('buildManualText', () => {
   it('usa singular "TIENDA" cuando hay una sola', () => {
     const { text } = buildManualText([{ cod: 'X', p: 1, b: 0, c: 0, ch: 0 }]);
     expect(text).toBe('X: 1P\n\nTOTAL: 1P - 1 TIENDA');
+  });
+});
+
+describe('lineaTotal', () => {
+  it('suma los chocolates como bultos', () => {
+    expect(lineaTotal({ p: 5, b: 2, c: 0, ch: 3 }, 4)).toBe('TOTAL: 5P - 5B - 4 TIENDAS');
+  });
+
+  it('una sola tienda va en singular', () => {
+    expect(lineaTotal({ p: 1, b: 0, c: 0, ch: 0 }, 1)).toBe('TOTAL: 1P - 1 TIENDA');
+  });
+
+  it('es exactamente la última línea de buildManualText — no se pueden desalinear', () => {
+    const lines = [{ cod: '01A', p: 2, b: 1, c: 0, ch: 0 }];
+    const { text, tot, withItems } = buildManualText(lines);
+    expect(text.split('\n').at(-1)).toBe(lineaTotal(tot, withItems.length));
   });
 });
