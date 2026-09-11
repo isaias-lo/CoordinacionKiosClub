@@ -1,12 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { X, Copy, Check, Calendar, ClipboardList } from 'lucide-react';
+import { X, Copy, Check, Calendar, ClipboardList, TriangleAlert } from 'lucide-react';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { fetchCounts, type SesionRow } from '@/lib/despachoSesion';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
-import { partsOf, buildManualText, type ManualLine, type ManualGrupo } from './manualText';
+import { partsOf, buildManualText, lineaTotal, type ManualLine, type ManualGrupo } from './manualText';
+import {
+  resumenPesaje, textoResumenPesaje, avisosAltoPorTienda, ALTO_AVISO_CM, type SlotPesaje,
+} from './manualPesaje';
+import { MAX_ALTO_CM } from './palletLimits';
+import { supabase } from '@/lib/supabase';
 
 export { partsOf, buildManualText };
 export type { ManualLine };
@@ -45,6 +50,9 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const [copied, setCopied] = useState(false);
   const [activeGroups, setActiveGroups] = useState<Set<ManualGrupo>>(new Set(['rm', 'costa', 'fal']));
   const [globalLines, setGlobalLines] = useState<ManualLine[]>([]);
+  // Peso y alto por bulto — no están en despacho_sesion (que solo lleva conteos), así que el
+  // pesaje y los avisos de alto se leen de picking_pallets.
+  const [slots, setSlots] = useState<SlotPesaje[]>([]);
 
   // Al abrir, traer la data global del día (todas las bodegas) — como el Enrutador.
   useEffect(() => {
@@ -53,6 +61,18 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
     fetchCounts(todayStr()).then(rows => {
       if (!cancelled) setGlobalLines(rows.map(rowToLine));
     }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Slots del día para el resumen de pesaje y los avisos de alto.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    supabase.from('picking_pallets')
+      .select('store_cod,tipo,peso_kg,alto')
+      .eq('date', todayStr())
+      .eq('is_active', true)
+      .then(({ data }: { data: SlotPesaje[] | null }) => { if (!cancelled && data) setSlots(data); });
     return () => { cancelled = true; };
   }, [open]);
 
@@ -82,10 +102,20 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
 
   const { text: manualText, withItems, tot } = buildManualText(filteredLines);
 
+  // Solo las tiendas que se están viendo: el resumen y los avisos siguen al filtro de grupo.
+  const codsVisibles = new Set(withItems.map(l => l.cod));
+  const resumen      = resumenPesaje(slots, codsVisibles);
+  const lineaPesaje  = textoResumenPesaje(resumen);
+  const avisos       = avisosAltoPorTienda(slots, codsVisibles);
+
+  // El resumen de pesaje viaja en el copiado (es una línea de cierre, como el TOTAL). Los avisos
+  // de alto NO: el formato "COD: 2P" se pega en otros lados y tiene que quedar parseable.
+  const textoCopiar = manualText && lineaPesaje ? `${manualText}\n${lineaPesaje}` : manualText;
+
   const copy = async () => {
-    if (!manualText) return;
+    if (!textoCopiar) return;
     try {
-      await navigator.clipboard.writeText(manualText);
+      await navigator.clipboard.writeText(textoCopiar);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch { /* clipboard no disponible */ }
@@ -159,16 +189,44 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
               </span>
               <button
                 onClick={copy}
-                disabled={!manualText}
+                disabled={!textoCopiar}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-navy text-white rounded-card border-none font-bold text-[13px] cursor-pointer disabled:opacity-40"
               >
                 {copied ? <Check size={15} /> : <Copy size={15} />}
                 {copied ? 'Copiado' : 'Copiar todo'}
               </button>
             </div>
-            <pre className="flex-1 text-[13px] font-mono whitespace-pre-wrap bg-bg-2 rounded-[12px] p-3 text-text min-h-[120px]">
-              {manualText || 'Sin items cargados.'}
-            </pre>
+            <div className="flex-1 text-[13px] font-mono whitespace-pre-wrap bg-bg-2 rounded-[12px] p-3 text-text min-h-[120px]">
+              {withItems.length === 0 ? 'Sin items cargados.' : (
+                <>
+                  {withItems.map(l => {
+                    const av = avisos[l.cod];
+                    const n  = av ? av.cerca + av.excede : 0;
+                    return (
+                      <div key={l.cod} className="flex items-center gap-2 flex-wrap">
+                        <span>{l.cod}: {partsOf(l.p, l.b, l.c, l.ch)}</span>
+                        {av && (
+                          <span
+                            title={av.excede
+                              ? `${av.excede} pallet${av.excede === 1 ? '' : 's'} sobre los ${MAX_ALTO_CM} cm de límite${av.cerca ? ` y ${av.cerca} cerca` : ''}`
+                              : `${av.cerca} pallet${av.cerca === 1 ? '' : 's'} entre ${ALTO_AVISO_CM} y ${MAX_ALTO_CM} cm — van a llegar altos`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold font-sans"
+                            style={av.excede
+                              ? { background: 'rgba(211,47,47,0.10)', color: '#D32F2F', border: '1px solid rgba(211,47,47,0.30)' }
+                              : { background: 'rgba(217,119,6,0.10)', color: '#B45309', border: '1px solid rgba(217,119,6,0.30)' }}
+                          >
+                            <TriangleAlert size={11} aria-hidden="true" />
+                            {n} alto{n === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="mt-3 font-bold">{lineaTotal(tot, withItems.length)}</div>
+                  {lineaPesaje && <div className="text-text-2">{lineaPesaje}</div>}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
