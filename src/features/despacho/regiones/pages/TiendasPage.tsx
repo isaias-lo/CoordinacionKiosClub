@@ -52,6 +52,7 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
+import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 
@@ -1695,7 +1696,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         {tienda?.cod && (
           <div className="flex justify-end touch-auto">
             <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length}
-              sinPesarCount={items.filter(esSinPesar).length} viendo={viendoPorTienda.get(tienda.cod)} />
+              sinPesarCount={items.filter(esSinPesar).length}
+              sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
+              viendo={viendoPorTienda.get(tienda.cod)} />
           </div>
         )}
       </div>

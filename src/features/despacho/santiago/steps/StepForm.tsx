@@ -53,6 +53,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
+import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
@@ -282,11 +283,12 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, viendo }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
   sinPesarCount?: number;
+  sinGuardar?: string | null;
   viendo?: ViendoInfo[];
 }) {
   const itemCount = pallets + bultos + chocolates + contenedores;
@@ -332,7 +334,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
             {viendo.map(v => v.name.split(' ')[0]).join(', ')}
           </span>
         )}
-        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} sinPesarCount={sinPesarCount} viendo={viendo} />
+        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} sinPesarCount={sinPesarCount} sinGuardar={sinGuardar} viendo={viendo} />
       </div>
     </div>
   );
@@ -2395,7 +2397,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
-          sinPesarCount={tiendaItems.filter(esSinPesar).length} viendo={viendoPorTienda.get(currentTienda.cod)} />
+          sinPesarCount={tiendaItems.filter(esSinPesar).length}
+          sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
+          viendo={viendoPorTienda.get(currentTienda.cod)} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
