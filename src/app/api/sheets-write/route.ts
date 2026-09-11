@@ -522,6 +522,8 @@ export async function POST(request: NextRequest) {
           fuente: fuenteCong,
           ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
           ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
+          // Re-registrar una caja ya registrada también actualiza su peso (si ahora lo tiene).
+          ...(rm.peso_kg !== null && rm.peso_kg !== undefined && { peso_kg: rm.peso_kg }),
         };
         const { error } = await sb.from(tabla).update(updateObj).eq('id', r.id);
         if (error) console.error('[sheets-write] Supabase update congelados', tabla, error.message);

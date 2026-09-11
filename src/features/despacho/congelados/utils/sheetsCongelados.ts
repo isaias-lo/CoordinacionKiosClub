@@ -10,6 +10,8 @@ export interface CongeladoItem {
   nPalletBulto: string;    // etiqueta/seq de la caja (ej. canonical o "CC1")
   pickingSlotId: number | null;
   fechaArmado?: string | null; // ISO yyyy-mm-dd (col AC) — opcional
+  /** kg de la caja: su parte del peso total que se pesó en Picking. null = sin pesar. */
+  peso?: number | null;
 }
 
 export interface CongeladosMeta {
@@ -47,7 +49,10 @@ export function buildCongeladosRows(
       item.region,                                                      // REGION
       item.comuna,                                                      // COMUNA
       item.tipoComuna,                                                  // TIPO_COMUNA
-      '',                                                                // PESO_KG (congelados no se pesa)
+      // PESO_KG: antes siempre vacío ("congelados no se pesa"). Ahora lleva la parte de la caja del
+      // peso total pesado en Picking. La columna ya existía: no se mueve ninguna (ver sheets
+      // posicionales). Sin pesar, sigue vacía como siempre.
+      item.peso != null && item.peso > 0 ? item.peso : '',
       '',                                                                // ALTO
       '',                                                                // LARGO
       '',                                                                // ANCHO
