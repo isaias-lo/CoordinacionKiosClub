@@ -106,3 +106,36 @@ describe('construirItemsCongelados', () => {
     expect(items[0].fechaArmado).toBeNull();
   });
 });
+
+describe('construirItemsCongelados · peso', () => {
+  const base = {
+    cod: '23PEÑ', tienda: 'Peñalolén', region: 'RM', comuna: 'Peñalolén', tipoComuna: 'Urbano',
+    ventana: '09:00-12:00', fecha: '11/09/2026',
+  };
+
+  it('cada caja lleva su parte del peso total que se pesó en Picking', () => {
+    const items = construirItemsCongelados({
+      ...base, cuentaCC: 2, cuentaCN: 0,
+      slots: [{ id: 1, tipo: 'CC', peso_kg: 18.5 }, { id: 2, tipo: 'CC', peso_kg: 18.5 }],
+    });
+    expect(items.map(i => i.peso)).toEqual([18.5, 18.5]);
+  });
+
+  it('acepta el peso como texto — Postgres devuelve numeric así a veces', () => {
+    const items = construirItemsCongelados({ ...base, cuentaCC: 1, cuentaCN: 0, slots: [{ id: 1, tipo: 'CC', peso_kg: '12.3' }] });
+    expect(items[0].peso).toBe(12.3);
+  });
+
+  it('una caja sin pesar va sin peso (no 0)', () => {
+    const items = construirItemsCongelados({
+      ...base, cuentaCC: 0, cuentaCN: 2,
+      slots: [{ id: 1, tipo: 'CN', peso_kg: null }, { id: 2, tipo: 'CN', peso_kg: 0 }],
+    });
+    expect(items.map(i => i.peso)).toEqual([null, null]);
+  });
+
+  it('una caja agregada en Bodega de más (sin slot en Picking) no tiene peso: nadie la pesó', () => {
+    const items = construirItemsCongelados({ ...base, cuentaCC: 2, cuentaCN: 0, slots: [{ id: 1, tipo: 'CC', peso_kg: 20 }] });
+    expect(items.map(i => i.peso)).toEqual([20, null]);
+  });
+});

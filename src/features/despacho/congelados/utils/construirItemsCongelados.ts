@@ -5,6 +5,14 @@ export interface SlotCongelado {
   tipo: string;
   canonical_id?: string | null;
   seq?: number | null;
+  /** Lo que se le repartió en Picking del peso total de las cajas (ver picking/pesoTotal.ts). */
+  peso_kg?: number | string | null;
+}
+
+/** Postgres devuelve `numeric` a veces como texto ("18.5"): se aceptan los dos. 0 = sin pesar. */
+function pesoDeSlot(p: number | string | null | undefined): number | null {
+  const n = typeof p === 'number' ? p : typeof p === 'string' ? Number(p) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 export interface ConstruirItemsCongeladosParams {
@@ -47,6 +55,8 @@ function construirItemsPorTipo(
       tipoCaja,
       nPalletBulto: `${tipoCaja}${i + 1}`,
       pickingSlotId: slot?.id ?? null,
+      // Una caja agregada acá de más (sin slot en Picking) no tiene peso: nadie la pesó.
+      peso: pesoDeSlot(slot?.peso_kg),
     });
   }
   return items;

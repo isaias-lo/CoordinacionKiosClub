@@ -3,8 +3,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { claveSesion, parseClaveSesion, TIPO_NOMBRE } from '@/lib/sessionStateKeys';
-import { pesoChocolateValido, dimsChocolate } from '@/features/despacho/shared/chocolate';
-import { normalizarMedidas, pesoVolumetrico } from '@/features/despacho/shared/medidasPallet';
+import { dimsChocolate } from '@/features/despacho/shared/chocolate';
+import { pesoVolumetrico } from '@/features/despacho/shared/medidasPallet';
+import {
+  pesoTotalValido, repartirPeso, serializarPesoTotal, leerPesoTotal,
+  type TipoCaja, type PesoTotalGuardado,
+} from './pesoTotal';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
@@ -291,9 +295,13 @@ export function PickingScreen() {
   // (típicamente los manuales). Mismo mecanismo que el nombre (picking_session_state), con un
   // tipo distinto ('batch') para no pisarse con el nombre en el mismo state_key.
   const [pickerBatch, setPickerBatch] = useState<Record<string, string>>({});
-  // Peso del chocolate por encargado, en kg. Mismo mecanismo que el batch: `tipo` propio para no
-  // pelearse con el nombre por la fila (la PK es (state_key, date) sin tipo — ver sessionStateKeys).
-  const [pickerPesoCH, setPickerPesoCH] = useState<Record<string, string>>({});
+  // Peso TOTAL de las cajas de un encargado, por tipo (CH, CC, CN), con clave `${stateKey}::${tipo}`.
+  // `raw` es lo que se escribe (para no pelear con el cursor); `guardado` es el total que se repartió
+  // y cuántas cajas había al pesar — si la cantidad cambia después, la tarjeta pide volver a pesar.
+  // Viaja como el batch: `tipo` propio en picking_session_state (ver sessionStateKeys).
+  const [pesoTotalRaw, setPesoTotalRaw]           = useState<Record<string, string>>({});
+  const [pesoTotalGuardado, setPesoTotalGuardado] = useState<Record<string, PesoTotalGuardado>>({});
+  const pesoTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   useEffect(() => {
     if (!sessionStateRows.length) return;
     setPickerBatch(prev => {
@@ -306,15 +314,23 @@ export function PickingScreen() {
       }
       return next;
     });
-    // El peso del chocolate viaja igual que el batch, con su propio `tipo`.
-    setPickerPesoCH(prev => {
-      const next = { ...prev };
-      for (const r of sessionStateRows) {
-        const { stateKey, tipo } = parseClaveSesion(r);
-        if (tipo === 'peso-ch' && !dirtyStateKeys.current.has(`${stateKey}::peso-ch`)) next[stateKey] = r.picker_label ?? '';
-      }
-      return next;
-    });
+    // El peso total de las cajas viaja igual que el batch, con su propio `tipo` por clase de caja.
+    const guardados: Record<string, PesoTotalGuardado> = {};
+    for (const r of sessionStateRows) {
+      const { stateKey, tipo } = parseClaveSesion(r);
+      const m = /^peso-total-(CH|CC|CN)$/.exec(tipo);
+      if (!m || dirtyStateKeys.current.has(`${stateKey}::${tipo}`)) continue;
+      const g = leerPesoTotal(r.picker_label);
+      if (g) guardados[`${stateKey}::${m[1]}`] = g;
+    }
+    if (Object.keys(guardados).length) {
+      setPesoTotalGuardado(prev => ({ ...prev, ...guardados }));
+      setPesoTotalRaw(prev => {
+        const next = { ...prev };
+        for (const [k, g] of Object.entries(guardados)) next[k] = String(g.total).replace('.', ',');
+        return next;
+      });
+    }
   }, [sessionStateRows]);
 
   // Debounced upsert — waits 500ms of inactivity before writing to server
@@ -345,27 +361,43 @@ export function PickingScreen() {
     upsertSessionState(stateKey, num, 'batch');
   }, [upsertSessionState]);
 
+  // Los slots del grupo al momento de repartir (el reparto corre en un timer: no puede leer una foto vieja).
+  const slotsByStateKeyRef = useRef(slotsByStateKey);
+  useEffect(() => { slotsByStateKeyRef.current = slotsByStateKey; }, [slotsByStateKey]);
+
   /**
-   * Peso del chocolate de un encargado. Se guarda el texto tal cual se escribe (para no pelear con
-   * el cursor mientras se tipea) y solo se propaga a la base cuando el valor es válido.
+   * Peso TOTAL de las cajas de un tipo (todas juntas en la balanza), repartido entre ellas.
    *
-   * Además se aplica a los chocolates YA creados de ese grupo: lo normal es agregar los bultos
-   * primero y pesarlos después, así que sin esto el peso solo valdría para los que se agreguen
-   * de ahí en adelante y el encargado tendría que borrarlos y rehacerlos. Mismo patrón que
-   * `renamePickerSlots`, que ya resolvía esto para el nombre.
+   * En el andén se suben todas las cajas juntas; antes había que pesar cada chocolate por separado
+   * (#458) y las cajas de congelado no tenían dónde anotarse. El total se reparte con `repartirPeso`,
+   * que hace que la suma dé exacto lo que marcó la balanza — lo que importa aguas abajo.
+   *
+   * Se aplica a las cajas YA creadas del grupo, y espera 700 ms de quietud: escribir "180" pasa por
+   * "1" y "18", y sin la espera se reescribirían todas las cajas en cada tecla (y Bodega vería el
+   * peso bailar por realtime). Se guarda junto con cuántas cajas había, para detectar si cambia.
    */
-  const setPickerPesoCHValue = useCallback((stateKey: string, raw: string) => {
-    const limpio = raw.replace(/[^\d.,]/g, '').slice(0, 6);
-    setPickerPesoCH(prev => ({ ...prev, [stateKey]: limpio }));
-    upsertSessionState(stateKey, limpio, 'peso-ch');
-    const v = pesoChocolateValido(limpio);
-    if (!v.ok) return;  // mientras escriben "1" camino a "18" no se guarda nada raro
-    supabase.from('picking_pallets')
-      .update({ peso_kg: v.peso, ...dimsChocolate(), peso_v: pesoVolumetrico(dimsChocolate().alto, dimsChocolate().largo, dimsChocolate().ancho) })
-      .eq('date', todayISO())
-      .eq('state_key', stateKey)
-      .eq('tipo', 'CH')
-      .then(({ error }) => { if (error) console.error('[peso-ch]', error.message); });
+  const setPesoTotalValue = useCallback((stateKey: string, tipo: TipoCaja, raw: string) => {
+    const limpio = raw.replace(/[^\d.,]/g, '').slice(0, 8);
+    const k = `${stateKey}::${tipo}`;
+    setPesoTotalRaw(prev => ({ ...prev, [k]: limpio }));
+    clearTimeout(pesoTimers.current[k]);
+    pesoTimers.current[k] = setTimeout(() => {
+      const cajas = (slotsByStateKeyRef.current[stateKey] ?? []).filter(sl => (sl.tipo || 'P') === tipo && sl.id > 0);
+      const v = pesoTotalValido(limpio, cajas.length, tipo);
+      if (!v.ok) return;   // el error se ve en la tarjeta; no se escribe nada
+      const guardado = { total: v.total, n: cajas.length };
+      setPesoTotalGuardado(prev => ({ ...prev, [k]: guardado }));
+      upsertSessionState(stateKey, serializarPesoTotal(guardado), `peso-total-${tipo}`);
+      const partes = repartirPeso(v.total, cajas.length);
+      // El chocolate tiene medidas fijas; las cajas de congelado solo llevan peso.
+      const extra = tipo === 'CH'
+        ? { ...dimsChocolate(), peso_v: pesoVolumetrico(dimsChocolate().alto, dimsChocolate().largo, dimsChocolate().ancho) }
+        : {};
+      cajas.forEach((sl, i) => {
+        supabase.from('picking_pallets').update({ peso_kg: partes[i], ...extra }).eq('id', sl.id)
+          .then(({ error }) => { if (error) console.error('[peso-total]', error.message); });
+      });
+    }, 700);
   }, [upsertSessionState]);
 
   // Al renombrar un picker, propaga el nombre a los slots YA creados de ese grupo. Su
@@ -1858,8 +1890,11 @@ export function PickingScreen() {
                               otroDia={otroDiaGroupKeys.has(group.stateKey)}
                               batchValue={pickerBatch[group.stateKey] ?? ''}
                               onBatchChange={raw => setPickerBatchValue(group.stateKey, raw)}
-                              pesoCHValue={pickerPesoCH[group.stateKey] ?? ''}
-                              onPesoCHChange={raw => setPickerPesoCHValue(group.stateKey, raw)}
+                              pesoTotal={Object.fromEntries((['CH', 'CC', 'CN'] as TipoCaja[]).map(t => [t, {
+                                raw: pesoTotalRaw[`${group.stateKey}::${t}`] ?? '',
+                                guardado: pesoTotalGuardado[`${group.stateKey}::${t}`] ?? null,
+                              }]))}
+                              onPesoTotalChange={(t, raw) => setPesoTotalValue(group.stateKey, t, raw)}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
@@ -1882,14 +1917,10 @@ export function PickingScreen() {
                                 const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
                                 const groupRefs = fullOps.map(o => o.name).join('+');
                                 if (delta > 0) {
-                                  // El chocolate nace con el peso que escribió el encargado (y sus
-                                  // medidas fijas). Sin peso escrito va sin medidas y Bodega usa el
-                                  // valor de siempre, igual que antes.
-                                  const pesoCH = tipo === 'CH' ? pesoChocolateValido(pickerPesoCH[group.stateKey] ?? '') : null;
-                                  const medidasCH = pesoCH?.ok
-                                    ? normalizarMedidas({ peso_kg: pesoCH.peso, ...dimsChocolate() })
-                                    : undefined;
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, medidasCH);
+                                  // Una caja nueva nace SIN peso: el total ya pesado era para las que
+                                  // había, y repartirlo entre más sería inventar. La tarjeta avisa que
+                                  // cambió la cantidad y pide volver a pesar (ver avisoCantidad).
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot);
                                 } else if (delta < 0) {
                                   for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva);
                                 }

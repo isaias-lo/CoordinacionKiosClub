@@ -104,3 +104,25 @@ describe('buildCongeladosRows', () => {
     expect(rows[1][0]).toBe(ITEM_CC.id);
   });
 });
+
+describe('buildCongeladosRows · PESO_KG', () => {
+  const COL_PESO = 12; // A=0 … M=12 — la columna ya existía, iba siempre vacía
+
+  it('una caja pesada escribe su peso en PESO_KG', () => {
+    const [fila] = buildCongeladosRows([{ ...ITEM_CC, peso: 18.5 }], META);
+    expect(fila[COL_PESO]).toBe(18.5);
+  });
+
+  it('una caja sin pesar sigue con PESO_KG vacío, como siempre', () => {
+    const [fila] = buildCongeladosRows([{ ...ITEM_CC, peso: null }], META);
+    expect(fila[COL_PESO]).toBe('');
+    const [fila2] = buildCongeladosRows([ITEM_CC], META);
+    expect(fila2[COL_PESO]).toBe('');
+  });
+
+  it('no cambia la cantidad de columnas: nada se corre de lugar', () => {
+    const [sin] = buildCongeladosRows([ITEM_CC], META);
+    const [con] = buildCongeladosRows([{ ...ITEM_CC, peso: 18.5 }], META);
+    expect(con.length).toBe(sin.length);
+  });
+});

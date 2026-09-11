@@ -211,7 +211,7 @@ export function CongeladosPage({ zona }: Props) {
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,contenido,canonical_id,seq')
+        .select('id,store_cod,tipo,contenido,canonical_id,seq,peso_kg')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
@@ -229,6 +229,7 @@ export function CongeladosPage({ zona }: Props) {
           contenido,
           canonical_id: row.canonical_id as string | null,
           seq: row.seq as number | null,
+          peso_kg: row.peso_kg as number | string | null,
         });
       }
       setSlotsPorTienda(slots);
