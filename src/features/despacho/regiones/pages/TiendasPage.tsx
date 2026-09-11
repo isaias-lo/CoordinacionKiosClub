@@ -43,6 +43,7 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { abreviaturaContenido, nombreContenido } from '@/features/despacho/shared/contenidoCarga';
+import { numeroVisibleCard, etiquetaCard, claseNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
@@ -583,6 +584,26 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
   useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
   useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
+
+  /**
+   * El `seq` del slot de picking vinculado — el número que quedó IMPRESO en la etiqueta. Es lo que
+   * permite que un CH conserve su número cuando borran o suman a sus vecinos. El `Ref` es para los
+   * handlers (que no deben leer una foto vieja); el otro, para el render.
+   */
+  const seqDeSlotRef = (tienda: string | null, slotId?: number): number | null =>
+    slotId ? ((pickingSlotsFullRef.current[tienda ?? ''] ?? []).find(s => s.id === slotId)?.seq ?? null) : null;
+  const seqDeFila = (r: { pickingSlotId?: number }): number | null =>
+    r.pickingSlotId ? ((pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === r.pickingSlotId)?.seq ?? null) : null;
+
+  /** Etiqueta visible de una fila: posición dentro de su envase, salvo el CH, que usa su seq. */
+  const labelDeFila = (r: { id: string; pkg: string; pickingSlotId?: number }, lista: { id: string; pkg: string }[]): string => {
+    const posicion = lista.slice(0, lista.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+    const clase = claseNacional(r.pkg);
+    return etiquetaCard(
+      clase === 'pallet' ? 'Pallet' : clase === 'contenedor' ? 'Contenedor' : clase === 'chocolate' ? 'Chocolate' : 'Bulto',
+      numeroVisibleCard({ esChocolate: clase === 'chocolate', posicion, seq: seqDeFila(r) }),
+    );
+  };
 
   const baseRaw       = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
   const baseTodayCods = mounted ? [...baseRaw, ...adelantoCods.filter(c => !baseRaw.includes(c))] : [];
@@ -1418,7 +1439,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const cur = dispatchData[name] || [];
     const remaining = cur.filter(i => !sameStableItem(i, sourceRow.savedItem) && !sameStableItem(i, targetRow.savedItem));
     if (remaining.length !== cur.length) {
-      dispatch({ type: 'UPDATE_ITEMS', tienda: name, items: renumberItems(remaining) });
+      dispatch({ type: 'UPDATE_ITEMS', tienda: name, items: renumberItems(remaining, name) });
     }
 
     // 2) BD: sumar el peso al slot del target; fusionar guías y borrar el slot del source.
@@ -1489,14 +1510,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     });
   };
 
-  const renumberItems = (list: DispatchItem[]) => {
-    let pc = 1, bc = 1, cc = 1, chc = 1;
-    return list.map(it => {
-      if (it.pkg === 'pallet')     return { ...it, orden: `pallet${pc++}` };
-      if (it.pkg === 'contenedor') return { ...it, orden: `contenedor${cc++}` };
-      if (it.pkg === 'chocolate')  return { ...it, orden: `chocolate${chc++}` };
-      return { ...it, orden: `bulto${bc++}` };
-    });
+  // El CH conserva su seq (el número impreso en la caja); el resto se renumera por posición.
+  // La tienda va explícita porque un caller renumera una tienda distinta de la seleccionada.
+  const renumberItems = (list: DispatchItem[], tienda: string | null = selectedTienda) => {
+    return renumerarOrdenNacional(list, it => seqDeSlotRef(tienda, it.pickingSlotId));
   };
 
   /* ── Combine items handler ── */
@@ -1626,11 +1643,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             const orderedRows = ordenarCardsPorTipo(formRows, r => r.pkg);
             return (
               <div className="grid grid-cols-2 gap-2 mb-2">
-                {orderedRows.map((row, rowIdx) => {
+                {orderedRows.map((row) => {
               /* Locked / saved card */
               const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
-              const pkgIdx   = orderedRows.slice(0, rowIdx + 1).filter(r => r.pkg === row.pkg).length;
-              const rowLabel = row.pkg === 'pallet' ? `P${pkgIdx}` : row.pkg === 'chocolate' ? `CH${pkgIdx}` : row.pkg === 'contenedor' ? `C${pkgIdx}` : `B${pkgIdx}`;
+              const rowLabel = labelDeFila(row, orderedRows);
               if (row.saved && row.savedItem) {
                 return (
                   <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
@@ -1701,8 +1717,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       const palletTargets = formRows.filter(r => r.id !== row.id && r.pkg === 'pallet');
                       if (palletTargets.length === 0) return null;
                       const getRowLabel = (r: typeof row) => {
-                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
-                        return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                        return labelDeFila(r, formRows);
                       };
                       const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
                       return (
@@ -1740,8 +1755,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       const combineTargets = formRows.filter(r => r.id !== row.id && r.pkg === row.pkg);
                       if (combineTargets.length === 0) return null;
                       const getRowLabel = (r: typeof row) => {
-                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
-                        return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                        return labelDeFila(r, formRows);
                       };
                       const col = row.pkg === 'contenedor'
                         ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
@@ -1922,8 +1936,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
                     const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
                     const getRowLabel = (r: typeof row) => {
-                      const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
-                      return r.pkg === 'pallet' ? `P${idx}` : r.pkg === 'contenedor' ? `C${idx}` : r.pkg === 'chocolate' ? `CH${idx}` : `B${idx}`;
+                      return labelDeFila(r, formRows);
                     };
                     return (
                       <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
