@@ -166,7 +166,7 @@ export function BarcodeCard({
   value, palletNum, total, storeCod, pickerLabel, responsibleKey, allCategories,
   totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId,
   audited, subLabel, footerExtra, storeName: storeNameProp,
-  adelanto, adelantoFecha, batch, finishedAt,
+  adelanto, adelantoFecha, batch, finishedAt, copia,
 }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
@@ -180,6 +180,9 @@ export function BarcodeCard({
   adelantoFecha?: string | null;  // fecha de despacho a mostrar en la etiqueta
   batch?: string;                 // "Transferir Agrupación" de Odoo (ej. BATCH/39934)
   finishedAt?: string | null;     // date_done de Odoo (naive UTC) — hora de término del picking
+  /** Reimpresión de una etiqueta que ya existía: lleva el MISMO #. Se marca para que nadie la pegue
+   *  en otro pallet creyendo que es nueva (51SER, 11/09/2026: dos pallets con el mismo #12718). */
+  copia?: boolean;
 }) {
   const storeName = storeNameProp ?? getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -287,6 +290,17 @@ export function BarcodeCard({
             {slotId != null && (
               <div style={{ fontSize: compact ? 10 : cfg.slotIdFontSize, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                 #{slotId}
+              </div>
+            )}
+            {copia && (
+              // Negro y con borde: tiene que leerse en una impresora blanco y negro.
+              <div style={{
+                marginTop: compact ? 2 : 6, display: 'inline-block', float: 'right',
+                fontSize: compact ? 9 : Math.max(14, Math.round(cfg.slotIdFontSize * 0.9)), fontWeight: 900,
+                color: '#000', border: `${compact ? 1 : 2}px solid #000`, borderRadius: 4,
+                padding: compact ? '0 4px' : '1px 8px', letterSpacing: '1px',
+              }}>
+                COPIA
               </div>
             )}
           </div>

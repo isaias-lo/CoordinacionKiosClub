@@ -39,6 +39,7 @@ import {
 import type { PickingEvento } from './picking-utils';
 import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
+import { slotsYaImpresos } from './reimpresion';
 import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, type ColumnaSeco } from './tiposUnidad';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
@@ -389,6 +390,10 @@ export function PickingScreen() {
   const [printOnlySection, setPrintOnlySection]   = useState<Seccion | null>(null);
   const [doPrint, setDoPrint]                     = useState(false);
   const [selectionPrint, setSelectionPrint]       = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
+  // Pallets que YA estaban impresos al hacer clic en imprimir: sus etiquetas salen marcadas COPIA.
+  // Es una foto tomada ANTES de asignar códigos (ver slotsYaImpresos): si se mirara al dibujar, una
+  // primera impresión podría salir como copia.
+  const [slotsCopia, setSlotsCopia]               = useState<Set<number>>(() => new Set());
   const [mounted, setMounted]                     = useState(false);
 
   // Cross-desktop print visibility — single source of truth for both printedKeys and HistorialTab
@@ -804,6 +809,7 @@ export function PickingScreen() {
         setPrintOnlyStateKey(null);
         setPrintOnlySection(null);
         setSelectionPrint(null);
+        setSlotsCopia(new Set());
         window.removeEventListener('afterprint', handleAfterPrint);
       };
       window.addEventListener('afterprint', handleAfterPrint);
@@ -1169,14 +1175,16 @@ export function PickingScreen() {
     // Si hay filtro de sección activo, imprimir SOLO esa sección de la card (consistente con su contador).
     const section: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
     setPrintOnlySection(section);
+    setSlotsCopia(slotsYaImpresos(palletSlots));
     // 1) Asignar seq + canonical ANTES de registrar/imprimir → la etiqueta lleva código y queda en BD.
     await assignCanonicalIds([group]);
     // 2) Registrar la impresión y disparar el print del navegador.
     pendingPrintRef.current = recordPrints([group], section);
     setDoPrint(true);
-  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, sectionFilter]);
+  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, sectionFilter, palletSlots]);
 
   const printStoreLabels = useCallback((cod: string) => {
+    setSlotsCopia(slotsYaImpresos(palletSlots));
     setSelectionPrint(null);
     setPrintOnlyStateKey(null);
     setPrintOnlySection(null);
@@ -1185,9 +1193,10 @@ export function PickingScreen() {
     pendingPrintRef.current = recordPrints(groups);
     void assignCanonicalIds(groups);
     setDoPrint(true);
-  }, [groupedByStore, recordPrints, assignCanonicalIds]);
+  }, [groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
   const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
+    setSlotsCopia(slotsYaImpresos(palletSlots));
     setSelectionPrint({ stateKey, palletNums });
     setPrintOnlyStore(null);
     setPrintOnlySection(null); // la selección ya está acotada por palletNums
@@ -1195,9 +1204,10 @@ export function PickingScreen() {
     // Asignar canonical_id para los slots seleccionados
     const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
     void assignCanonicalIds(allGroups);
-  }, [groupedByStore, assignCanonicalIds]);
+  }, [groupedByStore, assignCanonicalIds, palletSlots]);
 
   const printAll = useCallback(() => {
+    setSlotsCopia(slotsYaImpresos(palletSlots));
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(null);
     setPrintOnlySection(null);
@@ -1206,7 +1216,7 @@ export function PickingScreen() {
     ).then(counts => counts.reduce((s, n) => s + n, 0));
     for (const cod of selectedCods) void assignCanonicalIds(groupedByStore[cod] ?? []);
     setDoPrint(true);
-  }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds]);
+  }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
   // Datos de impresión — una etiqueta por slot, sección activa del supervisor
@@ -1333,7 +1343,7 @@ export function PickingScreen() {
               ? printableLabels.filter(l => l.storeCod === printOnlyStore)
               : printableLabels
         ).map((label, idx) => (
-          <BarcodeCard key={idx} {...label} labelConfig={labelConfig} />
+          <BarcodeCard key={idx} {...label} labelConfig={labelConfig} copia={slotsCopia.has(label.slotId)} />
         ))}
       </div>,
       document.body

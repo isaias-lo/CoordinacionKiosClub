@@ -6,6 +6,7 @@ import { pesoChocolateValido, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { tiposDeUnidad } from '../tiposUnidad';
+import { mensajeReimpresion } from '../reimpresion';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 import { categoriasDeSlotsManual } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
@@ -114,6 +115,19 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     const nums = new Set([...selectedIndices].map(i => assignedNums[i]).filter(n => n !== undefined));
     onPrintSelected(nums);
     setSelectedIndices(new Set());
+  };
+
+  // Reimprimir pide confirmación: la copia lleva el MISMO #, y pegarla en otro pallet deja a ese
+  // pallet fuera del sistema (51SER, 11/09/2026: dos pallets con el mismo #12718). La pregunta ofrece
+  // el camino correcto si en realidad es otro pallet: el + de arriba, que sale con su propio número.
+  const [confirmarReimpresion, setConfirmarReimpresion] = useState<null | 'todas' | 'seleccion'>(null);
+  const idsImpresos = slots.filter(sl => !!sl.canonical_id).map(sl => sl.id);
+  const pedirImpresion = (cual: 'todas' | 'seleccion') => {
+    if (!isPrinted || idsImpresos.length === 0) {
+      if (cual === 'todas') onPrint(); else handlePrintSelected();
+      return;
+    }
+    setConfirmarReimpresion(cual);
   };
 
   const borderColor = odooConfirmado || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';
@@ -420,14 +434,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                         style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
                         Limpiar
                       </button>
-                      <button onClick={handlePrintSelected}
+                      <button onClick={() => pedirImpresion('seleccion')}
                         className="flex items-center gap-1.5 text-[12px] font-medium cursor-pointer px-3 py-1.5 rounded transition-all active:scale-95"
                         style={{ background: 'var(--color-info)', color: '#fff', border: 'none' }}>
                         <Printer size={13} /> {selectedIndices.size}
                       </button>
                     </>
                   )}
-                  <button onClick={onPrint}
+                  <button onClick={() => pedirImpresion('todas')}
                     className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer px-3.5 py-1.5 rounded transition-all active:scale-95"
                     style={isPrinted
                       ? { background: '#fff', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }
@@ -437,6 +451,36 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   </button>
                 </div>
               </div>
+              {confirmarReimpresion && (
+                <div className="print:hidden mb-3 rounded px-3 py-2.5 flex flex-col gap-2"
+                  role="alertdialog" aria-label="Confirmar reimpresión"
+                  style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                  <div className="text-[12px] leading-snug" style={{ color: '#92400E' }}>
+                    <AlertTriangle size={12} className="inline mr-1" style={{ color: '#92400E' }} />
+                    {mensajeReimpresion({
+                      ids: idsImpresos,
+                      hora: lastPrint?.printed_at ? fmtHoraChile(lastPrint.printed_at) : null,
+                      por: lastPrint?.printed_by_name ?? null,
+                    })}
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setConfirmarReimpresion(null)}
+                      className="text-[12px] cursor-pointer px-3 py-1.5 rounded border"
+                      style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
+                      Cancelar
+                    </button>
+                    <button onClick={() => {
+                        const cual = confirmarReimpresion;
+                        setConfirmarReimpresion(null);
+                        if (cual === 'todas') onPrint(); else handlePrintSelected();
+                      }}
+                      className="flex items-center gap-1.5 text-[12px] font-bold cursor-pointer px-3 py-1.5 rounded"
+                      style={{ background: '#B45309', color: '#fff', border: 'none' }}>
+                      <Printer size={12} /> Imprimir copia
+                    </button>
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
                 {assignedNums.map((pNum, i) => {
                   const isSelected = selectedIndices.has(i);
