@@ -8,6 +8,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
+import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 
@@ -88,9 +89,10 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
 
     case 'ADD_ITEM': {
       const cod = action.item.tiendaCod;
+      // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
       return {
         ...state,
-        items: { ...state.items, [cod]: [...(state.items[cod] || []), action.item] },
+        items: { ...state.items, [cod]: agregarSinDuplicar(state.items[cod] || [], action.item) },
       };
     }
 
