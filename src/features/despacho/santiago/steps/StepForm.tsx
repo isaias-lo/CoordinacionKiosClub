@@ -12,6 +12,7 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido } from '@/features/despacho/shared/contenidoCarga';
+import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
@@ -749,6 +750,31 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   useEffect(() => { pickingSlotsRef.current     = pickingSlots;     }, [pickingSlots]);
   useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
 
+  /**
+   * El `seq` del slot de picking vinculado — el número que quedó IMPRESO en la etiqueta. Es lo
+   * que le permite a un CH conservar su número cuando borran o suman a sus vecinos. Lee del ref
+   * para que los handlers no trabajen con una foto vieja de los slots.
+   */
+  const seqDeSlot = (cod: string, slotId?: number): number | null =>
+    slotId ? ((pickingSlotsFullRef.current[cod] ?? []).find(s => s.id === slotId)?.seq ?? null) : null;
+
+  /**
+   * Igual que `seqDeSlot` pero leyendo el ESTADO: el render tiene que volver a pintar cuando el
+   * seq llega por realtime (Picking lo escribe recién al imprimir la etiqueta).
+   */
+  const seqDeFila = (r: { pickingSlotId?: number }): number | null =>
+    r.pickingSlotId
+      ? ((pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === r.pickingSlotId)?.seq ?? null)
+      : null;
+
+  /** Etiqueta visible de una fila: posición dentro de su tipo, salvo el CH, que usa su seq. */
+  const labelDeFila = (r: FormRow, lista: FormRow[]): string => {
+    const posicion = lista.slice(0, lista.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
+    return etiquetaCard(r.tipo, numeroVisibleCard({
+      esChocolate: r.tipo === 'Chocolate', posicion, seq: seqDeFila(r),
+    }));
+  };
+
   /* ── Derived ── */
   const localTodayCods  = getTiendasSantiagoHoy().map(t => t.cod);
   const sheetsAllCods   = [...sheetsTodayGrouped.rm, ...sheetsTodayGrouped.costa];
@@ -1152,11 +1178,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const lower  = Math.min(srcIdx, tgtIdx);
     const newList = allItems.filter((_, i) => i !== higher && i !== lower);
     newList.splice(lower, 0, merged);
-    let pc = 0, bc = 0, cc = 0, chc = 0;
-    const renumbered = newList.map(i => ({
-      ...i,
-      orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
-    }));
+    const renumbered = renumerarOrden(newList, i => seqDeSlot(tiendaCod, i.pickingSlotId));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
     setCombineModal(null);
   };
@@ -1250,7 +1272,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: pesoV, regimen,
-      orden: row.tipo === 'Pallet' ? `P${pc}` : row.tipo === 'Contenedor' ? `C${cc}` : row.tipo === 'Chocolate' ? `CH${chc}` : `${bc}B`,
+      // El CH usa el seq del slot (el número impreso), no su posición entre los que hay ahora.
+      orden: ordenDeItem(row.tipo, numeroVisibleCard({
+        esChocolate: row.tipo === 'Chocolate',
+        posicion: row.tipo === 'Pallet' ? pc : row.tipo === 'Contenedor' ? cc : row.tipo === 'Chocolate' ? chc : bc,
+        seq: pickingSlot?.seq,
+      })),
       estado: ESTADO_DEFAULT,
       pickingSlotId: slotId,
       canonical_id: pickingSlot?.canonical_id ?? undefined,
@@ -1403,11 +1430,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const filtered = cur
         .filter(i => !(bultoRow.savedItem && i.id === bultoRow.savedItem.id))
         .map(i => (palletRow.savedItem && i.id === palletRow.savedItem.id) ? { ...i, peso: nuevoPeso } : i);
-      let pc = 0, bc = 0, cc = 0, chc = 0;
-      const renumbered = filtered.map(i => ({
-        ...i,
-        orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
-      }));
+      const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }
 
@@ -1468,11 +1491,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const filtered = cur
         .filter(i => !bultoIds.has(i.id))
         .map(i => (palletRow.savedItem && i.id === palletRow.savedItem.id) ? { ...i, peso: nuevoPeso } : i);
-      let pc = 0, bc = 0, cc = 0, chc = 0;
-      const renumbered = filtered.map(i => ({
-        ...i,
-        orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
-      }));
+      const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }
 
@@ -1529,11 +1548,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       !(sourceRow.savedItem && i.id === sourceRow.savedItem.id) &&
       !(targetRow.savedItem && i.id === targetRow.savedItem.id));
     if (filtered.length !== cur.length) {
-      let pc = 0, bc = 0, cc = 0, chc = 0;
-      const renumbered = filtered.map(i => ({
-        ...i,
-        orden: i.tipo === 'Pallet' ? `P${++pc}` : i.tipo === 'Contenedor' ? `C${++cc}` : i.tipo === 'Chocolate' ? `CH${++chc}` : `${++bc}B`,
-      }));
+      const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }
 
@@ -2281,9 +2296,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const orderedRows = ordenarCardsPorTipo(formRows, r => r.tipo);
             return (
           <div className="grid grid-cols-2 gap-2 mb-2">
-            {orderedRows.map((row, rowIdx) => {
-              const tipoIdx  = orderedRows.slice(0, rowIdx + 1).filter(r => r.tipo === row.tipo).length;
-              const rowLabel = row.tipo === 'Pallet' ? `P${tipoIdx}` : row.tipo === 'Contenedor' ? `C${tipoIdx}` : row.tipo === 'Chocolate' ? `CH${tipoIdx}` : `B${tipoIdx}`;
+            {orderedRows.map((row) => {
+              const rowLabel = labelDeFila(row, orderedRows);
               if (row.saved && row.savedItem) {
                 return (
                   <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
@@ -2350,8 +2364,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       const palletTargets = formRows.filter(r => r.id !== row.id && r.tipo === 'Pallet');
                       if (palletTargets.length === 0) return null;
                       const getRowLabel = (r: typeof row) => {
-                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
-                        return r.tipo === 'Pallet' ? `P${idx}` : r.tipo === 'Contenedor' ? `C${idx}` : r.tipo === 'Chocolate' ? `CH${idx}` : `B${idx}`;
+                        return labelDeFila(r, formRows);
                       };
                       const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
                       return (
@@ -2389,8 +2402,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       const combineTargets = formRows.filter(r => r.id !== row.id && r.tipo === row.tipo);
                       if (combineTargets.length === 0) return null;
                       const getRowLabel = (r: typeof row) => {
-                        const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
-                        return r.tipo === 'Pallet' ? `P${idx}` : r.tipo === 'Contenedor' ? `C${idx}` : r.tipo === 'Chocolate' ? `CH${idx}` : `B${idx}`;
+                        return labelDeFila(r, formRows);
                       };
                       const col = row.tipo === 'Contenedor'
                         ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
@@ -2553,10 +2565,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
                       : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
                     const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                    const getRowLabel = (r: typeof row) => {
-                      const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
-                      return r.tipo === 'Pallet' ? `P${idx}` : r.tipo === 'Contenedor' ? `C${idx}` : r.tipo === 'Chocolate' ? `CH${idx}` : `B${idx}`;
-                    };
+                    const getRowLabel = (r: typeof row) => labelDeFila(r, formRows);
                     return (
                       <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
                         {isExpanded ? (
