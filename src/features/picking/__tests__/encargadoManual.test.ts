@@ -12,6 +12,12 @@ describe('pideSeccion', () => {
     expect(pideSeccion('hogar')).toBe(false);
     expect(pideSeccion('aseo-comida')).toBe(false);
   });
+
+  it('en la pestaña Congelados nunca se pregunta, aunque el chip sea "Todas"', () => {
+    // Ahí el único chip es "Todas", y preguntar ofrecía las secciones de SECO: el encargado
+    // terminaba creado en Seco, con un pallet.
+    expect(pideSeccion('all', true)).toBe(false);
+  });
 });
 
 describe('seccionYContenidoManual', () => {
@@ -36,6 +42,22 @@ describe('seccionYContenidoManual', () => {
   it('la sección devuelta nunca es la cadena "all"', () => {
     // 'all' no es una Seccion: si se colara, seccionDeSlot la trataría como sección real.
     expect(seccionYContenidoManual('all').seccion).not.toBe('all');
+  });
+});
+
+describe('seccionYContenidoManual · la primera unidad manda cuando no es ambigua', () => {
+  it('un chocolate es de Chocolates aunque se haya elegido "Todas"', () => {
+    expect(seccionYContenidoManual('all', 'CH')).toEqual({ seccion: 'chocolates', contenido: 'chocolate' });
+  });
+
+  it('una caja de cartón o negra es de Congelados', () => {
+    expect(seccionYContenidoManual('all', 'CC')).toEqual({ seccion: 'congelados', contenido: 'congelados' });
+    expect(seccionYContenidoManual('congelados', 'CN')).toEqual({ seccion: 'congelados', contenido: 'congelados' });
+  });
+
+  it('pallet, bulto o contenedor no deciden: manda la sección elegida', () => {
+    expect(seccionYContenidoManual('hogar', 'B')).toEqual({ seccion: 'hogar', contenido: 'hogar' });
+    expect(seccionYContenidoManual('all', 'P')).toEqual({ seccion: null, contenido: 'mixto' });
   });
 });
 

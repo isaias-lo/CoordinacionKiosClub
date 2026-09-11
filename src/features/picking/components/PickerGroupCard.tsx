@@ -5,6 +5,7 @@ import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { pesoChocolateValido, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
+import { tiposDeUnidad } from '../tiposUnidad';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 import { categoriasDeSlotsManual } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
@@ -267,16 +268,10 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 { tipo: 'CC' as PickerType, label: 'Caja Cartón'   },
                 { tipo: 'CN' as PickerType, label: 'Caja Negra'    },
               ])
-              .filter(({ tipo }) => {
-                const esCaja = tipo === 'CC' || tipo === 'CN';
-                // Congelados: SOLO Caja Cartón/Caja Negra. Ninguna otra card muestra estas dos.
-                if (isCongelados) return esCaja;
-                if (esCaja) return false;
-                // Sección Chocolates: solo Pallets y Chocolates (no Bultos ni Contenedores).
-                if (sectionFilter === 'chocolates') return tipo === 'P' || tipo === 'CH';
-                if (sectionFilter === 'aseo-comida' || sectionFilter === 'hogar') return tipo !== 'CH';
-                return true; // 'all': show all
-              })
+              // Misma regla que el formulario del encargado manual (tiposUnidad.ts): Congelados solo
+              // cajas, Chocolates solo P/CH, Aseo y Hogar sin CH — y un tipo que YA tiene unidades se
+              // muestra igual, para que nunca quede una unidad en la base que nadie pueda ver ni quitar.
+              .filter(({ tipo }) => tiposDeUnidad(!!isCongelados, sectionFilter ?? 'all', palletsByTipo).includes(tipo))
               .map(({ tipo, label }) => {
                 const count  = palletsByTipo[tipo] ?? 0;
                 const active = count > 0;
