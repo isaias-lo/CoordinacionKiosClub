@@ -24,6 +24,7 @@ const ACCION_META: Record<string, { verb: string; cls: string }> = {
   unificar:       { verb: 'Unificó',      cls: 'text-[#6B21A8] bg-[rgba(107,33,168,0.10)]' },
   sumar:          { verb: 'Sumó',         cls: 'text-[#B45309] bg-[rgba(217,119,6,0.12)]' },
   registrar_dia:  { verb: 'Registró día', cls: 'text-navy bg-[rgba(26,37,80,0.08)]' },
+  revertir:       { verb: 'Revirtió',     cls: 'text-[#0E7490] bg-[rgba(8,145,178,0.10)]' },
 };
 
 function detalleOf(r: ActividadRow) {

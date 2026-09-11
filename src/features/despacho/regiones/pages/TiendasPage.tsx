@@ -43,7 +43,9 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { abreviaturaContenido, nombreContenido } from '@/features/despacho/shared/contenidoCarga';
-import { numeroVisibleCard, etiquetaCard, claseNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
+import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
+import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
+import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
@@ -1233,9 +1235,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       logActividad({ accion: 'eliminar_item', fuente: 'nacional', tiendaCod: TIENDAS[tienda]?.cod,
         tiendaNombre: tienda, label: ordenToLabel(borrado.orden), slotId: borrado.pickingSlotId });
     }
-    deletePickingSlot(row?.pickingSlotId ?? borrado?.pickingSlotId);
+    // Su número (seq) se lee ANTES de borrar el slot: después ya no hay de dónde sacarlo, y es lo
+    // que permite que el Revertir lo devuelva como CH3 y no como el siguiente libre.
+    const slotIdBorrado = row?.pickingSlotId ?? borrado?.pickingSlotId;
+    const slotAntes = slotIdBorrado != null
+      ? (pickingSlotsFullRef.current[tienda] ?? []).find(s => s.id === slotIdBorrado)
+      : undefined;
+    deletePickingSlot(slotIdBorrado);
     setFormRows(prev => prev.filter(r => r.id !== rowId));
-    if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda));
+    if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda, slotAntes));
   };
 
   const removeUnsavedRow = (rowId: string) => {
@@ -1245,21 +1253,126 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   };
 
   // [Revertir borrado] Re-crea el slot (create-bodega) y re-agrega el item borrado con su carga.
-  const reAgregarItem = async (item: DispatchItem, tienda: string) => {
+  const reAgregarItem = async (item: DispatchItem, tienda: string, slotAntes?: PickingSlot) => {
     const cod = TIENDAS[tienda]?.cod ?? '';
-    let slotId: number | undefined;
-    const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(item.pkg), contenido: 'hogar' });
-    if (slot) { slotId = slot.id; setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] })); }
-    dispatch({ type: 'ADD_ITEM', tienda, item: { ...item, pickingSlotId: slotId } });
-    if (slotId) {
-      supabase.from('picking_pallets').update({ peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo })
-        .eq('id', slotId).then(({ error }) => { if (error) console.error('[reAgregar picking update]', error.message); });
+    // Vuelve con su número de antes si nadie lo tomó (ver recrearSlotConNumero); las medidas y el
+    // peso se le escriben en el mismo update.
+    const { slot, conservoNumero, error } = await recrearSlotConNumero({
+      date: fechaISOLocal(), store_cod: cod,
+      tipo: slotAntes?.tipo ?? pkgCodeNacional(item.pkg), contenido: slotAntes?.contenido ?? 'hogar',
+      seqOriginal: slotAntes?.seq, canonicalOriginal: slotAntes?.canonical_id ?? item.canonical_id,
+      peso: item.peso, alto: item.alto, largo: item.largo, ancho: item.ancho,
+    });
+    if (slot) setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] }));
+    // Un CH que no recuperó su número toma el nuevo también en el `orden`: si no, la card y el ID de
+    // Sheets dirían CH3 mientras la caja y el slot dicen otra cosa.
+    const orden = item.pkg === 'chocolate' && slot?.seq && !conservoNumero
+      ? ordenNacional('chocolate', slot.seq) : item.orden;
+    dispatch({ type: 'ADD_ITEM', tienda, item: {
+      ...item, orden, pickingSlotId: slot?.id, canonical_id: slot?.canonical_id ?? item.canonical_id,
+    } });
+    logActividad({ accion: 'revertir', fuente: 'nacional', tiendaCod: cod || undefined, tiendaNombre: tienda,
+      revierte: 'borrado', label: ordenToLabel(orden), slotId: slot?.id });
+    // Se re-agrega igual sin # cuando falla la creación (mejor que perder la restauración), pero
+    // AVISA: si no, el pallet quedaría invisible para Seguimiento/Enrutador sin que nadie lo notara.
+    const antes = ordenToLabel(item.orden), ahora = ordenToLabel(orden);
+    if (!slot) showToast(`⚠ ${antes} restaurado sin # de bodega (${error})`, '#D97706');
+    else if (slotAntes?.seq != null && !conservoNumero) {
+      showToast(`↩ ${antes} restaurado${ahora !== antes ? ` como ${ahora}` : ''} con código nuevo — el suyo ya estaba tomado`, '#D97706');
+    } else showToast(`↩ ${antes} restaurado`, '#16A34A');
+  };
+
+  // [Revertir suma] Foto de lo que había ANTES de sumar bultos/CH a un pallet. Sumar borra el slot
+  // del bulto (item + slot), así que revertir tiene que re-crearlo —con su número original— y
+  // devolverle al pallet el peso que tenía. Se toma antes de tocar nada.
+  interface SumaSnap {
+    tienda: string;
+    cod: string;
+    palletLabel: string;
+    itemsAntes: DispatchItem[];
+    tgtSlot?: number;
+    tgtPesoAntes: number | null;
+    origenes: {
+      label: string; slotId?: number; tipo: string; contenido: string;
+      seq: number | null; canonical: string | null;
+      peso: number; alto: number; largo: number; ancho: number;
+    }[];
+  }
+
+  const snapshotSuma = (tienda: string, origenRows: FormRow[], palletRow: FormRow, palletLabel: string, pesoPalletAntes: number): SumaSnap => {
+    const slots = pickingSlotsFullRef.current[tienda] ?? [];
+    const tgtSlot = palletRow.pickingSlotId ?? palletRow.savedItem?.pickingSlotId;
+    const sTgt = tgtSlot != null ? slots.find(s => s.id === tgtSlot) : undefined;
+    return {
+      tienda,
+      cod: TIENDAS[tienda]?.cod ?? '',
+      palletLabel,
+      itemsAntes: [...(dispatchData[tienda] || [])],
+      tgtSlot,
+      // El peso del SLOT tal cual estaba (null incluido); si no hay slot, el de la card.
+      tgtPesoAntes: sTgt ? sTgt.peso_kg : pesoPalletAntes,
+      origenes: origenRows.map(r => {
+        const slotId = r.pickingSlotId ?? r.savedItem?.pickingSlotId;
+        const sl = slotId != null ? slots.find(x => x.id === slotId) : undefined;
+        const it = r.savedItem;
+        return {
+          label: labelDeFila(r, formRows),
+          slotId,
+          tipo: sl?.tipo ?? pkgCodeNacional(r.pkg),
+          contenido: sl?.contenido ?? 'hogar',
+          seq: sl?.seq ?? null,
+          canonical: sl?.canonical_id ?? it?.canonical_id ?? null,
+          peso:  it?.peso  ?? (parseFloat(r.peso)  || 0),
+          alto:  it?.alto  ?? (parseFloat(r.alto)  || 0),
+          largo: it?.largo ?? (parseFloat(r.largo) || 0),
+          ancho: it?.ancho ?? (parseFloat(r.ancho) || 0),
+        };
+      }),
+    };
+  };
+
+  const revertirSuma = async (snap: SumaSnap) => {
+    const mapa = new Map<number, number | undefined>();
+    const nuevos: PickingSlot[] = [];
+    let sinSlot = 0, conCodigoNuevo = 0;
+    for (const o of snap.origenes) {
+      const r = await recrearSlotConNumero({
+        date: fechaISOLocal(), store_cod: snap.cod, tipo: o.tipo, contenido: o.contenido,
+        seqOriginal: o.seq, canonicalOriginal: o.canonical,
+        peso: o.peso, alto: o.alto, largo: o.largo, ancho: o.ancho,
+      });
+      if (o.slotId != null) mapa.set(o.slotId, r.slot?.id);
+      if (!r.slot) sinSlot++;
+      else { nuevos.push(r.slot); if (o.seq != null && !r.conservoNumero) conCodigoNuevo++; }
     }
-    // Se re-agrega igual sin # cuando falla la creación (mejor que perder la restauración),
-    // pero ahora AVISA — antes fallaba en silencio y el pallet quedaba invisible para
-    // Seguimiento/Enrutador sin que nadie lo notara.
-    if (slotId) showToast(`↩ ${ordenToLabel(item.orden)} restaurado`, '#16A34A');
-    else showToast(`⚠ ${ordenToLabel(item.orden)} restaurado sin # de bodega (${error})`, '#D97706');
+    // El pallet vuelve al peso que tenía antes de recibir la suma.
+    if (snap.tgtSlot != null) {
+      supabase.from('picking_pallets').update({ peso_kg: snap.tgtPesoAntes }).eq('id', snap.tgtSlot)
+        .then(({ error }) => { if (error) console.error('[revertirSuma tgt]', error.message); });
+    }
+    setPickingSlotsFull(prev => {
+      const arr = (prev[snap.tienda] ?? []).map(sl => (sl.id === snap.tgtSlot ? { ...sl, peso_kg: snap.tgtPesoAntes } : sl));
+      return { ...prev, [snap.tienda]: [...arr, ...nuevos] };
+    });
+    // Los items de antes, apuntando a los slots re-creados, y renumerados con el seq que quedó: un
+    // CH que no recuperó su número toma el nuevo también en su `orden` (el que va a Sheets).
+    const seqLocal = new Map<number, number | null>([
+      ...(pickingSlotsFullRef.current[snap.tienda] ?? []).map(sl => [sl.id, sl.seq] as const),
+      ...nuevos.map(sl => [sl.id, sl.seq] as const),
+    ]);
+    const restaurados = renumerarOrdenNacional(remapSlots(snap.itemsAntes, mapa),
+      i => (i.pickingSlotId != null ? seqLocal.get(i.pickingSlotId) ?? null : null));
+    dispatch({ type: 'UPDATE_ITEMS', tienda: snap.tienda, items: restaurados });
+    // Reabrir la tienda → la reconstrucción rearma las cards desde items+slots (igual que revertirUnificacion).
+    dispatch({ type: 'SET_TIENDA', payload: null });
+    setTimeout(() => dispatch({ type: 'SET_TIENDA', payload: snap.tienda }), 40);
+    logActividad({ accion: 'revertir', fuente: 'nacional', tiendaCod: snap.cod || undefined, tiendaNombre: snap.tienda,
+      revierte: 'suma', sourceLabel: snap.origenes.map(o => o.label).join(', '), label: snap.palletLabel, slotId: snap.tgtSlot });
+    if (sinSlot) {
+      showToast(`⚠ Suma revertida, pero ${sinSlot === 1 ? 'uno quedó' : `${sinSlot} quedaron`} sin # de bodega — revisa la tienda`, '#D97706');
+    } else if (conCodigoNuevo) {
+      showToast(`↩ Suma revertida · ${conCodigoNuevo === 1 ? 'uno volvió' : `${conCodigoNuevo} volvieron`} con código nuevo (el suyo ya estaba tomado)`, '#D97706');
+    } else showToast('↩ Suma revertida', '#16A34A');
   };
 
   // [Revertir unificación] Deshace una unión: re-crea el slot del source, restaura el peso del
@@ -1284,6 +1397,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     dispatch({ type: 'UPDATE_ITEMS', tienda: name, items: remapPickingSlot(itemsAntes, oldSrcSlot, newSrcSlotId) });
     dispatch({ type: 'SET_TIENDA', payload: null });
     setTimeout(() => dispatch({ type: 'SET_TIENDA', payload: name }), 40);
+    logActividad({ accion: 'revertir', fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name,
+      revierte: 'unificacion', sourceLabel: ordenToLabel(sourceItem.orden), slotId: tgtSlot });
     showToast('↩ Unificación revertida', '#16A34A');
   };
 
@@ -1306,6 +1421,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const pesoActual = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
 
+    // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
+    // después se chequeaba: si el pallet había cambiado, la función salía con el slot ya borrado y
+    // el item todavía en pie — un bulto sin slot, invisible para Seguimiento y el Enrutador.
+    if (palletRow.savedItem && !findItemForRow(dispatchData[selectedTienda] || [], { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })) {
+      showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
+      return;
+    }
+    const snap = snapshotSuma(selectedTienda, [bultoRow], palletRow, palletLabel, pesoActual);
+
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
 
     // Contexto: un solo UPDATE_ITEMS — quita el bulto guardado (si lo estaba) y suma el peso
@@ -1313,15 +1437,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // por pkg+orden, que cambia bajo renumberItems tras un eco remoto (causa del "freeze").
     if (bultoRow.savedItem || palletRow.savedItem) {
       const cur = dispatchData[selectedTienda] || [];
-      // Reconfirmar contra el contexto vigente: si el pallet destino ya no existe (fue
-      // absorbido/renumerado en otro dispositivo), avisar en vez de hacer un no-op silencioso.
-      const targetInCtx = palletRow.savedItem
-        ? findItemForRow(cur, { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })
-        : undefined;
-      if (palletRow.savedItem && !targetInCtx) {
-        showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
-        return;
-      }
       const newItems = cur
         .filter(i => !sameStableItem(i, bultoRow.savedItem))
         .map(i => sameStableItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
@@ -1347,6 +1462,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: bultoRow.pkg === 'chocolate' ? 'CH' : 'bulto',
       label: palletLabel, peso: bultoPeso, slotId: targetSlotId });
+    armarUndo(etiquetaSuma(snap.origenes.map(o => o.label), palletLabel), () => revertirSuma(snap));
   };
 
   // [Sumar en masa] Igual que sumarBultoAPallet pero para VARIOS bultos/CH de una sola vez:
@@ -1364,23 +1480,26 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? (parseFloat(r.peso) || 0));
     const pesoActual  = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
     const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
+    const palletIdx   = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.pkg === 'pallet').length;
+    const palletLabel = `P${palletIdx}`;
+
+    // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
+    // después se chequeaba: si el pallet había cambiado, la función salía con el slot ya borrado y
+    // el item todavía en pie — un bulto sin slot, invisible para Seguimiento y el Enrutador.
+    if (palletRow.savedItem && !findItemForRow(dispatchData[selectedTienda] || [], { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })) {
+      showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
+      return;
+    }
+    const snap = snapshotSuma(selectedTienda, bultoRows, palletRow, palletLabel, pesoActual);
 
     for (const bultoRow of bultoRows) {
       deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
     }
 
     // Contexto: un solo UPDATE_ITEMS — quita TODOS los bultos guardados seleccionados y suma el
-    // peso total al pallet guardado. Mismo match por id ESTABLE (sameStableItem) que la single,
-    // reconfirmando el target contra el contexto vigente (guard "el pallet destino cambió").
+    // peso total al pallet guardado. Mismo match por id ESTABLE (sameStableItem) que la single.
     if (bultoRows.some(r => r.savedItem) || palletRow.savedItem) {
       const cur = dispatchData[selectedTienda] || [];
-      const targetInCtx = palletRow.savedItem
-        ? findItemForRow(cur, { pickingSlotId: palletRow.pickingSlotId, savedItem: palletRow.savedItem })
-        : undefined;
-      if (palletRow.savedItem && !targetInCtx) {
-        showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
-        return;
-      }
       const newItems = cur
         .filter(i => !bultoRows.some(r => r.savedItem && sameStableItem(i, r.savedItem)))
         .map(i => sameStableItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
@@ -1402,15 +1521,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         .then(({ error }) => { if (error) console.error('[sumarVariosAPallet peso]', error.message); });
     }
 
-    const palletIdx = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.pkg === 'pallet').length;
-    const palletLabel = `P${palletIdx}`;
-
     setFormMergeState(null);
     setMergeSel(new Set());
     showToast(`✓ ${bultoRows.length} sumados a ${palletLabel}`, '#16A34A');
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: `${bultoRows.length} ítems`, label: palletLabel,
       peso: sumarPesoMultiple(0, pesosBultos), slotId: targetSlotId });
+    armarUndo(etiquetaSuma(snap.origenes.map(o => o.label), palletLabel), () => revertirSuma(snap));
   };
 
   /* ── Unificar pallets/contenedores INLINE (P3 → P1) ───────────────────────────────────

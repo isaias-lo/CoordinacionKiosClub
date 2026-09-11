@@ -2,9 +2,20 @@
 // la API /api/actividad estampa el actor desde el token (verifyActor), no desde el cliente.
 // NUNCA debe lanzar ni bloquear el flujo de bodega (patrón de picking_eventos.logEvento).
 
-export type AccionActividad =
-  | 'registrar_item' | 'editar_item' | 'eliminar_item'
-  | 'unificar' | 'sumar' | 'registrar_dia';
+/**
+ * Las acciones que se registran. Es la ÚNICA lista: la API la usa como lista blanca, así que
+ * agregar una acción acá la habilita en los dos lados. Antes estaba repetida en el route, y una
+ * acción que faltara allá se rechazaba con 400 — sin que nadie se enterara, porque logActividad
+ * es fire-and-forget.
+ *
+ * 'revertir' es el deshacer del snackbar. Sin ella la bitácora mentía: quedaba "Eliminó CH3" o
+ * "Sumó CH3 a P1" aunque alguien lo hubiera revertido a los dos segundos.
+ */
+export const ACCIONES_ACTIVIDAD = [
+  'registrar_item', 'editar_item', 'eliminar_item', 'unificar', 'sumar', 'registrar_dia', 'revertir',
+] as const;
+
+export type AccionActividad = typeof ACCIONES_ACTIVIDAD[number];
 
 export type FuenteActividad = 'nacional' | 'rmcosta';
 
@@ -18,6 +29,8 @@ export interface ActividadCtx {
   alto?: number;
   contenido?: string;
   slotId?: number;
+  // revertir: qué operación se deshizo.
+  revierte?: 'suma' | 'borrado' | 'unificacion';
   // registrar_dia:
   tiendas?: number;
   pallets?: number;
@@ -52,6 +65,14 @@ export function buildActividadMensaje(accion: AccionActividad, ctx: ActividadCtx
     case 'sumar': {
       const kg = ctx.peso != null ? ` (+${ctx.peso}kg)` : '';
       return `Sumó ${ctx.sourceLabel ?? 'ítem'} a ${ctx.label ?? 'pallet'}${en}${kg}`;
+    }
+    case 'revertir': {
+      const que = ctx.revierte === 'suma'
+        ? `la suma de ${ctx.sourceLabel ?? 'ítem'} a ${ctx.label ?? 'pallet'}`
+        : ctx.revierte === 'unificacion'
+          ? `la unificación de ${ctx.sourceLabel ?? '?'} con ${ctx.label ?? '?'}`
+          : `el borrado de ${ctx.label ?? 'ítem'}`;
+      return `Revirtió ${que}${en}`;
     }
     case 'registrar_dia': {
       const parts: string[] = [];

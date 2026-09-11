@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyActor } from '@/lib/apiAuth';
+import { ACCIONES_ACTIVIDAD } from '@/lib/actividad';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 const FUENTES  = new Set(['nacional', 'rmcosta']);
-const ACCIONES = new Set(['registrar_item', 'editar_item', 'eliminar_item', 'unificar', 'sumar', 'registrar_dia']);
+// La misma lista que el tipo `AccionActividad`: no pueden desalinearse.
+const ACCIONES = new Set<string>(ACCIONES_ACTIVIDAD);
 
 // Registra una acción de bodega. El actor (id + nombre) sale del token verificado, NO del
 // cliente → no se puede falsear quién hizo qué.
