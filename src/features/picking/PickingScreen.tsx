@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { claveSesion, parseClaveSesion, TIPO_NOMBRE } from '@/lib/sessionStateKeys';
+import { pesoChocolateValido, dimsChocolate } from '@/features/despacho/shared/chocolate';
+import { normalizarMedidas, pesoVolumetrico } from '@/features/despacho/shared/medidasPallet';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
@@ -274,6 +276,9 @@ export function PickingScreen() {
   // (típicamente los manuales). Mismo mecanismo que el nombre (picking_session_state), con un
   // tipo distinto ('batch') para no pisarse con el nombre en el mismo state_key.
   const [pickerBatch, setPickerBatch] = useState<Record<string, string>>({});
+  // Peso del chocolate por encargado, en kg. Mismo mecanismo que el batch: `tipo` propio para no
+  // pelearse con el nombre por la fila (la PK es (state_key, date) sin tipo — ver sessionStateKeys).
+  const [pickerPesoCH, setPickerPesoCH] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!sessionStateRows.length) return;
     setPickerBatch(prev => {
@@ -283,6 +288,15 @@ export function PickingScreen() {
         // ANTES de este arreglo (clave pelada con tipo='batch'): así no se pierde lo ya cargado.
         const { stateKey, tipo } = parseClaveSesion(r);
         if (tipo === 'batch' && !dirtyStateKeys.current.has(`${stateKey}::batch`)) next[stateKey] = r.picker_label ?? '';
+      }
+      return next;
+    });
+    // El peso del chocolate viaja igual que el batch, con su propio `tipo`.
+    setPickerPesoCH(prev => {
+      const next = { ...prev };
+      for (const r of sessionStateRows) {
+        const { stateKey, tipo } = parseClaveSesion(r);
+        if (tipo === 'peso-ch' && !dirtyStateKeys.current.has(`${stateKey}::peso-ch`)) next[stateKey] = r.picker_label ?? '';
       }
       return next;
     });
@@ -314,6 +328,29 @@ export function PickingScreen() {
     const num = raw.replace(/\D/g, '');
     setPickerBatch(prev => ({ ...prev, [stateKey]: num }));
     upsertSessionState(stateKey, num, 'batch');
+  }, [upsertSessionState]);
+
+  /**
+   * Peso del chocolate de un encargado. Se guarda el texto tal cual se escribe (para no pelear con
+   * el cursor mientras se tipea) y solo se propaga a la base cuando el valor es válido.
+   *
+   * Además se aplica a los chocolates YA creados de ese grupo: lo normal es agregar los bultos
+   * primero y pesarlos después, así que sin esto el peso solo valdría para los que se agreguen
+   * de ahí en adelante y el encargado tendría que borrarlos y rehacerlos. Mismo patrón que
+   * `renamePickerSlots`, que ya resolvía esto para el nombre.
+   */
+  const setPickerPesoCHValue = useCallback((stateKey: string, raw: string) => {
+    const limpio = raw.replace(/[^\d.,]/g, '').slice(0, 6);
+    setPickerPesoCH(prev => ({ ...prev, [stateKey]: limpio }));
+    upsertSessionState(stateKey, limpio, 'peso-ch');
+    const v = pesoChocolateValido(limpio);
+    if (!v.ok) return;  // mientras escriben "1" camino a "18" no se guarda nada raro
+    supabase.from('picking_pallets')
+      .update({ peso_kg: v.peso, ...dimsChocolate(), peso_v: pesoVolumetrico(dimsChocolate().alto, dimsChocolate().largo, dimsChocolate().ancho) })
+      .eq('date', todayISO())
+      .eq('state_key', stateKey)
+      .eq('tipo', 'CH')
+      .then(({ error }) => { if (error) console.error('[peso-ch]', error.message); });
   }, [upsertSessionState]);
 
   // Al renombrar un picker, propaga el nombre a los slots YA creados de ese grupo. Su
@@ -1750,6 +1787,8 @@ export function PickingScreen() {
                               otroDia={otroDiaGroupKeys.has(group.stateKey)}
                               batchValue={pickerBatch[group.stateKey] ?? ''}
                               onBatchChange={raw => setPickerBatchValue(group.stateKey, raw)}
+                              pesoCHValue={pickerPesoCH[group.stateKey] ?? ''}
+                              onPesoCHChange={raw => setPickerPesoCHValue(group.stateKey, raw)}
                               onNameChange={name => {
                                 setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
                                 upsertSessionState(group.stateKey, name, 'P');
@@ -1772,7 +1811,14 @@ export function PickingScreen() {
                                 const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
                                 const groupRefs = fullOps.map(o => o.name).join('+');
                                 if (delta > 0) {
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot);
+                                  // El chocolate nace con el peso que escribió el encargado (y sus
+                                  // medidas fijas). Sin peso escrito va sin medidas y Bodega usa el
+                                  // valor de siempre, igual que antes.
+                                  const pesoCH = tipo === 'CH' ? pesoChocolateValido(pickerPesoCH[group.stateKey] ?? '') : null;
+                                  const medidasCH = pesoCH?.ok
+                                    ? normalizarMedidas({ peso_kg: pesoCH.peso, ...dimsChocolate() })
+                                    : undefined;
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, medidasCH);
                                 } else if (delta < 0) {
                                   for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva);
                                 }
