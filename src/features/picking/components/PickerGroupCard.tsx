@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
+import { pesoChocolateValido, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
@@ -51,6 +52,11 @@ interface Props {
   // Solo el número; el formato "BATCH/N" se aplica al mostrarlo/imprimirlo.
   batchValue?: string;
   onBatchChange?: (raw: string) => void;
+  // Peso del chocolate de este encargado, en kg. Antes Bodega le ponía 20 fijo a todos: las
+  // columnas de peso existían pero solo las escribía Bodega, así que quien pesaba en Picking no
+  // tenía dónde anotarlo. Solo el número; se aplica a los CH de este grupo.
+  pesoCHValue?: string;
+  onPesoCHChange?: (raw: string) => void;
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
@@ -58,8 +64,17 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
   lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
-  batchValue, onBatchChange,
+  batchValue, onBatchChange, pesoCHValue, onPesoCHChange,
 }: Props) {
+  // Mensaje de error del peso: solo cuando hay algo escrito y no sirve — mientras tipean "1"
+  // camino a "18" no se les grita.
+  const pesoCHErr = (() => {
+    const v = (pesoCHValue ?? '').trim();
+    if (!v) return null;
+    const r = pesoChocolateValido(v);
+    return r.ok ? null : r.error;
+  })();
+
   // Dos cosas DISTINTAS que antes vivían en una sola variable (`allDone`):
   //  - odooConfirmado: para el badge verde "Realizado" — un grupo manual (sin operaciones de
   //    Odoo detrás) NO debe aparentar que Odoo confirmó algo. `.every()` sobre un arreglo vacío
@@ -216,6 +231,27 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
               {batchValue && (
                 <div className="text-[12px] text-text-3 mt-1">Se imprimirá como <span className="font-mono font-semibold text-text-2">BATCH/{batchValue}</span></div>
               )}
+            </div>
+          )}
+
+          {/* Peso del chocolate — solo si este encargado tiene chocolates que pesar */}
+          {onPesoCHChange && (palletsByTipo.CH ?? 0) > 0 && (
+            <div>
+              <label className="text-[12px] font-semibold text-text-3 uppercase tracking-wide block mb-1.5">
+                Peso por chocolate <span className="text-[11px] font-normal normal-case text-text-3">(kg, opcional)</span>
+              </label>
+              <input type="text" inputMode="decimal" value={pesoCHValue ?? ''}
+                onChange={e => onPesoCHChange(e.target.value)}
+                placeholder={`${CHOCOLATE_PESO_DEFECTO}`}
+                className="w-full border rounded-lg px-4 py-3 text-[16px] font-barlow text-text bg-white outline-none transition-colors"
+                style={{ borderColor: pesoCHErr ? '#DC2626' : 'var(--color-border)' }} />
+              {pesoCHErr
+                ? <div className="text-[12px] text-red-600 mt-1"><AlertTriangle size={12} className="inline mr-1" />{pesoCHErr}</div>
+                : <div className="text-[12px] text-text-3 mt-1">
+                    {pesoCHValue?.trim()
+                      ? <>Se aplicará a los {palletsByTipo.CH} chocolates de este encargado.</>
+                      : <>Sin peso, Bodega usa {CHOCOLATE_PESO_DEFECTO} kg como hasta ahora.</>}
+                  </div>}
             </div>
           )}
 

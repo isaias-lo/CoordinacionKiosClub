@@ -41,6 +41,7 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
+import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
@@ -76,8 +77,9 @@ function saveRemovedCods(cods: string[]) { localStorage.setItem(todayRemoveKey, 
 /* ── Consumed picking slots (physical pallet merges) ── */
 type ConsumedSlots = Record<string, { p: number; b: number; c: number; ch: number }>;
 const CONSUMED_SLOTS_KEY = `consumedPickingSlots_${_localDate}`;
-const CHOCOLATE_DIMS_R = { alto: 42, ancho: 56, largo: 80 };  // Dimensiones fijas del Chocolate
-const CHOCOLATE_DEFAULT_PESO = 20;                            // Peso por defecto al auto-agregar (editable, 1-25 kg)
+// Definición ÚNICA en shared/chocolate.ts — ver nota en StepForm.
+const CHOCOLATE_DIMS_R       = CHOCOLATE_DIMS_SHARED;
+const CHOCOLATE_DEFAULT_PESO = CHOCOLATE_PESO_DEFECTO;
 function loadConsumedSlots(): ConsumedSlots { try { return JSON.parse(localStorage.getItem(CONSUMED_SLOTS_KEY) || '{}'); } catch { return {}; } }
 function saveConsumedSlots(v: ConsumedSlots) { try { localStorage.setItem(CONSUMED_SLOTS_KEY, JSON.stringify(v)); } catch {} }
 
@@ -690,7 +692,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // duplicaba. (RM/Costa ya asignaba id acá — esto empareja el comportamiento.)
               id: sid ? `ch-slot-${sid}` : `ch-${selectedTienda}-${chCount + 1}-${Date.now()}`,
               orden: `chocolate${++chCount}`, tipo: mapearContenido(s.contenido), pkg: 'chocolate',
-              peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+              // Espejo del mismo arreglo en StepForm: el peso sale del slot de Picking si alguien
+              // lo pesó, y solo cae en la constante cuando nadie lo hizo.
+              peso: pesoChocolate(s), alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
               guia: '', valor: 0, pickingSlotId: sid || undefined,
             };
             chocToCreate.push(newCh);

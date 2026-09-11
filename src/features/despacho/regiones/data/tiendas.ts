@@ -1,3 +1,4 @@
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
 import type { Tienda } from '../../../../types';
 import { MAX_ALTO_CM } from '../../shared/palletLimits';
 
@@ -183,7 +184,8 @@ export const LIMITES = {
   chocolate: { pesoMax: 25,   altoMax: 42,          anchoMax: 56,  largoMax: 80  },
 };
 
-export const CHOCOLATE_DIMS = { largo: 80, ancho: 56, alto: 42, pesoMax: 25 };
+// Re-export por compatibilidad: la definición ÚNICA vive en shared/chocolate.ts.
+export const CHOCOLATE_DIMS = { ...CHOCOLATE_DIMS_SHARED, pesoMax: CHOCOLATE_PESO_MAX };
 
 export function getTodayCods(): string[] {
   const dow = new Date().getDay();

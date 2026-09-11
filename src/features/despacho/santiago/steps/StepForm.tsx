@@ -10,6 +10,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
+import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
@@ -83,8 +84,11 @@ const ESTADOS: EstadoItem[] = [
   'Listo para despachar', 'Despachado', 'Carga recibida', 'Carga No recibida por tienda',
 ];
 const CHOCOLATE_BULTO_DIMS = { alto: 38, largo: 78, ancho: 52, peso: 5 }; // Bulto con contenido Chocolate (legado)
-const CHOCOLATE_DIMS       = { alto: 42, largo: 80, ancho: 56, pesoMax: 25 }; // Tipo Chocolate CH (oficial)
-const CHOCOLATE_DEFAULT_PESO = 20; // Peso por defecto al auto-agregar un chocolate (editable en línea, 1-25 kg)
+// Definición ÚNICA en shared/chocolate.ts — estaba escrita en tres lugares (acá,
+// regiones/data/tiendas.ts y TiendasPage como CHOCOLATE_DIMS_R, esta última con los campos en
+// otro orden), y el peso por defecto en dos. Cambiar la caja obligaba a acordarse de los cinco.
+const CHOCOLATE_DIMS         = { ...CHOCOLATE_DIMS_SHARED, pesoMax: CHOCOLATE_PESO_MAX };
+const CHOCOLATE_DEFAULT_PESO = CHOCOLATE_PESO_DEFECTO;
 
 // Alias de códigos que llegan distintos en las guías PDF (campo "SEÑOR (ES)") vs el código real.
 // Ej.: BUENAVENTURA 2 es 35BN2, pero en la guía aparece como 35BNT.
@@ -947,7 +951,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const newCh: SantiagoItem = {
               id: `${currentTienda.cod}-chauto-${sid || i}-${Date.now()}`, tiendaCod: currentTienda.cod,
               tipo: 'Chocolate', contenido: mapearCont(s.contenido),
-              peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              // El peso sale del slot si alguien lo pesó en Picking; si no, el de siempre. Antes
+              // era SIEMPRE la constante, así que los 18 kg que alguien puso en la balanza se
+              // convertían en 20 al llegar acá.
+              peso: pesoChocolate(s), alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
               pesoVolumetrico: 0, regimen, orden: `CH${++chCount}`, estado: ESTADO_DEFAULT,
               pickingSlotId: sid || undefined,
             };
