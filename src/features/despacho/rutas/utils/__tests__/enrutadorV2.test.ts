@@ -3,7 +3,7 @@ import {
   aMinutos, parseVentana, kmRuta, diametroKm, horariosLlegada, ventanasIncumplidas,
   ordenVecinoCercano, dosOpt, ordenarParadas, agruparPorAhorro,
   empresaDelGrupo, mejorCamion, empacarEnFlota, zonaDeTienda,
-  enrutarV2, OPCIONES_DEFAULT,
+  enrutarV2, OPCIONES_DEFAULT, salidaSugerida,
 } from '../enrutadorV2';
 import type { StoreItem } from '../routing';
 import type { Vehiculo } from '../../data/flota';
@@ -605,5 +605,58 @@ describe('horariosLlegada · esperar la apertura', () => {
     const tiendas = { A: T('08:30-12:00'), B: T('08:00-08:20') };
     expect(ventanasIncumplidas(['A', 'B'], GPS, CD, tiendas, SIN)).toEqual([]);
     expect(ventanasIncumplidas(['A', 'B'], GPS, CD, tiendas, ESPERA)).toEqual(['B']);
+  });
+});
+
+describe('salidaSugerida — a qué hora conviene que salga cada camión', () => {
+  // A está prácticamente en el CD: saliendo 08:00 se llega ~08:00. B está ~1 km más allá.
+  const base = 8 * 60;
+
+  it('si la primera tienda abre después de que llegaría, sale más tarde exactamente esa espera', () => {
+    const tiendas = { A: T('09:30-12:00'), B: T('09:00-23:00') };
+    const llegaA = horariosLlegada(['A'], GPS, CD, O, tiendas)[0];
+    const sale = salidaSugerida(['A', 'B'], GPS, CD, O, tiendas);
+    expect(sale).toBe(base + Math.floor(9 * 60 + 30 - llegaA));
+  });
+
+  it('saliendo a esa hora, llega a la primera justo cuando abren (sin pasarse)', () => {
+    const tiendas = { A: T('09:30-12:00'), B: T('09:00-23:00') };
+    const sale = salidaSugerida(['A', 'B'], GPS, CD, O, tiendas);
+    const t = horariosLlegada(['A', 'B'], GPS, CD, { ...O, horaSalida: `${Math.floor(sale / 60)}:${String(sale % 60).padStart(2, '0')}` }, tiendas);
+    expect(t[0]).toBeLessThanOrEqual(9 * 60 + 30);
+    expect(9 * 60 + 30 - t[0]).toBeLessThan(1);
+  });
+
+  it('la garantía: desde la SEGUNDA parada nada cambia de hora — cero riesgo de atraso', () => {
+    const tiendas = { A: T('09:30-12:00'), B: T('08:00-23:00'), C: T('08:00-23:00') };
+    const sale = salidaSugerida(['A', 'B', 'C'], GPS, CD, O, tiendas);
+    const hhmm = `${Math.floor(sale / 60)}:${String(sale % 60).padStart(2, '0')}`;
+    const antes   = horariosLlegada(['A', 'B', 'C'], GPS, CD, O, tiendas);
+    const despues = horariosLlegada(['A', 'B', 'C'], GPS, CD, { ...O, horaSalida: hhmm }, tiendas);
+    // Menos de un minuto de diferencia por el redondeo hacia abajo al minuto.
+    expect(Math.abs(despues[1] - antes[1])).toBeLessThan(1);
+    expect(Math.abs(despues[2] - antes[2])).toBeLessThan(1);
+  });
+
+  it('si la primera ya está abierta al llegar, sale a la hora de siempre', () => {
+    expect(salidaSugerida(['A', 'B'], GPS, CD, O, { A: T('07:00-12:00') })).toBe(base);
+  });
+
+  it('sin ventana en la primera, sale a la hora de siempre', () => {
+    expect(salidaSugerida(['A', 'B'], GPS, CD, O, { A: T('') })).toBe(base);
+    expect(salidaSugerida(['A', 'B'], GPS, CD, O, undefined)).toBe(base);
+  });
+
+  it('sin GPS de la primera no se sugiere nada: sin ubicación no hay tiempo de viaje que descontar', () => {
+    expect(salidaSugerida(['NOEXISTE', 'B'], GPS, CD, O, { NOEXISTE: T('10:00-12:00') })).toBe(base);
+  });
+
+  it('una ruta vacía sale a la hora de siempre', () => {
+    expect(salidaSugerida([], GPS, CD, O, {})).toBe(base);
+  });
+
+  it('respeta una hora base distinta de las 08:00', () => {
+    const tiendas = { A: T('07:00-12:00') };
+    expect(salidaSugerida(['A'], GPS, CD, { ...O, horaSalida: '06:30' }, tiendas)).toBeGreaterThan(6 * 60 + 30);
   });
 });

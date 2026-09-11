@@ -331,6 +331,12 @@ export default function RutasScreen() {
   const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
   // Fase B: manifiesto de un solo camión cerrado en 1ª vuelta (cierre por vehículo).
   const [manifiestoV1, setManifiestoV1]             = useState<Ruta[] | null>(null);
+  // Coordenadas para la "Salida sugerida" del manifiesto de 1ª vuelta. Memoizado: el panel lo tiene
+  // en las dependencias de su rebuild, y un objeto nuevo por render lo reconstruiría en cada render.
+  const salidaManifiesto = useMemo(
+    () => ({ gps: results?.extGps || gps, cd: cdRef.current }),
+    [results?.extGps, gps],
+  );
   const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
 
   const [paradasAdicionales, setParadasAdicionales] = useState<Parada[]>([]);
@@ -2891,6 +2897,9 @@ export default function RutasScreen() {
           fecha={fecha}
           supervisor={supervisor}
           tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo & { _parada?: boolean }>}
+          // 1ª vuelta: el camión sale del CD a la hora base, así que se le sugiere cuándo salir.
+          // El de 2ª vuelta (arriba) no lo recibe: esos camiones no salen a las 08:00.
+          salida={salidaManifiesto}
           isOpen={true}
           onClose={() => setManifiestoV1(null)}
           // Consecutivo global: cada camión cerrado uno a uno toma el siguiente número

@@ -254,6 +254,34 @@ export function horariosLlegada(
   });
 }
 
+/**
+ * Minuto al que conviene que salga el camión del CD: la hora base, corrida EXACTAMENTE lo que
+ * esperaría en la puerta de su primera tienda.
+ *
+ * Medido sobre 33 días reales (11/09/2026): los camiones esperan ~165 min/día sumando todos, y el
+ * 88% de esa espera es en la PRIMERA parada — strip centers que abren 09:00–09:30 cuando el camión
+ * salió a las 08:00. Esa espera se puede pasar en el CD sin ningún riesgo: si sale justo esos
+ * minutos más tarde llega cuando abren, y desde la segunda parada todo queda idéntico. Por eso se
+ * redondea hacia ABAJO al minuto: llegar un minuto antes de que abran no mueve nada; uno después sí.
+ *
+ * Lo que NO sirve es atrasar a todos parejo: a las 08:30 salen 24 camiones más y a las 09:00 hay 55
+ * tiendas tarde, porque aprieta a los malls que cierran temprano. La salida es por camión.
+ *
+ * Sin GPS de la primera tienda no se sugiere nada: sin ubicación no hay tiempo de viaje que descontar.
+ */
+export function salidaSugerida(
+  cods: string[], gps: Record<string, number[]>, cd: number[], o: Required<OpcionesEnrutador>,
+  tiendas?: Record<string, TiendaInfo>,
+): number {
+  const base = aMinutos(o.horaSalida) ?? 8 * 60;
+  const primera = cods[0];
+  if (!primera || !gps[primera]) return base;
+  const w = parseVentana(tiendas?.[primera]?.v);
+  if (!w) return base;
+  const llegada = horariosLlegada([primera], gps, cd, o, tiendas)[0];
+  return llegada < w.abre ? base + Math.floor(w.abre - llegada) : base;
+}
+
 /** Códigos a los que se llegaría DESPUÉS del cierre de su ventana, en ese orden. */
 export function ventanasIncumplidas(
   cods: string[], gps: Record<string, number[]>, cd: number[],

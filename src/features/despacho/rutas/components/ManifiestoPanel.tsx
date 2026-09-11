@@ -8,6 +8,8 @@ import type { TiendaInfo } from '../data/tiendas';
 import { supabase } from '@/lib/supabase';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { codigoRuta } from '../utils/codigoRuta';
+import { salidaSugerida, aMinutos, OPCIONES_DEFAULT } from '../utils/enrutadorV2';
+import { minutosAHHMM } from '../utils/parametrosMotor';
 import {
   buildManifiestoTiendaHTML,
   guiasDeItems,
@@ -31,6 +33,8 @@ interface ManifiestoData {
   total_pallets: number;
   total_bultos: number;
   total_chocolates: number;
+  /** 'HH:MM' — solo si su primera tienda abre después de que el camión llegaría. Se muestra; no se guarda. */
+  salida_sugerida?: string;
 }
 
 interface Props {
@@ -47,6 +51,11 @@ interface Props {
    *  PATENTE para reabrirlos con su código y su QR REALES en vez de regenerarlos — una reimpresión
    *  con otro QR sería un documento distinto al que ya circuló. */
   guardados?: { patente?: string | null; codigo_ruta?: string | null; id?: number | null; token_qr?: string | null; estado?: string | null }[];
+  /**
+   * Para sugerir a qué hora conviene que salga cada camión (ver `salidaSugerida`). Solo lo pasa el
+   * manifiesto de 1ª VUELTA: la 2ª vuelta no sale a las 08:00, así que ahí la sugerencia no aplica.
+   */
+  salida?: { gps: Record<string, number[]>; cd: number[] };
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -145,6 +154,7 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
   <div class="mi"><label>Patente</label><span>${m.patente}</span></div>
   <div class="mi"><label>Transporte</label><span>${m.transporte}</span></div>
+  ${m.salida_sugerida ? `<div class="mi"><label>Salida sugerida</label><span>${m.salida_sugerida}</span></div>` : ''}
   <div class="mi"><label>Bodega Origen</label><span>${m.bodega_origen}</span></div>
   <div class="mi"><label>N° Tiendas</label><span>${m.tiendas.length}</span></div>
   <div class="mi"><label>Supervisor</label><span>${supervisor || '—'}</span></div>
@@ -325,7 +335,7 @@ ${body}
 }
 
 /* ── Component ──────────────────────────────────────────── */
-export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados }: Props) {
+export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
@@ -361,7 +371,11 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
           .map(g => [String(g.patente).trim().toUpperCase(), g]),
       );
       return rutas.map((r, i) => {
-        const base = fromRuta(r, i, fecha, tiendas, i + offsetSeq);
+        const base0 = fromRuta(r, i, fecha, tiendas, i + offsetSeq);
+        // Misma configuración con la que el Enrutador armó las rutas (OPCIONES_DEFAULT).
+        const sale = salida ? salidaSugerida(r.ts.map(t => t.c), salida.gps, salida.cd, OPCIONES_DEFAULT, tiendas) : null;
+        const salidaBase = aMinutos(OPCIONES_DEFAULT.horaSalida) ?? 8 * 60;
+        const base = sale != null && sale > salidaBase ? { ...base0, salida_sugerida: minutosAHHMM(sale) } : base0;
         const pat  = String(base.patente ?? '').trim().toUpperCase();
         // 1) lo guardado en la BD manda sobre el código regenerado…
         const g = enBD.get(pat);
@@ -380,7 +394,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
-  }, [rutas, fecha, tiendas, offsetSeq, guardados]);
+  }, [rutas, fecha, tiendas, offsetSeq, guardados, salida]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
   // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).
@@ -676,6 +690,12 @@ ${bodies}
                       <div className="text-[12px] text-gray-400 mt-0.5">
                         {m.chofer} · {m.patente} · {m.bodega_origen}
                       </div>
+                      {m.salida_sugerida && (
+                        <div className="text-[12px] font-semibold text-knavy mt-0.5"
+                          title="Su primera tienda abre más tarde: saliendo a esta hora llega cuando abren, sin esperar en la puerta. Desde la segunda parada las horas no cambian.">
+                          Salida sugerida {m.salida_sugerida}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded text-[11px] font-bold text-white mt-0.5 flex-shrink-0"
