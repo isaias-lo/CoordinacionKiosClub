@@ -9,7 +9,7 @@ import {
   planificarIncremental, prioridadPicking, acumular,
   type EsperadoTienda,
 } from '../utils/enrutadorIncremental';
-import { enrutarV2, kmRuta, horariosLlegada, aMinutos, OPCIONES_DEFAULT, type OpcionesEnrutador } from '../utils/enrutadorV2';
+import { enrutarV2, kmRuta, horariosLlegada, salidaSugerida, aMinutos, OPCIONES_DEFAULT, type OpcionesEnrutador } from '../utils/enrutadorV2';
 import { unidadesDesdeFilas, ahoraMinutoChile, type FilaPicking } from '../utils/tableroVivo';
 import type { ConfigZonas } from '../utils/zonasTransporte';
 import { resumenCoincidencia, type FilaFeedback } from '../utils/coincidenciaAsignacion';
@@ -145,7 +145,12 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
   const acuerdo     = useMemo(() => resumenCoincidencia(feedbackRows, fecha), [feedbackRows, fecha]);
   const camionSel   = useMemo(() => plan.camiones.find(k => k.v.p === sel) ?? null, [plan, sel]);
   const horariosSel = useMemo(
-    () => camionSel ? horariosLlegada(camionSel.orden, gps, cd, opcEnr, tiendas) : [],
+    // Horas por parada desde la salida SUGERIDA del camión: a la primera se llega cuando abren, y
+    // desde la segunda son las mismas que saliendo a la hora base (ver salidaSugerida).
+    () => camionSel
+      ? horariosLlegada(camionSel.orden, gps, cd,
+          { ...opcEnr, horaSalida: minutosAHHMM(salidaSugerida(camionSel.orden, gps, cd, opcEnr, tiendas)) }, tiendas)
+      : [],
     [camionSel, gps, cd, opcEnr, tiendas],
   );
 
@@ -312,7 +317,9 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
               {plan.camiones.map(k => {
                 const st = ESTADO_STYLE[k.estado] ?? ESTADO_STYLE.abierto;
                 const km = kmRuta(k.orden, gps, cd);
-                const llegadas = horariosLlegada(k.orden, gps, cd, opcEnr, tiendas);
+                const sale = salidaSugerida(k.orden, gps, cd, opcEnr, tiendas);
+                const saleTarde = sale > (aMinutos(opcEnr.horaSalida) ?? 8 * 60);
+                const llegadas = horariosLlegada(k.orden, gps, cd, { ...opcEnr, horaSalida: minutosAHHMM(sale) }, tiendas);
                 const ultima = llegadas.length ? llegadas[llegadas.length - 1] : null;
                 const abierto = sel === k.v.p;
                 return (
@@ -326,6 +333,12 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
                         <span className="ml-auto text-[11px] text-kmuted tabular-nums flex items-center gap-2">
                           <span>{k.tp}P{k.tb > 0 ? ` · ${k.tb}B` : ''}</span>
                           <span className="flex items-center gap-0.5"><MapPin size={11} aria-hidden="true" />{km.toFixed(0)}km</span>
+                          {saleTarde && (
+                            <span className="font-semibold text-knavy"
+                              title={`Su primera tienda abre más tarde: saliendo a las ${minutosAHHMM(sale)} llega cuando abren, sin esperar en la puerta. Desde la segunda parada las horas no cambian.`}>
+                              Sale {minutosAHHMM(sale)}
+                            </span>
+                          )}
                           {ultima != null && <span className="flex items-center gap-0.5"><Clock size={11} aria-hidden="true" />{minutosAHHMM(ultima)}</span>}
                         </span>
                       </div>
