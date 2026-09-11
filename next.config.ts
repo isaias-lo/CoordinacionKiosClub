@@ -4,6 +4,11 @@ import { withSentryConfig } from '@sentry/nextjs';
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
 
+  // Con qué commit se compiló este bundle. La pestaña lo compara con /api/version para saber si
+  // quedó corriendo una versión vieja y avisar (ver lib/versionApp.ts). Se fija en el build: es
+  // exactamente lo que se quiere, porque identifica al código que el navegador tiene cargado.
+  env: { NEXT_PUBLIC_APP_VERSION: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev' },
+
   serverExternalPackages: ['xlsx', 'nodemailer'],
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
