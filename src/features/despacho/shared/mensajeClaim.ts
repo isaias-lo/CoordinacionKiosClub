@@ -37,6 +37,12 @@ export interface ContextoClaim {
    * `botonDeTipoCode`. Literal y no traducido: el punto es que lo encuentre en pantalla.
    */
   boton?: string | null;
+  /**
+   * Hay copia del pallet borrado (desde el 11/09/2026) y es de esta tienda: se puede RESTAURAR tal
+   * como estaba. Entonces no tiene sentido mandar a recrearlo y reimprimir la etiqueta — la que
+   * tiene pegada vuelve a servir.
+   */
+  restaurable?: boolean;
   /** Inyectable para tests. */
   ahora?: Date;
 }
@@ -92,7 +98,9 @@ export function mensajeClaim(motivo: MotivoClaim, ctx: ContextoClaim): string {
       const cabeza = quien
         ? `El pallet ${num} lo eliminó ${quien}${momento ? ` ${momento}` : ''}.`
         : `El pallet ${num} fue eliminado${momento ? ` ${momento}` : ''}.`;
-      return `${cabeza} ${comoRecrear(ctx.boton)}`;
+      return ctx.restaurable
+        ? `${cabeza} Puedes restaurarlo tal como estaba: su etiqueta vuelve a servir.`
+        : `${cabeza} ${comoRecrear(ctx.boton)}`;
     }
 
     case 'otra_tienda': {
