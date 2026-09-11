@@ -38,6 +38,7 @@ import {
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
 import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
+import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -151,6 +152,9 @@ export function PickingScreen() {
   const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
   const [manualName, setManualName]           = useState('');
   const [manualSeccion, setManualSeccion]     = useState<SectionFilter>('all');
+  // Batch escrito al crear el encargado. Solo se pide dentro de una sección, donde ocupa el
+  // lugar que tenía el selector de sección (ver `pideSeccion`).
+  const [manualBatch, setManualBatch]         = useState('');
   // Bug 5 reportado: el botón de imprimir toda una tienda disparaba la impresión de una al
   // toque, sin confirmar — un click accidental imprimía una etiqueta real de más. Armar/
   // confirmar: el primer click solo "arma" el botón (2.5 s); el segundo click, dentro de esa
@@ -639,11 +643,7 @@ export function PickingScreen() {
     // BUG 7 corregido: antes 'all' caía en contenido='hogar' por defecto, así que
     // seccionDeSlot (sin `section`, cae al contenido) lo clasificaba como Hogar en vez de
     // dejarlo sin clasificar — 'mixto' no matchea ninguna sección en seccionDeContenido.
-    const seccion: Seccion | null = manualSeccion === 'all' ? null : (manualSeccion as Seccion);
-    const contenido = manualSeccion === 'chocolates' ? 'chocolate'
-      : manualSeccion === 'congelados' ? 'congelados'
-      : manualSeccion === 'all' ? 'mixto'
-      : 'hogar';
+    const { seccion, contenido } = seccionYContenidoManual(manualSeccion);
     void addPalletSlot(stateKey, cod, nombre, 'P', contenido, '', seccion);
     // BUG 1/2 corregido: sin esto, el campo "Nombre del picker" del card recién creado
     // aparecía vacío (solo el placeholder mostraba el nombre) y la advertencia de fallback
@@ -651,9 +651,14 @@ export function PickingScreen() {
     // queda guardado desde el principio, igual que si alguien lo hubiera escrito a mano.
     setPickerDisplayNames(prev => ({ ...prev, [stateKey]: nombre }));
     upsertSessionState(stateKey, nombre, 'P');
+    // El batch escrito en el formulario se guarda como si se hubiera tipeado en la card, así la
+    // etiqueta sale con BATCH/N desde la primera impresión y no hay que volver a entrar a ponerlo.
+    const batch = normalizarBatch(manualBatch);
+    if (batch) setPickerBatchValue(stateKey, batch);
     setManualName('');
+    setManualBatch('');
     setAddingManualCod(null);
-  }, [manualName, manualSeccion, addPalletSlot, upsertSessionState]);
+  }, [manualName, manualSeccion, manualBatch, addPalletSlot, upsertSessionState, setPickerBatchValue]);
 
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
@@ -1648,7 +1653,7 @@ export function PickingScreen() {
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
-                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualSeccion(sectionFilter); }}
+                        <button onClick={() => { setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualBatch(''); setManualSeccion(sectionFilter); }}
                           className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5"
                           style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
                           <UserPlus size={13} /> Encargado manual
@@ -1697,17 +1702,34 @@ export function PickingScreen() {
                           className="flex-1 text-[13px] px-3 py-1.5 rounded border"
                           style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
                         />
-                        <select
-                          value={manualSeccion}
-                          onChange={e => setManualSeccion(e.target.value as SectionFilter)}
-                          className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
-                          style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
-                          <option value="all">Todas</option>
-                          <option value="aseo-comida">Aseo y Comida</option>
-                          <option value="hogar">Hogar</option>
-                          <option value="chocolates">Chocolates</option>
-                          <option value="congelados">Congelados</option>
-                        </select>
+                        {/* La sección solo se pregunta en "Todas". Dentro de una sección ya se sabe
+                            cuál es, así que ese espacio lo ocupa el Batch — el dato que ahí sí falta. */}
+                        {pideSeccion(sectionFilter) ? (
+                          <select
+                            value={manualSeccion}
+                            onChange={e => setManualSeccion(e.target.value as SectionFilter)}
+                            aria-label="Sección del encargado"
+                            className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
+                            style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
+                            <option value="all">Todas</option>
+                            <option value="aseo-comida">Aseo y Comida</option>
+                            <option value="hogar">Hogar</option>
+                            <option value="chocolates">Chocolates</option>
+                            <option value="congelados">Congelados</option>
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={manualBatch}
+                            onChange={e => setManualBatch(normalizarBatch(e.target.value))}
+                            onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
+                            placeholder="Batch (opcional)"
+                            aria-label="Número de batch"
+                            className="text-[13px] px-2 py-1.5 rounded border"
+                            style={{ borderColor: 'var(--color-border)', width: 130 }}
+                          />
+                        )}
                         <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
                           className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
                           style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
