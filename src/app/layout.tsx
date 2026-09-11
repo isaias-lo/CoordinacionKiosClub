@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Providers } from './providers';
+import { AvisoVersionNueva } from '@/components/AvisoVersionNueva';
 import '../index.css';
 
 // Auth-protected app — disable static prerendering for all routes
@@ -20,6 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           {children}
+          {/* Avisa si esta pestaña quedó con una versión vieja (arreglos publicados durante el día) */}
+          <AvisoVersionNueva />
         </Providers>
       </body>
     </html>
