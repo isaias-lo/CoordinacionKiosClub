@@ -7,6 +7,7 @@ import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { tiposDeUnidad } from '../tiposUnidad';
 import { mensajeReimpresion } from '../reimpresion';
+import { idsDeSeleccion } from '../seleccionImpresion';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 import { categoriasDeSlotsManual } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
@@ -38,7 +39,8 @@ interface Props {
   assignedNums: number[];
   isPrinted: boolean;
   colsPerRow: number;
-  onPrintSelected: (palletNums: Set<number>) => void;
+  /** Ids de los pallets seleccionados (no números: P1 y B1 comparten el 1). */
+  onPrintSelected: (slotIds: Set<number>) => void;
   slots: PalletSlot[];
   stickerBelow?: boolean;
   lastPrint?: PrintRecord;   // último registro de impresión para mostrar advertencia de reimpresión
@@ -112,8 +114,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   };
 
   const handlePrintSelected = () => {
-    const nums = new Set([...selectedIndices].map(i => assignedNums[i]).filter(n => n !== undefined));
-    onPrintSelected(nums);
+    // Por ID de pallet: antes se mandaban los números, y P1 y B1 comparten el 1.
+    onPrintSelected(idsDeSeleccion(slots, selectedIndices));
     setSelectedIndices(new Set());
   };
 
@@ -121,9 +123,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   // pallet fuera del sistema (51SER, 11/09/2026: dos pallets con el mismo #12718). La pregunta ofrece
   // el camino correcto si en realidad es otro pallet: el + de arriba, que sale con su propio número.
   const [confirmarReimpresion, setConfirmarReimpresion] = useState<null | 'todas' | 'seleccion'>(null);
-  const idsImpresos = slots.filter(sl => !!sl.canonical_id).map(sl => sl.id);
+  // De lo que se VA A IMPRIMIR, qué ya tiene etiqueta. Pallet por pallet, no "¿la tarjeta se imprimió
+  // alguna vez?": imprimir B3 solo no convierte en copia a P1, B1 y B2.
+  const yaImpresosDe = (cual: 'todas' | 'seleccion'): number[] => {
+    const ids = cual === 'todas' ? slots.map(sl => sl.id) : [...idsDeSeleccion(slots, selectedIndices)];
+    return ids.filter(id => !!slots.find(sl => sl.id === id)?.canonical_id);
+  };
   const pedirImpresion = (cual: 'todas' | 'seleccion') => {
-    if (!isPrinted || idsImpresos.length === 0) {
+    if (yaImpresosDe(cual).length === 0) {
       if (cual === 'todas') onPrint(); else handlePrintSelected();
       return;
     }
@@ -435,19 +442,24 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                         Limpiar
                       </button>
                       <button onClick={() => pedirImpresion('seleccion')}
-                        className="flex items-center gap-1.5 text-[12px] font-medium cursor-pointer px-3 py-1.5 rounded transition-all active:scale-95"
+                        className="flex items-center gap-1.5 text-[12px] font-bold cursor-pointer px-3 py-1.5 rounded transition-all active:scale-95"
                         style={{ background: 'var(--color-info)', color: '#fff', border: 'none' }}>
-                        <Printer size={13} /> {selectedIndices.size}
+                        <Printer size={13} /> Imprimir {selectedIndices.size === 1 ? '1 seleccionada' : `${selectedIndices.size} seleccionadas`}
                       </button>
                     </>
                   )}
+                  {/* Con algo seleccionado, este botón imprime TODAS — y tiene que decirlo. Antes, en una
+                      tarjeta ya impresa decía "Re-imprimir" y se tragaba la selección: se elegía B3 y
+                      salían P1, B1, B2 y B3. */}
                   <button onClick={() => pedirImpresion('todas')}
                     className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer px-3.5 py-1.5 rounded transition-all active:scale-95"
-                    style={isPrinted
-                      ? { background: '#fff', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }
-                      : { background: 'var(--color-info)', color: '#fff', border: 'none' }}>
+                    style={selectedIndices.size > 0
+                      ? { background: '#fff', color: '#64748B', border: '1px solid var(--color-border)' }
+                      : isPrinted
+                        ? { background: '#fff', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }
+                        : { background: 'var(--color-info)', color: '#fff', border: 'none' }}>
                     <Printer size={13} />
-                    {isPrinted ? 'Re-imprimir' : selectedIndices.size > 0 ? 'Todas' : 'Imprimir'}
+                    {selectedIndices.size > 0 ? `Todas (${assignedNums.length})` : isPrinted ? 'Re-imprimir' : 'Imprimir'}
                   </button>
                 </div>
               </div>
@@ -458,7 +470,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   <div className="text-[12px] leading-snug" style={{ color: '#92400E' }}>
                     <AlertTriangle size={12} className="inline mr-1" style={{ color: '#92400E' }} />
                     {mensajeReimpresion({
-                      ids: idsImpresos,
+                      ids: yaImpresosDe(confirmarReimpresion),
                       hora: lastPrint?.printed_at ? fmtHoraChile(lastPrint.printed_at) : null,
                       por: lastPrint?.printed_by_name ?? null,
                     })}

@@ -40,6 +40,7 @@ import type { PickingEvento } from './picking-utils';
 import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
+import { etiquetasDeLaSeleccion } from './seleccionImpresion';
 import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, type ColumnaSeco } from './tiposUnidad';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
@@ -389,7 +390,9 @@ export function PickingScreen() {
   // etiquetas a los pallets de esa sección (consistente con el contador de la card). null = todo.
   const [printOnlySection, setPrintOnlySection]   = useState<Seccion | null>(null);
   const [doPrint, setDoPrint]                     = useState(false);
-  const [selectionPrint, setSelectionPrint]       = useState<{ stateKey: string; palletNums: Set<number> } | null>(null);
+  // La selección viaja como IDS de pallet. Antes eran números de pallet sueltos, y como cada tipo
+  // numera por separado, P1 y B1 comparten el 1: seleccionar B1 imprimía también P1.
+  const [selectionPrint, setSelectionPrint]       = useState<{ stateKey: string; slotIds: Set<number> } | null>(null);
   // Pallets que YA estaban impresos al hacer clic en imprimir: sus etiquetas salen marcadas COPIA.
   // Es una foto tomada ANTES de asignar códigos (ver slotsYaImpresos): si se mirara al dibujar, una
   // primera impresión podría salir como copia.
@@ -1055,13 +1058,17 @@ export function PickingScreen() {
 
   // Guarda seq y canonical_id en picking_pallets al momento de imprimir
   // Solo actualiza slots que aún no tienen canonical_id (idempotente en re-impresión)
-  const assignCanonicalIds = useCallback(async (groups: PickerGroup[]) => {
+  // `soloIds`: al imprimir una selección, SOLO esos pallets. El código de barras marca "ya impreso"
+  // (ver reimpresion.ts): asignárselo a los que no se imprimieron los haría salir como COPIA en su
+  // primera impresión de verdad.
+  const assignCanonicalIds = useCallback(async (groups: PickerGroup[], soloIds?: Set<number>) => {
     const date = todayISO();
     const slots: { id: number; seq: number; canonical_id: string }[] = [];
     for (const group of groups) {
       const groupSlots = slotsByStateKey[group.stateKey] ?? [];
       for (const slot of groupSlots) {
         if (!slot.id || slot.id < 0) continue;  // saltar slots temporales (aún no persistidos)
+        if (soloIds && !soloIds.has(slot.id)) continue;
         const pNum = palletNumsBySlotId[slot.id];
         if (pNum === undefined) continue;
         const tipo = (slot.tipo as PickerType) ?? 'P';
@@ -1195,15 +1202,17 @@ export function PickingScreen() {
     setDoPrint(true);
   }, [groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
-  const printSelectedLabels = useCallback((stateKey: string, palletNums: Set<number>) => {
+  const printSelectedLabels = useCallback((stateKey: string, slotIds: Set<number>) => {
+    if (slotIds.size === 0) return;             // nunca imprimir "todas" por una selección vacía
     setSlotsCopia(slotsYaImpresos(palletSlots));
-    setSelectionPrint({ stateKey, palletNums });
+    setSelectionPrint({ stateKey, slotIds });
     setPrintOnlyStore(null);
-    setPrintOnlySection(null); // la selección ya está acotada por palletNums
+    setPrintOnlyStateKey(null);
+    setPrintOnlySection(null); // la selección ya está acotada por ids
     setDoPrint(true);
-    // Asignar canonical_id para los slots seleccionados
+    // Código de barras SOLO para los seleccionados (el comentario de antes lo decía; el código no).
     const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
-    void assignCanonicalIds(allGroups);
+    void assignCanonicalIds(allGroups, slotIds);
   }, [groupedByStore, assignCanonicalIds, palletSlots]);
 
   const printAll = useCallback(() => {
@@ -1336,7 +1345,7 @@ export function PickingScreen() {
     {mounted && createPortal(
       <div id="picking-print-root" style={{ display: 'none' }}>
         {(selectionPrint
-          ? printableLabels.filter(l => l.stateKey === selectionPrint.stateKey && selectionPrint.palletNums.has(l.palletNum))
+          ? etiquetasDeLaSeleccion(printableLabels, selectionPrint)
           : printOnlyStateKey
             ? printableLabels.filter(l => l.stateKey === printOnlyStateKey && (printOnlySection == null || l.secSlot === printOnlySection))
             : printOnlyStore
@@ -1911,7 +1920,7 @@ export function PickingScreen() {
                               assignedNums={nums}
                               isPrinted={printedKeys.has(group.stateKey)}
                               colsPerRow={colsPerRow}
-                              onPrintSelected={(palletNums) => printSelectedLabels(group.stateKey, palletNums)}
+                              onPrintSelected={(slotIds) => printSelectedLabels(group.stateKey, slotIds)}
                               slots={cardSlots}
                               stickerBelow={stickerBelow}
                               lastPrint={printRecordByKey.get(group.stateKey)}
