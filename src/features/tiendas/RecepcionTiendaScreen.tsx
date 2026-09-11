@@ -106,7 +106,15 @@ function capturarFoto(
   e.target.value = '';
 }
 
-export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false }: { backPath?: string; onBack?: () => void; embedded?: boolean } = {}) {
+export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false, onLlegada }: {
+  backPath?: string; onBack?: () => void; embedded?: boolean;
+  /**
+   * Se llama apenas se escanea la tienda, con la hora de la FOTO del sello (que se saca antes de
+   * escanear). Antes esa hora solo quedaba guardada si se completaba la entrega entera, código por
+   * correo incluido; si el chofer abandonaba ahí, la llegada se perdía.
+   */
+  onLlegada?: (storeCod: string, horaISO: string) => void;
+} = {}) {
   const router      = useRouter();
   const { profile } = useAuth();
 
@@ -152,6 +160,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
         if (!data) { setQrError('ID canónico no encontrado. Intenta de nuevo.'); return; }
         setCanonicalId(raw.trim());
         setQrData(data); setQrError('');
+        if (selloLlegada) onLlegada?.(data.cod, selloLlegada.hora);
         setOtpInput(''); setOtpError(''); setOtpSentTo('');
         setStep('otp');
         void enviarOTP(data.cod);
@@ -163,6 +172,7 @@ export function RecepcionTiendaScreen({ backPath = '/', onBack, embedded = false
     if (!data) { setQrError('QR inválido. Intenta de nuevo.'); return; }
     setCanonicalId(null);
     setQrData(data); setQrError('');
+    if (selloLlegada) onLlegada?.(data.cod, selloLlegada.hora);
     setOtpInput(''); setOtpError(''); setOtpSentTo('');
     setStep('otp');
     // Dispara el envío del OTP (no bloquea la navegación al paso)

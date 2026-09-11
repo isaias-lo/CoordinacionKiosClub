@@ -22,12 +22,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
     ruta_id: number;
-    tipo: 'salida' | 'qr_scan' | 'entrega' | 'recepcion' | 'incidencia';
+    tipo: 'salida' | 'llegada' | 'qr_scan' | 'entrega' | 'recepcion' | 'incidencia';
     datos?: Record<string, unknown>;
     usuario_id?: string;
   };
 
-  const VALID = ['salida', 'qr_scan', 'entrega', 'recepcion', 'incidencia'];
+  // 'llegada': la hora REAL a la que el chofer llegó a una tienda (foto del sello), para validar el
+  // reloj del Enrutador. No cambia el estado de la ruta — solo registra el momento.
+  const VALID = ['salida', 'llegada', 'qr_scan', 'entrega', 'recepcion', 'incidencia'];
   if (!VALID.includes(body.tipo))
     return NextResponse.json({ error: 'Tipo de evento inválido' }, { status: 400 });
 

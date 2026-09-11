@@ -1,9 +1,17 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw } from 'lucide-react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
 import { guiaHref } from '@/lib/guiaUrl';
+import { rutaDeTienda, eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
+
+// Registra salida / llegada en ruta_eventos. Fire-and-forget: nunca frena al chofer en la calle.
+function registrarEvento(e: EventoRuta) {
+  void fetch('/api/ruta-eventos', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(e),
+  }).catch(() => { /* sin señal: se pierde este dato, no la entrega */ });
+}
 
 const TAB_ICON = { ruta: Truck, recepcion: Package } as const;
 
@@ -44,6 +52,7 @@ function todayISO() {
 /* ── Page ───────────────────────────────────────────────── */
 export default function ConductorHubPage() {
   const [patente,      setPatente]      = useState('');
+  const llegadasRegistradas = useRef<Set<string>>(new Set());
   const [input,        setInput]        = useState('');
   const [rutas,        setRutas]        = useState<RutaData[]>([]);
   const [loading,      setLoading]      = useState(false);
@@ -130,6 +139,9 @@ export default function ConductorHubPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: rutaId, estado: 'en_camino' }),
       });
+
+      // 1b. La HORA real de salida del CD — el estado cambiaba, pero la hora no quedaba en ningún lado.
+      registrarEvento(eventoSalida({ rutaId, horaISO: new Date().toISOString(), patente }));
 
       // 2. Registrar PUNTO 2 en trazabilidad
       await fetch('/api/trazabilidad', {
@@ -471,7 +483,14 @@ export default function ConductorHubPage() {
       {/* ── Tab: Entregar en Tienda ──────────────────────── */}
       {tab === 'recepcion' && (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <RecepcionTiendaScreen onBack={() => setTab('ruta')} embedded />
+          <RecepcionTiendaScreen onBack={() => setTab('ruta')} embedded
+            onLlegada={(storeCod, horaISO) => {
+              // Re-escanear la misma tienda (un QR que no leyó y después sí) no duplica la llegada.
+              const k = `${storeCod}|${horaISO}`;
+              if (llegadasRegistradas.current.has(k)) return;
+              llegadasRegistradas.current.add(k);
+              registrarEvento(eventoLlegada({ rutaId: rutaDeTienda(rutas, storeCod), storeCod, horaISO, patente }));
+            }} />
         </div>
       )}
     </div>
