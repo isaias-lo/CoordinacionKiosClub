@@ -328,6 +328,37 @@ describe('ETA + ventana horaria', () => {
     expect(calcularETAs([600, 600], 480, 15)).toEqual([490, 515]);
   });
 
+  it('calcularETAs ESPERA a que la tienda abra', () => {
+    // Sale 08:00, llega 08:14 a una tienda que abre 08:30 → descarga recién 08:30, no 08:14.
+    // La ETA reportada sigue siendo la LLEGADA (08:14): es lo que compara estadoVentana.
+    const etas = calcularETAs([840, 600], 480, 0, ['08:30-09:30', undefined]);
+    expect(etas[0]).toBe(494);  // 08:14 — la llegada, sin tocar
+    expect(etas[1]).toBe(520);  // 08:30 (abrieron) + 10 de viaje = 08:40... 510+10
+  });
+
+  it('la espera empuja TODAS las paradas siguientes', () => {
+    // Sin ventanas: 08:00 +14 = 08:14, +10 = 08:24.
+    expect(calcularETAs([840, 600], 480, 0)).toEqual([494, 504]);
+    // Con la primera abriendo 08:30, la segunda se corre 16 min.
+    expect(calcularETAs([840, 600], 480, 0, ['08:30-09:30', undefined])[1]).toBe(520);
+  });
+
+  it('la atención se cuenta desde que EMPIEZA la descarga, no desde que se llega', () => {
+    // Esperar en la puerta no descarga nada: 08:14 llega, 08:30 abre, +15 atención = 08:45.
+    const etas = calcularETAs([840, 0], 480, 15, ['08:30-09:30', undefined]);
+    expect(etas[1]).toBe(525);  // 08:45
+  });
+
+  it('sin ventana no espera — una parada por dirección no abre ni cierra', () => {
+    expect(calcularETAs([840, 600], 480, 0, [undefined, undefined])).toEqual([494, 504]);
+    expect(calcularETAs([840, 600], 480, 0, ['', 'basura'])).toEqual([494, 504]);
+  });
+
+  it('llegar DESPUÉS de abrir no retrocede el reloj', () => {
+    // Llega 09:00 a una tienda que abrió 08:30 → descarga 09:00, no 08:30.
+    expect(calcularETAs([3600, 600], 480, 0, ['08:30-12:00', undefined])).toEqual([540, 550]);
+  });
+
   it('calcularETAs trata legs faltantes como 0', () => {
     expect(calcularETAs([600, undefined as unknown as number, 600], 480, 0)).toEqual([490, 490, 500]);
   });
