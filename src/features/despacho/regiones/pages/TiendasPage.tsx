@@ -42,6 +42,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
+import { abreviaturaContenido, nombreContenido } from '@/features/despacho/shared/contenidoCarga';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
@@ -1811,11 +1812,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     <div className="mb-1.5">
                       <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Tipo de carga</label>
                       <div className="flex gap-0.5">
-                        {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(t => (
+                        {/* Chocolate también es tipo de carga de un pallet: dice QUÉ va adentro, no
+                            qué envase es. El pallet sigue siendo P1/P2 y con sus propias medidas. */}
+                        {(['comida', 'hogar', 'comida-hogar', 'chocolate'] as TipoContenido[]).map(t => (
                           <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
-                            title={t === 'comida' ? 'Comida' : t === 'hogar' ? 'Hogar' : 'Mixto (comida y hogar)'}
+                            title={nombreContenido(t)}
                             className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
-                            {t === 'comida' ? 'Com' : t === 'hogar' ? 'Hog' : 'Mix'}
+                            {abreviaturaContenido(t)}
                           </button>
                         ))}
                       </div>

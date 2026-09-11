@@ -11,6 +11,7 @@ import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido } from '@/features/despacho/shared/contenidoCarga';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
@@ -76,14 +77,17 @@ function loadConsumedSlotsS(): ConsumedSlotsS { try { return JSON.parse(localSto
 function saveConsumedSlotsS(v: ConsumedSlotsS) { try { localStorage.setItem(CONSUMED_SLOTS_S_KEY, JSON.stringify(v)); } catch {} }
 
 /* ── Constants ── */
-const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto'];
+// El pallet también puede llevar Chocolate: el tipo de carga dice QUÉ va adentro, no qué envase es.
+// El pallet sigue siendo P1/P2 y conservando sus medidas (ver `dimsAlCambiarContenido`).
+const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto', 'Chocolate'];
 const CONTENIDO_BULTO:      ContenidoSantiago[] = ['Hogar', 'Chocolate'];
 
 const ESTADO_DEFAULT: EstadoItem = 'Listo para despachar';
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar', 'Despachado', 'Carga recibida', 'Carga No recibida por tienda',
 ];
-const CHOCOLATE_BULTO_DIMS = { alto: 38, largo: 78, ancho: 52, peso: 5 }; // Bulto con contenido Chocolate (legado)
+// CHOCOLATE_BULTO_DIMS (bulto con contenido Chocolate, legado) vive en shared/contenidoCarga.ts,
+// junto a la regla de cuándo se aplica — que es donde estaba el bug.
 // Definición ÚNICA en shared/chocolate.ts — estaba escrita en tres lugares (acá,
 // regiones/data/tiendas.ts y TiendasPage como CHOCOLATE_DIMS_R, esta última con los campos en
 // otro orden), y el peso por defecto en dos. Cambiar la caja obligaba a acordarse de los cinco.
@@ -1184,12 +1188,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev.map(r => {
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
-      if (field === 'contenido' && value === 'Chocolate') {
-        updated.alto = String(CHOCOLATE_BULTO_DIMS.alto);
-        updated.largo = String(CHOCOLATE_BULTO_DIMS.largo);
-        updated.ancho = String(CHOCOLATE_BULTO_DIMS.ancho);
-      } else if (field === 'contenido' && r.contenido === 'Chocolate') {
-        updated.alto = ''; updated.largo = ''; updated.ancho = '';
+      if (field === 'contenido') {
+        // El autorrelleno es de la CAJA de chocolate, así que no aplica a un pallet: un pallet de
+        // chocolate mide lo que mide el pallet. Antes esto miraba solo el contenido.
+        const dims = dimsAlCambiarContenido(r.tipo === 'Pallet', value, r.contenido);
+        if (dims) { updated.alto = dims.alto; updated.largo = dims.largo; updated.ancho = dims.ancho; }
       }
       return updated;
     }));
