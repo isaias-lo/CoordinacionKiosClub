@@ -38,8 +38,11 @@ function formatRut(raw: string): string {
   return `${dotted}-${dv}`;
 }
 
+// Sin `upsert`: los nombres llevan la hora exacta (`${cod}_${Date.now()}`), así que no chocan, y en
+// Supabase un upsert exige además permisos de lectura y actualización sobre el bucket. Con subir
+// alcanza el permiso de INSERT (sql/2026-09-11_recepcion_fotos_insert.sql).
 async function uploadPhoto(file: File, path: string): Promise<string> {
-  const { error } = await supabase.storage.from('recepcion-fotos').upload(path, file, { contentType: file.type, upsert: true });
+  const { error } = await supabase.storage.from('recepcion-fotos').upload(path, file, { contentType: file.type, upsert: false });
   if (error) throw new Error(error.message);
   const { data: { publicUrl } } = supabase.storage.from('recepcion-fotos').getPublicUrl(path);
   return publicUrl;
