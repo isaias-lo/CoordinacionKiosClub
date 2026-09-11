@@ -145,8 +145,8 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
   const acuerdo     = useMemo(() => resumenCoincidencia(feedbackRows, fecha), [feedbackRows, fecha]);
   const camionSel   = useMemo(() => plan.camiones.find(k => k.v.p === sel) ?? null, [plan, sel]);
   const horariosSel = useMemo(
-    () => camionSel ? horariosLlegada(camionSel.orden, gps, cd, opcEnr) : [],
-    [camionSel, gps, cd, opcEnr],
+    () => camionSel ? horariosLlegada(camionSel.orden, gps, cd, opcEnr, tiendas) : [],
+    [camionSel, gps, cd, opcEnr, tiendas],
   );
 
   const setP = <K extends keyof ParametrosMotor>(k: K, v: ParametrosMotor[K]) =>
@@ -312,7 +312,7 @@ export default function TableroVivo({ isOpen, onClose, flota, gps, tiendas, cd, 
               {plan.camiones.map(k => {
                 const st = ESTADO_STYLE[k.estado] ?? ESTADO_STYLE.abierto;
                 const km = kmRuta(k.orden, gps, cd);
-                const llegadas = horariosLlegada(k.orden, gps, cd, opcEnr);
+                const llegadas = horariosLlegada(k.orden, gps, cd, opcEnr, tiendas);
                 const ultima = llegadas.length ? llegadas[llegadas.length - 1] : null;
                 const abierto = sel === k.v.p;
                 return (

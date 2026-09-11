@@ -550,3 +550,60 @@ describe('zonaDeTienda', () => {
     expect(zonaDeTienda('X', { X: T2('') }, 400, O2, -29.9)).toBe('norte');
   });
 });
+
+describe('horariosLlegada · esperar la apertura', () => {
+  // A está prácticamente en el CD: se llega ~08:00. B está ~1 km más allá.
+  const abreTarde = { A: T('08:30-12:00'), B: T('08:00-23:00') };
+  const ESPERA = { ...O, esperarApertura: true };
+  const SIN    = { ...O, esperarApertura: false };
+
+  it('está ENCENDIDA por defecto — se decidió con la medición sobre 33 días reales', () => {
+    // Si alguien la apaga, que sea a propósito: el modo anterior escondía 884 min de atraso.
+    expect(OPCIONES_DEFAULT.esperarApertura).toBe(true);
+  });
+
+  it('apagada, no cambia NADA respecto del modo anterior', () => {
+    expect(horariosLlegada(['A', 'B'], GPS, CD, SIN, abreTarde))
+      .toEqual(horariosLlegada(['A', 'B'], GPS, CD, SIN));
+  });
+
+  it('encendida, llegar antes de que abran empuja las paradas siguientes', () => {
+    const sin = horariosLlegada(['A', 'B'], GPS, CD, SIN, abreTarde);
+    const con = horariosLlegada(['A', 'B'], GPS, CD, ESPERA, abreTarde);
+    // A: se llega igual (~08:00). La descarga recién empieza 08:30, así que B se corre la espera.
+    expect(con[1] - sin[1]).toBeCloseTo(8 * 60 + 30 - sin[0], 5);
+  });
+
+  it('lo que devuelve sigue siendo la hora de LLEGADA, no la de salida de la parada', () => {
+    const sin = horariosLlegada(['A', 'B'], GPS, CD, SIN, abreTarde);
+    const con = horariosLlegada(['A', 'B'], GPS, CD, ESPERA, abreTarde);
+    expect(con[0]).toBeCloseTo(sin[0], 5);
+  });
+
+  it('la atención cuenta desde que empieza la descarga — esperar en la puerta no descarga nada', () => {
+    const rapido = horariosLlegada(['A', 'B'], GPS, CD, { ...ESPERA, minutosPorParada: 0 }, abreTarde);
+    const lento  = horariosLlegada(['A', 'B'], GPS, CD, { ...ESPERA, minutosPorParada: 15 }, abreTarde);
+    expect(lento[1] - rapido[1]).toBeCloseTo(15, 5);
+  });
+
+  it('si ya abrieron al llegar, no hay espera', () => {
+    const abierta = { A: T('07:00-12:00'), B: T('07:00-23:00') };
+    expect(horariosLlegada(['A', 'B'], GPS, CD, ESPERA, abierta))
+      .toEqual(horariosLlegada(['A', 'B'], GPS, CD, SIN));
+  });
+
+  it('una tienda sin ventana nunca hace esperar', () => {
+    expect(horariosLlegada(['A', 'B'], GPS, CD, ESPERA, { A: T(''), B: T('') }))
+      .toEqual(horariosLlegada(['A', 'B'], GPS, CD, SIN));
+    expect(horariosLlegada(['A', 'B'], GPS, CD, ESPERA, undefined))
+      .toEqual(horariosLlegada(['A', 'B'], GPS, CD, SIN));
+  });
+
+  it('la espera puede volver tarde a una tienda que sin ella parecía a tiempo', () => {
+    // El caso que importa: B cierra 08:20. Sin esperar se "llega" ~08:15 y la ruta parece buena;
+    // esperando que A abra a las 08:30, B recién se alcanza ~08:44 — tarde.
+    const tiendas = { A: T('08:30-12:00'), B: T('08:00-08:20') };
+    expect(ventanasIncumplidas(['A', 'B'], GPS, CD, tiendas, SIN)).toEqual([]);
+    expect(ventanasIncumplidas(['A', 'B'], GPS, CD, tiendas, ESPERA)).toEqual(['B']);
+  });
+});

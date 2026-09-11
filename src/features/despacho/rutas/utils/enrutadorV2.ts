@@ -29,6 +29,25 @@ export interface OpcionesEnrutador {
   maxDiametroKm?: number;
   /** Rechaza fusiones que hagan llegar tarde a alguna tienda según su ventana. */
   respetarVentanas?: boolean;
+  /**
+   * El camión ESPERA a que la tienda abra antes de descargar. Llegar 08:14 a un local que abre
+   * 08:30 no adelanta nada: la descarga empieza 08:30 y todas las paradas siguientes se corren.
+   * Sin esto el motor creía que las rutas llegaban antes de lo que llegan, y aceptaba fusiones
+   * que en la calle terminan tarde (en los malls del lunes, 16 min de atraso escondidos).
+   *
+   * No es cosmético: `ventanasIncumplidas` alimenta el rechazo de fusiones de `agruparPorAhorro`,
+   * así que llegadas más realistas pueden significar MÁS camiones. Se encendió con la medición
+   * sobre 33 días reales (28/07–10/09/2026), evaluando las dos propuestas con el mismo reloj:
+   *
+   *                          sin esperar   esperando
+   *   tiendas tarde               26            1
+   *   minutos de atraso          884           25
+   *   camiones                   185          192     (+1 en 10 de 33 días; −1 en 3)
+   *   km                       9.936       10.105     (+1,7%)
+   *
+   * O sea: el modo anterior proponía rutas que creía a tiempo y llegaban tarde en 19 de 33 días.
+   */
+  esperarApertura?: boolean;
   velocidadKmH?: number;      // velocidad media URBANA puerta a puerta (tramos cortos)
   /**
    * Velocidad media INTERURBANA, para los tramos largos. Medido con la Routes API: el viaje del
@@ -71,6 +90,7 @@ export const OPCIONES_DEFAULT: Required<OpcionesEnrutador> = {
   zonas: ZONAS_DEFAULT,
   maxDiametroKm: 20,
   respetarVentanas: true,
+  esperarApertura: true,
   velocidadKmH: 22,
   velocidadInterurbanaKmH: 57,
   minutosPorParada: 12,
@@ -202,9 +222,17 @@ export function velocidadTramo(km: number, o: Required<OpcionesEnrutador>): numb
   return urb + ((km - 20) / 40) * (inter - urb);
 }
 
-/** Minuto de llegada estimado a cada parada, en orden. */
+/**
+ * Minuto de LLEGADA estimado a cada parada, en orden.
+ *
+ * Con `o.esperarApertura` y las `tiendas` a mano, el reloj no sigue desde la llegada sino desde
+ * que empieza la descarga: si se llega antes de que abran, se espera. Lo que se devuelve sigue
+ * siendo la llegada —es lo que se compara contra el cierre—; lo que cambia es cuándo sale el
+ * camión hacia la parada siguiente. La atención cuenta desde que empieza la descarga.
+ */
 export function horariosLlegada(
   cods: string[], gps: Record<string, number[]>, cd: number[], o: Required<OpcionesEnrutador>,
+  tiendas?: Record<string, TiendaInfo>,
 ): number[] {
   let t = aMinutos(o.horaSalida) ?? 8 * 60;
   let cur = cd;
@@ -219,7 +247,9 @@ export function horariosLlegada(
       cur = g;
     }
     const llegada = t;
-    t += o.minutosPorParada;
+    const w = o.esperarApertura ? parseVentana(tiendas?.[c]?.v) : null;
+    const inicioDescarga = w && llegada < w.abre ? w.abre : llegada;   // espera a que abran
+    t = inicioDescarga + o.minutosPorParada;
     return llegada;
   });
 }
@@ -229,7 +259,7 @@ export function ventanasIncumplidas(
   cods: string[], gps: Record<string, number[]>, cd: number[],
   tiendas: Record<string, TiendaInfo> | undefined, o: Required<OpcionesEnrutador>,
 ): string[] {
-  const t = horariosLlegada(cods, gps, cd, o);
+  const t = horariosLlegada(cods, gps, cd, o, tiendas);
   return cods.filter((c, i) => {
     const v = parseVentana(tiendas?.[c]?.v);
     return v != null && t[i] > v.cierra;
