@@ -15,6 +15,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
 import { useTheme } from '@/context/ThemeContext';
 import { MODULE_GROUPS } from '@/config/routes';
+import { rutaActiva } from './rutaActiva';
 
 /* ── Icon registry ─────────────────────────────────────────────── */
 const ROUTE_ICONS: Record<string, React.ElementType> = {
@@ -54,10 +55,17 @@ const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {
 };
 
 /* ── Helpers ────────────────────────────────────────────────────── */
+// [m-06] Todas las rutas del menú, para poder elegir la MÁS específica. Con la regla anterior
+// ("coincide o es prefijo") estar en Congelados marcaba dos ítems: Congelados y Enrutador, porque
+// `/despacho/congelados` empieza con `/despacho`. Ver rutaActiva.ts.
+const RUTAS_DEL_MENU = [
+  '/',
+  ...MODULE_GROUPS.flatMap(g => g.routes.map(r => r.path)),
+  '/despacho/config-tiendas',   // se agrega en runtime según permisos, pero la ruta es conocida
+];
+
 function isActive(pathname: string | null, path: string) {
-  if (!pathname) return false;
-  if (path === '/') return pathname === '/';
-  return pathname === path || pathname.startsWith(path + '/');
+  return rutaActiva(pathname, RUTAS_DEL_MENU) === path;
 }
 
 /* ── NavItem ────────────────────────────────────────────────────── */

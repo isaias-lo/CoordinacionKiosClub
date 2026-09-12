@@ -16,6 +16,7 @@ import {
   TrendingUp, Package, ArrowRight, Bell,
 } from 'lucide-react';
 import { FEATURE_COLORS, featureBg } from '../config/features';
+import { fechaLargaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 const DispatchChartLazy = lazy(() => import('../components/charts/DispatchChart'));
 
 /* ── Types ──────────────────────────────────────────────────────── */
@@ -160,7 +161,9 @@ export function LaunchScreen() {
   const pickingPendiente  = pallets.filter(p => !p.picker_label).length;
   const pickingCompletado = pallets.filter(p => !!p.picker_label).length;
 
-  const todayFull = format(new Date(), "EEEE d 'de' MMMM, yyyy", { locale: es });
+  // [m-01] "Viernes 11 De Septiembre, 2026" era `capitalize` (mayúscula por PALABRA) sobre un
+  // formato con coma. Ver lib/fechaTexto.ts.
+  const todayFull = conMayusculaInicial(fechaLargaCL());
   const firstName = (profile?.full_name ?? 'Usuario').split(' ')[0];
 
   /* Role-specific overrides */
@@ -194,7 +197,7 @@ export function LaunchScreen() {
             <h1 className="font-barlow-condensed text-[26px] font-bold text-text leading-none">
               {greeting()}, {firstName}
             </h1>
-            <p className="text-[13px] text-text-3 mt-1 capitalize">{todayFull}</p>
+            <p className="text-[13px] text-text-3 mt-1">{todayFull}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {isAdmin && pendingCount > 0 && (
@@ -220,6 +223,7 @@ export function LaunchScreen() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <KpiCard
             label="Días despachados"
+            nota="Últimos 90 días"
             value={stats.dias}
             icon={Truck}
             color={FEATURE_COLORS.admin}
@@ -227,6 +231,7 @@ export function LaunchScreen() {
           />
           <KpiCard
             label="Pallets totales"
+            nota="Últimos 90 días"
             value={stats.pallets}
             icon={Package}
             color={FEATURE_COLORS.despacho}
@@ -234,6 +239,7 @@ export function LaunchScreen() {
           />
           <KpiCard
             label="Bultos totales"
+            nota="Últimos 90 días"
             value={stats.bultos}
             icon={ClipboardList}
             color={FEATURE_COLORS.rmCosta}
@@ -269,10 +275,12 @@ export function LaunchScreen() {
                   <span className="w-3 h-3 rounded-sm inline-block opacity-70" style={{ background: '#3B82F6' }} />
                   Bultos
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#D97706' }} />
-                  Contenedores
-                </span>
+                {chartData.some(d => d.contenedores > 0) && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#D97706' }} />
+                    Contenedores
+                  </span>
+                )}
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#9333EA' }} />
                   Chocolates

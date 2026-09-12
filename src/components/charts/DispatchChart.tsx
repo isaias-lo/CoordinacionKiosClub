@@ -13,6 +13,10 @@ export interface ChartData {
   chocolates: number;
 }
 
+// [m-03] El orden del tooltip es el de la leyenda. Sin esto, Recharts las lista alfabéticamente
+// (Bultos, Chocolates, Contenedores, Pallets) y no coincide con lo que se ve arriba.
+const ORDEN_SERIES = ['pallets', 'bultos', 'contenedores', 'chocolates'];
+
 export default function DispatchChart({ data, loading }: { data: ChartData[]; loading: boolean }) {
   if (loading) {
     return (
@@ -33,8 +37,13 @@ export default function DispatchChart({ data, loading }: { data: ChartData[]; lo
     );
   }
 
+  // Una serie que vale 0 todos los días no se dibuja ni se lista: ocupa lugar y no dice nada.
+  const hayContenedores = data.some(d => d.contenedores > 0);
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    // [m-04] Alto explícito: con "100%" Recharts tiene que medir el contenedor, y en el primer
+    // pintado (antes de que el layout exista) medía -1 y avisaba por consola en cada carga.
+    <ResponsiveContainer width="100%" height={180} minWidth={0}>
       <BarChart data={data} barGap={4} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
         <XAxis
           dataKey="day"
@@ -64,10 +73,11 @@ export default function DispatchChart({ data, loading }: { data: ChartData[]; lo
             name === 'contenedores' ? 'Contenedores' : 'Chocolates',
           ]}
           labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate ?? label}
+          itemSorter={item => ORDEN_SERIES.indexOf(String(item.dataKey))}
         />
         <Bar dataKey="pallets"      fill="#1B2A6B" radius={[4, 4, 0, 0]} maxBarSize={22} />
         <Bar dataKey="bultos"       fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.7} />
-        <Bar dataKey="contenedores" fill="#D97706" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.85} />
+        {hayContenedores && <Bar dataKey="contenedores" fill="#D97706" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.85} />}
         <Bar dataKey="chocolates"   fill="#9333EA" radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.8} />
       </BarChart>
     </ResponsiveContainer>
