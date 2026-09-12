@@ -22,6 +22,8 @@ import { CongeladoGridCard } from '../components/CongeladoGridCard';
 import { sheetsCongeladosWrite } from '../utils/sheetsCongelados';
 import { construirItemsCongelados, type SlotCongelado } from '../utils/construirItemsCongelados';
 import { fechaChile } from '@/lib/fechaChile';
+import { resumenCongelados, textoTotalCongelados, textoSinCarga } from '../utils/resumenCongelados';
+import { fechaLargaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 
 // Slot de picking_pallets ya filtrado a congelados (esCongeladoContenido). Superset de
 // SlotCongelado (agrega `contenido`, que ya no hace falta una vez filtrado pero se conserva
@@ -162,6 +164,7 @@ export function CongeladosPage({ zona }: Props) {
   const [slotsPorTienda, setSlotsPorTienda] = useState<Record<string, PickingSlotCongelado[]>>({});
   const [slotsLoaded, setSlotsLoaded] = useState(false);
   const odooProgress = useOdooProgress();
+  const [verSinCarga, setVerSinCarga] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [ajuste, setAjuste] = useState<Record<string, { cc: number; cn: number }>>({});
   // [Fase 3] Ya NO sale de localStorage. La marca era por dispositivo: alguien registraba desde el
@@ -359,22 +362,31 @@ export function CongeladosPage({ zona }: Props) {
   }
 
   if (cods.length === 0) {
+    // [M-06] Antes era un callejón sin salida: no decía de qué día hablaba ni adónde ir.
     return (
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center">
+        <div className="text-center max-w-xs">
           <div className="text-[40px] mb-2 opacity-60" aria-hidden="true">❄</div>
           <p className="font-barlow-condensed text-[18px] font-bold text-text-2">Sin congelados para hoy</p>
+          <p className="text-[13px] text-text-3 mt-1">{conMayusculaInicial(fechaLargaCL())}</p>
+          <p className="text-[12px] text-text-3 mt-3 leading-snug">
+            Las cajas nacen en Picking › Congelados. Si allá hay cajas y acá no aparecen, avísame.
+          </p>
+          <a href="/picking" className="inline-block mt-3 text-[13px] font-semibold" style={{ color: '#0891B2' }}>
+            Ir a Picking →
+          </a>
         </div>
       </div>
     );
   }
 
   const selectedVals = selected ? (ajuste[selected] ?? { cc: 0, cn: 0 }) : null;
+  // [M-05] Las que tienen carga primero —y dentro de ellas, las que faltan registrar—; las de cero
+  // se colapsan. Registrar es lo que manda la carga al despacho y al Enrutador: si no se hace, las
+  // cajas existen en Picking y para nadie más (ver resumenCongelados.ts).
+  const resumen = resumenCongelados(cods, cajasPorTienda, registradas);
 
-  return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        {cods.map(cod => {
+  const tarjeta = (cod: string) => {
           const conteo: ConteoCajas = cajasPorTienda[cod] ?? { total: 0, cc: 0, cn: 0 };
           const prog = odooProgress.get(cod);
           const congTotal = prog?.congTotal ?? 0;
@@ -393,8 +405,48 @@ export function CongeladosPage({ zona }: Props) {
               onSelect={() => abrirDetalle(cod)}
             />
           );
-        })}
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      {/* [M-05] Cabecera del día: qué hay, de cuándo, y sobre todo qué falta registrar. */}
+      <div className="flex items-baseline gap-2 flex-wrap mb-3">
+        <h2 className="font-barlow-condensed text-[20px] font-bold text-text">
+          {textoTotalCongelados(resumen) || 'Sin cajas todavía'}
+        </h2>
+        <span className="text-[13px] text-text-3">{conMayusculaInicial(fechaLargaCL())}</span>
+        {resumen.pendientes > 0 && (
+          <span className="ml-auto text-[12px] font-bold px-2.5 py-1 rounded-full"
+            style={{ background: 'rgba(217,119,6,0.12)', color: '#B45309' }}
+            title="Registrar es lo que manda estas cajas al despacho y al Enrutador">
+            {resumen.pendientes} sin registrar
+          </span>
+        )}
+        {resumen.pendientes === 0 && resumen.conCarga.length > 0 && (
+          <span className="ml-auto text-[12px] font-bold px-2.5 py-1 rounded-full"
+            style={{ background: 'rgba(22,163,74,0.12)', color: '#15803D' }}>
+            ✓ Todo registrado
+          </span>
+        )}
       </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        {resumen.conCarga.map(tarjeta)}
+      </div>
+
+      {resumen.sinCarga.length > 0 && (
+        <div className="mt-4">
+          <button type="button" onClick={() => setVerSinCarga(v => !v)}
+            className="text-[13px] font-semibold text-text-3 hover:text-text-2 cursor-pointer flex items-center gap-1.5">
+            {verSinCarga ? '▾' : '▸'} {textoSinCarga(resumen)}
+          </button>
+          {verSinCarga && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-2 opacity-70">
+              {resumen.sinCarga.map(tarjeta)}
+            </div>
+          )}
+        </div>
+      )}
 
       {selected && selectedVals && (
         <CongeladoDetailModal
