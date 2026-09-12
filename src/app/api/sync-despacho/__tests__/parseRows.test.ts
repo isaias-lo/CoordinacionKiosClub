@@ -56,6 +56,25 @@ describe('makeRmMapper', () => {
     expect(rec.seguimiento).toBe('Registrado');
   });
 
+  // El CÓDIGO (col AD) es el id de la unidad en picking_pallets. Sin él, una fila que entra por la
+  // sincronización pierde el vínculo con su unidad y ya no se puede sacar del despacho cuando esa
+  // unidad se borra en Picking (51SER, 11/09/2026).
+  it('trae el CÓDIGO como picking_slot_id', () => {
+    const row = [...ROW];
+    row[29] = '12733';
+    expect(makeRmMapper(HEADERS)(row).picking_slot_id).toBe(12733);
+  });
+
+  // Ojo con parseFloat: '49PTA' daría 49, que es el id de OTRA unidad. Ese id se usa para sacar
+  // filas del despacho, así que un valor inventado borraría carga ajena. Solo entero limpio.
+  it('un CÓDIGO vacío o no numérico queda en null, nunca en un id inventado', () => {
+    expect(makeRmMapper(HEADERS)(ROW).picking_slot_id).toBeNull();   // ROW trae '49PTA' ahí
+    for (const basura of ['', '  ', '49PTA', 'P1', '12,5', '-3', 'null']) {
+      const row = [...ROW]; row[29] = basura;
+      expect(makeRmMapper(HEADERS)(row).picking_slot_id).toBeNull();
+    }
+  });
+
   it('es REORDER-SAFE: con columnas movidas sigue leyendo por nombre', () => {
     // Mover COD y GUIA a otras posiciones (simula reordenar la hoja).
     const hdr = ['FECHA', 'ID', 'COD', 'PATENTE', 'CONDUCTOR', 'TIENDA'];
@@ -81,6 +100,13 @@ describe('missingHeaders', () => {
 });
 
 describe('makeRegionesMapper', () => {
+  // Nacional también necesita el vínculo: 51SER es de esta hoja y fue la tienda del pallet fantasma.
+  it('trae el CÓDIGO como picking_slot_id', () => {
+    const row = [...ROW];
+    row[29] = '12877';
+    expect(makeRegionesMapper(HEADERS)(row).picking_slot_id).toBe(12877);
+  });
+
   it('lee GUIA/VALOR de las columnas correctas (arregla el bug posicional 21/22)', () => {
     const rec = makeRegionesMapper(HEADERS)(ROW);
     // Antes leía guia=row[21] (CONDUCTOR='Juan Pérez') y valor=row[22] (RUTA). Por nombre:

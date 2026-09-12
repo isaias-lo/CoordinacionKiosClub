@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyActor } from '@/lib/apiAuth';
 import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
+import { sacarUnidadDelDespacho } from './limpiarDespacho';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
@@ -168,8 +169,12 @@ export async function DELETE(request: NextRequest) {
   if (!actor) return UNAUTH();
   const body = await request.json() as { id: number; actor_name?: string };
   const sb = supabaseServer();
-  // Limpiar despacho_rm huérfano antes de borrar el slot — evita filas fantasma
-  await sb.from('despacho_rm').delete().eq('picking_slot_id', body.id);
+  // Sacar la unidad del registro de despacho antes de borrarla — base Y planilla, RM Y Nacional.
+  // Si no, el pallet borrado sigue viajando en el papel (51SER, 11/09/2026). Ver limpiarDespacho.ts.
+  const limpieza = await sacarUnidadDelDespacho(sb, body.id);
+  if (limpieza.base > limpieza.hoja) {
+    console.error(`[picking-pallets DELETE] unidad ${body.id}: ${limpieza.base} filas fuera de la base pero ${limpieza.hoja} de la planilla`);
+  }
   // Borrar vía RPC que setea el actor en la transacción: el trigger AFTER DELETE
   // registra el evento 'eliminar' (única fuente; cubre también borrados manuales).
   const actorName = actor.name !== actor.id ? actor.name : (body.actor_name?.trim() || actor.name);
