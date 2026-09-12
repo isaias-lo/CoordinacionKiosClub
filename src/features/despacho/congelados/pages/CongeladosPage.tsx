@@ -362,6 +362,19 @@ export function CongeladosPage({ zona }: Props) {
     );
   }
 
+  // El selector vive FUERA del `if` de abajo: el día sin carga es justo cuando hace falta poder
+  // cambiar de día (un sábado, para volver al viernes y rutear lo del lunes).
+  const selectorFecha = (
+    <label className="text-[13px] text-text-3 flex items-center gap-1.5">
+      <span className="sr-only">Día de armado</span>
+      <input type="date" value={fechaTrabajo} max={fechaChile()}
+        onChange={e => { if (e.target.value) { setFechaTrabajo(e.target.value); setSelected(null); } }}
+        className="text-[13px] px-2 py-1 rounded border cursor-pointer"
+        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)' }}
+        title="Día en que se armó la carga. Congelados se despacha al día hábil siguiente." />
+    </label>
+  );
+
   if (cods.length === 0) {
     // [M-06] Antes era un callejón sin salida: no decía de qué día hablaba ni adónde ir.
     return (
@@ -369,7 +382,13 @@ export function CongeladosPage({ zona }: Props) {
         <div className="text-center max-w-xs">
           <div className="text-[40px] mb-2 opacity-60" aria-hidden="true">❄</div>
           <p className="font-barlow-condensed text-[18px] font-bold text-text-2">Sin congelados para hoy</p>
-          <p className="text-[13px] text-text-3 mt-1">{conMayusculaInicial(fechaLargaCL())}</p>
+          <p className="text-[13px] text-text-3 mt-1">
+            {conMayusculaInicial(fechaLargaCL(`${fechaTrabajo}T12:00:00`))}
+          </p>
+          <div className="flex justify-center mt-3">{selectorFecha}</div>
+          <p className="text-[12px] text-text-3 mt-2 leading-snug">
+            ¿Vas a rutear lo del día hábil anterior? Elige ese día acá arriba.
+          </p>
           <p className="text-[12px] text-text-3 mt-3 leading-snug">
             Las cajas nacen en Picking › Congelados. Si allá hay cajas y acá no aparecen, avísame.
           </p>
@@ -415,14 +434,7 @@ export function CongeladosPage({ zona }: Props) {
         <h2 className="font-barlow-condensed text-[20px] font-bold text-text">
           {textoTotalCongelados(resumen) || 'Sin cajas todavía'}
         </h2>
-        <label className="text-[13px] text-text-3 flex items-center gap-1.5">
-          <span className="sr-only">Día de armado</span>
-          <input type="date" value={fechaTrabajo} max={fechaChile()}
-            onChange={e => { if (e.target.value) { setFechaTrabajo(e.target.value); setSelected(null); } }}
-            className="text-[13px] px-2 py-1 rounded border cursor-pointer"
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)' }}
-            title="Día en que se armó la carga. Congelados se despacha al día hábil siguiente." />
-        </label>
+        {selectorFecha}
         {fechaTrabajo !== fechaChile() && (
           <span className="text-[12px] font-semibold px-2 py-0.5 rounded" style={{ background: 'rgba(8,145,178,0.10)', color: '#0891B2' }}>
             {conMayusculaInicial(fechaLargaCL(`${fechaTrabajo}T12:00:00`))}
