@@ -17,6 +17,19 @@ export function num(v: unknown): number | null {
   return isNaN(p) ? null : p;
 }
 
+/**
+ * El CÓDIGO de la hoja como id de unidad: solo un entero limpio, o null.
+ *
+ * `num` NO sirve acá: `parseFloat('49PTA')` devuelve 49, y ese 49 sería el id de OTRA unidad. Como
+ * ese id se usa para sacar filas del despacho cuando la unidad se borra, un valor inventado borra
+ * la fila equivocada. Ante la duda, null: sin vínculo se pierde la limpieza automática de esa fila,
+ * que es mucho menos grave que borrar carga ajena.
+ */
+export function idUnidad(v: unknown): number | null {
+  const s = String(v ?? '').trim();
+  return /^\d+$/.test(s) ? Number(s) : null;
+}
+
 /** ¿La fila es de datos? (id no vacío y no es la fila de encabezado). */
 export function isDataRow(row: (string | number)[]): boolean {
   const id = String(row[0] ?? '').trim();
@@ -28,11 +41,12 @@ export const RM_HEADERS = [
   'ID', 'FECHA', 'COD', 'TIENDA', 'TIPO', 'REGIMEN', 'TRANSPORTE', 'PATENTE', 'CARGA', 'REGION',
   'COMUNA', 'TIPO_COMUNA', 'PESO_KG', 'ALTO', 'LARGO', 'ANCHO', 'PESO_V', 'VENTANA', 'ESTADO',
   'N_PALLET_BULTO', 'FECHA_LLEGADA', 'CONDUCTOR', 'RUTA', 'SUPERVISOR', 'PIONETA 1', 'PIONETA 2',
+  'CÓDIGO',
 ];
 export const REGIONES_HEADERS = [
   'ID', 'FECHA', 'COD', 'TIENDA', 'TIPO', 'REGIMEN', 'TRANSPORTE', 'PATENTE', 'CARGA', 'REGION',
   'COMUNA', 'TIPO_COMUNA', 'PESO_KG', 'ALTO', 'LARGO', 'ANCHO', 'PESO_V', 'VENTANA', 'ESTADO',
-  'N_PALLET_BULTO', 'FECHA_LLEGADA', 'GUIA', 'VALOR',
+  'N_PALLET_BULTO', 'FECHA_LLEGADA', 'GUIA', 'VALOR', 'CÓDIGO',
 ];
 
 /** Etiquetas esperadas que NO aparecen en el encabezado real → esos campos caen a fallback
@@ -76,6 +90,11 @@ function baseRecord(get: (row: (string | number)[], header: string, pos: number)
     estado:         get(row, 'ESTADO', 18),
     n_pallet_bulto: get(row, 'N_PALLET_BULTO', 19),
     fecha_llegada:  get(row, 'FECHA_LLEGADA', 20),
+    // CÓDIGO (col AD) = id de la unidad en picking_pallets. Sin esto, toda fila que entra por la
+    // sincronización pierde el vínculo con su unidad — y era el 100% de las filas de días pasados.
+    // Ese vínculo es lo que permite sacar la fila del despacho cuando la unidad se borra en
+    // Picking; sin él, un pallet borrado seguía viajando en el papel (51SER, 11/09/2026).
+    picking_slot_id: idUnidad(get(row, 'CÓDIGO', 29)),
   };
 }
 
