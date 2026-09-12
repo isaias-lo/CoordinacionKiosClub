@@ -1,28 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Minus, Plus, Loader2, X } from 'lucide-react';
+import { X, ClipboardList } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { pushCounts, fetchCounts, subscribeToSesion, type CountMap } from '@/lib/despachoSesion';
 import { registradasDesdeSesion } from '../utils/registradasCongelados';
-import { tiendasCongeladosDelDia, cajasCongeladosPorTienda, type ConteoCajas } from '../utils/congeladosData';
+import { tiendasCongeladosDelDia, cajasCongeladosPorTienda } from '../utils/congeladosData';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { computeStoreStatus } from '../../shared/storeStatus';
 import { gruposDeZona, perteneceAZona, tiendasGrillaCongelados, type ZonaCongelados } from '../utils/congeladosGrid';
 import { formatCod } from '../../rutas/utils/helpers';
-import { textoRegistrar } from '../utils/textoRegistrar';
 import { fechaDDMM } from '../../rutas/utils/flotaInterna';
 import { TIENDAS as TIENDAS_NACIONAL } from '../../regiones/data/tiendas';
 import { getTiendaSantiagoByCod } from '../../santiago/data/tiendasSantiago';
-import { CongeladoGridCard } from '../components/CongeladoGridCard';
+import { CongeladosDetalle } from '../components/CongeladosDetalle';
+import { CongeladosListaTiendas } from '../components/CongeladosListaTiendas';
+import { CongeladosResumenPanel } from '../components/CongeladosResumenPanel';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { sheetsCongeladosWrite } from '../utils/sheetsCongelados';
 import { construirItemsCongelados, type SlotCongelado } from '../utils/construirItemsCongelados';
 import { fechaChile } from '@/lib/fechaChile';
-import { resumenCongelados, textoTotalCongelados, textoSinCarga } from '../utils/resumenCongelados';
+import { resumenCongelados, textoTotalCongelados } from '../utils/resumenCongelados';
 import { fechaLargaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 
 // Slot de picking_pallets ya filtrado a congelados (esCongeladoContenido). Superset de
@@ -50,49 +52,16 @@ interface Props {
   zona: ZonaCongelados;
 }
 
-/* ── Stepper +/− para las cantidades de caja del detalle ── */
-function StepperRow({ label, value, onChange, disabled }: {
-  label: string; value: number; onChange: (v: number) => void; disabled?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-[14px] font-semibold text-text-2">{label}</span>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={disabled || value <= 0}
-          onClick={() => onChange(Math.max(0, value - 1))}
-          aria-label={`Restar ${label}`}
-          className="w-8 h-8 rounded-full border flex items-center justify-center cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-          style={{ borderColor: 'rgba(8,145,178,0.35)', color: '#0891B2' }}
-        >
-          <Minus size={16} />
-        </button>
-        <span className="w-6 text-center font-barlow-condensed text-[19px] font-bold text-navy">{value}</span>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(value + 1)}
-          aria-label={`Sumar ${label}`}
-          className="w-8 h-8 rounded-full border flex items-center justify-center cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-          style={{ borderColor: 'rgba(8,145,178,0.35)', color: '#0891B2' }}
-        >
-          <Plus size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ── Detalle CC/CN de una tienda + botón Registrar ── */
-function CongeladoDetailModal({ cod, nombre, cc, cn, saving, onChangeCC, onChangeCN, onClose, onRegistrar }: {
-  cod: string; nombre: string; cc: number; cn: number; saving: boolean;
+/* ── Detalle de una tienda en celular: el mismo cuerpo del centro, dentro de un modal.
+     En escritorio esto no se usa — ahí el detalle es la columna del medio. ── */
+function CongeladoDetailModal({ cod, nombre, cc, cn, saving, registrada, onChangeCC, onChangeCN, onClose, onRegistrar }: {
+  cod: string; nombre: string; cc: number; cn: number; saving: boolean; registrada: boolean;
   onChangeCC: (v: number) => void; onChangeCN: (v: number) => void;
   onClose: () => void; onRegistrar: () => void;
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-navy/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-navy/50 backdrop-blur-sm lg:hidden"
       onClick={saving ? undefined : onClose}
     >
       <div
@@ -105,33 +74,18 @@ function CongeladoDetailModal({ cod, nombre, cc, cn, saving, onChangeCC, onChang
             <div className="font-barlow-condensed text-[13px] font-extrabold tracking-wide text-[#0891B2]">{formatCod(cod)}</div>
             <h3 className="font-barlow-condensed text-[19px] font-bold text-navy leading-tight">{nombre}</h3>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            aria-label="Cerrar"
-            className="text-text-3 cursor-pointer p-1 disabled:opacity-30"
-          >
+          <button type="button" onClick={onClose} disabled={saving} aria-label="Cerrar"
+            className="text-text-3 cursor-pointer p-1 disabled:opacity-30">
             <X size={20} />
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
-          <StepperRow label="Caja Cartón (CC)" value={cc} onChange={onChangeCC} disabled={saving} />
-          <StepperRow label="Caja Negra (CN)" value={cn} onChange={onChangeCN} disabled={saving} />
-          <p className="text-[11px] text-text-3 text-center">desde Picking · sin pesar/medir</p>
-        </div>
-
-        <div className="px-5 pb-5">
-          <button
-            type="button"
-            onClick={onRegistrar}
-            disabled={saving || (cc === 0 && cn === 0)}
-            className="w-full py-3.5 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            style={{ background: '#0891B2' }}
-          >
-            {saving ? <><Loader2 size={18} className="animate-spin" /> Registrando…</> : textoRegistrar(cc, cn, cod)}
-          </button>
+        <div className="px-5 py-4 pb-5">
+          <CongeladosDetalle
+            cod={cod} nombre={nombre} cc={cc} cn={cn}
+            saving={saving} registrada={registrada}
+            onChangeCC={onChangeCC} onChangeCN={onChangeCN} onRegistrar={onRegistrar}
+          />
         </div>
       </div>
     </div>
@@ -174,6 +128,13 @@ export function CongeladosPage({ zona }: Props) {
   const [registradas, setRegistradas] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
+  const [verResumenMovil, setVerResumenMovil] = useState(false);
+
+  /* ── Paneles redimensionables, igual que Bodega RM/Costa y Nacional ── */
+  const { width: leftWidth, isDesktop, handleMouseDown: onDragLeft, handleTouchStart: onTouchLeft } =
+    useResizablePanel({ storageKey: 'congelados_left_panel_width',  defaultWidth: 260 });
+  const { width: rightWidth, handleMouseDown: onDragRight, handleTouchStart: onTouchRight } =
+    useResizablePanel({ storageKey: 'congelados_right_panel_width', defaultWidth: 280, inverted: true });
 
   // Si cambia la zona (o cruza medianoche mientras la pantalla queda montada), recarga el set
   // de registradas desde la clave de localStorage correcta.
@@ -280,40 +241,47 @@ export function CongeladosPage({ zona }: Props) {
   const setCC = (cod: string, v: number) => setAjuste(prev => ({ ...prev, [cod]: { cc: v, cn: prev[cod]?.cn ?? 0 } }));
   const setCN = (cod: string, v: number) => setAjuste(prev => ({ ...prev, [cod]: { cc: prev[cod]?.cc ?? 0, cn: v } }));
 
-  const registrar = async () => {
-    if (!selected) return;
-    const cod = selected;
-    const vals = ajuste[cod] ?? { cc: 0, cn: 0 };
+  /* ── Datos de catálogo de una tienda para la fila de la planilla ── */
+  const datosTienda = (cod: string) => {
+    if (zona === 'nacional') {
+      const t = codToNacional()[cod];
+      // Nacional (Sendu) no trae ventana horaria en el catálogo estático.
+      return { tienda: nombreDeTienda(cod, zona), region: t?.region ?? '', comuna: t?.comuna ?? '', ventana: '' };
+    }
+    const t = getTiendaSantiagoByCod(cod);
+    return { tienda: nombreDeTienda(cod, zona), region: t?.region ?? '', comuna: t?.comuna ?? '', ventana: t?.ventanaHoraria ?? '' };
+  };
+
+  /**
+   * Registra UNA o VARIAS tiendas en una sola escritura.
+   *
+   * Antes solo existía el registro de a una, metido dentro del modal — había que abrir cada tienda,
+   * ajustar y guardar. Las bodegas de seco tienen un "Registrar" que manda todo junto, y acá no.
+   * Mandar las filas de todas las tiendas en UN POST además evita el caso feo de la tanda a medias:
+   * seis llamadas y la cuarta falla.
+   *
+   * Las cantidades salen de `ajuste` si alguien las tocó, y si no, de lo que hay en Picking. Así
+   * "Registrar todo" no obliga a abrir tienda por tienda solo para confirmar lo que ya está bien.
+   */
+  const registrarTiendas = async (codsARegistrar: string[]) => {
+    if (!codsARegistrar.length) return;
     setSaving(true);
     try {
-      const tienda = nombreDeTienda(cod, zona);
-      let region = '';
-      let comuna = '';
-      let ventana = '';
-      if (zona === 'nacional') {
-        const t = codToNacional()[cod];
-        region = t?.region ?? '';
-        comuna = t?.comuna ?? '';
-        // Nacional (Sendu) no trae ventana horaria en el catálogo estático.
-        ventana = '';
-      } else {
-        const t = getTiendaSantiagoByCod(cod);
-        region = t?.region ?? '';
-        comuna = t?.comuna ?? '';
-        ventana = t?.ventanaHoraria ?? '';
-      }
+      const fechaArmadoISO = fechaTrabajo;
+      const fecha = fechaDDMM(fechaArmadoISO);
       // Ninguno de los dos catálogos trae tipo de comuna (urbano/extraurbano) para CONGELADOS
       // todavía — se deja vacío en vez de inventar una heurística nueva.
       const tipoComuna = '';
 
-      const fechaArmadoISO = fechaTrabajo;
-      const fecha = fechaDDMM(fechaArmadoISO);
-
-      const items = construirItemsCongelados({
-        cod, tienda, region, comuna, tipoComuna, ventana,
-        fecha, fechaArmado: fechaArmadoISO,
-        cuentaCC: vals.cc, cuentaCN: vals.cn,
-        slots: slotsPorTienda[cod] ?? [],
+      const items = codsARegistrar.flatMap(cod => {
+        const vals = ajuste[cod] ?? { cc: cajasPorTienda[cod]?.cc ?? 0, cn: cajasPorTienda[cod]?.cn ?? 0 };
+        const { tienda, region, comuna, ventana } = datosTienda(cod);
+        return construirItemsCongelados({
+          cod, tienda, region, comuna, tipoComuna, ventana,
+          fecha, fechaArmado: fechaArmadoISO,
+          cuentaCC: vals.cc, cuentaCN: vals.cn,
+          slots: slotsPorTienda[cod] ?? [],
+        });
       });
 
       const tabla = zona === 'nacional' ? 'despacho_regiones' : 'despacho_rm';
@@ -321,27 +289,26 @@ export function CongeladosPage({ zona }: Props) {
       if (!res.ok) throw new Error(res.mirrorErrores.join('; '));
 
       // Refleja la carga congelada del día de TODAS las tiendas de la grilla (para el
-      // Enrutador) — no solo la que se acaba de registrar.
+      // Enrutador) — no solo las que se acaban de registrar.
+      const registradasAhora = new Set(codsARegistrar);
       const countsMap: CountMap = {};
       for (const c of cods) {
-        countsMap[c] = {
-          p: 0,
-          b: c === cod ? vals.cc + vals.cn : (cajasPorTienda[c]?.total ?? 0),
-          c: 0,
-          ch: 0,
-        };
+        const vals = ajuste[c];
+        const cajas = registradasAhora.has(c) && vals ? vals.cc + vals.cn : (cajasPorTienda[c]?.total ?? 0);
+        countsMap[c] = { p: 0, b: cajas, c: 0, ch: 0 };
       }
       await pushCounts(zona === 'nacional' ? 'congelados-regiones' : 'congelados-santiago', countsMap, undefined, fechaTrabajo);
 
       // Optimista: se ve al instante. La base es la que manda y la corrige en el próximo evento.
-      setRegistradas(prev => new Set(prev).add(cod));
+      setRegistradas(prev => new Set([...prev, ...codsARegistrar]));
+
       // Si la planilla se escribió pero el espejo a la base no, decirlo: un "✓" mentiroso acá es
       // justo lo que hace que después falte carga en el Enrutador sin que nadie sepa por qué.
       if (res.mirrorErrores.length) {
         console.error('[CongeladosPage] espejo a la base falló', res.mirrorErrores);
         showToast('Quedó en la planilla, pero no en la base. Avisa a soporte.', '#F59E0B');
       } else {
-        showToast('✓ Registrado', '#16A34A');
+        showToast(codsARegistrar.length === 1 ? '✓ Registrado' : `✓ ${codsARegistrar.length} tiendas registradas`, '#16A34A');
       }
       setSelected(null);
     } catch (err) {
@@ -351,6 +318,8 @@ export function CongeladosPage({ zona }: Props) {
       setSaving(false);
     }
   };
+
+  const registrar = () => { if (selected) void registrarTiendas([selected]); };
 
   // [C-02] Hasta que estén las DOS fuentes (calendario + slots de picking) no se dibujan tarjetas
   // reales. Antes se dibujaban las 3 tiendas con cajas y, al llegar el calendario, las 18 se metían
@@ -414,73 +383,145 @@ export function CongeladosPage({ zona }: Props) {
   // cajas existen en Picking y para nadie más (ver resumenCongelados.ts).
   const resumen = resumenCongelados(cods, cajasPorTienda, registradas);
 
-  const tarjeta = (cod: string) => {
-          const conteo: ConteoCajas = cajasPorTienda[cod] ?? { total: 0, cc: 0, cn: 0 };
-          const prog = odooProgress.get(cod);
-          const congTotal = prog?.congTotal ?? 0;
-          const congDone = prog?.congDone ?? 0;
-          const status = computeStoreStatus(congTotal, congDone);
-          return (
-            <CongeladoGridCard
-              key={cod}
-              cod={cod}
-              nombre={nombreDeTienda(cod, zona)}
-              cajas={conteo.total}
-              congTotal={congTotal}
-              congDone={congDone}
-              status={status}
-              registrada={registradas.has(cod)}
-              onSelect={() => abrirDetalle(cod)}
-            />
-          );
-  };
+  const registrarTodo = () => { void registrarTiendas(resumen.pendientesLista); };
+
+  const divisor = (onMouse: (e: React.MouseEvent) => void, onTouch: (e: React.TouchEvent) => void) => (
+    <div
+      onMouseDown={onMouse} onTouchStart={onTouch}
+      className="hidden lg:flex w-[5px] cursor-col-resize items-center justify-center flex-shrink-0 group relative"
+      style={{ background: 'var(--color-border)' }}
+      role="separator" aria-orientation="vertical"
+    >
+      <div className="absolute inset-0 transition-colors duration-150 group-hover:bg-[rgba(8,145,178,0.30)]" />
+      <div className="flex flex-col gap-[5px] relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        {[0, 1, 2].map(i => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: '#0891B2' }} />)}
+      </div>
+    </div>
+  );
+
+  const panelResumen = (
+    <CongeladosResumenPanel
+      resumen={resumen}
+      cajasPorTienda={cajasPorTienda}
+      fechaArmado={fechaTrabajo}
+      saving={saving}
+      onRegistrarTodo={registrarTodo}
+    />
+  );
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      {/* [M-05] Cabecera del día: qué hay, de cuándo, y sobre todo qué falta registrar. */}
-      <div className="flex items-baseline gap-2 flex-wrap mb-3">
-        <h2 className="font-barlow-condensed text-[20px] font-bold text-text">
-          {textoTotalCongelados(resumen) || 'Sin cajas todavía'}
-        </h2>
-        {selectorFecha}
-        {fechaTrabajo !== fechaChile() && (
-          <span className="text-[12px] font-semibold px-2 py-0.5 rounded" style={{ background: 'rgba(8,145,178,0.10)', color: '#0891B2' }}>
-            {conMayusculaInicial(fechaLargaCL(`${fechaTrabajo}T12:00:00`))}
-          </span>
-        )}
-        {resumen.pendientes > 0 && (
-          <span className="ml-auto text-[12px] font-bold px-2.5 py-1 rounded-full"
-            style={{ background: 'rgba(217,119,6,0.12)', color: '#B45309' }}
-            title="Registrar es lo que manda estas cajas al despacho y al Enrutador">
-            {resumen.pendientes} sin registrar
-          </span>
-        )}
-        {resumen.pendientes === 0 && resumen.conCarga.length > 0 && (
-          <span className="ml-auto text-[12px] font-bold px-2.5 py-1 rounded-full"
-            style={{ background: 'rgba(22,163,74,0.12)', color: '#15803D' }}>
-            ✓ Todo registrado
-          </span>
-        )}
-      </div>
+    <div className="flex-1 flex overflow-hidden">
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        {resumen.conCarga.map(tarjeta)}
-      </div>
+      {/* ── IZQUIERDA: las tiendas del calendario del día ── */}
+      <div className="w-full lg:w-auto flex flex-col overflow-hidden flex-shrink-0 border-r"
+           style={{ borderColor: 'var(--color-border)', ...(isDesktop ? { width: leftWidth } : {}) }}>
 
-      {resumen.sinCarga.length > 0 && (
-        <div className="mt-4">
-          <button type="button" onClick={() => setVerSinCarga(v => !v)}
-            className="text-[13px] font-semibold text-text-3 hover:text-text-2 cursor-pointer flex items-center gap-1.5">
-            {verSinCarga ? '▾' : '▸'} {textoSinCarga(resumen)}
+        <div className="px-3 py-2.5 border-b flex-shrink-0 flex items-center gap-2 flex-wrap"
+             style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="font-barlow-condensed text-[16px] font-bold text-text flex-1 min-w-0">
+            {textoTotalCongelados(resumen) || 'Sin cajas todavía'}
+          </h2>
+          {selectorFecha}
+          {/* En celular no caben tres columnas: el resumen se abre como pantalla completa. */}
+          <button type="button" onClick={() => setVerResumenMovil(true)}
+            className="lg:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn text-[12px] font-bold cursor-pointer"
+            style={{ background: 'rgba(8,145,178,0.10)', color: '#0891B2' }}>
+            <ClipboardList size={14} /> Resumen
+            {resumen.pendientes > 0 && (
+              <span className="w-[18px] h-[18px] rounded-full text-white text-[10px] font-extrabold flex items-center justify-center"
+                style={{ background: '#D97706' }}>{resumen.pendientes}</span>
+            )}
           </button>
-          {verSinCarga && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-2 opacity-70">
-              {resumen.sinCarga.map(tarjeta)}
+        </div>
+
+        <CongeladosListaTiendas
+          resumen={resumen}
+          cajasPorTienda={cajasPorTienda}
+          registradas={registradas}
+          seleccionada={selected}
+          nombreDeTienda={cod => nombreDeTienda(cod, zona)}
+          verSinCarga={verSinCarga}
+          onToggleSinCarga={() => setVerSinCarga(v => !v)}
+          onSelect={abrirDetalle}
+        />
+      </div>
+
+      {divisor(onDragLeft, onTouchLeft)}
+
+      {/* ── CENTRO: la tienda seleccionada ── */}
+      <div className="hidden lg:flex flex-1 min-w-0 flex-col overflow-y-auto">
+        {selected && selectedVals ? (
+          <div className="p-5 max-w-sm w-full mx-auto">
+            <div className="mb-4">
+              <div className="font-barlow-condensed text-[13px] font-extrabold tracking-wide" style={{ color: '#0891B2' }}>
+                {formatCod(selected)}
+              </div>
+              <h3 className="font-barlow-condensed text-[22px] font-bold text-navy leading-tight">
+                {nombreDeTienda(selected, zona)}
+              </h3>
+              {(() => {
+                const prog = odooProgress.get(selected);
+                const total = prog?.congTotal ?? 0;
+                if (total === 0) return null;
+                const done = prog?.congDone ?? 0;
+                const status = computeStoreStatus(total, done);
+                return (
+                  <p className="text-[12px] text-text-3 mt-1">
+                    Picking congelados: {done}/{total}
+                    {status === 'complete' ? ' · completo' : ''}
+                  </p>
+                );
+              })()}
             </div>
-          )}
+
+            <CongeladosDetalle
+              cod={selected}
+              nombre={nombreDeTienda(selected, zona)}
+              cc={selectedVals.cc}
+              cn={selectedVals.cn}
+              saving={saving}
+              registrada={registradas.has(selected)}
+              onChangeCC={v => setCC(selected, v)}
+              onChangeCN={v => setCN(selected, v)}
+              onRegistrar={registrar}
+            />
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center max-w-[220px]">
+              <div className="text-[34px] mb-2 opacity-50" aria-hidden="true">❄</div>
+              <p className="text-[13px] text-text-3 leading-snug">
+                Elige una tienda de la izquierda para revisar y registrar sus cajas.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {divisor(onDragRight, onTouchRight)}
+
+      {/* ── DERECHA: resumen del día ── */}
+      <div className="hidden lg:flex flex-col overflow-hidden flex-shrink-0"
+           style={isDesktop ? { width: rightWidth } : undefined}>
+        {panelResumen}
+      </div>
+
+      {/* Resumen en celular */}
+      {verResumenMovil && (
+        <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
+          <div className="px-3 py-3 flex items-center gap-3 flex-shrink-0 border-b"
+               style={{ borderColor: 'var(--color-border)' }}>
+            <button type="button" onClick={() => setVerResumenMovil(false)} aria-label="Cerrar resumen"
+              className="p-1.5 rounded-full cursor-pointer" style={{ background: 'rgba(8,145,178,0.10)', color: '#0891B2' }}>
+              <X size={18} />
+            </button>
+            <span className="font-barlow-condensed text-[16px] font-bold text-navy flex-1">Resumen del día</span>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">{panelResumen}</div>
         </div>
       )}
 
+      {/* En celular el detalle sigue siendo un modal: no hay ancho para tres columnas. */}
       {selected && selectedVals && (
         <CongeladoDetailModal
           cod={selected}
@@ -488,8 +529,9 @@ export function CongeladosPage({ zona }: Props) {
           cc={selectedVals.cc}
           cn={selectedVals.cn}
           saving={saving}
-          onChangeCC={(v) => setCC(selected, v)}
-          onChangeCN={(v) => setCN(selected, v)}
+          registrada={registradas.has(selected)}
+          onChangeCC={v => setCC(selected, v)}
+          onChangeCN={v => setCN(selected, v)}
           onClose={cerrarDetalle}
           onRegistrar={registrar}
         />

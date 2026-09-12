@@ -16,6 +16,8 @@ export interface ResumenCongelados {
   totalCajas: number;
   /** Cuántas tiendas con carga están sin registrar: el número que hay que mirar. */
   pendientes: number;
+  /** CUÁLES faltan por registrar, en el orden en que se muestran. Lo que registra "Registrar todo". */
+  pendientesLista: string[];
 }
 
 export function resumenCongelados(
@@ -43,6 +45,7 @@ export function resumenCongelados(
     sinCarga,
     totalCajas,
     pendientes: pendientesLista.length,
+    pendientesLista,
   };
 }
 
@@ -59,4 +62,19 @@ export function textoSinCarga(r: ResumenCongelados): string {
   const n = r.sinCarga.length;
   if (n === 0) return '';
   return `${n} tienda${n === 1 ? '' : 's'} sin congelados`;
+}
+
+/** Texto del botón que registra todas las que faltan. Vacío si no falta ninguna. */
+export function textoRegistrarTodo(r: ResumenCongelados): string {
+  const n = r.pendientes;
+  if (n === 0) return '';
+  return n === 1 ? 'Registrar la tienda que falta' : `Registrar las ${n} tiendas que faltan`;
+}
+
+/** Cuántas cajas se van a mandar si se registra todo lo pendiente. */
+export function cajasPendientes(
+  r: ResumenCongelados,
+  cajasPorTienda: Record<string, ConteoTienda | undefined>,
+): number {
+  return r.pendientesLista.reduce((n, cod) => n + (cajasPorTienda[cod]?.total ?? 0), 0);
 }
