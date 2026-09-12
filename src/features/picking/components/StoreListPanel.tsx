@@ -20,6 +20,8 @@ interface Props {
   opsMap: Record<string, PickingOperation[]>;
   todayStores: TodayStore[];
   storesLoading: boolean;
+  /** [m-12] Selecciona o quita el grupo entero. Sin esto, trabajar por grupo son 18 clicks. */
+  onToggleGrupo?: (cods: string[], seleccionar: boolean) => void;
   onToggleStore: (cod: string) => void;
   tiendaOverrides?: Record<string, string>; // nombres desde Supabase (override del hardcoded)
   onOpenAdelanto?: () => void;              // abrir diálogo "agregar tienda (adelanto)"
@@ -27,7 +29,7 @@ interface Props {
 }
 
 export const StoreListPanel = React.memo(function StoreListPanel({
-  selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore, tiendaOverrides = {},
+  selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore, onToggleGrupo, tiendaOverrides = {},
   onOpenAdelanto, onDeleteAdelanto,
 }: Props) {
   const [q, setQ] = useState('');
@@ -111,10 +113,35 @@ export const StoreListPanel = React.memo(function StoreListPanel({
           const style = GROUP_STYLE[gKey];
           return (
             <div key={gKey}>
-              <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-widest sticky top-0 z-10"
-                style={{ background: style.bg, color: style.color, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                {GROUP_LABELS[gKey]} ({stores.length})
-              </div>
+              {(() => {
+                const cods = stores.map(s => s.cod);
+                const elegidas = cods.filter(c => selectedCods.includes(c)).length;
+                const todas = elegidas === cods.length;
+                const contenido = (
+                  <>
+                    <span className="flex-1 text-left">{GROUP_LABELS[gKey]} ({stores.length})</span>
+                    {onToggleGrupo && (
+                      <span className="font-mono text-[10px] opacity-70">
+                        {elegidas > 0 ? `${elegidas}/${cods.length}` : 'elegir todas'}
+                      </span>
+                    )}
+                  </>
+                );
+                const clases = 'w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-widest sticky top-0 z-10 border-none';
+                const estilo = { background: style.bg, color: style.color, borderBottom: '1px solid rgba(0,0,0,0.04)' };
+                return onToggleGrupo ? (
+                  <button type="button"
+                    onClick={() => onToggleGrupo(cods, !todas)}
+                    aria-pressed={todas}
+                    title={todas ? `Quitar las ${cods.length} tiendas de ${GROUP_LABELS[gKey]}` : `Elegir las ${cods.length} tiendas de ${GROUP_LABELS[gKey]}`}
+                    className={clases + ' cursor-pointer hover:brightness-95 transition-all'}
+                    style={estilo}>
+                    {contenido}
+                  </button>
+                ) : (
+                  <div className={clases} style={estilo}>{contenido}</div>
+                );
+              })()}
               {stores.map(store => {
                 const isSelected  = selectedCods.includes(store.cod);
                 const isLoading   = loadingCods.includes(store.cod);
