@@ -27,6 +27,12 @@ export function perteneceAZona(cod: string, zona: ZonaCongelados): boolean {
  * calendario del día y (b) los códigos que tienen cajas de picking y pertenecen a la zona
  * (`perteneceAZonaFn`). Dedupe preservando orden: primero el calendario, luego las tiendas de
  * picking que no estaban ya. Función pura — recibe los códigos ya resueltos, no hace fetch.
+ *
+ * ⚠️ El orden depende del calendario, que llega por su propio fetch: mientras no esté, esta lista
+ * son solo las tiendas con cajas, y al llegar el calendario TODAS se van al principio y el resto
+ * baja. Por eso la grilla no debe dibujarse hasta tener las dos fuentes (ver `loaded` en
+ * CongeladosPage): si se mueve bajo el dedo, el click cae en la tienda de al lado — y acá la única
+ * acción es registrar cajas (C-02, 11/09/2026).
  */
 export function tiendasGrillaCongelados(
   codsCalendario: string[],

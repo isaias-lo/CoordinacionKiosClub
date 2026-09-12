@@ -14,6 +14,7 @@ import { useOdooProgress } from '../../shared/useOdooProgress';
 import { computeStoreStatus } from '../../shared/storeStatus';
 import { gruposDeZona, perteneceAZona, tiendasGrillaCongelados, type ZonaCongelados } from '../utils/congeladosGrid';
 import { formatCod } from '../../rutas/utils/helpers';
+import { textoRegistrar } from '../utils/textoRegistrar';
 import { fechaDDMM } from '../../rutas/utils/flotaInterna';
 import { TIENDAS as TIENDAS_NACIONAL } from '../../regiones/data/tiendas';
 import { getTiendaSantiagoByCod } from '../../santiago/data/tiendasSantiago';
@@ -131,7 +132,7 @@ function CongeladoDetailModal({ cod, nombre, cc, cn, saving, onChangeCC, onChang
             className="w-full py-3.5 rounded-btn font-barlow-condensed text-[17px] font-bold text-white cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             style={{ background: '#0891B2' }}
           >
-            {saving ? <><Loader2 size={18} className="animate-spin" /> Registrando…</> : 'Registrar Congelados'}
+            {saving ? <><Loader2 size={18} className="animate-spin" /> Registrando…</> : textoRegistrar(cc, cn, cod)}
           </button>
         </div>
       </div>
@@ -195,7 +196,11 @@ export function CongeladosPage({ zona }: Props) {
   /* ── Calendario de Congelados: fetch + realtime ── */
   useEffect(() => {
     let cancelled = false;
-    fetchCalendarioCongelados().then(c => { if (!cancelled) setCal(c); });
+    // Si el calendario no llega, la grilla se queda esperando (ver `loaded`): mejor seguir con las
+    // tiendas que tienen cajas que dejar la pantalla en blanco.
+    fetchCalendarioCongelados()
+      .then(c => { if (!cancelled) setCal(c); })
+      .catch(() => { if (!cancelled) setCal({}); });
     const unsub = subscribeToCalendarioCongelados(c => setCal(c));
     return () => { cancelled = true; unsub(); };
   }, []);
@@ -334,7 +339,25 @@ export function CongeladosPage({ zona }: Props) {
     }
   };
 
-  if (loaded && cods.length === 0) {
+  // [C-02] Hasta que estén las DOS fuentes (calendario + slots de picking) no se dibujan tarjetas
+  // reales. Antes se dibujaban las 3 tiendas con cajas y, al llegar el calendario, las 18 se metían
+  // ADELANTE y todo se corría: un click hecho en esa ventana abría el modal de la tienda de al lado
+  // — y en este módulo lo único que se hace es registrar cajas. El esqueleto no es adorno: ocupa el
+  // lugar para que nada salte.
+  if (!loaded) {
+    return (
+      <div className="flex-1 overflow-y-auto p-4" aria-busy="true" aria-label="Cargando tiendas con congelados">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="rounded-card border animate-pulse"
+              style={{ height: 104, background: 'var(--color-bg-2)', borderColor: 'var(--color-border)' }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (cods.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center">
