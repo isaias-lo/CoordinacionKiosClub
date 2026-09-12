@@ -1431,14 +1431,38 @@ export default function RutasScreen() {
         for (const g of ['rm', 'costa', 'fal']) if ((calDia[g] || []).some(x => norm(x) === c)) return g;
         return 'rm';
       };
+      const esCong = (row: SesionRow) => (row.fuente ?? '').startsWith('congelados');
+
+      // SECO. El guard de congelados faltaba acá (sí está en la carga en vivo): sin él, al abrir
+      // una fecha pasada las CAJAS de congelados entraban al pool del seco como bultos.
       setCalT(prev => {
         const next = { ...prev };
         let changed = false;
         for (const row of rows) {
+          if (esCong(row)) continue;
           const c  = norm(row.tienda_cod);
           const p  = row.pallets, b = row.bultos, cc = row.contenedores ?? 0, ch = row.chocolates ?? 0;
           if (p === 0 && b === 0 && cc === 0 && ch === 0) continue;
           if (!next[c]) { next[c] = { on: true, p, b, c: cc, ch, g: grpOf(c) }; changed = true; }
+        }
+        return changed ? next : prev;
+      });
+
+      // CONGELADOS. El pool de la pestaña Congelados solo se llenaba con el día de HOY, así que
+      // una carga armada otro día era irrecuperable desde la interfaz. Y eso no es un caso raro:
+      // congelados se despacha al día hábil siguiente, así que lo del viernes se rutea el fin de
+      // semana — justo cuando "hoy" ya no es el día en que se armó.
+      setCalTCong(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const row of rows) {
+          if (!esCong(row)) continue;
+          const c = norm(row.tienda_cod);
+          const cajas = row.bultos ?? 0;   // las cajas viajan en `bultos` (ver applyRowCong)
+          if (cajas <= 0 || next[c]) continue;
+          const g = grupoCongelados(row.fuente ?? '', tiendasRef.current[c]?.sector || tiendasRef.current[c]?.z);
+          next[c] = { on: true, p: 0, b: cajas, c: 0, ch: 0, g };
+          changed = true;
         }
         return changed ? next : prev;
       });
