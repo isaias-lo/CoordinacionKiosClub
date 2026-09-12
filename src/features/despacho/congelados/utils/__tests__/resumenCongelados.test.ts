@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resumenCongelados, textoTotalCongelados, textoSinCarga } from '../resumenCongelados';
+import { resumenCongelados, textoTotalCongelados, textoSinCarga, textoRegistrarTodo, cajasPendientes } from '../resumenCongelados';
 
 // El día real del 11/09/2026: 22LGN 13 cajas, 16PQA 4, 02SCL 2, y el resto del calendario en cero.
 const CODS = ['01TPS', '22LGN', '13PIE', '16PQA', '31TLC', '02SCL'];
@@ -51,5 +51,29 @@ describe('textos del resumen', () => {
   it('cuenta las tiendas en cero', () => {
     expect(textoSinCarga(resumenCongelados(CODS, CAJAS, new Set()))).toBe('3 tiendas sin congelados');
     expect(textoSinCarga(resumenCongelados(['A'], { A: { total: 2 } }, new Set()))).toBe('');
+  });
+});
+
+describe('registrar todo', () => {
+  it('nombra cuáles faltan, en el orden en que se ven', () => {
+    const r = resumenCongelados(CODS, CAJAS, new Set(['16PQA']));
+    expect(r.pendientesLista).toEqual(['22LGN', '02SCL']);
+    expect(r.conCarga).toEqual(['22LGN', '02SCL', '16PQA']); // la registrada baja al final
+  });
+
+  it('el botón dice cuántas son', () => {
+    expect(textoRegistrarTodo(resumenCongelados(CODS, CAJAS, new Set()))).toBe('Registrar las 3 tiendas que faltan');
+    expect(textoRegistrarTodo(resumenCongelados(CODS, CAJAS, new Set(['22LGN', '16PQA'])))).toBe('Registrar la tienda que falta');
+  });
+
+  it('sin pendientes no hay botón', () => {
+    expect(textoRegistrarTodo(resumenCongelados(CODS, CAJAS, new Set(['22LGN', '16PQA', '02SCL'])))).toBe('');
+    expect(textoRegistrarTodo(resumenCongelados(CODS, {}, new Set()))).toBe('');
+  });
+
+  it('cuenta las cajas que se van a mandar, no las tiendas', () => {
+    const r = resumenCongelados(CODS, CAJAS, new Set(['22LGN']));
+    expect(cajasPendientes(r, CAJAS)).toBe(6);   // 16PQA 4 + 02SCL 2, sin las 13 ya registradas
+    expect(cajasPendientes(resumenCongelados(CODS, CAJAS, new Set()), CAJAS)).toBe(19);
   });
 });
