@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampMapPct, mapaColapsado, anchoMapa, anchoContenido, rotuloBotonMapa,
+  clampMapPct, mapaColapsado, anchoMapa, anchoContenido,
   MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX,
 } from '../mapLayout';
 
@@ -87,11 +87,3 @@ describe('restaurar devuelve el ancho guardado, no el default', () => {
   });
 });
 
-describe('rotuloBotonMapa dice qué va a pasar, no cómo está', () => {
-  it('escondido ofrece mostrarlo', () => {
-    expect(rotuloBotonMapa(true)).toBe('Mostrar mapa');
-  });
-  it('visible ofrece esconderlo', () => {
-    expect(rotuloBotonMapa(false)).toBe('Ocultar mapa');
-  });
-});

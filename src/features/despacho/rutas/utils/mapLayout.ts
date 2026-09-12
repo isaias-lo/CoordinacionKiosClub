@@ -63,7 +63,3 @@ export function anchoContenido(colapsado: boolean, pct: number, hayMapa: boolean
   return `1 1 ${100 - clampMapPct(pct)}%`;
 }
 
-/** Texto del botón — dice lo que va a pasar al apretarlo, no el estado actual. */
-export function rotuloBotonMapa(colapsado: boolean): string {
-  return colapsado ? 'Mostrar mapa' : 'Ocultar mapa';
-}

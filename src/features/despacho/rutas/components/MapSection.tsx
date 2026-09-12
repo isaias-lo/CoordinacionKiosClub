@@ -19,9 +19,13 @@ interface Props {
   // padre (la patente = `v.p`). Así tocar la tarjeta del camión y el chip del mapa quedan sincronizados.
   selectedPatente?: string | null;
   onSelectPatente?: (patente: string | null) => void;
+  /** Con qué reloj mostrar la hora de llegada en la tarjeta de cada parada. Solo se pasa cuando hay
+   *  una hora de salida REAL que respetar (el Planificador la pide en pantalla). Sin esto, la
+   *  tarjeta no inventa horas: muestra distancia y duración del tramo, como siempre. */
+  horario?: { salidaMin: number; servicioMin: number };
 }
 
-export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpdate, statMode = 'load', selectedPatente, onSelectPatente }: Props) {
+export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpdate, statMode = 'load', selectedPatente, onSelectPatente, horario }: Props) {
   const elRef         = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<unknown>(null);
   const overlaysRef   = useRef<unknown[]>([]);
@@ -67,6 +71,11 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
 
   // [D] Filtro EFECTIVO: si es controlado (onSelectPatente), deriva de la patente seleccionada por el
   // padre (tarjeta del camión); si no, usa el estado interno de los chips. Un solo origen de verdad.
+  // El getter lee de un ref: cambiar la hora de salida actualiza la tarjeta del pin SIN redibujar
+  // el mapa (cada dibujo llama a Directions, que se factura).
+  const horarioRef = useRef(horario);
+  horarioRef.current = horario;
+
   const controlado = onSelectPatente != null;
   const selIdx = selectedPatente ? rutas.findIndex(r => r.v.p === selectedPatente) : -1;
   const activeIdx: number | 'all' = controlado ? (selIdx >= 0 ? selIdx : 'all') : activeFilter;
@@ -86,6 +95,7 @@ export default function MapSection({ rutas, gps, cd, tiendas, onKmReady, onCdUpd
       mapRef,
       overlaysRef,
       cdGeocodedRef,
+      getHorario: () => horarioRef.current,
       onKmReady: (kmPorRuta, legDataPorRuta) => {
         if (cdGeocodedRef.current) onCdUpdate([cdGeocodedRef.current.lat, cdGeocodedRef.current.lng]);
         if (typeof onKmReady === 'function') onKmReady(kmPorRuta, legDataPorRuta);

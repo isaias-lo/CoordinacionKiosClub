@@ -258,7 +258,7 @@ export default function RutasScreen() {
   const [planRutas, setPlanRutas] = useState<Ruta[]>([]);
   const [planCd,    setPlanCd]    = useState<number[] | null>(null);
   // Paradas por DIRECCIÓN del planificador (coords + nombre) que el mapa no conoce por catálogo.
-  const [planExt,   setPlanExt]   = useState<{ gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }>({ gps: {}, tiendas: {} });
+  const [planExt,   setPlanExt]   = useState<{ gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo>; horario?: { salidaMin: number; servicioMin: number } }>({ gps: {}, tiendas: {} });
   // Km real + tiempo por tramo (Google Directions) de las rutas del Planificador, POR ÍNDICE de
   // ruta (el mapa dibuja varias). Se calculan al dibujar y suben por onKmReady.
   const [planLegsByRoute, setPlanLegsByRoute] = useState<Record<number, { dist: string; dur: string; durSec?: number }[]>>({});
@@ -2526,6 +2526,9 @@ export default function RutasScreen() {
       // sincroniza con los chips) — antes la tarjeta no filtraba porque dragLive dibuja todas.
       selectedPatente={modo === 'drag' ? camionSeleccionado : undefined}
       onSelectPatente={modo === 'drag' ? setCamionSeleccionado : undefined}
+      // Solo el Planificador tiene una hora de salida en pantalla que respetar. En DESPACHO la
+      // salida es por camión (la sugerida de #467), así que la tarjeta no inventa una hora.
+      horario={modo === 'plan' ? planExt.horario : undefined}
     />
   );
 

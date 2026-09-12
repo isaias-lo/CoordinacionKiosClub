@@ -49,7 +49,7 @@ interface Props {
   /** Reporta TODAS las rutas (visibles con paradas; ocultas vacías, para conservar el color por
    *  índice) + el punto de partida compartido, para dibujarlas en el MapSection fijo. `ext` lleva
    *  las paradas por DIRECCIÓN (coords + nombre) de todas las rutas visibles. */
-  onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
+  onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; horario?: { salidaMin: number; servicioMin: number }; tiendas: Record<string, TiendaInfo> }) => void;
   /** Tiempo/dist por tramo (Google) por índice de ruta: `legDataByRoute[i][j]` = tramo j de la ruta i. */
   legDataByRoute?: Record<number, { dist: string; dur: string; durSec?: number }[]>;
   /** Km real (Google) por índice de ruta. */
@@ -452,7 +452,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       extTiendas[END_CODE] = { n: 'Punto de llegada', z: '', v: '', _parada: true } as unknown as TiendaInfo;
     }
     const anyStops = rutas.some(rt => rt.ts.length > 0);
-    onPlanRutasRef.current?.(anyStops ? rutas : [], [startCoord.lat, startCoord.lng], { gps: extGps, tiendas: extTiendas });
+    onPlanRutasRef.current?.(anyStops ? rutas : [], [startCoord.lat, startCoord.lng], { horario: salidaMin == null ? undefined : { salidaMin, servicioMin }, gps: extGps, tiendas: extTiendas });
   }, [routesComputed, visibleIds, startCoord, endPoint]);
 
   const resultados = useMemo(() => buscarTiendas(tiendas, gps, search), [tiendas, gps, search]);

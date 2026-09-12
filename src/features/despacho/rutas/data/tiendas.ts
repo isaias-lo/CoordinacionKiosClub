@@ -149,7 +149,19 @@ export const GPS_INICIAL: Record<string, [number, number]> = {
 
 export const CD_INICIAL: [number, number] = [-33.412581, -70.632438];
 
-export const COLS = ['#D42B2B','#1B2A6B','#34C759','#FF9500','#8b5cf6','#22d3ee','#f97316','#ec4899'];
+/**
+ * Un color por ruta, en el orden en que se asignan (M-10).
+ *
+ * La paleta anterior tenía DOS naranjos casi iguales (`#FF9500` y `#f97316`) y un rojo contra un
+ * magenta que a tamaño de pin no se distinguían. Con 8 camiones sobre Santiago, el mapa dejaba de
+ * servir para lo único que sirve: saber de quién es cada pin.
+ *
+ * Ahora son 8 matices repartidos (rojo, azul, verde, ámbar, violeta, cian, magenta, pizarra), todos
+ * lo bastante oscuros para leerse sobre el mapa claro y sobre el oscuro. El par más parecido —rojo
+ * y magenta— quedó en las posiciones 1 y 7: con seis rutas o menos nunca aparecen juntos. Y por si
+ * acaso, cada pin lleva su patente en el tooltip.
+ */
+export const COLS = ['#D42B2B','#1B2A6B','#0E9F6E','#F59E0B','#7C3AED','#0891B2','#BE185D','#64748B'];
 
 export const PROVIDENCIA        = new Set(['09LEO','40LIL','20CTC','52MUT']);
 export const REGION_V           = new Set(['37VIÑ','08RNC','33CON']);
