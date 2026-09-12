@@ -175,7 +175,8 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         ${isActive
           ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
           : terminada
-          ? 'bg-[#16A34A] border-2 border-[#16A34A] shadow-sm'
+          // [M-02] El verde va en el BORDE, no en todo el fondo (ver el mismo cambio en StepForm).
+          ? 'bg-[rgba(22,163,74,0.10)] border-2 border-[#15803D] shadow-sm'
           : hasPdf
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
           : isToday
@@ -195,19 +196,23 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       )}
       {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
           oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasPdf ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-[#15803D]' : hasPdf ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 ${terminada ? 'text-white/90' : 'text-text-2'}`}>
+      {/* [M-04] Dos líneas en vez de recortar: "BUENAVENTU…" y "BUENAVENTUR…" son tiendas
+          distintas que en pantalla se veían casi iguales, y son las que se arrastran a un camión. */}
+      <div className="text-[11px] font-semibold w-full text-center leading-tight px-0.5 mt-1 text-text-2 line-clamp-2"
+        title={t.name}>
         {t.name}
       </div>
       {terminada && (
-        <span className="text-[9px] font-extrabold text-white/95 tracking-wide uppercase mt-0.5">✓ Terminada</span>
+        <span className="text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase mt-0.5">✓ Terminada</span>
       )}
       {(() => {
         const tb = tipoBadge(tipoCat);
+        // [M-02] 11px es el piso de legibilidad de la app; antes iba en 9.
         return tb ? (
-          <span style={{ marginTop: 2, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
+          <span style={{ marginTop: 2, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
             {tb.label}
           </span>
         ) : null;
@@ -2340,7 +2345,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               onDragLeave={handleAddDragLeave}
               onDrop={handleAddDrop}
               className={`transition-colors ${addDropActive ? 'bg-[rgba(30,64,175,0.07)]' : ''}`}>
-              <div className={`px-2.5 py-2 border-b sticky top-0 z-10 transition-all flex items-center gap-2 ${addDropActive ? 'bg-[rgba(30,64,175,0.18)] border-[#1E40AF]/60' : 'bg-[rgba(30,64,175,0.10)] border-[rgba(30,64,175,0.20)]'}`}>
+              <div className={`px-2.5 py-2 border-b sticky top-0 z-20 transition-all flex items-center gap-2 bg-bg ${addDropActive ? 'border-[#1E40AF]/60' : 'border-[rgba(30,64,175,0.20)]'}`}
+                style={{ backgroundImage: `linear-gradient(rgba(30,64,175,${addDropActive ? 0.18 : 0.10}), rgba(30,64,175,${addDropActive ? 0.18 : 0.10}))` }}>
                 <span className="font-barlow-condensed text-[15px] font-extrabold tracking-wide text-[#1E40AF]">
                   {addDropActive ? '↓ Suelta aquí' : 'Hoy'}
                 </span>
@@ -2397,7 +2403,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               {today.length > 0 && (
                 <div
                   onClick={() => !removeDropActive && setShowTodas(prev => !prev)}
-                  className={`px-2.5 py-2 border-b border-t sticky top-0 z-10 transition-all flex items-center ${removeDropActive ? 'cursor-default bg-[rgba(217,119,6,0.18)] border-warn/60' : 'cursor-pointer bg-bg border-border'}`}>
+                  className={`px-2.5 py-2 border-b border-t sticky top-0 z-20 transition-all flex items-center bg-bg ${removeDropActive ? 'cursor-default border-warn/60' : 'cursor-pointer border-border'}`}
+                  style={removeDropActive ? { backgroundImage: 'linear-gradient(rgba(217,119,6,0.18), rgba(217,119,6,0.18))' } : undefined}>
                   <span className="font-barlow-condensed text-[13px] font-bold tracking-wide text-text-3 flex-1">
                     {removeDropActive ? '↓ Suelta para retirar de hoy' : 'Todas'}
                   </span>
