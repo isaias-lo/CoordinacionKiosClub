@@ -79,14 +79,25 @@ export function buildCongeladosRows(
 // Devuelve la promesa del POST a Sheets para que el llamador pueda encadenar
 // acciones que dependan de que la escritura ya esté en la planilla. La promesa
 // nunca rechaza (espeja sheetsSantiagoWrite).
+//
+// Lo que SÍ informa es si el espejo a Supabase falló: la planilla puede haberse escrito y la base
+// no. Eso pasó durante meses sin que se notara, porque acá se ignoraba la respuesta entera y la
+// pantalla decía "✓ Registrado" igual.
+export interface ResultadoCongeladosWrite {
+  /** false = ni siquiera se pudo escribir la planilla. */
+  ok: boolean;
+  /** Errores del espejo a despacho_rm/despacho_regiones. Vacío = la base quedó al día. */
+  mirrorErrores: string[];
+}
+
 export function sheetsCongeladosWrite(
   items: CongeladoItem[],
   meta: CongeladosMeta,
   tabla: 'despacho_rm' | 'despacho_regiones',
   token?: string,
-): Promise<void> {
+): Promise<ResultadoCongeladosWrite> {
   const rows = buildCongeladosRows(items, meta);
-  if (!rows.length) return Promise.resolve();
+  if (!rows.length) return Promise.resolve({ ok: true, mirrorErrores: [] });
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -95,5 +106,11 @@ export function sheetsCongeladosWrite(
     method:  'POST',
     headers,
     body:    JSON.stringify({ sheet: 'DESPACHO CONGELADOS', tabla, fuente: 'bodega_congelados', rows }),
-  }).then(() => undefined).catch(err => { console.error('[sheetsCongeladosWrite]', err); });
+  })
+    .then(async res => {
+      if (!res.ok) return { ok: false, mirrorErrores: [`HTTP ${res.status}`] };
+      const body = await res.json().catch(() => ({})) as { mirrorErrores?: string[] };
+      return { ok: true, mirrorErrores: body.mirrorErrores ?? [] };
+    })
+    .catch(err => { console.error('[sheetsCongeladosWrite]', err); return { ok: false, mirrorErrores: [String(err)] }; });
 }

@@ -5,6 +5,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/registroFaltantes';
 import { esRespaldoEnrutador, reconciliarRespaldo, aplicarRuteoAFila, aplicarRuteoARecord, COL_RUTEO, type FilaRespaldo } from '@/features/despacho/rutas/utils/reconciliarRespaldo';
 import { clavesConPatente } from './asignacion';
+import { paraMirror, camposDescartados } from './mirror';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -197,7 +198,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[]; tabla?: string };
-    const { sheet, rows = [], fuente, action } = body;
+    const { sheet, rows = [], action } = body;
+
+    // `body.fuente` ('bodega_rm', 'enrutador', …) se sigue aceptando porque los clientes lo mandan,
+    // pero NO se escribe: despacho_rm/despacho_regiones no tienen esa columna (ver ./mirror). La
+    // procedencia se guarda en despacho_sesion, que sí la tiene.
+    //
+    // Los errores del espejo se juntan acá y VUELVEN en la respuesta. Antes solo iban a console.error
+    // y el cliente veía "✓ Registrado" aunque la base no hubiera recibido nada.
+    const mirrorErrores: string[] = [];
+    const avisarDescartes = (muestra?: Record<string, unknown>) => {
+      const sobran = muestra ? camposDescartados(muestra) : [];
+      if (sobran.length) console.warn(`[sheets-write] campos ignorados (no existen en la tabla): ${sobran.join(', ')}`);
+    };
 
     if (!ALLOWED_SHEETS.has(sheet)) {
       return NextResponse.json({ error: `Hoja no permitida: ${sheet}` }, { status: 400 });
@@ -352,10 +365,10 @@ export async function POST(request: NextRequest) {
           // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206).
           // DESPACHO RM/REGIONES escribe la fecha en col B (índice 1). Aplicar formato post-append.
           await applyDateFormat(gs, sheet, faltaAppendRes.data.updates?.updatedRange, 1);
-          const withFuente = fuente ? faltaRecords.map(r => ({ ...r, fuente })) : faltaRecords;
+          const limpios = faltaRecords.map(paraMirror);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error } = await sb.from(table).upsert(withFuente as any[], { onConflict: 'id' });
-          if (error) console.error(`[sheets-write] Supabase upsert faltantes ${table}:`, error.message);
+          const { error } = await sb.from(table).upsert(limpios as any[], { onConflict: 'id' });
+          if (error) { console.error(`[sheets-write] Supabase upsert faltantes ${table}:`, error.message); mirrorErrores.push(`upsert faltantes: ${error.message}`); }
         }
 
         // Asignar patente = tienda lista para salir → avanzar seguimiento Registrado → Pendiente.
@@ -449,10 +462,11 @@ export async function POST(request: NextRequest) {
         const existingRecords = enriched.filter(r =>  existingIds.has(r.id as string));
 
         if (newRecords.length) {
-          const withFuente = fuente ? newRecords.map(r => ({ ...r, fuente })) : newRecords;
+          avisarDescartes(newRecords[0]);
+          const limpios = newRecords.map(paraMirror);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error } = await sb.from(table).insert(withFuente as any[]);
-          if (error) console.error(`[sheets-write] Supabase insert ${table}:`, error.message);
+          const { error } = await sb.from(table).insert(limpios as any[]);
+          if (error) { console.error(`[sheets-write] Supabase insert ${table}:`, error.message); mirrorErrores.push(`insert: ${error.message}`); }
         }
 
         for (const rm of existingRecords) {
@@ -466,12 +480,11 @@ export async function POST(request: NextRequest) {
             ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
             ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
           };
-          if (fuente) updateObj.fuente = fuente;
-          const { error } = await sb.from(table).update(updateObj).eq('id', rm.id as string);
-          if (error) console.error(`[sheets-write] Supabase update ${table}:`, error.message);
+          const { error } = await sb.from(table).update(paraMirror(updateObj)).eq('id', rm.id as string);
+          if (error) { console.error(`[sheets-write] Supabase update ${table}:`, error.message); mirrorErrores.push(`update ${rm.id}: ${error.message}`); }
         }
 
-        return NextResponse.json({ ok: true, written: rows.length, respaldoReconciliado: idsABorrar.length });
+        return NextResponse.json({ ok: true, written: rows.length, respaldoReconciliado: idsABorrar.length, mirrorErrores });
       }
     }
 
@@ -485,7 +498,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'tabla inválida para DESPACHO CONGELADOS (debe ser despacho_rm o despacho_regiones)' }, { status: 400 });
       }
       const records = tabla === 'despacho_rm' ? rows.map(toRmRecord) : rows.map(toRegionesRecord);
-      const fuenteCong = fuente ?? 'bodega_congelados';
 
       // Append SOLO filas nuevas a la hoja (idempotente por id en col A).
       const idColRes = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'DESPACHO CONGELADOS!A:A' });
@@ -501,17 +513,18 @@ export async function POST(request: NextRequest) {
         await applyDateFormat(gs, 'DESPACHO CONGELADOS', appRes.data.updates?.updatedRange, 1);
       }
 
-      // Mirror a Supabase (tabla por región) con fuente='bodega_congelados'.
+      // Mirror a Supabase (tabla por región).
       const ids = records.map(r => r.id);
       const { data: existing } = await sb.from(tabla).select('id').in('id', ids);
       const existingIds = new Set((existing ?? []).map((e: { id: string }) => e.id));
       const newRecords = records.filter(r => !existingIds.has(r.id));
       const existingRecords = records.filter(r => existingIds.has(r.id));
       if (newRecords.length) {
-        const withFuente = newRecords.map(r => ({ ...r, fuente: fuenteCong }));
+        avisarDescartes(newRecords[0]);
+        const limpios = newRecords.map(paraMirror);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await sb.from(tabla).insert(withFuente as any[]);
-        if (error) console.error('[sheets-write] Supabase insert congelados', tabla, error.message);
+        const { error } = await sb.from(tabla).insert(limpios as any[]);
+        if (error) { console.error('[sheets-write] Supabase insert congelados', tabla, error.message); mirrorErrores.push(`insert congelados: ${error.message}`); }
       }
       for (const r of existingRecords) {
         const rm = r as Record<string, unknown>;
@@ -519,16 +532,15 @@ export async function POST(request: NextRequest) {
         const updateObj: Record<string, any> = {
           tipo: rm.tipo, carga: rm.carga, regimen: rm.regimen,
           ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
-          fuente: fuenteCong,
           ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
           ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
           // Re-registrar una caja ya registrada también actualiza su peso (si ahora lo tiene).
           ...(rm.peso_kg !== null && rm.peso_kg !== undefined && { peso_kg: rm.peso_kg }),
         };
-        const { error } = await sb.from(tabla).update(updateObj).eq('id', r.id);
-        if (error) console.error('[sheets-write] Supabase update congelados', tabla, error.message);
+        const { error } = await sb.from(tabla).update(paraMirror(updateObj)).eq('id', r.id);
+        if (error) { console.error('[sheets-write] Supabase update congelados', tabla, error.message); mirrorErrores.push(`update congelados ${r.id}: ${error.message}`); }
       }
-      return NextResponse.json({ ok: true, written: rows.length });
+      return NextResponse.json({ ok: true, written: rows.length, mirrorErrores });
     }
 
     // ── CONTROL DESPACHO: upsert by fecha::cod, update patente columns ──

@@ -316,7 +316,8 @@ export function CongeladosPage({ zona }: Props) {
       });
 
       const tabla = zona === 'nacional' ? 'despacho_regiones' : 'despacho_rm';
-      await sheetsCongeladosWrite(items, { fecha, supervisor: profile?.full_name ?? '' }, tabla, accessToken ?? undefined);
+      const res = await sheetsCongeladosWrite(items, { fecha, supervisor: profile?.full_name ?? '' }, tabla, accessToken ?? undefined);
+      if (!res.ok) throw new Error(res.mirrorErrores.join('; '));
 
       // Refleja la carga congelada del día de TODAS las tiendas de la grilla (para el
       // Enrutador) — no solo la que se acaba de registrar.
@@ -333,7 +334,14 @@ export function CongeladosPage({ zona }: Props) {
 
       // Optimista: se ve al instante. La base es la que manda y la corrige en el próximo evento.
       setRegistradas(prev => new Set(prev).add(cod));
-      showToast('✓ Registrado', '#16A34A');
+      // Si la planilla se escribió pero el espejo a la base no, decirlo: un "✓" mentiroso acá es
+      // justo lo que hace que después falte carga en el Enrutador sin que nadie sepa por qué.
+      if (res.mirrorErrores.length) {
+        console.error('[CongeladosPage] espejo a la base falló', res.mirrorErrores);
+        showToast('Quedó en la planilla, pero no en la base. Avisa a soporte.', '#F59E0B');
+      } else {
+        showToast('✓ Registrado', '#16A34A');
+      }
       setSelected(null);
     } catch (err) {
       console.error('[CongeladosPage] registrar', err);
