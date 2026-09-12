@@ -1,5 +1,62 @@
 import { describe, it, expect } from 'vitest';
-import { categoriaDeTipo, agruparResumenDiario, fechaAISO, resumenParaGrafico } from '../despachoResumen';
+import { categoriaDeTipo, agruparResumenDiario, fechaAISO, resumenParaGrafico, resumenParaTarjetas } from '../despachoResumen';
+
+// [C-01] Las tarjetas de Inicio y el gráfico de la misma pantalla mostraban números distintos del
+// mismo día. Ahora salen de la misma agregación; esto lo deja amarrado.
+describe('las tarjetas y el gráfico cuentan lo mismo', () => {
+  // Un día real: 11/09/2026 tal como lo registró Bodega — 61 pallets, 38 bultos, 52 chocolates.
+  const filas = [
+    ...Array.from({ length: 61 }, () => ({ fecha: '11/09/2026', tipo: 'Pallet' })),
+    ...Array.from({ length: 38 }, () => ({ fecha: '11/09/2026', tipo: 'Bulto' })),
+    ...Array.from({ length: 52 }, () => ({ fecha: '11/09/2026', tipo: 'Bulto CH' })),
+  ];
+
+  it('el mismo día da los mismos totales en las dos formas', () => {
+    const dias = agruparResumenDiario(filas);
+    const tarjeta = resumenParaTarjetas(dias, '2026-06-01')[0];
+    const grafico = resumenParaGrafico(dias, 7)[0];
+    expect(tarjeta.date).toBe(grafico.fechaISO);
+    expect(tarjeta.total_pallets).toBe(grafico.pallets);
+    expect(tarjeta.total_bultos).toBe(grafico.bultos);
+    expect(tarjeta.total_chocolates).toBe(grafico.chocolates);
+    expect(tarjeta.total_contenedores).toBe(grafico.contenedores);
+  });
+
+  it('y son las cifras que muestra Bodega, no un subconjunto', () => {
+    const t = resumenParaTarjetas(agruparResumenDiario(filas), '2026-06-01')[0];
+    expect(t).toMatchObject({ total_pallets: 61, total_bultos: 38, total_chocolates: 52 });
+  });
+});
+
+describe('resumenParaTarjetas', () => {
+  const filas = [
+    { fecha: '11/09/2026', tipo: 'Pallet' },
+    { fecha: '10/09/2026', tipo: 'Bulto' },
+    { fecha: '01/01/2026', tipo: 'Pallet' },
+    { fecha: 'basura',     tipo: 'Pallet' },
+  ];
+
+  it('deja fuera lo anterior a la ventana pedida', () => {
+    const out = resumenParaTarjetas(agruparResumenDiario(filas), '2026-09-01');
+    expect(out.map(d => d.date)).toEqual(['2026-09-11', '2026-09-10']);
+  });
+
+  it('ordena del día más reciente al más antiguo', () => {
+    const out = resumenParaTarjetas(agruparResumenDiario(filas), '2020-01-01');
+    expect(out.map(d => d.date)).toEqual(['2026-09-11', '2026-09-10', '2026-01-01']);
+  });
+
+  it('descarta las fechas que no se pueden leer en vez de inventarles un día', () => {
+    const out = resumenParaTarjetas(agruparResumenDiario(filas), '2020-01-01');
+    expect(out.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d.date))).toBe(true);
+  });
+
+  it('a diferencia del gráfico, conserva los días en cero (la tarjeta cuenta días despachados)', () => {
+    const dias = [{ fecha: '11/09/2026', pallets: 0, bultos: 0, contenedores: 0, chocolates: 0 }];
+    expect(resumenParaTarjetas(dias, '2026-01-01')).toHaveLength(1);
+    expect(resumenParaGrafico(dias, 7)).toHaveLength(0);
+  });
+});
 
 describe('categoriaDeTipo', () => {
   it('mapea cada tipo a su categoría', () => {
