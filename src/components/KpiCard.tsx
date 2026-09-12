@@ -11,13 +11,15 @@ interface KpiCardProps {
   /** +12 means +12 units vs yesterday. undefined = no trend shown */
   trend?: number;
   trendLabel?: string;
+  /** Aclaración al pie: de qué período habla el número. Sin esto, "1.660" no se puede interpretar. */
+  nota?: string;
   loading?: boolean;
   onClick?: () => void;
 }
 
 export function KpiCard({
   label, value, icon: Icon, color = '#1B2A6B',
-  trend, trendLabel, loading, onClick,
+  trend, trendLabel, nota, loading, onClick,
 }: KpiCardProps) {
   if (loading) {
     return (
@@ -56,6 +58,10 @@ export function KpiCard({
       <div className="font-barlow-condensed text-[32px] font-extrabold leading-none" style={{ color: '#1C1C1E' }}>
         {typeof value === 'number' ? value.toLocaleString('es-CL') : value}
       </div>
+
+      {trend === undefined && nota && (
+        <div className="text-[11px] text-text-3">{nota}</div>
+      )}
 
       {trend !== undefined && (
         <div className="flex items-center gap-1">
