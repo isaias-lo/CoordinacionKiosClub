@@ -31,6 +31,9 @@ export async function pushCounts(
   fuente: 'regiones' | 'santiago' | 'congelados-regiones' | 'congelados-santiago',
   counts: CountMap,
   conocidas?: string[],
+  /** Día al que pertenece la carga. Por defecto hoy. Congelados necesita poder registrar un día
+   *  anterior: se arma el viernes y se rutea el fin de semana (ver CongeladosPage). */
+  fechaCarga?: string,
 ): Promise<void> {
   const entries = Object.entries(counts);
   // Sin tiendas cargadas → no tocar nada. Evita borrar la data del día durante el arranque,
@@ -40,7 +43,7 @@ export async function pushCounts(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
 
-  const fecha = todayISO();
+  const fecha = fechaCarga ?? todayISO();
   const rows = entries.map(([cod, vals]) => ({
     fecha,
     fuente,
