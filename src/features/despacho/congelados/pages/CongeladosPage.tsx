@@ -21,6 +21,7 @@ import { getTiendaSantiagoByCod } from '../../santiago/data/tiendasSantiago';
 import { CongeladoGridCard } from '../components/CongeladoGridCard';
 import { sheetsCongeladosWrite } from '../utils/sheetsCongelados';
 import { construirItemsCongelados, type SlotCongelado } from '../utils/construirItemsCongelados';
+import { fechaChile } from '@/lib/fechaChile';
 
 // Slot de picking_pallets ya filtrado a congelados (esCongeladoContenido). Superset de
 // SlotCongelado (agrega `contenido`, que ya no hace falta una vez filtrado pero se conserva
@@ -44,8 +45,8 @@ function nombreDeTienda(cod: string, zona: ZonaCongelados): string {
 }
 
 function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 interface Props {

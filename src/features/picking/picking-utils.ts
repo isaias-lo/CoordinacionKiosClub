@@ -1,9 +1,13 @@
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { TodayStore, StoreGroupKey, PickerStatRow, PalletSlot } from './picking-types';
 import { CANONICAL_PICKER_KEYS } from './picking-types';
+import { fechaChile } from '@/lib/fechaChile';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-export function todayISO(): string { return new Date().toISOString().slice(0, 10); }
+export function todayISO(): string {
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
+}
 
 /**
  * ¿El opsMap guardado fue traído de Odoo HOY (día LOCAL)? Se usa para no restaurar el

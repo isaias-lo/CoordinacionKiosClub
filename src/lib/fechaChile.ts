@@ -7,14 +7,29 @@
 
 const TZ = 'America/Santiago';
 
-/** Fecha de Chile en YYYY-MM-DD, opcionalmente desplazada `offsetDays` días. */
+/**
+ * Fecha de Chile en YYYY-MM-DD, opcionalmente desplazada `offsetDays` días.
+ *
+ * **Esta es la única forma correcta de preguntar "¿qué día es hoy?" en esta app.** No usar
+ * `new Date().toISOString().slice(0,10)` (da el día UTC: pasadas las ~20:00 en Chile ya rodó al
+ * siguiente) ni `getFullYear/getMonth/getDate` (da el día del RELOJ DEL EQUIPO, que en el servidor
+ * es UTC — de ahí los errores de hidratación de React: el servidor dibujaba un día y el navegador
+ * otro, y Picking › Actividad mostraba mañana mientras Bodega y el Enrutador mostraban hoy).
+ */
 export function fechaChile(offsetDays = 0): string {
-  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+  const hoy = fechaChileDe(new Date());
   if (!offsetDays) return hoy;
   const [y, m, d] = hoy.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + offsetDays);
   return dt.toISOString().slice(0, 10);
+}
+
+/** El día de Chile (YYYY-MM-DD) en que cae un instante dado. Mismo resultado en servidor y cliente. */
+export function fechaChileDe(value: string | number | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d);
 }
 
 // ── Formato de timestamps para mostrar SIEMPRE en hora de Chile ──────────────

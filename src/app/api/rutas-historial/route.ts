@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { construirHistorialTiendas, type FilaPicking, type FilaDespacho } from '@/features/despacho/rutas/utils/historialTiendas';
 import type { EsperadoTienda } from '@/features/despacho/rutas/utils/enrutadorIncremental';
+import { fechaChile } from '@/lib/fechaChile';
 
 // [PASO 3] GET /api/rutas-historial?fecha=YYYY-MM-DD
 // Devuelve, por tienda, el `EsperadoTienda` para un día como `fecha` (default hoy):
@@ -21,8 +22,7 @@ const cache = new Map<string, { at: number; data: HistorialResponse }>();
 const TTL_MS = 60 * 60 * 1000; // 1 h
 
 function hoyISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return fechaChile();  // día del CD — ver lib/fechaChile.ts
 }
 
 async function pullPicking(): Promise<FilaPicking[]> {

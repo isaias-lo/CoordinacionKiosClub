@@ -58,6 +58,7 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
+import { fechaChile } from '@/lib/fechaChile';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -164,7 +165,7 @@ export default function RutasScreen() {
       const raw = localStorage.getItem('despacho_pendientes');
       if (!raw) return null;
       const data = JSON.parse(raw) as PendientesGuardados;
-      const today = new Date().toISOString().split('T')[0];
+      const today = fechaChile();
       return data.savedAt && data.savedAt !== today && data.stores?.length > 0 ? data : null;
     } catch { return null; }
   });
@@ -494,8 +495,7 @@ export default function RutasScreen() {
         const rawCounts = localStorage.getItem('santiagoCounts');
         if (rawCounts) {
           const sc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number; ch?: number }> } = JSON.parse(rawCounts);
-          const d = new Date();
-          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const todayKey = fechaChile();
           const counts = (sc.date && sc.date === todayKey)
             ? (sc.counts ?? null)
             : (!sc.date ? null : null); // reject legacy or wrong-date data
@@ -525,8 +525,7 @@ export default function RutasScreen() {
         const rawRegiones = localStorage.getItem('regionesCounts');
         if (rawRegiones) {
           const rc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number; ch?: number }> } = JSON.parse(rawRegiones);
-          const d = new Date();
-          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const todayKey = fechaChile();
           const counts = (rc.date && rc.date === todayKey) ? (rc.counts ?? null) : null;
           if (counts) {
             setCalT(prev => {

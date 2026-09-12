@@ -4,6 +4,7 @@ import { buildRows as buildSantiagoRows } from '@/features/despacho/santiago/uti
 import { buildRows as buildRegionesRows } from '@/features/despacho/regiones/utils/sheetsRegiones';
 import type { SantiagoItem } from '@/features/despacho/santiago/types';
 import type { DispatchItem } from '@/types';
+import { fechaChile } from '@/lib/fechaChile';
 
 function isCronRequest(req: NextRequest) {
   return req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = supabaseServer();
-  const today = new Date().toISOString().split('T')[0];
+  const today = fechaChile();
   const results: string[] = [];
 
   const { data: sessions } = await sb

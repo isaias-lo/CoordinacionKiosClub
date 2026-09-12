@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { BarcodeCard } from '../../despacho/shared/BarcodeCard';
+import { fechaChile } from '@/lib/fechaChile';
 
 const DISMISSED_KEY = 'combine_alerts_dismissed_v1';
 
@@ -11,7 +12,7 @@ function loadDismissed(): Set<number> {
   try {
     const raw = localStorage.getItem(DISMISSED_KEY);
     if (!raw) return new Set();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = fechaChile();
     const data = JSON.parse(raw) as { date: string; ids: number[] };
     if (data.date !== today) return new Set(); // reset daily
     return new Set(data.ids);
@@ -21,7 +22,7 @@ function loadDismissed(): Set<number> {
 function saveDismissed(ids: Set<number>) {
   try {
     localStorage.setItem(DISMISSED_KEY, JSON.stringify({
-      date: new Date().toISOString().slice(0, 10),
+      date: fechaChile(),
       ids:  [...ids],
     }));
   } catch {}
@@ -63,8 +64,7 @@ export function CombineAlertsPanel() {
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    const d = new Date();
-    const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const today = fechaChile();
 
     // 1. Slots que fueron combinados hoy
     const { data: away } = await supabase
@@ -99,7 +99,9 @@ export function CombineAlertsPanel() {
       .eq('is_active', true)
       .in('store_cod', [...new Set((newSlots ?? []).map(s => s.store_cod as string))]);
 
-    const stamp = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${d.getFullYear()}`;
+    // DDMMYYYY del MISMO día que se consultó arriba (`today`), no del reloj del equipo.
+    const [aaaa, mm, dd] = today.split('-');
+    const stamp = `${dd}${mm}${aaaa}`;
 
     const result: CombinedGroup[] = [];
     for (const [newId, mergedSlots] of byNew.entries()) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { fechaChile } from '@/lib/fechaChile';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID ?? '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -21,7 +22,7 @@ function isoToFecha(iso: string): string {
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  const fecha = request.nextUrl.searchParams.get('fecha') ?? new Date().toISOString().slice(0, 10);
+  const fecha = request.nextUrl.searchParams.get('fecha') ?? fechaChile();
   const { data, error } = await supabaseServer()
     .from('rutas_despacho')
     .select('id, fecha, codigo_ruta, chofer, chofer_original, patente, pioneta_1, pioneta_2, flota_modificada, flota_modificada_at, ruta_tiendas(store_cod, orden, pallets, bultos)')

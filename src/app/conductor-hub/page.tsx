@@ -5,6 +5,7 @@ import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw } from 'lu
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
 import { guiaHref } from '@/lib/guiaUrl';
 import { rutaDeTienda, eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
+import { fechaChile } from '@/lib/fechaChile';
 
 // Registra salida / llegada en ruta_eventos. Fire-and-forget: nunca frena al chofer en la calle.
 function registrarEvento(e: EventoRuta) {
@@ -44,9 +45,9 @@ const ESTADO_LABEL: Record<string, string> = {
   pendiente: 'Pendiente', en_camino: 'En Camino', entregado: 'Entregado', recibido: 'Recibido',
 };
 
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function todayISO(): string {
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 /* ── Page ───────────────────────────────────────────────── */

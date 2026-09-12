@@ -54,6 +54,7 @@ import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
+import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 
@@ -72,8 +73,7 @@ function codToTiendaName(): Record<string, string> {
 }
 
 /* ── Per-day calendar overrides ── */
-const _today = new Date();
-const _localDate = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
+const _localDate = fechaChile();
 const todayDateKey   = `calendarExtra_${_localDate}`;
 const todayRemoveKey = `calendarRemoved_${_localDate}`;
 function loadExtraCods(): string[]  { try { return JSON.parse(localStorage.getItem(todayDateKey)   || '[]'); } catch { return []; } }
@@ -428,8 +428,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const d = new Date();
-    const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const todayKey = fechaChile();
     const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
     // [P5] Tiendas que ESTE cliente tiene en pantalla (con o sin carga): acota el borrado de
     // `despacho_sesion` a su propio universo, para no borrar las cargadas por otra persona.
@@ -543,8 +542,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   /* ── Load picking slots from picking_pallets (today) ── */
   useEffect(() => {
-    const d = new Date();
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dateStr = fechaChile();
 
     const load = async () => {
       const { data } = await supabase

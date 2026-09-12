@@ -1,5 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { fechaChile, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO } from '@/lib/fechaChile';
+import { fechaChile, fechaChileDe, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO } from '@/lib/fechaChile';
+
+// Instantes escritos en UTC: el resultado no puede depender del huso donde corra el test.
+describe('fechaChileDe — el día del CD de un instante', () => {
+  it('a las 21:30 de Chile todavía es el mismo día (el bug de C-04)', () => {
+    // 12-sep 00:30 UTC = 11-sep 21:30 en Chile. Con el día UTC daba 12 → Actividad mostraba mañana.
+    expect(fechaChileDe(new Date('2026-09-12T00:30:00Z'))).toBe('2026-09-11');
+  });
+
+  it('cruza al día siguiente recién a la medianoche de Chile', () => {
+    expect(fechaChileDe(new Date('2026-09-12T02:59:00Z'))).toBe('2026-09-11'); // 23:59
+    expect(fechaChileDe(new Date('2026-09-12T03:01:00Z'))).toBe('2026-09-12'); // 00:01
+  });
+
+  it('resuelve el horario de verano solo (invierno UTC-4, verano UTC-3)', () => {
+    expect(fechaChileDe(new Date('2026-06-15T03:30:00Z'))).toBe('2026-06-14'); // 23:30 invierno
+    expect(fechaChileDe(new Date('2026-01-15T02:30:00Z'))).toBe('2026-01-14'); // 23:30 verano
+  });
+
+  it('acepta string y epoch, y devuelve vacío con basura', () => {
+    expect(fechaChileDe('2026-09-12T00:30:00Z')).toBe('2026-09-11');
+    expect(fechaChileDe(Date.parse('2026-09-12T00:30:00Z'))).toBe('2026-09-11');
+    expect(fechaChileDe('no es fecha')).toBe('');
+  });
+
+  it('el mismo instante da el mismo día llamado de cualquier forma', () => {
+    const iso = '2026-09-12T00:30:00Z';
+    expect(fechaChileDe(iso)).toBe(fechaChileDe(new Date(iso)));
+  });
+});
 
 describe('fechaChile', () => {
   it('devuelve formato YYYY-MM-DD', () => {

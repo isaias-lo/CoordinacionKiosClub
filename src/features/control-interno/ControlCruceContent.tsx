@@ -27,6 +27,7 @@ import { useAuth } from '@/components/AuthProvider';
 import SkuModal from './components/SkuModal';
 import ControlCruceDebugTools from './components/ControlCruceDebugTools';
 import { resolveManualFields } from './utils/controlCruceUtils';
+import { fechaChile } from '@/lib/fechaChile';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -276,12 +277,10 @@ function FilterSelect({ label, value, options, onChange }: {
 // ─── Date defaults ────────────────────────────────────────────────────────────
 
 function defaultDateFrom(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 7);
-  return d.toISOString().slice(0, 10);
+  return fechaChile(-7);
 }
 function defaultDateTo(): string {
-  return new Date().toISOString().slice(0, 10);
+  return fechaChile();
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────

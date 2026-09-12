@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { fechaChile } from '@/lib/fechaChile';
 
 /**
  * GET /api/panel-operaciones/pendientes?fecha=YYYY-MM-DD
@@ -26,7 +27,7 @@ interface PendingStore {
 }
 
 function todayFechaISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return fechaChile();
 }
 
 /** Convierte YYYY-MM-DD a DD/MM/YYYY (formato de despacho_rm.fecha) */

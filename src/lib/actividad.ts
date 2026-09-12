@@ -1,3 +1,4 @@
+import { fechaChile } from './fechaChile';
 // Trazabilidad de bodega ("quién hizo qué"). El cliente llama a logActividad (fire-and-forget);
 // la API /api/actividad estampa el actor desde el token (verifyActor), no desde el cliente.
 // NUNCA debe lanzar ni bloquear el flujo de bodega (patrón de picking_eventos.logEvento).
@@ -106,8 +107,7 @@ export interface LogActividadInput extends ActividadCtx {
 }
 
 function localDate(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return fechaChile();  // día del CD — ver lib/fechaChile.ts
 }
 
 /** Registra la actividad vía API. Fire-and-forget: nunca lanza ni bloquea el flujo. */

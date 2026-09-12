@@ -11,6 +11,7 @@ import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
+import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -29,15 +30,14 @@ type SyncableState = {
   registrado?: boolean;
 };
 
-const _d = new Date();
-const todayKey = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+const todayKey = fechaChile();
 const SANTIAGO_KEY = `santiagoState_${todayKey}`;
 
 function isTodayPush(pushedAt: unknown): boolean {
   if (typeof pushedAt !== 'number') return false; // no timestamp — reject to avoid stale data
-  const d = new Date(pushedAt);
-  const t = new Date();
-  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+  // Mismo día del CD con que se arma la clave de arriba: comparar con el reloj del equipo dejaba
+  // pasar (o descartaba) un estado según el huso de quien mirara.
+  return fechaChileDe(new Date(pushedAt)) === fechaChile();
 }
 export const SANTIAGO_TERMINADO_KEY = `santiagoTerminado_${todayKey}`;
 

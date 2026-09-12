@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { fechaChileDe } from '@/lib/fechaChile';
 
 // Credentials are read from server-side env vars only — never from the request body.
 // Prefer ODOO_* (no NEXT_PUBLIC_) so the API key is not compiled into the browser bundle.
@@ -61,9 +62,15 @@ type BatchPicking = {
   responsible: string; responsibleId: number | null; lineCount: number; batch: string;
 };
 
-/** Formatea una Date como 'YYYY-MM-DD' usando la hora LOCAL (no UTC). */
+/**
+ * Formatea una Date como 'YYYY-MM-DD' en el día del CD (America/Santiago).
+ *
+ * Con la hora del equipo esto corría en el servidor bajo UTC: pasadas las ~20:00 en Chile, las
+ * consultas a Odoo por "hoy" (líneas de abajo) pedían las del día SIGUIENTE — sin operaciones — y
+ * el semáforo de Picking se veía vacío.
+ */
 function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return fechaChileDe(d);
 }
 
 interface OdooRpcParams {

@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Truck, Search, X, Plus, MapPin, Check } from 'lucide-react';
 import type { TiendaInfo } from '../data/tiendas';
 import type { ParadaSalida, SalidaVehiculo } from '../utils/flotaInterna';
+import { fechaChile } from '@/lib/fechaChile';
 
 interface Props { tiendas: Record<string, TiendaInfo> }
 
 const TIPOS = ['Entrega', 'Retiro', 'Mixto'];
 const CONTENIDOS = ['Congelados', 'Muebles', 'Merma', 'Maquila', 'Espejos', 'Clorox', 'Varios'];
-const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const hoyISO = fechaChile;  // día del CD — ver lib/fechaChile.ts
 
 export default function FlotaInternaPanel({ tiendas }: Props) {
   const [fecha,       setFecha]       = useState(hoyISO());

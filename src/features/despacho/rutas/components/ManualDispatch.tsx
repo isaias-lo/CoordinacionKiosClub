@@ -14,6 +14,7 @@ import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
+import { fechaChile } from '@/lib/fechaChile';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -953,7 +954,7 @@ export default function ManualDispatch({
                 // Guardar tiendas pendientes para el día siguiente
                 try {
                   localStorage.setItem('despacho_pendientes', JSON.stringify({
-                    savedAt: new Date().toISOString().split('T')[0],
+                    savedAt: fechaChile(),
                     stores: pool.map(t => ({ c: t.c, p: t.p, b: t.b, ch: (t as { ch?: number }).ch ?? 0 })),
                   }));
                 } catch {}
