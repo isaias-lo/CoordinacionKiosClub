@@ -495,8 +495,7 @@ export default function RutasScreen() {
         const rawCounts = localStorage.getItem('santiagoCounts');
         if (rawCounts) {
           const sc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number; ch?: number }> } = JSON.parse(rawCounts);
-          const d = new Date();
-          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const todayKey = fechaChile();
           const counts = (sc.date && sc.date === todayKey)
             ? (sc.counts ?? null)
             : (!sc.date ? null : null); // reject legacy or wrong-date data
@@ -526,8 +525,7 @@ export default function RutasScreen() {
         const rawRegiones = localStorage.getItem('regionesCounts');
         if (rawRegiones) {
           const rc: { date?: string; counts?: Record<string, { p: number; b: number; c?: number; ch?: number }> } = JSON.parse(rawRegiones);
-          const d = new Date();
-          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const todayKey = fechaChile();
           const counts = (rc.date && rc.date === todayKey) ? (rc.counts ?? null) : null;
           if (counts) {
             setCalT(prev => {

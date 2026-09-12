@@ -663,8 +663,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const ch = list.filter(i => i.tipo === 'Chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[cod] = { p, b, c, ch };
     });
-    const d = new Date();
-    const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const todayKey = fechaChile();
     localStorage.setItem('santiagoCounts', JSON.stringify({ date: todayKey, counts }));
     pushCounts('santiago', counts, conocidas).catch(() => {});
   }, [items]);
@@ -698,8 +697,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   // Load picking slots from picking_pallets (today) — feeds P/C/B + contenido in RM/Costa
   useEffect(() => {
-    const d = new Date();
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dateStr = fechaChile();
 
     const load = async () => {
       const { data } = await supabase

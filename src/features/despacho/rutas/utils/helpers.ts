@@ -1,5 +1,6 @@
 import { ALIAS } from '../data/tiendas';
 import { enElPool } from './pool';
+import { fechaChile } from '@/lib/fechaChile';
 
 export function dkm(a: [number, number] | number[], b: [number, number] | number[]): number {
   const R = 6371;
@@ -88,8 +89,7 @@ export function fechaLargaTxt(fechaStr: string): string {
 }
 
 export function todayStr(): string {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+  return fechaChile();  // día del CD — ver lib/fechaChile.ts
 }
 
 /**

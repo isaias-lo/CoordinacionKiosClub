@@ -428,8 +428,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const d = new Date();
-    const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const todayKey = fechaChile();
     const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
     // [P5] Tiendas que ESTE cliente tiene en pantalla (con o sin carga): acota el borrado de
     // `despacho_sesion` a su propio universo, para no borrar las cargadas por otra persona.
@@ -543,8 +542,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   /* ── Load picking slots from picking_pallets (today) ── */
   useEffect(() => {
-    const d = new Date();
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dateStr = fechaChile();
 
     const load = async () => {
       const { data } = await supabase

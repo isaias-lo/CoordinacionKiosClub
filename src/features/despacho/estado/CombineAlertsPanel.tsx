@@ -64,8 +64,7 @@ export function CombineAlertsPanel() {
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    const d = new Date();
-    const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const today = fechaChile();
 
     // 1. Slots que fueron combinados hoy
     const { data: away } = await supabase
@@ -100,7 +99,9 @@ export function CombineAlertsPanel() {
       .eq('is_active', true)
       .in('store_cod', [...new Set((newSlots ?? []).map(s => s.store_cod as string))]);
 
-    const stamp = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${d.getFullYear()}`;
+    // DDMMYYYY del MISMO día que se consultó arriba (`today`), no del reloj del equipo.
+    const [aaaa, mm, dd] = today.split('-');
+    const stamp = `${dd}${mm}${aaaa}`;
 
     const result: CombinedGroup[] = [];
     for (const [newId, mergedSlots] of byNew.entries()) {
