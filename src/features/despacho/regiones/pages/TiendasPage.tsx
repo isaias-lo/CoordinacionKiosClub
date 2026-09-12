@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, ChevronLeft, ClipboardList, User, Store } from 'lucide-react';
+import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
@@ -2472,6 +2472,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               onClick={() => { dispatch({ type: 'SET_TIENDA', payload: null }); setShowMobileResumen(true); }}
               className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
               Resumen ({activeTiendasCount})
+            </button>
+            {/* [C-05] Igual que en RM/Costa: la zona grande de "Subir guías" es `hidden lg:flex`, así
+                que bajo 1024 px Bodega quedaba sin su acción principal. Mismo input de archivo. */}
+            <button
+              onClick={() => !multiPdfLoading && multiFileRef.current?.click()}
+              disabled={multiPdfLoading}
+              className="lg:hidden flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border disabled:opacity-60"
+              title="Subir guías PDF">
+              <FileUp size={16} />
             </button>
             <button
               onClick={() => setShowCalManual(true)}

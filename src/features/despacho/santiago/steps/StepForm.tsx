@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User, Store } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { useApp } from '../../../../context/AppContext';
@@ -2033,6 +2033,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         <button onClick={goToResumen}
           className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
           Resumen ({activeTiendasCount})
+        </button>
+        {/* [C-05] La zona grande de "Subir guías" es `hidden lg:flex`, así que bajo 1024 px —tablet,
+            pantalla partida— Bodega quedaba sin su acción principal, sin decirlo. Acá va el mismo
+            botón (mismo input de archivo) para los anchos donde aquella no aparece. */}
+        <button onClick={() => !guideUploading && guideFileRef.current?.click()}
+          disabled={guideUploading}
+          className="lg:hidden flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border disabled:opacity-60"
+          title="Subir guías PDF">
+          <FileUp size={16} />
         </button>
         <button onClick={() => setShowCalManual(true)}
           className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"

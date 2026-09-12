@@ -391,8 +391,13 @@ export default function InputSection({
 
       {/* Mode tab bar — SIEMPRE visible */}
       <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
-        <div className="flex items-center gap-2 px-4 py-2.5">
-          <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1">
+        {/* [C-03] Esta fila mide ~1155 px con todo puesto. Bajo ese ancho —un notebook de 1366 al
+            110%, el panel lateral abierto, pantalla partida— el `overflow-hidden` del contenedor la
+            recortaba sin scroll ni aviso: "Tablero vivo" quedaba partido contra el borde derecho y
+            no había forma de llegar a él. Ahora la fila se desplaza. Los hijos no se encogen: un
+            botón comprimido a la mitad es tan inservible como uno cortado. */}
+        <div className="flex items-center gap-2 px-4 py-2.5 overflow-x-auto overscroll-x-contain" style={{ scrollbarWidth: 'thin' }}>
+          <div className="flex bg-kbg rounded-[12px] p-[4px] gap-1 flex-shrink-0">
             {MODES.map(({ id, Icon, label, color }) => (
               <button
                 key={id}
@@ -421,7 +426,7 @@ export default function InputSection({
               onClick={() => setMapOculto(v => !v)}
               title={mapOculto ? 'Mostrar el mapa' : 'Esconder el mapa y darle todo el ancho al tablero'}
               aria-pressed={mapOculto}
-              className="h-[40px] px-3.5 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all flex items-center gap-2 mr-2"
+              className="h-[40px] px-3.5 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all flex items-center gap-2 mr-2 flex-shrink-0"
             >
               {mapOculto ? <PanelRightOpen size={15} strokeWidth={2} /> : <PanelRightClose size={15} strokeWidth={2} />}
               <span className="hidden xl:inline">{rotuloBotonMapa(mapOculto)}</span>
@@ -430,7 +435,7 @@ export default function InputSection({
           {!rightPanelContent && modo === 'drag' && onAbrirTablero && (
             <button
               onClick={onAbrirTablero}
-              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-emerald-500/40 text-emerald-700 text-[13px] font-bold hover:border-emerald-600 transition-all flex items-center gap-2 mr-2"
+              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-emerald-500/40 text-emerald-700 text-[13px] font-bold hover:border-emerald-600 transition-all flex items-center gap-2 mr-2 flex-shrink-0"
             >
               <Radio size={15} strokeWidth={2} /><span>Tablero vivo</span>
             </button>
@@ -438,7 +443,7 @@ export default function InputSection({
           {!rightPanelContent && modo === 'drag' && onTerminarDia && (
             <button
               onClick={onTerminarDia}
-              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-knavy/30 text-knavy text-[13px] font-bold hover:border-knavy transition-all flex items-center gap-2"
+              className="h-[40px] px-4 rounded-[12px] bg-white border-2 border-knavy/30 text-knavy text-[13px] font-bold hover:border-knavy transition-all flex items-center gap-2 flex-shrink-0"
             >
               <Flag size={15} strokeWidth={2} /><span>Terminar día</span>
             </button>
@@ -446,7 +451,7 @@ export default function InputSection({
           {!rightPanelContent && modo !== 'drag' && modo !== 'cong' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
             <button
               onClick={onCalcular}
-              className="h-[40px] px-6 rounded-[12px] bg-knavy text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-knavy/90 flex items-center gap-2"
+              className="h-[40px] px-6 rounded-[12px] bg-knavy text-white text-[14px] font-bold transition-all active:scale-[0.97] hover:bg-knavy/90 flex items-center gap-2 flex-shrink-0"
             >
               <Truck size={15} strokeWidth={2} /><span>Calcular Rutas</span>
             </button>
@@ -454,7 +459,7 @@ export default function InputSection({
           {modo !== 'cong' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
             <button
               onClick={onLimpiar}
-              className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all"
+              className="h-[40px] px-4 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all flex-shrink-0"
             >
               Limpiar
             </button>
