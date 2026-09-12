@@ -3,6 +3,7 @@ import { dkm } from './helpers';
 import { GMAPS_KEY, COLS } from '../data/tiendas';
 import type { Ruta } from './routing';
 import type { TiendaInfo } from '../data/tiendas';
+import { calcularETAs, estadoVentana, minAHHMM } from './planificador';
 
 let _gmapsLoaded  = false;
 let _gmapsLoading = false;
@@ -64,14 +65,23 @@ interface DibMapaParams {
   overlaysRef: React.MutableRefObject<unknown[]>;
   cdGeocodedRef: React.MutableRefObject<{lat: number; lng: number} | null>;
   onKmReady?: (kmPorRuta: Record<number, number>, legData: Record<number, {dist: string; dur: string; durSec?: number}[]>) => void;
+  /**
+   * Con qué reloj calcular la hora de llegada de cada parada. Sin esto, la tarjeta del pin sigue
+   * mostrando lo de siempre (distancia y duración del tramo) pero no la hora — que es el dato que
+   * de verdad decide si esa parada está bien puesta.
+   *
+   * Se calcula acá y no en el padre a propósito: el mapa ya tiene los tiempos REALES por calle que
+   * devolvió Directions, que son mejores que cualquier estimación.
+   */
+  getHorario?: () => { salidaMin: number; servicioMin: number } | undefined;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const gm = () => (window as any).google?.maps;
 
-export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGeocodedRef, onKmReady }: DibMapaParams) {
+export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGeocodedRef, onKmReady, getHorario }: DibMapaParams) {
   if (!_gmapsLoaded || !gm()) {
-    _pendingMap = () => dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGeocodedRef, onKmReady });
+    _pendingMap = () => dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGeocodedRef, onKmReady, getHorario });
     cargarGMaps();
     return;
   }
@@ -168,15 +178,35 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function dibujarMarcadores(r: Ruta, ri: number, col: string, tGPS: {c:string;p:number;b:number}[], legs: any[] | null, esReal: boolean) {
+    // Hora de llegada de cada parada, con los tiempos REALES por calle que acaba de devolver
+    // Directions. `calcularETAs` ya contempla que el camión espere si llega antes de que la tienda
+    // abra (#459), así que la hora que se muestra es la de descarga, no la de quedarse en la puerta.
+    const ventanas = tGPS.map(t => tiendas[t.c]?.v);
+    const calcularHorario = () => {
+      const h = getHorario?.();
+      if (!h || !legs || !legs.length) return null;
+      const legSec = legs.map((l: {duration?:{value?:number}}) => l?.duration?.value ?? 0);
+      return { etas: calcularETAs(legSec, h.salidaMin, h.servicioMin, ventanas), servicioMin: h.servicioMin };
+    };
+
     tGPS.forEach((t, i) => {
       const pos = { lat: gps[t.c][0], lng: gps[t.c][1] };
       const inf  = tiendas[t.c];
       const leg  = legs ? legs[i] : null;
-      const svg  = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40"><path d="M16 0C7.2 0 0 7.2 0 16c0 6 3.3 11.3 8.2 14.1L16 40l7.8-9.9C28.7 27.3 32 22 32 16 32 7.2 24.8 0 16 0z" fill="${col}" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/><text x="16" y="20" text-anchor="middle" dominant-baseline="middle" font-family="monospace" font-size="13" font-weight="bold" fill="white">${i+1}</text></svg>`;
+      // El pin dice DOS cosas: que la parada es una tienda (el glifo) y en qué lugar de la ruta va
+      // (el número, en un disco blanco que se lee sobre cualquier color de ruta).
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="43" viewBox="0 0 34 43">`
+        + `<path d="M17 0C7.6 0 0 7.6 0 17c0 6.4 3.5 12 8.7 15L17 43l8.3-11C30.5 29 34 23.4 34 17 34 7.6 26.4 0 17 0z" fill="${col}" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>`
+        + `<path d="M9.5 19h15 M9.5 19v-6l7.5-5 7.5 5v6" fill="none" stroke="#fff" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>`
+        + `<circle cx="17" cy="27.5" r="6.4" fill="#fff"/>`
+        + `<text x="17" y="28" text-anchor="middle" dominant-baseline="middle" font-family="monospace" font-size="9" font-weight="bold" fill="${col}">${i+1}</text>`
+        + `</svg>`;
       const mk = new G.Marker({
         position: pos, map: gmap, zIndex: ri*100+i+10,
-        icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), scaledSize: new G.Size(32,40), anchor: new G.Point(16,40) },
-        title: `${t.c} - ${inf?inf.n:''}`,
+        icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), scaledSize: new G.Size(34,43), anchor: new G.Point(17,43) },
+        // La patente en el tooltip: es el desempate definitivo cuando dos rutas tienen colores
+        // parecidos (ver el comentario de COLS).
+        title: `${t.c} · ${inf ? inf.n : ''}${r.v?.p ? ` · ${r.v.p}` : ''}`,
       });
       mk.addListener('click', () => {
         const di  = leg ? leg.distance.text : '';
@@ -190,7 +220,22 @@ export function dibMapa({ el, rutas, gps, cd, tiendas, mapRef, overlaysRef, cdGe
           + (inf?.d ? `<div style="font-size:11px;color:#888;margin-top:2px">${inf.d}</div>` : '')
           + (inf?._desc ? `<div style="font-size:11px;color:#888;margin-top:2px">${inf._desc}</div>` : '')
           + (!isParadaStop && inf?.v ? `<div style="font-size:11px;color:#888;margin-top:2px">Ventana: ${inf.v}</div>` : '')
-          + `<div style="font-size:12px;color:#444;margin-top:4px">Carga: ${t.p}P${t.b?' + '+t.b+'B':''}</div>`
+          + `<div style="font-size:12px;color:#444;margin-top:4px">Carga: ${t.p}P${t.b?' + '+t.b+'B':''}${r.v?.p ? ` · ${r.v.p}` : ''}</div>`
+          + (() => {
+              const hr = calcularHorario();
+              if (!hr) return '';
+              const llegada = hr.etas[i];
+              const est = estadoVentana(llegada, ventanas[i]);
+              const salida = llegada + hr.servicioMin;
+              const aviso = est === 'tarde'
+                ? `<div style="margin-top:5px;font-size:11px;font-weight:600;color:#B3302A">⚠ Llega después del cierre (${inf?.v})</div>`
+                : est === 'temprano'
+                ? `<div style="margin-top:5px;font-size:11px;color:#9A6B14">Llega antes de que abra — espera hasta ${inf?.v?.split('-')[0]?.trim() ?? ''}</div>`
+                : '';
+              return `<div style="background:#f5f5f7;border-radius:6px;padding:6px 8px;margin-top:6px">`
+                + `<div style="font-size:12px;color:#1c1c1e;font-weight:600">Llega ${minAHHMM(llegada)} · sale ${minAHHMM(salida)}</div>`
+                + aviso + `</div>`;
+            })()
           + (di ? `<div style="background:#f5f5f7;border-radius:6px;padding:5px 8px;margin-top:6px"><div style="font-size:11px;color:#3a3a3c;font-weight:600">${di} · ${du}</div></div>` : '')
           + (esReal ? `<div style="font-size:10px;color:#34C759;margin-top:4px;font-weight:600">✓ Ruta real (Google Maps)</div>` : `<div style="font-size:10px;color:#ff9500;margin-top:4px">⚠ Distancia aprox.</div>`)
           + `</div>`

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake, Radio, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Target, Truck, Users, ClipboardList, RotateCcw, Send, CalendarDays, Map as MapIcon, Flag, Snowflake, Radio } from 'lucide-react';
 type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
@@ -15,7 +15,7 @@ import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/con
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import {
-  clampMapPct, mapaColapsado, anchoMapa, anchoContenido, rotuloBotonMapa,
+  clampMapPct, mapaColapsado, anchoMapa, anchoContenido,
   MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO,
 } from '../utils/mapLayout';
 import type { Vehiculo } from '../data/flota';
@@ -93,7 +93,7 @@ interface Props {
   rightPanelContent?: React.ReactNode;
   segundaVueltaContent?: React.ReactNode;
   // [Planificador] Reporta la ruta ordenada + partida para dibujarla en el MapSection fijo.
-  onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; tiendas: Record<string, TiendaInfo> }) => void;
+  onPlanRutas?: (rutas: Ruta[], cd: number[], ext?: { gps: Record<string, number[]>; horario?: { salidaMin: number; servicioMin: number }; tiendas: Record<string, TiendaInfo> }) => void;
   // Km real + tiempo por tramo (Google) de las rutas del Planificador, por índice de ruta.
   planLegsByRoute?: Record<number, { dist: string; dur: string; durSec?: number }[]>;
   planKmByRoute?: Record<number, number>;
@@ -169,9 +169,13 @@ export default function InputSection({
   }, [mapOculto]);
   const contentRowRef = useRef<HTMLDivElement>(null);
   const mapResizingRef = useRef(false);
+  // Un arrastre también dispara `click` al soltar. Esto distingue "arrastré para ajustar el ancho"
+  // de "toqué para esconder", que es lo que hace de la manija un control y no solo un divisor.
+  const mapArrastradoRef = useRef(false);
   useEffect(() => {
     const move = (clientX: number) => {
       if (!mapResizingRef.current || !contentRowRef.current) return;
+      mapArrastradoRef.current = true;
       const r = contentRowRef.current.getBoundingClientRect();
       setMapPct(Math.min(60, Math.max(20, ((r.right - clientX) / r.width) * 100)));
     };
@@ -194,26 +198,44 @@ export default function InputSection({
       document.removeEventListener('touchend', stop);
     };
   }, []);
+  // El tab FLOTA no tiene mapa; el coordinador además puede esconderlo a mano. Los dos casos
+  // colapsan el panel a 0 px — nunca lo desmontan (ver el comentario largo más abajo).
+  const hideMap = mapaColapsado({ modo, oculto: mapOculto });
+
+  // [M-11] La manija del borde reemplaza al botón "Ocultar mapa" de la barra: se ARRASTRA para
+  // elegir cuánto mapa quieres y se TOCA para esconderlo. Escondido queda como riel angosto con el
+  // chevron apuntando hacia afuera — ahí mismo se vuelve a abrir —, así que nunca desaparece la
+  // forma de recuperarlo. Sigue sin desmontar el panel: colapsar es ancho 0 (ver mapLayout.ts).
   const mapDivider = mapPanel ? (
     <div
-      onMouseDown={() => { mapResizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
-      onTouchStart={() => { mapResizingRef.current = true; }}
-      title="Arrastra para ampliar o achicar el mapa"
-      className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
-      style={{ width: 6, background: 'rgba(0,0,0,0.05)' }}
+      role="button"
+      tabIndex={0}
+      aria-expanded={!hideMap}
+      aria-label={hideMap ? 'Mostrar el mapa' : 'Esconder el mapa'}
+      onMouseDown={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
+      onTouchStart={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; }}
+      onClick={() => { if (mapArrastradoRef.current) { mapArrastradoRef.current = false; return; } setMapOculto(v => !v); }}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMapOculto(v => !v); } }}
+      title={hideMap ? 'Mostrar el mapa' : 'Arrastra para ajustar · toca para esconder'}
+      className="group flex-shrink-0 flex flex-col items-center justify-center gap-1.5 relative select-none z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-knavy"
+      style={{ width: hideMap ? 14 : 6, background: 'rgba(0,0,0,0.05)', cursor: hideMap ? 'pointer' : 'col-resize' }}
     >
       <div className="absolute inset-0 group-hover:bg-knavy/20 transition-colors duration-150" />
       <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
         {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
       </div>
+      <span className="relative z-10 text-[10px] leading-none text-knavy opacity-50 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+        {hideMap ? '‹' : '›'}
+      </span>
+      <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+        {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
+      </div>
     </div>
   ) : null;
-  // El tab FLOTA no usa mapa, y además el coordinador puede esconderlo a mano. Los dos casos
-  // COLAPSAN el panel a 0 px de ancho — nunca lo desmontan: `MapSection` guarda en `lastDrawnRef`
-  // la firma de lo último dibujado para no re-llamar a Google Directions (facturable), y ese ref
-  // se pierde si el componente se desmonta. Antes esto era `{mapPanel && !hideMap && …}`, así que
-  // ir a FLOTA y volver ya re-facturaba Directions sin que nadie lo hubiera pedido.
-  const hideMap = mapaColapsado({ modo, oculto: mapOculto });
+  // `MapSection` guarda en `lastDrawnRef` la firma de lo último dibujado para no re-llamar a
+  // Google Directions (facturable), y ese ref se pierde si el componente se desmonta. Antes esto
+  // era `{mapPanel && !hideMap && …}`, así que ir a FLOTA y volver ya re-facturaba Directions sin
+  // que nadie lo hubiera pedido.
   // Contenedor real con scroll del tablero DESPACHO — se lo pasamos a ManualDispatch para
   // el auto-scroll al arrastrar cerca del borde (más confiable que buscarlo por DOM-walk).
   const dragScrollRef = useRef<HTMLDivElement>(null);
@@ -420,18 +442,6 @@ export default function InputSection({
             ))}
           </div>
           <div className="flex-1" />
-          {/* Solo donde hay mapa: en FLOTA no hay nada que mostrar ni esconder. */}
-          {mapPanel && modo !== 'flota' && (
-            <button
-              onClick={() => setMapOculto(v => !v)}
-              title={mapOculto ? 'Mostrar el mapa' : 'Esconder el mapa y darle todo el ancho al tablero'}
-              aria-pressed={mapOculto}
-              className="h-[40px] px-3.5 rounded-[12px] bg-kbg border border-black/[0.10] text-kmuted text-[13px] font-semibold hover:text-ktext hover:border-black/[0.18] transition-all flex items-center gap-2 mr-2 flex-shrink-0"
-            >
-              {mapOculto ? <PanelRightOpen size={15} strokeWidth={2} /> : <PanelRightClose size={15} strokeWidth={2} />}
-              <span className="hidden xl:inline">{rotuloBotonMapa(mapOculto)}</span>
-            </button>
-          )}
           {!rightPanelContent && modo === 'drag' && onAbrirTablero && (
             <button
               onClick={onAbrirTablero}
@@ -548,7 +558,7 @@ export default function InputSection({
         </div>
       )}
         </div>
-        {!hideMap && mapDivider}
+        {mapDivider}
         {/* SIN condicional de montaje: colapsar es poner el ancho en 0, no sacar el panel del
             árbol. Desmontarlo pierde el dedupe de Directions y cada vuelta se factura de nuevo.
             `aria-hidden` + `inert` lo sacan del foco y del lector de pantalla mientras mide 0. */}
