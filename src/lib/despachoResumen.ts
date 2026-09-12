@@ -42,6 +42,37 @@ export function fechaAISO(fecha: string): string {
   return '';
 }
 
+/** Un día en la forma que consumen las tarjetas de Inicio (histórico del dashboard). */
+export interface DiaDashboard {
+  date: string;               // ISO YYYY-MM-DD
+  total_pallets: number;
+  total_bultos: number;
+  total_contenedores: number;
+  total_chocolates: number;
+}
+
+/**
+ * El mismo resumen diario, en la forma de las tarjetas, desde `desdeISO` (inclusive) y ordenado de
+ * más reciente a más antiguo. Puro.
+ *
+ * Comparte `agruparResumenDiario` con el gráfico a propósito: son la misma cuenta mirada de dos
+ * maneras. Cuando cada uno tenía la suya, la pantalla mostraba un número en la tarjeta y otro
+ * distinto en el gráfico de abajo (C-01).
+ */
+export function resumenParaTarjetas(dias: ResumenDia[], desdeISO: string): DiaDashboard[] {
+  return dias
+    .map(d => ({ d, iso: fechaAISO(d.fecha) }))
+    .filter(x => x.iso && x.iso >= desdeISO)
+    .sort((a, b) => (a.iso < b.iso ? 1 : a.iso > b.iso ? -1 : 0))
+    .map(({ d, iso }) => ({
+      date: iso,
+      total_pallets:      d.pallets,
+      total_bultos:       d.bultos,
+      total_contenedores: d.contenedores,
+      total_chocolates:   d.chocolates,
+    }));
+}
+
 /**
  * Ordena el resumen por fecha descendente (más reciente primero) y lo limita a `n` días con
  * actividad (>0). Devuelve cada día con su `fechaISO` para el gráfico. Puro.
