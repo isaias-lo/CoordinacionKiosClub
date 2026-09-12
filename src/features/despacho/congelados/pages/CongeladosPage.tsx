@@ -46,11 +46,6 @@ function nombreDeTienda(cod: string, zona: ZonaCongelados): string {
   return getTiendaSantiagoByCod(cod)?.tienda ?? cod;
 }
 
-function todayISO(): string {
-  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
-  return fechaChile();
-}
-
 interface Props {
   zona: ZonaCongelados;
 }
@@ -164,6 +159,11 @@ export function CongeladosPage({ zona }: Props) {
   const [slotsPorTienda, setSlotsPorTienda] = useState<Record<string, PickingSlotCongelado[]>>({});
   const [slotsLoaded, setSlotsLoaded] = useState(false);
   const odooProgress = useOdooProgress();
+  // [M-06] Congelados se ARMA un día y se despacha al día hábil siguiente, y la ruta se hace
+  // después (lo del viernes se rutea el fin de semana). Con la pantalla clavada en "hoy", la carga
+  // de otro día no se podía ni ver ni registrar. El calendario de congelados marca el día de
+  // ARMADO, así que esta fecha es la del armado — la misma con la que se rutea en el Enrutador.
+  const [fechaTrabajo, setFechaTrabajo] = useState(() => fechaChile());
   const [verSinCarga, setVerSinCarga] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [ajuste, setAjuste] = useState<Record<string, { cc: number; cn: number }>>({});
@@ -180,7 +180,7 @@ export function CongeladosPage({ zona }: Props) {
   // Se lee de la base al abrir y se mantiene al día con los cambios de los otros dispositivos.
   useEffect(() => {
     let vivo = true;
-    const hoy = todayISO();
+    const hoy = fechaTrabajo;
     const releer = () => {
       fetchCounts(hoy)
         .then(filas => { if (vivo) setRegistradas(registradasDesdeSesion(filas, zona)); })
@@ -189,7 +189,7 @@ export function CongeladosPage({ zona }: Props) {
     releer();
     const unsub = subscribeToSesion(hoy, () => releer());
     return () => { vivo = false; unsub(); };
-  }, [zona]);
+  }, [zona, fechaTrabajo]);
 
   useEffect(() => {
     if (!toast) return;
@@ -215,7 +215,7 @@ export function CongeladosPage({ zona }: Props) {
      directamente (no por nombre — CONGELADOS cruza los dos catálogos, Nacional y RM/Costa).
      Incluye id/canonical_id/seq (no solo tipo/contenido) para poder registrar cada caja. ── */
   useEffect(() => {
-    const dateStr = todayISO();
+    const dateStr = fechaTrabajo;
 
     const load = async () => {
       const { data } = await supabase
@@ -254,11 +254,12 @@ export function CongeladosPage({ zona }: Props) {
     };
     const unsub = subscribeToPickingPallets(debounced, load);
     return () => { unsub(); if (timer) clearTimeout(timer); };
-  }, []);
+  }, [fechaTrabajo]);
 
   const cajasPorTienda = cajasCongeladosPorTienda(slotsPorTienda);
 
-  const codsCalendario = cal ? gruposDeZona(zona).flatMap(g => tiendasCongeladosDelDia(cal, g)) : [];
+  const diaTrabajo = new Date(`${fechaTrabajo}T12:00:00`);
+  const codsCalendario = cal ? gruposDeZona(zona).flatMap(g => tiendasCongeladosDelDia(cal, g, diaTrabajo)) : [];
   const codsConCajas = Object.keys(cajasPorTienda);
   const cods = tiendasGrillaCongelados(codsCalendario, codsConCajas, (cod) => perteneceAZona(cod, zona));
 
@@ -305,7 +306,7 @@ export function CongeladosPage({ zona }: Props) {
       // todavía — se deja vacío en vez de inventar una heurística nueva.
       const tipoComuna = '';
 
-      const fechaArmadoISO = todayISO();
+      const fechaArmadoISO = fechaTrabajo;
       const fecha = fechaDDMM(fechaArmadoISO);
 
       const items = construirItemsCongelados({
@@ -329,7 +330,7 @@ export function CongeladosPage({ zona }: Props) {
           ch: 0,
         };
       }
-      await pushCounts(zona === 'nacional' ? 'congelados-regiones' : 'congelados-santiago', countsMap);
+      await pushCounts(zona === 'nacional' ? 'congelados-regiones' : 'congelados-santiago', countsMap, undefined, fechaTrabajo);
 
       // Optimista: se ve al instante. La base es la que manda y la corrige en el próximo evento.
       setRegistradas(prev => new Set(prev).add(cod));
@@ -414,7 +415,19 @@ export function CongeladosPage({ zona }: Props) {
         <h2 className="font-barlow-condensed text-[20px] font-bold text-text">
           {textoTotalCongelados(resumen) || 'Sin cajas todavía'}
         </h2>
-        <span className="text-[13px] text-text-3">{conMayusculaInicial(fechaLargaCL())}</span>
+        <label className="text-[13px] text-text-3 flex items-center gap-1.5">
+          <span className="sr-only">Día de armado</span>
+          <input type="date" value={fechaTrabajo} max={fechaChile()}
+            onChange={e => { if (e.target.value) { setFechaTrabajo(e.target.value); setSelected(null); } }}
+            className="text-[13px] px-2 py-1 rounded border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)' }}
+            title="Día en que se armó la carga. Congelados se despacha al día hábil siguiente." />
+        </label>
+        {fechaTrabajo !== fechaChile() && (
+          <span className="text-[12px] font-semibold px-2 py-0.5 rounded" style={{ background: 'rgba(8,145,178,0.10)', color: '#0891B2' }}>
+            {conMayusculaInicial(fechaLargaCL(`${fechaTrabajo}T12:00:00`))}
+          </span>
+        )}
         {resumen.pendientes > 0 && (
           <span className="ml-auto text-[12px] font-bold px-2.5 py-1 rounded-full"
             style={{ background: 'rgba(217,119,6,0.12)', color: '#B45309' }}
