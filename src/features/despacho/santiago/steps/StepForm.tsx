@@ -180,7 +180,10 @@ function TiendaGridCard({
         ${isActive
           ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
           : terminada
-          ? 'bg-[#16A34A] border-2 border-[#16A34A] shadow-sm'
+          // [M-02] El verde va en el BORDE, no en todo el fondo. Pintada entera, la tarjeta dejaba
+          // los chips (3P · 2B · CH) y el tipo de local sobre verde saturado, sin contraste — y
+          // con el día entero terminado, todas quedaban iguales y el color ya no distinguía nada.
+          ? 'bg-[rgba(22,163,74,0.10)] border-2 border-[#15803D] shadow-sm'
           : hasGuide
           ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success active:bg-[rgba(22,163,74,0.12)]'
           : isToday
@@ -200,19 +203,24 @@ function TiendaGridCard({
       )}
       {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
           oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
-      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-white' : hasGuide ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-[#15803D]' : hasGuide ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
         {formatCod(t.cod)}
       </div>
-      <div className={`text-[10px] font-semibold w-full text-center leading-tight truncate px-0.5 mt-1 ${terminada ? 'text-white/90' : 'text-text-2'}`}>
+      {/* [M-04] Dos líneas en vez de recortar: "San Pedro …" y "San Pedro 1…" son tiendas
+          distintas que en pantalla se veían casi iguales — y son las que se arrastran a un camión.
+          El `title` deja el nombre completo a un hover de distancia. */}
+      <div className="text-[11px] font-semibold w-full text-center leading-tight px-0.5 mt-1 text-text-2 line-clamp-2"
+        title={t.tienda}>
         {t.tienda}
       </div>
       {terminada && (
-        <span className="text-[9px] font-extrabold text-white/95 tracking-wide uppercase mt-0.5">✓ Terminada</span>
+        <span className="text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase mt-0.5">✓ Terminada</span>
       )}
       {(() => {
         const tb = tipoBadge(tipoCat);
+        // [M-02] 11px es el piso de legibilidad de la app; antes iba en 9.
         return tb ? (
-          <span style={{ marginTop: 2, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
+          <span style={{ marginTop: 2, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
             {tb.label}
           </span>
         ) : null;
@@ -1912,7 +1920,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     <div className="flex-1 overflow-y-auto">
       {todayList.length > 0 && (
         <div>
-          <div className="px-3 py-2 bg-[rgba(30,64,175,0.10)] border-b border-[rgba(30,64,175,0.20)] sticky top-0 z-10 flex items-center gap-2">
+          <div className="px-3 py-2 bg-bg border-b border-[rgba(30,64,175,0.20)] sticky top-0 z-20 flex items-center gap-2"
+            style={{ backgroundImage: 'linear-gradient(rgba(30,64,175,0.10), rgba(30,64,175,0.10))' }}>
             <span className="font-barlow-condensed text-[15px] font-extrabold tracking-wide text-[#1E40AF]">Hoy</span>
             <span className="font-barlow-condensed text-[10px] text-[#1E40AF]/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
             <span className="ml-auto flex items-center gap-2.5">

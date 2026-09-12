@@ -11,6 +11,7 @@ import { REGIONES_TERMINADO_KEY } from '@/components/modals/FinishModal';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
+import { formatCLP, formatCLPCorto } from '../../shared/formatoCLP';
 
 const TAG: Record<string, string> = {
   comida:        'bg-[rgba(217,119,6,0.15)] text-warn',
@@ -189,35 +190,29 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     showToast('✓ Item actualizado', '#16A34A');
   };
 
-  /* ── Stats strip ── */
+  /* ── Stats strip ──
+     [M-01] Antes decía "19 P · 14 B · 8 T · $25259K". Las iniciales sueltas obligan a recordar cuál
+     es cuál, y el `$…K` no es un formato: eran $25.259.000. La versión angosta de esta misma app y
+     el panel de RM/Costa ya escriben la palabra completa — esto los alcanza. */
+  const celdas: { valor: string; etiqueta: string; color: string; title?: string }[] = [
+    { valor: String(stats.pallets), etiqueta: 'Pallets', color: '#93C5FD' },
+    { valor: String(stats.bultos),  etiqueta: 'Bultos',  color: '#FCD34D' },
+    ...(stats.chocolates > 0 ? [{ valor: String(stats.chocolates), etiqueta: 'Choc.', color: '#FBB6A0' }] : []),
+    { valor: String(names.length),  etiqueta: 'Tiendas', color: '#86EFAC' },
+    ...(stats.monto > 0 ? [{ valor: formatCLPCorto(stats.monto), etiqueta: 'Monto', color: '#FFFFFF', title: formatCLP(stats.monto) }] : []),
+  ];
   const statsStrip = (
     <div className="bg-navy flex items-center px-3 py-2 gap-0 flex-shrink-0">
-      <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-        <span className="font-barlow-condensed text-[22px] font-extrabold text-[#93C5FD] leading-none">{stats.pallets}</span>
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">P</span>
-      </div>
-      <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-        <span className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{stats.bultos}</span>
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">B</span>
-      </div>
-      {stats.chocolates > 0 && (
-        <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-          <span className="font-barlow-condensed text-[22px] font-extrabold text-[#FBB6A0] leading-none">{stats.chocolates}</span>
-          <span className="text-[10px] text-white/50 uppercase tracking-wide">CH</span>
+      {celdas.map((c, i) => (
+        <div key={c.etiqueta}
+          title={c.title}
+          className={`flex-1 min-w-0 text-center ${i < celdas.length - 1 ? 'border-r border-white/10' : ''}`}>
+          <div className="font-barlow-condensed text-[22px] font-extrabold leading-none truncate" style={{ color: c.color }}>
+            {c.valor}
+          </div>
+          <div className="text-[11px] text-white/55 uppercase tracking-widest mt-0.5">{c.etiqueta}</div>
         </div>
-      )}
-      <div className="flex-1 flex items-baseline gap-1 justify-center border-r border-white/10">
-        <span className="font-barlow-condensed text-[22px] font-extrabold text-[#86EFAC] leading-none">{names.length}</span>
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">T</span>
-      </div>
-      {stats.monto > 0 && (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <span className="font-barlow-condensed text-[13px] font-bold text-white/90 leading-none">
-            ${Math.round(stats.monto / 1000)}K
-          </span>
-          <span className="text-[9px] text-white/40 uppercase tracking-wide mt-0.5">$</span>
-        </div>
-      )}
+      ))}
     </div>
   );
 
@@ -336,7 +331,7 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
                     <span className="font-mono text-[10px] text-text-3">{sel.size}/{items.length}</span>
                   </div>
                   <div className="flex-1 font-mono text-[10px] text-text-3 text-right">
-                    {pesoT.toLocaleString('es-CL')}kg{valorT > 0 ? ` · $${Math.round(valorT/1000)}K` : ''}
+                    {pesoT.toLocaleString('es-CL')}kg{valorT > 0 ? ` · ${formatCLPCorto(valorT)}` : ''}
                   </div>
                 </div>
 
