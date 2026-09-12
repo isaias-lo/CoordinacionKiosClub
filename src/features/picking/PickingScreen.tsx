@@ -64,6 +64,8 @@ import {
 } from '@/features/despacho/shared/tiendasAdelanto';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
+import { avisoOdoo, motivoOdoo } from './avisoOdoo';
+import { usaSelectorDeTiendas } from './selectorTiendas';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -121,6 +123,10 @@ export function PickingScreen() {
   }, []);
 
   const [panelView, setPanelView] = useState<'stores' | 'planilla'>('stores');
+  // [M-08] El panel de tiendas se pliega solo donde no se usa (Calendario, Estadísticas, Actividad,
+  // Historial, Config). `selectorAbiertoManual` deja reabrirlo ahí mismo, y se olvida al cambiar de
+  // pestaña para volver al comportamiento automático.
+  const [selectorAbiertoManual, setSelectorAbiertoManual] = useState(false);
   const [rightTab, setRightTab]   = usePestanaRecordada('picking_tab',
     ['monitoreo', 'congelados', 'actividad', 'estadisticas', 'historial', 'configuracion', 'calendario'] as const, 'monitoreo');
   // [P6] El monitoreo se separó en dos tabs que comparten la MISMA vista: 'monitoreo' (Seco:
@@ -131,6 +137,11 @@ export function PickingScreen() {
   // Resizable left panel
   const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =
     useResizablePanel({ storageKey: 'picking_left_panel_width', defaultWidth: 288, min: 180, max: 480 });
+  // [M-08] Plegado automático del panel de tiendas donde la selección no cambia lo que se ve.
+  const selectorColapsado = isDesktop && !usaSelectorDeTiendas(rightTab) && !selectorAbiertoManual;
+  // Al cambiar de pestaña vuelve al automático: haberlo abierto en Calendario no debería dejarlo
+  // abierto para siempre en las demás.
+  useEffect(() => { setSelectorAbiertoManual(false); }, [rightTab]);
 
   // Online/offline detection + flush de cola offline al reconectar
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -1451,7 +1462,9 @@ export function PickingScreen() {
             panelView === 'planilla' ? 'hidden lg:flex' : 'flex',
             isDesktop ? '' : 'w-full border-r border-border',
           ].join(' ')}
-          style={isDesktop ? { width: leftWidth } : undefined}
+          style={isDesktop ? { width: selectorColapsado ? 0 : leftWidth } : undefined}
+          aria-hidden={selectorColapsado || undefined}
+          inert={selectorColapsado || undefined}
         >
           <StoreListPanel
             selectedCods={selectedCods}
@@ -1479,13 +1492,28 @@ export function PickingScreen() {
         {/* RESIZE DIVIDER — desktop only */}
         {isDesktop && (
           <div
-            className="group flex-shrink-0 cursor-col-resize flex items-center justify-center relative select-none z-10"
-            style={{ width: 6, background: 'rgba(0,0,0,0.06)' }}
-            onMouseDown={handlePanelMouseDown}
-            onTouchStart={handlePanelTouchStart}
+            role="button"
+            tabIndex={0}
+            aria-expanded={!selectorColapsado}
+            aria-label={selectorColapsado ? 'Mostrar las tiendas' : 'Esconder las tiendas'}
+            title={selectorColapsado ? 'Mostrar las tiendas' : 'Arrastra para ajustar · toca para esconder'}
+            className="group flex-shrink-0 flex flex-col items-center justify-center gap-1.5 relative select-none z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+            style={{ width: selectorColapsado ? 14 : 6, background: 'rgba(0,0,0,0.06)', cursor: selectorColapsado ? 'pointer' : 'col-resize' }}
+            onMouseDown={e => { if (selectorColapsado) return; handlePanelMouseDown(e); }}
+            onTouchStart={e => { if (selectorColapsado) return; handlePanelTouchStart(e); }}
+            onClick={() => setSelectorAbiertoManual(v => !v)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectorAbiertoManual(v => !v); } }}
           >
             <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
-            <div className="flex flex-col gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex flex-col gap-1 relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
+              ))}
+            </div>
+            <span className="relative z-10 text-[10px] leading-none opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: '#64748B' }} aria-hidden="true">
+              {selectorColapsado ? '›' : '‹'}
+            </span>
+            <div className="flex flex-col gap-1 relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => (
                 <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
               ))}
@@ -1535,7 +1563,7 @@ export function PickingScreen() {
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
-            <StatsTab hasOdoo={hasOdoo} canonicalNames={canonicalNames} />
+            <StatsTab hasOdoo={hasOdoo} odooDesactivado={odooDesactivado} canonicalNames={canonicalNames} />
           )}
 
           {/* ── Tab content: Actividad ── */}
@@ -1595,13 +1623,18 @@ export function PickingScreen() {
                 <div className="text-[13px] text-slate-400 max-w-sm mx-auto">
                   Elige las tiendas del panel izquierdo para gestionar sus operaciones.
                 </div>
-                {!hasOdoo && (
-                  <div className="mt-6 bg-white border border-[rgba(220,38,38,0.25)] rounded-xl px-4 py-3 text-[14px] text-red text-left inline-block">
-                    <span className="font-bold">
-                      {odooDesactivado ? 'Odoo desactivado por el administrador.' : 'Odoo no configurado.'}
-                    </span>
-                  </div>
-                )}
+                {!hasOdoo && (() => {
+                  // [M-07] Informativo, no error: el sistema está bien, Odoo está fuera. Mismo
+                  // texto que Estadísticas, cambiando solo qué se pierde acá (ver avisoOdoo.ts).
+                  const a = avisoOdoo(motivoOdoo(odooDesactivado), 'no se cargan las operaciones del día');
+                  return (
+                    <div className="mt-6 max-w-sm rounded-xl px-4 py-3 text-left inline-block"
+                      style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                      <div className="text-[14px] font-bold text-slate-700">{a.titulo}</div>
+                      <div className="text-[13px] text-slate-500 mt-0.5 leading-snug">{a.detalle}</div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           ) : (

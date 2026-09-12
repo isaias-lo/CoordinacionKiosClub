@@ -7,11 +7,14 @@ import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-type
 import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
 import { escapeHtml } from '@/lib/escapeHtml';
 import { InlineConfirm } from './InlineConfirm';
+import { avisoOdoo, motivoOdoo } from '../avisoOdoo';
 
 type SortKey = keyof PickerStatRow;
 
 interface Props {
   hasOdoo:        boolean;
+  /** Odoo apagado a propósito por el administrador (distinto de nunca configurado) — M-07. */
+  odooDesactivado?: boolean;
   canonicalNames: Record<string, string>;
 }
 
@@ -60,7 +63,7 @@ const COLS: {
   },
 ];
 
-export function StatsTab({ hasOdoo, canonicalNames }: Props) {
+export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames }: Props) {
   const [cache, setCache] = useState<StatsCache | null>(() => {
     if (typeof window === 'undefined') return null;
     try { return JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null') as StatsCache | null; }
@@ -252,10 +255,11 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
               </button>
             )}
             <button onClick={() => void loadStats()} disabled={loading || !hasOdoo}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[13px] font-medium cursor-pointer disabled:opacity-40"
+              title={!hasOdoo ? 'Las estadísticas salen de Odoo, que ahora no está disponible' : undefined}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[13px] font-medium cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               style={{ background: '#1E293B', color: '#fff', border: 'none' }}>
               <RotateCcw size={13} className={loading ? 'animate-spin' : ''} />
-              {loading ? 'Cargando…' : cache ? 'Actualizar' : 'Cargar datos'}
+              {loading ? 'Cargando…' : !hasOdoo ? 'Odoo no disponible' : cache ? 'Actualizar' : 'Cargar datos'}
             </button>
           </div>
         </div>
@@ -264,13 +268,16 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
       <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
 
         {/* Alertas */}
-        {!hasOdoo && (
-          <div className="mt-4 rounded px-4 py-3 text-[13px]"
-            style={{ background: '#FFF1F2', border: '1px solid rgba(220,38,38,0.25)', color: '#DC2626' }}>
-            <span className="font-semibold">Odoo no configurado.</span>{' '}
-            Configura las credenciales para cargar estadísticas.
-          </div>
-        )}
+        {!hasOdoo && (() => {
+          // [M-07] El mismo aviso que ve Seco, con lo que se pierde acá (ver avisoOdoo.ts).
+          const a = avisoOdoo(motivoOdoo(odooDesactivado), 'no se pueden cargar las estadísticas');
+          return (
+            <div className="mt-4 rounded px-4 py-3" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <div className="text-[13px] font-semibold text-slate-700">{a.titulo}</div>
+              <div className="text-[13px] text-slate-500 mt-0.5 leading-snug">{a.detalle}</div>
+            </div>
+          );
+        })()}
         {error && (
           <div className="mt-4 rounded px-4 py-3 text-[13px]"
             style={{ background: '#FFF1F2', border: '1px solid rgba(220,38,38,0.25)', color: '#DC2626' }}>
@@ -284,7 +291,9 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
             <BarChart3 size={40} className="mb-4" style={{ color: '#334155', opacity: 0.2 }} aria-hidden="true" />
             <div className="text-[15px] font-semibold mb-1" style={{ color: '#334155' }}>Sin datos cargados</div>
             <div className="text-[13px]" style={{ color: '#94A3B8' }}>
-              Presiona <strong>Cargar datos</strong> para consultar las estadísticas del período.
+              {hasOdoo
+                ? <>Presiona <strong>Cargar datos</strong> para consultar las estadísticas del período.</>
+                : <>Las estadísticas salen de Odoo. Cuando vuelva a estar disponible, se cargan desde acá.</>}
             </div>
           </div>
         )}
