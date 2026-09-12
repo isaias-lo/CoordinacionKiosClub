@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyActor } from '@/lib/apiAuth';
 import { ACCIONES_ACTIVIDAD } from '@/lib/actividad';
+import { fechaChile } from '@/lib/fechaChile';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 const FUENTES  = new Set(['nacional', 'rmcosta']);
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
   const fecha = typeof body.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.fecha)
     ? body.fecha
-    : new Date().toISOString().slice(0, 10);
+    : fechaChile();
 
   const { error } = await supabaseServer().from('actividad_bodega').insert({
     fecha,

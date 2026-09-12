@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { fechaChile } from '@/lib/fechaChile';
 
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  const date = request.nextUrl.searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
+  const date = request.nextUrl.searchParams.get('date') ?? fechaChile();
   const { data, error } = await supabaseServer()
     .from('conteo_consolidacion')
     .select('id, date, store_cod, zona, peso_kg, alto_cm, notas, estado, updated_at')

@@ -1,12 +1,13 @@
 import { supabase } from './supabase';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { fechaChile } from '@/lib/fechaChile';
 
 export type PickingPalletsPayload = RealtimePostgresChangesPayload<Record<string, unknown>>;
 type Listener = (payload: PickingPalletsPayload) => void;
 
 function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 let channelUnsub: (() => void) | null = null;

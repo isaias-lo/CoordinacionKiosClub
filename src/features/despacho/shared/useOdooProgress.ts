@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { fechaChile } from '@/lib/fechaChile';
 
 export type StoreProgress = {
   total: number;
@@ -12,8 +13,8 @@ export type StoreProgress = {
 };
 
 function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 /**

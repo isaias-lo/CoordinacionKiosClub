@@ -58,6 +58,7 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
+import { fechaChile } from '@/lib/fechaChile';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -164,7 +165,7 @@ export default function RutasScreen() {
       const raw = localStorage.getItem('despacho_pendientes');
       if (!raw) return null;
       const data = JSON.parse(raw) as PendientesGuardados;
-      const today = new Date().toISOString().split('T')[0];
+      const today = fechaChile();
       return data.savedAt && data.savedAt !== today && data.stores?.length > 0 ? data : null;
     } catch { return null; }
   });

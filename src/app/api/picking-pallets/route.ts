@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth, verifyActor } from '@/lib/apiAuth';
 import { parseBody, CreatePickingPalletSchema } from '@/lib/schemas';
 import { sacarUnidadDelDespacho } from './limpiarDespacho';
+import { fechaChile } from '@/lib/fechaChile';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
@@ -19,7 +20,7 @@ function logEvento(ev: {
   supabaseServer()
     .from('picking_eventos')
     .insert({
-      date:         ev.date ?? new Date().toISOString().slice(0, 10),
+      date:         ev.date ?? fechaChile(),
       event_type:   ev.event_type,
       pallet_id:    ev.pallet_id,
       state_key:    ev.state_key ?? null,
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ data });
   }
-  const date = request.nextUrl.searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
+  const date = request.nextUrl.searchParams.get('date') ?? fechaChile();
   const { data, error } = await supabaseServer()
     .from('picking_pallets')
     .select(SELECT_COLS)

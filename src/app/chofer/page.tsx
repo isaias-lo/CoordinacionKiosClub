@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { guiaHref } from '@/lib/guiaUrl';
+import { fechaChile } from '@/lib/fechaChile';
 
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -30,9 +31,9 @@ const ESTADO_LABEL: Record<string, string> = {
 const CACHE_KEY = 'chofer_rutas_cache';
 const NAME_KEY  = 'chofer_nombre';
 
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function todayISO(): string {
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 /* ── Page ─────────────────────────────────────────────── */

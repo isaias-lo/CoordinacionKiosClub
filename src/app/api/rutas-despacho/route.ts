@@ -4,6 +4,7 @@ import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
 import { verifyAuth } from '@/lib/apiAuth';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
+import { fechaChile } from '@/lib/fechaChile';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
 function addDaysIso(iso: string, n: number): string {
@@ -16,7 +17,7 @@ function addDaysIso(iso: string, n: number): string {
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  const fecha   = request.nextUrl.searchParams.get('fecha') ?? new Date().toISOString().slice(0, 10);
+  const fecha   = request.nextUrl.searchParams.get('fecha') ?? fechaChile();
   const patente = request.nextUrl.searchParams.get('patente');
 
   let query = supabaseServer()

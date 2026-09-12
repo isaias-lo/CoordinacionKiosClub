@@ -1,17 +1,20 @@
+import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
+
 /**
- * Fecha de HOY en formato ISO 'YYYY-MM-DD' según el día **LOCAL** (no UTC).
+ * Fecha de HOY en 'YYYY-MM-DD' según el día del **CD (America/Santiago)**.
  *
- * Bodega opera en día local (Chile, UTC-4/-3). Los slots de `picking_pallets` DEBEN usar esta fecha
- * y NO `new Date().toISOString().slice(0,10)` (UTC): con UTC, pasadas las ~20:00 hora Chile el día ya
- * rodó a "mañana", así que un slot creado al tocar "Agregar" quedaba guardado bajo OTRA fecha que la
- * que leen el loader de slots, el sync del formulario y el semáforo (todos locales). Resultado: el
- * item "desaparecía" al agregar/registrar y el backfill lo revivía como borrador con dimensiones
- * ("para dar clic en Agregar"). Con varios usuarios se agravaba porque el merge cruzaba estados de
- * días distintos. Esta es la MISMA clave de día que `todayISO()` del sync (userSessionState) y que
- * los loaders de `picking_pallets`, así que create ↔ load ↔ sync nunca vuelven a divergir.
+ * Nació como "día local del equipo" para arreglar el bug de los slots de Bodega: con el día UTC,
+ * pasadas las ~20:00 en Chile la fecha ya rodaba a "mañana", así que un slot creado al tocar
+ * "Agregar" quedaba guardado bajo OTRA fecha que la que leen el loader, el sync y el semáforo — el
+ * ítem "desaparecía" y el backfill lo revivía como borrador.
+ *
+ * Ahora la zona es **fija** (no la del equipo). El día del reloj del equipo funcionaba en el CD,
+ * pero en el servidor ese reloj es UTC: la misma función devolvía días distintos en el servidor y
+ * en el navegador, que es exactamente el error de hidratación de React (#418) y el "Hoy" corrido de
+ * Picking › Actividad. Con zona fija, servidor y cliente siempre dicen el mismo día.
  *
  * Acepta un `Date` para poder testearla de forma determinista.
  */
-export function fechaISOLocal(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export function fechaISOLocal(d?: Date): string {
+  return d ? fechaChileDe(d) : fechaChile();
 }

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
+import { fechaChile } from '@/lib/fechaChile';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
-  const date = request.nextUrl.searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
+  const date = request.nextUrl.searchParams.get('date') ?? fechaChile();
   const tipo = request.nextUrl.searchParams.get('tipo'); // opcional: filtrar server-side por tipo
   let query = supabaseServer()
     .from('picking_session_state')

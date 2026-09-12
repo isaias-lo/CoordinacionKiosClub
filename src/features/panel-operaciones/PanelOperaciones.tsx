@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { Truck, Store, AlertTriangle, Camera, CheckCircle2, MapPin, Clock } from 'lucide-react';
+import { fechaChile } from '@/lib/fechaChile';
 
 type Fuente = 'conductor' | 'tienda' | 'pendientes';
 
@@ -61,7 +62,8 @@ interface PendingStore {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 function fmtDatetime(iso: string): string {

@@ -3,10 +3,11 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { computeOdooProgress } from '@/features/picking/picking-utils';
 import { computeStoreStatus } from '@/features/despacho/shared/storeStatus';
+import { fechaChile } from '@/lib/fechaChile';
 
 function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 const TIPO     = 'odoo-progress';

@@ -7,6 +7,7 @@ import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
+import { fechaChile } from '@/lib/fechaChile';
 
 const ESTADOS: EstadoItem[] = [
   'Listo para despachar',
@@ -48,7 +49,7 @@ export function StepResumen() {
       return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : ''].filter(Boolean).join('+')}`;
     }).join(', ');
 
-  const todayISO = new Date().toISOString().split('T')[0];
+  const todayISO = fechaChile();
   const fechaDespacho = state.fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;

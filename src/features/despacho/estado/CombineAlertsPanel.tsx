@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { BarcodeCard } from '../../despacho/shared/BarcodeCard';
+import { fechaChile } from '@/lib/fechaChile';
 
 const DISMISSED_KEY = 'combine_alerts_dismissed_v1';
 
@@ -11,7 +12,7 @@ function loadDismissed(): Set<number> {
   try {
     const raw = localStorage.getItem(DISMISSED_KEY);
     if (!raw) return new Set();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = fechaChile();
     const data = JSON.parse(raw) as { date: string; ids: number[] };
     if (data.date !== today) return new Set(); // reset daily
     return new Set(data.ids);
@@ -21,7 +22,7 @@ function loadDismissed(): Set<number> {
 function saveDismissed(ids: Set<number>) {
   try {
     localStorage.setItem(DISMISSED_KEY, JSON.stringify({
-      date: new Date().toISOString().slice(0, 10),
+      date: fechaChile(),
       ids:  [...ids],
     }));
   } catch {}

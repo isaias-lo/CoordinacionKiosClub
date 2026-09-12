@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Truck, Users, Plus, Trash2, Save, X, AlertCircle, Edit2 } from 'lucide-react';
 import { useAnchoVentana } from '../rutas/utils/useIsMobile';
 import { columnasCatalogo, columnasCampos } from '../rutas/utils/gridPersonal';
+import { fechaChile } from '@/lib/fechaChile';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Pioneta { id: string; nombre: string; telefono?: string; empresa?: string; }
@@ -577,7 +578,7 @@ function DensityToggle({ value, onChange }: { value: Density; onChange: (d: Dens
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function ControlFlotaPanel() {
-  const [fecha,        setFecha]       = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha,        setFecha]       = useState(() => fechaChile());
   const [rutas,        setRutas]       = useState<Ruta[]>([]);
   const [pionetas,     setPionetas]    = useState<Pioneta[]>([]);
   const [conductores,  setConductores] = useState<Conductor[]>([]);

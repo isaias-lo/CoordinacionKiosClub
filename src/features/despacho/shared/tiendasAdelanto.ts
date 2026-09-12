@@ -1,5 +1,6 @@
 import { TIENDAS_INICIAL, type TiendaInfo } from '@/features/despacho/rutas/data/tiendas';
 import { grupoDeSector } from '@/lib/sectores';
+import { fechaChile } from '@/lib/fechaChile';
 
 export type ZonaAdelanto = 'rm' | 'costa' | 'fal';
 
@@ -38,8 +39,8 @@ export function zonaForStore(cod: string, tienda?: TiendaInfo): ZonaAdelanto {
 
 /** Hoy en formato YYYY-MM-DD (hora local del dispositivo). */
 export function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 export async function getTiendasAdelanto(fecha: string): Promise<TiendaAdelanto[]> {

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { fechaChile } from '@/lib/fechaChile';
 
 export type CountMap = Record<string, { p: number; b: number; c: number; ch: number }>;
 
@@ -13,8 +14,8 @@ export interface SesionRow {
 }
 
 function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 /**

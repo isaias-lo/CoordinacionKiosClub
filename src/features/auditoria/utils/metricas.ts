@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabase';
 import type { AuditEntry } from '../types';
+import { fechaChile } from '@/lib/fechaChile';
 
 /* ── Types ── */
 
@@ -124,7 +125,8 @@ export async function upsertProduccion(picker_nombre: string, fecha: string, pal
 /* ── Helpers de fecha ── */
 
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 export function mesActualISO(): { from: string; to: string } {

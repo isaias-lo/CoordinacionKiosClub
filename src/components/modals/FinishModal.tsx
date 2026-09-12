@@ -8,6 +8,7 @@ import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/shee
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
+import { fechaChile } from '@/lib/fechaChile';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
 const todayKey = todayStr();
@@ -59,7 +60,7 @@ export function FinishModal({ open, onClose }: Props) {
     };
     // Save to Supabase (without rows — too large)
     if (user) {
-      const isoDate = new Date().toISOString().split('T')[0];
+      const isoDate = fechaChile();
       supabase.from('dispatch_history').insert({
         user_id: user.id, date: isoDate,
         total_pallets: entry.totalPallets, total_bultos: entry.totalBultos,

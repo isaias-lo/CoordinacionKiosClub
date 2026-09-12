@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase';
 import { sheetsSantiagoWrite } from '../santiago/utils/sheetsSantiago';
 import { sheetsRegionesWrite } from '../regiones/utils/sheetsRegiones';
 import { getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
+import { fechaChile } from '@/lib/fechaChile';
 
 type Fuente = 'santiago' | 'regiones';
 
@@ -22,8 +23,8 @@ interface PendingDraft {
 }
 
 function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
+  return fechaChile();
 }
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
