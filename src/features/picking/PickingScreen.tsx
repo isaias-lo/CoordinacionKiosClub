@@ -1023,6 +1023,25 @@ export function PickingScreen() {
   // distinto; los dos escritores se pisaban con totales diferentes y el semáforo saltaba entre
   // verde y naranja al cambiar de pestaña. Con fuente única el estado es estable (refresco ≤60s).
 
+  // [m-12] Elegir o quitar un grupo entero (REGIONES / COSTA / SANTIAGO) de una vez.
+  //
+  // Las operaciones de cada tienda se piden a Odoo al elegirla, así que un grupo de 18 serían 18
+  // consultas. Se piden EN SERIE: tarda un poco más, pero no golpea Odoo con 18 en paralelo — y
+  // cada tienda va mostrando su propio estado de carga mientras llegan.
+  const handleToggleGrupo = useCallback(async (cods: string[], seleccionar: boolean) => {
+    if (!seleccionar) {
+      setSelectedCods(prev => prev.filter(c => !cods.includes(c)));
+      return;
+    }
+    const faltantes = cods.filter(c => !selectedCods.includes(c));
+    if (!faltantes.length) return;
+    setSelectedCods(prev => [...prev, ...faltantes]);
+    setPanelView('planilla');
+    for (const cod of faltantes) {
+      if (!opsMap[cod]) await fetchOpsForStore(cod);
+    }
+  }, [selectedCods, opsMap, fetchOpsForStore]);
+
   const handleToggleStore = useCallback(async (cod: string) => {
     const isSelected = selectedCods.includes(cod);
     if (isSelected) {
@@ -1474,6 +1493,7 @@ export function PickingScreen() {
             todayStores={todayStores}
             storesLoading={storesLoading}
             onToggleStore={handleToggleStore}
+            onToggleGrupo={handleToggleGrupo}
             tiendaOverrides={tiendaOverrides}
             onOpenAdelanto={() => setAdelantoDialogOpen(true)}
             onDeleteAdelanto={handleDeleteAdelanto}
@@ -1756,7 +1776,9 @@ export function PickingScreen() {
                         </span>
                       )}
                       {isLoading && <span className="text-[14px] text-text-3 font-medium">Cargando…</span>}
-                      {!isLoading && storeGroups.length === 0 && (
+                      {/* [m-10] Solo si OTRAS tiendas sí tienen: cuando no hay ninguna, el mensaje
+                          de la página ya lo dijo una vez y repetirlo por tienda es ruido. */}
+                      {!isLoading && storeGroups.length === 0 && filteredGroups.length > 0 && (
                         <span className="text-[14px] text-text-3 font-medium">Sin operaciones de Abastecimiento hoy</span>
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
@@ -2068,7 +2090,10 @@ export function PickingScreen() {
                                       <div className="space-y-3">
                                         {col.groups.map(g => renderCard(g, true))}
                                       </div>
-                                    ) : (
+                                    ) : storeGroups.length > 0 ? (
+                                      /* [m-10] El recuadro vacío de una columna solo aporta cuando la
+                                         tienda SÍ tiene carga en otra: dice "acá no, allá sí". Con la
+                                         tienda entera vacía, son tres recuadros repitiendo lo mismo. */
                                       <div className="rounded-lg border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
                                         style={{ borderColor: meta.color + '28', background: '#fff' }}>
                                         <div className="mb-1" style={{ opacity: 0.18 }}><Package size={28} /></div>
@@ -2076,7 +2101,7 @@ export function PickingScreen() {
                                           Sin operaciones aún
                                         </div>
                                       </div>
-                                    )}
+                                    ) : null}
                                   </div>
                                 );
                               })}

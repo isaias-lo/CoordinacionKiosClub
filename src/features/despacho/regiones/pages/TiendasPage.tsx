@@ -186,12 +186,12 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       <PresenciaBadge viendo={viendo} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
-          className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-warn bg-[rgba(217,119,6,0.15)] rounded-full cursor-pointer border-none leading-none"
+          className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-warn bg-[rgba(217,119,6,0.15)] hover:bg-[rgba(217,119,6,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
           title="Retirar de hoy">×</button>
       )}
       {!isToday && onAddToday && (
         <button onClick={e => { e.stopPropagation(); onAddToday(); }}
-          className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-[10px] text-success bg-[rgba(22,163,74,0.15)] rounded-full cursor-pointer border-none leading-none"
+          className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-success bg-[rgba(22,163,74,0.15)] hover:bg-[rgba(22,163,74,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
           title="Agregar a hoy">+</button>
       )}
       {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
