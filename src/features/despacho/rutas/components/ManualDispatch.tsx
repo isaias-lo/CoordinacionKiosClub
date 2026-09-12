@@ -15,6 +15,7 @@ import type { Vehiculo } from '../data/flota';
 import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
 import { fechaChile } from '@/lib/fechaChile';
+import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -804,11 +805,23 @@ export default function ManualDispatch({
                     {cerrado     && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
                     {isPreview && !cerrado && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
-                    {v.porton    && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
-                    {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded font-semibold">❄ Frío</span>}
                   </div>
                 </div>
-                {v.t && <div className="text-[10px] text-kmuted/60 mt-0.5 truncate">{v.t}</div>}
+                {/* [m-08] Qué ES el vehículo: tipo + atributos, juntos y en un solo renglón. Antes
+                    Portón y Frío iban arriba mezclados con el estado (Apagado / Cerrado / En el
+                    mapa), así que la misma ranura decía a veces una cosa y a veces la otra. */}
+                {(() => {
+                  const tipo = etiquetaTipoVehiculo(v.t);
+                  return (
+                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                      <span className={`text-[10px] truncate ${tipo.definido ? 'text-kmuted/60' : 'text-kmuted/40 italic'}`}>
+                        {tipo.texto}
+                      </span>
+                      {v.porton      && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
+                      {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded font-semibold">❄ Frío</span>}
+                    </div>
+                  );
+                })()}
                 {etiquetaZona && (
                   <div className="mt-1 inline-flex items-center gap-1">
                     <span className={`text-[9px] font-bold uppercase tracking-[0.3px] px-1.5 py-[2px] rounded ${
