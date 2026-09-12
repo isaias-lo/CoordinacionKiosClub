@@ -4,11 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { BodegaHeader } from '../shared/BodegaHeader';
 import type { ActividadRow, FuenteActividad } from '@/lib/actividad';
+import { fechaChile } from '@/lib/fechaChile';
 
-function localDate(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// El día del CD. Este es el "Hoy" que mostraba mañana cuando se miraba después de las 21:00.
+const localDate = fechaChile;
 
 const FUENTE_LABEL: Record<FuenteActividad, string> = { nacional: 'Nacional', rmcosta: 'RM/Costa' };
 

@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { fechaChile } from '@/lib/fechaChile';
 
-function localDayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+/** El día del CD. Tiene que ser EL MISMO que usan las claves de jornada: si este hook midiera el
+ *  día con otro criterio, recargaría cuando no toca — o peor, no recargaría cuando sí. */
+const localDayKey = fechaChile;
 
 /**
  * Recarga la página cuando cambia el día calendario local.

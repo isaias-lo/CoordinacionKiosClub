@@ -7,6 +7,7 @@ import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remot
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
+import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 
@@ -179,9 +180,9 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-// Use local date (not UTC) so the key matches todayISO() used by the server helpers
-const _d = new Date();
-const SESSION_DATE = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+// Día del CD (America/Santiago), el mismo que usan los helpers del servidor. Con el día del reloj
+// del equipo, el servidor (que corre en UTC) generaba OTRA clave que el navegador al hidratar.
+const SESSION_DATE = fechaChile();
 const REGIONES_KEY = `regionesState_${SESSION_DATE}`;
 
 function loadInitialState(): AppState {

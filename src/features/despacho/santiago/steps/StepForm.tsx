@@ -58,10 +58,10 @@ import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlot
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
+import { fechaChile } from '@/lib/fechaChile';
 
 /* ── Calendar localStorage ── */
-const _d = new Date();
-const todayKey = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+const todayKey = fechaChile();
 const EXTRA_KEY   = `calExtraSANT_${todayKey}`;
 const REMOVED_KEY = `calRemovedSANT_${todayKey}`;
 
