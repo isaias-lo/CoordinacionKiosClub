@@ -53,6 +53,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
+import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 
@@ -112,9 +113,11 @@ interface FormRow {
   saved?: boolean;
   savedItem?: DispatchItem;
   pickingSlotId?: number;  // FK a picking_pallets.id para guardar dimensiones
-  // [Unificar inline] La fila TARGET (P1) recién unificada: el source ya se sumó y se borró; P1
-  // quedó reabierta con el peso sumado para ingresar la altura y "Agregar" (guardado normal).
+  // [Unificar inline / sumar] La fila TARGET (P1) recién unificada o a la que se le sumó carga: el
+  // origen ya se sumó y se borró; P1 quedó reabierta con el peso sumado para ingresar la altura y
+  // "Agregar" (guardado normal).
   mergeReopened?: boolean;
+  mergeMotivo?: MotivoReapertura;
 }
 
 /* ── Compact 3-column grid card ── */
@@ -1452,11 +1455,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
     }
 
-    // Form: quitar el bulto y reflejar el nuevo peso en el pallet (card + savedItem)
+    // Form: quitar el bulto y reabrir la tarjeta del pallet con el peso ya sumado, para confirmar
+    // la altura — la carga creció y esa medida es la única que el sistema no puede deducir
+    // (ver reaperturaAltura.ts). El item sigue guardado: si nadie confirma, no se pierde nada.
+    const altoPrevio = palletRow.savedItem?.alto ?? (parseFloat(palletRow.alto) || 0);
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, peso: String(nuevoPeso), savedItem: r.savedItem ? { ...r.savedItem, peso: nuevoPeso } : r.savedItem }
+        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+            alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
     // BD: actualizar el peso del slot del destino (si tiene slot de picking)
@@ -1467,7 +1474,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     }
 
     setFormMergeState(null);
-    showToast(`Sumado a ${palletLabel} (+${bultoPeso}kg)`, '#2563EB');
+    showToast(toastSuma(palletLabel, bultoPeso), '#2563EB');
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: bultoRow.pkg === 'chocolate' ? 'CH' : 'bulto',
       label: palletLabel, peso: bultoPeso, slotId: targetSlotId });
@@ -1515,12 +1522,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
     }
 
-    // Form: quitar TODOS los bultos seleccionados y reflejar el nuevo peso en el pallet
+    // Form: quitar TODOS los bultos seleccionados y reabrir la tarjeta del pallet con el peso ya
+    // sumado, para confirmar la altura (ver reaperturaAltura.ts).
     const bultoRowIdSet = new Set(bultoRows.map(r => r.id));
+    const altoPrevio = palletRow.savedItem?.alto ?? (parseFloat(palletRow.alto) || 0);
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, peso: String(nuevoPeso), savedItem: r.savedItem ? { ...r.savedItem, peso: nuevoPeso } : r.savedItem }
+        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+            alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
     // BD: un solo update del peso del slot destino
@@ -1532,7 +1542,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     setFormMergeState(null);
     setMergeSel(new Set());
-    showToast(`✓ ${bultoRows.length} sumados a ${palletLabel}`, '#16A34A');
+    showToast(toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), '#16A34A');
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: `${bultoRows.length} ítems`, label: palletLabel,
       peso: sumarPesoMultiple(0, pesosBultos), slotId: targetSlotId });
@@ -1947,7 +1957,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   {row.mergeReopened && (
                     <div className="mb-1.5 flex items-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-bold"
                       style={{ border: '1.5px solid rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                      ⬦ Unificado · peso ya sumado — ingresa la altura y Agregar
+                      {bannerReapertura(row.mergeMotivo ?? 'union')}
                     </div>
                   )}
                   {row.pkg === 'pallet' && (
@@ -2046,7 +2056,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     }}
                     className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer transition-all"
                     style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
-                    {row.mergeReopened ? '+ Agregar (unificado)' : '+ Agregar'}
+                    {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : '+ Agregar'}
                   </button>
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
