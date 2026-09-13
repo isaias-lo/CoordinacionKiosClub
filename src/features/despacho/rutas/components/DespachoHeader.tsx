@@ -36,6 +36,11 @@ interface Props {
   /** Pestaña activa. Decide la REGLA de salida que se muestra: seco sale al día siguiente,
    *  congelados al día hábil siguiente. Ver utils/fechaSalida. */
   tipoCarga?: TipoCarga;
+  /** Corrección manual del día de despacho. null = usar el calculado.
+   *  Existe porque los feriados NO están modelados: el viernes 18/09/2026 es Fiestas Patrias y la
+   *  regla de "día hábil siguiente" lo daría por bueno. */
+  fechaSalidaOverride?: string | null;
+  onFechaSalida?: (f: string | null) => void;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -115,15 +120,20 @@ function AutoAsignarToggle(
 /* ── Contenido compartido desktop/drawer: supervisor, día de armado y el día en que sale ── */
 function HeaderFields({
   supervisor, onSupervisor, fecha, onFecha, hoy, manana, tipoCarga, stacked,
+  salidaOverride, onSalida,
 }: {
   supervisor: string; onSupervisor: (s: string) => void;
   fecha: string; onFecha: (f: string) => void;
   hoy: string; manana: string; tipoCarga: TipoCarga;
   stacked?: boolean;
+  salidaOverride?: string | null;
+  onSalida?: (f: string | null) => void;
 }) {
   // El campo SIEMPRE guardó el día de armado: una ruta creada el 11/09 se llama RUTA-110926 y
   // sale el 12. El único rótulo que existía decía "Fecha de salida" — lo contrario de lo que hace.
-  const salida = fechaSalida(fecha, tipoCarga);
+  const calculada = fechaSalida(fecha, tipoCarga);
+  const salida = salidaOverride ?? calculada;
+  const corregida = !!salidaOverride && salidaOverride !== calculada;
   const textoSalida = salida ? conMayusculaInicial(fechaLargaCL(`${salida}T12:00:00`)) : '';
 
   // Fin de semana: la ruta de congelados del lunes se arma el sábado o el domingo, y el día que
@@ -175,12 +185,42 @@ function HeaderFields({
             className={`h-[38px] px-2.5 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-knavy focus:outline-none transition-colors ${stacked ? 'flex-1 min-w-0' : ''}`}
           />
         </div>
-        {/* La salida es lo que el chofer y la tienda ven. Mostrarla evita la cuenta de cabeza —
-            y sobre todo evita creer que la fecha de arriba ya es la de salida. */}
+        {/* El día de despacho es lo que el chofer y la tienda ven, y va impreso en el manifiesto.
+            Se calcula, pero se puede corregir: los feriados no están modelados. */}
         {textoSalida && (
-          <div className="text-[11px] text-kmuted mt-1 whitespace-nowrap">
-            Sale <span className="font-bold" style={{ color: tipoCarga === 'congelados' ? '#0891B2' : '#1B2A6B' }}>{textoSalida}</span>
-            {tipoCarga === 'congelados' && <span className="text-kmuted"> · flota interna</span>}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span className="text-[11px] text-kmuted">Despacho</span>
+            <label className="relative inline-flex items-center">
+              <span className="sr-only">Día de despacho</span>
+              <input
+                type="date"
+                value={salida}
+                min={fecha}
+                onChange={e => onSalida?.(e.target.value || null)}
+                title={corregida
+                  ? `Corregido a mano. Lo calculado era ${calculada}.`
+                  : 'Calculado. Puedes corregirlo si cae feriado.'}
+                className="h-[24px] px-1.5 rounded-[6px] bg-kbg border text-[11px] font-bold cursor-pointer"
+                style={{
+                  borderColor: corregida ? '#D97706' : 'rgba(0,0,0,0.10)',
+                  color: tipoCarga === 'congelados' ? '#0891B2' : '#1B2A6B',
+                }}
+              />
+            </label>
+            <span className="text-[11px] font-semibold whitespace-nowrap"
+              style={{ color: tipoCarga === 'congelados' ? '#0891B2' : '#1B2A6B' }}>
+              {textoSalida}
+            </span>
+            {corregida ? (
+              <button type="button" onClick={() => onSalida?.(null)}
+                title="Volver al día calculado"
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer"
+                style={{ background: 'rgba(217,119,6,0.12)', color: '#B45309' }}>
+                corregido · volver
+              </button>
+            ) : tipoCarga === 'congelados' ? (
+              <span className="text-[10px] text-kmuted">flota interna</span>
+            ) : null}
           </div>
         )}
       </div>
@@ -196,7 +236,7 @@ export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
   dnom, calT, mapContent, terminadas,
   asignacionAutomatica, onToggleAsignacionAutomatica, puedeCambiarAuto = true, motivoBloqueoAuto,
-  tipoCarga = 'seco',
+  tipoCarga = 'seco', fechaSalidaOverride = null, onFechaSalida,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -248,6 +288,7 @@ export default function DespachoHeader({
                   supervisor={supervisor} onSupervisor={onSupervisor}
                   fecha={fecha} onFecha={onFecha} hoy={hoy} manana={manana}
                   tipoCarga={tipoCarga}
+                  salidaOverride={fechaSalidaOverride} onSalida={onFechaSalida}
                   stacked
                 />
                 <button
@@ -284,6 +325,7 @@ export default function DespachoHeader({
           supervisor={supervisor} onSupervisor={onSupervisor}
           fecha={fecha} onFecha={onFecha} hoy={hoy} manana={manana}
           tipoCarga={tipoCarga}
+          salidaOverride={fechaSalidaOverride} onSalida={onFechaSalida}
         />
 
         {/* Resumen del día */}

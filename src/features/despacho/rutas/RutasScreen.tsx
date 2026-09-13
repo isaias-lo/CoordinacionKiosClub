@@ -59,6 +59,7 @@ import type { SesionRow } from '../../../lib/despachoSesion';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 import { fechaChile } from '@/lib/fechaChile';
+import { fechaSalida, type TipoCarga } from './utils/fechaSalida';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -231,6 +232,15 @@ export default function RutasScreen() {
   );
   const [supervisor, setSupervisor] = useState('');
   const [fecha,      setFecha]      = useState(todayStr);
+  // Corrección manual del día de despacho. null = usar el calculado por `fechaSalida`. Existe
+  // porque los feriados NO están modelados: el viernes 18/09/2026 es Fiestas Patrias y la regla
+  // de "día hábil siguiente" lo daría por bueno.
+  const [salidaManual, setSalidaManual] = useState<string | null>(null);
+  const tipoCargaActivo: TipoCarga = modo === 'cong' ? 'congelados' : 'seco';
+  /** El día de despacho de un armado dado. La corrección manual solo vale para el día abierto en
+   *  la cabecera: arrastrarla a otro día (la 2ª vuelta arma sobre el de hoy) sería inventar. */
+  const despachoDe = (armado: string) =>
+    (salidaManual && armado === fecha) ? salidaManual : fechaSalida(armado, tipoCargaActivo);
   const [manualText, setManualText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [iaLoading] = useState(false); // (LLM parkeado; el botón "Asignar" usa clusters instantáneos)
@@ -2747,6 +2757,9 @@ export default function RutasScreen() {
         </div>
       )}
 
+      {/* La corrección manual vale para el día de armado que está abierto en la cabecera. Si un
+          manifiesto se arma sobre OTRO día (la 2ª vuelta usa el de hoy), ese recalcula el suyo:
+          arrastrar la corrección a un día distinto sería inventar. */}
       <DespachoHeader
         supervisor={supervisor} onSupervisor={setSupervisor}
         fecha={fecha} onFecha={setFecha}
@@ -2758,7 +2771,9 @@ export default function RutasScreen() {
         onToggleAsignacionAutomatica={() => { void guardarAuto(!asignacionAutomatica); }}
         puedeCambiarAuto={puedeAuto}
         motivoBloqueoAuto={motivoBloqueoAuto(profile?.role)}
-        tipoCarga={modo === 'cong' ? 'congelados' : 'seco'}
+        tipoCarga={tipoCargaActivo}
+        fechaSalidaOverride={salidaManual}
+        onFechaSalida={setSalidaManual}
       />
 
       <main className="flex-1 overflow-hidden">
@@ -2910,6 +2925,7 @@ export default function RutasScreen() {
         <ManifiestoPanel
           rutas={manifiestoV2}
           fecha={todayStr()}
+          fechaSalida={despachoDe(todayStr())}
           supervisor={supervisor}
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
@@ -2922,6 +2938,7 @@ export default function RutasScreen() {
         <ManifiestoPanel
           rutas={manifiestoV1}
           fecha={fecha}
+          fechaSalida={despachoDe(fecha)}
           supervisor={supervisor}
           tiendas={(results?.extTiendas || tiendas) as Record<string, TiendaInfo & { _parada?: boolean }>}
           // 1ª vuelta: el camión sale del CD a la hora base, así que se le sugiere cuándo salir.
