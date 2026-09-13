@@ -108,7 +108,13 @@ export function sheetsCongeladosWrite(
     body:    JSON.stringify({ sheet: 'DESPACHO CONGELADOS', tabla, fuente: 'bodega_congelados', rows }),
   })
     .then(async res => {
-      if (!res.ok) return { ok: false, mirrorErrores: [`HTTP ${res.status}`] };
+      if (!res.ok) {
+        // El servidor manda el motivo en `error`. Tirarlo y decir "Intenta de nuevo" hizo que un
+        // fallo permanente —la hoja de destino no existía— pareciera un problema pasajero durante
+        // meses. Si el motivo viene, se muestra.
+        const detalle = await res.json().catch(() => null) as { error?: string } | null;
+        return { ok: false, mirrorErrores: [detalle?.error || `HTTP ${res.status}`] };
+      }
       const body = await res.json().catch(() => ({})) as { mirrorErrores?: string[] };
       return { ok: true, mirrorErrores: body.mirrorErrores ?? [] };
     })
