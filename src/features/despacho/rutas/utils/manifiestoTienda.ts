@@ -62,13 +62,17 @@ export function buildManifiestoTiendaHTML(
   t: TiendaManifiesto,
   info: (TiendaInfo & { _parada?: boolean }) | undefined,
   items: ItemDetalle[],
-  meta: { fecha: string; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string; driveUrl?: string },
+  meta: { fecha: string; fechaSalida?: string | null; codigo_ruta: string; chofer: string; patente: string; supervisor: string; origin: string; driveUrl?: string },
   copia: 'ORIGINAL' | 'CEDIBLE' = 'ORIGINAL',
 ): string {
   // Marca de copia (esquina inferior izquierda del comprobante): ORIGINAL (navy) vs CEDIBLE (rojo).
   const copiaColor = copia === 'ORIGINAL' ? '#1a2550' : '#C62828';
   const copiaMark  = `<span style="font-weight:900;font-size:11px;letter-spacing:1.5px;padding:3px 12px;border-radius:4px;border:1.5px solid ${copiaColor};color:${copiaColor};white-space:nowrap">${copia}</span>`;
-  const fechaLabel = new Date(meta.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
+  const dia = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fechaLabel = dia(meta.fecha);
+  // El día en que la carga LLEGA. Va aparte del armado porque no son el mismo día — y porque el
+  // que recibe esto en la tienda necesita el de llegada, no el de armado.
+  const salidaLabel = meta.fechaSalida ? dia(meta.fechaSalida) : '';
   const nP  = items.filter(i => i.tipo === 'P').length;
   const nB  = items.filter(i => i.tipo === 'B').length;
   const nCH = items.filter(i => i.tipo === 'CH').length;
@@ -117,7 +121,8 @@ export function buildManifiestoTiendaHTML(
     <div class="tienda-hdr-grid">
       <div class="mi"><label>Tienda</label><span>${info?.n ?? t.nombre}</span></div>
       <div class="mi"><label>Código de tienda</label><span>${t.store_cod}</span></div>
-      <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
+      <div class="mi"><label>Armado</label><span>${fechaLabel}</span></div>
+      ${salidaLabel ? `<div class="mi"><label>Despacho</label><span>${salidaLabel}</span></div>` : ''}
       <div class="mi"><label>Patente</label><span>${meta.patente}</span></div>
       <div class="mi"><label>Corredor</label><span>${info?.z ?? '—'}</span></div>
       <div class="mi"><label>Ventana horaria</label><span>${info?.v ?? t.ventana ?? '—'}</span></div>

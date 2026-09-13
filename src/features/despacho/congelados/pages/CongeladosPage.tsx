@@ -313,7 +313,8 @@ export function CongeladosPage({ zona }: Props) {
       setSelected(null);
     } catch (err) {
       console.error('[CongeladosPage] registrar', err);
-      showToast('Error al registrar. Intenta de nuevo.', '#D32F2F');
+      const motivo = err instanceof Error ? err.message : '';
+      showToast(motivo ? `No se registró: ${motivo}` : 'Error al registrar. Intenta de nuevo.', '#D32F2F');
     } finally {
       setSaving(false);
     }

@@ -81,7 +81,7 @@ describe('buildManifiestoTiendaHTML', () => {
     expect(html).not.toContain('P201TPS07072026P');
   });
 
-  it('arma el header con campos etiquetados (Tienda, Código, Fecha, Patente, Corredor, Ventana)', () => {
+  it('arma el header con campos etiquetados (Tienda, Código, Armado, Patente, Corredor, Ventana)', () => {
     const info = { n: 'Maipú', z: 'Poniente', v: '09:00-11:00' };
     const html = buildManifiestoTiendaHTML(TIENDA, info, [item()], META);
     // El header va desde la grilla de campos hasta la tabla de detalle.
@@ -89,7 +89,7 @@ describe('buildManifiestoTiendaHTML', () => {
     // etiquetas
     expect(header).toContain('>Tienda<');
     expect(header).toContain('>Código de tienda<');
-    expect(header).toContain('>Fecha<');
+    expect(header).toContain('>Armado<');
     expect(header).toContain('>Patente<');
     expect(header).toContain('>Corredor<');
     expect(header).toContain('>Ventana horaria<');
@@ -100,6 +100,22 @@ describe('buildManifiestoTiendaHTML', () => {
     expect(header).toContain('Poniente');     // corredor (zona)
     expect(header).toContain('09:00-11:00');  // ventana horaria
     expect(header).toContain('julio');        // fecha formateada
+  });
+
+  it('imprime el día de DESPACHO aparte del de armado: no son el mismo día', () => {
+    const html = buildManifiestoTiendaHTML(TIENDA, undefined, [item()],
+      { ...META, fecha: '2026-09-11', fechaSalida: '2026-09-14' });
+    const header = html.slice(html.indexOf('tienda-hdr-grid'), html.indexOf('<table>'));
+    expect(header).toContain('>Armado<');
+    expect(header).toContain('>Despacho<');
+    expect(header).toContain('11 de septiembre');  // armado: viernes
+    expect(header).toContain('14 de septiembre');  // despacho: lunes
+  });
+
+  it('sin día de despacho no imprime el campo: una ruta vieja no lo tiene', () => {
+    const header = buildManifiestoTiendaHTML(TIENDA, undefined, [item()], META);
+    expect(header).not.toContain('>Despacho<');
+    expect(header).toContain('>Armado<');
   });
 
   it('no incluye el campo Supervisor en el header', () => {

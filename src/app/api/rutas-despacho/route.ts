@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
-    fecha: string; codigo_ruta: string; chofer: string; patente: string;
+    fecha: string; fecha_salida?: string | null; codigo_ruta: string; chofer: string; patente: string;
     bodega_origen?: string;
     pioneta_1?: string;
     pioneta_2?: string;
@@ -90,6 +90,9 @@ export async function POST(request: NextRequest) {
     .from('rutas_despacho')
     .insert({
       fecha:          body.fecha,
+      // Día de llegada a tienda. `fecha` sigue siendo el de ARMADO: de ahí cuelgan codigo_ruta,
+      // la búsqueda por día y la ventana de guías. Ver la migración add_fecha_salida_a_rutas_despacho.
+      fecha_salida:   body.fecha_salida ?? null,
       codigo_ruta:    body.codigo_ruta,
       chofer:         body.chofer,
       chofer_original: body.chofer,  // snapshot at creation
