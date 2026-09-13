@@ -32,6 +32,12 @@ interface Props {
   modo: string;
   fase: FaseInfo;
   calT: Record<string, CalData>;
+  /** Cierre de camión del tab CONGELADOS — paralelo al del seco, con su propio set de cerradas. */
+  onCerrarCamionCong?: (patente: string) => void;
+  cerrarSelCong?: Set<string>;
+  onToggleCerrarSelCong?: (patente: string) => void;
+  onCerrarVariosCong?: (patentes: string[]) => void;
+  esCerradaCong?: (patente: string) => boolean;
   // Pool + asignación del tab CONGELADOS (paralelo al SECO; alimentado por fuentes 'congelados-*').
   calTCong: Record<string, CalData>;
   asignacionesCong: Record<string, StoreAssign[]>;
@@ -131,6 +137,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 /* ── Main component ──────────────────────────────────────────────── */
 export default function InputSection({
   flota, flotaStatus, modo, fase, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
+  onCerrarCamionCong, cerrarSelCong, onToggleCerrarSelCong, onCerrarVariosCong, esCerradaCong,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, pool, onPool, todaLaFlota, onTodaLaFlota, fecha, userId,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
@@ -502,7 +509,15 @@ export default function InputSection({
                 pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
               camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
               scrollContainerRef={dragScrollRef}
-              onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} />
+              onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion}
+              // Cerrar camión: existía solo en DESPACHO. Sin esto, en CONGELADOS se podía armar
+              // el camión pero no emitir su manifiesto — la carga quedaba asignada y nada más.
+              onCerrarCamion={onCerrarCamionCong}
+              cerrarSel={cerrarSelCong}
+              onToggleCerrarSel={onToggleCerrarSelCong}
+              onCerrarVarios={onCerrarVariosCong}
+              esCerrada={esCerradaCong}
+              zonasCfg={zonasCfg} />
           </div>
         </div>
       ) : rightPanelContent ? (

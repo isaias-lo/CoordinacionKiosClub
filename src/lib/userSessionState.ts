@@ -3,7 +3,7 @@ import { fechaChile } from '@/lib/fechaChile';
 
 // 'rutas_reg' = marca de "este día ya se registró en el Enrutador" (para avisar de días sin registrar).
 // 'rutas_cerradas' = set de patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), por fecha.
-type Fuente = 'regiones' | 'santiago' | 'guides' | 'rutas' | 'rutas_v2' | 'segunda_vuelta' | 'rutas_reg' | 'rutas_cerradas' | 'congelados-santiago' | 'congelados-regiones' | 'rutas_congelados' | 'planificador';
+type Fuente = 'regiones' | 'santiago' | 'guides' | 'rutas' | 'rutas_v2' | 'segunda_vuelta' | 'rutas_reg' | 'rutas_cerradas' | 'rutas_cerradas_cong' | 'congelados-santiago' | 'congelados-regiones' | 'rutas_congelados' | 'planificador';
 
 function todayISO(): string {
   // Un solo "hoy" para toda la app: el día del CD (America/Santiago). Ver lib/fechaChile.ts.
