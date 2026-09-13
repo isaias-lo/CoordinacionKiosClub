@@ -4,6 +4,8 @@ import { Menu, X, RefreshCw } from 'lucide-react';
 import { getDia, todayStr } from '../utils/helpers';
 import { useIsMobile } from '../utils/useIsMobile';
 import { enElPool } from '../utils/pool';
+import { fechaSalida, ultimoDiaHabil, esFinDeSemana, type TipoCarga } from '../utils/fechaSalida';
+import { fechaLargaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 
 interface CalData { on: boolean; p: number; b: number; }
 
@@ -31,6 +33,9 @@ interface Props {
   puedeCambiarAuto?: boolean;
   /** Por qué está bloqueado, para el title. Un botón apagado sin explicación parece roto. */
   motivoBloqueoAuto?: string | null;
+  /** Pestaña activa. Decide la REGLA de salida que se muestra: seco sale al día siguiente,
+   *  congelados al día hábil siguiente. Ver utils/fechaSalida. */
+  tipoCarga?: TipoCarga;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -107,16 +112,25 @@ function AutoAsignarToggle(
   );
 }
 
-/* ── Contenido compartido desktop/drawer: supervisor, fecha (el filtro de grupo se movió a la
-     fila "Sin asignar" del board, en ManualDispatch) ── */
+/* ── Contenido compartido desktop/drawer: supervisor, día de armado y el día en que sale ── */
 function HeaderFields({
-  supervisor, onSupervisor, fecha, onFecha, hoy, manana, stacked,
+  supervisor, onSupervisor, fecha, onFecha, hoy, manana, tipoCarga, stacked,
 }: {
   supervisor: string; onSupervisor: (s: string) => void;
   fecha: string; onFecha: (f: string) => void;
-  hoy: string; manana: string;
+  hoy: string; manana: string; tipoCarga: TipoCarga;
   stacked?: boolean;
 }) {
+  // El campo SIEMPRE guardó el día de armado: una ruta creada el 11/09 se llama RUTA-110926 y
+  // sale el 12. El único rótulo que existía decía "Fecha de salida" — lo contrario de lo que hace.
+  const salida = fechaSalida(fecha, tipoCarga);
+  const textoSalida = salida ? conMayusculaInicial(fechaLargaCL(`${salida}T12:00:00`)) : '';
+
+  // Fin de semana: la ruta de congelados del lunes se arma el sábado o el domingo, y el día que
+  // hay que abrir es el VIERNES. "Ayer" no sirve: desde el domingo, ayer es el sábado.
+  const habil = ultimoDiaHabil(hoy);
+  const ofrecerHabil = esFinDeSemana(hoy) && fecha !== habil;
+
   return (
     <>
       <div className={stacked ? 'w-full' : ''}>
@@ -131,23 +145,44 @@ function HeaderFields({
       </div>
 
       <div className={stacked ? 'w-full' : ''}>
-        {stacked && <div className="text-[10px] font-bold uppercase tracking-wide text-kmuted mb-1">Fecha de salida</div>}
-        <div className="flex items-center gap-1.5">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-kmuted mb-1">
+          Día de armado
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button type="button" onClick={() => onFecha(hoy)}
+            title="Armar lo de hoy"
             className={`h-[38px] text-[11px] font-bold px-2.5 rounded-[7px] transition-colors ${fecha === hoy ? 'bg-knavy text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
             Hoy
           </button>
           <button type="button" onClick={() => onFecha(manana)}
+            title="Armar lo de mañana"
             className={`h-[38px] text-[11px] font-bold px-2.5 rounded-[7px] transition-colors ${fecha === manana ? 'bg-knavy text-white' : 'bg-kbg text-kmuted border border-black/[0.1] hover:bg-black/[0.04]'}`}>
             Mañana
           </button>
+          {ofrecerHabil && (
+            <button type="button" onClick={() => onFecha(habil)}
+              title="El último día hábil: lo que se armó el viernes y todavía no se rutea"
+              className="h-[38px] text-[11px] font-bold px-2.5 rounded-[7px] transition-colors bg-kbg border border-[#0891B2]/45 hover:bg-[#0891B2]/[0.07]"
+              style={{ color: '#0891B2' }}>
+              Último hábil
+            </button>
+          )}
           <input
             type="date"
             value={fecha}
             onChange={e => onFecha(e.target.value)}
+            aria-label="Día de armado"
             className={`h-[38px] px-2.5 rounded-[10px] bg-kbg border-[1.5px] border-black/[0.09] text-[13px] font-semibold text-ktext focus:border-knavy focus:outline-none transition-colors ${stacked ? 'flex-1 min-w-0' : ''}`}
           />
         </div>
+        {/* La salida es lo que el chofer y la tienda ven. Mostrarla evita la cuenta de cabeza —
+            y sobre todo evita creer que la fecha de arriba ya es la de salida. */}
+        {textoSalida && (
+          <div className="text-[11px] text-kmuted mt-1 whitespace-nowrap">
+            Sale <span className="font-bold" style={{ color: tipoCarga === 'congelados' ? '#0891B2' : '#1B2A6B' }}>{textoSalida}</span>
+            {tipoCarga === 'congelados' && <span className="text-kmuted"> · flota interna</span>}
+          </div>
+        )}
       </div>
     </>
   );
@@ -161,6 +196,7 @@ export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
   dnom, calT, mapContent, terminadas,
   asignacionAutomatica, onToggleAsignacionAutomatica, puedeCambiarAuto = true, motivoBloqueoAuto,
+  tipoCarga = 'seco',
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -211,6 +247,7 @@ export default function DespachoHeader({
                 <HeaderFields
                   supervisor={supervisor} onSupervisor={onSupervisor}
                   fecha={fecha} onFecha={onFecha} hoy={hoy} manana={manana}
+                  tipoCarga={tipoCarga}
                   stacked
                 />
                 <button
@@ -246,6 +283,7 @@ export default function DespachoHeader({
         <HeaderFields
           supervisor={supervisor} onSupervisor={onSupervisor}
           fecha={fecha} onFecha={onFecha} hoy={hoy} manana={manana}
+          tipoCarga={tipoCarga}
         />
 
         {/* Resumen del día */}

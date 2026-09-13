@@ -15,12 +15,17 @@
 // La lista de abajo son las columnas REALES de las dos tablas (idénticas entre sí, verificadas
 // contra information_schema). Filtrar contra ella evita que un campo nuevo en el código tumbe la
 // escritura entera: el campo se descarta y se avisa, en vez de perderse la fila.
+//
+// `fuente` YA existe (migración add_fuente_a_despacho_rm_regiones): es la que faltaba. Sirve para
+// saber quién escribió cada fila, que es justo el dato que no había al investigar el 11/09. NULL
+// significa que la fila llegó por /api/sync-despacho releyendo la planilla, no por escritura
+// directa — una distinción útil por sí sola.
 
 /** Columnas reales de despacho_rm y despacho_regiones (el mismo conjunto en las dos). */
 export const COLUMNAS_DESPACHO: ReadonlySet<string> = new Set([
   'alto', 'ancho', 'auditado', 'auditado_at', 'auditado_canonical_id', 'canonical_id',
   'carga', 'cod', 'comuna', 'conductor', 'conductor_modificado', 'conductor_original',
-  'created_at', 'estado', 'fecha', 'fecha_armado', 'fecha_llegada', 'guia', 'id', 'largo',
+  'created_at', 'estado', 'fecha', 'fecha_armado', 'fecha_llegada', 'fuente', 'guia', 'id', 'largo',
   'modificado_at', 'n_pallet_bulto', 'patente', 'peso_kg', 'peso_v', 'picking_slot_id',
   'pioneta_1', 'pioneta_2', 'regimen', 'region', 'ruta', 'seguimiento', 'supervisor',
   'tienda', 'tipo', 'tipo_comuna', 'transporte', 'valor', 'ventana', 'vuelta',

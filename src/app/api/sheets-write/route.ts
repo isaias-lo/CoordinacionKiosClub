@@ -198,11 +198,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
     const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[]; tabla?: string };
-    const { sheet, rows = [], action } = body;
+    const { sheet, rows = [], fuente, action } = body;
 
-    // `body.fuente` ('bodega_rm', 'enrutador', …) se sigue aceptando porque los clientes lo mandan,
-    // pero NO se escribe: despacho_rm/despacho_regiones no tienen esa columna (ver ./mirror). La
-    // procedencia se guarda en despacho_sesion, que sí la tiene.
+    // `body.fuente` ('bodega_rm', 'enrutador', …) sí se escribe: la columna existe desde la
+    // migración add_fuente_a_despacho_rm_regiones. Antes no, y por eso el espejo entero fallaba.
     //
     // Los errores del espejo se juntan acá y VUELVEN en la respuesta. Antes solo iban a console.error
     // y el cliente veía "✓ Registrado" aunque la base no hubiera recibido nada.
@@ -365,7 +364,7 @@ export async function POST(request: NextRequest) {
           // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206).
           // DESPACHO RM/REGIONES escribe la fecha en col B (índice 1). Aplicar formato post-append.
           await applyDateFormat(gs, sheet, faltaAppendRes.data.updates?.updatedRange, 1);
-          const limpios = faltaRecords.map(paraMirror);
+          const limpios = faltaRecords.map(r => paraMirror(fuente ? { ...r, fuente } : r));
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error } = await sb.from(table).upsert(limpios as any[], { onConflict: 'id' });
           if (error) { console.error(`[sheets-write] Supabase upsert faltantes ${table}:`, error.message); mirrorErrores.push(`upsert faltantes: ${error.message}`); }
@@ -463,7 +462,7 @@ export async function POST(request: NextRequest) {
 
         if (newRecords.length) {
           avisarDescartes(newRecords[0]);
-          const limpios = newRecords.map(paraMirror);
+          const limpios = newRecords.map(r => paraMirror(fuente ? { ...r, fuente } : r));
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error } = await sb.from(table).insert(limpios as any[]);
           if (error) { console.error(`[sheets-write] Supabase insert ${table}:`, error.message); mirrorErrores.push(`insert: ${error.message}`); }
@@ -480,6 +479,7 @@ export async function POST(request: NextRequest) {
             ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
             ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
           };
+          if (fuente) updateObj.fuente = fuente;
           const { error } = await sb.from(table).update(paraMirror(updateObj)).eq('id', rm.id as string);
           if (error) { console.error(`[sheets-write] Supabase update ${table}:`, error.message); mirrorErrores.push(`update ${rm.id}: ${error.message}`); }
         }
@@ -513,6 +513,7 @@ export async function POST(request: NextRequest) {
         await applyDateFormat(gs, 'DESPACHO CONGELADOS', appRes.data.updates?.updatedRange, 1);
       }
 
+      const fuenteCong = fuente ?? 'bodega_congelados';
       // Mirror a Supabase (tabla por región).
       const ids = records.map(r => r.id);
       const { data: existing } = await sb.from(tabla).select('id').in('id', ids);
@@ -521,7 +522,7 @@ export async function POST(request: NextRequest) {
       const existingRecords = records.filter(r => existingIds.has(r.id));
       if (newRecords.length) {
         avisarDescartes(newRecords[0]);
-        const limpios = newRecords.map(paraMirror);
+        const limpios = newRecords.map(r => paraMirror({ ...r, fuente: fuenteCong }));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await sb.from(tabla).insert(limpios as any[]);
         if (error) { console.error('[sheets-write] Supabase insert congelados', tabla, error.message); mirrorErrores.push(`insert congelados: ${error.message}`); }
@@ -532,6 +533,7 @@ export async function POST(request: NextRequest) {
         const updateObj: Record<string, any> = {
           tipo: rm.tipo, carga: rm.carga, regimen: rm.regimen,
           ventana: rm.ventana, estado: rm.estado, n_pallet_bulto: rm.n_pallet_bulto,
+          fuente: fuenteCong,
           ...(rm.fecha_armado    !== null && rm.fecha_armado    !== undefined && { fecha_armado:    rm.fecha_armado }),
           ...(rm.picking_slot_id !== null && rm.picking_slot_id !== undefined && { picking_slot_id: rm.picking_slot_id }),
           // Re-registrar una caja ya registrada también actualiza su peso (si ahora lo tiene).
