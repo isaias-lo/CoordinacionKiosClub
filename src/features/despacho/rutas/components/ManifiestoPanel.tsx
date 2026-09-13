@@ -35,6 +35,8 @@ interface ManifiestoData {
   total_chocolates: number;
   /** 'HH:MM' — solo si su primera tienda abre después de que el camión llegaría. Se muestra; no se guarda. */
   salida_sugerida?: string;
+  /** Día en que la carga llega a la tienda. Distinto del de armado; ver utils/fechaSalida. */
+  fecha_salida?: string | null;
 }
 
 interface Props {
@@ -56,6 +58,8 @@ interface Props {
    * manifiesto de 1ª VUELTA: la 2ª vuelta no sale a las 08:00, así que ahí la sugerencia no aplica.
    */
   salida?: { gps: Record<string, number[]>; cd: number[] };
+  /** Día de despacho (llegada a tienda). Se imprime y se guarda junto al manifiesto. */
+  fechaSalida?: string | null;
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -77,11 +81,12 @@ function infoTienda(cod: string, tiendas: Record<string, TiendaInfo & { _parada?
   return tiendas[cod] ?? tiendas[cod.toUpperCase()] ?? tiendas[cod.toLowerCase()] ?? { n: cod, v: '—', z: '—' };
 }
 
-function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>, seq: number = idx): ManifiestoData {
+function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>, seq: number = idx, fechaSalida?: string | null): ManifiestoData {
   return {
     idx,
     codigo_ruta:   codigoRuta(fecha, seq),
     fecha,
+    fecha_salida:  fechaSalida ?? null,
     chofer:        ruta._choferAsignado || ruta.v.ch || 'Sin asignar',
     patente:       ruta.v.p,
     transporte:    ruta.v.empresa || 'Luis Fica',   // empresa del camión (FLOTA) → columna TRANSPORTE
@@ -110,7 +115,9 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   // imprime un QR inválido; se muestra un aviso.
   const tieneToken = !!m.token_qr;
   const qrUrl = tieneToken ? `${origin}/r/${m.token_qr}` : '';
-  const fechaLabel = new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
+  const dia = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fechaLabel  = dia(m.fecha);
+  const salidaLabel = m.fecha_salida ? dia(m.fecha_salida) : '';
   const genLabel   = new Date().toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const filas = m.tiendas.map(t =>
@@ -151,7 +158,8 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
 </div>
 
 <div class="meta">
-  <div class="mi"><label>Fecha</label><span>${fechaLabel}</span></div>
+  <div class="mi"><label>Armado</label><span>${fechaLabel}</span></div>
+  ${salidaLabel ? `<div class="mi"><label>Despacho</label><span>${salidaLabel}</span></div>` : ''}
   <div class="mi"><label>Patente</label><span>${m.patente}</span></div>
   <div class="mi"><label>Transporte</label><span>${m.transporte}</span></div>
   ${m.salida_sugerida ? `<div class="mi"><label>Salida sugerida</label><span>${m.salida_sugerida}</span></div>` : ''}
@@ -335,7 +343,7 @@ ${body}
 }
 
 /* ── Component ──────────────────────────────────────────── */
-export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida }: Props) {
+export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
@@ -371,7 +379,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
           .map(g => [String(g.patente).trim().toUpperCase(), g]),
       );
       return rutas.map((r, i) => {
-        const base0 = fromRuta(r, i, fecha, tiendas, i + offsetSeq);
+        const base0 = fromRuta(r, i, fecha, tiendas, i + offsetSeq, fechaSalida);
         // Misma configuración con la que el Enrutador armó las rutas (OPCIONES_DEFAULT).
         const sale = salida ? salidaSugerida(r.ts.map(t => t.c), salida.gps, salida.cd, OPCIONES_DEFAULT, tiendas) : null;
         const salidaBase = aMinutos(OPCIONES_DEFAULT.horaSalida) ?? 8 * 60;
@@ -394,7 +402,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
-  }, [rutas, fecha, tiendas, offsetSeq, guardados, salida]);
+  }, [rutas, fecha, fechaSalida, tiendas, offsetSeq, guardados, salida]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
   // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).
@@ -475,6 +483,7 @@ export default function ManifiestoPanel({ rutas, fecha, supervisor, tiendas, isO
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fecha:         m.fecha,
+          fecha_salida:  m.fecha_salida ?? null,
           codigo_ruta:   m.codigo_ruta,
           chofer:        m.chofer,
           patente:       m.patente,
@@ -572,7 +581,7 @@ ${bodies}
         // producía https://drive.google.com/file/d/<URL_SUPABASE>/view → "Archivo no encontrado" al
         // descargar las guías desde la recepción. guiaHref la usa tal cual (y tolera IDs legado).
         const driveUrl = driveId ? guiaHref(driveId) : undefined;
-        const meta = { fecha: m.fecha, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin, driveUrl };
+        const meta = { fecha: m.fecha, fechaSalida: m.fecha_salida, codigo_ruta: m.codigo_ruta, chofer: m.chofer, patente: m.patente, supervisor, origin, driveUrl };
         // Req 4: 2 copias por tienda → ORIGINAL (sus N páginas) y luego CEDIBLE (sus N páginas).
         return [
           buildManifiestoTiendaHTML(t, info, its, meta, 'ORIGINAL'),
