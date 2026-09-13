@@ -2758,6 +2758,7 @@ export default function RutasScreen() {
         onToggleAsignacionAutomatica={() => { void guardarAuto(!asignacionAutomatica); }}
         puedeCambiarAuto={puedeAuto}
         motivoBloqueoAuto={motivoBloqueoAuto(profile?.role)}
+        tipoCarga={modo === 'cong' ? 'congelados' : 'seco'}
       />
 
       <main className="flex-1 overflow-hidden">
