@@ -16,7 +16,9 @@ interface Props {
   /** Crear N nuevos (cantidad ≥ 1). El padre hace el loop de altas. */
   onNuevo: (cantidad: number) => void;
   /** Pallet preexistente reclamado y re-datado a hoy. */
-  onExistente: (slot: PickingSlot) => void;
+  /** `yaEnCarga` = el servidor confirmó que ya está en la carga de hoy; el formulario decide si
+   *  lo agrega (faltaba en pantalla) o solo avisa dónde está. Ver shared/reclamoPreexistente.ts. */
+  onExistente: (slot: PickingSlot, yaEnCarga?: boolean) => void;
   onClose: () => void;
 }
 
@@ -66,7 +68,9 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
         }
         return;
       }
-      if (json.data) onExistente(json.data);
+      // `ya_en_carga` llega con el slot: el pallet es de esta tienda y es de hoy, así que el
+      // reclamo es legítimo. Quien decide si duplica o no es el formulario.
+      if (json.data) onExistente(json.data, json.reason === 'ya_en_carga');
     } catch {
       setError('Error de conexión. Intenta de nuevo.');
     } finally {
@@ -88,7 +92,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
       if (!res.ok) {
         setRestaurar(null);
         setError(json.reason === 'ya_existe'
-          ? `El pallet #${restaurar.palletId} ya fue restaurado. Toca "Agregar" para sumarlo a la carga.`
+          ? `El pallet #${restaurar.palletId} ya fue restaurado por alguien más. Escribe su número arriba y toca "Agregar" — si ya está en la lista te lo va a decir.`
           : json.reason === 'otra_tienda'
             ? `El pallet #${restaurar.palletId} es de otra tienda.`
             : `No se pudo restaurar el pallet #${restaurar.palletId}. ${json.error ?? ''}`.trim());

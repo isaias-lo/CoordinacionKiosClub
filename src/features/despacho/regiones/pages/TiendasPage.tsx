@@ -58,6 +58,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
+import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -2225,11 +2226,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               date={fechaISOLocal()}
               onClose={() => setDialogPkg(null)}
               onNuevo={(cantidad) => { const p = dialogPkg; setDialogPkg(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(p, undefined, i); })(); }}
-              onExistente={(slot) => {
+              onExistente={(slot, yaEnCarga) => {
                 setDialogPkg(null);
+                // Mismo criterio que RM/Costa: si ya está a la vista no se duplica; si la base lo
+                // tenía y la pantalla no, se materializa (antes era un callejón sin salida).
+                if (accionReclamo(formRows, slot.id) === 'ya_visible') {
+                  showToast(avisoYaVisible(slot.id), '#D97706');
+                  return;
+                }
                 const p = SLOT_TIPO_TO_PKG[slot.tipo] ?? 'box';
                 void addFormRow(p, slot);
-                showToast(`✓ Pallet #${slot.id} agregado`, '#16A34A');
+                showToast(yaEnCarga ? avisoRecuperado(slot.id) : `✓ Pallet #${slot.id} agregado`, '#16A34A');
               }}
             />
           )}
