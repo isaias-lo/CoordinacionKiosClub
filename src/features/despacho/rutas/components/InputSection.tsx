@@ -381,7 +381,13 @@ export default function InputSection({
                 pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
                 camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                 scrollContainerRef={dragScrollRef}
-                onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} />
+                onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion}
+                onCerrarCamion={onCerrarCamionCong}
+                cerrarSel={cerrarSelCong}
+                onToggleCerrarSel={onToggleCerrarSelCong}
+                onCerrarVarios={onCerrarVariosCong}
+                esCerrada={esCerradaCong}
+                zonasCfg={zonasCfg} />
             </div>
           </div>
         ) : rightPanelContent ? (
