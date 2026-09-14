@@ -106,14 +106,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ya está en la carga de hoy: reclamarlo otra vez agregaría una SEGUNDA fila para el mismo
-    // pallet físico, y Bodega lo contaría dos veces. Un pallet absorbido por otro (combined_into)
-    // no cuenta como presente — ese sí se puede recuperar, que es justo lo que se pedía.
-    if (String(slot.date ?? '') === date && slot.is_active === true && slot.combined_into == null) {
-      return NextResponse.json(
-        { error: 'El pallet ya está en la carga de hoy', reason: 'ya_en_carga' },
-        { status: 409 },
-      );
+    // Ya está en la carga de hoy. ANTES esto era un 409 pelado, y era un callejón sin salida:
+    // el formulario materializa sus filas al cambiar de tienda, así que un slot que aparece
+    // después —restaurado por otra persona, o por uno mismo en un intento anterior— no se agrega
+    // solo. La base decía que el pallet estaba y la pantalla que no, y el mensaje mandaba a
+    // "buscarlo en la lista" donde no había nada que buscar.
+    //
+    // El guard estaba en el lado equivocado: evitar una SEGUNDA fila del mismo pallet físico es
+    // problema del formulario, no de la base. El pallet es de esta tienda y es de hoy: el reclamo
+    // es legítimo. Se devuelve el slot y el cliente decide si ya lo tiene a la vista
+    // (ver shared/reclamoPreexistente.ts).
+    const yaEnCarga = String(slot.date ?? '') === date && slot.is_active === true && slot.combined_into == null;
+    if (yaEnCarga) {
+      return NextResponse.json({ data: slot, reason: 'ya_en_carga' });
     }
 
     // Re-datar a hoy (conserva store_cod y canonical_id) + reactivar.

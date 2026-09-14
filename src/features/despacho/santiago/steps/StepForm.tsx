@@ -60,6 +60,7 @@ import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
+import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -2855,11 +2856,18 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               date={fechaISOLocal()}
               onClose={() => setDialogTipo(null)}
               onNuevo={(cantidad) => { const t = dialogTipo; setDialogTipo(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(t, undefined, i); })(); }}
-              onExistente={(slot) => {
+              onExistente={(slot, yaEnCarga) => {
                 setDialogTipo(null);
+                // Si ya está a la vista no se duplica; si la base lo tenía y la pantalla no, se
+                // materializa. Antes esto último era imposible: el servidor devolvía 409 y el
+                // mensaje mandaba a "buscarlo en la lista", donde no estaba.
+                if (accionReclamo(formRows, slot.id) === 'ya_visible') {
+                  showToast(avisoYaVisible(slot.id), '#D97706');
+                  return;
+                }
                 const t = SLOT_TIPO_TO_CARGAMENTO[slot.tipo] ?? 'Bulto';
                 void addFormRow(t, slot);
-                showToast(`✓ Pallet #${slot.id} agregado`, '#16A34A');
+                showToast(yaEnCarga ? avisoRecuperado(slot.id) : `✓ Pallet #${slot.id} agregado`, '#16A34A');
               }}
             />
           )}

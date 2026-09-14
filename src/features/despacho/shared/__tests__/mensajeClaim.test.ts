@@ -97,10 +97,14 @@ describe('los otros motivos', () => {
     expect(t).not.toMatch(/undefined|tienda\s*,/);
   });
 
-  it('ya_en_carga manda a buscarlo, no a recrearlo', () => {
+  it('ya_en_carga no manda a recrearlo, y da salida si no se ve en la lista', () => {
     const t = mensajeClaim('ya_en_carga', { ref: '1050', ahora: AHORA });
     expect(t).toContain('ya está en la carga de hoy');
     expect(t).not.toContain('Vuelve a crearlo');
+    // El consejo viejo —"búscalo en la lista"— era imposible de seguir cuando el pallet estaba en
+    // la base y no en pantalla, que es justo cuando salía este mensaje.
+    expect(t).not.toContain('no hace falta agregarlo');
+    expect(t).toContain('cambia de tienda y vuelve');
   });
 
   it('no_encontrado es el ÚNICO que manda a revisar el número', () => {

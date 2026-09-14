@@ -110,8 +110,12 @@ export function mensajeClaim(motivo: MotivoClaim, ctx: ContextoClaim): string {
         : `El pallet ${num} es de otra tienda. Revisa la etiqueta o agrégalo en la tienda que corresponde.`;
     }
 
+    // Desde el arreglo del callejón sin salida, el servidor YA NO devuelve este motivo como error:
+    // manda el slot y el formulario decide (ver shared/reclamoPreexistente.ts). Queda como red de
+    // seguridad, pero sin el "búscalo en la lista" de antes — que era justo el consejo imposible
+    // cuando el pallet estaba en la base y no en pantalla.
     case 'ya_en_carga':
-      return `El pallet ${num} ya está en la carga de hoy de esta tienda. Búscalo en la lista — no hace falta agregarlo de nuevo.`;
+      return `El pallet ${num} ya está en la carga de hoy de esta tienda. Si no lo ves en la lista, cambia de tienda y vuelve para recargarla.`;
 
     case 'no_encontrado':
       return `No existe ningún pallet ${num}. Revisa el número de la etiqueta.`;
