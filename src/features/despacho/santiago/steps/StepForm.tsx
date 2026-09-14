@@ -61,6 +61,7 @@ import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } f
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
+import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -1808,10 +1809,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => [...prev, { id: rowId, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
     if (!cod) return;
 
-    // Preexistente: usar el slot ya reclamado (no se crea uno nuevo)
+    // Preexistente: usar el slot ya reclamado (no se crea uno nuevo).
+    // La fila se llena con lo que el slot YA sabe. Antes solo se le pegaba el pickingSlotId y el
+    // peso y las medidas se descartaban: un pallet recuperado aparecía en blanco y había que
+    // pesarlo y medirlo de nuevo — justo lo contrario de lo que promete el diálogo al restaurar.
     if (existingSlot) {
       setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), existingSlot] }));
-      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: existingSlot.id } : r));
+      const campos = camposDeSlot(existingSlot);
+      setFormRows(prev => prev.map(r => r.id === rowId
+        ? { ...r, pickingSlotId: existingSlot.id, contenido: contenidoSantiago(existingSlot.contenido), ...campos }
+        : r));
       return;
     }
 

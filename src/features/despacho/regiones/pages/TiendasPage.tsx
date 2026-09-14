@@ -59,6 +59,7 @@ import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlot
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
+import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -1046,10 +1047,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     }]);
     if (!cod || !selectedTienda) return;
 
-    // Preexistente: usar el slot ya reclamado (no se crea uno nuevo)
+    // Preexistente: usar el slot ya reclamado (no se crea uno nuevo).
+    // Mismo criterio que RM/Costa: la fila se llena con lo que el slot YA sabe, en vez de aparecer
+    // en blanco y obligar a pesar y medir de nuevo un pallet que ya estaba pesado y medido.
     if (existingSlot) {
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), existingSlot] }));
-      setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: existingSlot.id } : r));
+      const campos = camposDeSlot(existingSlot);
+      setFormRows(prev => prev.map(r => r.id === rowId
+        ? { ...r, pickingSlotId: existingSlot.id, tipo: contenidoRegiones(existingSlot.contenido), ...campos }
+        : r));
       return;
     }
 
