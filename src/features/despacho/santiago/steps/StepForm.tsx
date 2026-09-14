@@ -11,7 +11,7 @@ import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
-import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido } from '@/features/despacho/shared/contenidoCarga';
+import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -928,16 +928,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const slots    = pickingSlotsRef.current[currentTienda.cod] ?? [];
 
       const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
-      const mapearCont = (raw: string): ContenidoSantiago => {
-        const c = (raw ?? '').toLowerCase();
-        if (c.includes('chocolate')) return 'Chocolate';   // [Req 1] pallet/bulto de chocolate → CH
-        if (c === 'mixto' || c === 'comida-hogar') return 'Mixto';
-        const esComida = c.includes('comida') || c.includes('alimento');
-        const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
-        if (esComida && esHogar) return 'Mixto';
-        if (esComida) return 'Comida';
-        return 'Hogar';
-      };
+      const mapearCont = contenidoSantiago;
 
       const fullSlots = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
       const baseSlotsRaw = fullSlots.length > 0
@@ -1066,7 +1057,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const regimen = state.regimen;
             const chocItems: SantiagoItem[] = Array.from({ length: chocPresetCount }, (_, i) => ({
               id: `ch-pre-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
-              tipo: 'Chocolate' as TipoCargamento, contenido: 'Hogar' as ContenidoSantiago,
+              tipo: 'Chocolate' as TipoCargamento, contenido: 'Chocolate' as ContenidoSantiago,
               peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
               pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
             }));
@@ -1779,7 +1770,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       // Crear el ID de bodega (canonical_id + seq) y vincularlo — o usar el preexistente
       let slot: PickingSlot | undefined = existingSlot;
       if (!slot) {
-        const res = await crearSlotBodega({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' });
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: 'CH', contenido: CONTENIDO_CHOCOLATE });
         slot = res.slot;
         // No agregar un chocolate "confirmado" sin fila real en picking_pallets — antes esto
         // fallaba en silencio y quedaba invisible para Seguimiento/Enrutador/Conteo de Flota.
@@ -1790,14 +1781,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1 + countOffset;
       const stamp = Date.now();
       const item: SantiagoItem = {
-        id: `${cod}-chadd-${stamp}-${countOffset}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Hogar',
+        id: `${cod}-chadd-${stamp}-${countOffset}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Chocolate',
         peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
         pesoVolumetrico: 0, regimen, orden: `CH${chc}`, estado: ESTADO_DEFAULT,
         pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', item });
       setFormRows(prev => [...prev, {
-        id: `saved-chadd-${stamp}-${countOffset}`, tipo: 'Chocolate', contenido: 'Hogar',
+        id: `saved-chadd-${stamp}-${countOffset}`, tipo: 'Chocolate', contenido: 'Chocolate',
         peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS.alto),
         largo: String(CHOCOLATE_DIMS.largo), ancho: String(CHOCOLATE_DIMS.ancho),
         saved: true, savedItem: item, pickingSlotId: slot?.id,

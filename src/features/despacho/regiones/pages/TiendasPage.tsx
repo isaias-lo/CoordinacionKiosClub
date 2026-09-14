@@ -42,7 +42,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
-import { abreviaturaContenido, nombreContenido } from '@/features/despacho/shared/contenidoCarga';
+import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -481,16 +481,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const fullSlots = pickingSlotsFull[name] ?? [];
     if (fullSlots.length === 0) return;
     const PKG_MAP: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
-    const mapCont = (raw: string): TipoContenido => {
-      const c = (raw ?? '').toLowerCase();
-      if (c.includes('chocolate')) return 'chocolate';
-      if (c === 'mixto' || c === 'comida-hogar') return 'comida-hogar';
-      const comida = c.includes('comida') || c.includes('alimento');
-      const hogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
-      if (comida && hogar) return 'comida-hogar';
-      if (comida) return 'comida';
-      return 'hogar';
-    };
+    const mapCont = contenidoRegiones;
     const cur = dispatchData[name] || [];
     setFormRows(prev => {
       const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
@@ -629,16 +620,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
 
   const PICKING_PKG: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
-  const mapearContenido = (raw: string): TipoContenido => {
-    const c = (raw ?? '').toLowerCase();
-    if (c.includes('chocolate')) return 'chocolate';   // [Req 1] pallet/bulto de chocolate → contenido CH
-    if (c === 'mixto' || c === 'comida-hogar') return 'comida-hogar';
-    const esComida = c.includes('comida') || c.includes('alimento');
-    const esHogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
-    if (esComida && esHogar) return 'comida-hogar';
-    if (esComida) return 'comida';
-    return 'hogar';
-  };
+  const mapearContenido = contenidoRegiones;
 
   /* Initialize formRows only when the selected tienda changes.
      Uses pickingSlotsRef (always current) so picking real-time updates
@@ -800,7 +782,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // así que su llave de merge caía en `orden:CH1` — que además el renumber reescribe como
               // `chocolate1` — y el mismo chocolate terminaba duplicado entre dispositivos.
               id: `ch-preset-${selectedTienda}-${i + 1}`,
-              orden: `chocolate${i + 1}`, tipo: 'hogar' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
+              orden: `chocolate${i + 1}`, tipo: 'chocolate' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
               peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
             })) });
           }
@@ -1020,7 +1002,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (!cod || !selectedTienda) return;
       let slot: PickingSlot | undefined = existingSlot;
       if (!slot) {
-        const res = await crearSlotBodega({ date, store_cod: cod, tipo: 'CH', contenido: 'hogar' });
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: 'CH', contenido: CONTENIDO_CHOCOLATE });
         slot = res.slot;
         // No agregar un chocolate "confirmado" sin fila real en picking_pallets — antes esto
         // fallaba en silencio y quedaba invisible para Seguimiento/Enrutador/Conteo de Flota.
@@ -1033,7 +1015,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const stamp = Date.now();
       const item: DispatchItem = {
         id: crypto.randomUUID(), // [E3b/C1] id estable compartido con la fila de formulario
-        orden: `chocolate${chc}`, tipo: 'hogar', pkg: 'chocolate',
+        orden: `chocolate${chc}`, tipo: 'chocolate', pkg: 'chocolate',
         peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
         guia: '', valor: 0, pickingSlotId: slot?.id,
       };
