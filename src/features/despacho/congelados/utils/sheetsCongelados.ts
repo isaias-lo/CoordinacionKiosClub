@@ -120,3 +120,26 @@ export function sheetsCongeladosWrite(
     })
     .catch(err => { console.error('[sheetsCongeladosWrite]', err); return { ok: false, mirrorErrores: [String(err)] }; });
 }
+
+/**
+ * Escribe el resumen por tienda en CONTROL DESPACHO CONG.
+ *
+ * Es "fire and forget" a propósito, igual que el CONTROL DESPACHO del seco: el registro que manda
+ * es DESPACHO CONGELADOS + el espejo a Supabase. Si esta hoja falla, se avisa en consola pero no
+ * se le dice al usuario que no se registró — porque sí se registró.
+ *
+ * La patente va vacía: al registrar todavía no hay camión asignado. El Enrutador la completa
+ * después sobre la MISMA fila, porque el upsert es por (Fecha Despacho, Tienda).
+ */
+export function controlCongeladosWrite(
+  rows: (string | number)[][],
+  token?: string,
+): Promise<void> {
+  if (!rows.length) return Promise.resolve();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return fetch('/api/sheets-write', {
+    method: 'POST', headers,
+    body: JSON.stringify({ sheet: 'CONTROL DESPACHO CONG.', rows }),
+  }).then(() => undefined).catch(err => { console.error('[controlCongeladosWrite]', err); });
+}

@@ -9,7 +9,7 @@ import { paraMirror, camposDescartados } from './mirror';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
-const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'DESPACHO CONGELADOS', 'RECEPCIÓN TIENDA', 'HISTORIAL', 'CONTROL DESPACHO']);
+const ALLOWED_SHEETS = new Set(['DESPACHO REGIONES', 'DESPACHO RM', 'DESPACHO CONGELADOS', 'RECEPCIÓN TIENDA', 'HISTORIAL', 'CONTROL DESPACHO', 'CONTROL DESPACHO CONG.']);
 
 // ── Caché de sheetId por nombre de hoja (se llena una vez por proceso) ──────────
 // Evita llamar spreadsheets.get en cada request; se invalida solo si el proceso reinicia.
@@ -543,6 +543,52 @@ export async function POST(request: NextRequest) {
         if (error) { console.error('[sheets-write] Supabase update congelados', tabla, error.message); mirrorErrores.push(`update congelados ${r.id}: ${error.message}`); }
       }
       return NextResponse.json({ ok: true, written: rows.length, mirrorErrores });
+    }
+
+    // ── CONTROL DESPACHO CONG.: resumen por tienda del despacho de congelados ──────────
+    //    Upsert por (Fecha Despacho, Tienda): una tienda aparece UNA vez por día de despacho.
+    //    Si vuelve a llegar, se actualizan cajas y patente sobre la fila que ya está, en vez de
+    //    dejar dos filas para la misma tienda y el mismo día.
+    //    Layout posicional A..J — ver congelados/utils/controlCongelados.ts.
+    if (sheet === 'CONTROL DESPACHO CONG.') {
+      const HOJA = 'CONTROL DESPACHO CONG.';
+      const leidas = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${HOJA}!A:J` });
+      const existentes = leidas.data.values ?? [];
+
+      // fila 1 = encabezado. La clave es col B (Fecha Despacho) + col D (Tienda).
+      const filaPorClave = new Map<string, number>();
+      for (let i = 1; i < existentes.length; i++) {
+        const f = existentes[i];
+        if (f?.[1] && f?.[3]) filaPorClave.set(`${String(f[1]).trim()}::${String(f[3]).trim().toUpperCase()}`, i + 1);
+      }
+
+      const updates: { range: string; values: (string | number)[][] }[] = [];
+      const nuevas:  (string | number)[][] = [];
+      for (const row of rows) {
+        const clave = `${String(row[1] ?? '').trim()}::${String(row[3] ?? '').trim().toUpperCase()}`;
+        const fila  = filaPorClave.get(clave);
+        if (fila) updates.push({ range: `${HOJA}!A${fila}:J${fila}`, values: [row] });
+        else      nuevas.push(row);
+      }
+
+      if (updates.length) {
+        await gs.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: { valueInputOption: 'USER_ENTERED', data: updates },
+        });
+      }
+      if (nuevas.length) {
+        const res = await gs.spreadsheets.values.append({
+          spreadsheetId: SPREADSHEET_ID, range: `${HOJA}!A1`,
+          valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS',
+          requestBody: { values: nuevas },
+        });
+        // Las DOS fechas (col A armado, col B despacho) necesitan formato, o Sheets las muestra
+        // como el número de serie.
+        await applyDateFormat(gs, HOJA, res.data.updates?.updatedRange, 0);
+        await applyDateFormat(gs, HOJA, res.data.updates?.updatedRange, 1);
+      }
+      return NextResponse.json({ ok: true, written: rows.length, actualizadas: updates.length, nuevas: nuevas.length });
     }
 
     // ── CONTROL DESPACHO: upsert by fecha::cod, update patente columns ──

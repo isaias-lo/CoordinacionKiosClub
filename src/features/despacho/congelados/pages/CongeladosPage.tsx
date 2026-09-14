@@ -21,7 +21,9 @@ import { CongeladosDetalle } from '../components/CongeladosDetalle';
 import { CongeladosListaTiendas } from '../components/CongeladosListaTiendas';
 import { CongeladosResumenPanel } from '../components/CongeladosResumenPanel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
-import { sheetsCongeladosWrite } from '../utils/sheetsCongelados';
+import { sheetsCongeladosWrite, controlCongeladosWrite } from '../utils/sheetsCongelados';
+import { buildControlCongeladosRows } from '../utils/controlCongelados';
+import { diaDespachoCongelados } from '../utils/diaDespachoCongelados';
 import { construirItemsCongelados, type SlotCongelado } from '../utils/construirItemsCongelados';
 import { fechaChile } from '@/lib/fechaChile';
 import { resumenCongelados, textoTotalCongelados } from '../utils/resumenCongelados';
@@ -298,6 +300,21 @@ export function CongeladosPage({ zona }: Props) {
         countsMap[c] = { p: 0, b: cajas, c: 0, ch: 0 };
       }
       await pushCounts(zona === 'nacional' ? 'congelados-regiones' : 'congelados-santiago', countsMap, undefined, fechaTrabajo);
+
+      // Resumen por tienda en CONTROL DESPACHO CONG. Lleva las DOS fechas porque congelados se
+      // arma un día y sale al hábil siguiente. Sin patente: el camión se asigna después en el
+      // Enrutador, que actualiza esta misma fila.
+      void controlCongeladosWrite(
+        buildControlCongeladosRows(
+          codsARegistrar.map(cod => {
+            const v = ajuste[cod] ?? { cc: cajasPorTienda[cod]?.cc ?? 0, cn: cajasPorTienda[cod]?.cn ?? 0 };
+            return { cod, cc: v.cc, cn: v.cn };
+          }),
+          { fechaArmado: fechaArmadoISO, fechaDespacho: diaDespachoCongelados(fechaArmadoISO) },
+          cod => datosTienda(cod).region,
+        ),
+        accessToken ?? undefined,
+      );
 
       // Optimista: se ve al instante. La base es la que manda y la corrige en el próximo evento.
       setRegistradas(prev => new Set([...prev, ...codsARegistrar]));
