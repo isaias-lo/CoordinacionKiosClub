@@ -188,13 +188,7 @@ export function kmRutaAprox(ordered: string[], gps: Record<string, number[]>, st
    Todo puro y testeable. */
 
 /** "HH:MM" → minutos del día (0..1439). null si no parsea. */
-export function hhmmAMin(s: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? '').trim());
-  if (!m) return null;
-  const h = +m[1], mm = +m[2];
-  if (h > 23 || mm > 59) return null;
-  return h * 60 + mm;
-}
+export const hhmmAMin = aMinutosDelDia;
 
 /** minutos del día → "HH:MM" (envuelve a 24 h por si la jornada cruza medianoche). */
 export function minAHHMM(min: number): string {
@@ -203,28 +197,10 @@ export function minAHHMM(min: number): string {
 }
 
 /** Parsea una ventana "08:30-09:30" → {open, close} en minutos del día, o null si no aplica. */
-export function parseVentana(v?: string): { open: number; close: number } | null {
-  if (!v) return null;
-  const parts = v.split('-');
-  if (parts.length !== 2) return null;
-  const open = hhmmAMin(parts[0]);
-  const close = hhmmAMin(parts[1]);
-  if (open == null || close == null) return null;
-  return { open, close };
-}
+// La ventana y su estado viven en ./ventanaHoraria — había DOS implementaciones con campos y
+// criterios distintos. Se re-exportan para no romper a quien las importa desde acá.
+export { parseVentana, estadoVentana, type EstadoVentana } from './ventanaHoraria';
 
-export type EstadoVentana = 'ok' | 'temprano' | 'tarde' | 'sin-ventana';
-
-/** Estado de una ETA (min del día) respecto a la ventana horaria de la tienda:
- *  'temprano' = llegás antes de abrir · 'tarde' = después de cerrar · 'ok' = dentro ·
- *  'sin-ventana' = la tienda no tiene ventana definida. */
-export function estadoVentana(etaMin: number, ventana?: string): EstadoVentana {
-  const w = parseVentana(ventana);
-  if (!w) return 'sin-ventana';
-  if (etaMin < w.open) return 'temprano';
-  if (etaMin > w.close) return 'tarde';
-  return 'ok';
-}
 
 /**
  * ETA (minutos del día) de cada parada, acumulando desde `salidaMin` los tiempos de MANEJO
@@ -251,7 +227,7 @@ export function calcularETAs(
     const llegada = t;
     etas.push(Math.round(llegada));
     const w = ventanas ? parseVentana(ventanas[i]) : null;
-    const inicioDescarga = w && llegada < w.open ? w.open : llegada;  // espera a que abran
+    const inicioDescarga = w && llegada < w.abre ? w.abre : llegada;  // espera a que abran
     t = inicioDescarga + servicioMin;  // atención en la parada i (antes de salir a la siguiente)
   }
   return etas;
@@ -363,6 +339,7 @@ export function construirTextoRuta(opts: {
 // sale del sector, con la latitud como desempate: la misma regla que usa el motor.
 
 import { zonaDeSectorOGeo, type ZonaRuteo } from '@/lib/sectores';
+import { aMinutosDelDia, parseVentana } from './ventanaHoraria';
 
 export interface RepartoPorZona {
   /** Los códigos que quedan tras el filtro, en el orden en que venían. */

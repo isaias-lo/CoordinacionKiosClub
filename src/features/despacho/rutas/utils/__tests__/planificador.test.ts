@@ -358,13 +358,23 @@ describe('ETA + ventana horaria', () => {
     expect(minAHHMM(1440 + 90)).toBe('01:30'); // envuelve
   });
 
+  // Desde la unificación en ./ventanaHoraria los campos son `abre`/`cierra` (antes acá eran
+  // `open`/`close` y en el motor `abre`/`cierra`: el mismo dato con dos nombres).
   it('parseVentana parsea "08:30-09:30" y descarta lo inválido', () => {
-    expect(parseVentana('08:30-09:30')).toEqual({ open: 510, close: 570 });
-    expect(parseVentana('09:00-12:00')).toEqual({ open: 540, close: 720 });
+    expect(parseVentana('08:30-09:30')).toEqual({ abre: 510, cierra: 570 });
+    expect(parseVentana('09:00-12:00')).toEqual({ abre: 540, cierra: 720 });
     expect(parseVentana('')).toBeNull();
     expect(parseVentana(undefined)).toBeNull();
     expect(parseVentana('08:30')).toBeNull();     // falta el cierre
     expect(parseVentana('xx-yy')).toBeNull();
+  });
+
+  it('el parser unificado ya no pierde las ventanas de dos tramos', () => {
+    // `split('-')` daba null ante 3+ partes, y "sin ventana" se trata como "no restringe": la
+    // ventana desaparecía en silencio. Ahora se toma el primer tramo, que es el del despacho.
+    expect(parseVentana('08:00-09:00 / 20:00-21:00')).toEqual({ abre: 480, cierra: 540 });
+    expect(parseVentana('09:00 - 14:00')).toEqual({ abre: 540, cierra: 840 });
+    expect(parseVentana('12:00-09:00')).toBeNull();   // invertida: es un dato malo, no una ventana
   });
 
   it('estadoVentana clasifica temprano / ok / tarde / sin-ventana', () => {
