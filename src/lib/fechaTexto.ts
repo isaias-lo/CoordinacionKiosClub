@@ -18,6 +18,20 @@ export function conMayusculaInicial(texto: string): string {
   return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto;
 }
 
+const CORTA = new Intl.DateTimeFormat('es-CL', {
+  timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long',
+});
+
+/**
+ * `viernes 11 de septiembre`, sin el año. Para cabeceras que hablan del día de hoy, donde el año
+ * no aporta nada. Misma regla que la larga: en minúscula, sin la coma que mete `es-CL`.
+ */
+export function fechaCortaCL(fecha: Date | string | number = new Date()): string {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  if (Number.isNaN(d.getTime())) return '';
+  return CORTA.format(d).replace(',', '');
+}
+
 /**
  * `viernes 11 de septiembre de 2026`. En minúscula: quien la muestre decide si va capitalizada.
  *

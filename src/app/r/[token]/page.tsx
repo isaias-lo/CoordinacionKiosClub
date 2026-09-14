@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams }           from 'next/navigation';
 import { guiaHref }            from '@/lib/guiaUrl';
+import { fechaLargaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 
 /* ── Types ─────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -26,9 +27,10 @@ const ESTADO_LABEL: Record<string, string> = {
   pendiente: 'Pendiente', en_camino: 'En Camino', entregado: 'Entregado', recibido: 'Recibido',
 };
 
+// [m-01] Esta la ve la TIENDA al escanear el QR. Iba con `capitalize`, que en español pone
+// mayúscula en cada palabra: "Lunes, 14 De Septiembre De 2026".
 function fechaLabel(iso: string) {
-  const d = new Date(iso + 'T12:00:00');
-  return d.toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  return conMayusculaInicial(fechaLargaCL(iso + 'T12:00:00'));
 }
 
 function docId(ruta: RutaData) {
@@ -58,7 +60,7 @@ const S = {
   hSub:      { fontSize: 10, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase' as const, letterSpacing: 1 },
   hTitle:    { fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 2 },
   hDocId:    { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace' },
-  hDate:     { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 2, textTransform: 'capitalize' as const },
+  hDate:     { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
   body:      { padding: '0 16px 32px' },
   section:   { border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden', margin: '14px 0' },
   sTitle:    { background: '#f9fafb', borderBottom: '1px solid #d1d5db', padding: '8px 14px', fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: 1.2 },
