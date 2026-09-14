@@ -17,6 +17,7 @@ import type { Parada } from './ParadasAdicionales';
 import { fechaChile } from '@/lib/fechaChile';
 import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
 import { esVehiculoDePrueba, AVISO_PRUEBA } from '../utils/vehiculoPrueba';
+import { excesoDe, confirmacionSobreCapacidad, textoBotonCerrar, confirmacionVarios } from '../utils/sobreCapacidad';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -741,7 +742,11 @@ export default function ManualDispatch({
           // y si está marcado para cerrar en masa.
           const cerrado    = esCerrada?.(v.p) ?? false;
           const selMode    = !!onCerrarVarios;
-          const puedeCerrar = !!onCerrarCamion && stores.length > 0 && !m.overCap && !cerrado;
+          // El exceso YA NO bloquea: se avisa y se deja decidir. La capacidad de la flota es una
+          // referencia, no una ley física — un pallet chico va encima de otro y entra. Ver
+          // utils/sobreCapacidad.
+          const exceso = excesoDe(m.tp, m.cap);
+          const puedeCerrar = !!onCerrarCamion && stores.length > 0 && !cerrado;
           // Vehículo de prueba: se marca, no se esconde ni se bloquea (ver utils/vehiculoPrueba).
           const esPrueba = esVehiculoDePrueba(v.p, v.empresa);
           const selForClose = cerrarSel?.has(v.p) ?? false;
@@ -935,13 +940,22 @@ export default function ManualDispatch({
               {onCerrarCamion && stores.length > 0 && (
                 <div className="px-2.5 pb-2.5 pt-0.5">
                   <button
-                    onClick={e => { e.stopPropagation(); if (!cerrado) onCerrarCamion(v.p); }}
-                    disabled={m.overCap || cerrado}
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (cerrado) return;
+                      // Sobre capacidad se pregunta, con los números reales y aclarando que el
+                      // conteo no se toca — que es justo la duda de quien cierra.
+                      if (exceso && !confirm(confirmacionSobreCapacidad(v.p, exceso))) return;
+                      onCerrarCamion(v.p);
+                    }}
+                    disabled={cerrado}
+                    title={exceso ? `Lleva ${exceso.pallets} y caben ${exceso.capacidad}. Se registra tal cual.` : undefined}
                     className={`w-full h-[38px] rounded-[10px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all ${
                       cerrado ? 'bg-green-50 text-green-700 border-[1.5px] border-green-500/40 cursor-default'
-                      : `bg-knavy text-white active:scale-[0.98] ${m.overCap ? 'opacity-40' : ''}`}`}
+                      : exceso ? 'bg-amber-500 text-white active:scale-[0.98]'
+                      : 'bg-knavy text-white active:scale-[0.98]'}`}
                   >
-                    {cerrado ? '✓ Cerrado · ver manifiesto' : '🚚 Cerrar camión y manifiesto'}
+                    {cerrado ? '✓ Cerrado · ver manifiesto' : textoBotonCerrar(!!exceso)}
                   </button>
                 </div>
               )}
@@ -1020,7 +1034,18 @@ export default function ManualDispatch({
           </span>
           <button onClick={() => { const sel = [...cerrarSel]; sel.forEach(p => onToggleCerrarSel?.(p)); }}
             className="text-[12px] font-semibold text-white/75 underline cursor-pointer">Deseleccionar</button>
-          <button onClick={() => onCerrarVarios([...cerrarSel])}
+          <button onClick={() => {
+              const sel = [...cerrarSel];
+              // Los que van pasados se nombran uno por uno antes de cerrar: saber CUÁLES es lo que
+              // permite decidir, y un cierre en masa es justo donde se cuela el que no debía.
+              const conExceso = sel.flatMap(pat => {
+                const veh = flotaDisp.find(x => x.p === pat);
+                const e = veh ? excesoDe(getMetrics(pat, veh).tp, getMetrics(pat, veh).cap) : null;
+                return e ? [{ patente: pat, exceso: e }] : [];
+              });
+              if (conExceso.length && !confirm(confirmacionVarios(conExceso))) return;
+              onCerrarVarios(sel);
+            }}
             className="h-[36px] px-4 rounded-[9px] bg-green-500 hover:bg-green-600 text-white text-[13px] font-bold flex items-center gap-1.5 active:scale-[0.98] transition-all">
             🚚 Cerrar seleccionados
           </button>
