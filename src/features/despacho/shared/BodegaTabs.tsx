@@ -2,12 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { badgeZona, CONTEO_VACIO, type ConteoCongelados } from '../congelados/utils/conteoPorZona';
+import type { ZonaCongelados } from '../congelados/utils/congeladosGrid';
 
 /**
  * Barra de tabs del módulo BODEGA (barra blanca bajo el banner). Navega entre las rutas
  * existentes (no fusiona las pantallas). Cada tab bien separado (divisor + subrayado activo).
  */
-const SECO_TABS: { label: string; href: string }[] = [
+interface Tab { label: string; href: string; zona?: ZonaCongelados }
+
+const SECO_TABS: Tab[] = [
   { label: 'Nacional',   href: '/despacho/regiones' },
   { label: 'RM / Costa', href: '/despacho/santiago' },
   { label: 'Actividad',  href: '/despacho/actividad' },
@@ -15,10 +20,15 @@ const SECO_TABS: { label: string; href: string }[] = [
 
 // Tabs del módulo CONGELADOS — mismo patrón de navegación que el seco, pero con acento
 // hielo/cyan en vez de rojo (para diferenciarlo visualmente a simple vista).
-const CONGELADOS_TABS: { label: string; href: string }[] = [
-  { label: 'Nacional',   href: '/despacho/congelados' },
-  { label: 'RM / Costa', href: '/despacho/congelados/santiago' },
+const CONGELADOS_TABS: Tab[] = [
+  { label: 'Nacional',   href: '/despacho/congelados',          zona: 'nacional' },
+  { label: 'RM / Costa', href: '/despacho/congelados/santiago', zona: 'rmcosta'  },
 ];
+
+const TONO_BADGE: Record<string, string> = {
+  pendiente: 'bg-[rgba(217,119,6,0.14)] text-[#B45309]',
+  listo:     'bg-[rgba(22,163,74,0.14)] text-[#15803D]',
+};
 
 export function BodegaTabs() {
   const pathname = usePathname();
@@ -26,6 +36,20 @@ export function BodegaTabs() {
   // con el seco (rutas hermanas, sin este problema de anidado).
   const isCongelados = !!pathname && pathname.startsWith('/despacho/congelados');
   const TABS = isCongelados ? CONGELADOS_TABS : SECO_TABS;
+
+  // El conteo lo publica CongeladosPage, que ya tiene los datos de LAS DOS zonas (los slots de
+  // picking no vienen filtrados por zona y el calendario llega entero). Mismo patrón que
+  // `enrutador-status`: así los tabs no necesitan su propio fetch ni saber qué día está abierto.
+  const [conteo, setConteo] = useState<ConteoCongelados>(CONTEO_VACIO);
+  useEffect(() => {
+    if (!isCongelados) return;
+    const h = (e: Event) => {
+      const d = (e as CustomEvent).detail as { conteo?: ConteoCongelados } | undefined;
+      if (d?.conteo) setConteo(d.conteo);
+    };
+    window.addEventListener('congelados-conteo', h);
+    return () => window.removeEventListener('congelados-conteo', h);
+  }, [isCongelados]);
 
   return (
     <div className="mobile-menu-safe flex bg-white border-b-2 border-bg-2 flex-shrink-0 print:hidden">
@@ -51,7 +75,20 @@ export function BodegaTabs() {
                     : 'text-navy border-b-navy bg-[rgba(27,42,107,0.04)]')
                 : 'text-text-3 border-b-transparent hover:text-text-2 hover:bg-bg/50'
               }`}>
-            {tab.label}
+            <span className="inline-flex items-center gap-1.5">
+              {tab.label}
+              {isCongelados && (() => {
+                if (!tab.zona) return null;
+                const b = badgeZona(conteo[tab.zona]);
+                if (!b.texto) return null;
+                return (
+                  <span title={b.detalle} aria-label={b.detalle}
+                    className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold ${TONO_BADGE[b.tono] ?? ''}`}>
+                    {b.texto}
+                  </span>
+                );
+              })()}
+            </span>
           </Link>
         );
       })}

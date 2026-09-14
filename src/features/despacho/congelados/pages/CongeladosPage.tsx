@@ -27,6 +27,7 @@ import { diaDespachoCongelados } from '../utils/diaDespachoCongelados';
 import { construirItemsCongelados, type SlotCongelado } from '../utils/construirItemsCongelados';
 import { fechaChile } from '@/lib/fechaChile';
 import { resumenCongelados, textoTotalCongelados } from '../utils/resumenCongelados';
+import { conteoDeZona, type ConteoCongelados } from '../utils/conteoPorZona';
 import { fechaLargaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 
 // Slot de picking_pallets ya filtrado a congelados (esCongeladoContenido). Superset de
@@ -226,7 +227,28 @@ export function CongeladosPage({ zona }: Props) {
   const codsConCajas = Object.keys(cajasPorTienda);
   const cods = tiendasGrillaCongelados(codsCalendario, codsConCajas, (cod) => perteneceAZona(cod, zona));
 
+
   const loaded = cal !== null && slotsLoaded;
+
+  // ── Contador de LAS DOS pestañas ──────────────────────────────────────────────────────────
+  // Nacional y RM/Costa son pantallas separadas, y cada una solo sabía de lo suyo: para enterarte
+  // de que en la otra había tiendas sin registrar tenías que cambiar de pestaña e ir a mirar.
+  //
+  // Esta pantalla ya tiene los datos de ambas —los slots de picking del día no vienen filtrados
+  // por zona, y el calendario llega entero—, así que se calculan acá y se publican por evento,
+  // igual que `enrutador-status` en el Enrutador. Así los tabs no necesitan su propio fetch.
+  useEffect(() => {
+    if (!loaded || !cal) return;
+    const deZona = (z: ZonaCongelados) => {
+      const delCal = gruposDeZona(z).flatMap(g => tiendasCongeladosDelDia(cal, g, diaTrabajo));
+      const todas  = tiendasGrillaCongelados(delCal, codsConCajas, c => perteneceAZona(c, z));
+      return conteoDeZona(todas, cajasPorTienda, registradas);
+    };
+    const detalle: ConteoCongelados = { nacional: deZona('nacional'), rmcosta: deZona('rmcosta') };
+    window.dispatchEvent(new CustomEvent('congelados-conteo', { detail: { fecha: fechaTrabajo, conteo: detalle } }));
+  // `registradas` y `cajasPorTienda` se recalculan en cada render; la clave estable es su contenido.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, cal, fechaTrabajo, JSON.stringify(cajasPorTienda), registradas.size, codsConCajas.join(',')]);
 
   const showToast = (msg: string, color: string) => setToast({ msg, color });
 
