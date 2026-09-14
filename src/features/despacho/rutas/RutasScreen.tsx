@@ -60,6 +60,7 @@ import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 import { fechaChile } from '@/lib/fechaChile';
 import { fechaSalida, type TipoCarga } from './utils/fechaSalida';
+import { buildControlCongeladosRows } from '../congelados/utils/controlCongelados';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -328,6 +329,12 @@ export default function RutasScreen() {
   // Cross-device vía shared_session_state fuente 'rutas_cerradas'. El registro global SALTA estas
   // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
   const [cerradasV1, setCerradasV1] = useState<Set<string>>(new Set());
+  const [cerradasCong, setCerradasCong] = useState<Set<string>>(new Set());
+  const cerradasCongRef = useRef<Set<string>>(cerradasCong);
+  useEffect(() => { cerradasCongRef.current = cerradasCong; }, [cerradasCong]);
+  /** Manifiestos de congelados recién cerrados, para abrir el panel. */
+  const [manifiestoCong, setManifiestoCong] = useState<Ruta[] | null>(null);
+  const [cerrarSelCong, setCerrarSelCong] = useState<Set<string>>(new Set());
   // Espejo síncrono de `cerradasV1`. El cierre EN MASA cierra N camiones en un mismo tick (forEach):
   // si cada cierre mergeara sobre el `cerradasV1` del closure (congelado del render), cada uno pisaría
   // al anterior y quedaría solo la última patente (bug "solo se cierra uno"). El ref acumula al toque.
@@ -410,6 +417,11 @@ export default function RutasScreen() {
   // ── Real-time sync: cerradasV1 (patentes cerradas por vehículo) across devices ──
   const lastPushedCerradasRef = useRef<string>('');
   const isCerradasInitRef      = useRef(false);
+
+  // ── Lo mismo para CONGELADOS. Set aparte, clave aparte: los dos tableros corren en paralelo
+  //    sobre la misma fecha, y una patente puede llevar seco y congelado el mismo día. Compartir
+  //    el set haría que cerrar el camión en un tablero lo diera por cerrado en el otro. ──
+  const lastPushedCerradasCongRef = useRef<string>('');
 
   // ── Sync cal from the Calendario de Abastecimiento (cross-tab) ────
   useEffect(() => {
@@ -1129,6 +1141,38 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
+  // ── Fetch + subscribe cerradasCong: mismo contrato que el seco, otra clave ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    fetchSessionState('rutas_cerradas_cong', fecha).then(remote => {
+      const set = parseCerradas(remote);
+      setCerradasCong(set);
+      lastPushedCerradasCongRef.current = JSON.stringify([...set].sort());
+    }).catch(() => {});
+
+    return subscribeToSessionState('rutas_cerradas_cong', userId ?? '', (state) => {
+      const remote = parseCerradas(state);
+      setCerradasCong(prev => {
+        const merged = mergeCerradas(prev, remote);
+        lastPushedCerradasCongRef.current = JSON.stringify([...merged].sort());
+        return merged;
+      });
+    }, undefined, fecha);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha]);
+
+  const pushCerradasCong = (next: Set<string>) => {
+    const json = JSON.stringify([...next].sort());
+    if (json === lastPushedCerradasCongRef.current) return;
+    lastPushedCerradasCongRef.current = json;
+    void pushSessionStateResult('rutas_cerradas_cong', serializeCerradas(next), userId, fecha)
+      .then(({ ok }) => {
+        if (ok) return;
+        setErrors(prev => prev.includes(AVISO_CIERRE_NO_SINCRONIZADO) ? prev : [...prev, AVISO_CIERRE_NO_SINCRONIZADO]);
+      })
+      .catch(() => {});
+  };
+
   // Persistir cerradasV1 (cross-device). Se llama tras cada cierre por vehículo.
   const pushCerradasV1 = (next: Set<string>) => {
     const json = JSON.stringify([...next].sort());
@@ -1692,6 +1736,88 @@ export default function RutasScreen() {
     }
   }
 
+  /**
+   * Cierra un camión del tablero CONGELADOS: emite su manifiesto y deja el ruteo escrito.
+   *
+   * Es un flujo PARALELO al del seco, no el mismo con otro nombre. Las diferencias no son de
+   * forma:
+   *
+   *  · Las filas de estas cajas YA están en DESPACHO CONGELADOS y en despacho_rm/regiones desde
+   *    que Bodega registró. El cierre NO vuelve a escribir la hoja de despacho —eso duplicaría—;
+   *    solo completa el ruteo (transporte, patente, conductor) sobre las filas que ya existen.
+   *  · El resumen va a CONTROL DESPACHO CONG., no a CONTROL DESPACHO, y con la patente sobre la
+   *    fila que Bodega dejó vacía (upsert por Fecha Despacho + Tienda).
+   *  · No hay 2ª vuelta: la flota interna no la da.
+   *  · El manifiesto lleva la fecha de DESPACHO además de la de armado — que para congelados es
+   *    el día hábil siguiente, no mañana.
+   */
+  function cerrarCamionCongelados(patente: string, skipPush = false) {
+    if (isCerrada(cerradasCongRef.current, patente)) return;  // idempotente
+    const stores = asignacionesCong[patente] || [];
+    if (!stores.length) return;
+    const vehicle = flota.find(v => normPatente(v.p) === normPatente(patente));
+    if (!vehicle) return;
+
+    const ordered = stores.length > 1 ? nn(stores, gps, cdRef.current) : stores;
+    const ruta: Ruta = {
+      v: vehicle,
+      ts: ordered,
+      tp: ordered.reduce((s, t) => s + t.p, 0),
+      tb: ordered.reduce((s, t) => s + t.b + ((t as { ch?: number }).ch ?? 0), 0),
+    };
+
+    const conductor = ruta._choferAsignado || vehicle.ch || '';
+    const empresa   = vehicle.empresa || 'Flota interna';
+    const grupoPorCod = (cod: string): Grupo | undefined => calTCong[norm(cod)]?.g as Grupo | undefined;
+
+    // 1) Ruteo sobre las filas que Bodega ya escribió. `fecha` es la de ARMADO, que es con la que
+    //    se guardaron — ver construirItemsCongelados.
+    const routingUpdates = ordered.map(t => ({
+      cod: t.c, conductor, patente, transporte: empresa,
+      ruta: '1', supervisor, vuelta: 1, pioneta_1: vehicle.p1 ?? null, pioneta_2: vehicle.p2 ?? null,
+    }));
+    const porTabla = splitRoutingPorTabla(routingUpdates, grupoPorCod);
+    (['despacho_rm', 'despacho_regiones'] as const).forEach(table => {
+      if (!porTabla[table].length) return;
+      fetch('/api/despacho-records', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha, table, updates: porTabla[table] }),
+      }).catch(e => console.error(`[cong despacho-records ${table}]`, e));
+    });
+
+    // 2) CONTROL DESPACHO CONG.: la patente sobre la fila que Bodega dejó vacía.
+    const filasControl = buildControlCongeladosRows(
+      ordered.map(t => ({ cod: t.c, cc: 0, cn: t.b + ((t as { ch?: number }).ch ?? 0), patente })),
+      { fechaArmado: fecha, fechaDespacho: despachoDe(fecha) },
+      (cod: string) => tiendas[norm(cod)]?.region ?? '',
+    );
+    if (filasControl.length) {
+      fetch('/api/sheets-write', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // soloPatente: el cierre NO sabe el desglose CC/CN (pushCounts solo guarda el total), así
+        // que toca únicamente la columna de patente. Ver utils/ruteoControlCong.
+        body: JSON.stringify({ sheet: 'CONTROL DESPACHO CONG.', rows: filasControl, soloPatente: true }),
+      }).catch(e => console.error('[cong control]', e));
+    }
+
+    // 3) Marcar cerrada (cross-device) y acumular el manifiesto. Mismo motivo que en el seco para
+    //    usar el ref y el updater funcional: el cierre en masa corre en un solo tick.
+    const next = mergeCerradas(cerradasCongRef.current, [patente]);
+    cerradasCongRef.current = next;
+    setCerradasCong(next);
+    if (!skipPush) pushCerradasCong(next);
+    setManifiestoCong(prev => [
+      ...(prev ?? []).filter(r => normPatente(r.v.p) !== normPatente(ruta.v.p)),
+      ruta,
+    ]);
+  }
+
+  const cerrarVariosCongelados = (patentes: string[]) => {
+    patentes.forEach(p => cerrarCamionCongelados(p, true));
+    pushCerradasCong(cerradasCongRef.current);
+    setCerrarSelCong(new Set());
+  };
+
   // [Fase 3] Cierre por camión desde el board DESPACHO (1ª vuelta) SIN "Calcular": arma la ruta
   // desde las asignaciones crudas (manualAsignaciones) + nn (secuencia del manifiesto) y reutiliza
   // cerrarCamionV1 vía rutaOverride. Mismo modelo que cerrarCamionV2 (2ª vuelta). El "completar
@@ -1729,7 +1855,7 @@ export default function RutasScreen() {
   };
 
   // [Cerrar en masa] al cambiar de fecha, limpiar la selección de camiones para cerrar.
-  useEffect(() => { setCerrarSel(new Set()); }, [fecha]);
+  useEffect(() => { setCerrarSel(new Set()); setCerrarSelCong(new Set()); }, [fecha]);
 
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
   useEffect(() => {
@@ -2821,6 +2947,15 @@ export default function RutasScreen() {
             onPlanRutas={(rutas, cdArr, ext) => { setPlanRutas(rutas); setPlanCd(cdArr); setPlanExt(ext ?? { gps: {}, tiendas: {} }); }}
             planLegsByRoute={planLegsByRoute} planKmByRoute={planKmByRoute}
             onTerminarDia={() => setCierreOpen(true)}
+            onCerrarCamionCong={p => cerrarCamionCongelados(p)}
+            cerrarSelCong={cerrarSelCong}
+            onToggleCerrarSelCong={p => setCerrarSelCong(prev => {
+              const next = new Set(prev);
+              if (next.has(p)) next.delete(p); else next.add(p);
+              return next;
+            })}
+            onCerrarVariosCong={cerrarVariosCongelados}
+            esCerradaCong={p => isCerrada(cerradasCong, p)}
             onAbrirTablero={() => setTableroOpen(true)}
             zonasCfg={zonasCfg}
             pendientesBacklogCount={pendientesV2Origen.length}
@@ -2931,6 +3066,21 @@ export default function RutasScreen() {
           isOpen={true}
           onClose={() => setManifiestoV2(null)}
           offsetSeq={manifiestosGuardados.length}
+        />
+      )}
+
+      {/* Manifiesto de CONGELADOS. Lleva la fecha de despacho —el día hábil siguiente— además de
+          la de armado, que es la diferencia que importa contra el seco. */}
+      {manifiestoCong && (
+        <ManifiestoPanel
+          rutas={manifiestoCong}
+          fecha={fecha}
+          fechaSalida={despachoDe(fecha)}
+          supervisor={supervisor}
+          tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
+          isOpen={true}
+          onClose={() => setManifiestoCong(null)}
+          offsetSeq={Math.max(0, cerradasCong.size - manifiestoCong.length)}
         />
       )}
 
