@@ -58,6 +58,7 @@ import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlot
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
+import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
 
 /* ── Calendar localStorage ── */
@@ -2888,7 +2889,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
      ROOT RENDER
   ════════════════════════════════════ */
   // Fecha de armado/despacho (se muestra dentro de la columna izquierda, como Regiones)
-  const santiagoTodayLabel = new Date(todayKey + 'T12:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+  // [m-01] `capitalize` de CSS pone mayúscula en CADA palabra: "Sábado, 12 De Septiembre".
+  const santiagoTodayLabel = conMayusculaInicial(fechaCortaCL(todayKey + 'T12:00:00'));
   const santiagoFechaDespacho = state.fechaDespacho ?? (() => {
     const t = new Date(); t.setDate(t.getDate() + 1);
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -2910,7 +2912,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>Armado</span>
-            <span style={{ fontSize: 12, color: '#555', textTransform: 'capitalize' }}>{santiagoTodayLabel}</span>
+            <span style={{ fontSize: 12, color: '#555' }}>{santiagoTodayLabel}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>Fecha de despacho</span>

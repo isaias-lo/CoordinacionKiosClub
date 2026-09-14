@@ -57,6 +57,7 @@ import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } f
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
+import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -429,7 +430,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   })();
-  const todayLabel = new Date(_localDate + 'T12:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+  // [m-01] `capitalize` de CSS pone mayúscula en CADA palabra: "Sábado, 12 De Septiembre".
+  const todayLabel = conMayusculaInicial(fechaCortaCL(_localDate + 'T12:00:00'));
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2274,7 +2276,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
               Armado
             </span>
-            <span style={{ fontSize: 12, color: '#555', textTransform: 'capitalize' }}>{todayLabel}</span>
+            <span style={{ fontSize: 12, color: '#555' }}>{todayLabel}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
