@@ -16,6 +16,7 @@ import type { TiendaInfo } from '../data/tiendas';
 import type { Parada } from './ParadasAdicionales';
 import { fechaChile } from '@/lib/fechaChile';
 import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
+import { esVehiculoDePrueba, AVISO_PRUEBA } from '../utils/vehiculoPrueba';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -741,6 +742,8 @@ export default function ManualDispatch({
           const cerrado    = esCerrada?.(v.p) ?? false;
           const selMode    = !!onCerrarVarios;
           const puedeCerrar = !!onCerrarCamion && stores.length > 0 && !m.overCap && !cerrado;
+          // Vehículo de prueba: se marca, no se esconde ni se bloquea (ver utils/vehiculoPrueba).
+          const esPrueba = esVehiculoDePrueba(v.p, v.empresa);
           const selForClose = cerrarSel?.has(v.p) ?? false;
           // [E8] Zona·modo del camión (según sus tiendas + config) y aviso si su empresa no está
           // habilitada para esa zona. Un camión de consolidación NO es un recorrido: sin km ni horas.
@@ -771,7 +774,10 @@ export default function ManualDispatch({
                           ? '0 2px 10px rgba(245,158,11,0.18)'
                           : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
                 borderLeftWidth: '4px',
-                borderLeftColor: cerrado ? '#16A34A' : !v.on ? '#DC2626' : g.color,
+                borderLeftColor: cerrado ? '#16A34A' : !v.on ? '#DC2626' : esPrueba ? '#D97706' : g.color,
+                // Punteado: se lee "esto no es un camión de verdad" antes de leer el badge, y no
+                // le quita el color a ningún estado real (cerrado, apagado, sobre capacidad).
+                ...(esPrueba && !cerrado ? { borderStyle: 'dashed' as const } : {}),
               }}
               className={`rounded-[14px] border-[1.5px] transition-all flex flex-col min-w-0 ${
                 cerrado ? 'bg-green-50/70 border-green-500/50'
@@ -801,6 +807,13 @@ export default function ManualDispatch({
                   )}
                   <span className={`font-mono font-bold text-[17px] leading-none tracking-tight ${cerrado ? 'text-green-700' : 'text-ktext'}`}>{v.p}</span>
                   <div className="flex gap-1 flex-wrap justify-end ml-auto">
+                    {/* Lo que se le asigne a este vehículo se registra IGUAL que en uno real:
+                        planilla, despacho_rm y seguimiento. No se esconde ni se bloquea —se usa a
+                        propósito para ensayar— pero tiene que verse distinto. */}
+                    {esVehiculoDePrueba(v.p, v.empresa) && (
+                      <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-[2px] rounded font-bold"
+                        title={AVISO_PRUEBA}>🧪 Prueba</span>
+                    )}
                     {!v.on && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-[2px] rounded font-bold" title="Este camión está apagado — su carga sigue asignada pero no va a salir así">⚠ Apagado</span>}
                     {cerrado     && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
                     {isPreview && !cerrado && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
