@@ -6,6 +6,7 @@ import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/re
 import { esRespaldoEnrutador, reconciliarRespaldo, aplicarRuteoAFila, aplicarRuteoARecord, COL_RUTEO, type FilaRespaldo } from '@/features/despacho/rutas/utils/reconciliarRespaldo';
 import { clavesConPatente } from './asignacion';
 import { paraMirror, camposDescartados } from './mirror';
+import { planRuteoCongelados } from '@/features/despacho/congelados/utils/ruteoControlCong';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
 
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
-    const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[]; tabla?: string };
+    const body = await request.json() as { sheet: string; rows?: (string | number)[][]; fuente?: string; action?: string; items?: unknown[]; tabla?: string; soloPatente?: boolean };
     const { sheet, rows = [], fuente, action } = body;
 
     // `body.fuente` ('bodega_rm', 'enrutador', …) sí se escribe: la columna existe desde la
@@ -553,9 +554,32 @@ export async function POST(request: NextRequest) {
     if (sheet === 'CONTROL DESPACHO CONG.') {
       const HOJA = 'CONTROL DESPACHO CONG.';
       const leidas = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${HOJA}!A:J` });
-      const existentes = leidas.data.values ?? [];
+      const existentes = (leidas.data.values ?? []) as unknown[][];
 
-      // fila 1 = encabezado. La clave es col B (Fecha Despacho) + col D (Tienda).
+      // ── Cierre de camión: toca UNA celda, la patente (col H) ──────────────────────
+      // El Enrutador conoce el TOTAL de cajas pero no el desglose CC/CN — `pushCounts` guarda
+      // `b: cajas` y nada más. Escribir la fila entera desde acá dejaría 22LGN como CC 0 · CN 13
+      // en vez de CC 12 · CN 1: el total sobrevive y el desglose se pierde. Las cajas son de
+      // Bodega. (Es lo mismo que hace el CONTROL DESPACHO del seco.)
+      if (body.soloPatente) {
+        const plan = planRuteoCongelados(existentes, rows);
+        if (plan.updates.length) {
+          await gs.spreadsheets.values.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: {
+              valueInputOption: 'USER_ENTERED',
+              data: plan.updates.map(u => ({ range: `${HOJA}!H${u.fila}`, values: [[u.patente]] })),
+            },
+          });
+        }
+        // Rutear carga que nunca se registró es un problema real, no un detalle de escritura.
+        if (plan.sinFila.length) console.warn(`[sheets-write] ${HOJA}: ruteadas sin registrar:`, plan.sinFila);
+        return NextResponse.json({ ok: true, actualizadas: plan.updates.length, sinFila: plan.sinFila });
+      }
+
+      // ── Registro de Bodega: la fila completa ──────────────────────────────────────
+      //    Upsert por (Fecha Despacho, Tienda): una tienda aparece UNA vez por día de despacho.
+      //    Layout posicional A..J — ver congelados/utils/controlCongelados.ts.
       const filaPorClave = new Map<string, number>();
       for (let i = 1; i < existentes.length; i++) {
         const f = existentes[i];
@@ -567,8 +591,16 @@ export async function POST(request: NextRequest) {
       for (const row of rows) {
         const clave = `${String(row[1] ?? '').trim()}::${String(row[3] ?? '').trim().toUpperCase()}`;
         const fila  = filaPorClave.get(clave);
-        if (fila) updates.push({ range: `${HOJA}!A${fila}:J${fila}`, values: [row] });
-        else      nuevas.push(row);
+        if (fila) {
+          // Conservar la patente que ya estuviera puesta: el registro no la conoce y mandarla
+          // vacía borraría el ruteo de un camión ya cerrado.
+          const patenteActual = String(existentes[fila - 1]?.[7] ?? '');
+          const conPatente = [...row];
+          if (!String(conPatente[7] ?? '') && patenteActual) conPatente[7] = patenteActual;
+          updates.push({ range: `${HOJA}!A${fila}:J${fila}`, values: [conPatente] });
+        } else {
+          nuevas.push(row);
+        }
       }
 
       if (updates.length) {
