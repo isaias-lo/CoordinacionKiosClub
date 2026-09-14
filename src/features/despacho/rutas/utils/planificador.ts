@@ -281,9 +281,40 @@ export interface LineaParada {
 }
 
 /**
- * Arma el texto para compartir una ruta. Cada parada:
- *  - tienda   → `N. COD: dirección / tipo / horario` (omite los campos vacíos)
- *  - dirección→ `N. Dirección: <lo que se escribió>`
+ * El código de tienda sin el número de adelante: `16PQA` → `PQA`.
+ *
+ * El número es de uso interno: ordena el catálogo y no le dice nada al chofer. En el texto que se
+ * pega en WhatsApp solo estorba.
+ *
+ * Se quitan SOLO los dígitos del principio. Hay tiendas cuyo nombre TERMINA en número —`38SP2`,
+ * `35BN2`— y ese dígito distingue el local 2 del original: `SP2` y `BN2`, nunca `SP` ni `BN`.
+ * Y si el código fuera todo números no queda nada que mostrar, así que se devuelve entero.
+ */
+export function siglaTienda(cod: string): string {
+  const s = String(cod ?? '').trim();
+  const sin = s.replace(/^\d+/, '');
+  return sin || s;
+}
+
+/**
+ * Arma el texto para compartir una ruta, pensado para pegarlo en WhatsApp.
+ *
+ * Cada tienda ocupa DOS líneas:
+ *
+ *     *1. PQA* (Mall) · 08:30-09:30
+ *     Av. Kennedy 5413 Local 537, Las Condes
+ *
+ * La primera dice quién y cuándo; la segunda, dónde. En un celular una línea larga se parte igual,
+ * pero en un punto impredecible: con una dirección como "Av. Américo Vespucio 399 Nivel 1 Pasillo
+ * Falabella, Local 560, Maipú" el horario terminaba colgando solo al final, lejos de su parada.
+ * Poniendo el salto a mano, siempre corta donde conviene.
+ *
+ * La negrita (`*…*` en WhatsApp) va en el NÚMERO y el CÓDIGO, no en el tipo: "Strip Center" se
+ * repite en casi todas las paradas, así que resaltarlo haría pesar justo el dato que NO distingue
+ * una parada de otra. Con la negrita en el código, el chofer baja la vista saltando de negrita en
+ * negrita hasta la parada en la que va.
+ *
+ * Una dirección suelta sigue siendo `N. Dirección: <lo que se escribió>`.
  * Cierra con `Mapa: <url>` si se pasa. Sin paradas ⇒ solo el título.
  */
 export function construirTextoRuta(opts: {
@@ -299,8 +330,16 @@ export function construirTextoRuta(opts: {
   const cab = `${titulo} — ${lineas.length} parada${lineas.length === 1 ? '' : 's'}${km && km > 0 ? ` · ~${km} km` : ''}`;
   const cuerpo = lineas.map((l, i) => {
     if (l.esDireccion) return `${i + 1}. Dirección: ${(l.nombre ?? l.cod).trim()}`;
-    const detalle = [l.direccion, l.tipo, l.horario].map(s => (s ?? '').trim()).filter(Boolean).join(' / ');
-    return `${i + 1}. ${l.cod}${detalle ? `: ${detalle}` : (l.nombre ? `: ${l.nombre}` : '')}`;
+    const tipo    = (l.tipo ?? '').trim();
+    const horario = (l.horario ?? '').trim();
+    const dir     = (l.direccion ?? '').trim();
+    // Encabezado: *N. COD* (Tipo) · Horario — cada pieza solo si existe, sin paréntesis vacíos.
+    let cabecera = `*${i + 1}. ${siglaTienda(l.cod)}*`;
+    if (tipo)    cabecera += ` (${tipo})`;
+    if (horario) cabecera += ` · ${horario}`;
+    // Sin dirección se cae al nombre; sin ninguno de los dos, la parada es solo su encabezado.
+    const segunda = dir || (l.nombre ?? '').trim();
+    return segunda ? `${cabecera}\n${segunda}` : cabecera;
   });
   if (regreso) cuerpo.push(`↩ Llegada: ${regreso.trim()}`);
   // Cada parada separada por una línea en blanco (más legible al pegar en WhatsApp).

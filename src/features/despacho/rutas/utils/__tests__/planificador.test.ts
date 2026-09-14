@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
+  construirTextoRuta, siglaTienda, formatDuracion, kmRutaAprox, repartirEnNRutas,
   hhmmAMin, minAHHMM, parseVentana, estadoVentana, calcularETAs,
   type ParadaDireccion, type LineaParada, filtrarPorZonas } from '../planificador';
 
@@ -128,21 +128,53 @@ describe('paradasDireccionPatch', () => {
   });
 });
 
+describe('siglaTienda', () => {
+  it('quita el número de adelante: es interno y al chofer no le dice nada', () => {
+    expect(siglaTienda('16PQA')).toBe('PQA');
+    expect(siglaTienda('02SCL')).toBe('SCL');
+    expect(siglaTienda('22LGN')).toBe('LGN');
+  });
+
+  it('CONSERVA el número del final: SP2 y BN2 son el local 2, no SP ni BN', () => {
+    expect(siglaTienda('38SP2')).toBe('SP2');
+    expect(siglaTienda('35BN2')).toBe('BN2');
+  });
+
+  it('respeta la Ñ', () => {
+    expect(siglaTienda('23PEÑ')).toBe('PEÑ');
+  });
+
+  it('un código sin número queda igual', () => {
+    expect(siglaTienda('OFIKC')).toBe('OFIKC');
+  });
+
+  it('si fuera todo números no deja la parada sin nombre', () => {
+    expect(siglaTienda('123')).toBe('123');
+  });
+
+  it('vacío o espacios no revientan', () => {
+    expect(siglaTienda('')).toBe('');
+    expect(siglaTienda('  16PQA  ')).toBe('PQA');
+  });
+});
+
 describe('construirTextoRuta', () => {
   const lineas: LineaParada[] = [
-    { cod: 'SMB', esDireccion: false, nombre: 'Simón Bolívar', direccion: 'Av. Simón Bolívar 4800, Ñuñoa', tipo: 'Strip Center', horario: '09:00-12:00' },
-    { cod: 'MAI', esDireccion: false, nombre: 'Maipú',        direccion: 'Av. Américo Vespucio 399, Maipú', tipo: 'Mall', horario: '08:30-09:30' },
+    { cod: '34SMB', esDireccion: false, nombre: 'Simón Bolívar', direccion: 'Av. Simón Bolívar 4800, Ñuñoa', tipo: 'Strip Center', horario: '09:00-12:00' },
+    { cod: '17MAI', esDireccion: false, nombre: 'Maipú',        direccion: 'Av. Américo Vespucio 399, Maipú', tipo: 'Mall', horario: '08:30-09:30' },
     { cod: 'DIR-1', esDireccion: true, nombre: 'Av. Vitacura 2909, Las Condes' },
   ];
 
-  it('arma la lista numerada con COD: dirección / tipo / horario + el link del mapa', () => {
+  it('dos líneas por tienda: identidad arriba, dirección abajo', () => {
     const txt = construirTextoRuta({ titulo: 'Ruta 1', lineas, km: 28, mapaUrl: 'https://maps.example/x' });
     expect(txt).toBe(
       'Ruta 1 — 3 paradas · ~28 km\n' +
       '\n' +
-      '1. SMB: Av. Simón Bolívar 4800, Ñuñoa / Strip Center / 09:00-12:00\n' +
+      '*1. SMB* (Strip Center) · 09:00-12:00\n' +
+      'Av. Simón Bolívar 4800, Ñuñoa\n' +
       '\n' +
-      '2. MAI: Av. Américo Vespucio 399, Maipú / Mall / 08:30-09:30\n' +
+      '*2. MAI* (Mall) · 08:30-09:30\n' +
+      'Av. Américo Vespucio 399, Maipú\n' +
       '\n' +
       '3. Dirección: Av. Vitacura 2909, Las Condes\n' +
       '\n' +
@@ -150,10 +182,32 @@ describe('construirTextoRuta', () => {
     );
   });
 
-  it('omite campos vacíos de una tienda (solo los que existen, separados por /)', () => {
-    const txt = construirTextoRuta({ titulo: 'Ruta', lineas: [{ cod: 'AAA', esDireccion: false, direccion: 'Calle 1' }] });
-    expect(txt).toContain('1. AAA: Calle 1');
-    expect(txt).not.toContain('/');
+  it('la negrita va en el código, no en el tipo: "Strip Center" se repite y no distingue nada', () => {
+    const txt = construirTextoRuta({ titulo: 'R', lineas });
+    expect(txt).toContain('*1. SMB*');
+    expect(txt).not.toContain('*(Strip Center)*');
+  });
+
+  it('sin tipo no deja paréntesis vacíos', () => {
+    const txt = construirTextoRuta({ titulo: 'R', lineas: [{ cod: '16PQA', esDireccion: false, direccion: 'Calle 1', horario: '09:00-10:00' }] });
+    expect(txt).toContain('*1. PQA* · 09:00-10:00\nCalle 1');
+    expect(txt).not.toContain('()');
+  });
+
+  it('sin horario no deja el separador colgando', () => {
+    const txt = construirTextoRuta({ titulo: 'R', lineas: [{ cod: '16PQA', esDireccion: false, direccion: 'Calle 1', tipo: 'Mall' }] });
+    expect(txt).toContain('*1. PQA* (Mall)\nCalle 1');
+    expect(txt).not.toContain('· \n');
+  });
+
+  it('sin dirección se cae al nombre de la tienda', () => {
+    const txt = construirTextoRuta({ titulo: 'R', lineas: [{ cod: '16PQA', esDireccion: false, nombre: 'Parque Arauco', tipo: 'Mall' }] });
+    expect(txt).toContain('*1. PQA* (Mall)\nParque Arauco');
+  });
+
+  it('sin dirección ni nombre, la parada es solo su encabezado', () => {
+    const txt = construirTextoRuta({ titulo: 'R', lineas: [{ cod: '16PQA', esDireccion: false }] });
+    expect(txt).toBe('R — 1 parada\n\n*1. PQA*');
   });
 
   it('singular "parada" y sin km ni mapa cuando no se pasan', () => {
@@ -170,13 +224,19 @@ describe('construirTextoRuta', () => {
   it('con punto de llegada (regreso): agrega la línea "↩ Llegada: …" al final del cuerpo', () => {
     const txt = construirTextoRuta({
       titulo: 'Ruta 1',
-      lineas: [{ cod: 'AAA', esDireccion: false, direccion: 'Calle 1' }],
+      lineas: [{ cod: '16PQA', esDireccion: false, direccion: 'Calle 1' }],
       regreso: 'CD',
       mapaUrl: 'https://maps.example/x',
     });
     expect(txt).toBe(
-      'Ruta 1 — 1 parada\n\n1. AAA: Calle 1\n\n↩ Llegada: CD\n\nMapa: https://maps.example/x',
+      'Ruta 1 — 1 parada\n\n*1. PQA*\nCalle 1\n\n↩ Llegada: CD\n\nMapa: https://maps.example/x',
     );
+  });
+
+  it('una dirección suelta NO lleva negrita ni sigla: no es una tienda', () => {
+    const txt = construirTextoRuta({ titulo: 'R', lineas: [{ cod: 'DIR-1', esDireccion: true, nombre: 'Av. Vitacura 2909' }] });
+    expect(txt).toContain('1. Dirección: Av. Vitacura 2909');
+    expect(txt).not.toContain('*');
   });
 });
 
