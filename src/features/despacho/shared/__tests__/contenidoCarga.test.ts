@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, abreviaturaContenido, nombreContenido,
-} from '../contenidoCarga';
+  CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, abreviaturaContenido, nombreContenido, clasificarContenido, contenidoSantiago, contenidoRegiones, CONTENIDO_CHOCOLATE } from '../contenidoCarga';
 
 describe('dimsAlCambiarContenido', () => {
   it('un PALLET de chocolate conserva sus medidas — nunca se le pisan', () => {
@@ -58,5 +57,63 @@ describe('etiquetas de contenido', () => {
     expect(nombreContenido('hogar')).toBe('Hogar');
     expect(nombreContenido('comida-hogar')).toBe('Mixto (comida y hogar)');
     expect(nombreContenido('chocolate')).toBe('Chocolate');
+  });
+});
+
+describe('el round-trip del chocolate, que estaba roto', () => {
+  it('lo que se GUARDA para un chocolate se lee de vuelta como chocolate', () => {
+    // El bug: se guardaba 'hogar' y se leía 'hogar'. La columna CARGA decía Hogar.
+    expect(clasificarContenido(CONTENIDO_CHOCOLATE)).toBe('chocolate');
+    expect(contenidoSantiago(CONTENIDO_CHOCOLATE)).toBe('Chocolate');
+    expect(contenidoRegiones(CONTENIDO_CHOCOLATE)).toBe('chocolate');
+  });
+
+  it('"hogar" NO puede ser el valor que se escribe para un chocolate', () => {
+    expect(clasificarContenido('hogar')).toBe('hogar');
+    expect(CONTENIDO_CHOCOLATE).not.toBe('hogar');
+  });
+});
+
+describe('clasificarContenido', () => {
+  it('chocolate gana sobre todo: un "chocolate hogar" es chocolate', () => {
+    expect(clasificarContenido('chocolate')).toBe('chocolate');
+    expect(clasificarContenido('Chocolate Hogar')).toBe('chocolate');
+    expect(clasificarContenido('CHOCOLATES')).toBe('chocolate');
+  });
+
+  it('comida y sus sinónimos', () => {
+    expect(clasificarContenido('comida')).toBe('comida');
+    expect(clasificarContenido('Alimentos')).toBe('comida');
+  });
+
+  it('hogar incluye aseo y limpieza', () => {
+    for (const v of ['hogar', 'Aseo', 'productos de limpieza']) {
+      expect(clasificarContenido(v)).toBe('hogar');
+    }
+  });
+
+  it('los dos juntos es mixto, escrito como sea', () => {
+    expect(clasificarContenido('comida-hogar')).toBe('mixto');
+    expect(clasificarContenido('mixto')).toBe('mixto');
+    expect(clasificarContenido('comida y hogar')).toBe('mixto');
+  });
+
+  it('lo desconocido cae en hogar, que es el default histórico', () => {
+    expect(clasificarContenido('cualquier cosa')).toBe('hogar');
+    expect(clasificarContenido('')).toBe('hogar');
+    expect(clasificarContenido(null)).toBe('hogar');
+  });
+});
+
+describe('los dos espejos de Bodega clasifican igual con distinto rótulo', () => {
+  it('RM/Costa en mayúscula inicial; Nacional en minúscula con "comida-hogar"', () => {
+    expect(contenidoSantiago('comida-hogar')).toBe('Mixto');
+    expect(contenidoRegiones('mixto')).toBe('comida-hogar');
+  });
+
+  it('la diferencia es solo de formato, no de criterio', () => {
+    for (const v of ['chocolate', 'comida', 'hogar', 'mixto', 'aseo', '']) {
+      expect(contenidoSantiago(v) === 'Chocolate').toBe(contenidoRegiones(v) === 'chocolate');
+    }
   });
 });
