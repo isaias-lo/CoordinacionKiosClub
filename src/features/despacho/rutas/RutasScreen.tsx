@@ -1794,7 +1794,9 @@ export default function RutasScreen() {
     if (filasControl.length) {
       fetch('/api/sheets-write', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheet: 'CONTROL DESPACHO CONG.', rows: filasControl }),
+        // soloPatente: el cierre NO sabe el desglose CC/CN (pushCounts solo guarda el total), así
+        // que toca únicamente la columna de patente. Ver utils/ruteoControlCong.
+        body: JSON.stringify({ sheet: 'CONTROL DESPACHO CONG.', rows: filasControl, soloPatente: true }),
       }).catch(e => console.error('[cong control]', e));
     }
 
