@@ -14,6 +14,7 @@ import {
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { ordenarConVentanas } from '../utils/ordenConVentanas';
+import { diagnosticarDia, resumenCuello } from '../utils/factibilidadDia';
 
 /** Misma velocidad urbana que usa el motor (OPCIONES_DEFAULT.velocidadKmH): si las dos pantallas
  *  estimaran distinto, la ruta del Planificador y la del Enrutador no coincidirían. */
@@ -380,6 +381,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const gpsAll      = activeComputed.gpsR;                 // catálogo + direcciones de la ruta activa
   const customById  = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
   const endArr      = useMemo<[number, number] | null>(() => endPoint ? [endPoint.lat, endPoint.lng] : null, [endPoint]);
+  // ¿El día cabe? Se mide con la atención y la salida que estén puestas AHORA: bajar los minutos
+  // por parada puede volver factible el mismo día, y eso es justo lo que hay que poder ver.
+  const diagnostico = useMemo(
+    () => diagnosticarDia(orderedCods.filter(c => !esParadaDireccion(c)), tiendas,
+      { salidaMin: hhmmAMin(horaSalida) ?? 8 * 60, servicioMin }),
+    [orderedCods, tiendas, horaSalida, servicioMin]);
+
   const kmAprox     = useMemo(() => kmRutaAprox(orderedCods, gpsAll, [startCoord.lat, startCoord.lng], endArr), [orderedCods, gpsAll, startCoord, endArr]);
 
   // [B3] Resumen por ruta (para comparar de un vistazo): #paradas, km (real de Google o aprox) y
@@ -997,6 +1005,26 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             {!legsOk && <span className="text-kmuted/70 w-full">La ETA aparece cuando el mapa calcula los tiempos (mostrá esta ruta en el mapa).</span>}
           </div>
         )}
+        {/* El día NO cabe: no es que el algoritmo falle, es aritmética. Sin esto quedaba la duda
+            de si la ruta con ⚠ era culpa del orden — y la respuesta cambia lo que hay que hacer. */}
+        {!diagnostico.factible && (
+          <div className="rounded-[10px] border p-2.5 flex flex-col gap-1.5"
+            style={{ background: 'rgba(217,119,6,0.07)', borderColor: 'rgba(217,119,6,0.35)' }}>
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle size={13} className="flex-shrink-0 mt-[1px]" style={{ color: '#B45309' }} aria-hidden="true" />
+              <div className="text-[12px] leading-snug" style={{ color: '#7C4A03' }}>
+                <b>Este día no cabe en un camión.</b> Ningún orden lo arregla.
+                <div className="mt-0.5">{resumenCuello(diagnostico)}</div>
+              </div>
+            </div>
+            <ul className="text-[11.5px] leading-snug pl-[22px] flex flex-col gap-0.5" style={{ color: '#7C4A03' }}>
+              {diagnostico.sugerencias.map(s => (
+                <li key={s.tipo} className="list-disc list-outside">{s.texto}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1">
           {orderedCods.map((cod, i) => {
             const esDir = esParadaDireccion(cod);
