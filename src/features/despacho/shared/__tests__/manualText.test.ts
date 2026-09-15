@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partsOf, buildManualText, lineaTotal, type ManualLine } from '../manualText';
+import { partsOf, buildManualText, lineaTotal, type ManualLine, filasParaManual, esFilaCongelados } from '../manualText';
 
 describe('partsOf', () => {
   it('omite los conteos en cero', () => {
@@ -70,5 +70,51 @@ describe('lineaTotal', () => {
     const lines = [{ cod: '01A', p: 2, b: 1, c: 0, ch: 0 }];
     const { text, tot, withItems } = buildManualText(lines);
     expect(text.split('\n').at(-1)).toBe(lineaTotal(tot, withItems.length));
+  });
+});
+
+describe('filasParaManual — congelados no se suma al seco', () => {
+  // El 15/09 real: tiendas con fila seca Y fila de congelados. El Map del Manual está indexado por
+  // código, así que sin filtrar una pisaba a la otra — y ganaba la que viniera última.
+  const FILAS = [
+    { fuente: 'santiago',            tienda_cod: '01TPS', pallets: 5, bultos: 2 },
+    { fuente: 'congelados-santiago', tienda_cod: '01TPS', pallets: 0, bultos: 0 },
+    { fuente: 'regiones',            tienda_cod: '41ANA', pallets: 3, bultos: 1 },
+    { fuente: 'congelados-regiones', tienda_cod: '60PBL', pallets: 0, bultos: 4 },
+  ];
+
+  it('deja fuera las de congelados', () => {
+    expect(filasParaManual(FILAS).map(f => f.fuente)).toEqual(['santiago', 'regiones']);
+  });
+
+  it('01TPS conserva sus 5 pallets: la fila de congelados ya no la pisa', () => {
+    const r = filasParaManual(FILAS).filter(f => f.tienda_cod === '01TPS');
+    expect(r).toHaveLength(1);
+    expect(r[0].pallets).toBe(5);
+  });
+
+  it('una tienda que SOLO tiene congelados no aparece en el Manual seco', () => {
+    expect(filasParaManual(FILAS).some(f => f.tienda_cod === '60PBL')).toBe(false);
+  });
+
+  it('no toca las filas de seco ni las de regiones', () => {
+    expect(filasParaManual([{ fuente: 'santiago' }, { fuente: 'regiones' }])).toHaveLength(2);
+  });
+
+  it('una fuente vacía o nula NO se descarta: ante la duda, se muestra', () => {
+    expect(filasParaManual([{ fuente: '' }, { fuente: null }, {}])).toHaveLength(3);
+  });
+});
+
+describe('esFilaCongelados', () => {
+  it('reconoce las dos fuentes de congelados', () => {
+    expect(esFilaCongelados({ fuente: 'congelados-santiago' })).toBe(true);
+    expect(esFilaCongelados({ fuente: 'congelados-regiones' })).toBe(true);
+  });
+
+  it('y no confunde las de seco', () => {
+    for (const f of ['santiago', 'regiones', 'bodega_rm', '', null, undefined]) {
+      expect(esFilaCongelados({ fuente: f })).toBe(false);
+    }
   });
 });

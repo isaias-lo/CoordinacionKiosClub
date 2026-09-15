@@ -6,7 +6,7 @@ import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { fetchCounts, type SesionRow } from '@/lib/despachoSesion';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
-import { partsOf, buildManualText, lineaTotal, type ManualLine, type ManualGrupo } from './manualText';
+import { partsOf, buildManualText, lineaTotal, filasParaManual, type ManualLine, type ManualGrupo } from './manualText';
 import {
   resumenPesaje, lineasPesaje, avisosAltoPorTienda, textoManualParaCopiar, ALTO_AVISO_CM, type SlotPesaje,
 } from './manualPesaje';
@@ -58,8 +58,11 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    // Congelados NO entra: el Map de abajo está indexado por CÓDIGO, así que una tienda con fila
+    // seca y fila de congelados terminaba con una pisando a la otra. Y las cajas viajan en
+    // `bultos`, así que sin filtrar se leen como bultos secos (ver manualText/filasParaManual).
     fetchCounts(todayStr()).then(rows => {
-      if (!cancelled) setGlobalLines(rows.map(rowToLine));
+      if (!cancelled) setGlobalLines(filasParaManual(rows).map(rowToLine));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [open]);
