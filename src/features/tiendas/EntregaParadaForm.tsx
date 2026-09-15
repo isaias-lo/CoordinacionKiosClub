@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { X, Camera, Image as ImageIcon, Check, Thermometer, Lock, Box, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { X, Camera, Image as ImageIcon, Check, Thermometer, Lock, Box, AlertTriangle, CloudOff, type LucideIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { safeStorageKey } from '@/lib/storageKey';
 import { processPhoto } from '@/features/auditoria/utils/photos';
+import { encolarEntrega, type EntregaPendiente } from '@/app/conductor-hub/offlineQueue';
+import { ENTREGA_FOTOS_BUCKET, subirFotoEntrega } from './entregaFotos';
 
 /**
- * [Panel Conductor · Fase 3] Registrar la entrega de UNA parada, con las fotos que decide el
+ * [Panel Conductor · Fase 3+4] Registrar la entrega de UNA parada, con las fotos que decide el
  * `tipo` de la ruta (Fase 0):
  *   - congelado → foto de la temperatura del camión (1) + foto(s) de la entrega en tienda (N)
  *   - seco      → foto del sello (1) + foto(s) de los pallets (N)
@@ -20,10 +22,16 @@ import { processPhoto } from '@/features/auditoria/utils/photos';
  * Bucket propio `entrega-fotos` (no `recepcion-fotos`): es prueba de entrega de una ruta
  * genérica, no el flujo de recepción-con-OTP de una tienda puntual — mezclar convenciones de
  * nombre en el mismo bucket es fuente de bugs (ver la migración de la Fase 0).
+ *
+ * [Fase 4] Sin señal en el momento de entregar, esto NO se bloquea: cada foto que no logra
+ * subir queda "en cola" (con su blob comprimido en memoria) en vez de marcarse error, y
+ * "Registrar entrega" pasa a guardar todo en la cola offline (ver offlineQueue.ts) — fotos y
+ * datos — en vez de intentar el PATCH. `page.tsx` drena esa cola sola cuando vuelve la señal.
  */
 
 export interface ParadaEntrega {
   id: number;
+  rutaId: number;
   store_cod: string;
   nombre?: string | null;
   direccion?: string | null;
@@ -33,17 +41,11 @@ export interface ParadaEntrega {
 interface FotoItem {
   preview: string;
   path: string;
+  blob?: File;     // se conserva aunque ya se subió — si hay que reintentar, no hay que repetir compresión
   url?: string;
   uploading: boolean;
-  error?: string;
-}
-
-const BUCKET = 'entrega-fotos';
-
-async function subirFoto(file: File, path: string): Promise<string> {
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: 'image/jpeg', upsert: false });
-  if (error) throw new Error(error.message);
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  queued?: boolean; // no se pudo subir por falta de señal — se resuelve al drenar la cola offline
+  error?: string;   // falló por otra razón (no señal) — hay que reintentar a mano
 }
 
 function quitarFoto(setItems: Dispatch<SetStateAction<FotoItem[]>>, idx: number) {
@@ -53,7 +55,7 @@ function quitarFoto(setItems: Dispatch<SetStateAction<FotoItem[]>>, idx: number)
       URL.revokeObjectURL(it.preview);
       // Fire-and-forget: si falla el remove, queda un archivo huérfano en el bucket — no bloquea
       // al chofer por algo que no afecta la entrega.
-      void supabase.storage.from(BUCKET).remove([it.path]).then(() => {}, () => {});
+      void supabase.storage.from(ENTREGA_FOTOS_BUCKET).remove([it.path]).then(() => {}, () => {});
     }
     return prev.filter((_, i) => i !== idx);
   });
@@ -75,12 +77,19 @@ function FotoGrupo({ titulo, hint, icon: Icon, items, setItems, single, uidBase,
     for (let i = 0; i < files.length; i++) {
       const { compressed, previewUrl } = await processPhoto(files[i]);
       const path = `${uidBase}_${slug}_${Date.now()}_${i}.jpg`;
-      setItems(prev => [...prev, { preview: previewUrl, path, uploading: true }]);
+      setItems(prev => [...prev, { preview: previewUrl, path, blob: compressed, uploading: true }]);
       try {
-        const url = await subirFoto(compressed, path);
+        const url = await subirFotoEntrega(compressed, path);
         setItems(prev => prev.map(p => p.path === path ? { ...p, uploading: false, url } : p));
       } catch {
-        setItems(prev => prev.map(p => p.path === path ? { ...p, uploading: false, error: 'No se pudo subir' } : p));
+        // Sin señal: no es un error del chofer — la foto queda en cola, no bloquea la entrega
+        // (ver `queued` más abajo). Con señal pero falla igual (permisos, bucket caído, etc.) sí
+        // se marca error real y hay que reintentar a mano — silenciarlo ahí escondería un
+        // problema que la cola offline no va a resolver sola.
+        const sinSenal = typeof navigator !== 'undefined' && !navigator.onLine;
+        setItems(prev => prev.map(p => p.path === path
+          ? (sinSenal ? { ...p, uploading: false, queued: true } : { ...p, uploading: false, error: 'No se pudo subir' })
+          : p));
       }
     }
     setVer(v => v + 1);
@@ -110,6 +119,12 @@ function FotoGrupo({ titulo, hint, icon: Icon, items, setItems, single, uidBase,
                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(220,38,38,0.85)', padding: '3px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
                   <AlertTriangle size={9} color="#fff" aria-hidden="true" />
                   <span style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{it.error}</span>
+                </div>
+              )}
+              {it.queued && (
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(217,119,6,0.90)', padding: '3px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <CloudOff size={9} color="#fff" aria-hidden="true" />
+                  <span style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>En cola</span>
                 </div>
               )}
               <button onClick={() => quitarFoto(setItems, idx)}
@@ -145,7 +160,9 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
   parada: ParadaEntrega;
   tipo: 'seco' | 'congelado';
   onClose: () => void;
-  onEntregado: (r: { id: number; hora_entrega: string }) => void;
+  /** `pendiente: true` → se guardó en la cola offline (Fase 4), todavía no está confirmada por
+   *  el servidor. `page.tsx` la sincroniza sola apenas vuelve la señal. */
+  onEntregado: (r: { id: number; hora_entrega: string; pendiente?: boolean }) => void;
 }) {
   const uidBase = safeStorageKey(`${parada.store_cod}_${parada.id}_${Date.now()}`);
 
@@ -162,21 +179,57 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
     ? { titulo: 'Foto(s) de la entrega en tienda',    hint: 'La mercadería ya entregada en el punto',       icon: Camera,      slug: 'entrega' }
     : { titulo: 'Foto(s) de los pallets',             hint: 'Los pallets entregados en el punto',           icon: Box,         slug: 'pallet' };
 
-  const listoA = fotoA.length > 0 && fotoA.every(f => f.url);
-  const listoB = fotoB.length > 0 && fotoB.every(f => f.url);
+  // "Lista" ahora acepta `queued` además de `url` — una foto sin señal no bloquea la entrega,
+  // solo cambia CÓMO se registra (cola offline en vez de PATCH directo, ver `registrar`).
+  const listoA = fotoA.length > 0 && fotoA.every(f => f.url || f.queued);
+  const listoB = fotoB.length > 0 && fotoB.every(f => f.url || f.queued);
   const puedeRegistrar = listoA && listoB && !submitting;
+  const hayFotosEnCola = [...fotoA, ...fotoB].some(f => f.queued);
+
+  function temperaturaNumerica(): number | undefined {
+    if (tipo !== 'congelado' || !temperatura.trim()) return undefined;
+    const t = parseFloat(temperatura);
+    return Number.isNaN(t) ? undefined : t;
+  }
+
+  /** [Fase 4] Guarda todo en la cola offline y avisa al padre como "entregado, pendiente de
+   *  sincronizar" — el chofer ve la parada como lista de inmediato, nunca se queda esperando. */
+  async function encolarYAvisar(horaEntregaLocal: string) {
+    const item: EntregaPendiente = {
+      id: crypto.randomUUID(),
+      rutaTiendaId: parada.id,
+      rutaId: parada.rutaId,
+      storeCod: parada.store_cod,
+      tipo,
+      temperatura: temperaturaNumerica(),
+      horaEntregaLocal,
+      fotos: [...fotoA, ...fotoB].map(f => ({ path: f.path, blob: f.blob ?? null, url: f.url ?? null })),
+      intentos: 0,
+      createdAt: Date.now(),
+    };
+    await encolarEntrega(item);
+    onEntregado({ id: parada.id, hora_entrega: horaEntregaLocal, pendiente: true });
+  }
 
   async function registrar() {
     if (!puedeRegistrar) return;
     setSubmitting(true);
     setSubmitError('');
+    const horaEntregaLocal = new Date().toISOString(); // el momento REAL, se use ahora o al sincronizar
+
+    // Si ya hay alguna foto en cola (sin señal), ni vale la pena intentar el PATCH — directo a
+    // la cola offline, con las que sí lograron subirse y las que quedaron solo como blob.
+    if (hayFotosEnCola) {
+      await encolarYAvisar(horaEntregaLocal);
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const foto_urls = [...fotoA, ...fotoB].map(f => f.url).filter((u): u is string => !!u);
-      const body: Record<string, unknown> = { ruta_tienda_id: parada.id, foto_urls };
-      if (tipo === 'congelado' && temperatura.trim()) {
-        const t = parseFloat(temperatura);
-        if (!Number.isNaN(t)) body.temperatura = t;
-      }
+      const body: Record<string, unknown> = { ruta_tienda_id: parada.id, foto_urls, hora_entrega: horaEntregaLocal };
+      const t = temperaturaNumerica();
+      if (t !== undefined) body.temperatura = t;
       const res = await fetch('/api/rutas-despacho', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
@@ -184,7 +237,9 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
       const json = await res.json() as { hora_entrega: string };
       onEntregado({ id: parada.id, hora_entrega: json.hora_entrega });
     } catch {
-      setSubmitError('No se pudo registrar la entrega. Revisa tu conexión e intenta de nuevo.');
+      // El PATCH mismo falló (ej. se perdió la señal justo después de subir las fotos) — todas
+      // las fotos YA tienen url, así que la cola solo necesita reintentar el PATCH, no re-subir nada.
+      await encolarYAvisar(horaEntregaLocal);
     } finally {
       setSubmitting(false);
     }
@@ -242,6 +297,12 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
             {!listoA ? `Falta: ${grupoA.titulo.toLowerCase()}` : !listoB ? `Falta: ${grupoB.titulo.toLowerCase()}` : ''}
           </div>
         )}
+        {hayFotosEnCola && puedeRegistrar && !submitting && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#92400E', marginBottom: 8, justifyContent: 'center' }}>
+            <CloudOff size={12} aria-hidden="true" />
+            <span>Sin señal — se guardará en el celular y se subirá sola cuando vuelva la conexión</span>
+          </div>
+        )}
         <button onClick={() => void registrar()} disabled={!puedeRegistrar}
           style={{
             width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
@@ -249,7 +310,7 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
             color: '#fff', fontSize: 15, fontWeight: 800, cursor: puedeRegistrar ? 'pointer' : 'not-allowed',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-          {submitting ? 'Registrando…' : <><Check size={16} aria-hidden="true" /> Registrar entrega</>}
+          {submitting ? 'Registrando…' : <><Check size={16} aria-hidden="true" /> {hayFotosEnCola ? 'Guardar (sin señal)' : 'Registrar entrega'}</>}
         </button>
       </div>
     </div>

@@ -1,14 +1,17 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown, History, CloudOff, ChevronRight } from 'lucide-react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
 import { EntregaParadaForm, type ParadaEntrega } from '@/features/tiendas/EntregaParadaForm';
+import { subirFotoEntrega } from '@/features/tiendas/entregaFotos';
 import { guiaHref } from '@/lib/guiaUrl';
 import { rutaDeTienda, eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
 import { fechaChile, fmtHoraChile } from '@/lib/fechaChile';
 import { progresoRuta, proximaParadaPendiente } from './progreso';
 import { moverEnLista } from './reordenar';
+import { formatFechaHistorial } from './historial';
+import { listarPendientes, actualizarPendiente, eliminarPendiente } from './offlineQueue';
 
 // Registra salida / llegada en ruta_eventos. Fire-and-forget: nunca frena al chofer en la calle.
 function registrarEvento(e: EventoRuta) {
@@ -17,7 +20,7 @@ function registrarEvento(e: EventoRuta) {
   }).catch(() => { /* sin señal: se pierde este dato, no la entrega */ });
 }
 
-const TAB_ICON = { ruta: Truck, recepcion: Package } as const;
+const TAB_ICON = { ruta: Truck, recepcion: Package, historial: History } as const;
 
 /* ── Types ──────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -30,9 +33,16 @@ interface TiendaRuta {
   direccion?: string | null;
   comuna?: string | null;
   hora_entrega?: string | null;
+  /** [Fase 4] Local-only: se entregó y quedó en la cola offline, todavía no la confirma el
+   *  servidor. Nunca viene del GET — la pone `onEntregado` y la limpia `sincronizarPendientes`. */
+  pendienteSync?: boolean;
 }
 interface GuiaRuta {
   id: number; folio_dte: string; drive_url?: string; store_cod?: string;
+}
+/** [Fase 4] Resumen de un día del historial — ver GET /api/rutas-despacho?historial=1. */
+interface HistorialDia {
+  fecha: string; rutas: number; paradas: number; entregadas: number;
 }
 interface RutaData {
   id: number; codigo_ruta: string; fecha: string;
@@ -96,7 +106,12 @@ export default function ConductorHubPage() {
   const [offline,      setOffline]      = useState(false);
   const [cacheTs,      setCacheTs]      = useState<number | null>(null);
   const [expanded,     setExpanded]     = useState<number | null>(null);
-  const [tab,          setTab]          = useState<'ruta' | 'recepcion'>('ruta');
+  const [tab,          setTab]          = useState<'ruta' | 'recepcion' | 'historial'>('ruta');
+  // [Fase 4] Qué día se está viendo en "Mi Ruta" — normalmente hoy; el historial cambia esto.
+  const [verFecha,     setVerFecha]     = useState(todayISO());
+  const [historialDias,   setHistorialDias]   = useState<HistorialDia[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [pendientesCount, setPendientesCount] = useState(0);
   // Confirmar salida CD (PUNTO 2 trazabilidad)
   const [salidaId,     setSalidaId]     = useState<number | null>(null);  // ruta_id en confirmación
   const [salidaTemp,   setSalidaTemp]   = useState('');
@@ -130,24 +145,99 @@ export default function ConductorHubPage() {
       .catch(() => {});
   }, [patente]);
 
-  const cargar = useCallback(async (pat: string) => {
+  // [Fase 4] Historial: se pide solo al abrir esa pestaña, no en cada carga de "Mi Ruta" — es
+  // información de consulta ocasional, no algo que el chofer necesite ver a cada rato.
+  useEffect(() => {
+    if (tab !== 'historial' || !patente) return;
+    setHistorialLoading(true);
+    fetch(`/api/rutas-despacho?historial=1&patente=${encodeURIComponent(patente)}&dias=14`)
+      .then(r => r.json())
+      .then(({ data }: { data?: HistorialDia[] }) => setHistorialDias(data ?? []))
+      .catch(() => setHistorialDias([]))
+      .finally(() => setHistorialLoading(false));
+  }, [tab, patente]);
+
+  // [Fase 4] Cola offline: se intenta drenar al entrar, apenas vuelve la señal (evento `online`) y
+  // cada minuto como respaldo (por si el evento no dispara — pasa en algunos Android en segundo
+  // plano). Nunca bloquea la pantalla: cada intento es silencioso, el badge del header es el único
+  // aviso visible.
+  useEffect(() => {
+    if (!patente) return;
+    void sincronizarPendientes();
+    const onOnline = () => void sincronizarPendientes();
+    window.addEventListener('online', onOnline);
+    const interval = setInterval(() => void sincronizarPendientes(), 60_000);
+    return () => { window.removeEventListener('online', onOnline); clearInterval(interval); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patente]);
+
+  /** [Fase 4] Drena la cola offline: sube las fotos que quedaron solo como blob, confirma la
+   *  entrega con el PATCH ya existente (con la hora REAL que se guardó al momento de registrar,
+   *  no la de ahora) y limpia la cola. Silencioso ante cualquier falla — la próxima pasada
+   *  reintenta, ver `intentos`/`ultimoError` en la cola si algún día hay que depurar en terreno. */
+  async function sincronizarPendientes() {
+    const pendientes = await listarPendientes();
+    setPendientesCount(pendientes.length);
+    if (!pendientes.length) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return; // no gastar intentos en vano
+
+    for (const item of pendientes) {
+      try {
+        const fotos = await Promise.all(item.fotos.map(async f => {
+          if (f.url || !f.blob) return f;
+          const url = await subirFotoEntrega(f.blob, f.path);
+          return { ...f, url, blob: null };
+        }));
+        if (!fotos.every(f => f.url)) {
+          await actualizarPendiente({ ...item, fotos, intentos: item.intentos + 1 });
+          continue;
+        }
+        const res = await fetch('/api/rutas-despacho', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ruta_tienda_id: item.rutaTiendaId,
+            foto_urls: fotos.map(f => f.url),
+            temperatura: item.temperatura,
+            hora_entrega: item.horaEntregaLocal,
+          }),
+        });
+        if (!res.ok) throw new Error('server');
+        await eliminarPendiente(item.id);
+        setRutas(prev => prev.map(r => r.id !== item.rutaId ? r : {
+          ...r,
+          ruta_tiendas: r.ruta_tiendas.map(t => t.id === item.rutaTiendaId ? { ...t, pendienteSync: false } : t),
+        }));
+      } catch {
+        await actualizarPendiente({ ...item, intentos: item.intentos + 1, ultimoError: 'No se pudo sincronizar' });
+      }
+    }
+    setPendientesCount((await listarPendientes()).length);
+  }
+
+  // [Fase 4] `fecha` ahora es un parámetro (default hoy) — lo usa el historial para volver a
+  // cargar un día anterior reusando exactamente esta misma función y esta misma pantalla.
+  const cargar = useCallback(async (pat: string, fecha: string = todayISO()) => {
     setLoading(true);
     setOffline(false);
+    setVerFecha(fecha);
     try {
-      const fecha = todayISO();
       const res   = await fetch(`/api/rutas-despacho?fecha=${fecha}&patente=${encodeURIComponent(pat)}`);
       if (!res.ok) throw new Error('Error de servidor');
       const json  = await res.json() as { data: RutaData[] };
       const data  = json.data ?? [];
       setRutas(data);
       setCacheTs(Date.now());
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), patente: pat, data }));
+      // El caché offline solo sirve para HOY (es la pantalla que el chofer necesita ver sin
+      // señal en plena ruta) — cachear historial no aporta y solo suma complejidad de invalidar.
+      if (fecha === todayISO()) {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), patente: pat, fecha, data }));
+      }
     } catch {
       try {
         const raw = localStorage.getItem(CACHE_KEY);
         if (raw) {
-          const cached = JSON.parse(raw) as { ts?: number; patente: string; data: RutaData[] };
-          if (cached.patente.toUpperCase() === pat.toUpperCase()) {
+          const cached = JSON.parse(raw) as { ts?: number; patente: string; fecha?: string; data: RutaData[] };
+          if (cached.patente.toUpperCase() === pat.toUpperCase() && (cached.fecha ?? todayISO()) === fecha) {
             setRutas(cached.data);
             setCacheTs(cached.ts ?? null);
             setOffline(true);
@@ -172,6 +262,7 @@ export default function ConductorHubPage() {
     setRutas([]);
     setInput('');
     setTab('ruta');
+    setVerFecha(todayISO());
     localStorage.removeItem(PATENTE_KEY);
     localStorage.removeItem(CACHE_KEY);
   }
@@ -309,6 +400,8 @@ export default function ConductorHubPage() {
   );
 
   /* ── Hub (autenticado) ──────────────────────────────── */
+  const esHoy = verFecha === todayISO();
+
   return (
     // Altura ACOTADA (fixed inset:0) + overflow hidden → el tab con flex:1/overflow:auto
     // scrollea internamente. Con minHeight:100dvh el contenedor crecía y el app-shell lo
@@ -347,13 +440,22 @@ export default function ConductorHubPage() {
               </div>
             </div>
           </div>
+
+          {/* [Fase 4] Badge de la cola offline — visible desde cualquier tab, es lo primero que el
+              chofer debería notar si algo quedó sin subir. Tap = reintentar ahora mismo. */}
+          {pendientesCount > 0 && (
+            <button onClick={() => void sincronizarPendientes()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, background: 'rgba(217,119,6,0.25)', border: '1px solid rgba(217,119,6,0.5)', color: '#FEF3C7', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+              <CloudOff size={12} aria-hidden="true" /> {pendientesCount} sin subir
+            </button>
+          )}
         </div>
 
         {/* Tabs — underline claro sobre el navy, mismo patrón de tab bar del resto de la app
             (ver design_system.md → "Tab bar"), adaptado a fondo oscuro: activo en blanco sólido,
             inactivo semitransparente, sin píldoras ni sombras. */}
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['ruta', 'Mi Ruta'], ['recepcion', 'Entregar en Tienda']] as const).map(([key, label]) => {
+          {([['ruta', 'Mi Ruta'], ['recepcion', 'Entregar en Tienda'], ['historial', 'Historial']] as const).map(([key, label]) => {
             const TabIcon = TAB_ICON[key];
             return (
               <button key={key} onClick={() => setTab(key)}
@@ -382,6 +484,20 @@ export default function ConductorHubPage() {
             <div style={{ padding: '9px 12px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 10, fontSize: 11, color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: 6, lineHeight: 1.4 }}>
               <WifiOff size={13} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0 }} />
               <span>Modo offline — datos guardados{cacheTs ? ` (última sincronización ${new Date(cacheTs).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : ''}. Sirven de respaldo para mostrar al fiscalizador en ruta.</span>
+            </div>
+          )}
+
+          {/* [Fase 4] Viendo un día del historial — modo solo-lectura: sin reordenar, sin
+              confirmar salida, sin registrar entregas nuevas (eso es SOLO para la ruta de hoy). */}
+          {!esHoy && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 12px', background: '#EFF6FF', border: '1px solid rgba(37,99,235,0.25)', borderRadius: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#1B2A6B', fontWeight: 600 }}>
+                <History size={13} aria-hidden="true" /> Historial del {formatFechaHistorial(verFecha)}
+              </div>
+              <button onClick={() => void cargar(patente, todayISO())}
+                style={{ fontSize: 11, fontWeight: 700, color: '#1B2A6B', background: '#fff', border: '1px solid rgba(37,99,235,0.3)', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>
+                Volver a hoy
+              </button>
             </div>
           )}
 
@@ -494,8 +610,9 @@ export default function ConductorHubPage() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1 }}>Orden de entrega</div>
                         {/* [Fase 2] Solo tiene sentido si queda más de una parada por entregar — no
-                            hay nada que reordenar en una ruta ya completa o de una sola parada. */}
-                        {reordenando !== r.id && r.ruta_tiendas.length > 1 && entregadas < totalParadas && (
+                            hay nada que reordenar en una ruta ya completa o de una sola parada.
+                            [Fase 4] Tampoco en el historial: es modo solo-lectura. */}
+                        {esHoy && reordenando !== r.id && r.ruta_tiendas.length > 1 && entregadas < totalParadas && (
                           <button onClick={() => iniciarReordenar(r)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#1B2A6B', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                             <ArrowUpDown size={12} aria-hidden="true" /> Reordenar
@@ -503,7 +620,7 @@ export default function ConductorHubPage() {
                         )}
                       </div>
 
-                      {reordenando === r.id ? (
+                      {esHoy && reordenando === r.id ? (
                         // ── Modo reordenar: flechas, no drag — ver reordenar.ts sobre por qué. ──
                         <>
                           <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, lineHeight: 1.5 }}>
@@ -608,13 +725,22 @@ export default function ConductorHubPage() {
                                       <span>Entregado a las {fmtHoraChile(t.hora_entrega)}</span>
                                     </div>
                                   )}
+                                  {entregada && t.pendienteSync && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
+                                      <CloudOff size={12} aria-hidden="true" />
+                                      <span>Sin sincronizar — se sube sola cuando vuelva la señal</span>
+                                    </div>
+                                  )}
                                   {/* [Fase 3] Fotos según el tipo de ruta (temperatura+entrega en
-                                      congelados, sello+pallets en seco) — ver EntregaParadaForm. */}
-                                  {!entregada && (
+                                      congelados, sello+pallets en seco) — ver EntregaParadaForm.
+                                      [Fase 4] Solo en la ruta de hoy: es modo solo-lectura en el
+                                      historial, y no tendría sentido registrar una entrega "hoy"
+                                      contra una parada de un día que ya pasó. */}
+                                  {esHoy && !entregada && (
                                     <button
                                       onClick={e => {
                                         e.stopPropagation();
-                                        setEntregaAbierta({ rutaId: r.id, parada: { id: t.id, store_cod: t.store_cod, nombre: t.nombre, direccion: t.direccion, comuna: t.comuna } });
+                                        setEntregaAbierta({ rutaId: r.id, parada: { id: t.id, rutaId: r.id, store_cod: t.store_cod, nombre: t.nombre, direccion: t.direccion, comuna: t.comuna } });
                                       }}
                                       style={{ marginTop: 4, padding: '9px 0', borderRadius: 10, border: 'none', background: '#1B2A6B', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                                       <TipoIcon size={13} aria-hidden="true" /> Registrar entrega
@@ -646,7 +772,8 @@ export default function ConductorHubPage() {
                       </div>
                     )}
 
-                    {/* ── PUNTO 2: Confirmar Salida del CD ────────── */}
+                    {/* ── PUNTO 2: Confirmar Salida del CD (solo hoy — Fase 4) ────── */}
+                    {esHoy && (
                     <div style={{ padding: '0 16px 16px' }}>
                       {r.estado === 'pendiente' ? (
                         salidaId === r.id ? (
@@ -709,6 +836,7 @@ export default function ConductorHubPage() {
                         </div>
                       ) : null}
                     </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -716,7 +844,7 @@ export default function ConductorHubPage() {
           })}
 
           {!loading && rutas.length > 0 && (
-            <button onClick={() => void cargar(patente)}
+            <button onClick={() => void cargar(patente, verFecha)}
               style={{ padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 600, color: '#64748B', background: '#fff', border: '1px solid #E2E8F0', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <RefreshCw size={14} aria-hidden="true" /> Actualizar
             </button>
@@ -738,18 +866,55 @@ export default function ConductorHubPage() {
         </div>
       )}
 
+      {/* ── Tab: Historial (Fase 4) ──────────────────────── */}
+      {tab === 'historial' && (
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>Últimos 14 días — toca un día para ver el detalle.</div>
+
+          {historialLoading && (
+            <div style={{ textAlign: 'center', paddingTop: 40 }}>
+              <div className="w-8 h-8 border-4 border-[#E2E8F0] border-t-[#1B2A6B] rounded-full animate-spin mx-auto mb-3" />
+              <p style={{ color: '#64748B', fontSize: 13 }}>Cargando historial…</p>
+            </div>
+          )}
+
+          {!historialLoading && historialDias.length === 0 && (
+            <div style={{ textAlign: 'center', paddingTop: 40 }}>
+              <div style={{ marginBottom: 12, color: '#94A3B8' }}><History size={40} aria-hidden="true" /></div>
+              <p style={{ color: '#334155', fontSize: 14, fontWeight: 600 }}>Sin rutas en días anteriores</p>
+            </div>
+          )}
+
+          {!historialLoading && historialDias.map(d => (
+            <button key={d.fecha} onClick={() => { void cargar(patente, d.fecha); setTab('ruta'); }}
+              style={{ width: '100%', textAlign: 'left', padding: '12px 14px', background: '#fff', borderRadius: 14, border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1C1C1E', textTransform: 'capitalize' }}>{formatFechaHistorial(d.fecha)}</div>
+                <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                  {d.rutas} ruta{d.rutas !== 1 ? 's' : ''} · {d.paradas} parada{d.paradas !== 1 ? 's' : ''} · {d.entregadas}/{d.paradas} entregadas
+                </div>
+              </div>
+              <ChevronRight size={16} aria-hidden="true" style={{ color: '#CBD5E1', flexShrink: 0 }} />
+            </button>
+          ))}
+        </div>
+      )}
+
       {entregaAbierta && (
         <EntregaParadaForm
           parada={entregaAbierta.parada}
           tipo={rutas.find(r => r.id === entregaAbierta.rutaId)?.tipo ?? 'seco'}
           onClose={() => setEntregaAbierta(null)}
-          onEntregado={({ id, hora_entrega }) => {
+          onEntregado={({ id, hora_entrega, pendiente }) => {
             const rutaId = entregaAbierta.rutaId;
             setRutas(prev => prev.map(r => r.id !== rutaId ? r : {
               ...r,
-              ruta_tiendas: r.ruta_tiendas.map(t => t.id === id ? { ...t, estado_entrega: 'entregado', hora_entrega } : t),
+              ruta_tiendas: r.ruta_tiendas.map(t => t.id === id ? { ...t, estado_entrega: 'entregado', hora_entrega, pendienteSync: !!pendiente } : t),
             }));
             setEntregaAbierta(null);
+            // [Fase 4] Si quedó en la cola, un intento inmediato no cuesta nada — capaz la señal
+            // volvió justo al cerrar el formulario.
+            if (pendiente) { setPendientesCount(c => c + 1); void sincronizarPendientes(); }
           }}
         />
       )}
