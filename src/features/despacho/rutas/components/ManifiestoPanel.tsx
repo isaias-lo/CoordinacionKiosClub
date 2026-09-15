@@ -354,6 +354,11 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
   const [saving,  setSaving]  = useState<Record<number, boolean>>({});
   const [saved,   setSaved]   = useState<Record<number, boolean>>({});
+  // [Diagnóstico] El toast de error ya existía, pero desaparece solo a los 3.5s — fácil de no
+  // ver en medio de cerrar varios camiones seguidos. Un manifiesto que falla al guardar (auto o
+  // manual) queda con un aviso PERMANENTE en su propia tarjeta hasta que se resuelva: el chofer
+  // no lo va a ver en /conductor-hub mientras tanto, y eso no puede quedar en silencio.
+  const [autoGuardadoError, setAutoGuardadoError] = useState<Record<number, string>>({});
   const [toast,   setToast]   = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -504,11 +509,20 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
         i === idx ? { ...item, id: json.data!.id, token_qr: json.data!.token_qr } : item
       ));
       setSaved(prev => ({ ...prev, [idx]: true }));
+      setAutoGuardadoError(prev => {
+        if (!(idx in prev)) return prev;
+        const next = { ...prev };
+        delete next[idx];
+        return next;
+      });
       if (!silent) showToast(`✓ ${m.codigo_ruta} guardado`);
     } catch (e) {
       // El auto-guardado también avisa si falla — un fallo silencioso dejaría la ruta sin
       // aparecer en /conductor-hub sin que nadie se entere, que es justo lo que se quiere evitar.
-      showToast(e instanceof Error ? e.message : 'Error desconocido', false);
+      // El toast solo (3.5s) no bastó en la práctica — se agrega el aviso persistente de abajo.
+      const msg = e instanceof Error ? e.message : 'Error desconocido';
+      showToast(msg, false);
+      setAutoGuardadoError(prev => ({ ...prev, [idx]: msg }));
     } finally {
       setSaving(prev => ({ ...prev, [idx]: false }));
     }
@@ -813,6 +827,17 @@ ${bodies}
                           {label}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* [Diagnóstico] Aviso persistente si el guardado (auto o manual) falló — no
+                    desaparece solo, para que no pase inadvertido entre varios cierres seguidos. */}
+                {!isSaved && autoGuardadoError[idx] && (
+                  <div className="mx-5 mb-3 rounded-xl px-4 py-3" style={{ background: 'rgba(211,47,47,0.08)', border: '1.5px solid rgba(211,47,47,0.35)' }}>
+                    <div className="text-[12px] font-bold text-red mb-0.5">⚠ No se pudo guardar esta ruta</div>
+                    <div className="text-[11px] text-gray-600 leading-snug">
+                      El chofer NO la va a ver en /conductor-hub hasta que se guarde. Motivo: <span className="font-mono">{autoGuardadoError[idx]}</span>
                     </div>
                   </div>
                 )}
