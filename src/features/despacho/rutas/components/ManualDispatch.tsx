@@ -775,6 +775,10 @@ export default function ManualDispatch({
           const puedeCerrar = !!onCerrarCamion && stores.length > 0 && !cerrado;
           // Vehículo de prueba: se marca, no se esconde ni se bloquea (ver utils/vehiculoPrueba).
           const esPrueba = esVehiculoDePrueba(v.p, v.empresa);
+          // El cartel tiene que hablar del MISMO criterio que decide qué se ve acá. Con selección
+          // por tablero, `v.on` ya no manda: un camión elegido en congelados aparecía a la vez
+          // seleccionado y marcado "Apagado" — dos capas contradiciéndose en pantalla.
+          const fueraDeEsteTablero = seleccion ? !seleccion.has(v.p) : !v.on;
           const selForClose = cerrarSel?.has(v.p) ?? false;
           // [E8] Zona·modo del camión (según sus tiendas + config) y aviso si su empresa no está
           // habilitada para esa zona. Un camión de consolidación NO es un recorrido: sin km ni horas.
@@ -805,14 +809,14 @@ export default function ManualDispatch({
                           ? '0 2px 10px rgba(245,158,11,0.18)'
                           : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
                 borderLeftWidth: '4px',
-                borderLeftColor: cerrado ? '#16A34A' : !v.on ? '#DC2626' : esPrueba ? '#D97706' : g.color,
+                borderLeftColor: cerrado ? '#16A34A' : fueraDeEsteTablero ? '#DC2626' : esPrueba ? '#D97706' : g.color,
                 // Punteado: se lee "esto no es un camión de verdad" antes de leer el badge, y no
                 // le quita el color a ningún estado real (cerrado, apagado, sobre capacidad).
                 ...(esPrueba && !cerrado ? { borderStyle: 'dashed' as const } : {}),
               }}
               className={`rounded-[14px] border-[1.5px] transition-all flex flex-col min-w-0 ${
                 cerrado ? 'bg-green-50/70 border-green-500/50'
-                : !v.on ? 'bg-red-50/60 border-red-400/60'
+                : fueraDeEsteTablero ? 'bg-red-50/60 border-red-400/60'
                 : isOver || isPreview || selForClose ? 'bg-white border-knavy'
                 : m.overCap ? 'bg-white border-amber-400'
                 : 'bg-white border-black/[0.08]'}`}
@@ -845,7 +849,14 @@ export default function ManualDispatch({
                       <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-[2px] rounded font-bold"
                         title={AVISO_PRUEBA}>🧪 Prueba</span>
                     )}
-                    {!v.on && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-[2px] rounded font-bold" title="Este camión está apagado — su carga sigue asignada pero no va a salir así">⚠ Apagado</span>}
+                    {fueraDeEsteTablero && (
+                      <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-[2px] rounded font-bold"
+                        title={seleccion
+                          ? `${v.p} no está en este tablero — su carga sigue asignada pero no va a salir así. Tócalo arriba para usarlo acá.`
+                          : 'Este camión está apagado — su carga sigue asignada pero no va a salir así'}>
+                        ⚠ {seleccion ? 'Fuera de este tablero' : 'Apagado'}
+                      </span>
+                    )}
                     {cerrado     && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
                     {isPreview && !cerrado && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
