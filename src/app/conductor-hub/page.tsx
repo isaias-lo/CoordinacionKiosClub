@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin } from 'lucide-react';
+import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
 import { guiaHref } from '@/lib/guiaUrl';
 import { rutaDeTienda, eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
-import { fechaChile } from '@/lib/fechaChile';
+import { fechaChile, fmtHoraChile } from '@/lib/fechaChile';
 import { progresoRuta, proximaParadaPendiente } from './progreso';
+import { moverEnLista } from './reordenar';
 
 // Registra salida / llegada en ruta_eventos. Fire-and-forget: nunca frena al chofer en la calle.
 function registrarEvento(e: EventoRuta) {
@@ -21,6 +22,13 @@ const TAB_ICON = { ruta: Truck, recepcion: Package } as const;
 interface TiendaRuta {
   id: number; store_cod: string; orden: number;
   pallets: number; bultos: number; estado_entrega: string;
+  /** [Fase 2] Ya existían en `ruta_tiendas` (o se suman en el GET, ver Fase 0) pero ninguna
+   *  pantalla los leía todavía — el detalle de parada es lo que primero los necesita. */
+  nombre?: string | null;
+  ventana?: string | null;
+  direccion?: string | null;
+  comuna?: string | null;
+  hora_entrega?: string | null;
 }
 interface GuiaRuta {
   id: number; folio_dte: string; drive_url?: string; store_cod?: string;
@@ -68,6 +76,15 @@ function todayISO(): string {
   return fechaChile();
 }
 
+function arrowBtnStyle(disabled: boolean): CSSProperties {
+  return {
+    width: 30, height: 30, borderRadius: 8, border: '1px solid #E2E8F0', flexShrink: 0,
+    background: disabled ? '#F8FAFF' : '#fff', color: disabled ? '#CBD5E1' : '#1B2A6B',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: disabled ? 'default' : 'pointer',
+  };
+}
+
 /* ── Page ───────────────────────────────────────────────── */
 export default function ConductorHubPage() {
   const [patente,      setPatente]      = useState('');
@@ -85,6 +102,13 @@ export default function ConductorHubPage() {
   const [salidaLoading, setSalidaLoading] = useState(false);
   // Vehículo refrigerado
   const [esRefrigerado, setEsRefrigerado] = useState(false);
+  // [Fase 2] Detalle de parada (tap para ver dirección/ventana/hora real) y reordenar con
+  // confirmación. Solo una ruta puede estar en modo reordenar a la vez.
+  const [detalleAbierto, setDetalleAbierto] = useState<number | null>(null); // ruta_tienda.id
+  const [reordenando,    setReordenando]    = useState<number | null>(null); // ruta.id
+  const [ordenLocal,     setOrdenLocal]     = useState<Record<number, string[]>>({});
+  const [guardandoOrden, setGuardandoOrden] = useState(false);
+  const [ordenError,     setOrdenError]     = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(PATENTE_KEY);
@@ -147,6 +171,50 @@ export default function ConductorHubPage() {
     setTab('ruta');
     localStorage.removeItem(PATENTE_KEY);
     localStorage.removeItem(CACHE_KEY);
+  }
+
+  // [Fase 2] Entrar en modo reordenar: la lista local arranca igual al orden actual del server;
+  // arrastrar-y-soltar no existe acá, solo flechas (ver reordenar.ts) — nada se guarda hasta
+  // "Confirmar nuevo orden".
+  function iniciarReordenar(r: RutaData) {
+    setOrdenLocal(prev => ({ ...prev, [r.id]: [...r.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => t.store_cod) }));
+    setReordenando(r.id);
+    setOrdenError(null);
+    setDetalleAbierto(null);
+  }
+
+  function cancelarReordenar() {
+    setReordenando(null);
+    setOrdenError(null);
+  }
+
+  function moverParada(rutaId: number, index: number, direccion: -1 | 1) {
+    setOrdenLocal(prev => ({ ...prev, [rutaId]: moverEnLista(prev[rutaId] ?? [], index, direccion) }));
+  }
+
+  async function confirmarOrden(rutaId: number) {
+    const orden = ordenLocal[rutaId];
+    if (!orden?.length) return;
+    setGuardandoOrden(true);
+    setOrdenError(null);
+    try {
+      const res = await fetch('/api/rutas-despacho', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruta_id: rutaId, orden }),
+      });
+      if (!res.ok) throw new Error('No se pudo guardar');
+      // Optimista: re-numerar `orden` local según la posición nueva, sin esperar un GET completo.
+      setRutas(prev => prev.map(r => r.id !== rutaId ? r : {
+        ...r,
+        ruta_tiendas: r.ruta_tiendas.map(t => ({ ...t, orden: orden.indexOf(t.store_cod) + 1 })),
+      }));
+      setReordenando(null);
+    } catch {
+      setOrdenError('No se pudo guardar el nuevo orden. Revisa tu conexión e intenta de nuevo.');
+    } finally {
+      setGuardandoOrden(false);
+    }
   }
 
   async function confirmarSalida(rutaId: number) {
@@ -420,40 +488,129 @@ export default function ConductorHubPage() {
 
                     {/* Orden de entrega */}
                     <div style={{ padding: '12px 16px 4px' }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Orden de entrega</div>
-                      {[...r.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => {
-                        const esProxima = proxima?.id === t.id;
-                        const entregada = t.estado_entrega === 'entregado';
-                        return (
-                          <div key={t.id} style={{
-                            display: 'flex', alignItems: 'center', gap: 10, padding: esProxima ? '8px 10px' : '0 0 10px', marginBottom: 10,
-                            borderBottom: esProxima ? 'none' : '1px solid #F1F5F9',
-                            background: esProxima ? 'rgba(37,99,235,0.06)' : 'transparent',
-                            borderRadius: esProxima ? 10 : 0,
-                            border: esProxima ? '1px solid rgba(37,99,235,0.20)' : undefined,
-                          }}>
-                            <div style={{
-                              width: 26, height: 26, borderRadius: '50%', fontSize: 11, fontWeight: 700,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                              background: entregada ? '#DCFCE7' : esProxima ? '#1B2A6B' : '#F1F5F9',
-                              color: entregada ? '#16A34A' : esProxima ? '#fff' : '#64748B',
-                            }}>
-                              {entregada ? <Check size={13} aria-hidden="true" /> : t.orden}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: '#1C1C1E' }}>{t.store_cod}</div>
-                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                                {t.pallets > 0 && `${t.pallets}P `}{t.bultos > 0 && `${t.bultos}B`}
-                              </div>
-                            </div>
-                            {esProxima && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, color: '#1B2A6B', flexShrink: 0 }}>
-                                <MapPin size={11} aria-hidden="true" /> Siguiente
-                              </span>
-                            )}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1 }}>Orden de entrega</div>
+                        {/* [Fase 2] Solo tiene sentido si queda más de una parada por entregar — no
+                            hay nada que reordenar en una ruta ya completa o de una sola parada. */}
+                        {reordenando !== r.id && r.ruta_tiendas.length > 1 && entregadas < totalParadas && (
+                          <button onClick={() => iniciarReordenar(r)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#1B2A6B', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            <ArrowUpDown size={12} aria-hidden="true" /> Reordenar
+                          </button>
+                        )}
+                      </div>
+
+                      {reordenando === r.id ? (
+                        // ── Modo reordenar: flechas, no drag — ver reordenar.ts sobre por qué. ──
+                        <>
+                          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, lineHeight: 1.5 }}>
+                            Usa las flechas para cambiar el orden. No se guarda hasta que confirmes.
                           </div>
-                        );
-                      })}
+                          {(ordenLocal[r.id] ?? []).map((cod, i) => {
+                            const t = r.ruta_tiendas.find(x => x.store_cod === cod);
+                            if (!t) return null;
+                            const lista = ordenLocal[r.id] ?? [];
+                            return (
+                              <div key={cod} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', marginBottom: 8, background: '#F8FAFF', border: '1px solid #E2E8F0', borderRadius: 10 }}>
+                                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#1B2A6B', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  {i + 1}
+                                </div>
+                                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#1C1C1E' }}>{cod}</div>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <button disabled={i === 0} onClick={() => moverParada(r.id, i, -1)} style={arrowBtnStyle(i === 0)} aria-label={`Mover ${cod} hacia arriba`}>
+                                    <ChevronUp size={15} aria-hidden="true" />
+                                  </button>
+                                  <button disabled={i === lista.length - 1} onClick={() => moverParada(r.id, i, 1)} style={arrowBtnStyle(i === lista.length - 1)} aria-label={`Mover ${cod} hacia abajo`}>
+                                    <ChevronDown size={15} aria-hidden="true" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {ordenError && (
+                            <div style={{ fontSize: 11, color: '#B91C1C', marginBottom: 10 }}>{ordenError}</div>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                            <button onClick={cancelarReordenar} disabled={guardandoOrden}
+                              style={{ flex: 1, padding: '10px 0', borderRadius: 10, background: '#fff', border: '1px solid #E2E8F0', color: '#64748B', fontSize: 13, fontWeight: 600, cursor: guardandoOrden ? 'not-allowed' : 'pointer' }}>
+                              Cancelar
+                            </button>
+                            <button onClick={() => void confirmarOrden(r.id)} disabled={guardandoOrden}
+                              style={{ flex: 2, padding: '10px 0', borderRadius: 10, background: guardandoOrden ? '#93A5CF' : '#1B2A6B', border: 'none', color: '#fff', fontSize: 13, fontWeight: 800, cursor: guardandoOrden ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                              {guardandoOrden ? 'Guardando…' : <><Check size={14} aria-hidden="true" /> Confirmar nuevo orden</>}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        // ── Modo normal: tap en una parada abre su detalle (dirección, ventana, hora real). ──
+                        [...r.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => {
+                          const esProxima  = proxima?.id === t.id;
+                          const entregada  = t.estado_entrega === 'entregado';
+                          const abierta    = detalleAbierto === t.id;
+                          return (
+                            <div key={t.id}
+                              onClick={() => setDetalleAbierto(abierta ? null : t.id)}
+                              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetalleAbierto(abierta ? null : t.id); } }}
+                              role="button" tabIndex={0}
+                              style={{
+                                padding: esProxima || abierta ? '8px 10px' : '0 0 10px', marginBottom: 10, cursor: 'pointer',
+                                borderBottom: esProxima || abierta ? 'none' : '1px solid #F1F5F9',
+                                background: esProxima ? 'rgba(37,99,235,0.06)' : abierta ? '#F8FAFF' : 'transparent',
+                                borderRadius: esProxima || abierta ? 10 : 0,
+                                border: esProxima ? '1px solid rgba(37,99,235,0.20)' : abierta ? '1px solid #E2E8F0' : undefined,
+                              }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{
+                                  width: 26, height: 26, borderRadius: '50%', fontSize: 11, fontWeight: 700,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                  background: entregada ? '#DCFCE7' : esProxima ? '#1B2A6B' : '#F1F5F9',
+                                  color: entregada ? '#16A34A' : esProxima ? '#fff' : '#64748B',
+                                }}>
+                                  {entregada ? <Check size={13} aria-hidden="true" /> : t.orden}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1C1C1E' }}>{t.store_cod}</div>
+                                  <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                                    {t.nombre ? `${t.nombre} · ` : ''}{t.pallets > 0 && `${t.pallets}P `}{t.bultos > 0 && `${t.bultos}B`}
+                                  </div>
+                                </div>
+                                {esProxima && (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, color: '#1B2A6B', flexShrink: 0 }}>
+                                    <MapPin size={11} aria-hidden="true" /> Siguiente
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* [Fase 2] Detalle de la parada — dirección, ventana horaria y, si ya
+                                  se entregó, la hora REAL (distinta de la ventana comprometida). */}
+                              {abierta && (
+                                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #E2E8F0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  {(t.direccion || t.comuna) ? (
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: '#334155' }}>
+                                      <MapPin size={13} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0, color: '#64748B' }} />
+                                      <span>{[t.direccion, t.comuna].filter(Boolean).join(', ')}</span>
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: 12, color: '#94A3B8' }}>Sin dirección registrada para esta tienda.</div>
+                                  )}
+                                  {t.ventana && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#334155' }}>
+                                      <Clock size={13} aria-hidden="true" style={{ color: '#64748B' }} />
+                                      <span>Ventana: {t.ventana}</span>
+                                    </div>
+                                  )}
+                                  {entregada && t.hora_entrega && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#16A34A', fontWeight: 600 }}>
+                                      <Check size={13} aria-hidden="true" />
+                                      <span>Entregado a las {fmtHoraChile(t.hora_entrega)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
 
                     {/* Guías DTE */}
