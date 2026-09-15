@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, type CSSProperties } from 're
 import { QRCodeSVG } from 'qrcode.react';
 import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
+import { EntregaParadaForm, type ParadaEntrega } from '@/features/tiendas/EntregaParadaForm';
 import { guiaHref } from '@/lib/guiaUrl';
 import { rutaDeTienda, eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
 import { fechaChile, fmtHoraChile } from '@/lib/fechaChile';
@@ -109,6 +110,8 @@ export default function ConductorHubPage() {
   const [ordenLocal,     setOrdenLocal]     = useState<Record<number, string[]>>({});
   const [guardandoOrden, setGuardandoOrden] = useState(false);
   const [ordenError,     setOrdenError]     = useState<string | null>(null);
+  // [Fase 3] Registrar entrega con fotos — overlay a pantalla completa, ver EntregaParadaForm.
+  const [entregaAbierta, setEntregaAbierta] = useState<{ rutaId: number; parada: ParadaEntrega } | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(PATENTE_KEY);
@@ -605,6 +608,18 @@ export default function ConductorHubPage() {
                                       <span>Entregado a las {fmtHoraChile(t.hora_entrega)}</span>
                                     </div>
                                   )}
+                                  {/* [Fase 3] Fotos según el tipo de ruta (temperatura+entrega en
+                                      congelados, sello+pallets en seco) — ver EntregaParadaForm. */}
+                                  {!entregada && (
+                                    <button
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        setEntregaAbierta({ rutaId: r.id, parada: { id: t.id, store_cod: t.store_cod, nombre: t.nombre, direccion: t.direccion, comuna: t.comuna } });
+                                      }}
+                                      style={{ marginTop: 4, padding: '9px 0', borderRadius: 10, border: 'none', background: '#1B2A6B', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                      <TipoIcon size={13} aria-hidden="true" /> Registrar entrega
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -721,6 +736,22 @@ export default function ConductorHubPage() {
               registrarEvento(eventoLlegada({ rutaId: rutaDeTienda(rutas, storeCod), storeCod, horaISO, patente }));
             }} />
         </div>
+      )}
+
+      {entregaAbierta && (
+        <EntregaParadaForm
+          parada={entregaAbierta.parada}
+          tipo={rutas.find(r => r.id === entregaAbierta.rutaId)?.tipo ?? 'seco'}
+          onClose={() => setEntregaAbierta(null)}
+          onEntregado={({ id, hora_entrega }) => {
+            const rutaId = entregaAbierta.rutaId;
+            setRutas(prev => prev.map(r => r.id !== rutaId ? r : {
+              ...r,
+              ruta_tiendas: r.ruta_tiendas.map(t => t.id === id ? { ...t, estado_entrega: 'entregado', hora_entrega } : t),
+            }));
+            setEntregaAbierta(null);
+          }}
+        />
       )}
     </div>
   );
