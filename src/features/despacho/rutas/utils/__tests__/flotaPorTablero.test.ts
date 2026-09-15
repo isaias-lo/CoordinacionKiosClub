@@ -14,7 +14,7 @@ const FLOTA: Vehiculo[] = [
   v('VSDR91', 'Luis Fica', true),  v('VXSX43', 'Luis Fica', true),
   v('VYJL23', 'Luis Fica', true),  v('PTFZ21', 'Luis Fica', false),
   v('PKZW16', 'Kios Club', true),  v('RGZJ70', 'Kios Club', true),
-  v('RDGK43', 'Kios Club', false),
+  v('RDGK43', 'Kios Club', false), v('RWVD46', 'Kios Club', false),
   v('DPFP98', 'Falabella', true),
 ];
 
@@ -38,10 +38,9 @@ describe('seleccionInicial', () => {
       .toEqual(['DPFP98', 'TYKK42', 'VRYL52', 'VSDR91', 'VXSX43', 'VYJL23']);
   });
 
-  it('un camión FUERA DE SERVICIO no se preselecciona en ninguno', () => {
-    // Empezar el día con un camión roto ya elegido sería empezar con una mentira.
-    expect(seleccionInicial(FLOTA, 'seco')).not.toContain('PTFZ21');
-    expect(seleccionInicial(FLOTA, 'congelados')).not.toContain('RDGK43');
+  it('la semilla son los que YA estaban activos: el primer día no cambia lo que estaba a la vista', () => {
+    expect(seleccionInicial(FLOTA, 'seco')).not.toContain('PTFZ21');      // no estaba activo
+    expect(seleccionInicial(FLOTA, 'congelados')).not.toContain('RDGK43'); // idem
   });
 
   it('los dos tableros no se pisan: ningún camión queda en ambos por defecto', () => {
@@ -62,13 +61,26 @@ describe('visiblesEnTablero — el bug reportado', () => {
     expect(visiblesEnTablero(FLOTA, cong).map(x => x.p)).toEqual(['PKZW16', 'RGZJ70']);
   });
 
-  it('un camión fuera de servicio NO aparece aunque esté seleccionado', () => {
-    // "En servicio" sigue mandando: es lo único global, y es lo correcto.
+  it('la selección MANDA: un camión que no estaba activo se puede usar acá sin desbloquear nada', () => {
+    // Antes `on` hacía de candado y RWVD46 quedaba tachado e intocable en los dos tableros. Pero
+    // `on` nunca significó "operativo" — significa "lo estoy usando", que es esto mismo.
     const sel = new Set(['PTFZ21', 'TYKK42']);
-    expect(visiblesEnTablero(FLOTA, sel).map(x => x.p)).toEqual(['TYKK42']);
+    expect(visiblesEnTablero(FLOTA, sel).map(x => x.p).sort()).toEqual(['PTFZ21', 'TYKK42']);
   });
 
-  it('sin selección se ven TODOS los que están en servicio (comportamiento de antes)', () => {
+  it('el caso RWVD46: elegirlo en congelados alcanza para que aparezca', () => {
+    const cong = alternar(new Set(seleccionInicial(FLOTA, 'congelados')), 'RWVD46');
+    expect(visiblesEnTablero(FLOTA, cong).map(x => x.p)).toContain('RWVD46');
+  });
+
+  it('y elegirlo en congelados NO lo mete en despacho', () => {
+    const cong = alternar(new Set(seleccionInicial(FLOTA, 'congelados')), 'RWVD46');
+    const seco = new Set(seleccionInicial(FLOTA, 'seco'));
+    expect(visiblesEnTablero(FLOTA, cong).map(x => x.p)).toContain('RWVD46');
+    expect(visiblesEnTablero(FLOTA, seco).map(x => x.p)).not.toContain('RWVD46');
+  });
+
+  it('sin selección se cae al comportamiento de antes: los activos', () => {
     // Que la falta de dato esconda camiones sería peor que el bug que se arregla.
     expect(visiblesEnTablero(FLOTA, undefined)).toHaveLength(8);
   });
