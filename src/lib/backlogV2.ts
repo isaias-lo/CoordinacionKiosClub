@@ -13,7 +13,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { fechaChile } from '@/lib/fechaChile';
-import { pendientesDelDia, type PendienteBacklog } from '@/features/despacho/rutas/utils/backlogSegundaVuelta';
+import { pendientesDelDia, ruteadasParaOrigen, type PendienteBacklog } from '@/features/despacho/rutas/utils/backlogSegundaVuelta';
 
 interface FilaSesion {
   fecha: string; tienda_cod: string; fuente: string | null;
@@ -27,25 +27,28 @@ export async function fetchBacklogCalculado(sinceDays = 10): Promise<PendienteBa
   d.setUTCDate(d.getUTCDate() - sinceDays);
   const desde = d.toISOString().slice(0, 10);
 
+  // Los manifiestos se miran HASTA una semana adelante, no hasta ayer: una 2ª vuelta se despacha
+  // DESPUÉS del día de origen, así que cortar en "hoy" dejaba fuera justo lo que cierra la deuda.
+  // El tope existe porque hay fechas basura en la tabla (un manifiesto con fecha 2099-12-31): sin
+  // él, un dedazo marcaría esa tienda como despachada para siempre.
+  const tope = new Date(`${hoy}T00:00:00Z`);
+  tope.setUTCDate(tope.getUTCDate() + 7);
+  const hastaManifiestos = tope.toISOString().slice(0, 10);
+
   const [sesion, rutas] = await Promise.all([
     supabase.from('despacho_sesion')
       .select('fecha, tienda_cod, fuente, pallets, bultos, contenedores, chocolates')
       .gte('fecha', desde).lt('fecha', hoy),
     supabase.from('rutas_despacho')
       .select('fecha, ruta_tiendas(store_cod)')
-      .gte('fecha', desde).lt('fecha', hoy),
+      .gte('fecha', desde).lte('fecha', hastaManifiestos),
   ]);
 
   if (sesion.error) { console.error('[backlogV2:sesion]', sesion.error.message); return []; }
   if (rutas.error)  { console.error('[backlogV2:rutas]',  rutas.error.message);  return []; }
 
-  // Qué códigos salieron en un manifiesto, por fecha.
-  const ruteadasPorFecha = new Map<string, Set<string>>();
-  for (const r of (rutas.data ?? []) as { fecha: string; ruta_tiendas: { store_cod: string }[] | null }[]) {
-    const set = ruteadasPorFecha.get(r.fecha) ?? new Set<string>();
-    for (const t of r.ruta_tiendas ?? []) set.add(String(t.store_cod ?? '').trim().toUpperCase());
-    ruteadasPorFecha.set(r.fecha, set);
-  }
+  const manifiestos = ((rutas.data ?? []) as { fecha: string; ruta_tiendas: { store_cod: string }[] | null }[])
+    .map(r => ({ fecha: r.fecha, cods: (r.ruta_tiendas ?? []).map(t => t.store_cod) }));
 
   // La carga registrada, por fecha. Congelados NO entra: tiene su propio flujo y su propia pestaña.
   const cargaPorFecha = new Map<string, FilaSesion[]>();
@@ -61,7 +64,8 @@ export async function fetchBacklogCalculado(sinceDays = 10): Promise<PendienteBa
         cod: f.tienda_cod, pallets: f.pallets, bultos: f.bultos,
         contenedores: f.contenedores ?? 0, chocolates: f.chocolates ?? 0,
       })),
-      ruteadasPorFecha.get(fecha) ?? new Set<string>(),
+      // Salió ese día O DESPUÉS: la 2ª vuelta se despacha en un día posterior al de origen.
+      ruteadasParaOrigen(manifiestos, fecha),
       fecha,
     ));
   }

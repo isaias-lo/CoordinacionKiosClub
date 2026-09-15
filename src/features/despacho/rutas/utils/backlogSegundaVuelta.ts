@@ -37,10 +37,16 @@ export interface PendienteBacklog {
 /**
  * Lo que quedó pendiente de un día: registrado en bodega y sin entrar a ningún manifiesto.
  *
- * `ruteadas` son los códigos que SÍ salieron ese día. Una tienda sin carga no es pendiente —no hay
- * nada que despachar— y una con carga 0 tampoco, aunque tenga fila.
+ * `ruteadas` son los códigos que salieron ese día **o DESPUÉS**. Esa es la parte que importa: una
+ * 2ª vuelta se despacha en un día POSTERIOR al de origen, así que mirar solo los manifiestos de la
+ * misma fecha marcaba como pendiente algo que ya había salido. Medido sobre septiembre: de 28
+ * "pendientes", 15 eran falsos — las 11 del 09 salieron entre el 10 y el 14, y 4 de las del 10
+ * salieron el 11 y el 14.
  *
- * Los contenedores suman como pallet: ocupan piso igual, misma regla que el pool del despacho.
+ * Un falso positivo acá es peor que un falso negativo: lleva a despachar dos veces la misma carga.
+ *
+ * Una tienda sin carga no es pendiente —no hay nada que despachar— y una con carga 0 tampoco,
+ * aunque tenga fila. Los contenedores suman como pallet: ocupan piso igual.
  */
 export function pendientesDelDia(
   carga: CargaRegistrada[],
@@ -84,4 +90,31 @@ export function textoBacklog(p: PendienteBacklog[]): string {
   const t = `${tiendas} ${tiendas === 1 ? 'tienda' : 'tiendas'}`;
   const d = `${dias} ${dias === 1 ? 'día' : 'días'}`;
   return `${t} de ${d}`;
+}
+
+/** Un manifiesto, reducido a lo que el backlog necesita. */
+export interface ManifiestoRuteado { fecha: string; cods: string[] }
+
+/**
+ * Los códigos que ya salieron para un día de origen: los de ESE día y los de cualquier día
+ * POSTERIOR.
+ *
+ * Tiene un límite conocido: si una tienda tiene carga el lunes y el martes, y el jueves sale un
+ * manifiesto, no hay forma de saber si cubrió la del lunes, la del martes o las dos — el manifiesto
+ * no guarda de qué día venía la carga. Se asume que cubre ambas, que es el lado seguro: no
+ * despachar de más.
+ */
+export function ruteadasParaOrigen(
+  manifiestos: ManifiestoRuteado[],
+  fechaOrigen: string,
+): Set<string> {
+  const out = new Set<string>();
+  for (const m of manifiestos) {
+    if (m.fecha < fechaOrigen) continue;
+    for (const c of m.cods) {
+      const cod = String(c ?? '').trim().toUpperCase();
+      if (cod) out.add(cod);
+    }
+  }
+  return out;
 }
