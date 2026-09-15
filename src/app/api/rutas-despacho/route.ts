@@ -17,6 +17,47 @@ function addDaysIso(iso: string, n: number): string {
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+
+  // [Panel Conductor · Fase 4] Historial: un resumen por día (rutas, paradas, entregadas) de los
+  // últimos `dias` días de un chofer, para la pantalla de historial — NO el detalle completo de
+  // cada ruta (eso sigue siendo el modo normal de este mismo GET, con `fecha` puntual). Se agrega
+  // acá en vez de un endpoint nuevo por lo mismo que ya se hizo con el PATCH en la Fase 0: es el
+  // mismo recurso, otra vista de él.
+  if (request.nextUrl.searchParams.get('historial') === '1') {
+    const patente = request.nextUrl.searchParams.get('patente');
+    if (!patente) return NextResponse.json({ error: 'patente requerida' }, { status: 400 });
+    const dias  = Math.min(60, Math.max(1, parseInt(request.nextUrl.searchParams.get('dias') ?? '14', 10) || 14));
+    // Excluye HOY: la pestaña "Mi Ruta" ya lo cubre en vivo — el historial es "días anteriores".
+    const hasta = addDaysIso(fechaChile(), -1);
+    const desde = addDaysIso(fechaChile(), -dias);
+
+    const { data, error } = await supabaseServer()
+      .from('rutas_despacho')
+      .select('fecha, ruta_tiendas(estado_entrega)')
+      .ilike('patente', patente.trim())
+      .gte('fecha', desde)
+      .lte('fecha', hasta);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Se agrupa en JS, no en SQL: el volumen por chofer es chico (un par de rutas/día, unas pocas
+    // paradas cada una) y el query-builder de supabase-js no expone GROUP BY/agregados — traer las
+    // filas y sumar acá es más simple que una función RPC para un caso de bajo volumen.
+    const porFecha = new Map<string, { rutas: number; paradas: number; entregadas: number }>();
+    for (const r of (data ?? []) as { fecha: string; ruta_tiendas?: { estado_entrega: string }[] }[]) {
+      const cur = porFecha.get(r.fecha) ?? { rutas: 0, paradas: 0, entregadas: 0 };
+      const paradas = r.ruta_tiendas ?? [];
+      cur.rutas += 1;
+      cur.paradas += paradas.length;
+      cur.entregadas += paradas.filter(p => p.estado_entrega === 'entregado').length;
+      porFecha.set(r.fecha, cur);
+    }
+    const historialData = [...porFecha.entries()]
+      .map(([fecha, v]) => ({ fecha, ...v }))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+    return NextResponse.json({ data: historialData });
+  }
+
   const fecha   = request.nextUrl.searchParams.get('fecha') ?? fechaChile();
   const patente = request.nextUrl.searchParams.get('patente');
 
@@ -323,6 +364,13 @@ export async function PATCH(request: NextRequest) {
     /** [Panel Conductor] Marcar UNA parada como entregada, con sus fotos y hora real — distinto
      *  del PATCH de `estado` de más abajo, que toca TODAS las paradas de la ruta de una vez. */
     ruta_tienda_id?: number; foto_urls?: string[]; temperatura?: number;
+    /** [Panel Conductor · Fase 4] Hora REAL en que el chofer registró la entrega, para la cola
+     *  offline: si no hubo señal, esta llamada puede llegar recién cuando vuelve la conexión,
+     *  minutos u horas después — sin esto, `hora_entrega` quedaría marcada al momento de la
+     *  SINCRONIZACIÓN, no de la entrega, lo que es un dato de trazabilidad falso. Opcional: si no
+     *  viene (el camino en línea de siempre), se usa `now()` como hasta ahora.
+     */
+    hora_entrega?: string;
   };
   const sb = supabaseServer();
 
@@ -345,7 +393,10 @@ export async function PATCH(request: NextRequest) {
 
   // ── Registrar entrega de UNA parada (fotos + hora real) ────────────────────
   if (body.ruta_tienda_id != null) {
-    const horaEntrega = new Date().toISOString();
+    // Valida el override del cliente: si viene basura, se ignora silenciosamente y se usa la hora
+    // del servidor — mejor una hora aproximada que una entrega que falla por un dato mal formado.
+    const horaCliente  = body.hora_entrega ? new Date(body.hora_entrega) : null;
+    const horaEntrega  = horaCliente && !Number.isNaN(horaCliente.getTime()) ? horaCliente.toISOString() : new Date().toISOString();
     const { data: rt, error: rtErr } = await sb.from('ruta_tiendas')
       .update({ estado_entrega: 'entregado', foto_urls: body.foto_urls ?? [], hora_entrega: horaEntrega })
       .eq('id', body.ruta_tienda_id)
