@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pendientesDelDia, unirBacklog, textoBacklog } from '../backlogSegundaVuelta';
+import { pendientesDelDia, unirBacklog, textoBacklog, ruteadasParaOrigen } from '../backlogSegundaVuelta';
 
 // El lunes 14/09 real: 9 tiendas registradas que no entraron a ningún manifiesto.
 const CARGA_14 = [
@@ -101,5 +101,51 @@ describe('textoBacklog', () => {
 
   it('vacío cuando no hay nada', () => {
     expect(textoBacklog([])).toBe('');
+  });
+});
+
+describe('ruteadasParaOrigen — el falso positivo que resucitaba despachadas', () => {
+  // Septiembre real: las del 09 salieron entre el 10 y el 14; mirar solo el mismo día las
+  // marcaba pendientes otra vez. De 28 "pendientes", 15 eran falsos.
+  const MANIF = [
+    { fecha: '2026-09-10', cods: ['01TPS', '02SCL', '05LP', '13PIE', '19SUB'] },
+    { fecha: '2026-09-11', cods: ['20CTC', '32BNV', '35BN2', '39PSB', '26ALC'] },
+    { fecha: '2026-09-14', cods: ['41ANA', '42ANP', '30PHU', '58TAM'] },
+  ];
+
+  it('una tienda despachada DÍAS DESPUÉS ya no es pendiente', () => {
+    const r = ruteadasParaOrigen(MANIF, '2026-09-09');
+    for (const c of ['01TPS', '20CTC', '41ANA']) expect(r.has(c)).toBe(true);
+  });
+
+  it('las 11 del 09 dejan de aparecer', () => {
+    const carga = ['01TPS','02SCL','05LP','13PIE','19SUB','20CTC','32BNV','35BN2','39PSB','41ANA','42ANP']
+      .map(cod => ({ cod, pallets: 3, bultos: 1 }));
+    expect(pendientesDelDia(carga, ruteadasParaOrigen(MANIF, '2026-09-09'), '2026-09-09')).toEqual([]);
+  });
+
+  it('del 10 quedan SOLO las 4 que de verdad no salieron', () => {
+    const carga = ['04PDG','26ALC','30PHU','47PTV','50PTM','53VAL','57CAS','58TAM']
+      .map(cod => ({ cod, pallets: 3, bultos: 1 }));
+    const r = pendientesDelDia(carga, ruteadasParaOrigen(MANIF, '2026-09-10'), '2026-09-10');
+    expect(r.map(x => x.c)).toEqual(['04PDG', '47PTV', '50PTM', '53VAL', '57CAS']);
+  });
+
+  it('un manifiesto ANTERIOR al día de origen no cuenta: esa carga es otra', () => {
+    const r = ruteadasParaOrigen([{ fecha: '2026-09-08', cods: ['01TPS'] }], '2026-09-09');
+    expect(r.has('01TPS')).toBe(false);
+  });
+
+  it('el manifiesto del MISMO día sigue contando', () => {
+    expect(ruteadasParaOrigen([{ fecha: '2026-09-09', cods: ['01TPS'] }], '2026-09-09').has('01TPS')).toBe(true);
+  });
+
+  it('normaliza y descarta vacíos', () => {
+    const r = ruteadasParaOrigen([{ fecha: '2026-09-10', cods: [' 01tps ', '', null as unknown as string] }], '2026-09-09');
+    expect([...r]).toEqual(['01TPS']);
+  });
+
+  it('sin manifiestos no hay nada ruteado', () => {
+    expect(ruteadasParaOrigen([], '2026-09-09').size).toBe(0);
   });
 });
