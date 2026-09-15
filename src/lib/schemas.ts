@@ -61,32 +61,49 @@ const StoreCodeSchema = z.string()
   // Ñ permitida: hay códigos canónicos con Ñ (ej. 23PEÑ) que NO se normalizan a N.
   .regex(/^[0-9]{0,2}[A-ZÑ]{2,5}[0-9]?$/, 'Código de tienda inválido (ej: LAS1, 01VIT, 23PEÑ)');
 
+/**
+ * Texto opcional que TAMBIÉN acepta `null`.
+ *
+ * Existe por un bug con cara de misterio: guardar una tienda desde Config devolvía
+ * «region_sendu: Invalid input; comuna: Invalid input; calle: Invalid input…» sin haber tocado
+ * esos campos.
+ *
+ * La causa: `.optional()` de Zod acepta `undefined`, NO `null`. Las columnas de la tabla sí son
+ * nullable, así que una tienda con esos campos vacíos los trae como `null`, el formulario los
+ * devuelve tal cual, y el schema los rechaza. Cuantos más campos nullable tenía la fila, más
+ * larga era la lista de errores — y ninguno señalaba algo que la persona hubiera escrito.
+ *
+ * `lat`/`lon` ya estaban bien (`.nullable().optional()`); el resto no. Acá se corrige de una vez
+ * para todos, en vez de campo por campo a medida que aparecen.
+ */
+const textoOpcional = (max: number) => z.string().max(max).nullable().optional();
+
 export const CreateTiendaSchema = z.object({
   codigo:          StoreCodeSchema,
   nombre:          z.string().min(1).max(100),
-  direccion:       z.string().max(200).optional(),
-  region:          z.string().max(100).optional(),
-  sector_comuna:   z.string().max(100).optional(),
-  corredor:        z.string().max(100).optional(),
-  tipo:            z.string().max(50).optional(),
-  ventana:         z.string().max(50).optional(),
-  frecuencia:      z.string().max(50).optional(),
-  prom_por_dia:    z.string().max(20).optional(),
+  direccion:       textoOpcional(200),
+  region:          textoOpcional(100),
+  sector_comuna:   textoOpcional(100),
+  corredor:        textoOpcional(100),
+  tipo:            textoOpcional(50),
+  ventana:         textoOpcional(50),
+  frecuencia:      textoOpcional(50),
+  prom_por_dia:    textoOpcional(20),
   lat:             z.number().min(-90).max(90).nullable().optional(),
   lon:             z.number().min(-180).max(180).nullable().optional(),
-  correos:         z.string().max(500).optional(),
-  tel_encargado:   z.string().max(30).optional(),
-  supervisor:      z.string().max(100).optional(),
-  tel_supervisor:  z.string().max(30).optional(),
-  transportista:   z.string().max(100).optional(),
-  recepcion_pallet: z.string().max(30).optional(), // 'consolidado' | 'desconsolidado' | ''
+  correos:         textoOpcional(500),
+  tel_encargado:   textoOpcional(30),
+  supervisor:      textoOpcional(100),
+  tel_supervisor:  textoOpcional(30),
+  transportista:   textoOpcional(100),
+  recepcion_pallet: textoOpcional(30), // 'consolidado' | 'desconsolidado' | ''
   // [Fase 4] Datos de envío de Sendu. Sin validarlos acá, la ruta los descartaba en silencio y el
   // formulario habría parecido guardar sin guardar nada.
-  region_sendu:    z.string().max(60).optional(),
-  comuna:          z.string().max(100).optional(),
-  calle:           z.string().max(200).optional(),
-  numero:          z.string().max(20).optional(),
-  complemento:     z.string().max(100).optional(),
+  region_sendu:    textoOpcional(60),
+  comuna:          textoOpcional(100),
+  calle:           textoOpcional(200),
+  numero:          textoOpcional(20),
+  complemento:     textoOpcional(100),
   activo:          z.boolean().optional(),
 });
 
