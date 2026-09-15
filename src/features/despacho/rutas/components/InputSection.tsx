@@ -32,6 +32,12 @@ interface Props {
   modo: string;
   fase: FaseInfo;
   calT: Record<string, CalData>;
+  /** Qué camiones usa cada tablero. Separado de `on` (en servicio, global) — ver
+   *  utils/flotaPorTablero: antes eran el mismo interruptor y los dos tableros se pisaban. */
+  seleccionSeco?: ReadonlySet<string>;
+  onToggleSeleccionSeco?: (patente: string) => void;
+  seleccionCong?: ReadonlySet<string>;
+  onToggleSeleccionCong?: (patente: string) => void;
   /** Cierre de camión del tab CONGELADOS — paralelo al del seco, con su propio set de cerradas. */
   onCerrarCamionCong?: (patente: string) => void;
   cerrarSelCong?: Set<string>;
@@ -138,6 +144,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 export default function InputSection({
   flota, flotaStatus, modo, fase, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   onCerrarCamionCong, cerrarSelCong, onToggleCerrarSelCong, onCerrarVariosCong, esCerradaCong,
+  seleccionSeco, onToggleSeleccionSeco, seleccionCong, onToggleSeleccionCong,
   tiendas, gps, cd, manualAsignaciones,
   paradasAdicionales, pool, onPool, todaLaFlota, onTodaLaFlota, fecha, userId,
   camionSeleccionado, camionSeleccionadoKm, onSelectTruck,
@@ -377,6 +384,7 @@ export default function InputSection({
             <div className="p-3">
               <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
+                seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
                 onCalcular={() => {}} hideCalcular
                 pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
                 camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
@@ -399,6 +407,7 @@ export default function InputSection({
                 <FaseEnrutador fase={fase} />
                 <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
+                seleccion={seleccionSeco} onToggleSeleccion={onToggleSeleccionSeco}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
                 pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
                   camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
@@ -511,6 +520,7 @@ export default function InputSection({
           <div className="p-4">
             <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
+                seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
               onCalcular={() => {}} hideCalcular
                 pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}
               camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
@@ -546,6 +556,8 @@ export default function InputSection({
                 paradas={paradasAdicionales}
                 asignaciones={manualAsignaciones}
                 onAsignaciones={onAsignaciones}
+                seleccion={seleccionSeco}
+                onToggleSeleccion={onToggleSeleccionSeco}
                 onCalcular={onCalcularManual}
                 onEliminarParada={onEliminarParada}
                 pool={pool} onPool={onPool} todaLaFlota={todaLaFlota} onTodaLaFlota={onTodaLaFlota}

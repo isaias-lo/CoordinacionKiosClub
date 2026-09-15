@@ -61,6 +61,7 @@ import type { Vehiculo } from './data/flota';
 import { fechaChile } from '@/lib/fechaChile';
 import { fechaSalida, type TipoCarga } from './utils/fechaSalida';
 import { buildControlCongeladosRows } from '../congelados/utils/controlCongelados';
+import { seleccionInicial, alternar, serializarSeleccion, parseSeleccion } from './utils/flotaPorTablero';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -329,6 +330,14 @@ export default function RutasScreen() {
   // Cross-device vía shared_session_state fuente 'rutas_cerradas'. El registro global SALTA estas
   // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
   const [cerradasV1, setCerradasV1] = useState<Set<string>>(new Set());
+  // ── Qué camiones usa cada tablero ────────────────────────────────────────────────────────
+  // `en_servicio` (v.on) es global y se queda así: un camión roto está roto para los dos. Lo que
+  // se separa es CUÁL uso en cada tablero — antes eran el mismo interruptor, y apagar los de Luis
+  // Fica en Congelados los apagaba también en Despacho, para todos y para el día siguiente.
+  // `null` = todavía no se leyó lo guardado; ahí no se pinta selección para no esconder camiones.
+  const [selSeco, setSelSeco] = useState<Set<string> | null>(null);
+  const [selCong, setSelCong] = useState<Set<string> | null>(null);
+
   const [cerradasCong, setCerradasCong] = useState<Set<string>>(new Set());
   const cerradasCongRef = useRef<Set<string>>(cerradasCong);
   useEffect(() => { cerradasCongRef.current = cerradasCong; }, [cerradasCong]);
@@ -1160,6 +1169,40 @@ export default function RutasScreen() {
     }, undefined, fecha);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  // Selección por tablero: se lee al abrir la fecha y se sincroniza entre dispositivos, igual que
+  // las cerradas. Si nunca se guardó, arranca con la preselección por empresa (congelados = flota
+  // interna, seco = externas) para que nadie tenga que configurar nada antes de trabajar.
+  useEffect(() => {
+    if (typeof window === 'undefined' || flota.length === 0) return;
+    let vivo = true;
+    const cargar = async (fuente: 'flota_sel' | 'flota_sel_cong', tablero: 'seco' | 'congelados',
+                          set: (s: Set<string>) => void) => {
+      const remoto = await fetchSessionState(fuente, fecha).catch(() => null);
+      if (!vivo) return;
+      set(parseSeleccion(remoto) ?? new Set(seleccionInicial(flota, tablero)));
+    };
+    void cargar('flota_sel',      'seco',       setSelSeco);
+    void cargar('flota_sel_cong', 'congelados', setSelCong);
+
+    const u1 = subscribeToSessionState('flota_sel', userId ?? '', s => {
+      const r = parseSeleccion(s); if (r) setSelSeco(r);
+    }, undefined, fecha);
+    const u2 = subscribeToSessionState('flota_sel_cong', userId ?? '', s => {
+      const r = parseSeleccion(s); if (r) setSelCong(r);
+    }, undefined, fecha);
+    return () => { vivo = false; u1(); u2(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, flota.length]);
+
+  const toggleSeleccion = (tablero: 'seco' | 'congelados') => (patente: string) => {
+    const actual = tablero === 'seco' ? selSeco : selCong;
+    if (!actual) return;                       // todavía no cargó: no escribir sobre lo desconocido
+    const next = alternar(actual, patente);
+    (tablero === 'seco' ? setSelSeco : setSelCong)(next);
+    void pushSessionState(tablero === 'seco' ? 'flota_sel' : 'flota_sel_cong',
+      serializarSeleccion(next), userId, fecha);
+  };
 
   const pushCerradasCong = (next: Set<string>) => {
     const json = JSON.stringify([...next].sort());
@@ -2947,6 +2990,10 @@ export default function RutasScreen() {
             onPlanRutas={(rutas, cdArr, ext) => { setPlanRutas(rutas); setPlanCd(cdArr); setPlanExt(ext ?? { gps: {}, tiendas: {} }); }}
             planLegsByRoute={planLegsByRoute} planKmByRoute={planKmByRoute}
             onTerminarDia={() => setCierreOpen(true)}
+            seleccionSeco={selSeco ?? undefined}
+            onToggleSeleccionSeco={toggleSeleccion('seco')}
+            seleccionCong={selCong ?? undefined}
+            onToggleSeleccionCong={toggleSeleccion('congelados')}
             onCerrarCamionCong={p => cerrarCamionCongelados(p)}
             cerrarSelCong={cerrarSelCong}
             onToggleCerrarSelCong={p => setCerrarSelCong(prev => {
