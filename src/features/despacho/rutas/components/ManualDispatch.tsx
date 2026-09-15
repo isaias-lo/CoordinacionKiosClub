@@ -18,6 +18,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
 import { esVehiculoDePrueba, AVISO_PRUEBA } from '../utils/vehiculoPrueba';
 import { excesoDe, confirmacionSobreCapacidad, textoBotonCerrar, confirmacionVarios } from '../utils/sobreCapacidad';
+import { visiblesEnTablero } from '../utils/flotaPorTablero';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -34,6 +35,12 @@ interface Props {
   onEliminarParada?: (id: string) => void;
   /** [2ª VUELTA] Si se provee, cada camión con tiendas muestra "Cerrar camión" (registro por
    *  camión) y se OCULTA el botón batch de calcular. */
+  /** Patentes elegidas para ESTE tablero. undefined = sin selección (comportamiento anterior).
+   *  Separar esto de `on` es lo que hace que DESPACHO y CONGELADOS sean independientes. */
+  seleccion?: ReadonlySet<string>;
+  /** Agrega/saca un camión de este tablero. Con esto presente, los chips dejan de tocar el estado
+   *  GLOBAL (`en servicio`) y pasan a mandar solo acá. */
+  onToggleSeleccion?: (patente: string) => void;
   onCerrarCamion?: (patente: string) => void;
   /** [P4] Asigna lo que falta SIN tocar lo ya armado. Es el botón primario del pool. */
   onAsignar?: () => void;
@@ -124,6 +131,8 @@ export default function ManualDispatch({
   asignaciones, onAsignaciones,
   onCalcular,
   onEliminarParada,
+  seleccion,
+  onToggleSeleccion,
   onCerrarCamion,
   onAsignar,
   onReasignarTodo,
@@ -208,7 +217,9 @@ export default function ManualDispatch({
   // [Pools] Cada pool ofrece los camiones de las empresas habilitadas para sus zonas (Config →
   // Transportistas). Se suman los que ya llevan carga aunque no correspondan: o se tomaron como
   // excepción, o cambió la config con el día armado — esconderlos dejaría carga fuera de la vista.
-  const activos    = flota.filter(v => v.on);
+  // Los camiones de ESTE tablero: en servicio Y elegidos acá. Sin `seleccion` se comporta como
+  // antes (todos los que están en servicio) — ver utils/flotaPorTablero.
+  const activos    = visiblesEnTablero(flota, seleccion);
   const ofrecidos  = todaLaFlota ? activos : flotaDePool(activos, poolScope, zonasCfg);
   const extraZona  = todaLaFlota ? [] : camionesExtra(activos, ofrecidos, asignaciones);
   // [Bug carga invisible] Apagar un camión no le saca la carga (el tablero solo se ACUMULA, ver
@@ -510,7 +521,9 @@ export default function ManualDispatch({
             <Truck size={13} className="text-kmuted" aria-hidden="true" />
             <span className="text-[12px] font-bold text-ktext uppercase tracking-wide">Camiones activos</span>
             <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
-            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">toca para activar / desactivar</span>
+            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">
+              {onToggleSeleccion ? 'toca para usarlo en este tablero' : 'toca para activar / desactivar'}
+            </span>
           </div>
           {/* Agrupados por empresa (preserva el índice original para onToggleFlota); la empresa
               con la patente activada más reciente va primero. */}
@@ -526,18 +539,30 @@ export default function ManualDispatch({
                   <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {g.items.map(({ v, i }) => (
-                    <button
-                      key={v.p} type="button"
-                      onClick={() => onToggleFlota(i)}
-                      title={v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`}
-                      className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
-                        ${v.on ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
-                        ${v.tlbd ? 'border-dashed' : ''}`}
-                    >
-                      {v.on && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
-                    </button>
-                  ))}
+                  {g.items.map(({ v, i }) => {
+                      // Con selección de tablero el chip manda solo ACÁ; el estado global
+                      // ("en servicio") se cambia en FLOTA. Un camión fuera de servicio no se
+                      // puede elegir: sigue siendo lo único que vale para los dos tableros.
+                      const porTablero = !!onToggleSeleccion;
+                      const elegido = porTablero ? (!!seleccion?.has(v.p) && v.on) : v.on;
+                      const bloqueado = porTablero && !v.on;
+                      return (
+                        <button
+                          key={v.p} type="button"
+                          disabled={bloqueado}
+                          onClick={() => (porTablero ? onToggleSeleccion!(v.p) : onToggleFlota(i))}
+                          title={bloqueado ? `${v.p} está fuera de servicio — se reactiva en FLOTA`
+                            : porTablero ? (elegido ? `${v.p} — quitar de este tablero` : `${v.p} — usar en este tablero`)
+                            : (v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`)}
+                          className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
+                            ${elegido ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
+                            ${bloqueado ? 'opacity-40 cursor-not-allowed line-through' : ''}
+                            ${v.tlbd ? 'border-dashed' : ''}`}
+                        >
+                          {elegido && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
+                        </button>
+                      );
+                  })}
                 </div>
               </div>
             ))}
