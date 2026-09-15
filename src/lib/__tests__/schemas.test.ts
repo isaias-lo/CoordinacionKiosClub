@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CreatePickingPalletSchema, CreateUserSchema } from '../schemas';
+import { CreatePickingPalletSchema, CreateUserSchema, CreateTiendaSchema } from '../schemas';
 
 // ─── CreatePickingPalletSchema ────────────────────────────────────────────────
 
@@ -142,5 +142,41 @@ describe('CreateUserSchema', () => {
   it('accepts custom role ids with dashes', () => {
     const result = CreateUserSchema.safeParse({ ...valid, role: 'admin-auditoria' });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('CreateTiendaSchema — los campos vacíos llegan como null, no undefined', () => {
+  const base = { codigo: 'GD', nombre: 'Golden' };
+
+  it('el caso real de GD: los 5 campos de Sendu en null ya no rompen el guardado', () => {
+    // "region_sendu: Invalid input; comuna: Invalid input; calle: Invalid input…" sin haber
+    // tocado esos campos: la fila los tenía NULL y `.optional()` solo acepta undefined.
+    const r = CreateTiendaSchema.safeParse({
+      ...base, region_sendu: null, comuna: null, calle: null, numero: null, complemento: null,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('acepta null en cualquier campo de texto opcional', () => {
+    const r = CreateTiendaSchema.safeParse({
+      ...base, direccion: null, region: null, sector_comuna: null, corredor: null,
+      tipo: null, ventana: null, frecuencia: null, correos: null, transportista: null,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('sigue aceptando undefined y texto', () => {
+    expect(CreateTiendaSchema.safeParse(base).success).toBe(true);
+    expect(CreateTiendaSchema.safeParse({ ...base, ventana: '11:00 - 12:00' }).success).toBe(true);
+  });
+
+  it('lo que YA era inválido lo sigue siendo: null no es una excusa para no validar', () => {
+    expect(CreateTiendaSchema.safeParse({ ...base, ventana: 'x'.repeat(51) }).success).toBe(false);
+    expect(CreateTiendaSchema.safeParse({ codigo: 'GD' }).success).toBe(false);          // sin nombre
+    expect(CreateTiendaSchema.safeParse({ ...base, nombre: null }).success).toBe(false); // nombre es obligatorio
+  });
+
+  it('"GD" es un código válido: 2 letras entran en el patrón', () => {
+    expect(CreateTiendaSchema.safeParse(base).success).toBe(true);
   });
 });
