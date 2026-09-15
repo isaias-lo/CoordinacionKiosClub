@@ -228,7 +228,10 @@ export default function ManualDispatch({
   // `asignadasSet`). Reportado 2026-09-08: 10 tiendas asignadas repartidas en varios camiones,
   // con solo 2 activos, se veían solo 4. Se muestran igual, para que el coordinador las note y
   // decida: reactivar el camión o mover la carga a uno activo.
-  const extraApagados = flota.filter(v => !v.on && (asignaciones[v.p]?.length ?? 0) > 0);
+  // "Apagado" ahora es "fuera de ESTE tablero": un camión que se sacó de acá pero todavía tiene
+  // carga se sigue mostrando, o sus tiendas quedarían invisibles (ni en su columna ni en el pool).
+  const fueraDelTablero = (v: Vehiculo) => (seleccion ? !seleccion.has(v.p) : !v.on);
+  const extraApagados = flota.filter(v => fueraDelTablero(v) && (asignaciones[v.p]?.length ?? 0) > 0);
   const extra      = [...extraZona, ...extraApagados];
   const flotaDisp  = [...ofrecidos, ...extra].sort(porRecencia);
   const ocultos    = activos.length - (ofrecidos.length + extraZona.length);
@@ -540,23 +543,21 @@ export default function ManualDispatch({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {g.items.map(({ v, i }) => {
-                      // Con selección de tablero el chip manda solo ACÁ; el estado global
-                      // ("en servicio") se cambia en FLOTA. Un camión fuera de servicio no se
-                      // puede elegir: sigue siendo lo único que vale para los dos tableros.
+                      // Con selección de tablero el chip manda solo ACÁ, y manda SIEMPRE: no hay
+                      // candado por encima. `en_servicio` nunca significó "operativo" —la UI
+                      // siempre dijo "activos"— así que usarlo para bloquear dejaba camiones
+                      // tachados e intocables sin ninguna razón real.
                       const porTablero = !!onToggleSeleccion;
-                      const elegido = porTablero ? (!!seleccion?.has(v.p) && v.on) : v.on;
-                      const bloqueado = porTablero && !v.on;
+                      const elegido = porTablero ? !!seleccion?.has(v.p) : v.on;
                       return (
                         <button
                           key={v.p} type="button"
-                          disabled={bloqueado}
                           onClick={() => (porTablero ? onToggleSeleccion!(v.p) : onToggleFlota(i))}
-                          title={bloqueado ? `${v.p} está fuera de servicio — se reactiva en FLOTA`
-                            : porTablero ? (elegido ? `${v.p} — quitar de este tablero` : `${v.p} — usar en este tablero`)
+                          title={porTablero
+                            ? (elegido ? `${v.p} — quitar de este tablero` : `${v.p} — usar en este tablero`)
                             : (v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`)}
                           className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
                             ${elegido ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
-                            ${bloqueado ? 'opacity-40 cursor-not-allowed line-through' : ''}
                             ${v.tlbd ? 'border-dashed' : ''}`}
                         >
                           {elegido && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}

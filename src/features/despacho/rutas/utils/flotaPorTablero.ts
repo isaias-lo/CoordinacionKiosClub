@@ -5,16 +5,22 @@
 // apagar los 5 de Luis Fica para trabajar congelados los apagaba también en despacho, para todos,
 // y seguía apagado al día siguiente.
 //
-// El problema es que ahí se mezclaban DOS cosas distintas:
+// `en_servicio` NO significa "el camión funciona". La aplicación nunca usó esas palabras: dice
+// "CAMIONES ACTIVOS", "8 activos · 23 en total", "toca para activar / desactivar". Significa
+// **lo estoy usando**. El nombre de la columna engaña, y los datos lo confirman: 15 de 23 en
+// `false` — dos tercios de la flota rota no existe; dos tercios sin usar hoy es lo normal.
 //
-//   EN SERVICIO      El camión existe y funciona. Se apaga cuando se rompe, está en mantención o
-//                    no vino el conductor. Esto SÍ es global: un camión roto está roto para los
-//                    dos tableros. Es lo que ya hace `en_servicio`, y se queda como está.
+// Eso importa porque de la primera lectura salió un diseño equivocado: se trató `en_servicio` como
+// un candado global de "¿está operativo?" y se le puso ENCIMA una capa de selección por tablero.
+// Quedaron dos capas para algo que necesita una, y la de abajo —la compartida— seguía bloqueando
+// a la de arriba: un camión sin usar quedaba tachado e intocable en los dos tableros.
 //
-//   EN ESTE TABLERO  Cuál de los que funcionan estoy usando ACÁ. Congelados va con flota interna;
-//                    el seco con las empresas externas. Esto es lo que faltaba.
+// Acá hay UNA sola capa, por tablero. La selección del tablero ES el "lo estoy usando" de siempre,
+// y `en_servicio` queda solo como SEMILLA del primer día. No hay nada que desbloquear.
 //
-// Un camión aparece en un tablero cuando cumple las dos.
+// Un concepto de "fuera de servicio / en mantención" NO existe en el sistema —ni columna ni
+// pantalla— y no se inventa acá. Cuando haga falta, se diseña a partir de qué decisión se toma
+// con ese dato.
 
 import type { Vehiculo } from '../data/flota';
 
@@ -37,8 +43,8 @@ export function esFlotaInterna(empresa?: string | null): boolean {
  * regla rígida: es solo el punto de partida, y se cambia con un toque. Sin esto habría que
  * configurar los dos tableros cada mañana antes de poder hacer nada.
  *
- * Solo entran los que están EN SERVICIO: preseleccionar un camión roto sería empezar el día con
- * una mentira.
+ * Arranca de los que ya estaban activos (`v.on`): es el conjunto que se venía usando, así que el
+ * primer día no cambia nada de lo que ya estaba a la vista.
  */
 export function seleccionInicial(flota: Vehiculo[], tablero: Tablero): string[] {
   return flota
@@ -47,14 +53,15 @@ export function seleccionInicial(flota: Vehiculo[], tablero: Tablero): string[] 
 }
 
 /**
- * Los camiones que ve un tablero: en servicio Y elegidos acá.
+ * Los camiones que ve un tablero.
  *
- * `seleccion` undefined = sin selección todavía (tableros que no la usan, o antes de que cargue):
- * se comporta como antes y muestra todos los que están en servicio. Que la falta de dato esconda
- * camiones sería peor que el bug que se está arreglando.
+ * `seleccion` undefined = todavía no cargó, o un tablero que no la usa: se comporta como antes y
+ * muestra los activos. Que la falta de dato esconda camiones sería peor que el bug que se arregla.
  */
 export function visiblesEnTablero(flota: Vehiculo[], seleccion?: ReadonlySet<string>): Vehiculo[] {
-  return flota.filter(v => v.on && (!seleccion || seleccion.has(v.p)));
+  // Con selección, ELLA manda: es el "lo estoy usando" de este tablero y no hay nada por encima.
+  // Sin selección (todavía no cargó, o un tablero que no la usa) se cae al `on` de siempre.
+  return seleccion ? flota.filter(v => seleccion.has(v.p)) : flota.filter(v => v.on);
 }
 
 /** Agrega o saca un camión de la selección de un tablero. */
