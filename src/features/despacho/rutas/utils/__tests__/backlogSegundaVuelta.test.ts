@@ -1,0 +1,105 @@
+import { describe, it, expect } from 'vitest';
+import { pendientesDelDia, unirBacklog, textoBacklog } from '../backlogSegundaVuelta';
+
+// El lunes 14/09 real: 9 tiendas registradas que no entraron a ningún manifiesto.
+const CARGA_14 = [
+  { cod: '02SCL', pallets: 3, bultos: 2, contenedores: 0, chocolates: 4 },
+  { cod: '05LP',  pallets: 4, bultos: 3, contenedores: 0, chocolates: 0 },
+  { cod: '06MQH', pallets: 3, bultos: 3, contenedores: 0, chocolates: 0 },
+  { cod: '12LAS', pallets: 3, bultos: 0, contenedores: 0, chocolates: 0 },
+  { cod: '47PTV', pallets: 3, bultos: 2, contenedores: 0, chocolates: 0 },
+  { cod: '50PTM', pallets: 4, bultos: 1, contenedores: 0, chocolates: 0 },
+  { cod: '52MUT', pallets: 2, bultos: 0, contenedores: 0, chocolates: 4 },
+  { cod: '53VAL', pallets: 3, bultos: 2, contenedores: 0, chocolates: 0 },
+  { cod: '57CAS', pallets: 3, bultos: 2, contenedores: 0, chocolates: 0 },
+];
+
+describe('el caso real del lunes 14', () => {
+  it('encuentra las 9 sin que nadie haya cerrado el día', () => {
+    const r = pendientesDelDia(CARGA_14, new Set(), '2026-09-14');
+    expect(r).toHaveLength(9);
+    expect(r.map(x => x.c)).toEqual(
+      ['02SCL','05LP','06MQH','12LAS','47PTV','50PTM','52MUT','53VAL','57CAS']);
+  });
+
+  it('suma 28 pallets, 15 bultos y 8 chocolates', () => {
+    const r = pendientesDelDia(CARGA_14, new Set(), '2026-09-14');
+    expect(r.reduce((s, x) => s + x.p, 0)).toBe(28);
+    expect(r.reduce((s, x) => s + x.b, 0)).toBe(15);
+    expect(r.reduce((s, x) => s + x.ch, 0)).toBe(8);
+  });
+
+  it('las que SÍ salieron en un manifiesto no son pendientes', () => {
+    const r = pendientesDelDia(CARGA_14, new Set(['02SCL', '05LP']), '2026-09-14');
+    expect(r.map(x => x.c)).not.toContain('02SCL');
+    expect(r).toHaveLength(7);
+  });
+
+  it('marca la fecha de origen: el backlog se agrupa por día', () => {
+    expect(pendientesDelDia(CARGA_14, new Set(), '2026-09-14')[0].fechaOrigen).toBe('2026-09-14');
+  });
+});
+
+describe('qué cuenta como pendiente', () => {
+  it('un contenedor ocupa piso como un pallet', () => {
+    const [r] = pendientesDelDia([{ cod: 'A', pallets: 1, bultos: 0, contenedores: 2 }], new Set(), 'd');
+    expect(r.p).toBe(3);
+  });
+
+  it('carga en CERO no es pendiente aunque tenga fila', () => {
+    expect(pendientesDelDia([{ cod: 'A', pallets: 0, bultos: 0 }], new Set(), 'd')).toEqual([]);
+  });
+
+  it('solo chocolates ya la hace pendiente', () => {
+    expect(pendientesDelDia([{ cod: 'A', pallets: 0, bultos: 0, chocolates: 2 }], new Set(), 'd')).toHaveLength(1);
+  });
+
+  it('una fila sin código se ignora', () => {
+    expect(pendientesDelDia([{ cod: '', pallets: 3, bultos: 0 }], new Set(), 'd')).toEqual([]);
+  });
+
+  it('normaliza el código antes de comparar con las ruteadas', () => {
+    expect(pendientesDelDia([{ cod: ' 02scl ', pallets: 3, bultos: 0 }], new Set(['02SCL']), 'd')).toEqual([]);
+  });
+});
+
+describe('unirBacklog — lo guardado manda', () => {
+  const g = [{ c: 'A', p: 9, b: 9, ch: 9, fechaOrigen: 'd1' }];
+  const c = [{ c: 'A', p: 1, b: 1, ch: 1, fechaOrigen: 'd1' }, { c: 'B', p: 2, b: 0, ch: 0, fechaOrigen: 'd1' }];
+
+  it('una decisión ya registrada no se pisa con el cálculo', () => {
+    const r = unirBacklog(g, c);
+    expect(r.find(x => x.c === 'A')?.p).toBe(9);
+  });
+
+  it('pero lo que nadie registró SÍ entra — es el caso que se arregla', () => {
+    expect(unirBacklog(g, c).map(x => x.c).sort()).toEqual(['A', 'B']);
+  });
+
+  it('la misma tienda en OTRO día es otra pendiente', () => {
+    const otro = [{ c: 'A', p: 1, b: 1, ch: 1, fechaOrigen: 'd2' }];
+    expect(unirBacklog(g, otro)).toHaveLength(2);
+  });
+
+  it('sin nada guardado devuelve el cálculo entero', () => {
+    expect(unirBacklog([], c)).toEqual(c);
+  });
+});
+
+describe('textoBacklog', () => {
+  it('cuenta tiendas y días', () => {
+    expect(textoBacklog([
+      { c: 'A', p: 1, b: 0, ch: 0, fechaOrigen: 'd1' },
+      { c: 'B', p: 1, b: 0, ch: 0, fechaOrigen: 'd1' },
+      { c: 'C', p: 1, b: 0, ch: 0, fechaOrigen: 'd2' },
+    ])).toBe('3 tiendas de 2 días');
+  });
+
+  it('singular cuando corresponde', () => {
+    expect(textoBacklog([{ c: 'A', p: 1, b: 0, ch: 0, fechaOrigen: 'd1' }])).toBe('1 tienda de 1 día');
+  });
+
+  it('vacío cuando no hay nada', () => {
+    expect(textoBacklog([])).toBe('');
+  });
+});

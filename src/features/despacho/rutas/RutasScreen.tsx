@@ -62,6 +62,9 @@ import { fechaChile } from '@/lib/fechaChile';
 import { fechaSalida, type TipoCarga } from './utils/fechaSalida';
 import { buildControlCongeladosRows } from '../congelados/utils/controlCongelados';
 import { seleccionInicial, alternar, serializarSeleccion, parseSeleccion } from './utils/flotaPorTablero';
+import { aplicarCargaDelDia } from './utils/cargaFechaPasada';
+import { unirBacklog } from './utils/backlogSegundaVuelta';
+import { fetchBacklogCalculado } from '@/lib/backlogV2';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -1532,18 +1535,19 @@ export default function RutasScreen() {
 
       // SECO. El guard de congelados faltaba acá (sí está en la carga en vivo): sin él, al abrir
       // una fecha pasada las CAJAS de congelados entraban al pool del seco como bultos.
-      setCalT(prev => {
-        const next = { ...prev };
-        let changed = false;
-        for (const row of rows) {
-          if (esCong(row)) continue;
-          const c  = norm(row.tienda_cod);
-          const p  = row.pallets, b = row.bultos, cc = row.contenedores ?? 0, ch = row.chocolates ?? 0;
-          if (p === 0 && b === 0 && cc === 0 && ch === 0) continue;
-          if (!next[c]) { next[c] = { on: true, p, b, c: cc, ch, g: grpOf(c) }; changed = true; }
-        }
-        return changed ? next : prev;
-      });
+      // La regla NO es "agregar lo que falta" sino "completar lo que está vacío": las tiendas del
+      // calendario de ese día ya están en calT con p:0/b:0 (los conteos llegan por la suscripción,
+      // que es solo de HOY), así que el `if (!next[c])` de antes las dejaba vacías para siempre.
+      // Y sin carga no entran al pool → "Terminar día" calculaba cero sobrantes y no mandaba nada
+      // a 2ª vuelta. Ver utils/cargaFechaPasada.
+      setCalT(prev => aplicarCargaDelDia(
+        prev,
+        rows.filter(r => !esCong(r)).map(r => ({
+          cod: norm(r.tienda_cod), pallets: r.pallets, bultos: r.bultos,
+          contenedores: r.contenedores ?? 0, chocolates: r.chocolates ?? 0,
+        })),
+        grpOf,
+      ));
 
       // CONGELADOS. El pool de la pestaña Congelados solo se llenaba con el día de HOY, así que
       // una carga armada otro día era irrecuperable desde la interfaz. Y eso no es un caso raro:
@@ -1575,8 +1579,17 @@ export default function RutasScreen() {
   }
 
   // ── Tab "2ª VUELTA": cargar pendientes de días anteriores (aislado del día actual) ──
+  // Dos fuentes: lo que quedó GUARDADO al cerrar un día, y lo que se deduce de los datos (carga
+  // registrada en bodega menos lo que entró a un manifiesto). Lo guardado manda; el cálculo solo
+  // aporta lo que nadie alcanzó a registrar — y es lo que rescata los días que no se cerraron.
   useEffect(() => {
-    fetchPendientesV2Pasadas().then(setPendientesV2Origen).catch(() => {});
+    void (async () => {
+      const [guardado, calculado] = await Promise.all([
+        fetchPendientesV2Pasadas().catch(() => [] as PendienteV2[]),
+        fetchBacklogCalculado().catch(() => [] as PendienteV2[]),
+      ]);
+      setPendientesV2Origen(unirBacklog(guardado, calculado));
+    })();
   }, []);
 
   // Tab V2 POR FECHA: fechas del backlog + pool de la sub-pestaña activa (sin sumar entre fechas).
