@@ -37,6 +37,10 @@ interface ManifiestoData {
   salida_sugerida?: string;
   /** Día en que la carga llega a la tienda. Distinto del de armado; ver utils/fechaSalida. */
   fecha_salida?: string | null;
+  /** [Panel Conductor] 'seco' | 'congelado' — decide qué fotos pide el chofer por parada. Se
+   *  toma del vehículo al cerrar, se graba en la ruta (no se re-deriva cada vez: un camión
+   *  refrigerado puede llevar carga seca ese día). */
+  tipo: 'seco' | 'congelado';
 }
 
 interface Props {
@@ -92,6 +96,7 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
     transporte:    ruta.v.empresa || 'Luis Fica',   // empresa del camión (FLOTA) → columna TRANSPORTE
     bodega_origen: 'Santiago',
     estado:        'pendiente',
+    tipo:          ruta.v.refrigerado ? 'congelado' : 'seco',
     tiendas: ruta.ts.map((t, i) => {
       const info = infoTienda(t.c, tiendas);
       return { store_cod: t.c, nombre: info.n, ventana: info.v, orden: i + 1, pallets: t.p, bultos: t.b, chocolates: ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
@@ -474,7 +479,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
     toastTimerRef.current = setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const guardar = useCallback(async (idx: number) => {
+  const guardar = useCallback(async (idx: number, silent = false) => {
     const m = manifiestos[idx];
     setSaving(prev => ({ ...prev, [idx]: true }));
     try {
@@ -488,6 +493,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
           chofer:        m.chofer,
           patente:       m.patente,
           bodega_origen: m.bodega_origen,
+          tipo:          m.tipo,
           tiendas:       m.tiendas,
           guias:         [],
         }),
@@ -498,13 +504,37 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
         i === idx ? { ...item, id: json.data!.id, token_qr: json.data!.token_qr } : item
       ));
       setSaved(prev => ({ ...prev, [idx]: true }));
-      showToast(`✓ ${m.codigo_ruta} guardado`);
+      if (!silent) showToast(`✓ ${m.codigo_ruta} guardado`);
     } catch (e) {
+      // El auto-guardado también avisa si falla — un fallo silencioso dejaría la ruta sin
+      // aparecer en /conductor-hub sin que nadie se entere, que es justo lo que se quiere evitar.
       showToast(e instanceof Error ? e.message : 'Error desconocido', false);
     } finally {
       setSaving(prev => ({ ...prev, [idx]: false }));
     }
   }, [manifiestos, showToast]);
+
+  // [Panel Conductor · Auto-guardado] Cerrar un camión debe dejar su ruta lista para el chofer en
+  // /conductor-hub SIN depender de que el coordinador además presione "💾 Guardar" acá — antes esa
+  // era la ÚNICA forma en que la ruta llegaba a `rutas_despacho`, y si el clic se olvidaba, la
+  // ruta simplemente no aparecía, sin ningún aviso. El guardado es idempotente por
+  // (fecha, codigo_ruta) — ver POST /api/rutas-despacho — así que auto-guardar en cuanto aparece
+  // un manifiesto nuevo es seguro: nunca duplica.
+  //
+  // El intento se marca UNA sola vez por idx (ref, no state derivado de `saving`/`saved`): si se
+  // guiara por esos dos, un fallo (fetch caído) deja ambos en `false` de nuevo y el efecto
+  // reintentaría en cada render sin límite — un loop de reintentos sin backoff. Con el ref, un
+  // fallo simplemente deja el manifiesto sin guardar y el botón manual "💾 Guardar en Sistema"
+  // (que sigue ahí) es el reintento.
+  const autoGuardadoIntentado = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    manifiestos.forEach((m, idx) => {
+      if (m.id == null && !autoGuardadoIntentado.current.has(idx)) {
+        autoGuardadoIntentado.current.add(idx);
+        void guardar(idx, true);
+      }
+    });
+  }, [manifiestos, guardar]);
 
   const actualizarEstado = useCallback(async (idx: number, estado: string) => {
     const m = manifiestos[idx];

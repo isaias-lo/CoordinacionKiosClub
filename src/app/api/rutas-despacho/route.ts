@@ -30,6 +30,28 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // [Panel Conductor] `ruta_tiendas` no trae dirección — solo vive en el catálogo `tiendas`. Sin
+  // esto, el chofer ve el nombre y el código de cada parada pero no adónde ir. Mismo patrón de
+  // join que ya usa GET /api/r/[token] (batch por `codigo`, no un fetch por tienda).
+  const rutas = (data ?? []) as { ruta_tiendas?: { store_cod: string }[] }[];
+  const cods = [...new Set(rutas.flatMap(r => (r.ruta_tiendas ?? []).map(t => t.store_cod)))];
+  if (cods.length) {
+    const { data: tiendaRows } = await supabaseServer()
+      .from('tiendas')
+      .select('codigo, direccion, sector_comuna')
+      .in('codigo', cods);
+    const dirByCod = new Map((tiendaRows ?? []).map((t: { codigo: string; direccion: string | null; sector_comuna: string | null }) =>
+      [t.codigo, { direccion: t.direccion, comuna: t.sector_comuna }]));
+    for (const r of rutas) {
+      for (const t of (r.ruta_tiendas ?? []) as unknown as Record<string, unknown>[]) {
+        const d = dirByCod.get(t.store_cod as string);
+        t.direccion = d?.direccion ?? null;
+        t.comuna    = d?.comuna ?? null;
+      }
+    }
+  }
+
   return NextResponse.json({ data });
 }
 
@@ -43,6 +65,9 @@ export async function POST(request: NextRequest) {
     pioneta_2?: string;
     tipo_carga?: string;
     regimen?:    string;
+    /** [Panel Conductor] 'seco' | 'congelado' — decide qué fotos pide el chofer por parada.
+     *  Distinto de `tipo_carga`/`regimen` (esos van solo a `trazabilidad_unidades`). */
+    tipo?: 'seco' | 'congelado';
     usuario_creador?: string;
     tiendas?: { store_cod: string; nombre?: string; ventana?: string; orden: number; pallets: number; bultos: number; contenedores?: number }[];
     guias?:   { store_cod?: string; folio_dte: string; drive_url?: string }[];
@@ -99,6 +124,7 @@ export async function POST(request: NextRequest) {
       patente:        body.patente,
       bodega_origen:  body.bodega_origen ?? 'Santiago',
       estado:         'pendiente',
+      tipo:           body.tipo ?? 'seco',
       token_qr:       token,
       token_exp:      tokenExp,
       pioneta_1:      body.pioneta_1 ?? null,
@@ -288,12 +314,57 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  const body = await request.json() as { id: number; estado: string };
-  const VALID = ['pendiente', 'en_camino', 'entregado', 'recibido'];
-  if (!VALID.includes(body.estado))
-    return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
-
+  const body = await request.json() as {
+    id?: number; estado?: string;
+    /** [Panel Conductor] Reordenar las paradas de una ruta — el chofer conoce el terreno mejor
+     *  que la sugerencia (tráfico, corte de calle). `orden` es la lista de store_cod en el orden
+     *  NUEVO; el servidor asigna 1..N según su posición. */
+    ruta_id?: number; orden?: string[];
+    /** [Panel Conductor] Marcar UNA parada como entregada, con sus fotos y hora real — distinto
+     *  del PATCH de `estado` de más abajo, que toca TODAS las paradas de la ruta de una vez. */
+    ruta_tienda_id?: number; foto_urls?: string[]; temperatura?: number;
+  };
   const sb = supabaseServer();
+
+  // ── Reordenar paradas ──────────────────────────────────────────────────────
+  if (body.ruta_id != null && Array.isArray(body.orden)) {
+    if (!body.orden.length) return NextResponse.json({ error: 'orden vacío' }, { status: 400 });
+    // Sin unique constraint en (ruta_id, store_cod) para un bulk-upsert simple; el volumen por
+    // ruta es chico (pocas paradas), así que un update por fila es aceptable.
+    for (let i = 0; i < body.orden.length; i++) {
+      const { error: ordErr } = await sb.from('ruta_tiendas')
+        .update({ orden: i + 1 })
+        .eq('ruta_id', body.ruta_id)
+        .eq('store_cod', body.orden[i]);
+      if (ordErr) return NextResponse.json({ error: ordErr.message }, { status: 500 });
+    }
+    // La oficina se entera de que el chofer cambió el orden sugerido — no bloquea la respuesta.
+    void sb.from('ruta_eventos').insert({ ruta_id: body.ruta_id, tipo: 'reorden', datos: { nuevo_orden: body.orden } });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Registrar entrega de UNA parada (fotos + hora real) ────────────────────
+  if (body.ruta_tienda_id != null) {
+    const horaEntrega = new Date().toISOString();
+    const { data: rt, error: rtErr } = await sb.from('ruta_tiendas')
+      .update({ estado_entrega: 'entregado', foto_urls: body.foto_urls ?? [], hora_entrega: horaEntrega })
+      .eq('id', body.ruta_tienda_id)
+      .select('id, ruta_id, store_cod')
+      .single();
+    if (rtErr) return NextResponse.json({ error: rtErr.message }, { status: 500 });
+    // Evento con el detalle completo (fotos, temperatura si es congelado) — `ruta_tiendas` guarda
+    // el estado ACTUAL para consultar rápido; `ruta_eventos` es el historial de qué pasó y cuándo.
+    void sb.from('ruta_eventos').insert({
+      ruta_id: rt.ruta_id, tipo: 'entrega',
+      datos: { store_cod: rt.store_cod, foto_urls: body.foto_urls ?? [], temperatura: body.temperatura ?? null },
+    });
+    return NextResponse.json({ data: rt, hora_entrega: horaEntrega });
+  }
+
+  // ── Estado de la ruta completa (comportamiento existente, sin cambios) ─────
+  const VALID = ['pendiente', 'en_camino', 'entregado', 'recibido'];
+  if (!body.id || !body.estado || !VALID.includes(body.estado))
+    return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
 
   // 1. Actualizar estado de la ruta
   const { error } = await sb.from('rutas_despacho').update({ estado: body.estado }).eq('id', body.id);
