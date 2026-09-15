@@ -13,6 +13,11 @@ import {
   hhmmAMin, minAHHMM, calcularETAs, estadoVentana, type EstadoVentana,
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
+import { ordenarConVentanas } from '../utils/ordenConVentanas';
+
+/** Misma velocidad urbana que usa el motor (OPCIONES_DEFAULT.velocidadKmH): si las dos pantallas
+ *  estimaran distinto, la ruta del Planificador y la del Enrutador no coincidirían. */
+const VELOCIDAD_PLAN_KMH = 22;
 import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 import AddressAutocomplete from './AddressAutocomplete';
@@ -66,7 +71,8 @@ interface PlanRoute {
   id: string;
   nombre: string;
   selected: string[];
-  orderMode: 'cercania' | 'manual';
+  /** 'ventanas' = orden que respeta las ventanas horarias (default). 'cercania' = solo km. */
+  orderMode: 'ventanas' | 'cercania' | 'manual';
   customStops: ParadaDireccion[];
 }
 
@@ -100,14 +106,14 @@ interface PlanPersist {
   horaSalida: string; servicioMin: number;
   routes: PlanRoute[]; visibleIds: string[]; editId: string;
   // Formato viejo (una sola ruta) — se migra a `routes` al cargar.
-  selected?: string[]; orderMode?: 'cercania' | 'manual'; customStops?: ParadaDireccion[];
+  selected?: string[]; orderMode?: 'ventanas' | 'cercania' | 'manual'; customStops?: ParadaDireccion[];
 }
 function loadPlan(): PlanPersist {
   const def: PlanPersist = {
     startMode: 'cd', startTienda: '', customCoord: null, customAddr: '',
     endMode: 'none', endCoord: null, endAddr: '',
     horaSalida: '08:00', servicioMin: 10,
-    routes: [{ id: 'r1', nombre: 'Ruta 1', selected: [], orderMode: 'cercania', customStops: [] }],
+    routes: [{ id: 'r1', nombre: 'Ruta 1', selected: [], orderMode: 'ventanas', customStops: [] }],
     visibleIds: ['r1'], editId: 'r1',
   };
   if (typeof window === 'undefined') return def;
@@ -116,7 +122,7 @@ function loadPlan(): PlanPersist {
   // Rutas: usar `routes`; si no hay, migrar el formato viejo (una sola ruta) o arrancar en blanco.
   let routes = Array.isArray(raw.routes) && raw.routes.length ? raw.routes : null;
   if (!routes) {
-    routes = [{ id: 'r1', nombre: 'Ruta 1', selected: raw.selected ?? [], orderMode: raw.orderMode ?? 'cercania', customStops: raw.customStops ?? [] }];
+    routes = [{ id: 'r1', nombre: 'Ruta 1', selected: raw.selected ?? [], orderMode: raw.orderMode ?? 'ventanas', customStops: raw.customStops ?? [] }];
   }
   const ids = new Set(routes.map(r => r.id));
   let visibleIds = (Array.isArray(raw.visibleIds) ? raw.visibleIds.filter(id => ids.has(id)) : []);
@@ -288,7 +294,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   }
   const setSelected  = (u: string[] | ((prev: string[]) => string[])) =>
     patchActive(r => ({ ...r, selected: typeof u === 'function' ? u(r.selected) : u }));
-  const setOrderMode = (v: 'cercania' | 'manual') => patchActive(r => ({ ...r, orderMode: v }));
+  const setOrderMode = (v: 'ventanas' | 'cercania' | 'manual') => patchActive(r => ({ ...r, orderMode: v }));
   const setCustomStops = (u: ParadaDireccion[] | ((prev: ParadaDireccion[]) => ParadaDireccion[])) =>
     patchActive(r => ({ ...r, customStops: typeof u === 'function' ? u(r.customStops) : u }));
 
@@ -332,7 +338,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       const { rutas, sinGps } = repartirEnNRutas(cods, calN, gps, [startCoord.lat, startCoord.lng]);
       const stamp = Date.now().toString(36);
       const nuevas: PlanRoute[] = rutas.map((r, i) => ({
-        id: `r${stamp}-${i}`, nombre: `Ruta ${i + 1}`, selected: r, orderMode: 'cercania', customStops: [],
+        id: `r${stamp}-${i}`, nombre: `Ruta ${i + 1}`, selected: r, orderMode: 'ventanas', customStops: [],
       }));
       setRoutes(nuevas);
       setVisibleIds(nuevas.map(r => r.id));
@@ -356,11 +362,18 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const routesComputed = useMemo(() => routes.map((r) => {
     const patch = paradasDireccionPatch(r.customStops);
     const gpsR  = { ...gps, ...patch.gps };
-    const ordered = r.orderMode === 'cercania'
-      ? nn(virtualStops(r.selected), gpsR, [startCoord.lat, startCoord.lng]).map(s => s.c)
-      : r.selected;
+    // 'ventanas' ordena respetando la ventana de cada tienda (dura en los MALL) con el
+    // `servicioMin` y la hora de salida que estén puestos AHORA — cambiar cualquiera de los dos
+    // reordena la ruta. 'cercania' es el orden viejo, solo kilómetros, que se deja para comparar.
+    const ordered = r.orderMode === 'ventanas'
+      ? ordenarConVentanas(r.selected, gpsR, [startCoord.lat, startCoord.lng], tiendas, {
+          salidaMin: hhmmAMin(horaSalida) ?? 8 * 60, servicioMin, velocidadKmH: VELOCIDAD_PLAN_KMH,
+        })
+      : r.orderMode === 'cercania'
+        ? nn(virtualStops(r.selected), gpsR, [startCoord.lat, startCoord.lng]).map(s => s.c)
+        : r.selected;
     return { id: r.id, nombre: r.nombre, ordered, patch, gpsR };
-  }), [routes, gps, startCoord]);
+  }), [routes, gps, startCoord, tiendas, horaSalida, servicioMin]);
 
   const activeComputed = routesComputed[activeIdx] ?? routesComputed[0];
   const orderedCods = activeComputed.ordered;
@@ -479,7 +492,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // ── Rutas: crear / eliminar / mostrar-ocultar / editar ────────────────────────
   function nuevaRuta() {
     const id = `r${Date.now()}`;
-    setRoutes(rs => [...rs, { id, nombre: `Ruta ${rs.length + 1}`, selected: [], orderMode: 'cercania', customStops: [] }]);
+    setRoutes(rs => [...rs, { id, nombre: `Ruta ${rs.length + 1}`, selected: [], orderMode: 'ventanas', customStops: [] }]);
     setVisibleIds(prev => [...prev, id]);
     setEditId(id);
   }
@@ -963,7 +976,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>
         {selected.length > 0 && (
           <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
-            <button onClick={() => setOrderMode('cercania')} className={`${seg} flex items-center justify-center gap-1 ${orderMode === 'cercania' ? 'bg-knavy text-white' : 'text-kmuted'}`}><Sparkles size={12} /> Cercanía</button>
+            <button onClick={() => setOrderMode('ventanas')} title="Ordena cumpliendo las ventanas horarias; los MALL son ventana dura"
+              className={`${seg} flex items-center justify-center gap-1 ${orderMode === 'ventanas' ? 'bg-knavy text-white' : 'text-kmuted'}`}><Clock size={12} /> Ventanas</button>
+            <button onClick={() => setOrderMode('cercania')} title="Solo kilómetros, sin mirar horarios" className={`${seg} flex items-center justify-center gap-1 ${orderMode === 'cercania' ? 'bg-knavy text-white' : 'text-kmuted'}`}><Sparkles size={12} /> Cercanía</button>
             <button onClick={() => setOrderMode('manual')}   className={`${seg} ${orderMode === 'manual' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Manual</button>
           </div>
         )}

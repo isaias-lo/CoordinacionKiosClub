@@ -17,6 +17,7 @@
 // siempre la misma propuesta (los empates se rompen por código de tienda).
 
 import { dkm } from './helpers';
+import { aMinutosDelDia, parseVentana } from './ventanaHoraria';
 import { zonaDeSectorOGeo, type ZonaRuteo } from '@/lib/sectores';
 import { ZONAS_DEFAULT, empresaHabilitada, zonasDeConsolidacion, type ConfigZona, type ConfigZonas } from './zonasTransporte';
 import type { StoreItem, Ruta } from './routing';
@@ -163,26 +164,14 @@ export function zonaDeTienda(
 // ── Ventanas horarias ────────────────────────────────────────────────────────────
 
 /** Convierte 'HH:MM' a minutos desde medianoche. Devuelve null si no parsea. */
-export function aMinutos(hhmm: string): number | null {
-  const m = String(hhmm ?? '').trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const h = Number(m[1]), min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
-}
+export const aMinutos = aMinutosDelDia;
 
 /**
  * Parsea la ventana de recepción de una tienda. Acepta los formatos que llegan del catálogo:
  * '09:00-12:00', '09:00 - 14:00' y '08:00-09:00 / 20:00-21:00' (se toma la PRIMERA franja: la de
  * la mañana, que es la que aplica al despacho). Sin ventana → null (la tienda no restringe).
  */
-export function parseVentana(v?: string | null): { abre: number; cierra: number } | null {
-  const m = String(v ?? '').match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-  if (!m) return null;
-  const abre = aMinutos(m[1]), cierra = aMinutos(m[2]);
-  if (abre == null || cierra == null || cierra <= abre) return null;
-  return { abre, cierra };
-}
+export { parseVentana } from './ventanaHoraria';
 
 // ── Geometría de una secuencia de paradas ────────────────────────────────────────
 
