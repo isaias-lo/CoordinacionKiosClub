@@ -63,6 +63,63 @@ describe('qué cuenta como pendiente', () => {
   });
 });
 
+// El martes 15/09 real: el coordinador cerró el día y el cierre guardó CINCO tiendas. El tab
+// mostraba 25 porque el cálculo le sumaba 20 que todavía no se habían despachado.
+const GUARDADO_15 = [
+  { c: '23PEÑ', p: 5, b: 1, ch: 0, fechaOrigen: '2026-09-15' },
+  { c: '01TPS', p: 5, b: 2, ch: 0, fechaOrigen: '2026-09-15' },
+  { c: '13PIE', p: 4, b: 3, ch: 0, fechaOrigen: '2026-09-15' },
+  { c: '21NUC', p: 5, b: 6, ch: 0, fechaOrigen: '2026-09-15' },
+  { c: '40LIL', p: 3, b: 0, ch: 5, fechaOrigen: '2026-09-15' },
+];
+const CALCULADO_15 = [
+  ...GUARDADO_15,
+  ...['10TRQ','11ILC','18FLO','24SPP','26ALC','27MCH','28TEM','29CFL','31TLC','34SMB',
+      '36CHL','38SP2','45EST','46TRE','48BRU','49PTA','56PZA','60PBL','75PUC','76PAN']
+    .map(c => ({ c, p: 2, b: 1, ch: 0, fechaOrigen: '2026-09-15' })),
+];
+
+describe('el caso real del martes 15: el día se cerró y guardó 5', () => {
+  const cerrados = new Set(['2026-09-15']);
+
+  it('muestra las 5 del cierre, no las 25 del cálculo', () => {
+    const r = unirBacklog(GUARDADO_15, CALCULADO_15, cerrados);
+    expect(r).toHaveLength(5);
+    expect(r.map(x => x.c).sort()).toEqual(['01TPS', '13PIE', '21NUC', '23PEÑ', '40LIL']);
+  });
+
+  it('sin la marca de cierre vuelve a inflarse a 25 — es exactamente el bug', () => {
+    expect(unirBacklog(GUARDADO_15, CALCULADO_15, new Set())).toHaveLength(25);
+  });
+
+  it('conserva los conteos del cierre, no los del cálculo', () => {
+    const r = unirBacklog(GUARDADO_15, CALCULADO_15, cerrados);
+    expect(r.find(x => x.c === '40LIL')).toMatchObject({ p: 3, b: 0, ch: 5 });
+  });
+});
+
+describe('unirBacklog — cerrar el día congela la lista', () => {
+  const g = [{ c: 'A', p: 9, b: 9, ch: 9, fechaOrigen: 'd1' }];
+  const c = [{ c: 'A', p: 1, b: 1, ch: 1, fechaOrigen: 'd1' }, { c: 'B', p: 2, b: 0, ch: 0, fechaOrigen: 'd1' }];
+
+  it('día CERRADO: el cálculo no agrega nada, ni siquiera lo que no estaba guardado', () => {
+    expect(unirBacklog(g, c, new Set(['d1'])).map(x => x.c)).toEqual(['A']);
+  });
+
+  it('día SIN cerrar: el cálculo entra — el rescate de los días que nadie cerró', () => {
+    expect(unirBacklog(g, c, new Set(['otro-dia'])).map(x => x.c).sort()).toEqual(['A', 'B']);
+  });
+
+  it('cerrar un día no afecta a los demás', () => {
+    const mixto = [...c, { c: 'C', p: 1, b: 0, ch: 0, fechaOrigen: 'd2' }];
+    expect(unirBacklog(g, mixto, new Set(['d1'])).map(x => x.c).sort()).toEqual(['A', 'C']);
+  });
+
+  it('un día cerrado SIN nada guardado queda vacío: se cerró y no quedó nada', () => {
+    expect(unirBacklog([], c, new Set(['d1']))).toEqual([]);
+  });
+});
+
 describe('unirBacklog — lo guardado manda', () => {
   const g = [{ c: 'A', p: 9, b: 9, ch: 9, fechaOrigen: 'd1' }];
   const c = [{ c: 'A', p: 1, b: 1, ch: 1, fechaOrigen: 'd1' }, { c: 'B', p: 2, b: 0, ch: 0, fechaOrigen: 'd1' }];

@@ -67,19 +67,32 @@ export function pendientesDelDia(
 }
 
 /**
- * Une lo calculado con lo que ya estaba guardado a mano.
+ * Une lo calculado con lo que se guardó al cerrar el día.
  *
- * Lo GUARDADO manda: si alguien cerró el día y ajustó la lista, esa decisión no se pisa con un
- * cálculo. El cálculo solo aporta lo que nadie registró — que es justamente el caso que se está
- * arreglando.
+ * La regla es una sola y depende de si el día se CERRÓ:
+ *
+ *   · día cerrado    → manda la lista guardada, y nada más. Al pulsar "Terminar día" el
+ *                      coordinador decidió qué quedaba pendiente; el cálculo no tiene nada que
+ *                      agregarle.
+ *   · día sin cerrar → entra el cálculo. Es justamente el caso que este backlog vino a rescatar:
+ *                      días que nadie cerró y cuya carga sobrante no quedaba en ninguna parte.
+ *
+ * El día que faltaba esa distinción, el 15/09 mostró 25 tiendas donde el cierre había guardado 5:
+ * a las 5 reales se les sumaban 20 que el cálculo veía "sin manifiesto" porque, sencillamente,
+ * todavía no se habían despachado. Un backlog que grita de más se deja de mirar, que es peor que
+ * no tenerlo.
  */
 export function unirBacklog(
   guardado: PendienteBacklog[],
   calculado: PendienteBacklog[],
+  diasCerrados: ReadonlySet<string> = new Set(),
 ): PendienteBacklog[] {
   const clave = (x: PendienteBacklog) => `${x.fechaOrigen}::${x.c}`;
   const vistos = new Set(guardado.map(clave));
-  return [...guardado, ...calculado.filter(x => !vistos.has(clave(x)))];
+  return [
+    ...guardado,
+    ...calculado.filter(x => !vistos.has(clave(x)) && !diasCerrados.has(x.fechaOrigen)),
+  ];
 }
 
 /** Texto del total, para la cabecera del tab. Vacío si no hay nada. */
