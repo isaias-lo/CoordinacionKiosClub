@@ -130,3 +130,27 @@ export function renumerarOrdenNacional<T extends { pkg: string }>(
   return numerarPorClase(items, i => claseNacional(i.pkg), seqDe)
     .map(({ item, clase, numero }) => ({ ...item, orden: ordenNacional(clase, numero) }));
 }
+
+/**
+ * Renumera por posición **sin tocar a los chocolates**, que conservan el `orden` que ya tienen.
+ *
+ * Existe para el reducer de Nacional, que renumera en cada alta y en cada borrado y NO puede ver el
+ * `seq` (vive en el estado del componente, no en el ítem). Sin esta distinción, el reducer
+ * reescribía el número de TODOS los chocolates por posición y deshacía, en la acción siguiente,
+ * justo lo que `numerarPorClase` había calculado bien: el CH3 volvía a llamarse CH1.
+ *
+ * Para pallets, bultos y contenedores la posición SÍ es la regla correcta, así que esos se
+ * renumeran igual que siempre.
+ *
+ * Un chocolate sin `orden` todavía (recién creado) cae a su posición: es lo mismo que hace
+ * `numeroVisibleCard` cuando no hay `seq`.
+ */
+export function renumerarSalvoChocolate<T extends { pkg: string; orden?: string }>(items: T[]): T[] {
+  const cuenta: Record<ClaseEnvase, number> = { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0 };
+  return items.map(item => {
+    const clase = claseNacional(item.pkg);
+    const posicion = ++cuenta[clase];
+    if (clase === 'chocolate' && item.orden) return item;   // conserva el número impreso
+    return { ...item, orden: ordenNacional(clase, posicion) };
+  });
+}
