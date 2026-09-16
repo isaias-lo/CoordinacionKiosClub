@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
@@ -14,6 +14,7 @@ import {
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { ordenarConVentanas } from '../utils/ordenConVentanas';
+import { catalogoParaCarga } from '../utils/ventanaHoraria';
 import { diagnosticarDia, resumenCuello } from '../utils/factibilidadDia';
 
 /** Misma velocidad urbana que usa el motor (OPCIONES_DEFAULT.velocidadKmH): si las dos pantallas
@@ -75,6 +76,15 @@ interface PlanRoute {
   /** 'ventanas' = orden que respeta las ventanas horarias (default). 'cercania' = solo km. */
   orderMode: 'ventanas' | 'cercania' | 'manual';
   customStops: ParadaDireccion[];
+  /**
+   * Qué se reparte en esta ruta. Decide CUÁL ventana horaria se respeta, porque congelados se
+   * recibe en otro horario que el seco — en Parque Arauco las dos ni se tocaban.
+   *
+   * Va por ruta y no en un interruptor global porque un mismo día puede tener una ruta de seco y
+   * otra de congelados abiertas a la vez. Se graba al armar desde el calendario; las rutas hechas
+   * antes de que esto existiera no lo traen y se leen como 'seco', que es lo que hacían.
+   */
+  carga?: 'seco' | 'congelados';
 }
 
 /** Badge de tipo (Mall/Strip/Street/…) + ventana horaria de una tienda. */
@@ -288,6 +298,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const activeColor = colorRuta(activeIdx);
   const selected  = activeRoute.selected;
   const orderMode = activeRoute.orderMode;
+  // Las rutas armadas antes de que existiera este campo no lo traen: se leen como 'seco', que es
+  // lo que venían haciendo.
+  const cargaActiva = activeRoute.carga ?? 'seco';
   const customStops = activeRoute.customStops;
 
   function patchActive(patch: (r: PlanRoute) => PlanRoute) {
@@ -296,6 +309,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const setSelected  = (u: string[] | ((prev: string[]) => string[])) =>
     patchActive(r => ({ ...r, selected: typeof u === 'function' ? u(r.selected) : u }));
   const setOrderMode = (v: 'ventanas' | 'cercania' | 'manual') => patchActive(r => ({ ...r, orderMode: v }));
+  // Cambiar la carga de la ruta cambia QUÉ ventana se respeta, así que reordena al instante.
+  const setCarga = (v: 'seco' | 'congelados') => patchActive(r => ({ ...r, carga: v }));
   const setCustomStops = (u: ParadaDireccion[] | ((prev: ParadaDireccion[]) => ParadaDireccion[])) =>
     patchActive(r => ({ ...r, customStops: typeof u === 'function' ? u(r.customStops) : u }));
 
@@ -340,6 +355,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       const stamp = Date.now().toString(36);
       const nuevas: PlanRoute[] = rutas.map((r, i) => ({
         id: `r${stamp}-${i}`, nombre: `Ruta ${i + 1}`, selected: r, orderMode: 'ventanas', customStops: [],
+        // La ruta recuerda de qué calendario salió: es lo que decide cuál ventana se respeta.
+        carga: calFuente,
       }));
       setRoutes(nuevas);
       setVisibleIds(nuevas.map(r => r.id));
@@ -359,6 +376,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     }
   }
 
+  // El catálogo visto "en congelados": mismo objeto salvo que `v` pasa a ser la ventana de frío.
+  // Se calcula una vez, no por ruta. Así el motor sigue leyendo `v` y no sabe nada de congelados.
+  const tiendasCong = useMemo(() => catalogoParaCarga(tiendas, 'congelados'), [tiendas]);
+  const catalogoDe = useCallback(
+    (carga?: 'seco' | 'congelados') => (carga === 'congelados' ? tiendasCong : tiendas),
+    [tiendas, tiendasCong]);
+
   // Cómputo por ruta: paradas geocodificadas (patch) + orden (cercanía/manual) desde la partida.
   const routesComputed = useMemo(() => routes.map((r) => {
     const patch = paradasDireccionPatch(r.customStops);
@@ -367,16 +391,22 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     // `servicioMin` y la hora de salida que estén puestos AHORA — cambiar cualquiera de los dos
     // reordena la ruta. 'cercania' es el orden viejo, solo kilómetros, que se deja para comparar.
     const ordered = r.orderMode === 'ventanas'
-      ? ordenarConVentanas(r.selected, gpsR, [startCoord.lat, startCoord.lng], tiendas, {
+      ? ordenarConVentanas(r.selected, gpsR, [startCoord.lat, startCoord.lng], catalogoDe(r.carga), {
           salidaMin: hhmmAMin(horaSalida) ?? 8 * 60, servicioMin, velocidadKmH: VELOCIDAD_PLAN_KMH,
         })
       : r.orderMode === 'cercania'
         ? nn(virtualStops(r.selected), gpsR, [startCoord.lat, startCoord.lng]).map(s => s.c)
         : r.selected;
-    return { id: r.id, nombre: r.nombre, ordered, patch, gpsR };
-  }), [routes, gps, startCoord, tiendas, horaSalida, servicioMin]);
+    return { id: r.id, nombre: r.nombre, ordered, patch, gpsR, carga: r.carga };
+  }), [routes, gps, startCoord, catalogoDe, horaSalida, servicioMin]);
 
   const activeComputed = routesComputed[activeIdx] ?? routesComputed[0];
+  // Qué tiendas de la ruta NO tienen ventana de congelados propia y por lo tanto se están ordenando
+  // con la de seco. Sin decirlo, parecería que el dato existe para todas.
+  const sinVentanaCong = useMemo(
+    () => cargaActiva !== 'congelados' ? []
+      : selected.filter(c => !esParadaDireccion(c) && !String(tiendas[c]?.vCong ?? '').trim()),
+    [cargaActiva, selected, tiendas]);
   const orderedCods = activeComputed.ordered;
   const gpsAll      = activeComputed.gpsR;                 // catálogo + direcciones de la ruta activa
   const customById  = useMemo(() => Object.fromEntries(customStops.map(p => [p.id, p])), [customStops]);
@@ -384,9 +414,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // ¿El día cabe? Se mide con la atención y la salida que estén puestas AHORA: bajar los minutos
   // por parada puede volver factible el mismo día, y eso es justo lo que hay que poder ver.
   const diagnostico = useMemo(
-    () => diagnosticarDia(orderedCods.filter(c => !esParadaDireccion(c)), tiendas,
+    () => diagnosticarDia(orderedCods.filter(c => !esParadaDireccion(c)), catalogoDe(activeComputed.carga),
       { salidaMin: hhmmAMin(horaSalida) ?? 8 * 60, servicioMin }),
-    [orderedCods, tiendas, horaSalida, servicioMin]);
+    [orderedCods, catalogoDe, activeComputed.carga, horaSalida, servicioMin]);
 
   const kmAprox     = useMemo(() => kmRutaAprox(orderedCods, gpsAll, [startCoord.lat, startCoord.lng], endArr), [orderedCods, gpsAll, startCoord, endArr]);
 
@@ -988,6 +1018,29 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               className={`${seg} flex items-center justify-center gap-1 ${orderMode === 'ventanas' ? 'bg-knavy text-white' : 'text-kmuted'}`}><Clock size={12} /> Ventanas</button>
             <button onClick={() => setOrderMode('cercania')} title="Solo kilómetros, sin mirar horarios" className={`${seg} flex items-center justify-center gap-1 ${orderMode === 'cercania' ? 'bg-knavy text-white' : 'text-kmuted'}`}><Sparkles size={12} /> Cercanía</button>
             <button onClick={() => setOrderMode('manual')}   className={`${seg} ${orderMode === 'manual' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Manual</button>
+          </div>
+        )}
+        {/* Qué se reparte en esta ruta. No es cosmético: decide CUÁL ventana se respeta, porque
+            congelados se recibe en otro horario que el seco (en Parque Arauco las dos ni se
+            tocaban). Va por ruta porque un mismo día puede tener una de cada una abierta. */}
+        {selected.length > 0 && orderMode === 'ventanas' && (
+          <div className="flex items-center gap-1.5 text-[11px] text-kmuted flex-wrap">
+            <span className="font-semibold">Ventanas de</span>
+            <div className="flex gap-1 bg-kbg rounded-[8px] p-0.5">
+              <button onClick={() => setCarga('seco')}
+                title="Respeta la ventana de recepción de SECO"
+                className={`px-2.5 py-1 rounded-[6px] text-[11px] font-bold cursor-pointer transition-colors ${cargaActiva === 'seco' ? 'bg-knavy text-white' : 'text-kmuted hover:text-ktext'}`}>Seco</button>
+              <button onClick={() => setCarga('congelados')}
+                title="Respeta la ventana de recepción de CONGELADOS, distinta de la de seco"
+                className={`px-2.5 py-1 rounded-[6px] text-[11px] font-bold cursor-pointer transition-colors ${cargaActiva === 'congelados' ? 'bg-[#0EA5E9] text-white' : 'text-kmuted hover:text-ktext'}`}>Congelados</button>
+            </div>
+            {cargaActiva === 'congelados' && sinVentanaCong.length > 0 && (
+              // Decirlo importa: esas tiendas se están ordenando con el horario de seco, y sin este
+              // aviso parecería que el dato de congelados existe para todas.
+              <span className="text-[10.5px] text-[#A16207]">
+                {sinVentanaCong.length} sin ventana de congelados (usan la de seco): {sinVentanaCong.slice(0, 4).join(', ')}{sinVentanaCong.length > 4 ? '…' : ''}
+              </span>
+            )}
           </div>
         )}
         {/* Hora de salida + atención por parada → ETA (hora estimada de llegada) por parada */}

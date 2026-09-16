@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseVentana, normalizarVentana, estadoVentana, aMinutosDelDia,
   durezaPorFormato, cierreEfectivo, SIN_RESTRICCION, BUFFER_CIERRE_MIN,
+  ventanaSegunCarga, catalogoParaCarga,
 } from '../ventanaHoraria';
 
 describe('normalizarVentana — las escrituras REALES de la tabla de congelados', () => {
@@ -126,6 +127,77 @@ describe('parseVentana — la red para lo escrito a mano', () => {
     expect(parseVentana('08:30')).toBeNull();
     expect(parseVentana('xx-yy')).toBeNull();
     expect(parseVentana('12:00-09:00')).toBeNull();
+  });
+});
+
+describe('ventanaSegunCarga — los casos reales de la tabla', () => {
+  const PQA = { v: '09:30-11:30', vCong: '09:30-11:30' };  // igual en ambas, confirmado con la tienda
+  const MUT = { v: '08:30-09:30', vCong: '09:00-17:00' };  // congelados 8 h más ancha
+  const ALC = { v: '09:00-10:30', vCong: '06:30-10:00' };  // congelados abre 2½ h antes
+  const NUC = { v: '09:00-12:00', vCong: SIN_RESTRICCION };
+  const EGN = { v: '08:30-13:00', vCong: '' };             // falta el dato de congelados
+  const REG = { v: '09:00-11:00' };                        // regiones: la tabla era solo RM
+
+  it('seco siempre usa la de seco, tenga o no la de congelados', () => {
+    expect(ventanaSegunCarga(MUT, 'seco')).toBe('08:30-09:30');
+    expect(ventanaSegunCarga(NUC, 'seco')).toBe('09:00-12:00');
+  });
+
+  it('congelados usa la suya cuando la tiene', () => {
+    expect(ventanaSegunCarga(MUT, 'congelados')).toBe('09:00-17:00');
+    expect(ventanaSegunCarga(ALC, 'congelados')).toBe('06:30-10:00');
+  });
+
+  it('SIN RESTRICCIÓN es un valor real y gana sobre la de seco', () => {
+    expect(ventanaSegunCarga(NUC, 'congelados')).toBe(SIN_RESTRICCION);
+    expect(parseVentana(ventanaSegunCarga(NUC, 'congelados'))).toBeNull();  // no restringe
+  });
+
+  it('sin dato de congelados cae a la de seco: nada empeora respecto de hoy', () => {
+    expect(ventanaSegunCarga(EGN, 'congelados')).toBe('08:30-13:00');
+    expect(ventanaSegunCarga(REG, 'congelados')).toBe('09:00-11:00');
+  });
+
+  it('una tienda que no está en el catálogo no revienta', () => {
+    expect(ventanaSegunCarga(undefined, 'congelados')).toBe('');
+  });
+
+  it('cuando son iguales da lo mismo el tipo de carga', () => {
+    expect(ventanaSegunCarga(PQA, 'seco')).toBe(ventanaSegunCarga(PQA, 'congelados'));
+  });
+});
+
+describe('catalogoParaCarga — el motor sigue leyendo `v` y no sabe de congelados', () => {
+  const cat = {
+    '52MUT': { v: '08:30-09:30', vCong: '09:00-17:00', tipo: 'MALL' },
+    '59EGN': { v: '08:30-13:00', vCong: '', tipo: 'MALL' },
+    '21NUC': { v: '09:00-12:00', vCong: SIN_RESTRICCION, tipo: 'STRIPCENTER' },
+  };
+
+  it('para seco devuelve el MISMO objeto, sin copiar', () => {
+    expect(catalogoParaCarga(cat, 'seco')).toBe(cat);
+  });
+
+  it('para congelados reemplaza `v` por la que aplica', () => {
+    const c = catalogoParaCarga(cat, 'congelados');
+    expect(c['52MUT'].v).toBe('09:00-17:00');
+    expect(c['21NUC'].v).toBe(SIN_RESTRICCION);
+    expect(c['59EGN'].v).toBe('08:30-13:00');   // sin dato → la de seco
+  });
+
+  it('no toca el resto de los campos: el tipo sigue decidiendo la dureza', () => {
+    expect(catalogoParaCarga(cat, 'congelados')['52MUT'].tipo).toBe('MALL');
+  });
+
+  it('no muta el catálogo original', () => {
+    catalogoParaCarga(cat, 'congelados');
+    expect(cat['52MUT'].v).toBe('08:30-09:30');
+  });
+
+  it('el caso que lo justifica: con la ventana de seco, congelados apunta a otra hora', () => {
+    // 52MUT recibe frío hasta las 17:00, pero con la ventana de seco cierra 09:30.
+    expect(parseVentana(catalogoParaCarga(cat, 'seco')['52MUT'].v)!.cierra).toBe(9 * 60 + 30);
+    expect(parseVentana(catalogoParaCarga(cat, 'congelados')['52MUT'].v)!.cierra).toBe(17 * 60);
   });
 });
 
