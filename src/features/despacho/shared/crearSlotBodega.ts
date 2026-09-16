@@ -1,4 +1,5 @@
 import type { PickingSlot } from '../santiago/components/PickingSlotCards';
+import { marcarRecienAgregado } from './slotRecienAgregado';
 
 export interface CrearSlotBodegaInput {
   date: string;
@@ -31,7 +32,13 @@ export async function crearSlotBodega(input: CrearSlotBodegaInput): Promise<Crea
       body: JSON.stringify({ ...input, contenido: (input.contenido || 'hogar').toLowerCase() }),
     });
     const json = await res.json() as { data?: PickingSlot; error?: string };
-    if (json.data) return { slot: json.data };
+    if (json.data) {
+      // [RC-5] Guard anti-desaparición contra la recarga de picking: un `load()` que salió antes
+      // de este INSERT y llega después reemplaza el mapa entero y se llevaría este slot puesto.
+      // Se marca acá, en el único punto por donde pasan TODAS las altas de Bodega.
+      marcarRecienAgregado(input.store_cod, json.data);
+      return { slot: json.data };
+    }
     return { error: json.error || 'el servidor no devolvió el pallet' };
   } catch {
     return { error: 'sin conexión' };
