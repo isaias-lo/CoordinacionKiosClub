@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { WifiOff, Truck, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown, History, CloudOff, ChevronRight } from 'lucide-react';
+import { WifiOff, Truck, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown, History, CloudOff, ChevronRight, Navigation, Phone, AlertTriangle, X, Info } from 'lucide-react';
 import { EntregaParadaForm, type ParadaEntrega } from '@/features/tiendas/EntregaParadaForm';
 import { subirFotoEntrega } from '@/features/tiendas/entregaFotos';
 import { guiaHref } from '@/lib/guiaUrl';
@@ -11,6 +11,20 @@ import { progresoRuta, proximaParadaPendiente } from './progreso';
 import { moverEnLista } from './reordenar';
 import { formatFechaHistorial } from './historial';
 import { listarPendientes, actualizarPendiente, eliminarPendiente } from './offlineQueue';
+import { linkNavegacion, linkLlamar } from './contacto';
+
+// [Fase 6] Mismos motivos que ya entiende /incidencias (vía trazabilidad_unidades.tipo_incidencia)
+// — no una taxonomía paralela, para que el supervisor siga viendo todo en un solo lugar.
+const MOTIVOS_NO_ENTREGA = [
+  'Tienda cerrada', 'Rechazo', 'Dirección no ubicada', 'Daño', 'Otro',
+] as const;
+const MOTIVO_LABEL: Record<string, string> = {
+  'Tienda cerrada': 'Tienda cerrada',
+  'Rechazo': 'Rechazó la mercadería',
+  'Dirección no ubicada': 'No se pudo ubicar la dirección',
+  'Daño': 'Mercadería dañada en tránsito',
+  'Otro': 'Otro motivo',
+};
 
 // Registra salida / llegada en ruta_eventos. Fire-and-forget: nunca frena al chofer en la calle.
 function registrarEvento(e: EventoRuta) {
@@ -35,6 +49,12 @@ interface TiendaRuta {
   /** [Fase 4] Local-only: se entregó y quedó en la cola offline, todavía no la confirma el
    *  servidor. Nunca viene del GET — la pone `onEntregado` y la limpia `sincronizarPendientes`. */
   pendienteSync?: boolean;
+  /** [Fase 6] Ya existían en `tiendas`, sin usarse en ningún lado — navegación con un toque,
+   *  llamar a la tienda, e instrucción de entrega que no es un horario. */
+  lat?: number | null;
+  lon?: number | null;
+  tel_encargado?: string | null;
+  observacion?: string | null;
 }
 interface GuiaRuta {
   id: number; folio_dte: string; drive_url?: string; store_cod?: string;
@@ -126,6 +146,48 @@ export default function ConductorHubPage() {
   const [ordenError,     setOrdenError]     = useState<string | null>(null);
   // [Fase 3] Registrar entrega con fotos — overlay a pantalla completa, ver EntregaParadaForm.
   const [entregaAbierta, setEntregaAbierta] = useState<{ rutaId: number; parada: ParadaEntrega } | null>(null);
+  // [Fase 6] "No se pudo entregar" — sin receptor ni OTP (no hubo nadie que confirmara nada), así
+  // que es un panel simple inline en vez de un formulario a pantalla completa como el de arriba.
+  const [noEntregaAbierta, setNoEntregaAbierta] = useState<{ rutaId: number; paradaId: number } | null>(null);
+  const [motivoNoEntrega, setMotivoNoEntrega] = useState('');
+  const [descripcionNoEntrega, setDescripcionNoEntrega] = useState('');
+  const [noEntregaLoading, setNoEntregaLoading] = useState(false);
+  const [noEntregaError, setNoEntregaError] = useState('');
+
+  function cancelarNoEntrega() {
+    setNoEntregaAbierta(null);
+    setMotivoNoEntrega('');
+    setDescripcionNoEntrega('');
+    setNoEntregaError('');
+  }
+
+  async function confirmarNoEntrega() {
+    if (!noEntregaAbierta || !motivoNoEntrega || noEntregaLoading) return;
+    setNoEntregaLoading(true);
+    setNoEntregaError('');
+    try {
+      const res = await fetch('/api/rutas-despacho', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ruta_tienda_id: noEntregaAbierta.paradaId,
+          motivo: motivoNoEntrega,
+          descripcion: descripcionNoEntrega.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('server');
+      const json = await res.json() as { hora_entrega: string };
+      const { rutaId, paradaId } = noEntregaAbierta;
+      setRutas(prev => prev.map(r => r.id !== rutaId ? r : {
+        ...r,
+        ruta_tiendas: r.ruta_tiendas.map(t => t.id === paradaId ? { ...t, estado_entrega: 'no_entregado', hora_entrega: json.hora_entrega } : t),
+      }));
+      cancelarNoEntrega();
+    } catch {
+      setNoEntregaError('No se pudo registrar. Revisa tu conexión e intenta de nuevo.');
+    } finally {
+      setNoEntregaLoading(false);
+    }
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem(PATENTE_KEY);
@@ -522,7 +584,8 @@ export default function ConductorHubPage() {
             const qrUrl     = r.token_qr ? `${window.location.origin}/r/${r.token_qr}` : '';
             const totalP    = r.ruta_tiendas.reduce((s, t) => s + t.pallets, 0);
             const totalB    = r.ruta_tiendas.reduce((s, t) => s + t.bultos, 0);
-            const { entregadas, total: totalParadas } = progresoRuta(r.ruta_tiendas);
+            const { entregadas, noEntregadas, total: totalParadas } = progresoRuta(r.ruta_tiendas);
+            const resueltas = entregadas + noEntregadas;
             const proxima   = proximaParadaPendiente(r.ruta_tiendas);
 
             return (
@@ -548,18 +611,17 @@ export default function ConductorHubPage() {
                       </div>
                     )}
                     {/* [Fase 1] Progreso a simple vista — antes había que abrir la ruta y contar
-                        las paradas entregadas a mano. Barra de 1 color sólido (sin gradiente). */}
+                        las paradas entregadas a mano.
+                        [Fase 6] Entregadas y no-entregadas van SEPARADAS en la barra (verde/rojo),
+                        no sumadas en un solo número que esconda un fallo detrás de un éxito. */}
                     {totalParadas > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                        <div style={{ flex: 1, height: 5, borderRadius: 99, background: '#F1F5F9', overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%', borderRadius: 99,
-                            width: `${(entregadas / totalParadas) * 100}%`,
-                            background: entregadas === totalParadas ? '#16A34A' : '#1B2A6B',
-                          }} />
+                        <div style={{ flex: 1, height: 5, borderRadius: 99, background: '#F1F5F9', overflow: 'hidden', display: 'flex' }}>
+                          <div style={{ height: '100%', width: `${(entregadas / totalParadas) * 100}%`, background: '#16A34A' }} />
+                          <div style={{ height: '100%', width: `${(noEntregadas / totalParadas) * 100}%`, background: '#DC2626' }} />
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: entregadas === totalParadas ? '#16A34A' : '#64748B', flexShrink: 0 }}>
-                          {entregadas}/{totalParadas} paradas
+                        <span style={{ fontSize: 11, fontWeight: 700, color: resueltas === totalParadas ? (noEntregadas ? '#DC2626' : '#16A34A') : '#64748B', flexShrink: 0 }}>
+                          {resueltas}/{totalParadas} paradas{noEntregadas > 0 ? ` (${noEntregadas} sin entregar)` : ''}
                         </span>
                       </div>
                     )}
@@ -601,7 +663,7 @@ export default function ConductorHubPage() {
                         {/* [Fase 2] Solo tiene sentido si queda más de una parada por entregar — no
                             hay nada que reordenar en una ruta ya completa o de una sola parada.
                             [Fase 4] Tampoco en el historial: es modo solo-lectura. */}
-                        {esHoy && reordenando !== r.id && r.ruta_tiendas.length > 1 && entregadas < totalParadas && (
+                        {esHoy && reordenando !== r.id && r.ruta_tiendas.length > 1 && resueltas < totalParadas && (
                           <button onClick={() => iniciarReordenar(r)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#1B2A6B', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                             <ArrowUpDown size={12} aria-hidden="true" /> Reordenar
@@ -655,7 +717,10 @@ export default function ConductorHubPage() {
                         [...r.ruta_tiendas].sort((a, b) => a.orden - b.orden).map(t => {
                           const esProxima  = proxima?.id === t.id;
                           const entregada  = t.estado_entrega === 'entregado';
+                          const noEntregada = t.estado_entrega === 'no_entregado';
                           const abierta    = detalleAbierto === t.id;
+                          const navLink    = linkNavegacion({ lat: t.lat, lon: t.lon, direccion: t.direccion, comuna: t.comuna });
+                          const telLink    = linkLlamar(t.tel_encargado);
                           return (
                             <div key={t.id}
                               onClick={() => setDetalleAbierto(abierta ? null : t.id)}
@@ -672,10 +737,10 @@ export default function ConductorHubPage() {
                                 <div style={{
                                   width: 26, height: 26, borderRadius: '50%', fontSize: 11, fontWeight: 700,
                                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                                  background: entregada ? '#DCFCE7' : esProxima ? '#1B2A6B' : '#F1F5F9',
-                                  color: entregada ? '#16A34A' : esProxima ? '#fff' : '#64748B',
+                                  background: entregada ? '#DCFCE7' : noEntregada ? '#FEE2E2' : esProxima ? '#1B2A6B' : '#F1F5F9',
+                                  color: entregada ? '#16A34A' : noEntregada ? '#DC2626' : esProxima ? '#fff' : '#64748B',
                                 }}>
-                                  {entregada ? <Check size={13} aria-hidden="true" /> : t.orden}
+                                  {entregada ? <Check size={13} aria-hidden="true" /> : noEntregada ? <X size={13} aria-hidden="true" /> : t.orden}
                                 </div>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600, color: '#1C1C1E' }}>{t.store_cod}</div>
@@ -708,10 +773,40 @@ export default function ConductorHubPage() {
                                       <span>Ventana: {t.ventana}</span>
                                     </div>
                                   )}
+                                  {t.observacion && (
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '6px 8px' }}>
+                                      <Info size={13} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0 }} />
+                                      <span>{t.observacion}</span>
+                                    </div>
+                                  )}
+                                  {/* [Fase 6] Navegación y llamada con un toque — mismo patrón que Amazon
+                                      Flex/Onfleet. Antes la dirección era solo texto: había que copiarla a mano. */}
+                                  {(navLink || telLink) && (
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                      {navLink && (
+                                        <a href={navLink} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 0', borderRadius: 8, background: '#EFF6FF', color: '#1B2A6B', fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
+                                          <Navigation size={12} aria-hidden="true" /> Cómo llegar
+                                        </a>
+                                      )}
+                                      {telLink && (
+                                        <a href={telLink} onClick={e => e.stopPropagation()}
+                                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 0', borderRadius: 8, background: '#EFF6FF', color: '#1B2A6B', fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
+                                          <Phone size={12} aria-hidden="true" /> Llamar
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
                                   {entregada && t.hora_entrega && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#16A34A', fontWeight: 600 }}>
                                       <Check size={13} aria-hidden="true" />
                                       <span>Entregado a las {fmtHoraChile(t.hora_entrega)}</span>
+                                    </div>
+                                  )}
+                                  {noEntregada && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#DC2626', fontWeight: 600 }}>
+                                      <X size={13} aria-hidden="true" />
+                                      <span>No se pudo entregar{t.hora_entrega ? ` — ${fmtHoraChile(t.hora_entrega)}` : ''}</span>
                                     </div>
                                   )}
                                   {entregada && t.pendienteSync && (
@@ -720,29 +815,63 @@ export default function ConductorHubPage() {
                                       <span>Sin sincronizar — se sube sola cuando vuelva la señal</span>
                                     </div>
                                   )}
-                                  {/* [Fase 3] Fotos según el tipo de ruta (temperatura+entrega en
-                                      congelados, sello+pallets en seco) — ver EntregaParadaForm.
-                                      [Fase 4] Solo en la ruta de hoy: es modo solo-lectura en el
-                                      historial, y no tendría sentido registrar una entrega "hoy"
-                                      contra una parada de un día que ya pasó. */}
-                                  {esHoy && !entregada && (
-                                    <button
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        // [Flujo único] Tocar "Registrar entrega" es ahora la señal de "llegué a
-                                        // esta parada" (antes lo era escanear el QR del flujo viejo) — se guarda
-                                        // una sola vez por parada, no en cada apertura del formulario.
-                                        const k = `llegada:${t.id}`;
-                                        if (!llegadasRegistradas.current.has(k)) {
-                                          llegadasRegistradas.current.add(k);
-                                          registrarEvento(eventoLlegada({ rutaId: r.id, storeCod: t.store_cod, horaISO: new Date().toISOString(), patente, fuente: 'registrar_entrega' }));
-                                        }
-                                        setEntregaAbierta({ rutaId: r.id, parada: { id: t.id, rutaId: r.id, store_cod: t.store_cod, nombre: t.nombre, direccion: t.direccion, comuna: t.comuna } });
-                                      }}
-                                      style={{ marginTop: 4, padding: '9px 0', borderRadius: 10, border: 'none', background: '#1B2A6B', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                                      <TipoIcon size={13} aria-hidden="true" /> Registrar entrega
-                                    </button>
-                                  )}
+
+                                  {/* [Fase 6] "No se pudo entregar" — panel inline, sin receptor ni OTP: nadie
+                                      confirmó nada. Reemplaza los dos botones de abajo mientras está abierto. */}
+                                  {noEntregaAbierta?.paradaId === t.id ? (
+                                    <div onClick={e => e.stopPropagation()} style={{ marginTop: 4, padding: 12, borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 700, color: '#B91C1C' }}>¿Por qué no se pudo entregar?</div>
+                                      <select value={motivoNoEntrega} onChange={e => setMotivoNoEntrega(e.target.value)}
+                                        style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1.5px solid #FECACA', background: '#fff', color: motivoNoEntrega ? '#1C1C1E' : '#94A3B8', fontSize: 13, outline: 'none' }}>
+                                        <option value="">Selecciona un motivo</option>
+                                        {MOTIVOS_NO_ENTREGA.map(m => <option key={m} value={m}>{MOTIVO_LABEL[m]}</option>)}
+                                      </select>
+                                      <textarea placeholder="Detalle (opcional)" rows={2} value={descripcionNoEntrega}
+                                        onChange={e => setDescripcionNoEntrega(e.target.value)}
+                                        style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1.5px solid #FECACA', background: '#fff', color: '#1C1C1E', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+                                      {noEntregaError && <div style={{ fontSize: 11, color: '#B91C1C' }}>{noEntregaError}</div>}
+                                      <div style={{ display: 'flex', gap: 8 }}>
+                                        <button onClick={cancelarNoEntrega} disabled={noEntregaLoading}
+                                          style={{ flex: 1, padding: '9px 0', borderRadius: 8, background: '#fff', border: '1px solid #FECACA', color: '#991B1B', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                          Cancelar
+                                        </button>
+                                        <button onClick={() => void confirmarNoEntrega()} disabled={!motivoNoEntrega || noEntregaLoading}
+                                          style={{ flex: 2, padding: '9px 0', borderRadius: 8, border: 'none', background: motivoNoEntrega ? '#DC2626' : '#FCA5A5', color: '#fff', fontSize: 12, fontWeight: 700, cursor: motivoNoEntrega ? 'pointer' : 'not-allowed' }}>
+                                          {noEntregaLoading ? 'Guardando…' : 'Confirmar'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                  /* [Fase 3] Fotos según el tipo de ruta (temperatura+entrega en
+                                     congelados, sello+pallets en seco) — ver EntregaParadaForm.
+                                     [Fase 4] Solo en la ruta de hoy: es modo solo-lectura en el
+                                     historial, y no tendría sentido registrar una entrega "hoy"
+                                     contra una parada de un día que ya pasó. */
+                                  esHoy && !entregada && !noEntregada && (
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                      <button
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          // [Flujo único] Tocar "Registrar entrega" es ahora la señal de "llegué a
+                                          // esta parada" (antes lo era escanear el QR del flujo viejo) — se guarda
+                                          // una sola vez por parada, no en cada apertura del formulario.
+                                          const k = `llegada:${t.id}`;
+                                          if (!llegadasRegistradas.current.has(k)) {
+                                            llegadasRegistradas.current.add(k);
+                                            registrarEvento(eventoLlegada({ rutaId: r.id, storeCod: t.store_cod, horaISO: new Date().toISOString(), patente, fuente: 'registrar_entrega' }));
+                                          }
+                                          setEntregaAbierta({ rutaId: r.id, parada: { id: t.id, rutaId: r.id, store_cod: t.store_cod, nombre: t.nombre, direccion: t.direccion, comuna: t.comuna } });
+                                        }}
+                                        style={{ flex: 2, padding: '9px 0', borderRadius: 10, border: 'none', background: '#1B2A6B', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                        <TipoIcon size={13} aria-hidden="true" /> Registrar entrega
+                                      </button>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); setNoEntregaAbierta({ rutaId: r.id, paradaId: t.id }); }}
+                                        style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1px solid #FECACA', background: '#fff', color: '#B91C1C', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                        <AlertTriangle size={12} aria-hidden="true" /> No se pudo
+                                      </button>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>

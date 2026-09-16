@@ -7,22 +7,22 @@ function parada(id: number, orden: number, estado_entrega: string): ParadaProgre
 
 describe('progresoRuta', () => {
   it('cuenta 0/0 sin paradas', () => {
-    expect(progresoRuta([])).toEqual({ entregadas: 0, total: 0 });
+    expect(progresoRuta([])).toEqual({ entregadas: 0, noEntregadas: 0, total: 0 });
   });
 
-  it('cuenta solo estado_entrega === "entregado" como entregada', () => {
+  it('cuenta entregadas y no-entregadas por separado, no sumadas', () => {
     const paradas = [
       parada(1, 1, 'entregado'),
       parada(2, 2, 'pendiente'),
-      parada(3, 3, 'en_camino'),
+      parada(3, 3, 'no_entregado'),
       parada(4, 4, 'entregado'),
     ];
-    expect(progresoRuta(paradas)).toEqual({ entregadas: 2, total: 4 });
+    expect(progresoRuta(paradas)).toEqual({ entregadas: 2, noEntregadas: 1, total: 4 });
   });
 
   it('reporta ruta completa cuando todas están entregadas', () => {
     const paradas = [parada(1, 1, 'entregado'), parada(2, 2, 'entregado')];
-    expect(progresoRuta(paradas)).toEqual({ entregadas: 2, total: 2 });
+    expect(progresoRuta(paradas)).toEqual({ entregadas: 2, noEntregadas: 0, total: 2 });
   });
 });
 
@@ -53,6 +53,19 @@ describe('proximaParadaPendiente', () => {
       parada(30, 3, 'pendiente'),
     ];
     expect(proximaParadaPendiente(paradas)?.id).toBe(30);
+  });
+
+  it('salta también las "no se pudo entregar" — ya están resueltas, no son la próxima', () => {
+    const paradas = [
+      parada(10, 1, 'no_entregado'),
+      parada(20, 2, 'pendiente'),
+    ];
+    expect(proximaParadaPendiente(paradas)?.id).toBe(20);
+  });
+
+  it('devuelve null cuando todas están resueltas (entregadas o no-entregadas)', () => {
+    const paradas = [parada(10, 1, 'entregado'), parada(20, 2, 'no_entregado')];
+    expect(proximaParadaPendiente(paradas)).toBeNull();
   });
 
   it('no muta el arreglo original', () => {

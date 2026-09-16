@@ -6,6 +6,7 @@ import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
 import { fechaChile } from '@/lib/fechaChile';
 import { verifyOtpToken } from '@/lib/otpToken';
+import { sendComprobanteEntregaEmail } from '@/lib/gmail';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
 function addDaysIso(iso: string, n: number): string {
@@ -76,20 +77,30 @@ export async function GET(request: NextRequest) {
   // [Panel Conductor] `ruta_tiendas` no trae dirección — solo vive en el catálogo `tiendas`. Sin
   // esto, el chofer ve el nombre y el código de cada parada pero no adónde ir. Mismo patrón de
   // join que ya usa GET /api/r/[token] (batch por `codigo`, no un fetch por tienda).
+  // [Fase 6] Se suma lat/lon (navegación con un toque), tel_encargado (llamar a la tienda) y
+  // observacion (instrucción de entrega que no es un horario, ej. "puerta trasera después de las
+  // 10:00") — los tres ya existían en `tiendas` sin usarse en ningún lado de la app.
   const rutas = (data ?? []) as { ruta_tiendas?: { store_cod: string }[] }[];
   const cods = [...new Set(rutas.flatMap(r => (r.ruta_tiendas ?? []).map(t => t.store_cod)))];
   if (cods.length) {
     const { data: tiendaRows } = await supabaseServer()
       .from('tiendas')
-      .select('codigo, direccion, sector_comuna')
+      .select('codigo, direccion, sector_comuna, lat, lon, tel_encargado, observacion')
       .in('codigo', cods);
-    const dirByCod = new Map((tiendaRows ?? []).map((t: { codigo: string; direccion: string | null; sector_comuna: string | null }) =>
-      [t.codigo, { direccion: t.direccion, comuna: t.sector_comuna }]));
+    type TiendaRow = {
+      codigo: string; direccion: string | null; sector_comuna: string | null;
+      lat: number | null; lon: number | null; tel_encargado: string | null; observacion: string | null;
+    };
+    const dirByCod = new Map((tiendaRows ?? []).map((t: TiendaRow) => [t.codigo, t]));
     for (const r of rutas) {
       for (const t of (r.ruta_tiendas ?? []) as unknown as Record<string, unknown>[]) {
         const d = dirByCod.get(t.store_cod as string);
-        t.direccion = d?.direccion ?? null;
-        t.comuna    = d?.comuna ?? null;
+        t.direccion     = d?.direccion ?? null;
+        t.comuna        = d?.sector_comuna ?? null;
+        t.lat           = d?.lat ?? null;
+        t.lon           = d?.lon ?? null;
+        t.tel_encargado = d?.tel_encargado || null;
+        t.observacion   = d?.observacion || null;
       }
     }
   }
@@ -379,6 +390,9 @@ export async function PATCH(request: NextRequest) {
      *  viejo) — se re-valida acá server-side antes de aceptar la entrega, para que un cliente
      *  alterado no pueda saltarse la confirmación real de la tienda. */
     otpToken?: string; otpEmail?: string; otpCodigo?: string;
+    /** [Fase 6] "No se pudo entregar" — su presencia decide el branch (ver más abajo). Sin
+     *  receptor ni OTP: no hubo nadie que confirmara nada. */
+    motivo?: string; descripcion?: string;
   };
   const sb = supabaseServer();
 
@@ -397,6 +411,45 @@ export async function PATCH(request: NextRequest) {
     // La oficina se entera de que el chofer cambió el orden sugerido — no bloquea la respuesta.
     void sb.from('ruta_eventos').insert({ ruta_id: body.ruta_id, tipo: 'reorden', datos: { nuevo_orden: body.orden } });
     return NextResponse.json({ ok: true });
+  }
+
+  // ── No se pudo entregar (Fase 6) ────────────────────────────────────────────
+  // Distinto del branch de abajo: no hay receptor ni OTP que pedir — nadie recibió nada. Se
+  // revisa PRIMERO (antes del branch de éxito) porque comparte `ruta_tienda_id` con él; `motivo`
+  // es lo que los distingue.
+  if (body.ruta_tienda_id != null && body.motivo) {
+    const horaCliente = body.hora_entrega ? new Date(body.hora_entrega) : null;
+    const horaIntento  = horaCliente && !Number.isNaN(horaCliente.getTime()) ? horaCliente.toISOString() : new Date().toISOString();
+    const { data: rt, error: rtErr } = await sb.from('ruta_tiendas')
+      // `estado_entrega` distinto de 'entregado': no cuenta como resuelta-con-éxito en el
+      // progreso, pero tampoco debe seguir apareciendo como "Siguiente" — ver progreso.ts.
+      .update({ estado_entrega: 'no_entregado', foto_urls: body.foto_urls ?? [], hora_entrega: horaIntento })
+      .eq('id', body.ruta_tienda_id)
+      .select('id, ruta_id, store_cod')
+      .single();
+    if (rtErr) return NextResponse.json({ error: rtErr.message }, { status: 500 });
+
+    void sb.from('ruta_eventos').insert({
+      ruta_id: rt.ruta_id, tipo: 'incidencia',
+      datos: { store_cod: rt.store_cod, motivo: body.motivo, descripcion: body.descripcion ?? null, foto_urls: body.foto_urls ?? [] },
+    });
+
+    // Misma cola que ya usa /incidencias (RECIBIDO_INCIDENCIA + estado_resolucion PENDIENTE) —
+    // no una tabla/estado paralelo, así el supervisor sigue viendo todo en un solo lugar.
+    void sb.from('trazabilidad_unidades')
+      .update({
+        fecha_hora_real_llegada: horaIntento,
+        estado_actual:           'RECIBIDO_INCIDENCIA',
+        tipo_incidencia:         body.motivo,
+        descripcion_incidencia:  body.descripcion ?? null,
+        links_evidencia:         body.foto_urls ?? [],
+        estado_resolucion:       'PENDIENTE',
+      })
+      .eq('ruta_id', rt.ruta_id)
+      .eq('codigo_tienda', rt.store_cod)
+      .in('estado_actual', ['EN_RUTA', 'CREADO']);
+
+    return NextResponse.json({ data: rt, hora_entrega: horaIntento });
   }
 
   // ── Registrar entrega de UNA parada (fotos + hora real) ────────────────────
@@ -419,7 +472,7 @@ export async function PATCH(request: NextRequest) {
     const { data: rt, error: rtErr } = await sb.from('ruta_tiendas')
       .update({ estado_entrega: 'entregado', foto_urls: body.foto_urls ?? [], hora_entrega: horaEntrega })
       .eq('id', body.ruta_tienda_id)
-      .select('id, ruta_id, store_cod')
+      .select('id, ruta_id, store_cod, nombre')
       .single();
     if (rtErr) return NextResponse.json({ error: rtErr.message }, { status: 500 });
     // Evento con el detalle completo (fotos, temperatura si es congelado, receptor) —
@@ -450,6 +503,18 @@ export async function PATCH(request: NextRequest) {
       .eq('ruta_id', rt.ruta_id)
       .eq('codigo_tienda', rt.store_cod)
       .in('estado_actual', ['EN_RUTA', 'CREADO']);
+
+    // [Fase 6] Comprobante automático — mismo patrón que Onfleet/Amazon Flex: la tienda no
+    // tiene que pedir nada, le llega solo. Al MISMO correo que ya confirmó el OTP (no a
+    // `tiendas.correos` de nuevo): es prueba de que esa bandeja fue la que confirmó ESTA entrega.
+    // Fire-and-forget: un correo caído no debe invalidar una entrega ya guardada.
+    if (body.otpEmail) {
+      sendComprobanteEntregaEmail({
+        to: body.otpEmail, storeCod: rt.store_cod, storeName: rt.nombre,
+        receptor: body.receptor, horaISO: horaEntrega, observaciones: body.observaciones ?? null,
+        fotoUrls: body.foto_urls ?? [], origin: new URL(request.url).origin,
+      }).catch(e => console.error('[comprobante entrega]', e instanceof Error ? e.message : e));
+    }
 
     return NextResponse.json({ data: rt, hora_entrega: horaEntrega });
   }
