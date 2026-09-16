@@ -30,19 +30,92 @@ export interface Ventana {
 }
 
 /**
- * Parsea la ventana del catálogo. Tolera espacios alrededor del guion.
+ * Un tramo horario, escrito de cualquiera de las formas que usa la operación de verdad:
+ *
+ *     09:00-12:00     el canónico
+ *     09:00 - 12:00   con espacios
+ *     09:00 a 12:00   así viene la tabla de congelados, en las 35 filas
+ *     08.00 a 12.00   así lo escribió quien cargó Maipú
+ *     9:30 a 17:00    hora de un dígito
+ *
+ * Aceptar " a " y el punto es una RED, no el formato preferido: lo que se guarda pasa antes por
+ * `normalizarVentana`. Pero si alguien escribe a mano "9 a 17" en Config, es mejor entenderlo que
+ * perderlo en silencio — que es exactamente lo que este archivo vino a evitar.
+ */
+const TRAMO = /(\d{1,2})[:.](\d{2})\s*(?:[-–—]|\ba\b)\s*(\d{1,2})[:.](\d{2})/i;
+const TRAMOS = new RegExp(TRAMO.source, 'gi');
+
+/** "HH:MM" desde horas y minutos sueltos, con el cero adelante. */
+const hhmm = (h: string, m: string) => `${h.padStart(2, '0')}:${m}`;
+
+/**
+ * Parsea la ventana del catálogo.
  *
  * Si vienen VARIOS tramos ("09:00-12:00 / 15:00-18:00") se toma el PRIMERO: el despacho es de
  * mañana y ese es el que aplica. Una ventana invertida (cierra ≤ abre) se descarta: no es una
  * ventana, es un dato malo, y tratarla como válida haría que todo llegue "tarde".
  */
 export function parseVentana(v?: string | null): Ventana | null {
-  const m = String(v ?? '').match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+  const m = String(v ?? '').match(TRAMO);
   if (!m) return null;
-  const abre = aMinutosDelDia(m[1]);
-  const cierra = aMinutosDelDia(m[2]);
+  const abre = aMinutosDelDia(hhmm(m[1], m[2]));
+  const cierra = aMinutosDelDia(hhmm(m[3], m[4]));
   if (abre == null || cierra == null || cierra <= abre) return null;
   return { abre, cierra };
+}
+
+// ── Normalizar lo que se escribe a mano ──────────────────────────────────────────
+//
+// La tabla de congelados llegó con " a " en las 35 filas, puntos en Maipú, horas de un dígito,
+// espacios de sobra y tres formas distintas de escribir "sin restricciones" (una de ellas con una
+// sola c). Guardada tal cual, `parseVentana` habría devuelto null en todas y las ventanas se
+// habrían perdido SIN UN SOLO ERROR.
+//
+// Por eso lo que se guarda pasa por acá primero, tanto al cargar la tabla como al guardar desde
+// Config: en la base queda siempre el canónico.
+
+/** Lo que se guarda cuando la tienda recibe a cualquier hora. */
+export const SIN_RESTRICCION = 'SIN RESTRICCIÓN';
+
+export interface VentanaNormalizada {
+  /** El valor canónico, listo para guardar. */
+  valor: string;
+  /** false = no se entendió. Hay que AVISAR, no guardar en silencio. */
+  reconocida: boolean;
+}
+
+const sinTildes = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/**
+ * Lleva cualquier escritura al canónico `HH:MM-HH:MM`.
+ *
+ * Tres resultados posibles, y el tercero es el que importa:
+ *
+ *   · vacío            → `''`                (nadie cargó el dato)
+ *   · "sin restricciones" (en cualquiera de sus formas) → `SIN RESTRICCIÓN`
+ *   · uno o más tramos → `"09:00-12:00"` / `"08:00-09:00 / 20:00-21:00"`
+ *   · nada de lo anterior → se devuelve el texto tal cual con `reconocida: false`
+ *
+ * Lo que NO hace: inventar. Si no lo entiende lo dice, en vez de dejar la celda en blanco y que la
+ * ventana desaparezca sin que nadie se entere.
+ *
+ * Los varios tramos se conservan (Chillán recibe 08:00-09:00 y 20:00-21:00); `parseVentana` ya sabe
+ * quedarse con el de la mañana.
+ */
+export function normalizarVentana(texto?: string | null): VentanaNormalizada {
+  const t = String(texto ?? '').trim();
+  if (!t) return { valor: '', reconocida: true };
+  if (/sin\s*restri/i.test(sinTildes(t))) return { valor: SIN_RESTRICCION, reconocida: true };
+
+  const tramos: string[] = [];
+  for (const m of t.matchAll(TRAMOS)) {
+    const abre = aMinutosDelDia(hhmm(m[1], m[2]));
+    const cierra = aMinutosDelDia(hhmm(m[3], m[4]));
+    if (abre == null || cierra == null || cierra <= abre) continue;   // tramo inválido: no se inventa
+    tramos.push(`${hhmm(m[1], m[2])}-${hhmm(m[3], m[4])}`);
+  }
+  if (!tramos.length) return { valor: t, reconocida: false };
+  return { valor: tramos.join(' / '), reconocida: true };
 }
 
 export type EstadoVentana = 'ok' | 'temprano' | 'tarde' | 'sin-ventana';

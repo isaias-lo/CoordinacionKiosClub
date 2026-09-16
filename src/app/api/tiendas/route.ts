@@ -45,6 +45,8 @@ interface TiendaBody {
   corredor?: string;
   tipo?: string;
   ventana?: string;
+  ventana_congelados?: string;
+  observacion?: string;
   frecuencia?: string;
   prom_por_dia?: string;
   lat?: number | null;
@@ -84,6 +86,10 @@ function buildSheetRow(t: TiendaBody): string[] {
     t.tel_supervisor ?? '',
     t.transportista  ?? '',
     serializeActivo(t.activo !== false),
+    // S y T van AL FINAL. Meterlas junto a `ventana` (columna H) correría todo lo que sigue
+    // y rompería parseTSheetAuth sin dar un solo error: la hoja se lee por POSICIÓN.
+    t.ventana_congelados ?? '',
+    t.observacion        ?? '',
   ];
 }
 
@@ -94,7 +100,7 @@ async function syncTiendaToSheets(tienda: TiendaBody): Promise<void> {
 
   const readRes = await gs.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_TIENDAS}!A1:R1000`,
+    range: `${SHEET_TIENDAS}!A1:T1000`,
   });
 
   const rows  = readRes.data.values || [];
@@ -113,7 +119,7 @@ async function syncTiendaToSheets(tienda: TiendaBody): Promise<void> {
   if (existingIdx >= 0) {
     await gs.spreadsheets.values.update({
       spreadsheetId:   SPREADSHEET_ID,
-      range:           `${SHEET_TIENDAS}!A${existingIdx}:R${existingIdx}`,
+      range:           `${SHEET_TIENDAS}!A${existingIdx}:T${existingIdx}`,
       valueInputOption: 'RAW',
       requestBody:     { values: [newRow] },
     });
@@ -159,7 +165,7 @@ export async function GET(request: NextRequest) {
     const sb = supabaseServer();
     const { data, error } = await sb
       .from('tiendas')
-      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, region_sendu, comuna, calle, numero, complemento, nombre_dest, str_val, activo, created_at, updated_at')
+      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, ventana_congelados, observacion, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, region_sendu, comuna, calle, numero, complemento, nombre_dest, str_val, activo, created_at, updated_at')
       .order('codigo');
     if (error) throw error;
     return NextResponse.json({ tiendas: data });
@@ -194,6 +200,8 @@ export async function POST(request: NextRequest) {
         corredor:       body.corredor       ?? '',
         tipo:           body.tipo           ?? '',
         ventana:        body.ventana        ?? '',
+        ventana_congelados: body.ventana_congelados ?? '',
+        observacion:    body.observacion    ?? '',
         frecuencia:     body.frecuencia     ?? '',
         prom_por_dia:   body.prom_por_dia   ?? '',
         lat:            body.lat            ?? null,

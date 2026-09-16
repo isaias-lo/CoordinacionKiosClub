@@ -145,6 +145,10 @@ export function parseTSheetAuth(values: string[][], tiendas: Record<string, Tien
     if (row[14]) tiendas[cod].supervisor = row[14];
     if (row[15]) tiendas[cod].tel_supervisor = row[15];
     if (row[16]) tiendas[cod].transportista = row[16];
+    // S(18) = VENTANA CONGELADOS · T(19) = OBSERVACIÓN. Al final de la fila: ver el comentario
+    // de buildSheetRow en api/tiendas — la hoja se lee por posición.
+    if (row[18]) tiendas[cod].vCong = row[18].trim();
+    if (row[19]) tiendas[cod].observacion = row[19].trim();
     const actVal = row[17] ? row[17].toUpperCase().trim() : 'SI';
     tiendas[cod].activo = actVal !== 'NO';
 
