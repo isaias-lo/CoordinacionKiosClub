@@ -87,6 +87,11 @@ export const CreateTiendaSchema = z.object({
   corredor:        textoOpcional(100),
   tipo:            textoOpcional(50),
   ventana:         textoOpcional(50),
+  // Congelados se recibe en OTRO horario que el seco. Vacía = falta el dato (cae a la de seco);
+  // "SIN RESTRICCIÓN" = la tienda recibe a cualquier hora, que NO es lo mismo que no saberlo.
+  ventana_congelados: textoOpcional(50),
+  // Lo que el chofer necesita saber y no es un horario: "luego de las 10:00, puerta trasera".
+  observacion:     textoOpcional(300),
   frecuencia:      textoOpcional(50),
   prom_por_dia:    textoOpcional(20),
   lat:             z.number().min(-90).max(90).nullable().optional(),
