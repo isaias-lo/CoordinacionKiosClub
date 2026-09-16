@@ -1831,7 +1831,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const addingSlotRef = useRef<Set<string>>(new Set());
   const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const key = `${currentTienda?.cod ?? ''}:${t}`;
-    if (addingSlotRef.current.has(key)) return;
+    if (addingSlotRef.current.has(key)) {
+      // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
+      // natural es volver a tocar. Decirlo convierte un silencio en una espera.
+      showToast('Agregando… espera un segundo', '#D97706');
+      return;
+    }
     addingSlotRef.current.add(key);
     try { await addFormRowInner(t, existingSlot, countOffset); }
     finally { addingSlotRef.current.delete(key); }

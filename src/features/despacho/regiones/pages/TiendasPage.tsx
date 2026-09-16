@@ -1073,7 +1073,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // `await` de cada llamada, así que la guarda ya está liberada en la siguiente vuelta.
   const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const key = `${selectedTienda}:${pkg}`;
-    if (addingSlotRef.current.has(key)) return;
+    if (addingSlotRef.current.has(key)) {
+      // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
+      // natural es volver a tocar. Decirlo convierte un silencio en una espera.
+      showToast('Agregando… espera un segundo', '#D97706');
+      return;
+    }
     addingSlotRef.current.add(key);
     try { await addFormRowInner(pkg, existingSlot, countOffset); }
     finally { addingSlotRef.current.delete(key); }
