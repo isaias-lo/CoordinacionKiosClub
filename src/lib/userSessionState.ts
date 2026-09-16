@@ -214,6 +214,32 @@ export async function fetchPendientesV2Pasadas(sinceDays = 10): Promise<Pendient
 }
 
 /**
+ * Los días PASADOS que ya se cerraron con "Terminar día" (`fuente='cierre'`).
+ *
+ * Es la señal de que la lista de 2ª vuelta de ese día es una DECISIÓN, no una foto a medio hacer:
+ * el coordinador miró lo que quedaba y lo dejó registrado. El backlog la usa para no sumarle
+ * encima lo que el cálculo cree pendiente (ver `unirBacklog`).
+ *
+ * Mismo criterio que `computeUnregisteredDays`, que ya trata `cierre` como "el día se atendió".
+ */
+export async function fetchDiasCerrados(sinceDays = 10): Promise<Set<string>> {
+  const today = todayISO();
+  const since = new Date();
+  since.setDate(since.getDate() - sinceDays);
+  const sinceISO = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, '0')}-${String(since.getDate()).padStart(2, '0')}`;
+
+  const { data, error } = await supabase
+    .from('shared_session_state')
+    .select('fecha')
+    .eq('fuente', 'cierre')
+    .gte('fecha', sinceISO)
+    .lt('fecha', today);
+
+  if (error) { console.error('[sync:diasCerrados]', error.message); return new Set(); }
+  return new Set((data ?? []).map(r => r.fecha as string));
+}
+
+/**
  * Subscribe to real-time changes on the shared state.
  * All users (including other people) trigger this callback when they push changes.
  *

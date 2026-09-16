@@ -15,8 +15,12 @@ import {
  * donde había 15 reales. El resto de la app nunca lo notó porque lee los manifiestos por
  * /api/rutas-despacho, que corre con service role. Esta consulta hacía lo contrario.
  *
- * Además `ruta_tiendas` no tiene foreign key a `rutas_despacho`, así que el `select` anidado de
- * PostgREST tampoco es confiable: acá se hace el cruce a mano, por `ruta_id`.
+ * El cruce con `ruta_tiendas` se hace a mano, por `ruta_id`, en dos consultas.
+ *
+ * (Acá decía que era porque `ruta_tiendas` no tenía foreign key. Es falso: la restricción
+ * `ruta_tiendas_ruta_id_fkey` existe, con `on delete no action` — comprobado en `pg_constraint`.
+ * El cruce manual igual se deja, porque así se controla el rango de fechas de los manifiestos en
+ * la misma consulta; pero el motivo escrito no era el real.)
  *
  *     lo que Bodega REGISTRÓ ese día      (despacho_sesion)
  *   − lo que entró en algún MANIFIESTO    (ese día o DESPUÉS)
@@ -28,8 +32,12 @@ export async function GET(request: NextRequest) {
     const hoy = fechaChile();
     const desde = fechaChileDe(new Date(new Date(`${hoy}T00:00:00Z`).getTime() - dias * 86400000));
     // Los manifiestos se miran hasta una semana ADELANTE: una 2ª vuelta se despacha después del día
-    // de origen. El tope acota las fechas basura (hay un manifiesto con fecha 2099-12-31): sin él,
-    // un dedazo marcaría esa tienda como despachada para siempre.
+    // de origen.
+    //
+    // El tope de arriba se puso para esquivar 8 manifiestos con fecha 2099-12-31 que hacían figurar
+    // 11 tiendas como "despachadas" para siempre. Esas filas ya se borraron y ahora un `check` en
+    // `rutas_despacho` impide que vuelva a entrar una fecha así, pero el tope se queda: acota la
+    // consulta por sí mismo y no depende de que la base siga limpia.
     const hasta = fechaChileDe(new Date(new Date(`${hoy}T00:00:00Z`).getTime() + 7 * 86400000));
 
     const sb = supabaseServer();

@@ -49,7 +49,7 @@ import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, t
 import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha } from './utils/segundaVueltaFechas';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
-import { pushSessionState, pushSessionStateResult, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
+import { pushSessionState, pushSessionStateResult, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2, fetchDiasCerrados } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
 import { fetchCalendarioSupa, subscribeToCalendarioSupa } from '../../../lib/calendarioSync';
 import { writeCalendario } from '../utils/useCalendario';
@@ -1580,15 +1580,19 @@ export default function RutasScreen() {
 
   // ── Tab "2ª VUELTA": cargar pendientes de días anteriores (aislado del día actual) ──
   // Dos fuentes: lo que quedó GUARDADO al cerrar un día, y lo que se deduce de los datos (carga
-  // registrada en bodega menos lo que entró a un manifiesto). Lo guardado manda; el cálculo solo
-  // aporta lo que nadie alcanzó a registrar — y es lo que rescata los días que no se cerraron.
+  // registrada en bodega menos lo que entró a un manifiesto).
+  //
+  // La tercera consulta —qué días se CERRARON— es la que decide cuál de las dos manda. Sin ella,
+  // el 15/09 mostraba 25 tiendas donde el cierre había guardado 5: el cálculo le sumaba las que
+  // simplemente todavía no se habían despachado.
   useEffect(() => {
     void (async () => {
-      const [guardado, calculado] = await Promise.all([
+      const [guardado, calculado, cerrados] = await Promise.all([
         fetchPendientesV2Pasadas().catch(() => [] as PendienteV2[]),
         fetchBacklogCalculado().catch(() => [] as PendienteV2[]),
+        fetchDiasCerrados().catch(() => new Set<string>()),
       ]);
-      setPendientesV2Origen(unirBacklog(guardado, calculado));
+      setPendientesV2Origen(unirBacklog(guardado, calculado, cerrados));
     })();
   }, []);
 
