@@ -53,6 +53,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
+import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
@@ -1129,15 +1130,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     };
     const cur = items[cod] || [];
     setFormRows(prev => {
-      const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
-      // CH: entra SOLO si su item ya existe en el estado (`cur`) — paridad con Nacional. Así un
-      // chocolate agregado por otra persona aparece apenas llega el item, sin salir y volver a la
-      // tienda; y al exigir que el item exista no se inventa una card durante la ventana de sync.
-      const missing = fullSlots.filter(s =>
-        !repIds.has(s.id)
-        && !esCongeladoContenido(s.contenido)
-        && (s.tipo !== 'CH' || cur.some(it => it.pickingSlotId === s.id)));
+      // La regla (qué slot necesita tarjeta y cuál no) vive en `slotsSinTarjeta`, compartida con
+      // Nacional y con tests: era idéntica en los dos espejos y se arreglaba por separado.
+      const missing = slotsSinTarjeta(fullSlots, slotsRepresentados(prev), cur);
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const saved = cur.find(it => it.pickingSlotId === s.id);

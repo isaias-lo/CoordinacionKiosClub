@@ -50,6 +50,7 @@ import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
+import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
@@ -486,17 +487,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const mapCont = contenidoRegiones;
     const cur = dispatchData[name] || [];
     setFormRows(prev => {
-      const repIds = new Set(prev.map(r => r.pickingSlotId).filter((x): x is number => x != null));
-      // Congelados (CC/CN) quedan fuera: SECO no debe generar card fantasma para ellos.
-      // CH: entra SOLO si su item ya existe en el estado (`cur`). Así un chocolate agregado por
-      // otra persona aparece apenas llega el item, sin tener que salir y volver a la tienda —
-      // que es el hueco que antes tapaba el ghost `gCH`. Y al exigir que el item exista NO se
-      // inventa una card durante la ventana de sync (el slot llega ~600 ms antes que el estado),
-      // que es justo lo que hacía parpadear los CH.
-      const missing = fullSlots.filter(s =>
-        !repIds.has(s.id)
-        && !esCongeladoContenido(s.contenido)
-        && (s.tipo !== 'CH' || cur.some(it => it.pickingSlotId === s.id)));
+      // La regla (qué slot necesita tarjeta y cuál no) vive en `slotsSinTarjeta`, compartida con
+      // RM/Costa y con tests: era idéntica en los dos espejos y se arreglaba por separado.
+      const missing = slotsSinTarjeta(fullSlots, slotsRepresentados(prev), cur);
       if (missing.length === 0) return prev;
       const add: FormRow[] = missing.map(s => {
         const pkg = PKG_MAP[s.tipo] ?? 'pallet';
@@ -1186,7 +1179,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     }
     const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
     const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(), canonical_id: pickingSlot?.canonical_id ?? undefined };
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem } : r));
+    // `pickingSlotId` va SIEMPRE en la fila, no solo en el ítem: cuando el slot se creó recién acá
+    // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
+    // las filas declaran (`slotsRepresentados`), no encontraba este, y agregaba una SEGUNDA tarjeta
+    // para la misma unidad. RM/Costa ya lo hacía (StepForm: mismo punto); acá faltaba.
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
