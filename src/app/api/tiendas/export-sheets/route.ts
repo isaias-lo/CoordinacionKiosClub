@@ -9,7 +9,7 @@ const SHEET_TIENDAS  = 'TIENDAS';
 
 const TITLE_TEXT = '⚡ TIENDAS — KiosClub CD | Agregar tiendas nuevas al final | Presionar \'Actualizar datos\' en el sistema para reflejar cambios';
 
-const HEADERS = ['CÓDIGO','NOMBRE','DIRECCIÓN','REGIÓN','SECTOR/COMUNA','CORREDOR','TIPO','VENTANA','FRECUENCIA','PROM P/DÍA','LAT','LON','CORREOS','TEL ENCARGADO','SUPERVISOR','TEL SUPERVISOR','TRANSPORTISTA','ACTIVO'];
+const HEADERS = ['CÓDIGO','NOMBRE','DIRECCIÓN','REGIÓN','SECTOR/COMUNA','CORREDOR','TIPO','VENTANA','FRECUENCIA','PROM P/DÍA','LAT','LON','CORREOS','TEL ENCARGADO','SUPERVISOR','TEL SUPERVISOR','TRANSPORTISTA','ACTIVO','VENTANA CONGELADOS','OBSERVACIÓN'];
 
 // Sort order: RM → Valparaíso (Costa) → Coquimbo → Antofagasta → O'Higgins → Maule → Ñuble → Biobío → Araucanía → Los Ríos → Los Lagos
 const REGION_ORDER: Record<string, number> = {
@@ -48,6 +48,7 @@ async function getAuth() {
 interface TiendaRow {
   codigo: string; nombre: string; direccion: string; region: string;
   sector_comuna: string; corredor: string; tipo: string; ventana: string;
+  ventana_congelados: string | null; observacion: string | null;
   frecuencia: string; prom_por_dia: string; lat: number | null; lon: number | null;
   correos: string; tel_encargado: string; supervisor: string;
   tel_supervisor: string; transportista: string; activo: boolean;
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     const sb = supabaseServer();
     const { data: tiendas, error } = await sb
       .from('tiendas')
-      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, activo');
+      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, ventana_congelados, observacion, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, activo');
     if (error) throw error;
 
     if (!tiendas || tiendas.length === 0) {
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
     const sheet = spreadsheet.data.sheets?.find(s => s.properties?.title === SHEET_TIENDAS);
     const sheetId = sheet?.properties?.sheetId ?? 0;
 
-    const numCols = HEADERS.length; // 18
+    const numCols = HEADERS.length; // 20 (A..T)
 
     // 5. Unmerge + re-merge title row
     await gs.spreadsheets.batchUpdate({
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
     const lastRow = 3 + sorted.length + 50;
     await gs.spreadsheets.values.clear({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_TIENDAS}!A3:R${lastRow}`,
+      range: `${SHEET_TIENDAS}!A3:T${lastRow}`,
     });
 
     // 7. Write title (row 1), headers (row 2), data (row 3+)
@@ -133,6 +134,9 @@ export async function POST(request: NextRequest) {
       t.tel_supervisor ?? '',
       t.transportista ?? '',
       serializeActivo(t.activo !== false),
+      // S y T: al FINAL, para no correr las columnas que ya existen.
+      t.ventana_congelados ?? '',
+      t.observacion        ?? '',
     ]);
 
     await gs.spreadsheets.values.batchUpdate({
@@ -141,8 +145,8 @@ export async function POST(request: NextRequest) {
         valueInputOption: 'RAW',
         data: [
           { range: `${SHEET_TIENDAS}!A1`, values: [[TITLE_TEXT]] },
-          { range: `${SHEET_TIENDAS}!A2:R2`, values: [HEADERS] },
-          { range: `${SHEET_TIENDAS}!A3:R${2 + dataRows.length}`, values: dataRows },
+          { range: `${SHEET_TIENDAS}!A2:T2`, values: [HEADERS] },
+          { range: `${SHEET_TIENDAS}!A3:T${2 + dataRows.length}`, values: dataRows },
         ],
       },
     });

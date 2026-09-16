@@ -4,7 +4,12 @@ export interface TiendaInfo {
   /** SECTOR/COMUNA del catálogo, tal cual viene de la hoja TIENDAS: 'Costa', 'Región',
    *  'Corredor Oriente', etc. Es la fuente de verdad de a qué zona pertenece la tienda. */
   sector?: string;
-  v: string;        // ventana horaria
+  v: string;        // ventana horaria de SECO
+  /** Ventana de CONGELADOS. Vacía = no se cargó (se usa la de seco); 'SIN RESTRICCIÓN' = recibe
+   *  a cualquier hora, que no es lo mismo que no saberlo. */
+  vCong?: string;
+  /** Instrucción de entrega que no es un horario (ej: "después de las 10:00, puerta trasera"). */
+  observacion?: string;
   d?: string;       // dirección
   activo?: boolean;
   corredor?: string;

@@ -19,7 +19,14 @@ export function looksLikeHeader(raw: string): boolean {
     || /^(CÓDIGO|COD|TIENDA|NOMBRE|N°|#)/i.test(raw);  // encabezados de columna
 }
 
-/** Mapea una fila del Sheet (columnas A–R) al objeto de la tabla `tiendas`. */
+/**
+ * Mapea una fila del Sheet (columnas A–T) al objeto de la tabla `tiendas`.
+ *
+ * S y T (ventana de congelados y observación) solo se escriben si la columna EXISTE en la fila.
+ * Si la hoja todavía no las tiene, `row[18]` es `undefined` y el campo no entra en el objeto —
+ * así un "Sheets → DB" hecho antes del primer "DB → Sheets" no borra lo que ya está cargado.
+ * Una celda vacía SÍ limpia el valor: eso es una decisión de quien edita la planilla.
+ */
 export function rowToTienda(row: (string | undefined)[]): Record<string, unknown> {
   return {
     codigo:         normalizeCod(String(row[0] ?? '')),
@@ -40,5 +47,7 @@ export function rowToTienda(row: (string | undefined)[]): Record<string, unknown
     tel_supervisor: row[15]?.trim() ?? '',
     transportista:  row[16]?.trim() ?? '',
     activo:         parseActivo(row[17]),
+    ...(row[18] !== undefined ? { ventana_congelados: row[18]?.trim() ?? '' } : {}),
+    ...(row[19] !== undefined ? { observacion:        row[19]?.trim() ?? '' } : {}),
   };
 }
