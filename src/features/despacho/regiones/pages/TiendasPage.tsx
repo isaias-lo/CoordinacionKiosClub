@@ -1165,11 +1165,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
     }
     const currentItems = dispatchData[selectedTienda] || [];
-    const pc  = currentItems.filter(i => i.pkg === 'pallet').length + 1;
-    const bc  = currentItems.filter(i => i.pkg === 'box').length + 1;
-    const cc  = currentItems.filter(i => i.pkg === 'contenedor').length + 1;
-    const chc = currentItems.filter(i => i.pkg === 'chocolate').length + 1;
-    const orden = row.pkg === 'pallet' ? `pallet${pc}` : isCont ? `contenedor${cc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
+    // El número del CH sale de su `seq` —el que quedó IMPRESO en la etiqueta—, no de su posición.
+    // RM/Costa ya lo hacía así; acá se numeraba por posición, y el chocolate perdía su número en
+    // cuanto alguien borraba o sumaba a un vecino. Para las otras tres clases la posición sigue
+    // siendo la regla, y `numeroVisibleCard` la devuelve tal cual.
+    const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
+    const clase = claseNacional(row.pkg);
+    const posicion = currentItems.filter(i => claseNacional(i.pkg) === clase).length + 1;
+    const orden = ordenNacional(clase, numeroVisibleCard({
+      esChocolate: clase === 'chocolate', posicion, seq: pickingSlot?.seq,
+    }));
     // Esta unidad ya puede tener ítem aunque la tarjeta diga "sin guardar": lo guardó otro equipo
     // mientras esta tarjeta estaba abierta. Entonces se completa ese ítem, no se agrega otro.
     const previo = itemDeLaUnidad(currentItems, slotId);
@@ -1184,7 +1189,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
     const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(), canonical_id: pickingSlot?.canonical_id ?? undefined };
     // `pickingSlotId` va SIEMPRE en la fila, no solo en el ítem: cuando el slot se creó recién acá
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que

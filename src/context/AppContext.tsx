@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
@@ -60,14 +61,20 @@ function conId(item: DispatchItem): DispatchItem {
   return item.id ? item : { ...item, id: `di-${Date.now().toString(36)}-${(_idCounter++).toString(36)}` };
 }
 
+/**
+ * Renumera tras un alta o un borrado.
+ *
+ * Antes lo hacía por POSICIÓN para las cuatro clases, chocolates incluidos. Eso deshacía, en la
+ * acción siguiente, lo que el componente había calculado bien: el CH conserva el número que quedó
+ * IMPRESO en su etiqueta (`seq`), y el reducer se lo reescribía como si fuera uno más de la fila.
+ * Es el bug que `numeroCard` documenta en su cabecera —"el CH3 pasaba a llamarse CH1"— reapareciendo
+ * por la puerta de atrás.
+ *
+ * El reducer no puede ver el `seq` (vive en el estado del componente), pero no le hace falta:
+ * alcanza con NO tocar a los chocolates, que ya traen su número puesto.
+ */
 function renumber(items: DispatchItem[]): DispatchItem[] {
-  let pc = 1, bc = 1, cc = 1, chc = 1;
-  return items.map(i => conId(
-    i.pkg === 'pallet'     ? { ...i, orden: `pallet${pc++}` }
-    : i.pkg === 'contenedor' ? { ...i, orden: `contenedor${cc++}` }
-    : i.pkg === 'chocolate'  ? { ...i, orden: `chocolate${chc++}` }
-    : { ...i, orden: `bulto${bc++}` }
-  ));
+  return renumerarSalvoChocolate(items).map(conId);
 }
 
 function reducer(state: AppState, action: Action): AppState {
