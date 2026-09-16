@@ -365,7 +365,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
   // The debounce window also throttles how often the full row is re-broadcast over Realtime
   // to every subscriber — a longer window means fewer rebroadcasts of the whole blob (egress).
-  // flushPending() + localStorage on unmount guarantee no data is lost on navigation.
+  // Al DESMONTAR (navegar fuera) el debounce pendiente se cancela. El cleanup guarda en
+  // localStorage —igual que RM/Costa— para no perder el trabajo en este equipo, pero NO empuja a
+  // Supabase: un push async durante el desmontaje no es confiable. Por eso quien navega llama
+  // `flushPending()` ANTES del router.push, y el cambio de visibilidad de la pestaña también lo
+  // dispara. (Este comentario decía que el desmontaje ya garantizaba las dos cosas; no era así:
+  // el cleanup solo hacía clearTimeout, sin guardar nada.)
   useEffect(() => {
     if (!isInitializedRef.current) return;
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado };
@@ -399,7 +404,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
     }, 2500);
 
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+        // Guardado local sincrónico: lo que no alcanzó a empujarse no se pierde en este equipo.
+        try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
+      }
+    };
   }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado]);
 
   const showToast = useCallback((msg: string, color?: string) => {
