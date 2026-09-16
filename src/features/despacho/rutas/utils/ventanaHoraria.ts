@@ -132,6 +132,55 @@ export function estadoVentana(etaMin: number, ventana?: string | null): EstadoVe
   return 'ok';
 }
 
+// ── Qué ventana aplica según lo que se reparte ───────────────────────────────────
+
+export type TipoCargaVentana = 'seco' | 'congelados';
+
+/** Lo mínimo que hace falta saber de una tienda para elegir su ventana. */
+export interface TiendaConVentanas {
+  /** Ventana de SECO. */
+  v?: string | null;
+  /** Ventana de CONGELADOS. Vacía = no se cargó. */
+  vCong?: string | null;
+}
+
+/**
+ * La ventana que aplica a esta tienda para este tipo de carga.
+ *
+ * Congelados usa la suya **si la tiene**; si no, cae a la de seco — que es exactamente lo que el
+ * sistema hacía antes de que existiera la columna. Así, mientras la tabla esté a medio cargar,
+ * nada empeora respecto de hoy: una tienda sin dato se comporta igual que siempre.
+ *
+ * Ojo con el caso que parece un borde y no lo es: `SIN RESTRICCIÓN` es un valor REAL —significa
+ * "recibe a cualquier hora"— así que gana sobre la ventana de seco. Solo el vacío cae.
+ */
+export function ventanaSegunCarga(t: TiendaConVentanas | undefined, carga: TipoCargaVentana): string {
+  const seco = String(t?.v ?? '');
+  if (carga !== 'congelados') return seco;
+  const cong = String(t?.vCong ?? '').trim();
+  return cong || seco;
+}
+
+/**
+ * El catálogo con la ventana que corresponde ya puesta en `v`.
+ *
+ * Existe para que el motor no tenga que saber nada de congelados: `ordenarConVentanas` y
+ * `factibilidadDia` siguen leyendo `v` como siempre, y acá se decide qué es `v` en este contexto.
+ * Para seco devuelve el mismo objeto sin copiar nada.
+ */
+export function catalogoParaCarga<T extends TiendaConVentanas>(
+  tiendas: Record<string, T | undefined>,
+  carga: TipoCargaVentana,
+): Record<string, T> {
+  if (carga !== 'congelados') return tiendas as Record<string, T>;
+  const out: Record<string, T> = {};
+  for (const [cod, t] of Object.entries(tiendas)) {
+    if (!t) continue;
+    out[cod] = { ...t, v: ventanaSegunCarga(t, 'congelados') };
+  }
+  return out;
+}
+
 // ── Dureza de la ventana ─────────────────────────────────────────────────────────
 //
 // Del Colab: un MALL tiene ventana DURA (el andén cierra y no hay negociación) y el resto la tiene
