@@ -54,6 +54,7 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
+import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -1175,10 +1176,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
     const pesoVolumetrico = Math.round((alto * src.ancho * src.largo) / 5000);
     const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico };
-    const higher = Math.max(srcIdx, tgtIdx);
-    const lower  = Math.min(srcIdx, tgtIdx);
-    const newList = allItems.filter((_, i) => i !== higher && i !== lower);
-    newList.splice(lower, 0, merged);
+    // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
+    // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
+    const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
     const renumbered = renumerarOrden(newList, i => seqDeSlot(tiendaCod, i.pickingSlotId));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
     setCombineModal(null);

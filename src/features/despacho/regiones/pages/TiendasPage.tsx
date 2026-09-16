@@ -51,6 +51,7 @@ import type { PickingSlot } from '@/features/despacho/santiago/components/Pickin
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
+import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
@@ -1658,12 +1659,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const mergedGuia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
     const mergedTipo: TipoContenido  = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
-    const survivors = items.filter((_, i) => i !== srcIdx && i !== tgtIdx);
-    let pc = 0, bc = 0;
-    const renumbered = survivors.map(it => ({ ...it, orden: it.pkg === 'pallet' ? `pallet${++pc}` : `bulto${++bc}` }));
-    const newOrden = src.pkg === 'pallet' ? `pallet${++pc}` : `bulto${++bc}`;
-    renumbered.push({ peso, alto, ancho: src.ancho, largo: src.largo, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, pkg: src.pkg, orden: newOrden });
-    dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumbered });
+    // El fusionado CONSERVA la identidad del source: `pickingSlotId` (lo que lo ata a la unidad
+    // física de Picking) y su `id`. Antes se armaba un objeto literal nuevo y los perdía: sin
+    // `pickingSlotId`, la llave de merge cae al id local del dispositivo y el mismo ítem se trata
+    // como dos al sincronizar con otro equipo. RM/Costa ya preservaba `...src`.
+    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo };
+    // `renumberItems` respeta el `seq` del slot —el número IMPRESO en la etiqueta— y conoce los
+    // cuatro tipos. El contador local que había acá solo sabía de pallets y bultos, así que a un
+    // contenedor o a un chocolate de esa tienda le escribía `bultoN`.
+    dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda,
+      items: renumberItems(combinarEnLista(items, srcIdx, tgtIdx, merged)) });
     setCombineModal(null);
   };
 
