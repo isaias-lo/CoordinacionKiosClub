@@ -284,7 +284,7 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
-  const { state, dispatch, showToast } = useApp();
+  const { state, dispatch, showToast, flushPending } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -2502,7 +2502,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Manual / Cal</span>
             </button>
             <button
-              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
               className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Ir al Enrutador">
               <Navigation size={16} />
@@ -2633,7 +2633,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             </button>
             <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
             <button
-              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
               className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
               style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
               <Navigation size={13} color="#93C5FD" strokeWidth={2} />
