@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
+import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
 import { GripVertical } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { buildRows, exportToTemplate } from '../utils/exportUtils';
@@ -25,15 +27,11 @@ const LABEL: Record<TipoContenido | TipoPaquete, string> = {
   comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate',
 };
 
-function renumber(list: DispatchItem[]): DispatchItem[] {
-  let pc = 1, bc = 1, cc = 1, chc = 1;
-  return list.map(it =>
-    it.pkg === 'pallet'     ? { ...it, orden: `pallet${pc++}` }
-    : it.pkg === 'contenedor' ? { ...it, orden: `contenedor${cc++}` }
-    : it.pkg === 'chocolate'  ? { ...it, orden: `chocolate${chc++}` }
-    : { ...it, orden: `bulto${bc++}` }
-  );
-}
+// El renumerado del Resumen ya no es propio: era la TERCERA copia del mismo bloque posicional, y
+// aplastaba el número de los chocolates igual que lo hacía el reducer. Como el reducer dejó de
+// renumerar en UPDATE_ITEMS, esta copia era la única que actuaba: combinar o editar un ítem acá
+// bastaba para que el CH3 volviera a llamarse CH1.
+const renumber = renumerarSalvoChocolate;
 
 const INPUT = 'w-full border border-border rounded-btn px-2 py-1.5 text-[13px] font-mono text-navy bg-white';
 const LABEL_SM = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
@@ -146,11 +144,10 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     const tipoMerge: TipoContenido = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
     const guia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const valor = (src.valor || 0) + (tgt.valor || 0);
-    const higher = Math.max(srcIdx, tgtIdx);
-    const lower  = Math.min(srcIdx, tgtIdx);
-    const newList = list.filter((_, i) => i !== higher && i !== lower);
-    newList.splice(lower, 0, { ...src, peso, alto, tipo: tipoMerge, guia, valor });
-    dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(newList) });
+    // `...src` conserva el `pickingSlotId`, y `combinarEnLista` lo deja en la posición del primero
+    // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
+    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor };
+    dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
     setCombineModal(null);
     showToast('✓ Items combinados', '#16A34A');
   };
