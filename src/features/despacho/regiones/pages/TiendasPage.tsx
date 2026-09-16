@@ -57,7 +57,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
-import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
+import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
@@ -170,23 +170,16 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
   const remC  = Math.max(0, pickingC  - contenedorCount);
   const remCH = Math.max(0, pickingCH - chocolateCount);
   const hasGhost = remP > 0 || remB > 0 || remC > 0 || remCH > 0;
+  // El color dice "¿tiene guía?" y la etiqueta "¿está terminada?": antes las dos cosas se
+  // pintaban del mismo verde y marcar una tienda como terminada tapaba el estado de su guía.
+  const estadoCard = { activa: isActive, conGuia: !!hasPdf, terminada: !!terminada, deHoy: !!isToday };
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
-        ${isActive
-          ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
-          : terminada
-          // [M-02] El verde va en el BORDE, no en todo el fondo (ver el mismo cambio en StepForm).
-          ? 'bg-[rgba(22,163,74,0.10)] border-2 border-[#15803D] shadow-sm'
-          : hasPdf
-          ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
-          : isToday
-          ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] hover:bg-[rgba(30,64,175,0.09)]'
-          : 'bg-white border border-border hover:bg-bg'
-        }`}>
+        ${claseTarjetaTienda(estadoCard)}`}>
       <PresenciaBadge viendo={viendo} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
@@ -200,7 +193,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       )}
       {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
           oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-[#15803D]' : hasPdf ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${claseCodigoTienda(estadoCard)}`}>
         {formatCod(t.cod)}
       </div>
       {/* [M-04] Dos líneas en vez de recortar: "BUENAVENTU…" y "BUENAVENTUR…" son tiendas
@@ -210,7 +203,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         {t.name}
       </div>
       {terminada && (
-        <span className="text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase mt-0.5">✓ Terminada</span>
+        <span className={`text-[11px] font-extrabold tracking-wide uppercase mt-0.5 ${claseEtiquetaTerminada(estadoCard)}`}>✓ Terminada</span>
       )}
       {(() => {
         const tb = tipoBadge(tipoCat);
