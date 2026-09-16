@@ -99,7 +99,13 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
     tipo:          ruta.v.refrigerado ? 'congelado' : 'seco',
     tiendas: ruta.ts.map((t, i) => {
       const info = infoTienda(t.c, tiendas);
-      return { store_cod: t.c, nombre: info.n, ventana: info.v, orden: i + 1, pallets: t.p, bultos: t.b, chocolates: ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
+      // [Panel Conductor] En ruta congelada, la ventana que importa es la de CONGELADOS —
+      // hasta ahora esto siempre horneaba la de seco en `ruta_tiendas.ventana` (lo que ve el
+      // chofer), aun cuando el motor de rutas ya calculaba bien con la de congelados. Vacía
+      // ('') = no se cargó ese dato para esta tienda → se cae a la de seco, mismo criterio que
+      // ya documenta `TiendaInfo.vCong`.
+      const ventana = ruta.v.refrigerado ? (info.vCong || info.v) : info.v;
+      return { store_cod: t.c, nombre: info.n, ventana, orden: i + 1, pallets: t.p, bultos: t.b, chocolates: ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
     }),
     total_pallets:    ruta.ts.reduce((s, t) => s + t.p, 0),
     total_bultos:     ruta.ts.reduce((s, t) => s + t.b, 0),

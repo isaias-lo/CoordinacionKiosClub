@@ -21,12 +21,14 @@ import TransportistasTab from './TransportistasTab';
 import BitacoraTab from './BitacoraTab';
 import { parseCoord } from './coords';
 import { frecuenciasPorTienda } from './frecuencia';
+import { normalizarVentana } from '@/features/despacho/rutas/utils/ventanaHoraria';
 import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados } from '@/lib/calendarioCongeladosSync';
 
 export interface Tienda {
   codigo: string; nombre: string; direccion: string; region: string;
   sector_comuna: string; corredor: string; tipo: string; ventana: string;
+  ventana_congelados: string; observacion: string;
   frecuencia: string; prom_por_dia: string; lat: number | null; lon: number | null;
   correos: string; tel_encargado: string; supervisor: string;
   // [Fase 4] Datos que el export de Sendu necesita. Antes no tenían columna ni campo: agregar una
@@ -38,7 +40,7 @@ export interface Tienda {
 
 const EMPTY: Tienda = {
   codigo: '', nombre: '', direccion: '', region: '', sector_comuna: '',
-  corredor: '', tipo: '', ventana: '', frecuencia: '', prom_por_dia: '',
+  corredor: '', tipo: '', ventana: '', ventana_congelados: '', observacion: '', frecuencia: '', prom_por_dia: '',
   lat: null, lon: null, correos: '', tel_encargado: '', supervisor: '',
   region_sendu: '', comuna: '', calle: '', numero: '', complemento: '',
   tel_supervisor: '', transportista: '', recepcion_pallet: '', activo: true,
@@ -297,10 +299,30 @@ export default function TiendasAdminContent({
     if (!form.codigo || !form.nombre) return;
     setSaving(true);
     try {
+      // Las ventanas se guardan SIEMPRE en el canónico "HH:MM-HH:MM". Quien escribe acá pone
+      // "9 a 17", "09.00 a 12.00" o "sin restricciones", y el Planificador no entiende nada de eso:
+      // devolvía null y la ventana desaparecía sin un solo error. Si no se entiende, se avisa y no
+      // se guarda — callar es justo lo que hacía que el dato se perdiera.
+      const vSeco = normalizarVentana(form.ventana);
+      const vCong = normalizarVentana(form.ventana_congelados);
+      const malas = [
+        !vSeco.reconocida ? `seco ("${form.ventana}")` : '',
+        !vCong.reconocida ? `congelados ("${form.ventana_congelados}")` : '',
+      ].filter(Boolean);
+      if (malas.length) {
+        setMsgType('err');
+        setMsg(`No entendí la ventana de ${malas.join(' ni la de ')}. Usa "09:00-12:00", "09:00 a 12:00" o "sin restricción".`);
+        setSaving(false);
+        return;
+      }
       // Coordenadas: parsear los inputs de texto (aceptan coma o punto) → número o null.
       // Sincroniza la frecuencia derivada del calendario a la columna almacenada (si la tienda está
       // en el calendario) para que otros consumidores (Bodega) usen el mismo dato.
-      const payload = { ...form, lat: parseCoord(latStr, 90), lon: parseCoord(lonStr, 180), frecuencia: freqByCod[form.codigo] || form.frecuencia };
+      const payload = {
+        ...form, lat: parseCoord(latStr, 90), lon: parseCoord(lonStr, 180),
+        frecuencia: freqByCod[form.codigo] || form.frecuencia,
+        ventana: vSeco.valor, ventana_congelados: vCong.valor,
+      };
       const res  = await fetch('/api/tiendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json() as { tienda?: Tienda; sheetSynced?: boolean; error?: string };
       if (data.tienda) {
@@ -436,6 +458,24 @@ export default function TiendasAdminContent({
     textTransform: 'uppercase', letterSpacing: '0.06em',
     marginBottom: 4, display: 'block',
   };
+  /** Campo de solo lectura (lo calcula el sistema, no se edita acá). */
+  const inpRO: React.CSSProperties = { ...inp, background: '#F8FAFC', color: '#475569', cursor: 'default' };
+  /**
+   * La grilla del formulario: `auto-fit` acomoda las columnas que quepan y colapsa a una sola en
+   * pantalla angosta, sin media queries. Antes eran ocho grillas sueltas de `1fr 1fr`, y un campo
+   * impar obligaba a rellenar con un `<div />` vacío — media fila desperdiciada, dos veces.
+   */
+  const grid: React.CSSProperties = {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12,
+  };
+  /** Un campo que ocupa la fila entera (direcciones, correos, la observación). */
+  const anchoTotal: React.CSSProperties = { gridColumn: '1 / -1' };
+  /** Título de sección, mismo estilo que ya usaba el bloque de Sendu. */
+  const Seccion = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', margin: '18px 0 8px', paddingTop: 12, borderTop: '1px solid #E2E8F0' }}>
+      {children}
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#F8FAFC', fontFamily: 'inherit' }}>
@@ -691,7 +731,14 @@ export default function TiendasAdminContent({
                             <td style={TD_CELL}>{t.region || '—'}</td>
                             <td style={TD_CELL}>{t.sector_comuna || '—'}</td>
                             <td style={TD_CELL}>{t.tipo || '—'}</td>
-                            <td style={TD_CELL}>{t.ventana || '—'}</td>
+                            {/* Las dos ventanas en la misma celda: el copo marca la de congelados.
+                                Sin esto no había forma de ver de un vistazo a qué tienda le falta. */}
+                            <td style={TD_CELL}>
+                              {t.ventana || '—'}
+                              {t.ventana_congelados && (
+                                <span style={{ color: '#0891B2', marginLeft: 6 }}>❄ {t.ventana_congelados}</span>
+                              )}
+                            </td>
                             <td style={TD_CELL}>{freqByCod[t.codigo] || t.frecuencia || '—'}</td>
                             <td style={TD_CELL}>{t.lat != null && t.lon != null ? '✓' : '—'}</td>
                             <td style={TD_CELL}>
@@ -731,6 +778,7 @@ export default function TiendasAdminContent({
                         {t.region    && <span style={{ fontSize: 11, color: '#475569', background: '#F1F5F9', borderRadius: 4, padding: '2px 7px' }}>{t.region}</span>}
                         {t.corredor  && <span style={{ fontSize: 11, color: '#475569', background: '#F1F5F9', borderRadius: 4, padding: '2px 7px' }}>{t.corredor}</span>}
                         {t.ventana   && <span style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>{t.ventana}</span>}
+                        {t.ventana_congelados && <span style={{ fontSize: 11, color: '#0E7490', background: '#CFFAFE', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>❄ {t.ventana_congelados}</span>}
                         {freqByCod[t.codigo] && <span style={{ fontSize: 11, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 4, padding: '2px 7px', fontWeight: 600 }}>{freqByCod[t.codigo]}</span>}
                         {t.recepcion_pallet && <span style={{ fontSize: 11, color: '#7C3AED', background: '#F3E8FF', borderRadius: 4, padding: '2px 7px', fontWeight: 600, textTransform: 'capitalize' }}>{t.recepcion_pallet}</span>}
                       </div>
@@ -781,7 +829,7 @@ export default function TiendasAdminContent({
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setModal(null); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: '24px', width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '24px', width: '100%', maxWidth: 880, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
 
             {/* Modal header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -791,16 +839,21 @@ export default function TiendasAdminContent({
               <button onClick={() => setModal(null)} style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E2E8F0', background: '#F8FAFC', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', fontSize: 16 }}>✕</button>
             </div>
 
-            {/* Form grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* El formulario va por secciones tituladas, y cada una en una grilla que se adapta.
+                Antes eran ocho grillas de dos columnas fijas, sin un solo título: veinte campos
+                seguidos en una franja de 520 px, con huecos de relleno donde el campo era impar. */}
+            <div style={grid}>
               <div><label style={lbl}>Código *</label><input style={inp} value={form.codigo} onChange={f('codigo')} placeholder="02SCL" disabled={modal === 'edit'} /></div>
               <div><label style={lbl}>Nombre *</label><input style={inp} value={form.nombre} onChange={f('nombre')} placeholder="San Carlos" /></div>
             </div>
+
+            <Seccion>Ubicación</Seccion>
             {/* Dirección con autocompletado de Google (el mismo del Planificador). Al elegir una
                 sugerencia rellena de una lo que Google SÍ sabe —calle y número por separado, como
                 los pide Sendu, más comuna, región y coordenadas— y propone el sector aparte.
                 Es la causa raíz de fichas como 59EGN, que se creó sin sector ni corredor. */}
-            <div style={{ marginTop: 12 }}>
+            <div style={grid}>
+            <div style={anchoTotal}>
               <label style={lbl}>Dirección</label>
               <AddressAutocomplete
                 value={form.direccion}
@@ -836,7 +889,6 @@ export default function TiendasAdminContent({
                 </div>
               )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Región</label><input style={inp} value={form.region} onChange={f('region')} placeholder="Región Metropolitana" /></div>
               <div>
                 {/* Lista cerrada: este campo decide en qué zona rutea la tienda, así que un typo
@@ -850,9 +902,13 @@ export default function TiendasAdminContent({
                   ))}
                 </select>
               </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div><label style={lbl}>Corredor</label><input style={inp} value={form.corredor} onChange={f('corredor')} placeholder="Corredor Oriente" /></div>
+              <div><label style={lbl}>Latitud</label><input style={inp} type="text" inputMode="decimal" value={latStr} onChange={e => setLatStr(e.target.value)} placeholder="-33.391885" /></div>
+              <div><label style={lbl}>Longitud</label><input style={inp} type="text" inputMode="decimal" value={lonStr} onChange={e => setLonStr(e.target.value)} placeholder="-70.506455" /></div>
+            </div>
+
+            <Seccion>Operación</Seccion>
+            <div style={grid}>
               <div>
                 <label style={lbl}>Tipo</label>
                 <select style={inp} value={form.tipo} onChange={f('tipo')}>
@@ -868,8 +924,6 @@ export default function TiendasAdminContent({
                   {form.tipo && !['MALL', 'STRIPCENTER', 'TIENDA', 'oficina', 'punto'].includes(form.tipo) && <option value={form.tipo}>{form.tipo}</option>}
                 </select>
               </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div>
                 <label style={lbl}>Recepción del pallet</label>
                 <select style={inp} value={form.recepcion_pallet} onChange={f('recepcion_pallet')}>
@@ -878,32 +932,43 @@ export default function TiendasAdminContent({
                   <option value="desconsolidado">Desconsolidado (se desarma)</option>
                 </select>
               </div>
-              <div />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-              <div><label style={lbl}>Ventana horaria</label><input style={inp} value={form.ventana} onChange={f('ventana')} placeholder="09:00-12:00" /></div>
+              {/* Las dos ventanas, UNA AL LADO DE LA OTRA: es lo que hace evidente que son horarios
+                  distintos del mismo local. Congelados se recibe en otro horario que el seco — en
+                  Parque Arauco las dos ni se tocaban — y hasta ahora solo existía una. */}
+              <div>
+                <label style={lbl}>Ventana <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· seco</span></label>
+                <input style={inp} value={form.ventana} onChange={f('ventana')} placeholder="09:00-12:00" />
+              </div>
+              <div>
+                <label style={lbl}>Ventana <span style={{ fontWeight: 400, color: '#0891B2', textTransform: 'none', letterSpacing: 0 }}>· congelados</span></label>
+                <input style={inp} value={form.ventana_congelados} onChange={f('ventana_congelados')} placeholder="09:00-12:00 o SIN RESTRICCIÓN" />
+              </div>
+              {/* Y las dos frecuencias también juntas: antes estaban en filas distintas, y la de
+                  seco compartía fila con la ventana, que no tiene nada que ver. */}
               <div>
                 <label style={lbl}>Frecuencia <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· del Calendario de Abastecimiento</span></label>
-                <input style={{ ...inp, background: '#F8FAFC', color: '#475569', cursor: 'default' }} readOnly
+                <input style={inpRO} readOnly
                   value={freqByCod[form.codigo] || form.frecuencia || ''}
                   placeholder="— (la tienda no está en el calendario)" />
               </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               <div>
                 <label style={lbl}>Frecuencia <span style={{ fontWeight: 400, color: '#94A3B8', textTransform: 'none', letterSpacing: 0 }}>· del Calendario de Congelados</span></label>
-                <input style={{ ...inp, background: '#F8FAFC', color: '#475569', cursor: 'default' }} readOnly
+                <input style={inpRO} readOnly
                   value={freqCongByCod[form.codigo] || ''}
                   placeholder="— (la tienda no está en el calendario)" />
               </div>
-              <div />
+              {/* Lo que el chofer necesita saber y no es un horario. Se imprime en el manifiesto:
+                  una nota que solo se ve acá no le llega a quien maneja. */}
+              <div style={anchoTotal}>
+                <label style={lbl}>Observación para la entrega</label>
+                <input style={inp} value={form.observacion} onChange={f('observacion')}
+                  placeholder="Ej: luego de las 10:00 la entrega debe ser por la puerta trasera del mall" />
+              </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-              <div><label style={lbl}>Latitud</label><input style={inp} type="text" inputMode="decimal" value={latStr} onChange={e => setLatStr(e.target.value)} placeholder="-33.391885" /></div>
-              <div><label style={lbl}>Longitud</label><input style={inp} type="text" inputMode="decimal" value={lonStr} onChange={e => setLonStr(e.target.value)} placeholder="-70.506455" /></div>
-            </div>
-            <div style={{ marginTop: 12 }}><label style={lbl}>Correos (separados por coma)</label><input style={inp} value={form.correos} onChange={f('correos')} placeholder="encargado@tienda.cl" /></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+
+            <Seccion>Contacto</Seccion>
+            <div style={grid}>
+              <div style={anchoTotal}><label style={lbl}>Correos (separados por coma)</label><input style={inp} value={form.correos} onChange={f('correos')} placeholder="encargado@tienda.cl" /></div>
               <div><label style={lbl}>Tel. Encargado</label><input style={inp} value={form.tel_encargado} onChange={f('tel_encargado')} placeholder="+56 9 1234 5678" /></div>
               <div><label style={lbl}>Supervisor</label><input style={inp} value={form.supervisor} onChange={f('supervisor')} placeholder="Nombre supervisor" /></div>
             </div>

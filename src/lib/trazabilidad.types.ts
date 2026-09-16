@@ -20,6 +20,13 @@ export type TrazabilidadTipoIncidencia =
   | 'Temperatura'
   | 'Sello roto'
   | 'Exceso'
+  // [Panel Conductor] "No se pudo entregar" — distinto de "se entregó con un problema" (los
+  // cinco de arriba): acá no hubo entrega en absoluto. Se agregan acá (no un tipo nuevo) porque
+  // /incidencias ya sabe listar y filtrar por `tipo_incidencia` — reusar la cola existente en vez
+  // de construir una paralela.
+  | 'Tienda cerrada'
+  | 'Rechazo'
+  | 'Dirección no ubicada'
   | 'Otro';
 
 export type TrazabilidadEstadoResolucion =

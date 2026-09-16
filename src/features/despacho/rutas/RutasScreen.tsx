@@ -769,6 +769,8 @@ export default function RutasScreen() {
           corredor?: string;
           tipo?: string;
           ventana?: string;
+          ventana_congelados?: string;
+          observacion?: string;
           frecuencia?: string;
           lat?: number | null;
           lon?: number | null;
@@ -790,6 +792,8 @@ export default function RutasScreen() {
             // y toda la capa E8 quedaba inerte (sin etiquetas, km inflados por consolidación).
             sector: t.sector_comuna || '',
             v: t.ventana || '',
+            vCong: t.ventana_congelados || '',
+            observacion: t.observacion || '',
             d: t.direccion,
             region: t.region,
             corredor: t.corredor,
