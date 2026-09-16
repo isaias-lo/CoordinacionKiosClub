@@ -1,18 +1,26 @@
 'use client';
 
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { X, Camera, Image as ImageIcon, Check, Thermometer, Lock, Box, AlertTriangle, CloudOff, type LucideIcon } from 'lucide-react';
+import { X, Camera, Image as ImageIcon, Check, Thermometer, Lock, Box, AlertTriangle, CloudOff, Mail, ShieldCheck, type LucideIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { safeStorageKey } from '@/lib/storageKey';
+import { formatRut } from '@/lib/rut';
 import { processPhoto } from '@/features/auditoria/utils/photos';
 import { encolarEntrega, type EntregaPendiente } from '@/app/conductor-hub/offlineQueue';
 import { ENTREGA_FOTOS_BUCKET, subirFotoEntrega } from './entregaFotos';
 
 /**
- * [Panel Conductor · Fase 3+4] Registrar la entrega de UNA parada, con las fotos que decide el
- * `tipo` de la ruta (Fase 0):
- *   - congelado → foto de la temperatura del camión (1) + foto(s) de la entrega en tienda (N)
- *   - seco      → foto del sello (1) + foto(s) de los pallets (N)
+ * [Panel Conductor · Fase 3+4+5] Registrar la entrega de UNA parada — desde la Fase 5, el ÚNICO
+ * camino para hacerlo (se retiró "Entregar en Tienda", que hacía QR+OTP+conteo por separado).
+ * Por eso este formulario absorbe sus dos garantías, además de las fotos que decide el `tipo` de
+ * la ruta (Fase 0):
+ *   - QUIÉN recibió: nombre + RUT (obligatorio) — una foto sola no prueba nada por sí misma.
+ *   - Que la TIENDA participó de verdad: mismo código-por-correo (`/api/recepcion-otp`) que ya
+ *     usaba el flujo viejo — sin esto el chofer podría "autoconfirmar" sin que nadie de la tienda
+ *     esté de acuerdo. Se pide ANTES de las fotos (mismo orden que el flujo viejo): si la tienda no
+ *     puede confirmar, no tiene sentido gastar tiempo sacando fotos todavía.
+ *   - Fotos: congelado → temperatura del camión (1) + foto(s) de la entrega en tienda (N).
+ *            seco      → foto del sello (1) + foto(s) de los pallets (N).
  *
  * Mismo patrón de cámara/galería que `AuditoriaScreen.tsx` (inputs separados, `key` que cambia
  * para forzar el remount — sin esto iOS no vuelve a disparar `onChange` si se elige el MISMO
@@ -23,10 +31,13 @@ import { ENTREGA_FOTOS_BUCKET, subirFotoEntrega } from './entregaFotos';
  * genérica, no el flujo de recepción-con-OTP de una tienda puntual — mezclar convenciones de
  * nombre en el mismo bucket es fuente de bugs (ver la migración de la Fase 0).
  *
- * [Fase 4] Sin señal en el momento de entregar, esto NO se bloquea: cada foto que no logra
- * subir queda "en cola" (con su blob comprimido en memoria) en vez de marcarse error, y
+ * [Fase 4] Sin señal en el momento de entregar, la SUBIDA DE FOTOS no se bloquea: cada foto que no
+ * logra subir queda "en cola" (con su blob comprimido en memoria) en vez de marcarse error, y
  * "Registrar entrega" pasa a guardar todo en la cola offline (ver offlineQueue.ts) — fotos y
  * datos — en vez de intentar el PATCH. `page.tsx` drena esa cola sola cuando vuelve la señal.
+ * El OTP en cambio NO tiene cola: necesita que la tienda participe EN VIVO (leer un correo que
+ * llega ahora), así que enviar/verificar el código requiere señal — solo lo que pasa DESPUÉS de
+ * verificado (fotos, el PATCH final) puede quedar pendiente de sincronizar.
  */
 
 export interface ParadaEntrega {
@@ -166,11 +177,70 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
 }) {
   const uidBase = safeStorageKey(`${parada.store_cod}_${parada.id}_${Date.now()}`);
 
+  // [Flujo único] Quién recibe — obligatorio antes de poder pedir el código.
+  const [receptor, setReceptor] = useState('');
+  const [rut, setRut] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+  const datosReceptorListos = receptor.trim().length > 0 && rut.trim().length >= 3;
+
+  // [Flujo único] OTP — mismo mecanismo que el flujo viejo (`/api/recepcion-otp`), solo que acá
+  // se pide ANTES de las fotos: si la tienda no puede confirmar, no vale la pena sacarlas todavía.
+  const [otpEnviado,   setOtpEnviado]   = useState(false);
+  const [otpEnviando,  setOtpEnviando]  = useState(false);
+  const [otpEmailDestino, setOtpEmailDestino] = useState('');
+  const [otpInput,     setOtpInput]     = useState('');
+  const [otpVerificando, setOtpVerificando] = useState(false);
+  const [otpError,     setOtpError]     = useState('');
+  const [otpVerificado, setOtpVerificado] = useState(false);
+  const [otpToken,      setOtpToken]      = useState('');
+  const [otpEmailFinal, setOtpEmailFinal] = useState('');
+
   const [fotoA, setFotoA] = useState<FotoItem[]>([]); // temperatura (congelado) | sello (seco)
   const [fotoB, setFotoB] = useState<FotoItem[]>([]); // entrega en tienda (congelado) | pallets (seco)
   const [temperatura, setTemperatura] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  async function enviarCodigo() {
+    if (!datosReceptorListos || otpEnviando) return;
+    setOtpEnviando(true);
+    setOtpError('');
+    try {
+      const res = await fetch('/api/recepcion-otp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod: parada.store_cod, store_name: parada.nombre ?? undefined }),
+      });
+      const json = await res.json() as { email_sent_to?: string; error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo enviar el código');
+      setOtpEnviado(true);
+      setOtpEmailDestino(json.email_sent_to ?? '');
+    } catch (e) {
+      setOtpError(e instanceof Error ? e.message : 'Sin conexión. Reintenta.');
+    } finally {
+      setOtpEnviando(false);
+    }
+  }
+
+  async function verificarCodigo() {
+    if (otpInput.length !== 6 || otpVerificando) return;
+    setOtpVerificando(true);
+    setOtpError('');
+    try {
+      const res = await fetch('/api/recepcion-otp', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_cod: parada.store_cod, otp: otpInput }),
+      });
+      const json = await res.json() as { valid?: boolean; token?: string; email?: string; error?: string };
+      if (!res.ok || !json.valid) throw new Error(json.error ?? 'Código incorrecto');
+      setOtpVerificado(true);
+      setOtpToken(json.token ?? '');
+      setOtpEmailFinal(json.email ?? otpEmailDestino);
+    } catch (e) {
+      setOtpError(e instanceof Error ? e.message : 'Sin conexión. Reintenta.');
+    } finally {
+      setOtpVerificando(false);
+    }
+  }
 
   const grupoA = tipo === 'congelado'
     ? { titulo: 'Foto de la temperatura del camión', hint: 'Muestra el display del termómetro al llegar', icon: Thermometer, slug: 'temp' }
@@ -183,7 +253,7 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
   // solo cambia CÓMO se registra (cola offline en vez de PATCH directo, ver `registrar`).
   const listoA = fotoA.length > 0 && fotoA.every(f => f.url || f.queued);
   const listoB = fotoB.length > 0 && fotoB.every(f => f.url || f.queued);
-  const puedeRegistrar = listoA && listoB && !submitting;
+  const puedeRegistrar = otpVerificado && listoA && listoB && !submitting;
   const hayFotosEnCola = [...fotoA, ...fotoB].some(f => f.queued);
 
   function temperaturaNumerica(): number | undefined {
@@ -204,6 +274,12 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
       temperatura: temperaturaNumerica(),
       horaEntregaLocal,
       fotos: [...fotoA, ...fotoB].map(f => ({ path: f.path, blob: f.blob ?? null, url: f.url ?? null })),
+      receptor: receptor.trim(),
+      rut: rut.trim(),
+      observaciones: observaciones.trim() || undefined,
+      // El OTP ya se verificó EN VIVO recién — la cola solo reintenta el PATCH final con el mismo
+      // token firmado, nunca repite la verificación (vence a los 10 min, ver offlineQueue.ts).
+      otpToken, otpEmail: otpEmailFinal, otpCodigo: otpInput,
       intentos: 0,
       createdAt: Date.now(),
     };
@@ -227,7 +303,12 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
 
     try {
       const foto_urls = [...fotoA, ...fotoB].map(f => f.url).filter((u): u is string => !!u);
-      const body: Record<string, unknown> = { ruta_tienda_id: parada.id, foto_urls, hora_entrega: horaEntregaLocal };
+      const body: Record<string, unknown> = {
+        ruta_tienda_id: parada.id, foto_urls, hora_entrega: horaEntregaLocal,
+        receptor: receptor.trim(), rut: rut.trim(),
+        otpToken, otpEmail: otpEmailFinal, otpCodigo: otpInput,
+      };
+      if (observaciones.trim()) body.observaciones = observaciones.trim();
       const t = temperaturaNumerica();
       if (t !== undefined) body.temperatura = t;
       const res = await fetch('/api/rutas-despacho', {
@@ -267,6 +348,85 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
           </div>
         )}
 
+        {/* [Flujo único] Paso 1 — quién recibe. Se pide primero: sin esto no tiene sentido pedir
+            el código todavía. */}
+        <div style={{ marginBottom: 18, opacity: otpVerificado ? 0.55 : 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <ShieldCheck size={14} aria-hidden="true" style={{ color: '#1B2A6B' }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1C1C1E' }}>Quién recibe</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input type="text" placeholder="Nombre completo" value={receptor}
+              disabled={otpEnviado}
+              onChange={e => setReceptor(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: otpEnviado ? '#F8FAFF' : '#fff', color: '#1C1C1E', fontSize: 15, outline: 'none', boxSizing: 'border-box' }} />
+            <input type="text" placeholder="RUT — 12.345.678-9" value={rut}
+              disabled={otpEnviado} inputMode="text" autoComplete="off"
+              onChange={e => setRut(formatRut(e.target.value))}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: otpEnviado ? '#F8FAFF' : '#fff', color: '#1C1C1E', fontSize: 15, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+            <textarea placeholder="Observaciones (opcional)" value={observaciones} rows={2}
+              disabled={otpEnviado}
+              onChange={e => setObservaciones(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: otpEnviado ? '#F8FAFF' : '#fff', color: '#1C1C1E', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'none' }} />
+          </div>
+        </div>
+
+        {/* [Flujo único] Paso 2 — el código llega al correo de la tienda. El chofer no lo tiene:
+            necesita que alguien de la tienda se lo lea, esa es la prueba de que participó. */}
+        {!otpVerificado && (
+          <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: '#fff', border: '1.5px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              <Mail size={14} aria-hidden="true" style={{ color: '#1B2A6B' }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1C1C1E' }}>Código de la tienda</span>
+            </div>
+
+            {!otpEnviado ? (
+              <>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 10 }}>
+                  Se manda un código de 6 dígitos al correo registrado de {parada.store_cod}.
+                </div>
+                <button onClick={() => void enviarCodigo()} disabled={!datosReceptorListos || otpEnviando}
+                  style={{ width: '100%', padding: '11px 0', borderRadius: 10, border: 'none', background: datosReceptorListos ? '#1B2A6B' : '#CBD5E1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: datosReceptorListos ? 'pointer' : 'not-allowed' }}>
+                  {otpEnviando ? 'Enviando…' : 'Enviar código'}
+                </button>
+                {!datosReceptorListos && (
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6, textAlign: 'center' }}>Completa nombre y RUT primero</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
+                  Código enviado{otpEmailDestino ? ` a ${otpEmailDestino}` : ''}. Pídeselo a quien te recibe.
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input type="text" inputMode="numeric" maxLength={6} placeholder="000000" value={otpInput}
+                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: '#fff', color: '#1C1C1E', fontSize: 18, letterSpacing: 4, textAlign: 'center', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+                  <button onClick={() => void verificarCodigo()} disabled={otpInput.length !== 6 || otpVerificando}
+                    style={{ padding: '0 18px', borderRadius: 10, border: 'none', background: otpInput.length === 6 ? '#1B2A6B' : '#CBD5E1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: otpInput.length === 6 ? 'pointer' : 'not-allowed' }}>
+                    {otpVerificando ? '…' : 'Verificar'}
+                  </button>
+                </div>
+                <button onClick={() => { setOtpEnviado(false); setOtpInput(''); setOtpError(''); }}
+                  style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: 11, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                  Reenviar código
+                </button>
+              </>
+            )}
+            {otpError && (
+              <div style={{ marginTop: 8, fontSize: 11, color: '#B91C1C' }}>{otpError}</div>
+            )}
+          </div>
+        )}
+
+        {otpVerificado && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', background: '#DCFCE7', borderRadius: 10, fontSize: 12, color: '#16A34A', fontWeight: 700, marginBottom: 18 }}>
+            <Check size={14} aria-hidden="true" /> Confirmado por la tienda — {receptor.trim()}
+          </div>
+        )}
+
+        {/* [Flujo único] Paso 3 — fotos, solo una vez confirmada la tienda. */}
+        {otpVerificado && <>
         <FotoGrupo titulo={grupoA.titulo} hint={grupoA.hint} icon={grupoA.icon} items={fotoA} setItems={setFotoA} single uidBase={uidBase} slug={grupoA.slug} />
 
         {tipo === 'congelado' && (
@@ -281,6 +441,7 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
         )}
 
         <FotoGrupo titulo={grupoB.titulo} hint={grupoB.hint} icon={grupoB.icon} items={fotoB} setItems={setFotoB} single={false} uidBase={uidBase} slug={grupoB.slug} />
+        </>}
 
         {submitError && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, fontSize: 12, color: '#B91C1C', marginBottom: 12 }}>
@@ -290,7 +451,9 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
         )}
       </div>
 
-      {/* Footer fijo con el submit — siempre visible aunque haya muchas fotos y haya que scrollear. */}
+      {/* Footer fijo con el submit — solo aparece una vez confirmada la tienda; antes de eso el
+          paso a seguir ya está claro en el cuerpo (enviar/verificar código). */}
+      {otpVerificado && (
       <div style={{ padding: '12px 16px', borderTop: '1px solid #E2E8F0', background: '#fff', flexShrink: 0 }}>
         {!puedeRegistrar && !submitting && (
           <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8, textAlign: 'center' }}>
@@ -313,6 +476,7 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
           {submitting ? 'Registrando…' : <><Check size={16} aria-hidden="true" /> {hayFotosEnCola ? 'Guardar (sin señal)' : 'Registrar entrega'}</>}
         </button>
       </div>
+      )}
     </div>
   );
 }

@@ -34,6 +34,18 @@ export interface EntregaPendiente {
   temperatura?: number;
   horaEntregaLocal: string; // ISO — el momento REAL en que el chofer confirmó, no el de sync
   fotos: FotoQueued[];
+  /** [Flujo único + OTP] Quién recibió la entrega — igual de obligatorio que en el flujo viejo
+   *  que se retiró; sin esto no hay prueba de QUIÉN aceptó la mercadería, solo fotos. */
+  receptor: string;
+  rut: string;
+  observaciones?: string;
+  /** El código ya se verificó (PUT /api/recepcion-otp) antes de encolar — la cola solo reintenta
+   *  el PATCH final con el token ya firmado, nunca repite la verificación del OTP en sí (el token
+   *  vence a los 10 min; si la sincronización tarda más que eso, el PATCH lo va a rechazar y no
+   *  hay forma de "renovarlo" desde la cola sin que la tienda vuelva a participar). */
+  otpToken: string;
+  otpEmail: string;
+  otpCodigo: string;
   intentos: number;
   ultimoError?: string;
   createdAt: number;

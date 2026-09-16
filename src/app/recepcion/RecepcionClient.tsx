@@ -6,6 +6,7 @@ import { TIENDAS_INICIAL, type TiendaInfo } from '../../features/despacho/rutas/
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { processPhoto } from '../../features/auditoria/utils/photos';
 import { RECEP_MAX_FOTOS } from '../../lib/recepcionMedia';
+import { formatRut } from '../../lib/rut';
 
 /** id de operación (idempotencia). crypto.randomUUID con fallback para navegadores viejos. */
 function newOpId(): string {
@@ -27,19 +28,6 @@ function fileToDataUrl(file: File): Promise<string> {
     r.onerror = () => reject(new Error('No se pudo leer la imagen'));
     r.readAsDataURL(file);
   });
-}
-
-function formatRut(raw: string): string {
-  // Strip everything except digits and K, cap at 9 chars
-  const clean = raw.replace(/[^0-9kK]/g, '').toUpperCase().slice(0, 9);
-  if (clean.length < 2) return clean;
-  const dv  = clean.slice(-1);
-  const num = clean.slice(0, -1);
-  // Add thousands dots only when there are enough digits to need them
-  const dotted = num.length > 3
-    ? num.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-    : num;
-  return `${dotted}-${dv}`;
 }
 
 // Paleta "enterprise" (referencia: manifiesto del fiscalizador /r/[token]): header navy #1a2550,

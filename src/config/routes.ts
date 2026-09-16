@@ -66,8 +66,9 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { path: '/panel-operaciones',      label: 'Panel Operaciones'      },
       // 'Control de Flota' (/despacho/control-flota) se quitó del sidebar: la misma
       // gestión vive en el Enrutador → tab FLOTA → Gestionar. La ruta sigue activa.
-      // '/tiendas' (Recepción del conductor) se accede desde Panel Conductor;
-      // se quitó del sidebar para evitar duplicado. La ruta sigue activa.
+      // '/tiendas' ("Entregar en Tienda") se retiró del rol `conductor` en la Fase 5 del Panel
+      // Conductor — "Registrar entrega" (dentro de /conductor-hub) es ahora el único camino para
+      // marcar una entrega. La ruta sigue activa para los demás roles que la usan.
       // Pantalla de solo lectura para una persona de flota externa (conteo estimado
       // de pallets/bultos/chocolates del día). `hidden`: registrada para permisos
       // (aparece en el checklist y puede asignarse como home) pero fuera del sidebar
@@ -167,7 +168,9 @@ export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
   'admin':               ['*'],
   'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/despacho/congelados', '/despacho/congelados/santiago', '/perfil'],
   'coordinador-flota':   ['/despacho', '/despacho/control-flota', '/despacho/config-tiendas', '/panel-choferes', '/perfil'],
-  'conductor':           ['/conductor-hub', '/tiendas', '/perfil'],
+  // [Panel Conductor · Fase 5] '/tiendas' ("Entregar en Tienda") ya no está acá — se retiró en
+  // favor de "Registrar entrega" dentro de /conductor-hub, que ahora es el único flujo de entrega.
+  'conductor':           ['/conductor-hub', '/perfil'],
 };
 
 export const SYSTEM_ROLE_HOME: Record<string, string> = {

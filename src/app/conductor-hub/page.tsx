@@ -1,12 +1,11 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { WifiOff, Truck, Package, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown, History, CloudOff, ChevronRight } from 'lucide-react';
-import { RecepcionTiendaScreen } from '@/features/tiendas/RecepcionTiendaScreen';
+import { WifiOff, Truck, Send, Thermometer, Check, RefreshCw, Snowflake, Box, MapPin, Clock, ChevronUp, ChevronDown, ArrowUpDown, History, CloudOff, ChevronRight } from 'lucide-react';
 import { EntregaParadaForm, type ParadaEntrega } from '@/features/tiendas/EntregaParadaForm';
 import { subirFotoEntrega } from '@/features/tiendas/entregaFotos';
 import { guiaHref } from '@/lib/guiaUrl';
-import { rutaDeTienda, eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
+import { eventoLlegada, eventoSalida, type EventoRuta } from '@/features/tiendas/llegadaChofer';
 import { fechaChile, fmtHoraChile } from '@/lib/fechaChile';
 import { progresoRuta, proximaParadaPendiente } from './progreso';
 import { moverEnLista } from './reordenar';
@@ -20,7 +19,7 @@ function registrarEvento(e: EventoRuta) {
   }).catch(() => { /* sin señal: se pierde este dato, no la entrega */ });
 }
 
-const TAB_ICON = { ruta: Truck, recepcion: Package, historial: History } as const;
+const TAB_ICON = { ruta: Truck, historial: History } as const;
 
 /* ── Types ──────────────────────────────────────────────── */
 interface TiendaRuta {
@@ -106,7 +105,7 @@ export default function ConductorHubPage() {
   const [offline,      setOffline]      = useState(false);
   const [cacheTs,      setCacheTs]      = useState<number | null>(null);
   const [expanded,     setExpanded]     = useState<number | null>(null);
-  const [tab,          setTab]          = useState<'ruta' | 'recepcion' | 'historial'>('ruta');
+  const [tab,          setTab]          = useState<'ruta' | 'historial'>('ruta');
   // [Fase 4] Qué día se está viendo en "Mi Ruta" — normalmente hoy; el historial cambia esto.
   const [verFecha,     setVerFecha]     = useState(todayISO());
   const [historialDias,   setHistorialDias]   = useState<HistorialDia[]>([]);
@@ -199,6 +198,10 @@ export default function ConductorHubPage() {
             foto_urls: fotos.map(f => f.url),
             temperatura: item.temperatura,
             hora_entrega: item.horaEntregaLocal,
+            // [Flujo único] El OTP ya se verificó EN VIVO al momento de encolar — acá solo se
+            // reenvía el token firmado, nunca se repite la verificación (vence a los 10 min).
+            receptor: item.receptor, rut: item.rut, observaciones: item.observaciones,
+            otpToken: item.otpToken, otpEmail: item.otpEmail, otpCodigo: item.otpCodigo,
           }),
         });
         if (!res.ok) throw new Error('server');
@@ -410,25 +413,11 @@ export default function ConductorHubPage() {
     // cambiar de tab no salte de tema oscuro a claro.
     <div style={{ background: '#F8FAFF', position: 'fixed', inset: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Header — mismo navy sólido (#1B2A6B) que el header de "Entregar en Tienda", sin
-          gradiente: es la franja de marca que ambos tabs comparten. */}
+      {/* Header — mismo navy sólido (#1B2A6B) que usaba "Entregar en Tienda" (retirado en la
+          Fase 5: "Registrar entrega" es ahora el único camino para marcar una entrega). */}
       <div style={{ background: '#1B2A6B', padding: '14px 16px 0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* Solo navegación interna: volver de "Entregar en Tienda" a "Mi Ruta".
-                El botón a /panel-choferes se quitó (el sidebar provee la navegación). */}
-            {tab === 'recepcion' && (
-              <button
-                onClick={() => setTab('ruta')}
-                style={{
-                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                  background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)',
-                  color: '#fff', fontSize: 20, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                ‹
-              </button>
-            )}
             <div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: 2 }}>Panel Conductor</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -455,7 +444,7 @@ export default function ConductorHubPage() {
             (ver design_system.md → "Tab bar"), adaptado a fondo oscuro: activo en blanco sólido,
             inactivo semitransparente, sin píldoras ni sombras. */}
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['ruta', 'Mi Ruta'], ['recepcion', 'Entregar en Tienda'], ['historial', 'Historial']] as const).map(([key, label]) => {
+          {([['ruta', 'Mi Ruta'], ['historial', 'Historial']] as const).map(([key, label]) => {
             const TabIcon = TAB_ICON[key];
             return (
               <button key={key} onClick={() => setTab(key)}
@@ -740,6 +729,14 @@ export default function ConductorHubPage() {
                                     <button
                                       onClick={e => {
                                         e.stopPropagation();
+                                        // [Flujo único] Tocar "Registrar entrega" es ahora la señal de "llegué a
+                                        // esta parada" (antes lo era escanear el QR del flujo viejo) — se guarda
+                                        // una sola vez por parada, no en cada apertura del formulario.
+                                        const k = `llegada:${t.id}`;
+                                        if (!llegadasRegistradas.current.has(k)) {
+                                          llegadasRegistradas.current.add(k);
+                                          registrarEvento(eventoLlegada({ rutaId: r.id, storeCod: t.store_cod, horaISO: new Date().toISOString(), patente, fuente: 'registrar_entrega' }));
+                                        }
                                         setEntregaAbierta({ rutaId: r.id, parada: { id: t.id, rutaId: r.id, store_cod: t.store_cod, nombre: t.nombre, direccion: t.direccion, comuna: t.comuna } });
                                       }}
                                       style={{ marginTop: 4, padding: '9px 0', borderRadius: 10, border: 'none', background: '#1B2A6B', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -849,20 +846,6 @@ export default function ConductorHubPage() {
               <RefreshCw size={14} aria-hidden="true" /> Actualizar
             </button>
           )}
-        </div>
-      )}
-
-      {/* ── Tab: Entregar en Tienda ──────────────────────── */}
-      {tab === 'recepcion' && (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <RecepcionTiendaScreen onBack={() => setTab('ruta')} embedded
-            onLlegada={(storeCod, horaISO) => {
-              // Re-escanear la misma tienda (un QR que no leyó y después sí) no duplica la llegada.
-              const k = `${storeCod}|${horaISO}`;
-              if (llegadasRegistradas.current.has(k)) return;
-              llegadasRegistradas.current.add(k);
-              registrarEvento(eventoLlegada({ rutaId: rutaDeTienda(rutas, storeCod), storeCod, horaISO, patente }));
-            }} />
         </div>
       )}
 

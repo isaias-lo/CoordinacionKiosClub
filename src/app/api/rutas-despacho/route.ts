@@ -5,6 +5,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
 import { fechaChile } from '@/lib/fechaChile';
+import { verifyOtpToken } from '@/lib/otpToken';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
 function addDaysIso(iso: string, n: number): string {
@@ -371,6 +372,13 @@ export async function PATCH(request: NextRequest) {
      *  viene (el camino en línea de siempre), se usa `now()` como hasta ahora.
      */
     hora_entrega?: string;
+    /** [Flujo único + OTP] Quién recibió la entrega — obligatorio, igual que en el flujo viejo que
+     *  se retiró (RecepcionForm). Sin esto una foto sola no prueba QUIÉN aceptó la mercadería. */
+    receptor?: string; rut?: string; observaciones?: string;
+    /** Token HMAC ya verificado por PUT /api/recepcion-otp (mismo mecanismo que usaba el flujo
+     *  viejo) — se re-valida acá server-side antes de aceptar la entrega, para que un cliente
+     *  alterado no pueda saltarse la confirmación real de la tienda. */
+    otpToken?: string; otpEmail?: string; otpCodigo?: string;
   };
   const sb = supabaseServer();
 
@@ -393,6 +401,17 @@ export async function PATCH(request: NextRequest) {
 
   // ── Registrar entrega de UNA parada (fotos + hora real) ────────────────────
   if (body.ruta_tienda_id != null) {
+    // [Flujo único + OTP] Este es ahora el ÚNICO camino por el que una entrega queda registrada
+    // (se retiró "Entregar en Tienda") — así que absorbe sus dos garantías: quién recibió
+    // (nombre+RUT, sin esto una foto sola no prueba nada) y que la tienda participó de verdad
+    // (el código llegó a su correo, no algo que el chofer se pueda autoconfirmar). Se revalida el
+    // token OTP server-side — no basta con que el cliente diga "ya lo verifiqué" — para que un
+    // cliente alterado no pueda saltarse la confirmación real de la tienda.
+    if (!body.receptor?.trim() || !body.rut?.trim())
+      return NextResponse.json({ error: 'Falta el nombre y RUT de quien recibe' }, { status: 400 });
+    if (!body.otpToken || !body.otpEmail || !body.otpCodigo || !verifyOtpToken(body.otpToken, body.otpEmail, body.otpCodigo))
+      return NextResponse.json({ error: 'Código de verificación inválido o vencido — pide uno nuevo' }, { status: 403 });
+
     // Valida el override del cliente: si viene basura, se ignora silenciosamente y se usa la hora
     // del servidor — mejor una hora aproximada que una entrega que falla por un dato mal formado.
     const horaCliente  = body.hora_entrega ? new Date(body.hora_entrega) : null;
@@ -403,12 +422,35 @@ export async function PATCH(request: NextRequest) {
       .select('id, ruta_id, store_cod')
       .single();
     if (rtErr) return NextResponse.json({ error: rtErr.message }, { status: 500 });
-    // Evento con el detalle completo (fotos, temperatura si es congelado) — `ruta_tiendas` guarda
-    // el estado ACTUAL para consultar rápido; `ruta_eventos` es el historial de qué pasó y cuándo.
+    // Evento con el detalle completo (fotos, temperatura si es congelado, receptor) —
+    // `ruta_tiendas` guarda el estado ACTUAL para consultar rápido; `ruta_eventos` es el
+    // historial de qué pasó y cuándo.
     void sb.from('ruta_eventos').insert({
       ruta_id: rt.ruta_id, tipo: 'entrega',
-      datos: { store_cod: rt.store_cod, foto_urls: body.foto_urls ?? [], temperatura: body.temperatura ?? null },
+      datos: {
+        store_cod: rt.store_cod, foto_urls: body.foto_urls ?? [], temperatura: body.temperatura ?? null,
+        receptor: body.receptor, rut: body.rut, observaciones: body.observaciones ?? null,
+      },
     });
+
+    // [Flujo único] `trazabilidad_unidades` es el libro de custodia que usa el resto de la empresa
+    // (Auditoría, Control Despacho) — antes SOLO lo escribía "Entregar en Tienda". Sin esto, una
+    // entrega registrada acá quedaría invisible para todo lo que lee esa tabla. Se actualizan
+    // TODAS las unidades EN_RUTA/CREADO de esa parada (pallets y bultos): acá la confirmación es
+    // por PARADA completa, no por unidad escaneada una por una como en el flujo viejo.
+    void sb.from('trazabilidad_unidades')
+      .update({
+        fecha_hora_real_llegada: horaEntrega,
+        estado_actual:           'RECIBIDO_CONFORME',
+        usuario_recepcion:       body.receptor,
+        observaciones:           body.observaciones ?? null,
+        links_evidencia:         body.foto_urls ?? [],
+        ...(body.temperatura !== undefined ? { temperatura_llegada: body.temperatura } : {}),
+      })
+      .eq('ruta_id', rt.ruta_id)
+      .eq('codigo_tienda', rt.store_cod)
+      .in('estado_actual', ['EN_RUTA', 'CREADO']);
+
     return NextResponse.json({ data: rt, hora_entrega: horaEntrega });
   }
 
