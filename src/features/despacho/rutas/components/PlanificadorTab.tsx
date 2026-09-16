@@ -1022,8 +1022,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         )}
         {/* Qué se reparte en esta ruta. No es cosmético: decide CUÁL ventana se respeta, porque
             congelados se recibe en otro horario que el seco (en Parque Arauco las dos ni se
-            tocaban). Va por ruta porque un mismo día puede tener una de cada una abierta. */}
-        {selected.length > 0 && orderMode === 'ventanas' && (
+            tocaban). Va por ruta porque un mismo día puede tener una de cada una abierta.
+            Se muestra SIEMPRE, no solo en modo Ventanas: el diagnóstico de cuellos de botella se
+            mide contra esta carga en cualquier modo, así que esconder el selector dejaba un aviso
+            calculado sobre algo que no se podía ni ver ni cambiar. */}
+        {selected.length > 0 && (
           <div className="flex items-center gap-1.5 text-[11px] text-kmuted flex-wrap">
             <span className="font-semibold">Ventanas de</span>
             <div className="flex gap-1 bg-kbg rounded-[8px] p-0.5">
