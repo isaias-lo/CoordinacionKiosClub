@@ -57,6 +57,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
@@ -556,6 +557,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           peso_v: row.peso_v as number | null,
           picker_label: row.picker_label as string | null,
         });
+      }
+      // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
+      // mapa entero y el pallet recién agregado desaparece de la pantalla aunque exista en la base.
+      for (const { clave, slot } of faltantesEnLaConsulta(full, slotsRecienAgregados(), cod => codToName[cod])) {
+        if (!full[clave]) { full[clave] = []; slots[clave] = []; }
+        full[clave].push(slot);
+        slots[clave].push({ tipo: slot.tipo, contenido: slot.contenido });
       }
       setPickingSlots(slots);
       setPickingSlotsFull(full);
@@ -1065,7 +1073,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // `await` de cada llamada, así que la guarda ya está liberada en la siguiente vuelta.
   const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const key = `${selectedTienda}:${pkg}`;
-    if (addingSlotRef.current.has(key)) return;
+    if (addingSlotRef.current.has(key)) {
+      // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
+      // natural es volver a tocar. Decirlo convierte un silencio en una espera.
+      showToast('Agregando… espera un segundo', '#D97706');
+      return;
+    }
     addingSlotRef.current.add(key);
     try { await addFormRowInner(pkg, existingSlot, countOffset); }
     finally { addingSlotRef.current.delete(key); }

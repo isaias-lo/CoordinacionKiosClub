@@ -56,6 +56,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
@@ -730,6 +731,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           peso_v:       row.peso_v as number | null,
           picker_label: row.picker_label as string | null,
         });
+      }
+      // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
+      // mapa entero y el pallet recién agregado desaparece de la pantalla aunque exista en la base.
+      for (const { clave, slot } of faltantesEnLaConsulta(full, slotsRecienAgregados(), cod => cod)) {
+        if (!full[clave]) { full[clave] = []; slots[clave] = []; }
+        full[clave].push(slot);
+        slots[clave].push({ tipo: slot.tipo, contenido: slot.contenido });
       }
       setPickingSlots(slots);
       setPickingSlotsFull(full);
@@ -1823,7 +1831,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const addingSlotRef = useRef<Set<string>>(new Set());
   const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const key = `${currentTienda?.cod ?? ''}:${t}`;
-    if (addingSlotRef.current.has(key)) return;
+    if (addingSlotRef.current.has(key)) {
+      // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
+      // natural es volver a tocar. Decirlo convierte un silencio en una espera.
+      showToast('Agregando… espera un segundo', '#D97706');
+      return;
+    }
     addingSlotRef.current.add(key);
     try { await addFormRowInner(t, existingSlot, countOffset); }
     finally { addingSlotRef.current.delete(key); }
