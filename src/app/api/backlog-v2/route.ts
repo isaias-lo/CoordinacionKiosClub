@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseServer, hayServiceRole } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import {
@@ -26,6 +26,8 @@ import {
  *     lo que Bodega REGISTRÓ ese día      (despacho_sesion)
  *   − lo que entró en algún MANIFIESTO    (ese día o DESPUÉS)
  */
+interface FilaDespachada { fecha: string; cod: string; patente: string | null }
+
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
@@ -49,8 +51,26 @@ export async function GET(request: NextRequest) {
     // un camión, y es el mismo dato que mira el coordinador. Las dos tablas: el Enrutador escribe
     // las de RM en `despacho_rm` y las de región en `despacho_regiones` — mirar solo una dejaba a
     // toda la ruta norte figurando como pendiente para siempre.
-    const conPatente = (tabla: 'despacho_rm' | 'despacho_regiones') =>
-      sb.from(tabla).select('fecha, cod, patente').in('fecha', fechasPlanilla).not('patente', 'is', null);
+    // PostgREST devuelve como mucho ~1000 filas y NO avisa cuando corta. Control Despacho tiene
+    // más de mil filas con patente en dos semanas (1249 el 17/09), así que sin paginar se traía
+    // solo los días más viejos: los recientes quedaban sin despachos y TODA su carga aparecía
+    // como pendiente. Es exactamente lo que hizo aparecer 29 tiendas del 16 donde había 6.
+    const PAGINA = 1000;
+    const conPatente = async (tabla: 'despacho_rm' | 'despacho_regiones') => {
+      const filas: FilaDespachada[] = [];
+      for (let desdeFila = 0; ; desdeFila += PAGINA) {
+        const { data, error } = await sb.from(tabla)
+          .select('fecha, cod, patente')
+          .in('fecha', fechasPlanilla)
+          .not('patente', 'is', null)
+          .order('id', { ascending: true })            // orden estable: sin él una página puede repetir o saltar
+          .range(desdeFila, desdeFila + PAGINA - 1);
+        if (error) throw new Error(`${tabla}: ${error.message}`);
+        const pagina = (data ?? []) as FilaDespachada[];
+        filas.push(...pagina);
+        if (pagina.length < PAGINA) return filas;      // última página
+      }
+    };
 
     const [sesion, rm, reg] = await Promise.all([
       sb.from('despacho_sesion')
@@ -60,11 +80,9 @@ export async function GET(request: NextRequest) {
       conPatente('despacho_regiones'),
     ]);
     if (sesion.error) return NextResponse.json({ error: sesion.error.message }, { status: 500 });
-    if (rm.error)     return NextResponse.json({ error: rm.error.message },     { status: 500 });
-    if (reg.error)    return NextResponse.json({ error: reg.error.message },    { status: 500 });
 
     const porFecha = new Map<string, string[]>();
-    for (const f of [...(rm.data ?? []), ...(reg.data ?? [])] as { fecha: string; cod: string; patente: string | null }[]) {
+    for (const f of [...rm, ...reg]) {
       if (!String(f.patente ?? '').trim()) continue;   // fila sin patente: esa tienda no salió
       const iso = desdeFechaPlanilla(f.fecha);
       if (!iso) continue;
@@ -87,7 +105,14 @@ export async function GET(request: NextRequest) {
       pendientes.push(...pendientesDelDia(filas, despachadasParaOrigen(despachos, fecha), fecha));
     }
 
-    return NextResponse.json({ pendientes, desde, hoy, diasConDespacho: despachos.length });
+    // Los contadores viajan a propósito: si el cálculo devuelve de más, lo primero que hay que saber
+    // es CUÁNTO alcanzó a leer. Sin esto, diagnosticarlo desde afuera es adivinar.
+    return NextResponse.json({
+      pendientes, desde, hoy,
+      diasConDespacho: despachos.length,
+      filasLeidas: { despacho_rm: rm.length, despacho_regiones: reg.length },
+      serviceRole: hayServiceRole(),
+    });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
