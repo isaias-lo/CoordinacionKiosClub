@@ -28,6 +28,9 @@ import {
  */
 interface FilaDespachada { fecha: string; cod: string; patente: string | null }
 
+/** Lo que se calcula cambia con cada camión que se cierra: no se cachea en ningún lado. */
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   try {
@@ -112,7 +115,7 @@ export async function GET(request: NextRequest) {
       diasConDespacho: despachos.length,
       filasLeidas: { despacho_rm: rm.length, despacho_regiones: reg.length },
       serviceRole: hayServiceRole(),
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
